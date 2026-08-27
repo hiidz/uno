@@ -1,0 +1,290 @@
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import { TypeBar } from '@/components/TypeBar'
+import {
+  ALL_TAB,
+  ALL_TAB_TILE_CAP,
+  folderTabs,
+  interleaveTiles,
+  type PreviewCollection,
+  type PreviewFolder,
+  type PreviewSource,
+} from './model'
+import { CONTENT_TILE_SHAPE, TileGrid, TilesNote, TileStrip, noTiles } from './tiles'
+import type { CatalogTiles } from './tiles'
+
+/**
+ * What a folder tile opens: one folder, and the catalogs inside it.
+ *
+ * `view_mode` is a **collection-level** setting that applies to every folder in
+ * it, and it governs this page only — `TABBED_GRID` gives one tab per catalog
+ * over a grid, `ROWS` stacks one row per catalog the way home does.
+ *
+ * Sibling folders are absent: the folder tile you pressed is the whole subject
+ * of this page, in both modes.
+ *
+ * Shared by the Home pane's Preview view and the collection builder. The two
+ * differ only in what they can say *about* a catalog — Home knows whether a
+ * selected row has since left the library — so that goes through `chrome`
+ * rather than being read from Home state here.
+ */
+export interface PreviewChrome {
+  isOwned: (catalogID: string) => boolean
+  /** An extra note beside a catalog's name. Home uses it to mark a catalog that
+   *  has left the library; the builder has nothing to add and omits it. */
+  note?: (catalogID: string) => ReactNode
+}
+
+export function FolderPage({
+  collection,
+  folder,
+  tiles,
+  chrome,
+  onBack,
+  backLabel = '← Home',
+}: {
+  collection: PreviewCollection
+  folder: PreviewFolder
+  /** Tiles for every catalog in the folder, keyed by catalog id. Both layouts
+   *  need the same set — `ROWS` draws them all at once, `TABBED_GRID` shows one
+   *  at a time but its "All" tab spans the lot — so the caller fetches once and
+   *  switching tabs never triggers a new call. */
+  tiles: ReadonlyMap<string, CatalogTiles>
+  chrome: PreviewChrome
+  onBack: () => void
+  backLabel?: string
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="type-data border-line-hi text-dim hover:text-ink hover:border-dim rounded-[2px] border px-2.5 py-1 text-[10px] tracking-[0.05em] uppercase transition-colors"
+        >
+          {backLabel}
+        </button>
+        <span className="type-data text-dimmer text-[10px]">
+          {collection.title || 'Untitled collection'} /{' '}
+          <span className="text-dim">{folder.title || 'Untitled folder'}</span>
+        </span>
+        {folder.hideTitle && <Note>title hidden on the tile</Note>}
+      </div>
+
+      {folder.sources.length === 0 ? (
+        <p className="type-data text-dimmer m-0 text-[11px]">
+          This folder has no catalogs, so it opens empty.
+        </p>
+      ) : collection.viewMode === 'TABBED_GRID' ? (
+        <TabbedCatalogs
+          folder={folder}
+          showAllTab={collection.showAllTab}
+          tiles={tiles}
+          chrome={chrome}
+        />
+      ) : (
+        <CatalogRowsInFolder folder={folder} tiles={tiles} chrome={chrome} />
+      )}
+
+      {collection.viewModeAssumed && folder.sources.length > 0 && (
+        <p className="type-data text-dimmer m-0 text-[10px]">
+          This collection follows the app's own layout setting, which Uno can't read — shown here as
+          rows.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * `TABBED_GRID`: one tab per **catalog in the folder**, over a grid of that
+ * catalog's content. The tabs are per catalog, not per folder — `view_mode`
+ * describes how a folder's catalogs are presented once you are inside it.
+ */
+function TabbedCatalogs({
+  folder,
+  showAllTab,
+  tiles,
+  chrome,
+}: {
+  folder: PreviewFolder
+  showAllTab: boolean
+  tiles: ReadonlyMap<string, CatalogTiles>
+  chrome: PreviewChrome
+}) {
+  const tabs = folderTabs(folder, showAllTab)
+  const [openKey, setOpenKey] = useState(tabs[0]?.key ?? ALL_TAB)
+  // A catalog removed from the folder while this is open must not leave this
+  // pointing at a tab that no longer exists.
+  const open = tabs.some((t) => t.key === openKey) ? openKey : (tabs[0]?.key ?? ALL_TAB)
+
+  const source = folder.sources.find((s) => s.id === open)
+  const allUnresolved = folder.sources.length > 0 && folder.unresolved === folder.sources.length
+
+  // The All tab's own tiles: every source's page, merged round-robin and
+  // capped. Nothing specifies how Nuvio itself merges a folder's sources, so
+  // this order is a guess and is labelled as such below.
+  const allTiles: CatalogTiles = useMemo(() => {
+    const perSource = folder.sources.map((s) => tiles.get(s.id)?.items ?? [])
+    const loaded = folder.sources.map((s) => tiles.get(s.id)).filter((t) => t !== undefined)
+    return {
+      items: interleaveTiles(perSource, ALL_TAB_TILE_CAP),
+      // A shuffling source anywhere in the folder makes the merged view a
+      // sample too, so the caveat has to propagate rather than be per-tab.
+      randomized: loaded.some((t) => t.randomized),
+      isLoading: loaded.some((t) => t.isLoading),
+      // Only a total failure counts: with one source down out of eight the tab
+      // still has content, and "couldn't load" over a full grid is wrong.
+      isError: loaded.length > 0 && loaded.every((t) => t.isError),
+    }
+  }, [folder.sources, tiles])
+
+  return (
+    <div className="flex flex-col gap-3">
+      {tabs.length > 1 && (
+        <div className="border-line flex gap-1 overflow-x-auto border-b pb-2">
+          {tabs.map((tab) => (
+            <Tab
+              key={tab.key}
+              label={tab.label}
+              active={tab.key === open}
+              onClick={() => setOpenKey(tab.key)}
+            />
+          ))}
+        </div>
+      )}
+
+      {source ? (
+        <>
+          <SourceHeading source={source} tiles={tiles.get(source.id)} chrome={chrome} />
+          {source.name === null ? (
+            <UnresolvedSource />
+          ) : (
+            <TileGrid shape={CONTENT_TILE_SHAPE} tiles={tiles.get(source.id) ?? noTiles()} />
+          )}
+        </>
+      ) : allUnresolved ? (
+        // Nothing in the folder resolves, so there is nothing to merge and a
+        // grid here would claim content the folder doesn't have.
+        <UnresolvedSource all />
+      ) : (
+        <>
+          {/* The All tab has no source heading to hang `TilesNote` off, so it
+              sits above the grid — otherwise a folder whose sources all return
+              nothing renders as unexplained blank space. */}
+          <div className="flex items-center gap-2.5">
+            <span className="type-eyebrow">Everything in this folder</span>
+            <TilesNote tiles={allTiles} />
+          </div>
+          <TileGrid shape={CONTENT_TILE_SHAPE} tiles={allTiles} />
+          {/* The one place in the preview that merges more than one catalog,
+              and Nuvio's merge order for a folder is unspecified (folders
+              aren't an addon concept), so the caveat is stated outright. */}
+          <p className="type-data text-dimmer m-0 text-[10px]">
+            A sample across {folder.sources.length}{' '}
+            {folder.sources.length === 1 ? 'catalog' : 'catalogs'}
+            {folder.unresolved > 0 && `, ${folder.unresolved} of them unavailable`} · taken evenly
+            from each, capped at {ALL_TAB_TILE_CAP} · the order Nuvio merges them in isn't something
+            Uno can know
+            {allTiles.randomized && ' · one of them shuffles, so your TV will differ'}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** `ROWS`: every catalog in the folder as its own row, the same shape home
+ *  uses. Each row is exactly one catalog, so nothing here is merged. */
+function CatalogRowsInFolder({
+  folder,
+  tiles,
+  chrome,
+}: {
+  folder: PreviewFolder
+  tiles: ReadonlyMap<string, CatalogTiles>
+  chrome: PreviewChrome
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      {folder.sources.map((source) => (
+        <section key={source.id} className="flex flex-col gap-2">
+          <SourceHeading source={source} tiles={tiles.get(source.id)} chrome={chrome} />
+          {source.name === null ? (
+            <UnresolvedSource />
+          ) : (
+            <TileStrip shape={CONTENT_TILE_SHAPE} tiles={tiles.get(source.id) ?? noTiles()} />
+          )}
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function SourceHeading({
+  source,
+  tiles,
+  chrome,
+}: {
+  source: PreviewSource
+  tiles?: CatalogTiles
+  chrome: PreviewChrome
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      <TypeBar
+        kind={source.type ?? 'movie'}
+        owned={chrome.isOwned(source.id)}
+        className="h-[13px] self-auto"
+      />
+      <h3 className="m-0 min-w-0 truncate text-[13px] font-medium">
+        {source.name ?? 'Unavailable catalog'}
+      </h3>
+      {chrome.note?.(source.id)}
+      {/* An unresolvable source has no recipe to run, so it has no tile state
+          either — `UnresolvedSource` below says what happened instead. */}
+      {source.name !== null && tiles && <TilesNote tiles={tiles} />}
+    </div>
+  )
+}
+
+/** A folder can reference a catalog whose owner has since made it private or
+ *  deleted it. The reference keeps its slot and says what happened rather than
+ *  vanishing, matching how the List view draws a detached row. */
+function UnresolvedSource({ all }: { all?: boolean }) {
+  return (
+    <p className="type-data text-dimmer m-0 text-[10px]">
+      {all
+        ? "Nothing in this folder can be resolved any more — every catalog it references has been made private or deleted, so there is nothing to merge here. They still sit in the folder until they're removed in the collection builder."
+        : "Nothing is known about this catalog any more — its owner made it private or deleted it. It still sits in the folder until it's removed in the collection builder."}
+    </p>
+  )
+}
+
+function Tab({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={label}
+      className={`type-data flex shrink-0 items-center gap-1.5 rounded-[2px] border px-2.5 py-1 text-[11px] transition-colors ${
+        active ? 'border-line-hi bg-raised-hi text-ink' : 'text-dim hover:text-ink border-transparent'
+      }`}
+    >
+      <span className="max-w-[180px] truncate">{label}</span>
+    </button>
+  )
+}
+
+function Note({ children }: { children: ReactNode }) {
+  return <span className="type-data text-dimmer shrink-0 text-[10px]">· {children}</span>
+}

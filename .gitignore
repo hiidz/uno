@@ -1,0 +1,24 @@
+# Go
+/uno
+*.exe
+*.test
+*.out
+
+# SQLite (vault database, wherever it's generated)
+*.db
+*.db-shm
+*.db-wal
+
+# Web
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+
+# Secrets
+.env
+.env.local
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store

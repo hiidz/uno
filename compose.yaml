@@ -1,0 +1,21 @@
+services:
+  uno:
+    build: .
+    image: uno
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Overrides whatever VAULT_DB is set to in .env — the vault has to
+      # live on the mounted volume below to survive a container recreate.
+      VAULT_DB: /data/vault.db
+    volumes:
+      - uno-data:/data
+    networks:
+      - edge
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  uno-data:

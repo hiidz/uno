@@ -1,0 +1,79 @@
+// Talks directly to Nuvio's auth endpoints — never through Uno's own API.
+// Base URL and publishable key mirror the Go side's fallbacks
+// (cmd/server/main.go) so both halves default to the same Nuvio project
+// without requiring env vars in dev.
+const NUVIO_BASE_URL: string = import.meta.env.VITE_NUVIO_BASE_URL ?? 'https://api.nuvio.tv'
+const NUVIO_PUBLISHABLE_KEY: string =
+  import.meta.env.VITE_NUVIO_PUBLISHABLE_KEY ?? 'sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN'
+
+export interface NuvioUser {
+  id: string
+  email: string
+  created_at: string
+}
+
+export interface NuvioTokenResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  refresh_token: string
+  user: NuvioUser
+}
+
+export class NuvioAuthError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'NuvioAuthError'
+    this.status = status
+  }
+}
+
+async function errorMessageFor(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: string }
+    return body.message ?? `Nuvio auth request failed (${res.status})`
+  } catch {
+    return `Nuvio auth request failed (${res.status})`
+  }
+}
+
+async function tokenRequest(
+  grantType: 'password' | 'refresh_token',
+  body: Record<string, string>,
+): Promise<NuvioTokenResponse> {
+  const res = await fetch(`${NUVIO_BASE_URL}/auth/v1/token?grant_type=${grantType}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: NUVIO_PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw new NuvioAuthError(await errorMessageFor(res), res.status)
+  }
+  return res.json() as Promise<NuvioTokenResponse>
+}
+
+export function signInWithPassword(email: string, password: string): Promise<NuvioTokenResponse> {
+  return tokenRequest('password', { email, password })
+}
+
+export function refreshWithToken(refreshToken: string): Promise<NuvioTokenResponse> {
+  return tokenRequest('refresh_token', { refresh_token: refreshToken })
+}
+
+// Fire-and-forget from the caller's side (session.ts clears local state
+// regardless of whether this succeeds) — errors are left for the caller to
+// decide whether they matter.
+export async function signOut(accessToken: string): Promise<void> {
+  await fetch(`${NUVIO_BASE_URL}/auth/v1/logout`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: NUVIO_PUBLISHABLE_KEY,
+    },
+  })
+}
