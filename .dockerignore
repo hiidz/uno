@@ -1,0 +1,28 @@
+# Dependency and build output trees. web/node_modules holds host-platform
+# native bindings; the frontend stage installs its own inside the container
+# and web/dist is produced there, so both would only overlay the container's
+# copies with stale host ones.
+web/node_modules
+web/dist
+
+# Host build artifacts
+*.exe
+*.test
+*.out
+uno
+
+# SQLite vault, wherever it is generated
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets. compose reads .env on the host via env_file, not from the image.
+.env
+.env.local
+
+# Not part of the build
+.git
+.gitignore
+.dockerignore
+compose.yaml
+README.md
