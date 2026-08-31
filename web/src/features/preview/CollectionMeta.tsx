@@ -10,6 +10,12 @@ import type { PreviewCollection } from './model'
  * Shared so the Home pane and the collection builder describe the same settings
  * in the same words: two different sentences for one `view_mode` would read as
  * two different behaviours.
+ *
+ * **It also carries what a folder tile can't say for itself.** A tile is 92px
+ * of emoji or cover art; the facts about it — that some of its catalogs no
+ * longer resolve, that its shape was assumed rather than set — used to live
+ * only in the tile's `title`, which no touch screen ever opens. Summed across
+ * the row here, they are on the page for everyone.
  */
 export function CollectionMeta({ collection }: { collection: PreviewCollection }) {
   if (collection.missing) return null
@@ -34,6 +40,18 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
   }
 
   if (collection.hasBackdrop) notes.push('has a background image')
+
+  // Summed over the row rather than stated per tile: the tiles sit side by side
+  // and a caption under each one saying "2 unavailable" would be the same
+  // sentence three times.
+  const unresolved = collection.folders.reduce((total, folder) => total + folder.unresolved, 0)
+  if (unresolved > 0) {
+    notes.push(`${unresolved} ${unresolved === 1 ? 'catalog is' : 'catalogs are'} unavailable`)
+  }
+
+  if (collection.folders.some((folder) => folder.tileShapeAssumed)) {
+    notes.push('no tile shape set — shown as posters')
+  }
 
   if (notes.length === 0) return null
   return <p className="type-data text-dimmer m-0 text-[10px]">{notes.join(' · ')}</p>

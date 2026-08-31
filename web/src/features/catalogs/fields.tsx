@@ -61,7 +61,7 @@ export function NumberInput({
         const raw = event.target.value
         onChange(raw === '' ? undefined : Number(raw))
       }}
-      className="field type-data w-full max-w-[var(--w-code)] min-w-0 px-2 py-1.5 text-center text-[12px]"
+      className="field type-data w-full max-w-[var(--w-code)] min-w-0 px-2 py-1.5 text-center text-[12px] pointer-coarse:text-[16px]"
     />
   )
 }
@@ -231,7 +231,7 @@ export function GenreCycler({
                       ? `Only ${genre.name} — click to exclude it instead`
                       : `Click to require ${genre.name}`
                 }
-                className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors ${
+                className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors pointer-coarse:py-2 ${
                   state === 'include'
                     ? 'bg-raised-hi border-dim text-ink'
                     : state === 'exclude'

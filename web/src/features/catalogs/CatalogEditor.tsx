@@ -54,6 +54,7 @@ export function CatalogEditor({
   serverError,
   onSave,
   onRequestClose,
+  onBack,
   onDirtyChange,
 }: {
   mode: BuilderMode
@@ -68,6 +69,8 @@ export function CatalogEditor({
   serverError: string | null
   onSave: (state: CatalogFormState) => void
   onRequestClose: () => void
+  /** Show the rail instead, below `lg`. Not an exit — see `EditorShell`. */
+  onBack: () => void
   onDirtyChange: (dirty: boolean) => void
 }) {
   const baseline = useMemo(() => initial ?? emptyForm(), [initial])
@@ -188,6 +191,7 @@ export function CatalogEditor({
       // one — the only editable catalog is one you own.
       owned
       onRequestClose={onRequestClose}
+      onBack={onBack}
       footer={
         <>
           {showErrors && Object.keys(errors).length > 0 && (
@@ -287,11 +291,17 @@ export function CatalogEditor({
               }
             />
 
-            {/* `xl`, not `sm`: the breakpoint measures the viewport, and this
-                grid sits in a pane that is the viewport minus a 372px rail
-                minus the identity column. Splitting at `sm` gave each half
-                about 150px, which is narrower than the two number boxes
-                inside it — they overflowed the column rather than wrapping. */}
+            {/* `xl`, not `sm`: the breakpoint measures the viewport, and from
+                `lg` up this grid sits in a pane that is the viewport minus a
+                372px rail minus the identity column. Splitting at `sm` gave
+                each half about 150px, which is narrower than the two number
+                boxes inside it — they overflowed the column rather than
+                wrapping.
+
+                Below `lg` the rail is a screen of its own rather than a column
+                beside this one, so the pane is the whole viewport and the
+                mismatch doesn't arise — the grid is single-column there
+                anyway. */}
             <div className="grid gap-x-8 gap-y-6 xl:grid-cols-2">
               <RangeField
                 label="Rating"
@@ -582,7 +592,7 @@ function RollingWindow({
                   : years * DAYS_PER_YEAR,
               )
             }}
-            className={`field type-data w-[3.25rem] px-2 py-1 text-center text-[12px] ${
+            className={`field type-data w-[3.25rem] px-2 py-1 text-center text-[12px] pointer-coarse:w-[4rem] pointer-coarse:text-[16px] ${
               customYears !== undefined ? 'border-dim text-ink' : ''
             }`}
           />
@@ -620,7 +630,7 @@ function PresetChip({
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className={`rounded-[2px] border px-2.5 py-1 text-[11px] whitespace-nowrap transition-colors ${
+      className={`rounded-[2px] border px-2.5 py-1 text-[11px] whitespace-nowrap transition-colors pointer-coarse:py-2 ${
         selected
           ? 'bg-raised-hi border-dim text-ink'
           : 'border-line text-dim hover:border-dim hover:text-ink'

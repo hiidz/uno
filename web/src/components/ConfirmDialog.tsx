@@ -46,16 +46,21 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[rgba(4,5,7,0.72)] p-8"
+      className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-[rgba(4,5,7,0.72)] p-4 sm:p-8"
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel()
       }}
     >
+      {/* `max-h-full` and a scroll of its own, the same shape `Modal` uses. The
+          body names what is at stake — a collection's title, the folders going
+          with it — so it has no bounded height, and a panel taller than the
+          viewport in a `place-items-center` grid is clipped at both ends with
+          no way to reach either. */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
-        className="bg-ground border-line-hi flex w-full max-w-[420px] flex-col gap-5 border p-6"
+        className="bg-ground border-line-hi flex max-h-full w-full max-w-[420px] flex-col gap-5 overflow-y-auto overscroll-contain border p-6"
       >
         <h2 id="confirm-title" className="type-display m-0 text-[14px]">
           {title}

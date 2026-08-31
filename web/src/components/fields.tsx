@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Slider, Tooltip } from 'radix-ui'
+import { Popover, Slider } from 'radix-ui'
 
 /**
  * The form primitives shared by both builders. Nothing here is
@@ -53,36 +53,35 @@ export function Field({
  * dense grid where that sentence would push every neighbouring field down a
  * line.
  *
- * Its own `Tooltip.Provider` rather than one at the app root — there are a
- * handful of these, they never appear side by side, and a root provider would
- * be a shared setting nothing else uses.
+ * **A popover, not a tooltip.** A Radix tooltip opens on hover and on
+ * keyboard focus, and closes on pointer-down — so on a touch screen there is no
+ * gesture that opens it at all, and the sentence simply isn't in the app. This
+ * opens on click, which every input device has.
  */
 export function InfoTip({ label, text }: { label: string; text: string }) {
   return (
-    <Tooltip.Provider delayDuration={120}>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <button
-            type="button"
-            aria-label={`About ${label.toLowerCase()}`}
-            className="border-line-hi text-dimmer hover:border-dim hover:text-dim grid h-[13px] w-[13px] shrink-0 place-items-center rounded-full border text-[8px] leading-none transition-colors"
-          >
-            <span aria-hidden="true">?</span>
-          </button>
-        </Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content
-            side="top"
-            align="start"
-            sideOffset={5}
-            collisionPadding={12}
-            className="type-data bg-raised-hi border-line-hi text-dim z-50 max-w-[15rem] rounded-[2px] border px-2.5 py-1.5 text-[10.5px] leading-[1.45]"
-          >
-            {text}
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          aria-label={`About ${label.toLowerCase()}`}
+          className="tap border-line-hi text-dimmer hover:border-dim hover:text-dim grid h-[13px] w-[13px] shrink-0 place-items-center rounded-full border text-[8px] leading-none transition-colors"
+        >
+          <span aria-hidden="true">?</span>
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          side="top"
+          align="start"
+          sideOffset={5}
+          collisionPadding={12}
+          className="type-data bg-raised-hi border-line-hi text-dim z-50 max-w-[15rem] rounded-[2px] border px-2.5 py-1.5 text-[10.5px] leading-[1.45]"
+        >
+          {text}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }
 
@@ -212,6 +211,13 @@ export function Select({
   // The width moves to the wrapper so the X lands against the control's own
   // edge; left on the select, the button would float at the end of whatever
   // room the row happened to give it.
+  //
+  // On touch the box grows from that same pinned right edge, so it grows
+  // leftward and away from the chevron rather than over it. A 16px target
+  // sitting inside a control that opens a picker is the one size that is worse
+  // than no target at all: the miss doesn't do nothing, it opens the list.
+  // `select.field--clearable`'s padding grows to match — the two are in
+  // `index.css` and here, and have to move together.
   return (
     <div className="relative w-full" style={{ maxWidth: width }}>
       {select}
@@ -220,7 +226,7 @@ export function Select({
           type="button"
           aria-label={`Clear ${clearLabel}`}
           onClick={() => onChange('')}
-          className="text-dimmer hover:text-ink absolute top-1/2 right-[27px] grid h-4 w-4 -translate-y-1/2 place-items-center text-[13px] leading-none transition-colors"
+          className="text-dimmer hover:text-ink absolute top-1/2 right-[27px] grid h-4 w-4 -translate-y-1/2 place-items-center text-[13px] leading-none transition-colors pointer-coarse:h-9 pointer-coarse:w-9"
         >
           <span aria-hidden="true">&times;</span>
         </button>
@@ -238,6 +244,12 @@ export function Select({
  * `whitespace-nowrap` makes the wrapper unnecessary and the clipping
  * unreachable — a label that grows takes the room it needs instead of losing
  * its tail.
+ *
+ * **Which is why a narrow screen wraps the group rather than shrinking it.**
+ * `w-fit` cannot shrink, so the four-option tile-shape group is 323px wide
+ * whatever it is given, and in a folder card on a 375px screen it hung past the
+ * card's own border. `max-w-full` with `flex-wrap` takes a second line instead;
+ * the labels stay whole, which is the property this control exists to keep.
  */
 export function Segmented<T extends string>({
   value,
@@ -254,7 +266,7 @@ export function Segmented<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="border-line-hi flex w-fit shrink-0 overflow-hidden rounded-[2px] border"
+      className="border-line-hi flex w-fit max-w-full shrink-0 flex-wrap overflow-hidden rounded-[2px] border"
     >
       {options.map((option) => (
         <button
@@ -262,7 +274,7 @@ export function Segmented<T extends string>({
           type="button"
           onClick={() => onChange(option.value)}
           aria-pressed={value === option.value}
-          className={`border-line-hi hover:text-ink flex-1 border-r px-3 py-1.5 text-[10.5px] tracking-[0.08em] whitespace-nowrap uppercase transition-colors last:border-r-0 ${
+          className={`border-line-hi hover:text-ink flex-1 border-r px-3 py-1.5 text-[10.5px] tracking-[0.08em] whitespace-nowrap uppercase transition-colors last:border-r-0 pointer-coarse:py-2.5 ${
             value === option.value ? 'bg-raised-hi text-ink' : 'text-dim'
           }`}
         >
@@ -313,9 +325,16 @@ export function DualRangeSlider({
   const highValue = high ?? max
 
   return (
-    <div className="flex max-w-[var(--w-track)] flex-col gap-1.5">
+    // `--thumb` rather than a literal, because the thumb's size is read in two
+    // places that have to agree: the thumbs themselves, and `ThumbValue`'s
+    // `calc`, which centres a caption on a thumb whose centre travels between
+    // half a thumb-width in from each end. Grown on touch — 13px is a target
+    // you cannot put a finger on, and for the age-rating scale the slider is
+    // the only control there is. The root grows with it so the taller thumb
+    // has room and the whole band is grabbable, not just the 3px track.
+    <div className="flex max-w-[var(--w-track)] flex-col gap-1.5 [--thumb:13px] pointer-coarse:[--thumb:24px]">
       <Slider.Root
-        className="relative flex h-4 w-full touch-none items-center select-none"
+        className="relative flex h-4 w-full touch-none items-center select-none pointer-coarse:h-11"
         min={min}
         max={max}
         step={step}
@@ -330,11 +349,11 @@ export function DualRangeSlider({
         </Slider.Track>
         <Slider.Thumb
           aria-label="Minimum"
-          className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[13px] w-[13px] rounded-full border shadow-sm outline-none focus-visible:ring-2"
+          className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border shadow-sm outline-none focus-visible:ring-2"
         />
         <Slider.Thumb
           aria-label="Maximum"
-          className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[13px] w-[13px] rounded-full border shadow-sm outline-none focus-visible:ring-2"
+          className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border shadow-sm outline-none focus-visible:ring-2"
         />
       </Slider.Root>
       {/* Each value sits under its own thumb rather than at the track's end.
@@ -362,11 +381,16 @@ function fractionOf(value: number, min: number, max: number): number {
  * half a thumb-width in from each end, which is what `calc` reproduces — a
  * plain percentage would drift a few pixels wide at the extremes, exactly
  * where the two labels are furthest apart and the offset is most visible.
+ *
+ * Half a thumb-width is `--thumb`, inherited from the slider's wrapper, not a
+ * literal: the thumb is bigger on touch, and a caption still measuring the
+ * mouse-sized one would sit off its own thumb at exactly the ends this `calc`
+ * exists to get right.
  */
 function ThumbValue({ fraction, label }: { fraction: number; label: string }) {
   return (
     <span
-      style={{ left: `calc(${fraction * 100}% + ${(0.5 - fraction) * 13}px)` }}
+      style={{ left: `calc(${fraction * 100}% + ${0.5 - fraction} * var(--thumb))` }}
       className="type-data text-dimmer absolute top-0 -translate-x-1/2 text-[10.5px] leading-none whitespace-nowrap"
     >
       {label}

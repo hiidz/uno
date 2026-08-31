@@ -50,7 +50,7 @@ export function PushBanner({ outcome, dismiss }: Push) {
         type="button"
         onClick={dismiss}
         aria-label="Dismiss"
-        className="text-dimmer hover:text-ink grid h-5 w-5 shrink-0 place-items-center leading-none transition-colors"
+        className="tap text-dimmer hover:text-ink grid h-5 w-5 shrink-0 place-items-center leading-none transition-colors"
       >
         ×
       </button>

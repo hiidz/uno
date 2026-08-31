@@ -29,6 +29,9 @@ import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/featu
 import { useEditorGuard } from './EditorGuard'
 import type { EditorTarget } from './target'
 
+/** Which region a screen too narrow for both is showing. */
+type MobileView = 'library' | 'pane'
+
 /**
  * The builder's two regions and the state that spans them.
  *
@@ -36,6 +39,14 @@ import type { EditorTarget } from './target'
  * right holds exactly one thing — your home screen, or one editor. Selecting a
  * rail row fills the pane with its editor; closing the editor gives the pane
  * back to home.
+ *
+ * **Below `lg` the two take turns**, because there is only one column and a
+ * rail is taller than a screen — stacked, selecting a row opened an editor
+ * below the fold and read as nothing happening at all. `mobileView` is held
+ * here rather than in either region because the transitions belong to the same
+ * four entry points the guard already covers: `show` moves to the pane,
+ * `close` and a save go back to the rail, and `showHome` is the rail's own way
+ * across. Nothing can move the pane without passing through them.
  *
  * **This owns every way out of an editor**, because every one of them starts
  * outside the editor: the × in its header, Escape, selecting a different row in
@@ -53,6 +64,9 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const { guard, setDirty, blocked, proceed, cancel } = useEditorGuard()
 
   const [target, setTarget] = useState<EditorTarget | null>(null)
+  // Which of the two regions the narrow layout is showing. Above `lg` both are
+  // on screen at once and this is ignored.
+  const [mobileView, setMobileView] = useState<MobileView>('library')
   // Held here, not in `HomePane`, so it survives an editor taking the pane:
   // closing one gives back the view you left rather than resetting to List.
   const [homeView, setHomeView] = useState<HomeView>('list')
@@ -99,6 +113,10 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       resetCollectionCreate()
       resetCollectionUpdate()
       setTarget(next)
+      // Opening something is also a request to look at it, which on a narrow
+      // screen means the pane. Emptying the pane is not the reverse — where a
+      // close lands is the caller's decision, so `null` leaves the view alone.
+      if (next !== null) setMobileView('pane')
     },
     [setDirty, resetCatalogCreate, resetCatalogUpdate, resetCollectionCreate, resetCollectionUpdate],
   )
@@ -119,11 +137,35 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     [guard, show, target],
   )
 
-  const close = useCallback(() => guard(() => show(null)), [guard, show])
+  /**
+   * Close the editor.
+   *
+   * Narrow, this goes back to the rail rather than on to home: the rail is
+   * where the editor was opened from, and the row is still selected there, so
+   * its duplicate and delete actions are where they were left. Home is a place
+   * you ask for, through the rail's own link to it.
+   */
+  const close = useCallback(
+    () =>
+      guard(() => {
+        show(null)
+        setMobileView('library')
+      }),
+    [guard, show],
+  )
 
-  /** Saved, so there is nothing left to warn about — straight back to home. */
+  /** Saved, so there is nothing left to warn about — straight back out. */
   function closeAfterSave() {
     show(null)
+    setMobileView('library')
+  }
+
+  /** The rail's way into the pane when no editor is open. */
+  function showHome() {
+    guard(() => {
+      show(null)
+      setMobileView('pane')
+    })
   }
 
   /**
@@ -237,6 +279,12 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       <div className="grid min-h-0 flex-1 lg:grid-cols-[372px_minmax(0,1fr)]">
         <LibraryRail
           library={library}
+          // One column below `lg`, so the two regions take turns instead of
+          // stacking: a rail is hundreds of pixels tall, and an editor mounted
+          // underneath one is an editor nobody sees open.
+          className={mobileView === 'pane' ? 'hidden lg:flex' : 'flex'}
+          homeSelected={target === null}
+          onShowHome={showHome}
           selectedID={target?.sourceID ?? null}
           onNewCatalog={() => {
             // A rejection from a previous attempt — or from a duplicate, which
@@ -265,50 +313,63 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
           onDeleteCollection={setDeletingCollection}
         />
 
-        {target === null ? (
-          <HomePane view={homeView} onViewChange={setHomeView} />
-        ) : target.kind === 'catalog' ? (
-          <CatalogEditor
-            // Remount on a different target rather than re-seeding in place:
-            // the form, its validation and its preview are all per-catalog, and
-            // a key is the honest way to say "this is a different subject".
-            key={target.sourceID ?? `new-${target.mode}`}
-            mode={target.mode}
-            initial={target.initial}
-            genres={genres}
-            certifications={library.certifications}
-            countryNames={library.countryNames}
-            languages={library.languages}
-            saving={catalogSaving}
-            serverError={
-              (catalogMutations.create.error as Error | null)?.message ??
-              (catalogMutations.update.error as Error | null)?.message ??
-              null
-            }
-            onSave={saveCatalog}
-            onRequestClose={close}
-            onDirtyChange={setDirty}
-          />
-        ) : (
-          <CollectionEditor
-            key={target.sourceID ?? `new-${target.mode}`}
-            mode={target.mode}
-            initial={target.initial}
-            droppedRefs={target.droppedRefs}
-            options={refOptions}
-            optionByID={refOptionByID}
-            accessibleIDs={refAccessible}
-            saving={collectionSaving}
-            serverError={
-              (collectionMutations.create.error as Error | null)?.message ??
-              (collectionMutations.update.error as Error | null)?.message ??
-              null
-            }
-            onSave={saveCollection}
-            onRequestClose={close}
-            onDirtyChange={setDirty}
-          />
-        )}
+        <div
+          className={`min-w-0 flex-col lg:flex lg:min-h-0 ${
+            mobileView === 'library' ? 'hidden' : 'flex'
+          }`}
+        >
+          {target === null ? (
+            <HomePane
+              view={homeView}
+              onViewChange={setHomeView}
+              onBack={() => setMobileView('library')}
+            />
+          ) : target.kind === 'catalog' ? (
+            <CatalogEditor
+              // Remount on a different target rather than re-seeding in place:
+              // the form, its validation and its preview are all per-catalog,
+              // and a key is the honest way to say "this is a different
+              // subject".
+              key={target.sourceID ?? `new-${target.mode}`}
+              mode={target.mode}
+              initial={target.initial}
+              genres={genres}
+              certifications={library.certifications}
+              countryNames={library.countryNames}
+              languages={library.languages}
+              saving={catalogSaving}
+              serverError={
+                (catalogMutations.create.error as Error | null)?.message ??
+                (catalogMutations.update.error as Error | null)?.message ??
+                null
+              }
+              onSave={saveCatalog}
+              onRequestClose={close}
+              onBack={() => setMobileView('library')}
+              onDirtyChange={setDirty}
+            />
+          ) : (
+            <CollectionEditor
+              key={target.sourceID ?? `new-${target.mode}`}
+              mode={target.mode}
+              initial={target.initial}
+              droppedRefs={target.droppedRefs}
+              options={refOptions}
+              optionByID={refOptionByID}
+              accessibleIDs={refAccessible}
+              saving={collectionSaving}
+              serverError={
+                (collectionMutations.create.error as Error | null)?.message ??
+                (collectionMutations.update.error as Error | null)?.message ??
+                null
+              }
+              onSave={saveCollection}
+              onRequestClose={close}
+              onBack={() => setMobileView('library')}
+              onDirtyChange={setDirty}
+            />
+          )}
+        </div>
       </div>
 
       <NewCatalogDialog

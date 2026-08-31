@@ -3,6 +3,7 @@ import {
   DndContext,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -22,9 +23,12 @@ import { CSS } from '@dnd-kit/utilities'
  * `sort_order` at write time — so this is the pane's central interaction rather
  * than a convenience.
  *
- * Two sensors:
+ * Three sensors:
  *  - Pointer, with a small activation distance so a click on a button inside a
  *    row still registers as a click rather than starting a drag.
+ *  - Touch, on a hold rather than a distance: 4px of movement is the start of a
+ *    scroll on a finger, not the start of a drag, and a grip inside a scrolling
+ *    page has to let a swipe through.
  *  - Keyboard, the only way this list is operable for anyone who can't drag.
  */
 export function SortableList({
@@ -38,6 +42,7 @@ export function SortableList({
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -90,7 +95,7 @@ export function SortableRow({
       <button
         type="button"
         aria-label={label}
-        className="text-dimmer hover:text-dim cursor-grab touch-none text-center leading-none transition-colors active:cursor-grabbing"
+        className="tap text-dimmer hover:text-dim cursor-grab touch-none text-center leading-none transition-colors active:cursor-grabbing pointer-coarse:touch-manipulation"
         {...attributes}
         {...listeners}
       >

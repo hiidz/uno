@@ -10,12 +10,18 @@ import type { LibraryCatalog, LibraryCollection, useLibrary } from './useLibrary
  * "Mine" gets the New buttons; you can't create a community row, only adopt
  * one by opening it.
  *
+ * Below `lg` the rail is a screen of its own rather than a column, so it
+ * carries a link to home — the pane is not visible beside it to be clicked.
+ *
  * Purely presentational: what a selection *does* is the workspace's business,
  * because the same unsaved-changes guard covers every other way out of an
  * editor too.
  */
 export function LibraryRail({
   library,
+  className,
+  homeSelected,
+  onShowHome,
   selectedID,
   onNewCatalog,
   onNewCollection,
@@ -27,6 +33,13 @@ export function LibraryRail({
   onDeleteCollection,
 }: {
   library: ReturnType<typeof useLibrary>
+  /** Carries the rail's own visibility, which only the workspace knows: below
+   *  `lg` the two regions take turns, and which one is up is state held there.
+   *  Whatever this passes, `lg:flex` wins from `lg` up. */
+  className?: string
+  /** The pane is holding home rather than an editor. */
+  homeSelected: boolean
+  onShowHome: () => void
   /** The row whose editor is open in the pane, or `null` for none. */
   selectedID: string | null
   onNewCatalog: () => void
@@ -39,7 +52,27 @@ export function LibraryRail({
   onDeleteCollection: (collection: LibraryCollection) => void
 }) {
   return (
-    <aside className="bg-sidebar border-line flex flex-col lg:min-h-0 lg:border-r">
+    <aside
+      className={`bg-sidebar border-line flex-col lg:flex lg:min-h-0 lg:border-r ${className ?? 'flex'}`}
+    >
+      {/* Above `lg` home is simply the other half of the screen and needs no
+          link. Below it, the pane is off screen while the rail is up, so this
+          is the only way back to it — and the rail is where the user is when
+          they have just closed an editor. */}
+      <button
+        type="button"
+        onClick={onShowHome}
+        aria-current={homeSelected ? 'true' : undefined}
+        className={`border-line hover:bg-raised flex items-center gap-3 border-b px-4 py-3 text-left transition-colors lg:hidden ${
+          homeSelected ? 'bg-raised-hi' : ''
+        }`}
+      >
+        <span className="type-display flex-1 text-[12px]">Your home screen</span>
+        <span aria-hidden="true" className="type-data text-dimmer text-[13px] leading-none">
+          ›
+        </span>
+      </button>
+
       <LibrarySection
         owned
         library={library}

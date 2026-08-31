@@ -210,7 +210,11 @@ function CollectionRow({
           This collection has no folders, so its row is empty.
         </p>
       ) : (
-        <div className="flex items-end gap-3 overflow-hidden">
+        // Scrolls rather than clips, matching the same row in the collection
+        // builder. A folder past the pane's edge is a folder you can open on a
+        // TV, so it has to be reachable here too — and narrow enough, the
+        // second one was already gone.
+        <div className="flex items-end gap-3 overflow-x-auto overscroll-x-contain">
           {collection.folders.map((folder) => (
             <FolderTile
               key={folder.id}

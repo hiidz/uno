@@ -107,7 +107,7 @@ function CollectionRow({
           No folders yet, so this collection's row is empty. Add one above.
         </p>
       ) : (
-        <div className="flex items-end gap-3 overflow-x-auto">
+        <div className="flex items-end gap-3 overflow-x-auto overscroll-x-contain">
           {collection.folders.map((folder) => (
             <FolderTile
               key={folder.id}

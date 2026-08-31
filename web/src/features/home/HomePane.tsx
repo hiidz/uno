@@ -35,15 +35,27 @@ export type HomeView = 'list' | 'preview'
 export function HomePane({
   view,
   onViewChange,
+  onBack,
 }: {
   view: HomeView
   onViewChange: (view: HomeView) => void
+  /** Show the rail instead. Below `lg` only, where the two regions take turns. */
+  onBack: () => void
 }) {
   const home = useHomeSelection()
 
   return (
-    <main className="flex flex-col gap-8 p-6 lg:min-h-0 lg:overflow-y-auto">
+    <main className="flex flex-1 flex-col gap-8 p-4 lg:min-h-0 lg:overflow-y-auto lg:p-6">
       <div className="flex flex-wrap items-baseline gap-4">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to the library"
+          title="Back to the library"
+          className="tap text-dim hover:text-ink -ml-1 grid h-8 w-6 shrink-0 place-items-center self-center text-[17px] leading-none transition-colors lg:hidden"
+        >
+          ‹
+        </button>
         <h1 className="type-display m-0 text-[21px]">Your home screen</h1>
         <ViewSwitch view={view} onChange={onViewChange} />
       </div>
@@ -75,7 +87,7 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
           type="button"
           onClick={() => onChange(option)}
           aria-pressed={view === option}
-          className={`type-data px-3 py-1.5 text-[10.5px] tracking-[0.08em] uppercase transition-colors ${
+          className={`type-data px-3 py-1.5 text-[10.5px] tracking-[0.08em] uppercase transition-colors pointer-coarse:py-2.5 ${
             view === option ? 'bg-raised-hi text-ink' : 'text-dim hover:text-ink'
           }`}
         >
@@ -163,34 +175,46 @@ function CatalogsBlock() {
       {home.catalogs.length === 0 ? (
         <EmptyBlock>No catalogs yet — add one from the sidebar.</EmptyBlock>
       ) : (
-        <SortableList ids={ids} onReorder={home.reorderCatalogs}>
-          {home.catalogs.map((entry) => {
-            const catalog = home.catalogById.get(entry.id)
-            const name = catalog?.name ?? 'Unavailable catalog'
-            const recipe = catalog
-              ? describeRecipe(catalog, home.genres[tmdbKind(catalog.type)]).join(' · ')
-              : ''
-            return (
-              <SortableRow key={entry.id} id={entry.id} label={`Reorder ${name}`}>
-                <TypeBar kind={catalog?.type ?? 'movie'} owned={home.isOwned(entry.id)} />
-                <RowMeta
-                  name={name}
-                  detail={recipe || 'no filters'}
-                  detached={home.isDetached(entry.id)}
-                />
-                <ShowInHomeToggle
-                  name={name}
-                  showInHome={entry.showInHome}
-                  onToggle={() => home.toggleShowInHome(entry.id)}
-                />
-                <RemoveButton
-                  label={`Remove ${name} from your home screen`}
-                  onClick={() => home.removeCatalog(entry.id)}
-                />
-              </SortableRow>
-            )
-          })}
-        </SortableList>
+        <>
+          {/* The caveat the toggle below carries, stated once on the page
+              rather than once per row inside a `title`. A tooltip never opens
+              on a touch screen, and this is the one note in the app that must
+              not go missing: without it the control claims a feature that is
+              not live. See `ShowInHomeToggle`. */}
+          {home.catalogs.some((entry) => !entry.showInHome) && (
+            <p className="type-data text-series m-0 pb-1 text-[10.5px] leading-[1.45]">
+              Discover only isn't active yet — those rows still show on your home screen.
+            </p>
+          )}
+          <SortableList ids={ids} onReorder={home.reorderCatalogs}>
+            {home.catalogs.map((entry) => {
+              const catalog = home.catalogById.get(entry.id)
+              const name = catalog?.name ?? 'Unavailable catalog'
+              const recipe = catalog
+                ? describeRecipe(catalog, home.genres[tmdbKind(catalog.type)]).join(' · ')
+                : ''
+              return (
+                <SortableRow key={entry.id} id={entry.id} label={`Reorder ${name}`}>
+                  <TypeBar kind={catalog?.type ?? 'movie'} owned={home.isOwned(entry.id)} />
+                  <RowMeta
+                    name={name}
+                    detail={recipe || 'no filters'}
+                    detached={home.isDetached(entry.id)}
+                  />
+                  <ShowInHomeToggle
+                    name={name}
+                    showInHome={entry.showInHome}
+                    onToggle={() => home.toggleShowInHome(entry.id)}
+                  />
+                  <RemoveButton
+                    label={`Remove ${name} from your home screen`}
+                    onClick={() => home.removeCatalog(entry.id)}
+                  />
+                </SortableRow>
+              )
+            })}
+          </SortableList>
+        </>
       )}
     </Block>
   )
@@ -243,8 +267,11 @@ function ShowInHomeToggle({
       }
       // A fixed width, because the two labels are different lengths and the
       // toggles sit in a column: sized to their content, "on home" and
-      // "discover only" gave the column a ragged left edge.
-      className={`type-data border-line-hi hover:border-dim flex w-[116px] items-center justify-center gap-1.5 rounded-[2px] border px-2 py-1.5 text-[10.5px] tracking-[0.05em] transition-colors ${
+      // "discover only" gave the column a ragged left edge. Capped rather than
+      // fixed below `sm`, where 116px of a 375px row is more than the catalog's
+      // own name gets — the even left edge survives the cap, since every
+      // toggle in the column shrinks by the same amount.
+      className={`type-data border-line-hi hover:border-dim flex w-full max-w-[116px] items-center justify-center gap-1.5 rounded-[2px] border px-2 py-1.5 text-[10.5px] tracking-[0.05em] transition-colors sm:w-[116px] ${
         showInHome ? 'text-ink' : 'text-dim'
       }`}
     >
@@ -264,7 +291,7 @@ function RemoveButton({ label, onClick }: { label: string; onClick: () => void }
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="text-dimmer hover:text-danger hover:border-danger grid h-6 w-6 place-items-center rounded-[2px] border border-transparent leading-none transition-colors"
+      className="tap text-dimmer hover:text-danger hover:border-danger grid h-6 w-6 place-items-center rounded-[2px] border border-transparent leading-none transition-colors"
     >
       ×
     </button>

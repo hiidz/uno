@@ -21,10 +21,6 @@ import { FieldNote, Select } from '@/components/fields'
  * different things.
  */
 
-/** How tall the chip list gets before it scrolls instead of growing. A region
- *  carries up to ~291 services, ranked by TMDB's own prominence, so the whole
- *  list is here and the ones nearly everyone means are the first few rows. */
-const LIST_MAX_HEIGHT = '13rem'
 
 export function WatchProviderPicker({
   type,
@@ -150,16 +146,21 @@ export function WatchProviderPicker({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search services…"
             aria-label="Search streaming services"
-            className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px]"
+            className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px] pointer-coarse:text-[16px]"
           />
 
           {/* Scrolls rather than grows: the list runs to a few hundred chips in
-              a large region, and a field that pushes everything under it off
-              the page is worse than one you scroll. */}
-          <div
-            style={{ maxHeight: LIST_MAX_HEIGHT }}
-            className="border-line flex flex-wrap gap-1.5 overflow-y-auto rounded-[2px] border p-2"
-          >
+              a large region — up to ~291 services, ranked by TMDB's own
+              prominence, so the ones nearly everyone means are the first few
+              rows — and a field that pushes everything under it off the page is
+              worse than one you scroll.
+
+              Two heights, because the page around it differs. Above `lg` the
+              pane scrolls on its own and 13rem is a block within it. Below,
+              the page is one document and a short fixed box inside it is a box
+              a thumb gets caught in; half the viewport is still one scroll
+              region, sized to the screen it is actually on. */}
+          <div className="border-line flex max-h-[50svh] flex-wrap gap-1.5 overflow-y-auto overscroll-contain rounded-[2px] border p-2 lg:max-h-[13rem]">
             {shown.map((service) => {
               const selected = selectedIDs.includes(service.id)
               return (
@@ -168,7 +169,7 @@ export function WatchProviderPicker({
                   type="button"
                   onClick={() => toggle(service.id)}
                   aria-pressed={selected}
-                  className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors ${
+                  className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors pointer-coarse:py-2 ${
                     selected
                       ? 'bg-raised-hi border-dim text-ink'
                       : 'border-line text-dim hover:border-dim hover:text-ink'

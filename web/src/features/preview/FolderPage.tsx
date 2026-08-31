@@ -60,7 +60,7 @@ export function FolderPage({
         <button
           type="button"
           onClick={onBack}
-          className="type-data border-line-hi text-dim hover:text-ink hover:border-dim rounded-[2px] border px-2.5 py-1 text-[10px] tracking-[0.05em] uppercase transition-colors"
+          className="type-data border-line-hi text-dim hover:text-ink hover:border-dim rounded-[2px] border px-2.5 py-1 text-[10px] tracking-[0.05em] uppercase transition-colors pointer-coarse:py-2"
         >
           {backLabel}
         </button>
@@ -141,7 +141,7 @@ function TabbedCatalogs({
   return (
     <div className="flex flex-col gap-3">
       {tabs.length > 1 && (
-        <div className="border-line flex gap-1 overflow-x-auto border-b pb-2">
+        <div className="border-line flex gap-1 overflow-x-auto overscroll-x-contain border-b pb-2">
           {tabs.map((tab) => (
             <Tab
               key={tab.key}
@@ -274,7 +274,7 @@ function Tab({
       onClick={onClick}
       aria-pressed={active}
       title={label}
-      className={`type-data flex shrink-0 items-center gap-1.5 rounded-[2px] border px-2.5 py-1 text-[11px] transition-colors ${
+      className={`type-data flex shrink-0 items-center gap-1.5 rounded-[2px] border px-2.5 py-1 text-[11px] transition-colors pointer-coarse:py-2 ${
         active ? 'border-line-hi bg-raised-hi text-ink' : 'text-dim hover:text-ink border-transparent'
       }`}
     >

@@ -47,6 +47,7 @@ export function CollectionEditor({
   serverError,
   onSave,
   onRequestClose,
+  onBack,
   onDirtyChange,
 }: {
   mode: BuilderMode
@@ -63,6 +64,8 @@ export function CollectionEditor({
   serverError: string | null
   onSave: (state: CollectionFormState) => void
   onRequestClose: () => void
+  /** Show the rail instead, below `lg`. Not an exit — see `EditorShell`. */
+  onBack: () => void
   onDirtyChange: (dirty: boolean) => void
 }) {
   const baseline = useMemo(() => initial ?? emptyCollectionForm(), [initial])
@@ -142,6 +145,7 @@ export function CollectionEditor({
       // collection is one you own.
       owned
       onRequestClose={onRequestClose}
+      onBack={onBack}
       footer={
         <>
           {showErrors && errorCount > 0 && (

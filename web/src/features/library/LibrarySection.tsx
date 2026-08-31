@@ -101,7 +101,7 @@ export function LibrarySection({
         onChange={(event) => setSearch(event.target.value)}
         placeholder="Filter by name or genre…"
         aria-label={`Filter ${label.toLowerCase()}`}
-        className="field type-data w-full text-[12px]"
+        className="field type-data w-full text-[12px] pointer-coarse:text-[16px]"
       />
 
       <LibraryGroup

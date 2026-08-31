@@ -20,6 +20,7 @@ export function EditorShell({
   kind,
   owned,
   onRequestClose,
+  onBack,
   footer,
   children,
 }: {
@@ -32,6 +33,11 @@ export function EditorShell({
   kind: BarKind
   owned: boolean
   onRequestClose: () => void
+  /** Show the rail instead. Below `lg` only, where the two regions take turns.
+   *  **Not an exit**, so it does not go through `onRequestClose`: above `lg`
+   *  the rail is on screen beside an open editor, and this is the same thing
+   *  said in one column. The editor stays open and stays dirty. */
+  onBack: () => void
   footer: ReactNode
   children: ReactNode
 }) {
@@ -53,8 +59,17 @@ export function EditorShell({
   }, [onRequestClose])
 
   return (
-    <main className="flex min-w-0 flex-col lg:h-full lg:min-h-0">
-      <header className="border-line flex shrink-0 items-center gap-3 border-b px-6 py-4">
+    <main className="flex min-w-0 flex-1 flex-col lg:h-full lg:min-h-0">
+      <header className="border-line flex shrink-0 items-center gap-3 border-b px-4 py-4 lg:px-6">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to the library"
+          title="Back to the library"
+          className="tap text-dim hover:text-ink -ml-1 grid h-8 w-6 shrink-0 place-items-center text-[15px] leading-none transition-colors lg:hidden"
+        >
+          ‹
+        </button>
         <TypeBar kind={kind} owned={owned} className="min-h-[30px]" />
         <div className="flex min-w-0 flex-col gap-1">
           <span className="type-eyebrow">{eyebrow}</span>
@@ -65,25 +80,31 @@ export function EditorShell({
           onClick={onRequestClose}
           aria-label="Close editor and go back to your home screen"
           title="Close editor (Esc)"
-          className="text-dim hover:text-ink hover:border-dim ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-[2px] border border-transparent text-[15px] leading-none transition-colors"
+          className="tap text-dim hover:text-ink hover:border-dim ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-[2px] border border-transparent text-[15px] leading-none transition-colors"
         >
           ×
         </button>
       </header>
 
-      {/* One inset, `px-6 py-4`, on all three bands: the header, the form, and
-          the footer are stacked and share an edge, so a padding that differs
-          between them reads as a misalignment rather than as a rhythm.
+      {/* One inset on all three bands — `px-4` narrow, `px-6` from `lg`: the
+          header, the form, and the footer are stacked and share an edge, so a
+          padding that differs between them reads as a misalignment rather than
+          as a rhythm. The narrow value is smaller because 24px of gutter on
+          each side of a 375px screen is 13% of it.
 
           `--w-form` caps the form itself, not the pane. The pane is as wide as
           the window allows and the editors are two columns of short controls —
           past about 860px a row stops being something you read across, and
           every field in it starts looking stretched. */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
         <div className="w-full max-w-[var(--w-form)]">{children}</div>
       </div>
 
-      <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-6 py-4">
+      {/* Sticky below `lg`, where the page scrolls as one document and Save
+          would otherwise sit at the far end of a form as long as the catalog
+          editor. It needs a ground of its own to sit over the form; above `lg`
+          the flex column pins it and the band is transparent as before. */}
+      <div className="border-line bg-ground sticky bottom-0 z-20 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 py-4 lg:static lg:bg-transparent lg:px-6">
         {footer}
       </div>
     </main>

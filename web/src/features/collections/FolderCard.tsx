@@ -4,6 +4,7 @@ import {
   DndContext,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -89,6 +90,12 @@ export function FolderTreeDnd({
     // Small activation distance so a click on a control inside a row still
     // registers as a click rather than starting a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    // Touch takes a hold rather than a distance. A 4px threshold on a finger is
+    // met by the start of a scroll, so `PointerSensor` alone made a grip inside
+    // a scrolling page either a drag that fired on every swipe or a scroll that
+    // never started — which is why the grips can drop `touch-none` for a
+    // `touch-manipulation` that lets a quick swipe through.
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
     // The only way this tree is operable for anyone who can't drag.
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
@@ -151,7 +158,7 @@ function Grip({
     <button
       type="button"
       aria-label={label}
-      className="text-dimmer hover:text-dim cursor-grab touch-none text-center leading-none transition-colors active:cursor-grabbing"
+      className="tap text-dimmer hover:text-dim cursor-grab touch-none text-center leading-none transition-colors active:cursor-grabbing pointer-coarse:touch-manipulation"
       {...sortable.attributes}
       {...sortable.listeners}
     >
@@ -226,7 +233,7 @@ export function FolderCard({
         <button
           type="button"
           onClick={onRemove}
-          className="border-line-hi text-dim hover:text-danger hover:border-danger shrink-0 rounded-[2px] border px-2.5 py-1.5 text-[10.5px] tracking-[0.08em] uppercase transition-colors"
+          className="border-line-hi text-dim hover:text-danger hover:border-danger shrink-0 rounded-[2px] border px-2.5 py-1.5 text-[10.5px] tracking-[0.08em] uppercase transition-colors pointer-coarse:py-2.5"
         >
           Remove
         </button>
@@ -379,11 +386,23 @@ function RefRow({
   })
   const { setNodeRef, transform, transition, isDragging } = sortable
 
+  // Kind and ownership have to exist as text: `TypeBar` carries both visually
+  // and is `aria-hidden`.
+  const owner = option
+    ? `${option.catalog.type === 'movie' ? 'movie' : 'series'} · ${
+        option.catalog.owned ? 'you' : 'community'
+      }`
+    : "can't be saved"
+
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`border-line hover:bg-raised grid grid-cols-[16px_3px_24px_minmax(0,1fr)_7rem_24px] items-center gap-x-3 border-b py-2 transition-colors ${
+      // The owner column is dropped below `sm` and the same words go under the
+      // recipe instead. Held as a column at rail-and-pane widths it was 112px
+      // against the 56px the catalog's own name was left with — the row spent
+      // twice as much width saying "movie · community" as saying which catalog.
+      className={`border-line hover:bg-raised grid grid-cols-[16px_3px_24px_minmax(0,1fr)_24px] items-center gap-x-3 border-b py-2 transition-colors sm:grid-cols-[16px_3px_24px_minmax(0,1fr)_7rem_24px] ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >
@@ -401,6 +420,7 @@ function RefRow({
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-[12.5px]">{option.name}</span>
           <span className="type-data text-dimmer truncate text-[10.5px]">{option.recipe}</span>
+          <span className="type-data text-dimmer truncate text-[10.5px] sm:hidden">{owner}</span>
         </span>
       ) : (
         <span className="flex min-w-0 flex-col gap-0.5">
@@ -408,23 +428,20 @@ function RefRow({
           <span className="type-data text-dimmer truncate text-[10.5px]">
             Deleted, or made private by its owner
           </span>
+          <span className="type-data text-dimmer truncate text-[10.5px] sm:hidden">{owner}</span>
         </span>
       )}
 
-      {/* A fixed track, not `auto`: these read down the folder as a column, and
-          sized to its content each row's owner label started at a different x. */}
-      <span className="type-data text-dimmer truncate text-[10.5px]">
-        {option
-          ? `${option.catalog.type === 'movie' ? 'movie' : 'series'} · ${
-              option.catalog.owned ? 'you' : 'community'
-            }`
-          : "can't be saved"}
-      </span>
+      {/* From `sm`: a fixed track, not `auto`, because these read down the
+          folder as a column and sized to their content each row's owner label
+          started at a different x. Narrower than that the column is gone and
+          the same words sit under the recipe above. */}
+      <span className="type-data text-dimmer hidden truncate text-[10.5px] sm:block">{owner}</span>
 
       <button
         type="button"
         onClick={onRemove}
-        className="text-dimmer hover:text-danger grid h-6 w-6 place-items-center rounded-[2px] text-[13px] leading-none transition-colors"
+        className="tap text-dimmer hover:text-danger grid h-6 w-6 place-items-center rounded-[2px] text-[13px] leading-none transition-colors"
       >
         <span aria-hidden="true">×</span>
         <span className="sr-only">

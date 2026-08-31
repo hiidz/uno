@@ -28,7 +28,9 @@ export function Modal({
     }
     document.addEventListener('keydown', onKeyDown)
     // Nested scrolling inside a full-height panel fights with the page
-    // scrolling behind it; lock the body while one is open.
+    // scrolling behind it; lock the body while one is open. Safari ignores this
+    // for its rubber-band, which is what `overscroll-contain` on the scrim and
+    // the body covers.
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
@@ -41,7 +43,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[rgba(4,5,7,0.72)] p-6 sm:p-8"
+      className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-[rgba(4,5,7,0.72)] p-4 sm:p-8"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
@@ -68,7 +70,9 @@ export function ModalHeader({ children }: { children: ReactNode }) {
 }
 
 export function ModalBody({ children }: { children: ReactNode }) {
-  return <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
+  )
 }
 
 export function ModalFooter({ children }: { children: ReactNode }) {

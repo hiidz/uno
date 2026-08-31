@@ -150,7 +150,7 @@
        shrinks them. */
     --w-code: 4.5rem; /* a two-letter region, a rating scale's country */
     --w-num: 6.5rem; /* one bounded number */
-    --w-date: 10.5rem;
+    --w-date: 10.5rem; /* grows on touch — see the coarse-pointer block below */
     --w-pick: 16rem; /* a select over short labels */
     --w-entry: 24rem; /* a name, a short comma-separated list */
     --w-track: 22rem; /* a slider — long enough to aim, not to wander */
@@ -168,6 +168,23 @@
     --sidebar-accent-foreground: var(--uno-ink);
     --sidebar-border: var(--uno-line);
     --sidebar-ring: var(--uno-movie);
+}
+
+/* Keyed on the input device, not the screen: a field a finger reaches is the
+   same field whether it is a phone held upright or a tablet wide enough to be
+   running the two-pane layout.
+
+   Safari zooms the whole page whenever a focused control is under 16px, so the
+   fields grow there (see `.field` below) — and these widths, which are sized in
+   rem to the content they hold, have to grow with the text or a date stops
+   fitting in the box named for a date. */
+@media (pointer: coarse) {
+    :root,
+    .dark {
+        --w-code: 5.5rem;
+        --w-num: 7.5rem;
+        --w-date: 12rem;
+    }
 }
 
 @layer base {
@@ -259,6 +276,19 @@
         border-color: var(--uno-dim);
     }
 
+    /* Both buttons are drawn to sit quietly in a header or a footer, which at
+       10.5px and 12px puts them around 24px and 33px tall — under what a finger
+       can aim at. The padding grows rather than the type: the label is the size
+       it is for the same reason the eyebrows are. */
+    @media (pointer: coarse) {
+        .btn-ghost {
+            padding: 9px 12px;
+        }
+        .btn-primary {
+            padding: 11px 16px;
+        }
+    }
+
     /* Text inputs and selects. */
     .field {
         background: var(--uno-raised);
@@ -274,6 +304,18 @@
     }
     .field:focus {
         border-color: var(--uno-dim);
+    }
+
+    /* 16px is the threshold under which Safari zooms the page to the focused
+       control and leaves it there, which on a form this dense means every tap
+       into a field re-frames the screen. The `--w-*` widths grow alongside it.
+       Fields that set their own smaller size — the number boxes, the search
+       inputs — carry `pointer-coarse:text-[16px]` at their call site, because a
+       utility beats a component-layer rule whatever its specificity. */
+    @media (pointer: coarse) {
+        .field {
+            font-size: 16px;
+        }
     }
 
     /* A select's closed state is what is on screen almost all the time, so it
@@ -306,6 +348,16 @@
         padding-right: 46px;
     }
 
+    /* On touch the X grows leftward from the same right edge — see `Select` in
+       `components/fields.tsx`, which pins it at `right-[27px]` in both cases —
+       so the gutter it needs grows with it. Keep the two in step: text running
+       under the X is how this reads as broken. */
+    @media (pointer: coarse) {
+        select.field--clearable {
+            padding-right: 66px;
+        }
+    }
+
     /* The palette's own checkbox. `accent-color` only tints the platform's
        box — it keeps the platform's radius and its border, which is the one
        control that stayed rounded in a design that is square throughout. */
@@ -336,6 +388,37 @@
     .checkbox:focus-visible {
         outline: 2px solid var(--uno-movie);
         outline-offset: 1px;
+    }
+    @media (pointer: coarse) {
+        .checkbox {
+            width: 18px;
+            height: 18px;
+        }
+    }
+
+    /* A hit area for a control that is drawn too small to hit. The glyph
+       buttons in the rows — remove, dismiss, close, the drag grips — are 20px
+       to 28px because that is what reads as a quiet affordance beside a name;
+       a finger needs 44px. The pseudo-element carries the target and nothing
+       drawn changes, so the row looks the same and stops missing.
+
+       Absolutely positioned, so it is out of flow and does not become a grid
+       item in the `place-items-center` parents these sit on. Reach for it only
+       where the 44px box has room: two controls a few pixels apart would end up
+       with one swallowing the other's taps, which is the bug, not the fix. */
+    @media (pointer: coarse) {
+        .tap {
+            position: relative;
+        }
+        .tap::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 44px;
+            height: 44px;
+            transform: translate(-50%, -50%);
+        }
     }
 
     /* Ownership, encoded on the same device that carries type rather than

@@ -123,7 +123,7 @@ export function LibraryItem({
             onHome ? `Remove ${name} from your home screen` : `Add ${name} to your home screen`
           }
           title={onHome ? 'On your home screen — click to remove' : 'Add to your home screen'}
-          className={`type-data grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border text-[11px] leading-none transition-colors ${
+          className={`tap type-data grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border text-[11px] leading-none transition-colors ${
             onHome
               ? 'bg-dim border-dim text-ground hover:bg-danger hover:border-danger hover:text-white'
               : 'border-line-hi text-dim hover:text-ink hover:border-dim'
@@ -165,7 +165,7 @@ function ItemAction({
       }}
       aria-label={label}
       title={label}
-      className={`type-data flex h-6 items-center gap-1 rounded-[2px] border px-2 text-[10px] tracking-[0.06em] uppercase transition-colors ${
+      className={`type-data flex h-6 items-center gap-1 rounded-[2px] border px-2 text-[10px] tracking-[0.06em] uppercase transition-colors pointer-coarse:h-9 ${
         destructive
           ? 'border-line-hi text-dim hover:border-danger hover:text-danger'
           : 'border-line-hi text-dim hover:border-dim hover:text-ink'

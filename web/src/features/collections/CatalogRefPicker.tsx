@@ -45,7 +45,7 @@ export function CatalogRefPicker({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search catalogs…"
           aria-label="Search catalogs to add to this folder"
-          className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px]"
+          className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px] pointer-coarse:text-[16px]"
         />
         <button type="button" onClick={onClose} className="btn-ghost shrink-0">
           Done
@@ -61,13 +61,16 @@ export function CatalogRefPicker({
               : 'Everything available is already in this folder.'}
         </p>
       ) : (
-        <ul className="m-0 flex max-h-[210px] max-w-[42rem] list-none flex-col overflow-y-auto p-0">
+        // The cap is lifted below `lg`: an inner scroll region inside a page
+        // that already scrolls is a box a thumb gets stuck in, and the list is
+        // already narrowed by the search above it.
+        <ul className="m-0 flex max-h-none max-w-[42rem] list-none flex-col overflow-y-auto overscroll-contain p-0 lg:max-h-[210px]">
           {matches.map((option) => (
             <li key={option.id}>
               <button
                 type="button"
                 onClick={() => onAdd(option.id)}
-                className="border-line hover:bg-raised-hi grid w-full grid-cols-[3px_minmax(0,1fr)_7rem_20px] items-center gap-x-3 border-b py-2 text-left transition-colors last:border-b-0"
+                className="border-line hover:bg-raised-hi grid w-full grid-cols-[3px_minmax(0,1fr)_20px] items-center gap-x-3 border-b py-2 text-left transition-colors last:border-b-0 sm:grid-cols-[3px_minmax(0,1fr)_7rem_20px]"
               >
                 <TypeBar
                   kind={option.catalog.type}
@@ -79,10 +82,17 @@ export function CatalogRefPicker({
                   <span className="type-data text-dimmer truncate text-[10.5px]">
                     {option.recipe}
                   </span>
+                  {/* Below `sm` the column to the right is gone and these words
+                      move under the recipe — see `RefRow`, which drops the same
+                      column at the same width. */}
+                  <span className="type-data text-dimmer truncate text-[10.5px] sm:hidden">
+                    {option.catalog.type === 'movie' ? 'movie' : 'series'} ·{' '}
+                    {option.catalog.owned ? 'you' : 'community'}
+                  </span>
                 </span>
                 {/* The type bar carries kind and ownership visually; it's
                     aria-hidden, so both facts have to exist as text too. */}
-                <span className="type-data text-dimmer truncate text-[10.5px]">
+                <span className="type-data text-dimmer hidden truncate text-[10.5px] sm:block">
                   {option.catalog.type === 'movie' ? 'movie' : 'series'} ·{' '}
                   {option.catalog.owned ? 'you' : 'community'}
                 </span>

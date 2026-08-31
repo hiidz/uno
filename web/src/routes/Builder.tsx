@@ -92,32 +92,45 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
 
   return (
     <>
-      <header className="bg-raised border-line flex h-[53px] shrink-0 items-center gap-4 border-b px-5">
-        <span className="type-wordmark text-[14px]">Uno</span>
+      {/* Sticky below `lg`, where the page scrolls as one document: Push and
+          the banner reporting its result are the two things that must not
+          scroll away from someone halfway down a home screen. Above `lg` the
+          shell is a fixed-height flex column and this band is already pinned.
+          `z-30` sits under `Modal` and `ConfirmDialog`, which are `z-50`. */}
+      <div className="sticky top-0 z-30 shrink-0 lg:static">
+        <header className="bg-raised border-line flex min-h-[53px] flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2 lg:h-[53px] lg:flex-nowrap lg:px-5 lg:py-0">
+          <span className="type-wordmark text-[14px]">Uno</span>
 
-        {/* Switching profiles means going back through the picker — /configure
-            is only reachable via navigation state, so there's nowhere else to
-            re-select from. That makes this the page's only in-app exit, and
-            therefore the one control that has to guard pending changes. */}
-        <button
-          type="button"
-          onClick={requestLeave}
-          title="Switch profile"
-          className="type-data border-line-hi text-dim hover:text-ink hover:border-dim rounded-[2px] border px-2 py-[3px] text-[11px] transition-colors"
-        >
-          profile {profile.profileIndex} · {profile.profileName}
-        </button>
+          {/* Switching profiles means going back through the picker —
+              /configure is only reachable via navigation state, so there's
+              nowhere else to re-select from. That makes this the page's only
+              in-app exit, and therefore the one control that has to guard
+              pending changes.
 
-        {/* Grouped so the row doesn't reflow while PendingIndicator is still
-            withholding itself during load. */}
-        <div className="ml-auto flex items-center gap-4">
-          <PendingIndicator />
-          {profile.manifestURL && <AddonURLButton url={profile.manifestURL} />}
-          <PushButton {...push} />
-        </div>
-      </header>
+              `whitespace-nowrap`: a flex item shrinks to min-content before the
+              row overflows, which broke this chip onto five stacked words
+              inside a header fixed at 53px and clipped it. It wraps as a unit
+              now, and the header's own height follows. */}
+          <button
+            type="button"
+            onClick={requestLeave}
+            title="Switch profile"
+            className="type-data border-line-hi text-dim hover:text-ink hover:border-dim shrink-0 rounded-[2px] border px-2 py-[3px] text-[11px] whitespace-nowrap transition-colors"
+          >
+            profile {profile.profileIndex} · {profile.profileName}
+          </button>
 
-      <PushBanner {...push} />
+          {/* Grouped so the row doesn't reflow while PendingIndicator is still
+              withholding itself during load. */}
+          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+            <PendingIndicator />
+            {profile.manifestURL && <AddonURLButton url={profile.manifestURL} />}
+            <PushButton {...push} />
+          </div>
+        </header>
+
+        <PushBanner {...push} />
+      </div>
 
       <ConfirmDialog
         open={confirmingLeave}
@@ -150,7 +163,7 @@ function PendingIndicator() {
 
   return (
     <span
-      className={`type-data flex items-center gap-2 text-[11px] ${
+      className={`type-data flex shrink-0 items-center gap-2 text-[11px] whitespace-nowrap ${
         home.isDirty ? 'text-dim' : 'text-dimmer'
       }`}
       title={
