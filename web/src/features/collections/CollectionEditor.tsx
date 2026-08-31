@@ -47,7 +47,8 @@ export function CollectionEditor({
   serverError,
   onSave,
   onRequestClose,
-  onBack,
+  onDuplicate,
+  onDelete,
   onDirtyChange,
 }: {
   mode: BuilderMode
@@ -63,9 +64,12 @@ export function CollectionEditor({
    *  every rule — so it renders as an unexpected-case banner, not a field. */
   serverError: string | null
   onSave: (state: CollectionFormState) => void
+  /** Also backs the mobile Library button below `lg` — see `EditorShell`. */
   onRequestClose: () => void
-  /** Show the rail instead, below `lg`. Not an exit — see `EditorShell`. */
-  onBack: () => void
+  /** This collection's own row actions, carried in the header below `lg`.
+   *  Absent while creating, when there is no row yet. */
+  onDuplicate?: () => void
+  onDelete?: () => void
   onDirtyChange: (dirty: boolean) => void
 }) {
   const baseline = useMemo(() => initial ?? emptyCollectionForm(), [initial])
@@ -145,7 +149,8 @@ export function CollectionEditor({
       // collection is one you own.
       owned
       onRequestClose={onRequestClose}
-      onBack={onBack}
+      onDuplicate={onDuplicate}
+      onDelete={onDelete}
       footer={
         <>
           {showErrors && errorCount > 0 && (

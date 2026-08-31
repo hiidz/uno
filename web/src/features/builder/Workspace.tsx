@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
 import type { CatalogType } from '@/api'
@@ -27,10 +27,13 @@ import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { LibraryRail } from '@/features/library/LibraryRail'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { useEditorGuard } from './EditorGuard'
+import {
+  useScrollRequests,
+  useStackedLayout,
+  useStackedScroll,
+  type ScrollDestination,
+} from './stacked'
 import type { EditorTarget } from './target'
-
-/** Which region a screen too narrow for both is showing. */
-type MobileView = 'library' | 'pane'
 
 /**
  * The builder's two regions and the state that spans them.
@@ -40,19 +43,29 @@ type MobileView = 'library' | 'pane'
  * rail row fills the pane with its editor; closing the editor gives the pane
  * back to home.
  *
- * **Below `lg` the two take turns**, because there is only one column and a
- * rail is taller than a screen — stacked, selecting a row opened an editor
- * below the fold and read as nothing happening at all. `mobileView` is held
- * here rather than in either region because the transitions belong to the same
- * four entry points the guard already covers: `show` moves to the pane,
- * `close` and a save go back to the rail, and `showHome` is the rail's own way
- * across. Nothing can move the pane without passing through them.
+ * **Below `lg` the same two regions stack into one scrolling document** — rail
+ * on top, pane underneath, both always mounted. Selecting a row scrolls the
+ * page to the pane rather than replacing what's on screen with it. That is the
+ * whole of the narrow layout: there is no second view, nothing is hidden, and
+ * so there is no state here describing which of them is up.
+ *
+ * What replaces that state is a scroll request, because two of the regions'
+ * destinations are not derivable from the target alone — emptying the pane
+ * after a save goes back to the rail, while asking for home goes down to it.
+ * Requests are made **inside** the guarded callback, never in the handler that
+ * started it, which is what keeps a held confirmation from scrolling the page
+ * out from under itself. See `stacked.ts`.
  *
  * **This owns every way out of an editor**, because every one of them starts
- * outside the editor: the × in its header, Escape, selecting a different row in
- * the rail, and switching profile in the header. An editor only reports whether
- * it has unsaved changes; the decision to warn is made here, once, so no exit
- * can be added later that quietly skips the check.
+ * outside the editor: selecting a different row in the rail, the rail's link to
+ * home, switching profile in the header, and — above `lg`, where they exist —
+ * the × in the editor's header and Escape. An editor only reports whether it
+ * has unsaved changes; the decision to warn is made here, once, so no exit can
+ * be added later that quietly skips the check.
+ *
+ * Scrolling is not one of them. Below `lg` the Library button moves the
+ * viewport and nothing else: the editor stays mounted and stays dirty, exactly
+ * as it does above `lg` while the rail sits beside it.
  */
 export function Workspace({ profileIndex }: { profileIndex: number }) {
   const library = useLibrary(profileIndex)
@@ -64,9 +77,6 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const { guard, setDirty, blocked, proceed, cancel } = useEditorGuard()
 
   const [target, setTarget] = useState<EditorTarget | null>(null)
-  // Which of the two regions the narrow layout is showing. Above `lg` both are
-  // on screen at once and this is ignored.
-  const [mobileView, setMobileView] = useState<MobileView>('library')
   // Held here, not in `HomePane`, so it survives an editor taking the pane:
   // closing one gives back the view you left rather than resetting to List.
   const [homeView, setHomeView] = useState<HomeView>('list')
@@ -74,6 +84,12 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const [namingCollection, setNamingCollection] = useState(false)
   const [deletingCatalog, setDeletingCatalog] = useState<LibraryCatalog | null>(null)
   const [deletingCollection, setDeletingCollection] = useState<LibraryCollection | null>(null)
+
+  const railRef = useRef<HTMLElement>(null)
+  const paneRef = useRef<HTMLDivElement>(null)
+  const stacked = useStackedLayout()
+  const { request, requestScroll } = useScrollRequests()
+  useStackedScroll({ stacked, request, paneRef, railRef })
 
   const refOptions = useMemo(
     () => buildRefOptions(library.catalogs, library.genres),
@@ -98,75 +114,93 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const resetCollectionUpdate = collectionMutations.update.reset
 
   /**
-   * Hand the pane to something else.
+   * Hand the pane to something else, and say where that leaves the reader.
    *
    * Clears the dirty flag: the incoming editor reports its own, and a stale
    * `true` would guard a form that no longer exists. Clears the mutations'
    * errors for the same reason — a save that failed leaves its message behind,
    * and the next editor would open showing a rejection of something else.
+   *
+   * `scrollTo` is the caller's decision because emptying the pane means two
+   * different things: a save is finished with the pane and belongs back at the
+   * list, while asking for home is a request to look at what's now there.
+   * Opening something is always a request to look at it, so that's the default.
+   * Above `lg` both regions are already on screen and the request is ignored.
    */
   const show = useCallback(
-    (next: EditorTarget | null) => {
+    (next: EditorTarget | null, scrollTo: ScrollDestination = 'pane') => {
       setDirty(false)
       resetCatalogCreate()
       resetCatalogUpdate()
       resetCollectionCreate()
       resetCollectionUpdate()
       setTarget(next)
-      // Opening something is also a request to look at it, which on a narrow
-      // screen means the pane. Emptying the pane is not the reverse — where a
-      // close lands is the caller's decision, so `null` leaves the view alone.
-      if (next !== null) setMobileView('pane')
+      requestScroll(scrollTo)
     },
-    [setDirty, resetCatalogCreate, resetCatalogUpdate, resetCollectionCreate, resetCollectionUpdate],
+    [
+      setDirty,
+      resetCatalogCreate,
+      resetCatalogUpdate,
+      resetCollectionCreate,
+      resetCollectionUpdate,
+      requestScroll,
+    ],
   )
 
   const open = useCallback(
     (next: EditorTarget) => {
-      // Re-selecting the row already open would re-seed the form from its
-      // saved state, silently discarding edits. Nothing to do instead.
       if (
         next.sourceID !== undefined &&
         target?.sourceID === next.sourceID &&
         target.mode === next.mode
       ) {
+        // Re-selecting the open row must not re-seed the form from its saved
+        // state — that would silently discard edits. Stacked, though, tapping
+        // the row you already have open is how you ask to be taken back to it,
+        // so the one thing it still does is scroll.
+        requestScroll('pane')
         return
       }
       guard(() => show(next))
     },
-    [guard, show, target],
+    [guard, show, target, requestScroll],
   )
 
   /**
-   * Close the editor.
+   * Close the editor, giving the pane back to home.
    *
-   * Narrow, this goes back to the rail rather than on to home: the rail is
-   * where the editor was opened from, and the row is still selected there, so
-   * its duplicate and delete actions are where they were left. Home is a place
-   * you ask for, through the rail's own link to it.
+   * Above `lg` this is the × in the editor's header and Escape. Below it it's
+   * also the editor header's Library button — leaving this row is an exit
+   * either way, so it goes through the same guard rather than a scroll-only
+   * shortcut that would silently drop unsaved edits. Lands on the rail rather
+   * than the pane, because emptying the pane by leaving it is not a request to
+   * go and look at what replaced it — the same reasoning `closeAfterSave`
+   * below already uses.
    */
-  const close = useCallback(
-    () =>
-      guard(() => {
-        show(null)
-        setMobileView('library')
-      }),
-    [guard, show],
-  )
+  const close = useCallback(() => guard(() => show(null, 'rail')), [guard, show])
 
-  /** Saved, so there is nothing left to warn about — straight back out. */
+  /** Saved, so there is nothing left to warn about — straight back to the list,
+   *  which is where the next thing to work on is. */
   function closeAfterSave() {
-    show(null)
-    setMobileView('library')
+    show(null, 'rail')
   }
 
-  /** The rail's way into the pane when no editor is open. */
+  /** The rail's link to home: a scroll down to the pane, not a way across to
+   *  it. Still guarded, because home replaces whatever editor is open. */
   function showHome() {
-    guard(() => {
-      show(null)
-      setMobileView('pane')
-    })
+    guard(() => show(null, 'pane'))
   }
+
+  /**
+   * Home's own way back up to the list, below `lg`.
+   *
+   * **Not an exit**, so it doesn't guard: home has nothing of the editor's to
+   * discard, and pushing the pane's content isn't unmounting anything. It moves
+   * the viewport and nothing else. An open editor's own Library button is a
+   * different case — reusing `close` above, not this — because leaving *that*
+   * row means deselecting it.
+   */
+  const showLibraryFromHome = useCallback(() => requestScroll('rail'), [requestScroll])
 
   /**
    * "New catalog" creates the row, then hands it to the editor.
@@ -246,8 +280,11 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         setDeletingCatalog(null)
         // Nor can it stay in the pane. This is the one close that doesn't ask:
         // the row it was editing is gone, so there is nothing to go back to and
-        // nothing left to save.
-        if (target?.sourceID === id) show(null)
+        // nothing left to save. Back to the rail rather than the home screen
+        // that takes the pane's place — deleting is finished with the pane, and
+        // stacked, the alternative is leaving the reader parked at a region
+        // that just changed under them into something they didn't ask for.
+        if (target?.sourceID === id) show(null, 'rail')
       },
     })
   }
@@ -259,7 +296,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       onSuccess: () => {
         home.removeCollection(id)
         setDeletingCollection(null)
-        if (target?.sourceID === id) show(null)
+        if (target?.sourceID === id) show(null, 'rail')
       },
     })
   }
@@ -274,15 +311,43 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const collectionSaving =
     collectionMutations.create.isPending || collectionMutations.update.isPending
 
+  // The library row the open editor was opened from, when that row is one of
+  // yours. Below `lg` the editor's own header carries that row's duplicate and
+  // delete — the row itself is a screen-length scroll away — so it has to know
+  // which row it stands for. A brand-new catalog has no row yet, and a
+  // community row has neither action, so both come back undefined.
+  const activeCatalog =
+    target?.kind === 'catalog' && target.sourceID !== undefined
+      ? library.catalogs.find((catalog) => catalog.id === target.sourceID && catalog.owned)
+      : undefined
+  const activeCollection =
+    target?.kind === 'collection' && target.sourceID !== undefined
+      ? library.collections.find(
+          (collection) => collection.id === target.sourceID && collection.owned,
+        )
+      : undefined
+
+  // Named rather than inlined at the call site, because the rail's row and the
+  // editor's header are now two places asking for the same thing.
+  function duplicateCatalog(catalog: LibraryCatalog) {
+    open({
+      kind: 'catalog',
+      mode: 'duplicate',
+      initial: formFromCatalog(catalog, 'duplicate'),
+      sourceID: catalog.id,
+    })
+  }
+
+  function duplicateCollection(collection: LibraryCollection) {
+    open(seedCollection(collection, 'duplicate', refAccessible))
+  }
+
   return (
     <>
       <div className="grid min-h-0 flex-1 lg:grid-cols-[372px_minmax(0,1fr)]">
         <LibraryRail
+          scrollRef={railRef}
           library={library}
-          // One column below `lg`, so the two regions take turns instead of
-          // stacking: a rail is hundreds of pixels tall, and an editor mounted
-          // underneath one is an editor nobody sees open.
-          className={mobileView === 'pane' ? 'hidden lg:flex' : 'flex'}
           homeSelected={target === null}
           onShowHome={showHome}
           selectedID={target?.sourceID ?? null}
@@ -298,30 +363,27 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
           }}
           onSelectCatalog={(catalog) => open(catalogTarget(catalog))}
           onSelectCollection={(collection) => open(collectionTarget(collection, refAccessible))}
-          onDuplicateCatalog={(catalog) =>
-            open({
-              kind: 'catalog',
-              mode: 'duplicate',
-              initial: formFromCatalog(catalog, 'duplicate'),
-              sourceID: catalog.id,
-            })
-          }
-          onDuplicateCollection={(collection) =>
-            open(seedCollection(collection, 'duplicate', refAccessible))
-          }
+          onDuplicateCatalog={duplicateCatalog}
+          onDuplicateCollection={duplicateCollection}
           onDeleteCatalog={setDeletingCatalog}
           onDeleteCollection={setDeletingCollection}
         />
 
+        {/* `min-h` below `lg` is what makes the pane scrollable *to*: a short
+            form is shorter than the viewport, and the browser cannot scroll a
+            document past its own end — without a full screen of pane to travel
+            into, asking for its top lands somewhere short of it and reads as
+            the scroll having failed. Above `lg` the pane is a grid column of a
+            fixed-height shell and `min-h-0` restores that. */}
         <div
-          className={`min-w-0 flex-col lg:flex lg:min-h-0 ${mobileView === 'library' ? 'hidden' : 'flex'
-            }`}
+          ref={paneRef}
+          className="flex min-h-[calc(100svh_-_var(--app-h))] min-w-0 scroll-mt-[var(--app-h)] flex-col lg:min-h-0"
         >
           {target === null ? (
             <HomePane
               view={homeView}
               onViewChange={setHomeView}
-              onBack={() => setMobileView('library')}
+              onShowLibrary={showLibraryFromHome}
             />
           ) : target.kind === 'catalog' ? (
             <CatalogEditor
@@ -344,7 +406,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               }
               onSave={saveCatalog}
               onRequestClose={close}
-              onBack={() => setMobileView('library')}
+              onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
+              onDelete={activeCatalog ? () => setDeletingCatalog(activeCatalog) : undefined}
               onDirtyChange={setDirty}
             />
           ) : (
@@ -364,7 +427,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               }
               onSave={saveCollection}
               onRequestClose={close}
-              onBack={() => setMobileView('library')}
+              onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
+              onDelete={activeCollection ? () => setDeletingCollection(activeCollection) : undefined}
               onDirtyChange={setDirty}
             />
           )}

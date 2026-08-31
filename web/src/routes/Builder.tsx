@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
+import { usePublishedHeaderHeight } from '@/features/builder/stacked'
 import { Workspace } from '@/features/builder/Workspace'
 import { HomeSelectionProvider } from '@/features/home/HomeSelectionContext'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
@@ -22,7 +23,9 @@ export interface BuilderProfile {
  * The single builder page. Two regions, no tabs: a Library rail on the left
  * (every catalog and collection, yours and community — the source you pick
  * from) and a pane on the right holding one thing at a time — your home screen,
- * or the editor for whichever rail row is selected.
+ * or the editor for whichever rail row is selected. Below `lg` the same two
+ * regions stack into one scrolling document rather than becoming two screens —
+ * see `stacked.ts`.
  *
  * Push is a header action — the commit for Home, so it lives where Home's state
  * is, whether or not Home is the pane's current occupant.
@@ -61,6 +64,9 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
   const editor = useEditorGuard()
   const push = usePush(profile.profileIndex)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
+  const stickyRef = useRef<HTMLDivElement>(null)
+
+  usePublishedHeaderHeight(stickyRef)
 
   // Both kinds of unsaved work block a page close, for the same reason: neither
   // survives it. Which one it was is a question the browser's own dialog can't
@@ -96,8 +102,13 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
           the banner reporting its result are the two things that must not
           scroll away from someone halfway down a home screen. Above `lg` the
           shell is a fixed-height flex column and this band is already pinned.
-          `z-30` sits under `Modal` and `ConfirmDialog`, which are `z-50`. */}
-      <div className="sticky top-0 z-30 shrink-0 lg:static">
+          `z-30` sits under `Modal` and `ConfirmDialog`, which are `z-50`.
+
+          Measured, not assumed: this band is what everything below `lg` pins
+          and scrolls to the underside of, and its height moves — the header
+          wraps to two rows on a narrow screen, and `PushBanner` is its second
+          child rather than the header's. */}
+      <div ref={stickyRef} className="sticky top-0 z-30 shrink-0 lg:static">
         <header className="bg-raised border-line flex min-h-[53px] flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2 lg:h-[53px] lg:flex-nowrap lg:px-5 lg:py-0">
           <span className="type-wordmark text-[14px]">Uno</span>
 

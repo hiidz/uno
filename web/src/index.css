@@ -160,6 +160,13 @@
        row you can read across. */
     --w-form: 54rem;
 
+    /* The sticky app header's height, below `lg`, where the builder is one
+       scrolling document and every offset is measured from under it. Overwritten
+       from `usePublishedHeaderHeight` with the real measurement — the header
+       wraps to two rows on narrow screens and the push banner joins it — so this
+       value only has to hold for the first paint. */
+    --app-h: 53px;
+
     --sidebar: #0B0D11;
     --sidebar-foreground: var(--uno-ink);
     --sidebar-primary: var(--uno-ink);

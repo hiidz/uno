@@ -35,45 +35,64 @@ export type HomeView = 'list' | 'preview'
 export function HomePane({
   view,
   onViewChange,
-  onBack,
+  onShowLibrary,
 }: {
   view: HomeView
   onViewChange: (view: HomeView) => void
-  /** Show the rail instead. Below `lg` only, where the two regions take turns. */
-  onBack: () => void
+  /** Scroll back up to the rail. Below `lg` only, where the two are stacked
+   *  into one page. Not an exit — nothing here is unmounted by it. */
+  onShowLibrary: () => void
 }) {
   const home = useHomeSelection()
 
   return (
-    <main className="flex flex-1 flex-col gap-8 p-4 lg:min-h-0 lg:overflow-y-auto lg:p-6">
-      <div className="flex flex-wrap items-baseline gap-4">
+    <main className="flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
+      {/* Pinned under the app header below `lg`, for the same reason the
+          editors' header is: it names the region the page has just scrolled to
+          and carries the way back up out of it. The padding is split between
+          this band and the content below rather than sitting on `main`, because
+          a sticky child of a padded parent leaves a gap above it that the
+          content then scrolls through. Above `lg` the two halves add back up to
+          the `p-6` and `gap-8` that were here before. */}
+      <div className="border-line bg-ground sticky top-[var(--app-h)] z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-3 lg:static lg:items-baseline lg:border-0 lg:bg-transparent lg:px-6 lg:pt-6 lg:pb-0">
+        {/* Where focus lands when the page scrolls here — see `stacked.ts`. */}
+        <h1
+          tabIndex={-1}
+          data-landing
+          className="type-display m-0 text-[17px] outline-none lg:text-[21px]"
+        >
+          Your home screen
+        </h1>
+        <ViewSwitch view={view} onChange={onViewChange} />
         <button
           type="button"
-          onClick={onBack}
-          aria-label="Back to the library"
-          title="Back to the library"
-          className="tap text-dim hover:text-ink -ml-1 grid h-8 w-6 shrink-0 place-items-center self-center text-[17px] leading-none transition-colors lg:hidden"
+          onClick={onShowLibrary}
+          title="Back up to the library"
+          className="tap type-data border-line-hi text-dim hover:text-ink hover:border-dim ml-auto flex h-7 shrink-0 items-center gap-1 rounded-[2px] border px-2 text-[10px] tracking-[0.06em] uppercase transition-colors lg:hidden"
         >
-          ‹
+          <span aria-hidden="true" className="text-[11px] leading-none">
+            ↑
+          </span>
+          Library
         </button>
-        <h1 className="type-display m-0 text-[21px]">Your home screen</h1>
-        <ViewSwitch view={view} onChange={onViewChange} />
       </div>
 
-      {/* Loading and error are shared — both views need the same state before
-          they can render anything. Empty is *not* shared: List's empty state is
-          an instruction to go add something, Preview's is the screen a TV shows
-          when there's nothing to show. So each branch owns it. */}
-      <ListState
-        isLoading={home.isLoading || !home.ready}
-        error={home.error}
-        isEmpty={false}
-        loadingLabel="Loading your home screen…"
-        errorLabel="Couldn't load your home screen."
-        emptyLabel={null}
-      >
-        {view === 'list' ? <HomeList /> : <HomePreview />}
-      </ListState>
+      <div className="flex flex-col px-4 py-4 lg:px-6 lg:pt-8 lg:pb-6">
+        {/* Loading and error are shared — both views need the same state before
+            they can render anything. Empty is *not* shared: List's empty state
+            is an instruction to go add something, Preview's is the screen a TV
+            shows when there's nothing to show. So each branch owns it. */}
+        <ListState
+          isLoading={home.isLoading || !home.ready}
+          error={home.error}
+          isEmpty={false}
+          loadingLabel="Loading your home screen…"
+          errorLabel="Couldn't load your home screen."
+          emptyLabel={null}
+        >
+          {view === 'list' ? <HomeList /> : <HomePreview />}
+        </ListState>
+      </div>
     </main>
   )
 }

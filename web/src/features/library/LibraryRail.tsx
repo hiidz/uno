@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import { LibrarySection } from './LibrarySection'
 import type { LibraryCatalog, LibraryCollection, useLibrary } from './useLibrary'
 
@@ -10,16 +11,17 @@ import type { LibraryCatalog, LibraryCollection, useLibrary } from './useLibrary
  * "Mine" gets the New buttons; you can't create a community row, only adopt
  * one by opening it.
  *
- * Below `lg` the rail is a screen of its own rather than a column, so it
- * carries a link to home — the pane is not visible beside it to be clicked.
+ * Below `lg` the rail is the top of one long page rather than a column, with
+ * the pane stacked underneath it. It keeps its link to home, which stops being
+ * a way *across* to the pane and becomes a shortcut *down* to it.
  *
  * Purely presentational: what a selection *does* is the workspace's business,
  * because the same unsaved-changes guard covers every other way out of an
  * editor too.
  */
 export function LibraryRail({
+  scrollRef,
   library,
-  className,
   homeSelected,
   onShowHome,
   selectedID,
@@ -32,11 +34,10 @@ export function LibraryRail({
   onDeleteCatalog,
   onDeleteCollection,
 }: {
+  /** Below `lg` this region is a scroll destination, and the workspace is what
+   *  scrolls to it. */
+  scrollRef?: RefObject<HTMLElement | null>
   library: ReturnType<typeof useLibrary>
-  /** Carries the rail's own visibility, which only the workspace knows: below
-   *  `lg` the two regions take turns, and which one is up is state held there.
-   *  Whatever this passes, `lg:flex` wins from `lg` up. */
-  className?: string
   /** The pane is holding home rather than an editor. */
   homeSelected: boolean
   onShowHome: () => void
@@ -53,12 +54,17 @@ export function LibraryRail({
 }) {
   return (
     <aside
-      className={`bg-sidebar border-line flex-col lg:flex lg:min-h-0 lg:border-r ${className ?? 'flex'}`}
+      ref={scrollRef}
+      tabIndex={-1}
+      data-landing
+      aria-label="Library"
+      className="bg-sidebar border-line flex scroll-mt-[var(--app-h)] flex-col outline-none lg:min-h-0 lg:border-r"
     >
       {/* Above `lg` home is simply the other half of the screen and needs no
-          link. Below it, the pane is off screen while the rail is up, so this
-          is the only way back to it — and the rail is where the user is when
-          they have just closed an editor. */}
+          link. Below it the pane is further down the same page, so this is a
+          shortcut to it rather than a way across — hence `↓` and not `›`. It
+          still guards, because arriving at home means the open editor is
+          replaced by it. */}
       <button
         type="button"
         onClick={onShowHome}
@@ -69,7 +75,7 @@ export function LibraryRail({
       >
         <span className="type-display flex-1 text-[12px]">Your home screen</span>
         <span aria-hidden="true" className="type-data text-dimmer text-[13px] leading-none">
-          ›
+          ↓
         </span>
       </button>
 

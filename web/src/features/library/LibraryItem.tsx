@@ -17,6 +17,12 @@ const KIND_LABEL: Record<BarKind, string> = {
  * from reaching the row, because adding something to home is not a request to
  * edit it.
  *
+ * The actions are `lg` and up only. There the rail sits beside the pane and the
+ * selected row stays in view for as long as its editor is open. Below `lg` the
+ * two are stacked and selecting a row scrolls the page away from it, so the
+ * actions would be a screen-length scroll from the thing they act on; the
+ * editor's own sticky header carries them there instead.
+ *
  * The type bar carries kind and ownership visually, but a 3px hatch is easy to
  * miss at rail width, so community rows say so in text too. Kind stays
  * screen-reader-only: it's redundant with the recipe for sighted users but is
@@ -134,7 +140,7 @@ export function LibraryItem({
       </div>
 
       {hasActions && selected && (
-        <div className="flex items-center gap-1.5 px-2 pb-2.5 pl-[23px]">
+        <div className="hidden items-center gap-1.5 px-2 pb-2.5 pl-[23px] lg:flex">
           {onDuplicate && <ItemAction label={`Duplicate ${name}`} glyph="⧉" onClick={onDuplicate} />}
           {onDelete && (
             <ItemAction label={`Delete ${name}`} glyph="🗑" onClick={onDelete} destructive />
