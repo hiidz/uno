@@ -90,8 +90,8 @@ export function EditorShell({
   return (
     <main className="flex min-w-0 flex-1 flex-col lg:h-full lg:min-h-0">
       {/* Pinned under the app header below `lg` — `--app-h` is that header
-          measured, not assumed, because it wraps to two rows and grows a push
-          banner. Above `lg` the flex column already holds this in place and
+          measured, not assumed, because the push banner mounts and unmounts
+          beneath it. Above `lg` the flex column already holds this in place and
           `static` restores exactly what was here before. */}
       <header className="border-line bg-ground sticky top-[var(--app-h)] z-20 flex shrink-0 items-center gap-3 border-b px-4 py-3 lg:static lg:bg-transparent lg:px-6 lg:py-4">
         <TypeBar kind={kind} owned={owned} className="min-h-[26px] lg:min-h-[30px]" />

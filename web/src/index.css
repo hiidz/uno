@@ -162,10 +162,17 @@
 
     /* The sticky app header's height, below `lg`, where the builder is one
        scrolling document and every offset is measured from under it. Overwritten
-       from `usePublishedHeaderHeight` with the real measurement — the header
-       wraps to two rows on narrow screens and the push banner joins it — so this
-       value only has to hold for the first paint. */
-    --app-h: 53px;
+       from `usePublishedHeaderHeight` with the real measurement — the push
+       banner mounts and unmounts under the header — so this value only has to
+       hold for the first paint.
+
+       58.4px is that header on a touch device, measured: `.btn-primary` at the
+       coarse-pointer padding below is 41.6px tall, plus the header's own 8px
+       above and below and its 1px bottom border. A fine pointer gets the 53px
+       the header is otherwise sized to, so this errs 5.4px large there — which
+       leaves a hairline gap under the header for one frame rather than putting
+       content beneath it. */
+    --app-h: 58.4px;
 
     --sidebar: #0B0D11;
     --sidebar-foreground: var(--uno-ink);

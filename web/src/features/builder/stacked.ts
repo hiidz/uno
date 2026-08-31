@@ -57,10 +57,10 @@ export function useStackedLayout(): boolean {
  *
  * Every offset below `lg` is measured from the bottom of that header: what
  * `scroll-margin-top` has to clear, where the pane's own sticky header pins
- * itself, and how tall the pane has to be to be scrollable to the top. A
- * constant would be wrong in two ways that both show up in normal use — the
- * header is `flex-wrap` and grows to two rows on a narrow screen, and the push
- * banner mounts and unmounts underneath it while the page is open.
+ * itself, and how tall the pane has to be to be scrollable to the top. The
+ * header is one row at a fixed height, but a constant would still be wrong in
+ * normal use: the push banner mounts and unmounts underneath it while the page
+ * is open, and its own height varies with the outcome it reports.
  *
  * Observe the **wrapper**, not the `<header>`: the banner is the wrapper's
  * second child, so measuring the header alone loses it exactly when it is
