@@ -29,6 +29,24 @@ type certificationListResponse struct {
 	Certifications map[string][]Certification `json:"certifications"`
 }
 
+// Language is one entry in TMDB's ISO 639-1 language table — the source for
+// with_original_language's options, so the picker can't offer a code TMDB
+// itself doesn't recognize.
+type Language struct {
+	ISO6391     string `json:"iso_639_1"`
+	EnglishName string `json:"english_name"`
+	Name        string `json:"name"`
+}
+
+// Country is one entry in TMDB's ISO 3166-1 country table — the source for
+// display names of the country codes the certification list returns (that
+// endpoint returns codes only, not names).
+type Country struct {
+	ISO31661    string `json:"iso_3166_1"`
+	EnglishName string `json:"english_name"`
+	NativeName  string `json:"native_name"`
+}
+
 // BaseParams holds catalog behavior that isn't specific to any provider —
 // it wouldn't make sense as a TMDB query param because TMDB has no concept
 // of it; it's app-level logic layered on top of whatever provider is used.

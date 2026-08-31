@@ -90,6 +90,8 @@ func (s *Server) routes() {
 
 	s.router.HandleFunc("GET /api/genres/{type}", s.requireNuvioAuth(s.listGenres))
 	s.router.HandleFunc("GET /api/certifications/{type}", s.requireNuvioAuth(s.listCertifications))
+	s.router.HandleFunc("GET /api/languages", s.requireNuvioAuth(s.listLanguages))
+	s.router.HandleFunc("GET /api/countries", s.requireNuvioAuth(s.listCountries))
 
 	s.router.HandleFunc("GET /api/profiles", s.requireNuvioAuth(s.listProfiles))
 	s.router.HandleFunc("POST /api/profiles/select", s.requireNuvioAuth(s.selectProfile))

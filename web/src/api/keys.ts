@@ -30,6 +30,8 @@ export const queryKeys = {
 
   genres: (type: CatalogType) => ['genres', type] as const,
   certifications: (type: CatalogType) => ['certifications', type] as const,
+  languages: () => ['languages'] as const,
+  countries: () => ['countries'] as const,
 
   /**
    * Keyed on the **recipe**, not on a catalog id. Two catalogs with identical

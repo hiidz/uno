@@ -93,6 +93,22 @@ export interface Certification {
  *  ISO 3166-1 country code. */
 export type CertificationsByCountry = Record<string, Certification[]>
 
+/** One entry in TMDB's ISO 639-1 language table — `iso_639_1` is what
+ *  `with_original_language` expects; `english_name` is what a person reads. */
+export interface Language {
+  iso_639_1: string
+  english_name: string
+  name: string
+}
+
+/** One entry in TMDB's ISO 3166-1 country table — names the country codes
+ *  `GET /api/certifications/{type}` returns, which come back as codes only. */
+export interface Country {
+  iso_3166_1: string
+  english_name: string
+  native_name: string
+}
+
 /**
  * One tile from `POST /api/catalogs/preview`.
  *

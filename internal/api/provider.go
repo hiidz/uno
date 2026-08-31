@@ -25,6 +25,24 @@ func (s *Server) listGenres(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, genres)
 }
 
+func (s *Server) listLanguages(w http.ResponseWriter, r *http.Request) {
+	languages, err := s.provider.Languages(r.Context())
+	if err != nil {
+		http.Error(w, "failed to fetch languages", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, languages)
+}
+
+func (s *Server) listCountries(w http.ResponseWriter, r *http.Request) {
+	countries, err := s.provider.Countries(r.Context())
+	if err != nil {
+		http.Error(w, "failed to fetch countries", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, countries)
+}
+
 func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
 	catalogType := r.PathValue("type")
 

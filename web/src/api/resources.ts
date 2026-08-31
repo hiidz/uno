@@ -5,7 +5,9 @@ import type {
   CatalogType,
   CertificationsByCountry,
   Collection,
+  Country,
   Genre,
+  Language,
   NuvioProfile,
   PreviewRequest,
   SelectedCatalog,
@@ -64,6 +66,18 @@ export function fetchGenres(type: CatalogType): Promise<Genre[]> {
  *  country's age-rating scale for this catalog type. */
 export function fetchCertifications(type: CatalogType): Promise<CertificationsByCountry> {
   return getJSON<CertificationsByCountry>(`/api/certifications/${type}`)
+}
+
+/** Live from TMDB via the Go side. Not split by catalog type — TMDB's
+ *  language table backs `with_original_language` on both movies and tv. */
+export function fetchLanguages(): Promise<Language[]> {
+  return getList<Language>('/api/languages')
+}
+
+/** Live from TMDB via the Go side. Names the codes `fetchCertifications`
+ *  returns — that response is keyed by code, with no name attached. */
+export function fetchCountries(): Promise<Country[]> {
+  return getList<Country>('/api/countries')
 }
 
 /**

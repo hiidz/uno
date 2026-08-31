@@ -1,15 +1,18 @@
 import { useMemo } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   fetchCertifications,
   fetchCommunityCatalogs,
   fetchCommunityCollections,
+  fetchCountries,
   fetchGenres,
+  fetchLanguages,
   fetchOwnedCatalogs,
   fetchOwnedCollections,
   queryKeys,
 } from '@/api'
-import type { Catalog, CertificationsByCountry, Collection, Folder } from '@/api'
+import type { Catalog, CertificationsByCountry, Collection, Folder, Language } from '@/api'
+import { buildCountryLookup, type CountryLookup } from '@/features/catalogs/countries'
 import { mergeOwned } from './merge'
 import { buildGenreLookup, type GenreLookup } from './recipe'
 
@@ -53,6 +56,12 @@ export interface Library {
   /** Every country's age-rating scale, for the certification picker. Empty
    *  until the queries land — same degrade-gracefully treatment as genres. */
   certifications: CertificationLookups
+  /** TMDB's full language table, for the "Original language" picker. Empty
+   *  until the query lands — same degrade-gracefully treatment as genres. */
+  languages: Language[]
+  /** Names the country codes in `certifications`, keyed by ISO 3166-1. Empty
+   *  until the query lands — same degrade-gracefully treatment as genres. */
+  countryNames: CountryLookup
   isLoading: boolean
   error: Error | null
   refetch: () => void
@@ -115,6 +124,23 @@ export function useLibrary(profileIndex: number): Library {
     [movieCertifications, tvCertifications],
   )
 
+  // Same account-wide, cached-indefinitely treatment as genres above — TMDB's
+  // language table barely changes and a failed fetch just leaves the picker
+  // empty rather than failing the library.
+  const languagesResult = useQuery({
+    queryKey: queryKeys.languages(),
+    queryFn: fetchLanguages,
+    staleTime: Infinity,
+  })
+  const languages = languagesResult.data ?? []
+
+  const countriesResult = useQuery({
+    queryKey: queryKeys.countries(),
+    queryFn: fetchCountries,
+    staleTime: Infinity,
+  })
+  const countryNames = useMemo(() => buildCountryLookup(countriesResult.data ?? []), [countriesResult.data])
+
   const catalogs = useMemo(
     () => mergeOwned(ownedCatalogs.data ?? [], communityCatalogs.data ?? []),
     [ownedCatalogs.data, communityCatalogs.data],
@@ -134,6 +160,8 @@ export function useLibrary(profileIndex: number): Library {
     collections,
     genres,
     certifications,
+    languages,
+    countryNames,
     isLoading: results.some((r) => r.isPending),
     error: (results.find((r) => r.error)?.error as Error | undefined) ?? null,
     refetch: () => {
