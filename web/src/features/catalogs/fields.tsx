@@ -1,6 +1,7 @@
 import type { Certification, CertificationsByCountry, Genre } from '@/api'
-import { DualRangeSlider, Field, Segmented, Select } from '@/components/fields'
+import { DualRangeSlider, FieldNote, Segmented, Select } from '@/components/fields'
 import type { GenreJoin } from './catalogForm'
+import { countryName, type CountryLookup } from './countries'
 
 /**
  * Form primitives for the catalog builder.
@@ -11,13 +12,13 @@ import type { GenreJoin } from './catalogForm'
  * (its 400s are plain text), so the form encodes them structurally: an invalid
  * combination is unrepresentable rather than merely caught.
  *
- * The generic primitives (`Field`, `TextInput`, `Select`, `Segmented`,
- * `Checkbox`) live in `components/fields.tsx`, shared with the collection
- * builder, and are re-exported here so this stays the catalog builder's one
- * import site.
+ * The generic primitives (`Field`, `FieldNote`, `TextInput`, `Select`,
+ * `Segmented`, `Checkbox`) live in `components/fields.tsx`, shared with the
+ * collection builder, and are re-exported here so this stays the catalog
+ * builder's one import site.
  */
 
-export { Checkbox, Field, Segmented, Select, TextInput } from '@/components/fields'
+export { Checkbox, Field, FieldNote, Segmented, Select, TextInput } from '@/components/fields'
 
 /** A number field that models "unset" as undefined rather than 0 — Go's
  *  `omitempty` drops zeros, so 0 and absent are the same on the wire, and
@@ -28,12 +29,16 @@ export function NumberInput({
   placeholder,
   step,
   min,
+  ariaLabel,
 }: {
   value: number | undefined
   onChange: (value: number | undefined) => void
   placeholder?: string
   step?: string
   min?: number
+  /** These sit on a row whose only text is the range's own label, so each box
+   *  has to name which end of it it holds. */
+  ariaLabel?: string
 }) {
   return (
     <input
@@ -43,11 +48,12 @@ export function NumberInput({
       min={min}
       value={value ?? ''}
       placeholder={placeholder}
+      aria-label={ariaLabel}
       onChange={(event) => {
         const raw = event.target.value
         onChange(raw === '' ? undefined : Number(raw))
       }}
-      className="field type-data w-full"
+      className="field type-data w-full max-w-[var(--w-code)] min-w-0 px-2 py-1.5 text-center text-[12px]"
     />
   )
 }
@@ -86,26 +92,56 @@ export function RangeField({
   formatValue?: (value: number) => string
 }) {
   return (
-    <Field label={label} hint={hint} error={error}>
-      <div className="flex flex-col gap-2.5">
-        <DualRangeSlider
+    <div className="flex max-w-[var(--w-track)] flex-col gap-2">
+      {/* Label and bounds on one line, track underneath spanning the full
+          width. The boxes are the exact values the track can only approximate,
+          so they belong beside the name of the thing they bound rather than
+          stacked below it as a second, wider control. */}
+      <div className="flex items-center gap-3">
+        <label className="type-eyebrow flex-1">
+          {label}
+          {unit && <span className="text-dimmer normal-case"> ({unit})</span>}
+        </label>
+        <NumberInput
+          value={low}
+          onChange={(next) => onLow(next)}
+          ariaLabel={`Minimum ${label.toLowerCase()}`}
+          placeholder={String(min)}
+          step={step}
           min={min}
-          max={max}
-          step={step ? Number(step) : 1}
-          low={low}
-          high={high}
-          onLow={onLow}
-          onHigh={onHigh}
-          formatValue={formatValue}
         />
-        <div className="flex items-center gap-2">
-          <NumberInput value={low} onChange={onLow} placeholder="min" step={step} min={min} />
-          <span className="text-dimmer shrink-0 text-[12px]">–</span>
-          <NumberInput value={high} onChange={onHigh} placeholder="max" step={step} min={min} />
-          {unit && <span className="type-data text-dimmer shrink-0 text-[11px]">{unit}</span>}
-        </div>
+        <span aria-hidden="true" className="text-dimmer shrink-0 text-[12.5px]">
+          —
+        </span>
+        <NumberInput
+          value={high}
+          onChange={(next) => onHigh(next)}
+          ariaLabel={`Maximum ${label.toLowerCase()}`}
+          placeholder={formatValue ? formatValue(max) : String(max)}
+          step={step}
+          min={min}
+        />
       </div>
-    </Field>
+
+      {/* `showValues` off: the boxes above already print this pair, and a
+          second copy travelling under the thumbs was the same number twice. */}
+      <DualRangeSlider
+        min={min}
+        max={max}
+        step={step ? Number(step) : 1}
+        low={low}
+        high={high}
+        onChange={(nextLow, nextHigh) => {
+          onLow(nextLow)
+          onHigh(nextHigh)
+        }}
+        formatValue={formatValue}
+        showValues={false}
+      />
+
+      {hint && !error && <FieldNote>{hint}</FieldNote>}
+      {error && <FieldNote tone="danger">{error}</FieldNote>}
+    </div>
   )
 }
 
@@ -150,26 +186,22 @@ export function GenreCycler({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3">
-        <label className="type-eyebrow flex-1">{label}</label>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="type-eyebrow">{label}</label>
         {withIds.length > 1 && (
-          <div className="w-[132px]">
-            <Segmented
-              ariaLabel={`How to combine ${label.toLowerCase()}`}
-              value={withJoin}
-              onChange={(next) => onChange(withIds, next, withoutIds)}
-              options={[
-                { value: 'and', label: 'All of' },
-                { value: 'or', label: 'Any of' },
-              ]}
-            />
-          </div>
+          <Segmented
+            ariaLabel={`How to combine ${label.toLowerCase()}`}
+            value={withJoin}
+            onChange={(next) => onChange(withIds, next, withoutIds)}
+            options={[
+              { value: 'and', label: 'All of' },
+              { value: 'or', label: 'Any of' },
+            ]}
+          />
         )}
       </div>
       {genres.length === 0 ? (
-        <p className="type-data text-dimmer m-0 text-[10.5px]">
-          Couldn't load genres from TMDB.
-        </p>
+        <FieldNote>Couldn't load genres from TMDB.</FieldNote>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {genres.map((genre) => {
@@ -191,7 +223,7 @@ export function GenreCycler({
                       ? `Including ${genre.name} — click to exclude instead`
                       : `Click to include ${genre.name}`
                 }
-                className={`rounded-[2px] border px-2 py-[3px] text-[11px] transition-colors ${
+                className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors ${
                   state === 'include'
                     ? 'bg-raised-hi border-dim text-ink'
                     : state === 'exclude'
@@ -228,6 +260,7 @@ export function GenreCycler({
 export function CertificationPicker({
   label,
   countries,
+  countryNames,
   country,
   gte,
   lte,
@@ -236,6 +269,9 @@ export function CertificationPicker({
 }: {
   label: string
   countries: CertificationsByCountry
+  /** TMDB's certification response is keyed by code with no name attached —
+   *  this is what resolves each key to something a person reads. */
+  countryNames: CountryLookup
   country: string | undefined
   gte: string | undefined
   lte: string | undefined
@@ -246,9 +282,15 @@ export function CertificationPicker({
     certification_lte: string | undefined
   }) => void
 }) {
-  const codes = Object.keys(countries).sort((a, b) =>
-    a === 'US' ? -1 : b === 'US' ? 1 : a.localeCompare(b),
-  )
+  // Sorted by the name shown, not by the code behind it: listed by code, "GB"
+  // sits between "FR" and "HU" while reading "United Kingdom", and the list
+  // looks unsorted. US stays pinned first — it is the scale most of these
+  // catalogs are built against.
+  const codes = Object.keys(countries).sort((a, b) => {
+    if (a === 'US') return -1
+    if (b === 'US') return 1
+    return countryName(a, countryNames).localeCompare(countryName(b, countryNames))
+  })
   const scale: Certification[] = country
     ? [...(countries[country] ?? [])].sort((a, b) => a.order - b.order)
     : []
@@ -272,42 +314,43 @@ export function CertificationPicker({
   return (
     <div className="flex flex-col gap-2">
       <label className="type-eyebrow">{label}</label>
-      <div className="flex items-center gap-3">
-        <div className="w-[90px] shrink-0">
-          <Select
-            value={country ?? ''}
-            onChange={(next) =>
-              onChange({
-                certification_country: next || undefined,
-                certification_gte: undefined,
-                certification_lte: undefined,
-              })
-            }
-            placeholder="Country"
-            options={codes.map((code) => ({ value: code, label: code }))}
-          />
-        </div>
+      {/* `items-start`, not `items-center`: the slider carries a value caption
+          under it and the select doesn't, so centring the two hangs the select
+          half a line low. */}
+      <div className="flex items-start gap-3">
+        <Select
+          value={country ?? ''}
+          onChange={(next) =>
+            onChange({
+              certification_country: next || undefined,
+              certification_gte: undefined,
+              certification_lte: undefined,
+            })
+          }
+          placeholder="Any country"
+          options={codes.map((code) => ({ value: code, label: countryName(code, countryNames) }))}
+        />
         {country && scale.length > 0 && (
-          <div className="flex-1">
+          <div className="min-w-0 flex-1 pt-1.5">
+            {/* One `onChange`, both bounds. Written as two calls this reported
+                the moved thumb and then the stale one, and whichever ran last
+                won — which is why the low thumb used to snap straight back. */}
             <DualRangeSlider
               min={0}
               max={lastIndex}
               step={1}
               low={lowIndex}
               high={highIndex}
-              onLow={(next) => onSlide(next, highIndex)}
-              onHigh={(next) => onSlide(lowIndex, next)}
+              onChange={onSlide}
               formatValue={(index) => scale[index]?.certification ?? '–'}
             />
           </div>
         )}
       </div>
       {country && scale.length === 0 && (
-        <p className="type-data text-dimmer m-0 text-[10.5px]">
-          Couldn't load ratings for {country} from TMDB.
-        </p>
+        <FieldNote>Couldn't load ratings for {countryName(country, countryNames)} from TMDB.</FieldNote>
       )}
-      {error && <p className="type-data text-danger m-0 text-[10.5px]">{error}</p>}
+      {error && <FieldNote tone="danger">{error}</FieldNote>}
     </div>
   )
 }

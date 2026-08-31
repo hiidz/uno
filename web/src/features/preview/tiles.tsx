@@ -1,4 +1,4 @@
-import type { PreviewItem, TileShape } from '@/api'
+import type { PreviewItem, TileShape, TMDBKind } from '@/api'
 import type { PreviewFolder } from './model'
 
 /**
@@ -141,9 +141,21 @@ export function TileStrip({ shape, tiles }: { shape: TileShape; tiles: CatalogTi
   )
 }
 
-export function TileGrid({ shape, tiles }: { shape: TileShape; tiles: CatalogTiles }) {
+export function TileGrid({
+  shape,
+  tiles,
+  kind,
+}: {
+  shape: TileShape
+  tiles: CatalogTiles
+  /** Set only where every tile in the run is the same kind, which is what
+   *  makes a TMDB link constructible. Omitted, the tiles stay inert. */
+  kind?: TMDBKind
+}) {
   const width = 88
-  return <TileRun tiles={tiles} width={width} height={width / TILE_ASPECT[shape]} wrap />
+  return (
+    <TileRun tiles={tiles} width={width} height={width / TILE_ASPECT[shape]} wrap kind={kind} />
+  )
 }
 
 /**
@@ -158,11 +170,13 @@ export function TileRun({
   width,
   height,
   wrap,
+  kind,
 }: {
   tiles: CatalogTiles
   width: number
   height: number
   wrap: boolean
+  kind?: TMDBKind
 }) {
   const className = `flex gap-2 overflow-hidden ${wrap ? 'flex-wrap' : ''}`
 
@@ -184,7 +198,7 @@ export function TileRun({
   return (
     <div className={className}>
       {tiles.items.map((item) => (
-        <ContentTile key={item.tmdb_id} item={item} width={width} height={height} />
+        <ContentTile key={item.tmdb_id} item={item} width={width} height={height} kind={kind} />
       ))}
     </div>
   )
@@ -193,22 +207,27 @@ export function TileRun({
 /**
  * One real title. The title sits behind the poster rather than beside it, so a
  * title TMDB has no poster for degrades to a readable tile, not an empty box.
+ *
+ * **A link when the caller knows the kind, a plain tile otherwise.** `tmdb_id`
+ * plus movie-or-tv is the whole of a themoviedb.org URL, and checking a title
+ * the recipe returned is the obvious next question once the tiles are on
+ * screen. It opens in a new tab: the builder holds unsaved form state, and
+ * navigating away from it to read a synopsis would discard the work.
  */
 export function ContentTile({
   item,
   width,
   height,
+  kind,
 }: {
   item: PreviewItem
   width: number
   height: number
+  kind?: TMDBKind
 }) {
-  return (
-    <span
-      title={item.year ? `${item.title} (${item.year})` : item.title}
-      style={{ width: `${width}px`, height: `${height}px` }}
-      className="bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border"
-    >
+  const name = item.year ? `${item.title} (${item.year})` : item.title
+  const face = (
+    <>
       <span className="type-data text-dimmer px-1 text-center text-[9px] leading-tight">
         {item.title}
       </span>
@@ -220,7 +239,30 @@ export function ContentTile({
           className="absolute inset-0 h-full w-full object-cover"
         />
       )}
-    </span>
+    </>
+  )
+  const box = 'bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border'
+  const style = { width: `${width}px`, height: `${height}px` }
+
+  if (!kind) {
+    return (
+      <span title={name} style={style} className={box}>
+        {face}
+      </span>
+    )
+  }
+
+  return (
+    <a
+      href={`https://www.themoviedb.org/${kind}/${item.tmdb_id}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`${name} — open on TMDB`}
+      style={style}
+      className={`${box} hover:border-ink focus-visible:ring-ink cursor-pointer transition-colors outline-none focus-visible:ring-2`}
+    >
+      {face}
+    </a>
   )
 }
 

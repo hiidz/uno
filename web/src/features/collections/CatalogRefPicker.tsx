@@ -36,7 +36,7 @@ export function CatalogRefPicker({
   )
 
   return (
-    <div className="border-line-hi bg-raised mt-2 flex flex-col gap-2 border p-2.5">
+    <div className="border-line-hi bg-raised mt-2 flex flex-col gap-3 border p-3">
       <div className="flex items-center gap-2">
         <input
           type="search"
@@ -45,7 +45,7 @@ export function CatalogRefPicker({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search catalogs by name or genre…"
           aria-label="Search catalogs to add to this folder"
-          className="field type-data w-full text-[11.5px]"
+          className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px]"
         />
         <button type="button" onClick={onClose} className="btn-ghost shrink-0">
           Done
@@ -53,7 +53,7 @@ export function CatalogRefPicker({
       </div>
 
       {matches.length === 0 ? (
-        <p className="type-data text-dimmer m-0 px-1 py-1.5 text-[10.5px]">
+        <p className="type-data text-dimmer m-0 px-1 py-1.5 text-[11px]">
           {options.length === 0
             ? 'No catalogs exist yet. Build one under Manage catalogs first.'
             : query.trim()
@@ -61,32 +61,32 @@ export function CatalogRefPicker({
               : 'Every catalog you can use is already in this folder.'}
         </p>
       ) : (
-        <ul className="m-0 flex max-h-[210px] list-none flex-col overflow-y-auto p-0">
+        <ul className="m-0 flex max-h-[210px] max-w-[42rem] list-none flex-col overflow-y-auto p-0">
           {matches.map((option) => (
             <li key={option.id}>
               <button
                 type="button"
                 onClick={() => onAdd(option.id)}
-                className="border-line hover:bg-raised-hi flex w-full items-center gap-2.5 border-b py-1.5 pr-1 text-left transition-colors last:border-b-0"
+                className="border-line hover:bg-raised-hi grid w-full grid-cols-[3px_minmax(0,1fr)_7rem_20px] items-center gap-x-3 border-b py-2 text-left transition-colors last:border-b-0"
               >
                 <TypeBar
                   kind={option.catalog.type}
                   owned={option.catalog.owned}
                   className="min-h-[22px]"
                 />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px]">{option.name}</span>
-                  <span className="type-data text-dimmer block truncate text-[10px]">
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="truncate text-[12.5px]">{option.name}</span>
+                  <span className="type-data text-dimmer truncate text-[10.5px]">
                     {option.recipe}
                   </span>
                 </span>
                 {/* The type bar carries kind and ownership visually; it's
                     aria-hidden, so both facts have to exist as text too. */}
-                <span className="type-data text-dimmer shrink-0 text-[10px]">
+                <span className="type-data text-dimmer truncate text-[10.5px]">
                   {option.catalog.type === 'movie' ? 'movie' : 'series'} ·{' '}
                   {option.catalog.owned ? 'you' : 'community'}
                 </span>
-                <span aria-hidden="true" className="text-dim shrink-0 px-1 text-[13px]">
+                <span aria-hidden="true" className="text-dim text-center text-[13px]">
                   +
                 </span>
                 <span className="sr-only">Add {option.name} to this folder</span>

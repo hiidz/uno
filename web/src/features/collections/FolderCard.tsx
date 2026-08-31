@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TypeBar } from '@/components/TypeBar'
-import { Checkbox, Segmented, TextInput } from '@/components/fields'
+import { Checkbox, FieldNote, Segmented, TextInput } from '@/components/fields'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import { TILE_SHAPES, type FolderErrors, type FolderFormState } from './collectionForm'
 import type { RefOption } from './refs'
@@ -202,16 +202,19 @@ export function FolderCard({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`border-line bg-ground flex flex-col gap-3 border p-3 ${
+      className={`border-line bg-ground flex flex-col gap-4 border p-4 ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-3">
         <Grip label={`Reorder ${label}`} sortable={sortable} />
-        <span className="type-data text-dimmer w-[52px] shrink-0 text-[10px]">
+        <span className="type-data text-dimmer w-[52px] shrink-0 text-[10.5px]">
           tab {position + 1}/{total}
         </span>
-        <div className="min-w-0 flex-1">
+        {/* Sized, not stretched, and the remove button follows it directly:
+            a title box spanning the card left Remove marooned at the far
+            edge, a hand's width from the folder it removes. */}
+        <div className="w-full max-w-[var(--w-entry)] min-w-0">
           <TextInput
             value={folder.title}
             onChange={(title) => onChange({ title })}
@@ -223,18 +226,19 @@ export function FolderCard({
         <button
           type="button"
           onClick={onRemove}
-          className="border-line-hi text-dim hover:text-danger hover:border-danger shrink-0 rounded-[2px] border px-1.5 py-1 text-[10px] tracking-[0.07em] uppercase transition-colors"
+          className="border-line-hi text-dim hover:text-danger hover:border-danger shrink-0 rounded-[2px] border px-2.5 py-1.5 text-[10.5px] tracking-[0.08em] uppercase transition-colors"
         >
           Remove
         </button>
       </div>
 
-      {errors?.title && (
-        <p className="type-data text-danger m-0 text-[10.5px]">{errors.title}</p>
-      )}
+      {errors?.title && <FieldNote tone="danger">{errors.title}</FieldNote>}
 
-      <div className="grid gap-x-4 gap-y-3 sm:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
-        <div className="flex flex-col gap-1.5">
+      {/* `max-content` on the first track, not a pixel guess: the tile-shape
+          toggle names four shapes and a fixed 260px column clipped "Square"
+          to "Sq". The track is now whatever the toggle needs. */}
+      <div className="grid gap-x-8 gap-y-4 sm:grid-cols-[max-content_minmax(0,1fr)]">
+        <div className="flex flex-col gap-2">
           <label className="type-eyebrow">Tile shape</label>
           <Segmented
             ariaLabel={`Tile shape for ${label}`}
@@ -251,14 +255,12 @@ export function FolderCard({
               })),
             ]}
           />
-          <p className="type-data text-dimmer m-0 text-[10.5px]">
-            Default uses the standard poster image format.
-          </p>
+          <FieldNote>Default uses the standard poster image format.</FieldNote>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-4">
           <div className="flex items-end gap-2">
-            <div className="flex w-[86px] shrink-0 flex-col gap-1.5">
+            <div className="flex w-[var(--w-code)] shrink-0 flex-col gap-2">
               <label className="type-eyebrow">Emoji</label>
               <TextInput
                 value={folder.coverEmoji}
@@ -268,7 +270,7 @@ export function FolderCard({
                 ariaLabel={`Cover emoji for ${label}`}
               />
             </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
               <label className="type-eyebrow">Cover image URL</label>
               <TextInput
                 value={folder.coverImageURL}
@@ -287,8 +289,8 @@ export function FolderCard({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
           <span className="type-eyebrow flex-1">
             Catalogs{' '}
             <span className="type-data text-dimmer normal-case">
@@ -302,12 +304,10 @@ export function FolderCard({
           )}
         </div>
 
-        {errors?.catalogIDs && (
-          <p className="type-data text-danger m-0 text-[10.5px]">{errors.catalogIDs}</p>
-        )}
+        {errors?.catalogIDs && <FieldNote tone="danger">{errors.catalogIDs}</FieldNote>}
 
         {folder.catalogIDs.length === 0 ? (
-          <p className="type-data text-dimmer m-0 py-1 text-[10.5px]">
+          <p className="type-data text-dimmer m-0 py-1 text-[11px]">
             Nothing in this folder yet — it would render as an empty tab.
           </p>
         ) : (
@@ -315,7 +315,10 @@ export function FolderCard({
             items={folder.catalogIDs.map((id) => refDragID(folder.key, id))}
             strategy={verticalListSortingStrategy}
           >
-            <ul className="m-0 flex list-none flex-col p-0">
+            {/* Capped: the owner column is right-aligned in the row, and across
+                a card-wide row it ended up an inch of empty space from the
+                catalog it describes. */}
+            <ul className="m-0 flex max-w-[42rem] list-none flex-col p-0">
               {folder.catalogIDs.map((catalogID, index) => (
                 <RefRow
                   key={refDragID(folder.key, catalogID)}
@@ -381,7 +384,7 @@ function RefRow({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`border-line hover:bg-raised grid grid-cols-[16px_3px_28px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 border-b py-1.5 pr-1 transition-colors ${
+      className={`border-line hover:bg-raised grid grid-cols-[16px_3px_24px_minmax(0,1fr)_7rem_24px] items-center gap-x-3 border-b py-2 transition-colors ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >
@@ -393,23 +396,25 @@ function RefRow({
         <span aria-hidden="true" className="text-danger bg-current w-[3px] self-stretch rounded-[1px]" />
       )}
 
-      <span className="type-data text-dimmer text-[10px]">{position + 1}</span>
+      <span className="type-data text-dimmer text-[10.5px]">{position + 1}</span>
 
       {option ? (
-        <span className="min-w-0">
-          <span className="block truncate text-[12px]">{option.name}</span>
-          <span className="type-data text-dimmer block truncate text-[10px]">{option.recipe}</span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate text-[12.5px]">{option.name}</span>
+          <span className="type-data text-dimmer truncate text-[10.5px]">{option.recipe}</span>
         </span>
       ) : (
-        <span className="min-w-0">
-          <span className="text-danger block truncate text-[12px]">Unavailable catalog</span>
-          <span className="type-data text-dimmer block truncate text-[10px]">
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-danger truncate text-[12.5px]">Unavailable catalog</span>
+          <span className="type-data text-dimmer truncate text-[10.5px]">
             {catalogID} — deleted, or made private by its owner
           </span>
         </span>
       )}
 
-      <span className="type-data text-dimmer shrink-0 text-[10px]">
+      {/* A fixed track, not `auto`: these read down the folder as a column, and
+          sized to its content each row's owner label started at a different x. */}
+      <span className="type-data text-dimmer truncate text-[10.5px]">
         {option
           ? `${option.catalog.type === 'movie' ? 'movie' : 'series'} · ${
               option.catalog.owned ? 'you' : 'community'
@@ -420,7 +425,7 @@ function RefRow({
       <button
         type="button"
         onClick={onRemove}
-        className="text-dimmer hover:text-danger shrink-0 px-1.5 text-[13px] leading-none transition-colors"
+        className="text-dimmer hover:text-danger grid h-6 w-6 place-items-center rounded-[2px] text-[13px] leading-none transition-colors"
       >
         <span aria-hidden="true">×</span>
         <span className="sr-only">

@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CertificationsByCountry, Genre, TMDBParams } from '@/api'
+import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
-import {
-  LANGUAGES,
-} from './languages'
+import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
   emptyForm,
@@ -24,6 +22,7 @@ import {
   CertificationPicker,
   Checkbox,
   Field,
+  FieldNote,
   GenreCycler,
   RangeField,
   Segmented,
@@ -48,6 +47,8 @@ export function CatalogEditor({
   initial,
   genres,
   certifications,
+  countryNames,
+  languages,
   saving,
   serverError,
   onSave,
@@ -58,6 +59,8 @@ export function CatalogEditor({
   initial: CatalogFormState | null
   genres: { movie: Genre[]; tv: Genre[] }
   certifications: { movie: CertificationsByCountry; tv: CertificationsByCountry }
+  countryNames: CountryLookup
+  languages: Language[]
   saving: boolean
   /** Plain-text body of a server 400. Should be unreachable — the form mirrors
    *  every rule — so it renders as an unexpected-case banner, not a field. */
@@ -69,6 +72,16 @@ export function CatalogEditor({
   const baseline = useMemo(() => initial ?? emptyForm(), [initial])
   const [state, setState] = useState<CatalogFormState>(baseline)
   const [showErrors, setShowErrors] = useState(false)
+
+  // Sorted by the name shown, not TMDB's response order, so the dropdown
+  // reads alphabetically like the country and certification pickers.
+  const languageOptions = useMemo(
+    () =>
+      [...languages]
+        .sort((a, b) => a.english_name.localeCompare(b.english_name))
+        .map(({ iso_639_1, english_name }) => ({ value: iso_639_1, label: english_name })),
+    [languages],
+  )
 
   // Fed the recipe as it stands on every render, but only *fetches* when the
   // preview block's button is pressed — see `useRecipeTiles`. `name` and
@@ -190,9 +203,9 @@ export function CatalogEditor({
         </>
       }
     >
-        <div className="grid gap-x-8 gap-y-5 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+        <div className="grid gap-x-8 gap-y-6 md:grid-cols-[minmax(0,232px)_minmax(0,1fr)]">
           {/* --- identity ------------------------------------------------ */}
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-6">
             <Field label="Name" error={errorFor('name')}>
               <TextInput
                 value={state.name}
@@ -236,9 +249,9 @@ export function CatalogEditor({
           </div>
 
           {/* --- filters -------------------------------------------------- */}
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-6">
             <Field label="Sort by" error={errorFor('sort_by')}>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Select
                   value={sortField}
                   onChange={(field) =>
@@ -247,19 +260,17 @@ export function CatalogEditor({
                   placeholder="Popularity"
                   options={SORT_FIELDS[state.type]}
                 />
-                <div className="w-[104px] shrink-0">
-                  <Segmented
-                    ariaLabel="Sort direction"
-                    value={sortDirection}
-                    onChange={(direction) =>
-                      patchParams({ sort_by: serializeSortBy(sortField || 'popularity', direction) })
-                    }
-                    options={[
-                      { value: 'desc', label: 'High–low' },
-                      { value: 'asc', label: 'Low–high' },
-                    ]}
-                  />
-                </div>
+                <Segmented
+                  ariaLabel="Sort direction"
+                  value={sortDirection}
+                  onChange={(direction) =>
+                    patchParams({ sort_by: serializeSortBy(sortField || 'popularity', direction) })
+                  }
+                  options={[
+                    { value: 'desc', label: 'Descending' },
+                    { value: 'asc', label: 'Ascending' },
+                  ]}
+                />
               </div>
             </Field>
 
@@ -279,7 +290,12 @@ export function CatalogEditor({
               }
             />
 
-            <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+            {/* `xl`, not `sm`: the breakpoint measures the viewport, and this
+                grid sits in a pane that is the viewport minus a 372px rail
+                minus the identity column. Splitting at `sm` gave each half
+                about 150px, which is narrower than the two number boxes
+                inside it — they overflowed the column rather than wrapping. */}
+            <div className="grid gap-x-8 gap-y-6 xl:grid-cols-2">
               <RangeField
                 label="Rating"
                 error={errorFor('vote_average')}
@@ -324,8 +340,11 @@ export function CatalogEditor({
                     patchParams({ with_original_language: value || undefined })
                   }
                   placeholder="Any"
-                  options={LANGUAGES.map(({ code, name }) => ({ value: code, label: name }))}
+                  options={languageOptions}
                 />
+                {languageOptions.length === 0 && (
+                  <FieldNote>Couldn't load languages from TMDB.</FieldNote>
+                )}
               </Field>
             </div>
 
@@ -339,6 +358,7 @@ export function CatalogEditor({
             <CertificationPicker
               label="Certification"
               countries={activeCertifications}
+              countryNames={countryNames}
               country={state.params.certification_country}
               gte={state.params.certification_gte ?? state.params.certification}
               lte={state.params.certification_lte ?? state.params.certification}
@@ -361,10 +381,15 @@ export function CatalogEditor({
           </div>
         </div>
 
-        <RecipePreview preview={preview} invalid={recipeInvalid} onRun={runPreview} />
+        <RecipePreview
+          preview={preview}
+          type={state.type}
+          invalid={recipeInvalid}
+          onRun={runPreview}
+        />
 
         {serverError && (
-          <p className="type-data text-danger border-danger mt-5 border-l-2 pl-3 text-[11px]">
+          <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
             The server rejected this catalog: {serverError}
           </p>
         )}
@@ -395,20 +420,21 @@ function DateWindow({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3">
-        <label className="type-eyebrow flex-1">{label}</label>
-        <div className="w-[210px]">
-          <Segmented
-            ariaLabel={`${label} mode`}
-            value={state.dateMode}
-            onChange={onMode}
-            options={[
-              { value: 'any', label: 'Any' },
-              { value: 'fixed', label: 'Range' },
-              { value: 'rolling', label: 'Recent' },
-            ]}
-          />
-        </div>
+      {/* The mode toggle sits beside its label rather than at the far edge of
+          the column: pushed apart by a `flex-1` label the two stopped reading
+          as one control. Same for Genres below. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="type-eyebrow">{label}</label>
+        <Segmented
+          ariaLabel={`${label} mode`}
+          value={state.dateMode}
+          onChange={onMode}
+          options={[
+            { value: 'any', label: 'Any' },
+            { value: 'fixed', label: 'Range' },
+            { value: 'rolling', label: 'Recent' },
+          ]}
+        />
       </div>
 
       {state.dateMode === 'fixed' && (
@@ -423,9 +449,9 @@ function DateWindow({
                   : { first_air_date_gte: event.target.value || undefined },
               )
             }
-            className="field type-data w-full"
+            className="field type-data w-full max-w-[var(--w-date)]"
           />
-          <span className="text-dimmer shrink-0 text-[12px]">–</span>
+          <span className="text-dimmer shrink-0 text-[12.5px]">–</span>
           <input
             type="date"
             value={lte ?? ''}
@@ -436,39 +462,191 @@ function DateWindow({
                   : { first_air_date_lte: event.target.value || undefined },
               )
             }
-            className="field type-data w-full"
+            className="field type-data w-full max-w-[var(--w-date)]"
           />
         </div>
       )}
 
       {state.dateMode === 'rolling' && (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={1}
-              value={days ?? ''}
-              placeholder="90"
-              onChange={(event) => {
-                const value = event.target.value === '' ? undefined : Number(event.target.value)
-                onParams(
-                  isMovie ? { released_within_days: value } : { aired_within_days: value },
-                )
-              }}
-              className="field type-data w-[110px]"
-            />
-            <span className="type-data text-dimmer text-[11px]">
-              {isMovie ? 'days since release' : 'days since an episode aired'}
-            </span>
-          </div>
-          {error && <p className="type-data text-danger m-0 text-[10.5px]">{error}</p>}
-          <p className="type-data text-dimmer m-0 text-[10.5px]">
-            Updates each time someone opens the row, so it always shows the most recent content.
-          </p>
-        </div>
+        <RollingWindow
+          isMovie={isMovie}
+          days={days}
+          error={error}
+          onDays={(value) =>
+            onParams(isMovie ? { released_within_days: value } : { aired_within_days: value })
+          }
+        />
       )}
     </div>
   )
+}
+
+/**
+ * The windows people actually ask for, as a row of presets rather than a box
+ * that wants a number of days.
+ *
+ * "90" is not a thing anyone thinks in — they think "the last three months" —
+ * and a bare number field made the user do the arithmetic and then guess
+ * whether they'd got it right. Each preset is still just `_within_days` on the
+ * wire, so nothing about the recipe or its validation changes; only the way
+ * the number is arrived at.
+ */
+const DATE_PRESETS: { days: number; label: string; describe: string }[] = [
+  { days: 30, label: '30 days', describe: 'the last 30 days' },
+  { days: 90, label: '90 days', describe: 'the last 90 days' },
+  { days: 182, label: '6 months', describe: 'the last 6 months' },
+  { days: 365, label: '1 year', describe: 'the last year' },
+]
+
+/**
+ * Upcoming is the same rolling filter with the window closed up to yesterday.
+ *
+ * `_within_days` becomes a `.gte` and nothing else — there is no upper bound —
+ * so a one-day window is "dated yesterday or later", which over a discover
+ * page sorted by popularity is the unreleased slate. It is a day wider than
+ * the word promises, and it recalculates daily like every other preset; the
+ * alternative, a fixed `gte` pinned to the day the catalog was saved, would
+ * read as "upcoming" for one day and then quietly rot.
+ */
+const UPCOMING_DAYS = 1
+
+const DAYS_PER_YEAR = 365
+
+function RollingWindow({
+  isMovie,
+  days,
+  error,
+  onDays,
+}: {
+  isMovie: boolean
+  days: number | undefined
+  error?: string
+  onDays: (days: number | undefined) => void
+}) {
+  const preset = DATE_PRESETS.find((option) => option.days === days)
+  const isUpcoming = days === UPCOMING_DAYS
+  // Only an exact number of years reads back into the box — 90 days is the
+  // preset's business, and showing "0" there would invite editing it into
+  // something the chip above already covers.
+  const customYears =
+    days !== undefined && days > DAYS_PER_YEAR && days % DAYS_PER_YEAR === 0
+      ? days / DAYS_PER_YEAR
+      : undefined
+
+  // A window none of the controls above can show: catalogs built before the
+  // presets existed carry whatever number was typed into the old day box, and
+  // 45 is neither a preset nor a whole year. Without a chip of its own it
+  // would render as nothing selected while 45 was still in the payload — and
+  // the first chip pressed would silently overwrite a setting the user never
+  // saw. Shown, selected, and replaced only on purpose.
+  const oddDays =
+    days !== undefined && !preset && !isUpcoming && customYears === undefined ? days : undefined
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {DATE_PRESETS.map((option) => (
+          <PresetChip
+            key={option.days}
+            label={option.label}
+            selected={option.days === days}
+            onClick={() => onDays(option.days)}
+          />
+        ))}
+        <PresetChip
+          label="Upcoming"
+          selected={isUpcoming}
+          onClick={() => onDays(UPCOMING_DAYS)}
+        />
+        {oddDays !== undefined && (
+          <PresetChip
+            label={`${oddDays} days`}
+            selected
+            onClick={() => onDays(oddDays)}
+          />
+        )}
+
+        <span className="bg-line mx-1 h-4 w-px shrink-0" aria-hidden="true" />
+
+        <label className="flex items-center gap-1.5">
+          <span className="sr-only">Custom window, in years</span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={customYears ?? ''}
+            placeholder="#"
+            onChange={(event) => {
+              const years = Number(event.target.value)
+              onDays(
+                event.target.value === '' || years < 1
+                  ? undefined
+                  : years * DAYS_PER_YEAR,
+              )
+            }}
+            className={`field type-data w-[3.25rem] px-2 py-1 text-center text-[12px] ${
+              customYears !== undefined ? 'border-dim text-ink' : ''
+            }`}
+          />
+          <span className="type-data text-dimmer text-[10.5px]">years</span>
+        </label>
+      </div>
+
+      {error && <FieldNote tone="danger">{error}</FieldNote>}
+
+      {/* What the chip above resolves to, in the words the row will mean on the
+          day it is opened. The window is recomputed server-side per request,
+          so the date shown is today's answer, not a stored one. */}
+      {days !== undefined && !error && (
+        <FieldNote>
+          {isUpcoming
+            ? `${isMovie ? 'Released' : 'Airing'} from ${formatWindowStart(UPCOMING_DAYS)} onward — recalculated daily, so it stays ahead of today.`
+            : `${isMovie ? 'Released' : 'Aired'} since ${formatWindowStart(days)} — ${
+                preset?.describe ?? describeWindow(days, customYears)
+              }, recalculated daily. There is no upper bound, so anything newer counts too.`}
+        </FieldNote>
+      )}
+    </div>
+  )
+}
+
+function PresetChip({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`rounded-[2px] border px-2.5 py-1 text-[11px] whitespace-nowrap transition-colors ${
+        selected
+          ? 'bg-raised-hi border-dim text-ink'
+          : 'border-line text-dim hover:border-dim hover:text-ink'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
+/** A window with no preset behind it, in the unit it was entered in — someone
+ *  who typed "3 years" should not have to recognise 1095 as their own input. */
+function describeWindow(days: number, years: number | undefined): string {
+  if (years !== undefined) return `the last ${years} years`
+  return `the last ${days} days`
+}
+
+/** The date the server's `daysAgo` would produce for this window today. */
+function formatWindowStart(days: number): string {
+  const start = new Date()
+  start.setDate(start.getDate() - days)
+  return start.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 
@@ -504,7 +682,7 @@ function WatchProviders({
             })
           }
           placeholder="any"
-          className="field type-data w-full"
+          className="field type-data w-full max-w-[var(--w-entry)]"
         />
         {params.with_watch_providers && (
           <>
@@ -516,7 +694,7 @@ function WatchProviders({
               }
               placeholder="US"
               maxLength={2}
-              className="field type-data w-[70px]"
+              className="field type-data w-full max-w-[var(--w-code)] min-w-0 shrink"
             />
           </>
         )}

@@ -56,7 +56,7 @@ export function EditorShell({
     <main className="flex min-w-0 flex-col lg:h-full lg:min-h-0">
       <header className="border-line flex shrink-0 items-center gap-3 border-b px-6 py-4">
         <TypeBar kind={kind} owned={owned} className="min-h-[30px]" />
-        <div className="flex min-w-0 flex-col gap-[3px]">
+        <div className="flex min-w-0 flex-col gap-1">
           <span className="type-eyebrow">{eyebrow}</span>
           <h1 className="type-display m-0 truncate text-[17px]">{title}</h1>
         </div>
@@ -71,9 +71,19 @@ export function EditorShell({
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
+      {/* One inset, `px-6 py-4`, on all three bands: the header, the form, and
+          the footer are stacked and share an edge, so a padding that differs
+          between them reads as a misalignment rather than as a rhythm.
 
-      <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-6 py-3.5">
+          `--w-form` caps the form itself, not the pane. The pane is as wide as
+          the window allows and the editors are two columns of short controls —
+          past about 860px a row stops being something you read across, and
+          every field in it starts looking stretched. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div className="w-full max-w-[var(--w-form)]">{children}</div>
+      </div>
+
+      <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-6 py-4">
         {footer}
       </div>
     </main>

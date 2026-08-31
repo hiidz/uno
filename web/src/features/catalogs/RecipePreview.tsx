@@ -1,3 +1,5 @@
+import { tmdbKind } from '@/api'
+import type { CatalogType } from '@/api'
 import { CONTENT_TILE_SHAPE, TileGrid } from '@/features/preview/tiles'
 import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles'
 
@@ -12,13 +14,20 @@ import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles
  * The whole block is one TMDB page — the same page the row itself is, so this
  * is the row, not a sample of it. The exception is a shuffling recipe, which
  * takes a random page per call on the addon path and is labelled as such.
+ *
+ * Every tile links to its TMDB page, which is where the question a preview
+ * raises — "what *is* that one?" — gets answered.
  */
 export function RecipePreview({
   preview,
+  type,
   invalid,
   onRun,
 }: {
   preview: Preview
+  /** Which half of themoviedb.org a tile belongs to. The recipe's own type;
+   *  every tile in one run shares it. */
+  type: CatalogType
   /** The form has errors, so there is no valid recipe to run. The server would
    *  reject it, and the form already knows why. */
   invalid: boolean
@@ -29,7 +38,7 @@ export function RecipePreview({
   onRun: () => void
 }) {
   return (
-    <section className="border-line mt-6 flex flex-col gap-3 border-t pt-5">
+    <section className="border-line mt-8 flex flex-col gap-4 border-t pt-6">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="type-eyebrow flex-1">What this returns</span>
         <Notes preview={preview} invalid={invalid} />
@@ -47,7 +56,7 @@ export function RecipePreview({
         </button>
       </div>
 
-      <Body preview={preview} invalid={invalid} />
+      <Body preview={preview} type={type} invalid={invalid} />
     </section>
   )
 }
@@ -88,10 +97,18 @@ function Notes({ preview, invalid }: { preview: Preview; invalid: boolean }) {
   return null
 }
 
-function Body({ preview, invalid }: { preview: Preview; invalid: boolean }) {
+function Body({
+  preview,
+  type,
+  invalid,
+}: {
+  preview: Preview
+  type: CatalogType
+  invalid: boolean
+}) {
   if (preview.idle) {
     return (
-      <p className="type-data text-dimmer m-0 text-[11px]">
+      <p className="type-data text-dimmer m-0 max-w-[var(--w-entry)] text-[11px] leading-[1.45]">
         {invalid
           ? 'Nothing to run yet — the filters above have something the server would reject.'
           : 'Nothing fetched yet. Press "Preview results" to see what content these filters will display.'}
@@ -103,7 +120,7 @@ function Body({ preview, invalid }: { preview: Preview; invalid: boolean }) {
   // asked for, so a failed fetch is stated outright rather than degraded past.
   if (preview.tiles.isError) {
     return (
-      <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px]">
+      <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]">
         Couldn't reach TMDB. Your filters are fine — this is the preview's own fetch. Try again.
       </p>
     )
@@ -115,14 +132,14 @@ function Body({ preview, invalid }: { preview: Preview; invalid: boolean }) {
   // pressed the button to get.
   if (!preview.tiles.isLoading && preview.tiles.items.length === 0) {
     return (
-      <div className="border-series bg-series/5 flex flex-col gap-1.5 rounded-[2px] border border-l-2 px-4 py-3.5">
+      <div className="border-series bg-series/5 flex max-w-[var(--w-entry)] flex-col gap-2 rounded-[2px] border border-l-2 px-4 py-3">
         <span className="text-[13px] font-medium">Nothing matches these filters.</span>
-        <p className="type-data text-dim m-0 text-[11px]">
+        <p className="type-data text-dim m-0 text-[11px] leading-[1.45]">
           TMDB has no titles matching these filters. This row would be empty in Nuvio. Loosen a filter and try again.
         </p>
       </div>
     )
   }
 
-  return <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} />
+  return <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
 }

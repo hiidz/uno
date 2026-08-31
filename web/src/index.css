@@ -136,6 +136,30 @@
        every shadcn primitive picks it up instead of arriving rounded. */
     --radius: 0.125rem;
 
+    /* Tells the browser to draw its own chrome dark: the option list a
+       `<select>` drops, `input[type=date]`'s calendar and picker, the number
+       spinners, and the scrollbars. Without it those arrive white on a
+       near-black page — the single loudest way this design reads as
+       unfinished. */
+    color-scheme: dark;
+
+    /* Field widths, named for what a field holds rather than for the space
+       beside it. A date is ten characters wide whether the pane is 500px or
+       1200px, and an input stretched to the pane's edge reads as a mistake
+       however much room there was. Applied as `max-w-` so a narrow pane still
+       shrinks them. */
+    --w-code: 4.5rem; /* a two-letter region, a rating scale's country */
+    --w-num: 6.5rem; /* one bounded number */
+    --w-date: 10.5rem;
+    --w-pick: 16rem; /* a select over short labels */
+    --w-entry: 24rem; /* a name, a short comma-separated list */
+    --w-track: 22rem; /* a slider — long enough to aim, not to wander */
+
+    /* The form's own column. The editors fill a pane that is as wide as the
+       window allows, and a row of controls spread across 1100px stops being a
+       row you can read across. */
+    --w-form: 54rem;
+
     --sidebar: #0B0D11;
     --sidebar-foreground: var(--uno-ink);
     --sidebar-primary: var(--uno-ink);
@@ -250,6 +274,61 @@
     }
     .field:focus {
         border-color: var(--uno-dim);
+    }
+
+    /* A select's closed state is what is on screen almost all the time, so it
+       is drawn rather than inherited: the platform's arrow is replaced by a
+       chevron in the palette's own dim, at the same 11px inset as the text on
+       the other side. The open list stays native — `color-scheme: dark` is
+       what makes that legible. */
+    select.field {
+        appearance: none;
+        padding-right: 28px;
+        background-image: linear-gradient(
+                45deg,
+                transparent 50%,
+                var(--uno-dim) 50%
+            ),
+            linear-gradient(135deg, var(--uno-dim) 50%, transparent 50%);
+        background-position:
+            right 15px top 55%,
+            right 11px top 55%;
+        background-size:
+            4px 4px,
+            4px 4px;
+        background-repeat: no-repeat;
+    }
+
+    /* The palette's own checkbox. `accent-color` only tints the platform's
+       box — it keeps the platform's radius and its border, which is the one
+       control that stayed rounded in a design that is square throughout. */
+    .checkbox {
+        appearance: none;
+        flex: none;
+        width: 13px;
+        height: 13px;
+        border: 1px solid var(--uno-line-hi);
+        border-radius: 2px;
+        background: var(--uno-raised);
+        transition:
+            background 120ms ease,
+            border-color 120ms ease;
+    }
+    .checkbox:hover:not(:checked) {
+        border-color: var(--uno-dim);
+    }
+    .checkbox:checked {
+        background: var(--uno-ink);
+        border-color: var(--uno-ink);
+        /* The tick as a path rather than a glyph: a font's ✓ carries its own
+           side bearings and sits off-centre in a 13px box. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 4.8 8.5 9.5 3.8' fill='none' stroke='%230D0F13' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+    }
+    .checkbox:focus-visible {
+        outline: 2px solid var(--uno-movie);
+        outline-offset: 1px;
     }
 
     /* Ownership, encoded on the same device that carries type rather than

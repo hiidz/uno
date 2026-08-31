@@ -83,7 +83,7 @@ export function SortableRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`border-line bg-ground hover:bg-raised grid grid-cols-[16px_3px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-b py-2.5 pr-1 transition-colors ${
+      className={`border-line bg-ground hover:bg-raised grid grid-cols-[16px_3px_minmax(0,1fr)_auto_24px] items-center gap-x-3 border-b py-3 transition-colors ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >

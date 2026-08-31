@@ -277,6 +277,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
             initial={target.initial}
             genres={genres}
             certifications={library.certifications}
+            countryNames={library.countryNames}
+            languages={library.languages}
             saving={catalogSaving}
             serverError={
               (catalogMutations.create.error as Error | null)?.message ??

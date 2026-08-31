@@ -158,7 +158,7 @@ export function CollectionEditor({
       }
     >
           {droppedRefs.length > 0 && (
-            <p className="type-data text-dim border-series mb-5 border-l-2 pl-3 text-[11px]">
+            <p className="type-data text-dim border-series mb-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
               {droppedRefs.length === 1 ? 'One catalog was' : `${droppedRefs.length} catalogs were`}{' '}
               left out of this copy — {droppedRefs.length === 1 ? 'it is' : 'they are'} no longer
               shared with you. Everything else came across.
@@ -166,8 +166,8 @@ export function CollectionEditor({
           )}
 
           {/* --- collection ------------------------------------------------ */}
-          <div className="grid gap-x-8 gap-y-5 md:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
-            <div className="flex flex-col gap-5">
+          <div className="grid gap-x-8 gap-y-6 md:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+            <div className="flex flex-col gap-6">
               <Field label="Title" error={showErrors ? errors.title : undefined}>
                 <TextInput
                   value={state.title}
@@ -185,7 +185,7 @@ export function CollectionEditor({
               />
             </div>
 
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-6">
               <Field
                 label="View mode"
                 hint="How items are displayed in Nuvio. Leave unset to use Nuvio's default."
@@ -201,7 +201,7 @@ export function CollectionEditor({
                 />
               </Field>
 
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-4">
                 <Checkbox
                   checked={state.pinToTop}
                   onChange={(pinToTop) => patch({ pinToTop })}
@@ -230,7 +230,7 @@ export function CollectionEditor({
           </div>
 
           {/* --- folders ---------------------------------------------------- */}
-          <div className="border-line mt-6 flex items-center gap-3 border-t pt-5">
+          <div className="border-line mt-8 flex items-center gap-3 border-t pt-6">
             <span className="type-eyebrow flex-1">
               Folders{' '}
               <span className="type-data text-dimmer normal-case">({state.folders.length})</span>
@@ -243,7 +243,7 @@ export function CollectionEditor({
               Add folder
             </button>
           </div>
-          <p className="type-data text-dimmer mt-1.5 mb-3 text-[10.5px]">
+          <p className="type-data text-dimmer mt-2 mb-4 max-w-[38rem] text-[11px] leading-[1.45]">
             Folders become tabs in Nuvio. Drag to reorder them. Within each folder, reorder catalogs the same way.
           </p>
 
@@ -257,7 +257,7 @@ export function CollectionEditor({
               onReorderFolders={reorderFolders}
               onReorderRefs={(folderKey, catalogIDs) => patchFolder(folderKey, { catalogIDs })}
             >
-              <ul className="m-0 flex list-none flex-col gap-2 p-0">
+              <ul className="m-0 flex list-none flex-col gap-3 p-0">
                 {state.folders.map((folder, index) => (
                   <FolderCard
                     key={folder.key}
@@ -282,7 +282,7 @@ export function CollectionEditor({
           <CollectionPreview state={state} optionByID={optionByID} />
 
           {willDelete.length > 0 && (
-            <p className="type-data text-danger border-danger mt-4 border-l-2 pl-3 text-[11px]">
+            <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
               Saving deletes{' '}
               {willDelete.map((f) => f.title.trim() || 'an untitled folder').join(', ')} — the{' '}
               {willDelete.length === 1 ? 'folder and everything in it' : 'folders and everything in them'}{' '}
@@ -292,7 +292,7 @@ export function CollectionEditor({
           )}
 
           {serverError && (
-            <p className="type-data text-danger border-danger mt-4 border-l-2 pl-3 text-[11px]">
+            <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
               The server rejected this collection: {serverError}
             </p>
           )}

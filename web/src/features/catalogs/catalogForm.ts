@@ -197,7 +197,7 @@ export function validateForm(state: CatalogFormState): FieldErrors {
 
   if (state.dateMode === 'rolling') {
     const days = state.type === 'movie' ? p.released_within_days : p.aired_within_days
-    if (!days || days < 1) errors.within_days = 'Enter a number of days.'
+    if (!days || days < 1) errors.within_days = 'Pick a window.'
   }
 
   const ratingLow = p.vote_average_gte

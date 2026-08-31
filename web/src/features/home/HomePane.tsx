@@ -42,7 +42,7 @@ export function HomePane({
   const home = useHomeSelection()
 
   return (
-    <main className="flex flex-col gap-7 p-6 lg:min-h-0 lg:overflow-y-auto">
+    <main className="flex flex-col gap-8 p-6 lg:min-h-0 lg:overflow-y-auto">
       <div className="flex flex-wrap items-baseline gap-4">
         <h1 className="type-display m-0 text-[21px]">Your home screen</h1>
         <ViewSwitch view={view} onChange={onViewChange} />
@@ -75,7 +75,7 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
           type="button"
           onClick={() => onChange(option)}
           aria-pressed={view === option}
-          className={`type-data px-3 py-[5px] text-[10.5px] tracking-[0.08em] uppercase transition-colors ${
+          className={`type-data px-3 py-1.5 text-[10.5px] tracking-[0.08em] uppercase transition-colors ${
             view === option ? 'bg-raised-hi text-ink' : 'text-dim hover:text-ink'
           }`}
         >
@@ -97,8 +97,12 @@ function HomeList() {
     )
   }
 
+  // Capped, unlike Preview beside it. A row here is a name, a recipe and two
+  // controls; stretched to a 1100px pane the controls end up an inch of empty
+  // space away from the row they belong to. Preview is a drawing of a
+  // television and keeps the whole width.
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex max-w-[var(--w-form)] flex-col gap-8">
       <CollectionsBlock />
       <CatalogsBlock />
     </div>
@@ -107,8 +111,8 @@ function HomeList() {
 
 function Block({ label, note, children }: { label: string; note: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-1">
-      <div className="border-line-hi mb-1 flex items-baseline gap-3 border-b pb-2">
+    <section className="flex flex-col gap-2">
+      <div className="border-line-hi flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b pb-2">
         <span className="type-eyebrow">{label}</span>
         <span className="type-data text-dimmer text-[10.5px]">{note}</span>
       </div>
@@ -195,8 +199,8 @@ function CatalogsBlock() {
 
 function RowMeta({ name, detail, detached }: { name: string; detail: string; detached: boolean }) {
   return (
-    <div className="flex min-w-0 flex-col gap-[3px]">
-      <span className="truncate text-[14px] font-medium">{name}</span>
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="truncate text-[13px] font-medium">{name}</span>
       <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
         <span className="truncate">{detail}</span>
         {detached && (
@@ -238,7 +242,10 @@ function ShowInHomeToggle({
           ? `${name} displays on your home screen`
           : `${name} is hidden from your home screen`
       }
-      className={`type-data border-line-hi hover:border-dim flex items-center gap-1.5 rounded-[2px] border px-2.5 py-1 text-[10px] tracking-[0.05em] transition-colors ${
+      // A fixed width, because the two labels are different lengths and the
+      // toggles sit in a column: sized to their content, "on home" and
+      // "discover only" gave the column a ragged left edge.
+      className={`type-data border-line-hi hover:border-dim flex w-[116px] items-center justify-center gap-1.5 rounded-[2px] border px-2 py-1.5 text-[10.5px] tracking-[0.05em] transition-colors ${
         showInHome ? 'text-ink' : 'text-dim'
       }`}
     >
@@ -266,7 +273,7 @@ function RemoveButton({ label, onClick }: { label: string; onClick: () => void }
 }
 
 function EmptyBlock({ children }: { children: ReactNode }) {
-  return <p className="type-data text-dimmer m-0 py-2 text-[11px]">{children}</p>
+  return <p className="type-data text-dimmer m-0 py-3 text-[11px]">{children}</p>
 }
 
 function describeCollection(collection: Collection | undefined): string {
