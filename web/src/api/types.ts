@@ -109,6 +109,26 @@ export interface Country {
   native_name: string
 }
 
+/** One entry from `GET /api/watch-providers/{type}` — a streaming service
+ *  `with_watch_providers` accepts. `provider_id` is what goes on the wire;
+ *  `provider_name` is what the picker shows. Already sorted server-side by
+ *  TMDB's own prominence ranking. */
+export interface WatchProvider {
+  provider_id: number
+  provider_name: string
+  display_priority: number
+  logo_path: string
+}
+
+/** One entry from `GET /api/watch-regions` — a country TMDB has streaming
+ *  data for, which is what `watch_region` accepts. A strict subset of
+ *  `Country`, so the two are not interchangeable. */
+export interface WatchRegion {
+  iso_3166_1: string
+  english_name: string
+  native_name: string
+}
+
 /**
  * One tile from `POST /api/catalogs/preview`.
  *

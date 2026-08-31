@@ -24,6 +24,8 @@ export {
   fetchCertifications,
   fetchLanguages,
   fetchCountries,
+  fetchWatchProviders,
+  fetchWatchRegions,
   fetchCatalogPreview,
   fetchProfiles,
   selectProfile,
@@ -48,4 +50,6 @@ export type {
   TileShape,
   TMDBKind,
   TMDBParams,
+  WatchProvider,
+  WatchRegion,
 } from './types'

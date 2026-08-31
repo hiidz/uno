@@ -33,6 +33,12 @@ export const queryKeys = {
   languages: () => ['languages'] as const,
   countries: () => ['countries'] as const,
 
+  /** Keyed on region as well as type: the same service has a different id in
+   *  each market, so two regions are two different lists. */
+  watchProviders: (type: CatalogType, region: string) =>
+    ['watch-providers', type, region] as const,
+  watchRegions: () => ['watch-regions'] as const,
+
   /**
    * Keyed on the **recipe**, not on a catalog id. Two catalogs with identical
    * filters share one cache entry, as does an unsaved catalog in the builder

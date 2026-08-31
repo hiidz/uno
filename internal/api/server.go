@@ -92,6 +92,8 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /api/certifications/{type}", s.requireNuvioAuth(s.listCertifications))
 	s.router.HandleFunc("GET /api/languages", s.requireNuvioAuth(s.listLanguages))
 	s.router.HandleFunc("GET /api/countries", s.requireNuvioAuth(s.listCountries))
+	s.router.HandleFunc("GET /api/watch-providers/{type}", s.requireNuvioAuth(s.listWatchProviders))
+	s.router.HandleFunc("GET /api/watch-regions", s.requireNuvioAuth(s.listWatchRegions))
 
 	s.router.HandleFunc("GET /api/profiles", s.requireNuvioAuth(s.listProfiles))
 	s.router.HandleFunc("POST /api/profiles/select", s.requireNuvioAuth(s.selectProfile))

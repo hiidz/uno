@@ -43,6 +43,34 @@ func (s *Server) listCountries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, countries)
 }
 
+// listWatchProviders backs the builder's streaming-service picker. The
+// region is a query param rather than a path segment because it is optional
+// here: TMDB returns every service it knows about when watch_region is
+// omitted, which is what the picker shows before a region is chosen.
+func (s *Server) listWatchProviders(w http.ResponseWriter, r *http.Request) {
+	catalogType := r.PathValue("type")
+
+	providers, err := s.provider.WatchProviders(r.Context(), catalogType, r.URL.Query().Get("region"))
+	if err != nil {
+		if errors.Is(err, provider.ErrInvalidCatalogType) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "failed to fetch watch providers", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, providers)
+}
+
+func (s *Server) listWatchRegions(w http.ResponseWriter, r *http.Request) {
+	regions, err := s.provider.WatchRegions(r.Context())
+	if err != nil {
+		http.Error(w, "failed to fetch watch regions", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, regions)
+}
+
 func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
 	catalogType := r.PathValue("type")
 

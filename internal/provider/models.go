@@ -184,3 +184,31 @@ func (p TMDBTVParams) Validate() error {
 
 	return p.TMDBCommonParams.validate()
 }
+
+// WatchProvider is one streaming service TMDB can filter on —
+// with_watch_providers takes ProviderID, and the picker shows Name.
+// DisplayPriority is TMDB's own ranking of how prominent a service is in a
+// given region, so a list sorted by it puts the household names first.
+type WatchProvider struct {
+	ProviderID      int    `json:"provider_id"`
+	ProviderName    string `json:"provider_name"`
+	DisplayPriority int    `json:"display_priority"`
+	LogoPath        string `json:"logo_path"`
+}
+
+type watchProviderListResponse struct {
+	Results []WatchProvider `json:"results"`
+}
+
+// WatchRegion is one country TMDB has watch-provider data for. A strict
+// subset of the ISO 3166-1 country table, which is why watch_region reads
+// from this rather than reusing Countries.
+type WatchRegion struct {
+	ISO31661    string `json:"iso_3166_1"`
+	EnglishName string `json:"english_name"`
+	NativeName  string `json:"native_name"`
+}
+
+type watchRegionListResponse struct {
+	Results []WatchRegion `json:"results"`
+}

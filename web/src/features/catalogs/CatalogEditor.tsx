@@ -18,6 +18,7 @@ import {
   type DateMode,
 } from './catalogForm'
 import { RecipePreview } from './RecipePreview'
+import { WatchProviderPicker } from './WatchProviderPicker'
 import {
   CertificationPicker,
   Checkbox,
@@ -217,11 +218,7 @@ export function CatalogEditor({
 
             <Field
               label="Type"
-              hint={
-                mode === 'edit'
-                  ? "Can't be changed. Duplicate this catalog to make a series version."
-                  : 'Choose which type to see the appropriate filter options.'
-              }
+              hint={mode === 'edit' ? 'Fixed once created — duplicate to change it.' : undefined}
             >
               {mode === 'edit' ? (
                 <p className="type-data text-dim m-0 py-2 text-[13px]">
@@ -244,7 +241,7 @@ export function CatalogEditor({
               checked={state.isPublic}
               onChange={(isPublic) => patch({ isPublic })}
               label="Share with the community"
-              hint="Anyone signed in can add it to their own home screen."
+              hint="Others can add it to their own home screen."
             />
           </div>
 
@@ -267,8 +264,8 @@ export function CatalogEditor({
                     patchParams({ sort_by: serializeSortBy(sortField || 'popularity', direction) })
                   }
                   options={[
-                    { value: 'desc', label: 'Descending' },
-                    { value: 'asc', label: 'Ascending' },
+                    { value: 'desc', label: 'High to low' },
+                    { value: 'asc', label: 'Low to high' },
                   ]}
                 />
               </div>
@@ -308,8 +305,7 @@ export function CatalogEditor({
                 max={10}
               />
               <RangeField
-                label="Vote count"
-                hint="Filters out obscure titles with a handful of ratings."
+                label="Number of ratings"
                 error={errorFor('vote_count')}
                 low={state.params.vote_count_gte}
                 high={state.params.vote_count_lte}
@@ -343,7 +339,7 @@ export function CatalogEditor({
                   options={languageOptions}
                 />
                 {languageOptions.length === 0 && (
-                  <FieldNote>Couldn't load languages from TMDB.</FieldNote>
+                  <FieldNote>Couldn't load languages.</FieldNote>
                 )}
               </Field>
             </div>
@@ -356,7 +352,7 @@ export function CatalogEditor({
             />
 
             <CertificationPicker
-              label="Certification"
+              label="Age rating"
               countries={activeCertifications}
               countryNames={countryNames}
               country={state.params.certification_country}
@@ -366,7 +362,8 @@ export function CatalogEditor({
               onChange={(update) => patchParams({ ...update, certification: undefined })}
             />
 
-            <WatchProviders
+            <WatchProviderPicker
+              type={state.type}
               params={state.params}
               error={errorFor('watch_region')}
               onParams={patchParams}
@@ -376,7 +373,7 @@ export function CatalogEditor({
               checked={Boolean(state.params.randomized)}
               onChange={(randomized) => patchParams({ randomized: randomized || undefined })}
               label="Shuffle results"
-              hint="Randomizes the order each time someone opens the row. Pulls from a random page of matches."
+              hint="Shows a different set of titles each time the row opens."
             />
           </div>
         </div>
@@ -390,7 +387,7 @@ export function CatalogEditor({
 
         {serverError && (
           <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
-            The server rejected this catalog: {serverError}
+            Couldn't save this catalog: {serverError}
           </p>
         )}
     </EditorShell>
@@ -491,11 +488,11 @@ function DateWindow({
  * wire, so nothing about the recipe or its validation changes; only the way
  * the number is arrived at.
  */
-const DATE_PRESETS: { days: number; label: string; describe: string }[] = [
-  { days: 30, label: '30 days', describe: 'the last 30 days' },
-  { days: 90, label: '90 days', describe: 'the last 90 days' },
-  { days: 182, label: '6 months', describe: 'the last 6 months' },
-  { days: 365, label: '1 year', describe: 'the last year' },
+const DATE_PRESETS: { days: number; label: string }[] = [
+  { days: 30, label: '30 days' },
+  { days: 90, label: '90 days' },
+  { days: 182, label: '6 months' },
+  { days: 365, label: '1 year' },
 ]
 
 /**
@@ -523,7 +520,7 @@ function RollingWindow({
   error?: string
   onDays: (days: number | undefined) => void
 }) {
-  const preset = DATE_PRESETS.find((option) => option.days === days)
+  const isPreset = DATE_PRESETS.some((option) => option.days === days)
   const isUpcoming = days === UPCOMING_DAYS
   // Only an exact number of years reads back into the box — 90 days is the
   // preset's business, and showing "0" there would invite editing it into
@@ -540,7 +537,7 @@ function RollingWindow({
   // the first chip pressed would silently overwrite a setting the user never
   // saw. Shown, selected, and replaced only on purpose.
   const oddDays =
-    days !== undefined && !preset && !isUpcoming && customYears === undefined ? days : undefined
+    days !== undefined && !isPreset && !isUpcoming && customYears === undefined ? days : undefined
 
   return (
     <div className="flex flex-col gap-2">
@@ -594,16 +591,14 @@ function RollingWindow({
 
       {error && <FieldNote tone="danger">{error}</FieldNote>}
 
-      {/* What the chip above resolves to, in the words the row will mean on the
-          day it is opened. The window is recomputed server-side per request,
-          so the date shown is today's answer, not a stored one. */}
+      {/* The date the chip resolves to today. The window is recomputed
+          server-side per request, so this moves with the calendar — which is
+          the one thing the chip's own label can't say. */}
       {days !== undefined && !error && (
         <FieldNote>
           {isUpcoming
-            ? `${isMovie ? 'Released' : 'Airing'} from ${formatWindowStart(UPCOMING_DAYS)} onward — recalculated daily, so it stays ahead of today.`
-            : `${isMovie ? 'Released' : 'Aired'} since ${formatWindowStart(days)} — ${
-                preset?.describe ?? describeWindow(days, customYears)
-              }, recalculated daily. There is no upper bound, so anything newer counts too.`}
+            ? `${isMovie ? 'Released' : 'Airing'} from ${formatWindowStart(UPCOMING_DAYS)} onward, updated daily.`
+            : `${isMovie ? 'Released' : 'Aired'} since ${formatWindowStart(days)}, updated daily.`}
         </FieldNote>
       )}
     </div>
@@ -635,70 +630,9 @@ function PresetChip({
   )
 }
 
-/** A window with no preset behind it, in the unit it was entered in — someone
- *  who typed "3 years" should not have to recognise 1095 as their own input. */
-function describeWindow(days: number, years: number | undefined): string {
-  if (years !== undefined) return `the last ${years} years`
-  return `the last ${days} days`
-}
-
 /** The date the server's `daysAgo` would produce for this window today. */
 function formatWindowStart(days: number): string {
   const start = new Date()
   start.setDate(start.getDate() - days)
   return start.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-
-/**
- * Watch providers and region, likewise one control. There is no provider-list
- * endpoint, so ids are free text — the hint carries the only guidance
- * available.
- */
-function WatchProviders({
-  params,
-  error,
-  onParams,
-}: {
-  params: TMDBParams
-  error?: string
-  onParams: (update: Partial<TMDBParams>) => void
-}) {
-  return (
-    <Field
-      label="Streaming on"
-      hint="Streaming service IDs, comma-separated (e.g., 8, 9, 337). Find IDs in the TMDB documentation."
-      error={error}
-    >
-      <div className="flex items-center gap-2">
-        <input
-          value={params.with_watch_providers ?? ''}
-          onChange={(event) =>
-            onParams({
-              with_watch_providers: event.target.value.trim() || undefined,
-              watch_region: event.target.value.trim()
-                ? (params.watch_region ?? 'US')
-                : undefined,
-            })
-          }
-          placeholder="any"
-          className="field type-data w-full max-w-[var(--w-entry)]"
-        />
-        {params.with_watch_providers && (
-          <>
-            <span className="type-data text-dimmer shrink-0 text-[11px]">in</span>
-            <input
-              value={params.watch_region ?? ''}
-              onChange={(event) =>
-                onParams({ watch_region: event.target.value.toUpperCase() || undefined })
-              }
-              placeholder="US"
-              maxLength={2}
-              className="field type-data w-full max-w-[var(--w-code)] min-w-0 shrink"
-            />
-          </>
-        )}
-      </div>
-    </Field>
-  )
 }

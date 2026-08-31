@@ -12,6 +12,8 @@ import type {
   PreviewRequest,
   SelectedCatalog,
   SelectedProfile,
+  WatchProvider,
+  WatchRegion,
 } from './types'
 
 /**
@@ -78,6 +80,21 @@ export function fetchLanguages(): Promise<Language[]> {
  *  returns — that response is keyed by code, with no name attached. */
 export function fetchCountries(): Promise<Country[]> {
   return getList<Country>('/api/countries')
+}
+
+/** Live from TMDB via the Go side. Scoped to a region because a service
+ *  carries a different id per market — passing none returns everything TMDB
+ *  knows about, which is what the picker shows before a region is chosen. */
+export function fetchWatchProviders(type: CatalogType, region: string): Promise<WatchProvider[]> {
+  const query = region ? `?region=${encodeURIComponent(region)}` : ''
+  return getList<WatchProvider>(`/api/watch-providers/${type}${query}`)
+}
+
+/** Live from TMDB via the Go side. The countries TMDB has streaming data
+ *  for — a strict subset of `fetchCountries`, so `watch_region` reads from
+ *  this one. */
+export function fetchWatchRegions(): Promise<WatchRegion[]> {
+  return getList<WatchRegion>('/api/watch-regions')
 }
 
 /**
