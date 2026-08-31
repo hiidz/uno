@@ -134,10 +134,26 @@ export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
  * twenty are drawn, and `loading="lazy"` on each poster means the ones past the
  * edge never fetch their image.
  */
-export function TileStrip({ shape, tiles }: { shape: TileShape; tiles: CatalogTiles }) {
+export function TileStrip({
+  shape,
+  tiles,
+  kind,
+}: {
+  shape: TileShape
+  tiles: CatalogTiles
+  /** Set only where every tile in the run is the same kind, which is what
+   *  makes a TMDB link constructible. Omitted, the tiles stay inert. */
+  kind?: TMDBKind
+}) {
   const height = 92
   return (
-    <TileRun tiles={tiles} width={height * TILE_ASPECT[shape]} height={height} wrap={false} />
+    <TileRun
+      tiles={tiles}
+      width={height * TILE_ASPECT[shape]}
+      height={height}
+      wrap={false}
+      kind={kind}
+    />
   )
 }
 

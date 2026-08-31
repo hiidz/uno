@@ -141,5 +141,17 @@ function Body({
     )
   }
 
-  return <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
+  return (
+    <div className="flex flex-col gap-2">
+      {/* TMDB's own count across every page these filters match, not just
+       *  the one page below — so this doesn't read as "that's all of it"
+       *  when there's more than a page's worth. */}
+      {!preview.tiles.isLoading && preview.totalResults !== null && (
+        <span className="type-data text-dimmer text-[10px]">
+          {preview.totalResults.toLocaleString()} results
+        </span>
+      )}
+      <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
+    </div>
+  )
 }

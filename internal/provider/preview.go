@@ -22,9 +22,10 @@ type PreviewItem struct {
 	Poster string `json:"poster,omitempty"`
 }
 
-// PreviewCatalog runs a recipe against TMDB and returns one page of tiles,
-// saving nothing. It shares catalogEndpoint, buildDiscoverQuery and discover
-// with [TMDBClient.FetchCatalogPage] — which is the point, since the
+// PreviewCatalog runs a recipe against TMDB and returns one page of tiles
+// plus TMDB's own count of how many titles match in total, saving nothing. It
+// shares catalogEndpoint, buildDiscoverQuery and discover with
+// [TMDBClient.FetchCatalogPage] — which is the point, since the
 // underscore-to-dot param translation (vote_average_gte -> vote_average.gte)
 // and the type->path mapping each have to live in exactly one place — but it
 // deliberately skips resolveMetas.
@@ -33,28 +34,28 @@ type PreviewItem struct {
 // make the preview show different titles on every remount, which reads as a bug
 // rather than as shuffling. The randomized flag comes back instead so the
 // caller can say plainly that this catalog will differ on the TV.
-func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON string) (items []PreviewItem, randomized bool, err error) {
+func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON string) (items []PreviewItem, totalResults int, randomized bool, err error) {
 	endpoint, err := catalogEndpoint(catalogType)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 
 	query, randomized, err := buildDiscoverQuery(catalogType, paramsJSON)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, false, err
 	}
 	query.Set("page", "1")
 
-	results, err := c.discover(ctx, endpoint, query)
+	results, totalResults, err := c.discover(ctx, endpoint, query)
 	if err != nil {
-		return nil, randomized, err
+		return nil, 0, randomized, err
 	}
 
 	items = make([]PreviewItem, 0, len(results))
 	for _, item := range results {
 		items = append(items, tmdbItemToPreview(catalogType, item))
 	}
-	return items, randomized, nil
+	return items, totalResults, randomized, nil
 }
 
 func tmdbItemToPreview(catalogType string, item tmdbDiscoverItem) PreviewItem {

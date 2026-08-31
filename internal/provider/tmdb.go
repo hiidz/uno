@@ -72,12 +72,12 @@ func (c *TMDBClient) get(ctx context.Context, path string, query url.Values, out
 	return nil
 }
 
-func (c *TMDBClient) discover(ctx context.Context, endpoint string, query url.Values) ([]tmdbDiscoverItem, error) {
+func (c *TMDBClient) discover(ctx context.Context, endpoint string, query url.Values) ([]tmdbDiscoverItem, int, error) {
 	var out tmdbDiscoverResponse
 	if err := c.get(ctx, endpoint, query, &out); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return out.Results, nil
+	return out.Results, out.TotalResults, nil
 }
 
 // imdbID resolves one TMDB id to an IMDB id, consulting the client's cache

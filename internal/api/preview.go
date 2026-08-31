@@ -28,6 +28,10 @@ type previewResponse struct {
 	// need to re-derive it by parsing params.
 	Randomized bool                   `json:"randomized"`
 	Items      []provider.PreviewItem `json:"items"`
+	// TotalResults is TMDB's count of matches across every page these filters
+	// return, not just the one page Items carries — the number the builder
+	// shows so "20 titles" doesn't get mistaken for the whole answer.
+	TotalResults int `json:"total_results"`
 }
 
 // previewCatalog runs a recipe against TMDB and returns tiles; it saves
@@ -44,7 +48,7 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, randomized, err := s.provider.PreviewCatalog(r.Context(), input.Type, input.Params)
+	items, totalResults, randomized, err := s.provider.PreviewCatalog(r.Context(), input.Type, input.Params)
 	if err != nil {
 		if errors.Is(err, provider.ErrInvalidCatalogType) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -57,5 +61,9 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, previewResponse{Randomized: randomized, Items: items})
+	writeJSON(w, http.StatusOK, previewResponse{
+		Randomized:   randomized,
+		Items:        items,
+		TotalResults: totalResults,
+	})
 }

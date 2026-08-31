@@ -150,6 +150,9 @@ export interface CatalogPreview {
    *  Surfaced so the UI can say so rather than implying a prediction. */
   randomized: boolean
   items: PreviewItem[]
+  /** TMDB's count of matches across every page these filters return, not just
+   *  `items` — which is one page. */
+  total_results: number
 }
 
 /** The body `POST /api/catalogs/preview` takes: a recipe, not a catalog.

@@ -53,6 +53,10 @@ var externalIDsMediaType = map[string]string{
 
 type tmdbDiscoverResponse struct {
 	Results []tmdbDiscoverItem `json:"results"`
+	// TotalResults is TMDB's count of matches across every page, not just this
+	// one — the number a preview needs to say "there are N of these" without
+	// claiming the page in hand is the whole answer.
+	TotalResults int `json:"total_results"`
 }
 
 type tmdbDiscoverItem struct {
@@ -110,7 +114,10 @@ func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJS
 	}
 	query.Set("page", strconv.Itoa(page))
 
-	items, err := c.discover(ctx, endpoint, query)
+	// The addon path serves one page as Stremio metas; it has no notion of
+	// "how many total" to report, so the count TMDB hands back alongside the
+	// page goes unused here.
+	items, _, err := c.discover(ctx, endpoint, query)
 	if err != nil {
 		return nil, err
 	}

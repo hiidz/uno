@@ -314,9 +314,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         />
 
         <div
-          className={`min-w-0 flex-col lg:flex lg:min-h-0 ${
-            mobileView === 'library' ? 'hidden' : 'flex'
-          }`}
+          className={`min-w-0 flex-col lg:flex lg:min-h-0 ${mobileView === 'library' ? 'hidden' : 'flex'
+            }`}
         >
           {target === null ? (
             <HomePane
@@ -416,11 +415,24 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         open={deletingCatalog !== null}
         title="Delete this catalog?"
         body={
-          <>
-            <strong className="text-ink">{deletingCatalog?.name}</strong> is removed for{' '}
-            <strong className="text-ink">everyone using it</strong>, not just you. This can't be
-            undone.
-          </>
+          // Delete only ever reaches an owned item (`LibrarySection` wires
+          // `onDelete` for owned rows alone), so the axis that actually varies
+          // here is `is_public`, not who owns it: a catalog shared with the
+          // community can be sitting on someone else's home screen right now,
+          // where a private one can only ever be on yours.
+          deletingCatalog?.is_public ? (
+            <>
+              <strong className="text-ink">{deletingCatalog?.name}</strong> is removed for{' '}
+              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
+              with the community. This can't be undone.
+            </>
+          ) : (
+            <>
+              <strong className="text-ink">{deletingCatalog?.name}</strong> is deleted permanently.
+              Any references to this catalog from a collection will also be removed.
+              This can't be undone.
+            </>
+          )
         }
         confirmLabel={catalogMutations.remove.isPending ? 'Deleting…' : 'Delete catalog'}
         cancelLabel="Keep it"
@@ -433,12 +445,20 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         open={deletingCollection !== null}
         title="Delete this collection?"
         body={
-          <>
-            <strong className="text-ink">{deletingCollection?.title}</strong> and its{' '}
-            {folderCount(deletingCollection)} are removed for{' '}
-            <strong className="text-ink">everyone using it</strong>, not just you. The catalogs
-            inside it are kept. This can't be undone.
-          </>
+          deletingCollection?.is_public ? (
+            <>
+              <strong className="text-ink">{deletingCollection?.title}</strong> and its{' '}
+              {folderCount(deletingCollection)} are removed for{' '}
+              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
+              with the community. The catalogs inside it are kept. This can't be undone.
+            </>
+          ) : (
+            <>
+              <strong className="text-ink">{deletingCollection?.title}</strong> and its{' '}
+              {folderCount(deletingCollection)} are deleted permanently. The catalogs inside it are
+              kept. This can't be undone.
+            </>
+          )
         }
         confirmLabel={collectionMutations.remove.isPending ? 'Deleting…' : 'Delete collection'}
         cancelLabel="Keep it"

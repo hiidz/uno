@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { tmdbKind } from '@/api'
 import { TypeBar } from '@/components/TypeBar'
 import { CollectionMeta } from '@/features/preview/CollectionMeta'
 import { FolderPage } from '@/features/preview/FolderPage'
@@ -248,7 +249,7 @@ function CatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTiles }) {
         <DetachedNote id={row.id} />
         <TilesNote tiles={tiles} />
       </div>
-      <TileStrip shape={CONTENT_TILE_SHAPE} tiles={tiles} />
+      <TileStrip shape={CONTENT_TILE_SHAPE} tiles={tiles} kind={tmdbKind(row.type)} />
     </section>
   )
 }

@@ -20,6 +20,12 @@ import { noTiles, type CatalogTiles } from './tiles'
  */
 export interface RecipePreview {
   tiles: CatalogTiles
+  /**
+   * TMDB's count of matches across every page these filters return, not just
+   * `tiles.items` — which is one page, capped at `TILES_PER_PAGE`. `null`
+   * before a result has landed (idle, loading, or errored), matching `tiles`.
+   */
+  totalResults: number | null
   /** Nothing has been requested yet — draw the button and nothing else. */
   idle: boolean
   /**
@@ -94,6 +100,7 @@ export function useRecipeTiles(type: CatalogType, params: string): RecipePreview
             isLoading: query.isPending,
             isError: query.isError,
           },
+    totalResults: query.data?.total_results ?? null,
     idle: requested === null,
     isStale: requested !== null && !isSameRecipe,
     run,

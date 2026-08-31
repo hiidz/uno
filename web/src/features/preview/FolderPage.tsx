@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { tmdbKind } from '@/api'
 import { TypeBar } from '@/components/TypeBar'
 import {
   ALL_TAB,
@@ -159,7 +160,11 @@ function TabbedCatalogs({
           {source.name === null ? (
             <UnresolvedSource />
           ) : (
-            <TileGrid shape={CONTENT_TILE_SHAPE} tiles={tiles.get(source.id) ?? noTiles()} />
+            <TileGrid
+              shape={CONTENT_TILE_SHAPE}
+              tiles={tiles.get(source.id) ?? noTiles()}
+              kind={source.type ? tmdbKind(source.type) : undefined}
+            />
           )}
         </>
       ) : allUnresolved ? (
@@ -175,6 +180,9 @@ function TabbedCatalogs({
             <span className="type-eyebrow">Everything in this folder</span>
             <TilesNote tiles={allTiles} />
           </div>
+          {/* No `kind`: the merge interleaves sources that can be a mix of
+              movies and series, and one kind applied to all of them would
+              build a wrong TMDB URL for whichever half it doesn't match. */}
           <TileGrid shape={CONTENT_TILE_SHAPE} tiles={allTiles} />
           {/* The one place in the preview that merges more than one catalog,
               and Nuvio's merge order for a folder is unspecified (folders
@@ -211,7 +219,11 @@ function CatalogRowsInFolder({
           {source.name === null ? (
             <UnresolvedSource />
           ) : (
-            <TileStrip shape={CONTENT_TILE_SHAPE} tiles={tiles.get(source.id) ?? noTiles()} />
+            <TileStrip
+              shape={CONTENT_TILE_SHAPE}
+              tiles={tiles.get(source.id) ?? noTiles()}
+              kind={source.type ? tmdbKind(source.type) : undefined}
+            />
           )}
         </section>
       ))}
