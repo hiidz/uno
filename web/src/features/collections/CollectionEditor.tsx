@@ -5,6 +5,7 @@ import { CollectionPreview } from './CollectionPreview'
 import { FolderCard, FolderTreeDnd } from './FolderCard'
 import {
   VIEW_MODES,
+  VIEW_MODE_LABELS,
   countErrors,
   emptyCollectionForm,
   isSameCollection,
@@ -160,8 +161,7 @@ export function CollectionEditor({
           {droppedRefs.length > 0 && (
             <p className="type-data text-dim border-series mb-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
               {droppedRefs.length === 1 ? 'One catalog was' : `${droppedRefs.length} catalogs were`}{' '}
-              left out of this copy — {droppedRefs.length === 1 ? 'it is' : 'they are'} no longer
-              shared with you. Everything else came across.
+              left out of this copy — no longer shared with you.
             </p>
           )}
 
@@ -181,22 +181,24 @@ export function CollectionEditor({
                 checked={state.isPublic}
                 onChange={(isPublic) => patch({ isPublic })}
                 label="Share with the community"
-                hint="Anyone signed in can add it to their own home screen."
+                hint="Others can add it to their own home screen."
               />
             </div>
 
             <div className="flex flex-col gap-6">
+              {/* No `placeholder`: these three are the whole of `view_mode`,
+                  and an empty option would be a fourth choice the type has no
+                  value for. */}
               <Field
                 label="View mode"
-                hint="How items are displayed in Nuvio. Leave unset to use Nuvio's default."
+                tip="How a folder in this collection opens. Tabbed Grids puts one tab per catalog above a grid of its titles; Rows stacks each catalog as its own scrolling row. Follow layout leaves the choice to whatever the app is set to."
               >
                 <Select
                   value={state.viewMode}
                   onChange={(viewMode) => patch({ viewMode: viewMode as CollectionViewMode })}
-                  placeholder="Default"
                   options={VIEW_MODES.map((value) => ({
                     value,
-                    label: value === 'TABBED_GRID' ? 'Grid' : value === 'ROWS' ? 'List' : 'Follow layout',
+                    label: VIEW_MODE_LABELS[value],
                   }))}
                 />
               </Field>
@@ -205,20 +207,28 @@ export function CollectionEditor({
                 <Checkbox
                   checked={state.pinToTop}
                   onChange={(pinToTop) => patch({ pinToTop })}
-                  label="Pin to the front of the tab strip"
-                  hint="Shows this collection first, keeping pinned collections in your chosen order."
+                  label="Show first on the home screen"
                 />
+                {/* Only tabbed grids have tabs to add one to. The value is
+                    left alone while it is greyed — it is still what this
+                    collection is set to, and applies again the moment the view
+                    mode goes back. */}
                 <Checkbox
                   checked={state.showAllTab}
                   onChange={(showAllTab) => patch({ showAllTab })}
+                  disabled={state.viewMode !== 'TABBED_GRID'}
                   label={'Show an "All" tab'}
-                  hint="A first tab merging every folder in this collection."
+                  hint={
+                    state.viewMode === 'TABBED_GRID'
+                      ? 'Adds a first tab holding every catalog in a folder at once.'
+                      : `Only Tabbed Grids has tabs`
+                  }
                 />
               </div>
 
               <Field
-                label="Backdrop image URL"
-                hint="Displayed behind the collection in Nuvio when it's opened."
+                label="Background image"
+                tip="Shown behind this collection when someone opens it. Paste a link to an image."
               >
                 <TextInput
                   value={state.backdropImageURL}
@@ -243,13 +253,9 @@ export function CollectionEditor({
               Add folder
             </button>
           </div>
-          <p className="type-data text-dimmer mt-2 mb-4 max-w-[38rem] text-[11px] leading-[1.45]">
-            Folders become tabs in Nuvio. Drag to reorder them. Within each folder, reorder catalogs the same way.
-          </p>
-
           {state.folders.length === 0 ? (
             <p className="type-data text-dimmer m-0 py-2 text-[11px]">
-              No folders yet. Add one to create a tab in Nuvio, then add catalogs to it.
+              No folders yet. Add one, then put catalogs in it.
             </p>
           ) : (
             <FolderTreeDnd
@@ -284,16 +290,15 @@ export function CollectionEditor({
           {willDelete.length > 0 && (
             <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
               Saving deletes{' '}
-              {willDelete.map((f) => f.title.trim() || 'an untitled folder').join(', ')} — the{' '}
-              {willDelete.length === 1 ? 'folder and everything in it' : 'folders and everything in them'}{' '}
-              {willDelete.length === 1 ? 'is' : 'are'} removed for everyone using this collection.
-              Cancel to keep {willDelete.length === 1 ? 'it' : 'them'}.
+              {willDelete.map((f) => f.title.trim() || 'an untitled folder').join(', ')} and
+              everything inside, for everyone using this collection. Cancel to keep{' '}
+              {willDelete.length === 1 ? 'it' : 'them'}.
             </p>
           )}
 
           {serverError && (
             <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
-              The server rejected this collection: {serverError}
+              Couldn't save this collection: {serverError}
             </p>
           )}
     </EditorShell>

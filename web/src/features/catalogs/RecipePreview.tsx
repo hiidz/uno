@@ -76,7 +76,7 @@ function Notes({ preview, invalid }: { preview: Preview; invalid: boolean }) {
     return (
       <span
         className="type-data text-series text-[10.5px]"
-        title="These tiles came from the filters as they were when you last pressed the button."
+        title="These came from the filters as they were when you last pressed the button."
       >
         filters changed — preview again
       </span>
@@ -87,9 +87,9 @@ function Notes({ preview, invalid }: { preview: Preview; invalid: boolean }) {
     return (
       <span
         className="type-data text-dimmer text-[10.5px]"
-        title="This catalog shuffles: it picks a random TMDB page each time Nuvio loads. Preview shows page 1."
+        title="This catalog shuffles, so Nuvio gets a different set each time."
       >
-        shuffles — Nuvio will show a different page each time
+        shuffles — Nuvio will show a different set each time
       </span>
     )
   }
@@ -110,8 +110,8 @@ function Body({
     return (
       <p className="type-data text-dimmer m-0 max-w-[var(--w-entry)] text-[11px] leading-[1.45]">
         {invalid
-          ? 'Nothing to run yet — the filters above have something the server would reject.'
-          : 'Nothing fetched yet. Press "Preview results" to see what content these filters will display.'}
+          ? 'Fix the highlighted filters first.'
+          : 'Press Preview results to see what these filters return.'}
       </p>
     )
   }
@@ -121,7 +121,7 @@ function Body({
   if (preview.tiles.isError) {
     return (
       <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]">
-        Couldn't reach TMDB. Your filters are fine — this is the preview's own fetch. Try again.
+        Couldn't load the preview. Your filters are fine — try again.
       </p>
     )
   }
@@ -135,7 +135,7 @@ function Body({
       <div className="border-series bg-series/5 flex max-w-[var(--w-entry)] flex-col gap-2 rounded-[2px] border border-l-2 px-4 py-3">
         <span className="text-[13px] font-medium">Nothing matches these filters.</span>
         <p className="type-data text-dim m-0 text-[11px] leading-[1.45]">
-          TMDB has no titles matching these filters. This row would be empty in Nuvio. Loosen a filter and try again.
+          This row would be empty. Loosen a filter and try again.
         </p>
       </div>
     )

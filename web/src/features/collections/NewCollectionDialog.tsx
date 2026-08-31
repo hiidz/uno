@@ -13,8 +13,8 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
  * to guess at up front.
  *
  * So this creates an empty collection, which renders as an empty row until it
- * has folders. That's a real intermediate state, and the editor is where it
- * stops being one.
+ * has folders. That's a real intermediate state, and saving opens the editor on
+ * it, which is where it stops being one.
  */
 export function NewCollectionDialog({
   open,
@@ -70,13 +70,9 @@ export function NewCollectionDialog({
             />
           </Field>
 
-          <p className="type-data text-dimmer m-0 text-[10.5px]">
-            Created empty. Find it in your library to add folders and configure how it displays.
-          </p>
-
           {serverError && (
             <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px]">
-              The server rejected this collection: {serverError}
+              Couldn't create this collection: {serverError}
             </p>
           )}
         </div>

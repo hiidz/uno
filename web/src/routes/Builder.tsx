@@ -124,10 +124,9 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
         title="Discard unpushed changes?"
         body={
           <>
-            You have {countLabel(home.pendingCount)} to your home screen that {
-              home.pendingCount === 1 ? 'has' : 'have'
-            } never been pushed. Leaving this page discards {home.pendingCount === 1 ? 'it' : 'them'}
-            {' '}— nothing is saved until you push.
+            {countLabel(home.pendingCount)} to your home screen{' '}
+            {home.pendingCount === 1 ? "hasn't" : "haven't"} been pushed yet. Leaving discards{' '}
+            {home.pendingCount === 1 ? 'it' : 'them'}.
           </>
         }
         confirmLabel="Discard and switch"
@@ -156,7 +155,7 @@ function PendingIndicator() {
       }`}
       title={
         home.isDirty
-          ? 'These changes are only in this browser tab until you push.'
+          ? 'These changes only exist in this tab until you push.'
           : 'Your home screen matches what was last pushed.'
       }
     >

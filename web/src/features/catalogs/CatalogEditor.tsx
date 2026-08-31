@@ -353,6 +353,7 @@ export function CatalogEditor({
 
             <CertificationPicker
               label="Age rating"
+              tip="Ratings differ by country, so pick one first. The slider then sets the lowest and highest rating allowed."
               countries={activeCertifications}
               countryNames={countryNames}
               country={state.params.certification_country}

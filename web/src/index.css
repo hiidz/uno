@@ -299,6 +299,13 @@
         background-repeat: no-repeat;
     }
 
+    /* A clearable select carries an X in the same gutter as the chevron. The
+       room for it is held whether or not the X is there — reserved only while
+       a value is set, the text would shift sideways as you pick and clear. */
+    select.field--clearable {
+        padding-right: 46px;
+    }
+
     /* The palette's own checkbox. `accent-color` only tints the platform's
        box — it keeps the platform's radius and its border, which is the one
        control that stayed rounded in a design that is square throughout. */

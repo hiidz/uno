@@ -202,8 +202,8 @@ function CollectionRow({
           the TV) but the library no longer lists it. */}
       {collection.missing ? (
         <p className="type-data text-dimmer m-0 text-[11px]">
-          Nothing is known about this collection any more, so its row can't be drawn. It's still on
-          your home screen until you remove it in the List view.
+          This collection is no longer available, so there's nothing to draw. It stays on your home
+          screen until you remove it in the List view.
         </p>
       ) : collection.folders.length === 0 ? (
         <p className="type-data text-dimmer m-0 text-[11px]">
@@ -264,7 +264,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
       <div className="flex items-baseline gap-3">
         <span className="type-eyebrow">Discover only</span>
         <span className="type-data text-dimmer text-[10px]">
-          no row on home · not wired up on the manifest side yet, so these still show for now
+          not active yet — these still show on your home screen
         </span>
       </div>
       <div className="flex flex-col gap-1">
@@ -299,7 +299,7 @@ function DetachedNote({ id }: { id: string }) {
   return (
     <span
       className="type-data text-series shrink-0 text-[10px]"
-      title="No longer in the library — its owner made it private or deleted it. It still works on your home screen, but removing it here can't be undone."
+      title="Its owner deleted it or made it private. It still works on your home screen, but removing it here can't be undone."
     >
       · not in library
     </span>
@@ -334,7 +334,7 @@ function EmptyHomeScreen() {
         </p>
       </div>
       <p className="type-data text-dimmer border-line m-0 border-t px-5 py-2 text-[10px]">
-        Add catalogs and collections from the library, then push.
+        Add catalogs and collections from the sidebar, then push.
       </p>
     </div>
   )

@@ -29,12 +29,21 @@ import type { Collection, CollectionPayload, Folder, TileShape } from '@/api'
  *  a round-trip through this form doesn't quietly rewrite stored data. */
 export type FolderTileShape = TileShape | ''
 
-/** Mirrors `validViewModes` in `internal/vault/validation.go`, plus `''` for
- *  unset. Union-typed rather than validated, so an invalid view mode is
+/** Mirrors `validViewModes` in `internal/vault/validation.go`. No `''`: every
+ *  collection has a view mode, and "unset" already has a name in that enum —
+ *  `FOLLOW_LAYOUT`, which is what the app does with an empty one anyway.
+ *  Union-typed rather than validated, so an invalid view mode is
  *  unrepresentable and `validateCollectionForm` doesn't have to check it. */
-export type CollectionViewMode = '' | 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
+export type CollectionViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
 
-export const VIEW_MODES: CollectionViewMode[] = ['TABBED_GRID', 'ROWS', 'FOLLOW_LAYOUT']
+/** Ordered as the select lists them, so the default reads first. */
+export const VIEW_MODES: CollectionViewMode[] = ['FOLLOW_LAYOUT', 'TABBED_GRID', 'ROWS']
+
+export const VIEW_MODE_LABELS: Record<CollectionViewMode, string> = {
+  FOLLOW_LAYOUT: 'Follow layout',
+  TABBED_GRID: 'Tabbed Grids',
+  ROWS: 'Rows',
+}
 export const TILE_SHAPES: TileShape[] = ['POSTER', 'LANDSCAPE', 'SQUARE']
 
 /** As in `catalogForm.ts`: no `create`, because a collection is titled into
@@ -92,7 +101,7 @@ export function emptyCollectionForm(): CollectionFormState {
     title: '',
     isPublic: false,
     pinToTop: false,
-    viewMode: '',
+    viewMode: 'FOLLOW_LAYOUT',
     showAllTab: false,
     backdropImageURL: '',
     folders: [],
@@ -100,10 +109,11 @@ export function emptyCollectionForm(): CollectionFormState {
 }
 
 function toViewMode(raw: string): CollectionViewMode {
-  // `view_mode` is a bare string on the wire, so an unknown value is
-  // representable. It can't be shown, and keeping it would mean saving back a
-  // value the form never displayed, so it reads as unset instead.
-  return (VIEW_MODES as string[]).includes(raw) ? (raw as CollectionViewMode) : ''
+  // `view_mode` is a bare string on the wire, so an empty or unknown value is
+  // representable. Both land on `FOLLOW_LAYOUT`: it is what the app falls back
+  // to for them, so the form shows what the collection already does rather
+  // than a fourth state meaning "whatever this string was".
+  return (VIEW_MODES as string[]).includes(raw) ? (raw as CollectionViewMode) : 'FOLLOW_LAYOUT'
 }
 
 function toTileShape(raw: string): FolderTileShape {
@@ -212,7 +222,7 @@ export function countErrors(errors: CollectionErrors): number {
  * it, in `UpdateUserCollection`/`validateCatalogAccess`.
  *
  * What is *not* checked here, because the types make it unrepresentable:
- * `view_mode` and `tile_shape` are unions of the server's own enums plus `''`,
+ * `view_mode` is the server's own enum and `tile_shape` is that enum plus `''`,
  * and a folder `id` only ever comes from a collection this form loaded, so
  * "folder does not belong to this collection" can't be constructed.
  *
@@ -245,8 +255,8 @@ export function validateCollectionForm(
     if (unavailable.length > 0) {
       folderErrors.catalogIDs =
         unavailable.length === 1
-          ? "One catalog here isn't available to you any more. Remove it to save."
-          : `${unavailable.length} catalogs here aren't available to you any more. Remove them to save.`
+          ? 'One catalog here is no longer available. Remove it to save.'
+          : `${unavailable.length} catalogs here are no longer available. Remove them to save.`
     } else if (repeated.length > 0) {
       folderErrors.catalogIDs = 'This folder lists the same catalog twice.'
     }

@@ -69,9 +69,8 @@ const DETAIL: Record<PushOutcomeKind, string> = {
   success: 'Your home screen is saved and synced to Nuvio.',
   failed: 'Your edits are still here. Try again.',
   'undo-failed':
-    'Your collections in Nuvio may be temporarily out of sync with what Uno has saved. Push again to reconcile.',
-  unknown:
-    "The server didn't give a usable answer, so we can't say whether this push landed. Reload to see what's actually live.",
+    "Nuvio may be out of step with what's saved here. Push again to put them back in line.",
+  unknown: "We couldn't tell whether this push worked. Reload to see what's live.",
 }
 
 type PushOutcomeKind = NonNullable<Push['outcome']>['kind']
@@ -131,7 +130,7 @@ export function AddonURLButton({ url }: { url: string }) {
     <button
       type="button"
       onClick={copy}
-      title={`Uno's addon URL for this profile — install it in Nuvio:\n${url}`}
+      title={`Install this in Nuvio to get your home screen:\n${url}`}
       className="btn-ghost"
     >
       {copied ? 'copied' : 'addon url'}

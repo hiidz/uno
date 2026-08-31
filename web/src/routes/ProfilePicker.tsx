@@ -46,7 +46,7 @@ export function ProfilePicker() {
         <div className="flex flex-col gap-2">
           <h1 className="type-display m-0 text-[17px]">Pick a profile</h1>
           <p className="type-data text-dim text-[11.5px]">
-            Everything you build is scoped to the profile you pick.
+            Everything you build belongs to the profile you pick.
           </p>
         </div>
 

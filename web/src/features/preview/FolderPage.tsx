@@ -88,8 +88,7 @@ export function FolderPage({
 
       {collection.viewModeAssumed && folder.sources.length > 0 && (
         <p className="type-data text-dimmer m-0 text-[10px]">
-          This collection follows the app's own layout setting, which Uno can't read — shown here as
-          rows.
+          Shown as rows — the app decides the real layout.
         </p>
       )}
     </div>
@@ -181,12 +180,11 @@ function TabbedCatalogs({
               and Nuvio's merge order for a folder is unspecified (folders
               aren't an addon concept), so the caveat is stated outright. */}
           <p className="type-data text-dimmer m-0 text-[10px]">
-            A sample across {folder.sources.length}{' '}
+            A sample from {folder.sources.length}{' '}
             {folder.sources.length === 1 ? 'catalog' : 'catalogs'}
-            {folder.unresolved > 0 && `, ${folder.unresolved} of them unavailable`} · taken evenly
-            from each, capped at {ALL_TAB_TILE_CAP} · the order Nuvio merges them in isn't something
-            Uno can know
-            {allTiles.randomized && ' · one of them shuffles, so your TV will differ'}
+            {folder.unresolved > 0 && `, ${folder.unresolved} of them unavailable`} · your TV may
+            order these differently
+            {allTiles.randomized && ' · one of them shuffles, so it will differ'}
           </p>
         </>
       )}
@@ -255,8 +253,8 @@ function UnresolvedSource({ all }: { all?: boolean }) {
   return (
     <p className="type-data text-dimmer m-0 text-[10px]">
       {all
-        ? "Nothing in this folder can be resolved any more — every catalog it references has been made private or deleted, so there is nothing to merge here. They still sit in the folder until they're removed in the collection builder."
-        : "Nothing is known about this catalog any more — its owner made it private or deleted it. It still sits in the folder until it's removed in the collection builder."}
+        ? 'Every catalog in this folder was deleted or made private, so there is nothing to show. They stay in the folder until they are removed.'
+        : 'This catalog was deleted or made private by its owner. It stays in the folder until it is removed.'}
     </p>
   )
 }

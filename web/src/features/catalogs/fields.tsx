@@ -1,5 +1,5 @@
 import type { Certification, CertificationsByCountry, Genre } from '@/api'
-import { DualRangeSlider, FieldNote, Segmented, Select } from '@/components/fields'
+import { DualRangeSlider, FieldNote, InfoTip, Segmented, Select } from '@/components/fields'
 import type { GenreJoin } from './catalogForm'
 import { countryName, type CountryLookup } from './countries'
 
@@ -18,7 +18,15 @@ import { countryName, type CountryLookup } from './countries'
  * builder's one import site.
  */
 
-export { Checkbox, Field, FieldNote, Segmented, Select, TextInput } from '@/components/fields'
+export {
+  Checkbox,
+  Field,
+  FieldNote,
+  InfoTip,
+  Segmented,
+  Select,
+  TextInput,
+} from '@/components/fields'
 
 /** A number field that models "unset" as undefined rather than 0 — Go's
  *  `omitempty` drops zeros, so 0 and absent are the same on the wire, and
@@ -201,7 +209,7 @@ export function GenreCycler({
         )}
       </div>
       {genres.length === 0 ? (
-        <FieldNote>Couldn't load genres from TMDB.</FieldNote>
+        <FieldNote>Couldn't load genres.</FieldNote>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {genres.map((genre) => {
@@ -218,10 +226,10 @@ export function GenreCycler({
                 aria-pressed={state !== 'neutral'}
                 title={
                   state === 'exclude'
-                    ? `Excluding ${genre.name} — click to clear`
+                    ? `No ${genre.name} — click to stop filtering on it`
                     : state === 'include'
-                      ? `Including ${genre.name} — click to exclude instead`
-                      : `Click to include ${genre.name}`
+                      ? `Only ${genre.name} — click to exclude it instead`
+                      : `Click to require ${genre.name}`
                 }
                 className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors ${
                   state === 'include'
@@ -255,10 +263,13 @@ export function GenreCycler({
  *
  * Switching country clears both bounds: a rating code from one country's
  * scale (say, US's "R") doesn't necessarily exist, and never means the same
- * thing, in another country's.
+ * thing, in another country's. The country itself is a country or nothing —
+ * there is no "any country" scale to compare a rating against — so the empty
+ * value is the select's placeholder, reached back through its X.
  */
 export function CertificationPicker({
   label,
+  tip,
   countries,
   countryNames,
   country,
@@ -268,6 +279,8 @@ export function CertificationPicker({
   onChange,
 }: {
   label: string
+  /** Secondary explanation, behind an icon beside the label. */
+  tip?: string
   countries: CertificationsByCountry
   /** TMDB's certification response is keyed by code with no name attached —
    *  this is what resolves each key to something a person reads. */
@@ -313,7 +326,10 @@ export function CertificationPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <label className="type-eyebrow">{label}</label>
+      <div className="flex items-center gap-1.5">
+        <label className="type-eyebrow">{label}</label>
+        {tip && <InfoTip label={label} text={tip} />}
+      </div>
       {/* `items-start`, not `items-center`: the slider carries a value caption
           under it and the select doesn't, so centring the two hangs the select
           half a line low. */}
@@ -327,7 +343,9 @@ export function CertificationPicker({
               certification_lte: undefined,
             })
           }
-          placeholder="Any country"
+          placeholder="Select a country"
+          clearable
+          clearLabel="age rating country"
           options={codes.map((code) => ({ value: code, label: countryName(code, countryNames) }))}
         />
         {country && scale.length > 0 && (
@@ -348,7 +366,7 @@ export function CertificationPicker({
         )}
       </div>
       {country && scale.length === 0 && (
-        <FieldNote>Couldn't load ratings for {countryName(country, countryNames)} from TMDB.</FieldNote>
+        <FieldNote>Couldn't load ratings for {countryName(country, countryNames)}.</FieldNote>
       )}
       {error && <FieldNote tone="danger">{error}</FieldNote>}
     </div>

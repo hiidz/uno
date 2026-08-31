@@ -13,21 +13,18 @@ import { FieldNote, Select } from '@/components/fields'
  * own prominence, and clicked.
  *
  * **Region first, because a service list only exists per market.** TMDB reports
- * what it has data for in one country, so the region chooses the list. Provider
- * ids themselves are global — Netflix is 8 everywhere — so changing region
- * keeps the picks, unlike the certification country, where the codes really do
- * mean different things.
+ * what it has data for in one country, so the region chooses the list, and
+ * there is nothing to show until one is picked — a guessed default would put a
+ * US service list in front of someone who never said US. Provider ids
+ * themselves are global — Netflix is 8 everywhere — so changing region keeps
+ * the picks, unlike the certification country, where the codes really do mean
+ * different things.
  */
 
-/** Enough of the ranked list to cover the services nearly everyone means,
- *  without a wall of chips. Search reaches the rest. */
-const TOP_SERVICES = 15
-
-/** Search can widen the list a long way — 291 services in the US — so matches
- *  are capped at a screenful. Narrowing the query is the way past it. */
-const MAX_MATCHES = 40
-
-const DEFAULT_REGION = 'US'
+/** How tall the chip list gets before it scrolls instead of growing. A region
+ *  carries up to ~291 services, ranked by TMDB's own prominence, so the whole
+ *  list is here and the ones nearly everyone means are the first few rows. */
+const LIST_MAX_HEIGHT = '13rem'
 
 export function WatchProviderPicker({
   type,
@@ -41,9 +38,10 @@ export function WatchProviderPicker({
   onParams: (update: Partial<TMDBParams>) => void
 }) {
   // Local, not derived from params: clearing every service clears
-  // `watch_region` on the wire, and the list on screen shouldn't jump back to
-  // the default region when it does.
-  const [region, setRegion] = useState(params.watch_region || DEFAULT_REGION)
+  // `watch_region` on the wire, and the list on screen shouldn't empty itself
+  // when it does — the country you were browsing is still the country you
+  // were browsing.
+  const [region, setRegion] = useState(params.watch_region ?? '')
   const [query, setQuery] = useState('')
 
   const regions = useQuery({
@@ -55,6 +53,7 @@ export function WatchProviderPicker({
   const providers = useQuery({
     queryKey: queryKeys.watchProviders(type, region),
     queryFn: () => fetchWatchProviders(type, region),
+    enabled: Boolean(region),
     staleTime: Infinity,
   })
 
@@ -76,24 +75,26 @@ export function WatchProviderPicker({
     [all],
   )
 
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return all
+      .filter((p) => !selectedIDs.includes(p.provider_id))
+      .filter((p) => !q || p.provider_name.toLowerCase().includes(q))
+  }, [all, selectedIDs, query])
+
   // Selected first, always — a service picked in another region, or one TMDB
   // has since dropped from this one, would otherwise vanish from the chips
-  // while still being in the payload.
+  // while still being in the payload. First also means visible without
+  // scrolling, which is where your own picks belong.
   const shown = useMemo(() => {
     const selected = selectedIDs.map((id) => ({
       id,
       name: nameOf.get(id) ?? `Service ${id}`,
     }))
-
-    const q = query.trim().toLowerCase()
-    const rest = all
-      .filter((p) => !selectedIDs.includes(p.provider_id))
-      .filter((p) => !q || p.provider_name.toLowerCase().includes(q))
-      .slice(0, q ? MAX_MATCHES : TOP_SERVICES)
-      .map((p) => ({ id: p.provider_id, name: p.provider_name }))
+    const rest = matches.map((p) => ({ id: p.provider_id, name: p.provider_name }))
 
     return [...selected, ...rest]
-  }, [all, selectedIDs, nameOf, query])
+  }, [matches, selectedIDs, nameOf])
 
   function toggle(id: number) {
     const next = selectedIDs.includes(id)
@@ -110,6 +111,15 @@ export function WatchProviderPicker({
 
   function changeRegion(next: string) {
     setRegion(next)
+    setQuery('')
+    if (!next) {
+      // The pair is required together server-side, so clearing the country
+      // takes the services with it. Keeping them would leave ids without the
+      // market they were picked in — the one state this control is supposed to
+      // make unreachable rather than merely catch.
+      onParams({ with_watch_providers: undefined, watch_region: undefined })
+      return
+    }
     if (selectedIDs.length > 0) onParams({ watch_region: next })
   }
 
@@ -121,12 +131,16 @@ export function WatchProviderPicker({
           value={region}
           onChange={changeRegion}
           options={regionOptions}
-          placeholder="Pick a country"
+          placeholder="Select a country"
+          clearable
+          clearLabel="streaming country"
           width="var(--w-pick)"
         />
       </div>
 
-      {providers.isError ? (
+      {!region ? (
+        <FieldNote>Pick a country to see the services it carries.</FieldNote>
+      ) : providers.isError ? (
         <FieldNote tone="danger">Couldn't load streaming services.</FieldNote>
       ) : (
         <>
@@ -139,7 +153,13 @@ export function WatchProviderPicker({
             className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px]"
           />
 
-          <div className="flex flex-wrap gap-1.5">
+          {/* Scrolls rather than grows: the list runs to a few hundred chips in
+              a large region, and a field that pushes everything under it off
+              the page is worse than one you scroll. */}
+          <div
+            style={{ maxHeight: LIST_MAX_HEIGHT }}
+            className="border-line flex flex-wrap gap-1.5 overflow-y-auto rounded-[2px] border p-2"
+          >
             {shown.map((service) => {
               const selected = selectedIDs.includes(service.id)
               return (
@@ -158,6 +178,7 @@ export function WatchProviderPicker({
                 </button>
               )
             })}
+            {providers.isLoading && <FieldNote>Loading services…</FieldNote>}
             {shown.length === 0 && !providers.isLoading && (
               <FieldNote>No service matches that name here.</FieldNote>
             )}

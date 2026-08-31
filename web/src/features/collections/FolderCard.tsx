@@ -255,7 +255,6 @@ export function FolderCard({
               })),
             ]}
           />
-          <FieldNote>Default uses the standard poster image format.</FieldNote>
         </div>
 
         <div className="flex min-w-0 flex-col gap-4">
@@ -271,7 +270,7 @@ export function FolderCard({
               />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <label className="type-eyebrow">Cover image URL</label>
+              <label className="type-eyebrow">Cover image</label>
               <TextInput
                 value={folder.coverImageURL}
                 onChange={(coverImageURL) => onChange({ coverImageURL })}
@@ -283,8 +282,8 @@ export function FolderCard({
           <Checkbox
             checked={folder.hideTitle}
             onChange={(hideTitle) => onChange({ hideTitle })}
-            label="Hide the folder title"
-            hint="The folder tab still shows the name. This hides just the heading above the tiles."
+            label="Hide the title above the tiles"
+            hint="The tab itself still shows the name."
           />
         </div>
       </div>
@@ -308,7 +307,7 @@ export function FolderCard({
 
         {folder.catalogIDs.length === 0 ? (
           <p className="type-data text-dimmer m-0 py-1 text-[11px]">
-            Nothing in this folder yet — it would render as an empty tab.
+            Empty — add a catalog, or this folder shows nothing.
           </p>
         ) : (
           <SortableContext
@@ -407,7 +406,7 @@ function RefRow({
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="text-danger truncate text-[12.5px]">Unavailable catalog</span>
           <span className="type-data text-dimmer truncate text-[10.5px]">
-            {catalogID} — deleted, or made private by its owner
+            Deleted, or made private by its owner
           </span>
         </span>
       )}
@@ -419,7 +418,7 @@ function RefRow({
           ? `${option.catalog.type === 'movie' ? 'movie' : 'series'} · ${
               option.catalog.owned ? 'you' : 'community'
             }`
-          : 'blocks saving'}
+          : "can't be saved"}
       </span>
 
       <button

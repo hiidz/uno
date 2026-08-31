@@ -73,7 +73,7 @@ export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
     `${folder.sources.length} ${folder.sources.length === 1 ? 'catalog' : 'catalogs'}`,
   ]
   if (folder.unresolved > 0) notes.push(`${folder.unresolved} unavailable`)
-  if (folder.tileShapeAssumed) notes.push('no tile shape set — shown as poster')
+  if (folder.tileShapeAssumed) notes.push('no shape set — shown as poster')
 
   return (
     <button
@@ -292,7 +292,7 @@ export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
     return (
       <span
         className="type-data text-dimmer shrink-0 text-[10px]"
-        title="Preview couldn't reach TMDB. The catalog itself is fine — this is only the preview's own fetch."
+        title="The catalog itself is fine — only this preview failed to load."
       >
         · couldn't load titles — showing layout only
       </span>
@@ -300,7 +300,7 @@ export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
   }
 
   if (tiles.items.length === 0) {
-    return <span className="type-data text-dimmer shrink-0 text-[10px]">· nothing matches this recipe right now</span>
+    return <span className="type-data text-dimmer shrink-0 text-[10px]">· nothing matches these filters right now</span>
   }
 
   if (tiles.randomized) {
@@ -309,9 +309,9 @@ export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
     return (
       <span
         className="type-data text-dimmer shrink-0 text-[10px]"
-        title="This catalog shuffles: it picks a random TMDB page each time your TV asks. Preview always shows page 1, so the titles here are a sample, not a prediction."
+        title="This catalog shuffles, so your TV gets a different set each time. These are a sample, not a prediction."
       >
-        · shuffles — your TV will show a different page
+        · shuffles — your TV will show a different set
       </span>
     )
   }

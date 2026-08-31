@@ -341,7 +341,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         body={
           <>
             Your changes to <strong className="text-ink">{editorSubject(target)}</strong> haven't
-            been saved. Leaving this editor discards them.
+            been saved. Leaving discards them.
           </>
         }
         confirmLabel="Discard"
@@ -357,8 +357,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         body={
           <>
             <strong className="text-ink">{deletingCatalog?.name}</strong> is removed for{' '}
-            <strong className="text-ink">every profile using it</strong>, not just yours —
-            including anyone who added it from the community. This can't be undone.
+            <strong className="text-ink">everyone using it</strong>, not just you. This can't be
+            undone.
           </>
         }
         confirmLabel={catalogMutations.remove.isPending ? 'Deleting…' : 'Delete catalog'}
@@ -375,8 +375,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
           <>
             <strong className="text-ink">{deletingCollection?.title}</strong> and its{' '}
             {folderCount(deletingCollection)} are removed for{' '}
-            <strong className="text-ink">every profile using it</strong>, not just yours. The
-            catalogs inside it are left alone — only the grouping goes. This can't be undone.
+            <strong className="text-ink">everyone using it</strong>, not just you. The catalogs
+            inside it are kept. This can't be undone.
           </>
         }
         confirmLabel={collectionMutations.remove.isPending ? 'Deleting…' : 'Delete collection'}

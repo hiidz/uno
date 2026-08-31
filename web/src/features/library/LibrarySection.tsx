@@ -6,9 +6,6 @@ import { LibraryItem } from './LibraryItem'
 import { catalogSearchText } from './recipe'
 import type { LibraryCatalog, LibraryCollection, useLibrary } from './useLibrary'
 
-/** Only TMDB exists today; unrecognized ids fall back to the raw string. */
-const PROVIDER_LABEL: Record<string, string> = { tmdb: 'TMDB' }
-
 /**
  * One half of the Library rail — either "Mine" or "Community" — with its own
  * scroll region and its own name/genre filter, so narrowing one half never
@@ -64,9 +61,7 @@ export function LibrarySection({
           const lookup = library.genres[tmdbKind(catalog.type)]
           return {
             catalog,
-            summary: `${PROVIDER_LABEL[catalog.provider] ?? catalog.provider} · ${
-              catalog.type === 'movie' ? 'Movies' : 'Series'
-            }`,
+            summary: catalog.type === 'movie' ? 'Movies' : 'Series',
             searchText: catalogSearchText(catalog, lookup),
           }
         }),
@@ -171,7 +166,7 @@ export function LibrarySection({
           query
             ? 'No collections match this filter.'
             : owned
-              ? 'No collections yet. Build one to group catalogs into tabs.'
+              ? 'No collections yet. Build one to group catalogs together.'
               : 'No community collections yet.'
         }
       >

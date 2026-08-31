@@ -92,7 +92,7 @@ function HomeList() {
   if (home.catalogs.length === 0 && home.collections.length === 0) {
     return (
       <p className="type-data text-dimmer m-0 py-2 text-[11px]">
-        Nothing here yet. Add catalogs and collections from the library to fill it.
+        Nothing here yet. Add catalogs and collections from the sidebar.
       </p>
     )
   }
@@ -109,12 +109,11 @@ function HomeList() {
   )
 }
 
-function Block({ label, note, children }: { label: string; note: string; children: ReactNode }) {
+function Block({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
       <div className="border-line-hi flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b pb-2">
         <span className="type-eyebrow">{label}</span>
-        <span className="type-data text-dimmer text-[10.5px]">{note}</span>
       </div>
       {children}
     </section>
@@ -125,9 +124,9 @@ function CollectionsBlock() {
   const home = useHomeSelection()
 
   return (
-    <Block label="Collections" note="each shows as one row with folder tabs">
+    <Block label="Collections">
       {home.collections.length === 0 ? (
-        <EmptyBlock>No collections yet — add one from the library.</EmptyBlock>
+        <EmptyBlock>No collections yet — add one from the sidebar.</EmptyBlock>
       ) : (
         <SortableList ids={home.collections} onReorder={home.reorderCollections}>
           {home.collections.map((id) => {
@@ -160,9 +159,9 @@ function CatalogsBlock() {
   const ids = useMemo(() => home.catalogs.map((c) => c.id), [home.catalogs])
 
   return (
-    <Block label="Rows" note="displayed in order below any pinned collections">
+    <Block label="Catalogs">
       {home.catalogs.length === 0 ? (
-        <EmptyBlock>No rows yet — add a catalog from the library.</EmptyBlock>
+        <EmptyBlock>No catalogs yet — add one from the sidebar.</EmptyBlock>
       ) : (
         <SortableList ids={ids} onReorder={home.reorderCatalogs}>
           {home.catalogs.map((entry) => {
@@ -206,7 +205,7 @@ function RowMeta({ name, detail, detached }: { name: string; detail: string; det
         {detached && (
           <span
             className="text-series shrink-0"
-            title="No longer accessible — the owner made it private or deleted it. It still works here, but you can't edit it."
+            title="Its owner deleted it or made it private. It still works here, but you can't edit it."
           >
             · unavailable
           </span>
@@ -239,8 +238,8 @@ function ShowInHomeToggle({
       aria-pressed={showInHome}
       title={
         showInHome
-          ? `${name} displays on your home screen`
-          : `${name} is hidden from your home screen`
+          ? `${name} shows on your home screen`
+          : `${name} is meant to be hidden from your home screen — not active yet, so it still shows`
       }
       // A fixed width, because the two labels are different lengths and the
       // toggles sit in a column: sized to their content, "on home" and

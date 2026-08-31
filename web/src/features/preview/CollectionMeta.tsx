@@ -21,7 +21,7 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
       // Covers both `FOLLOW_LAYOUT` and an empty/unrecognised `view_mode`:
       // either way the collection names no layout Uno can honour, so rows is a
       // guess and the note says so without claiming which case it hit.
-      notes.push("folders open as rows — the app's own layout setting decides, and Uno can't read it")
+      notes.push('folders open as rows — the app decides the real layout')
     } else if (collection.viewMode === 'TABBED_GRID') {
       notes.push(
         collection.showAllTab
@@ -33,7 +33,7 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
     }
   }
 
-  if (collection.hasBackdrop) notes.push('has a backdrop image (not loaded here)')
+  if (collection.hasBackdrop) notes.push('has a background image')
 
   if (notes.length === 0) return null
   return <p className="type-data text-dimmer m-0 text-[10px]">{notes.join(' · ')}</p>

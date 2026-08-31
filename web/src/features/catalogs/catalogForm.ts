@@ -67,7 +67,7 @@ export const SORT_FIELDS: Record<CatalogType, { value: string; label: string }[]
   movie: [
     { value: 'popularity', label: 'Popularity' },
     { value: 'vote_average', label: 'Rating' },
-    { value: 'vote_count', label: 'Vote count' },
+    { value: 'vote_count', label: 'Number of ratings' },
     { value: 'primary_release_date', label: 'Release date' },
     { value: 'title', label: 'Title' },
     { value: 'original_title', label: 'Original title' },
@@ -76,7 +76,7 @@ export const SORT_FIELDS: Record<CatalogType, { value: string; label: string }[]
   series: [
     { value: 'popularity', label: 'Popularity' },
     { value: 'vote_average', label: 'Rating' },
-    { value: 'vote_count', label: 'Vote count' },
+    { value: 'vote_count', label: 'Number of ratings' },
     { value: 'first_air_date', label: 'First aired' },
     { value: 'name', label: 'Name' },
     { value: 'original_name', label: 'Original name' },
@@ -182,38 +182,38 @@ export function validateForm(state: CatalogFormState): FieldErrors {
   if (!state.name.trim()) errors.name = 'Give this catalog a name.'
 
   if (p.sort_by && !SORT_OPTIONS[state.type].includes(p.sort_by)) {
-    errors.sort_by = `${p.sort_by} isn't a valid sort for ${state.type === 'movie' ? 'movies' : 'series'}.`
+    errors.sort_by = `${state.type === 'movie' ? 'Movies' : 'Series'} can't be sorted this way.`
   }
 
   // "required together" pairs. Both are grouped controls in the form, so these
   // should be unreachable — they're the backstop, not the mechanism.
   const hasCert = Boolean(p.certification ?? p.certification_gte ?? p.certification_lte)
   if (hasCert && !p.certification_country) {
-    errors.certification_country = 'Pick a country — a certification only means something with one.'
+    errors.certification_country = 'Pick a country — age ratings differ by country.'
   }
   if (p.with_watch_providers && !p.watch_region) {
-    errors.watch_region = 'Pick a region — provider ids differ by country.'
+    errors.watch_region = 'Pick a country — streaming services differ by country.'
   }
 
   if (state.dateMode === 'rolling') {
     const days = state.type === 'movie' ? p.released_within_days : p.aired_within_days
-    if (!days || days < 1) errors.within_days = 'Pick a window.'
+    if (!days || days < 1) errors.within_days = 'Pick how far back to look.'
   }
 
   const ratingLow = p.vote_average_gte
   const ratingHigh = p.vote_average_lte
   if (ratingLow != null && ratingHigh != null && ratingLow > ratingHigh) {
-    errors.vote_average = 'The lower bound is above the upper bound.'
+    errors.vote_average = 'The first number is higher than the second.'
   }
   const runtimeLow = p.with_runtime_gte
   const runtimeHigh = p.with_runtime_lte
   if (runtimeLow != null && runtimeHigh != null && runtimeLow > runtimeHigh) {
-    errors.with_runtime = 'The lower bound is above the upper bound.'
+    errors.with_runtime = 'The first number is higher than the second.'
   }
   const votesLow = p.vote_count_gte
   const votesHigh = p.vote_count_lte
   if (votesLow != null && votesHigh != null && votesLow > votesHigh) {
-    errors.vote_count = 'The lower bound is above the upper bound.'
+    errors.vote_count = 'The first number is higher than the second.'
   }
 
   return errors

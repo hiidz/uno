@@ -13,8 +13,8 @@ import { Field, Segmented, TextInput } from './fields'
  * the editor is for.
  *
  * So this creates a bare catalog with no filters at all, which is a real and
- * useful state: it matches everything TMDB has of that type. Tuning it down is
- * the next step, in the pane, against a preview.
+ * useful state: it matches everything of that type. Saving opens the editor on
+ * it, which is why nothing here explains where to find it afterwards.
  */
 export function NewCatalogDialog({
   open,
@@ -69,19 +69,7 @@ export function NewCatalogDialog({
             />
           </Field>
 
-          <Field label="Source" hint="TMDB is currently the only source available.">
-            <Segmented
-              ariaLabel="Catalog source"
-              value="tmdb"
-              onChange={() => {}}
-              options={[{ value: 'tmdb', label: 'TMDB' }]}
-            />
-          </Field>
-
-          <Field
-            label="Type"
-            hint="Can't be changed later — it determines which filter options are available."
-          >
+          <Field label="Type" hint="Can't be changed later.">
             <Segmented
               ariaLabel="Catalog type"
               value={type}
@@ -93,14 +81,9 @@ export function NewCatalogDialog({
             />
           </Field>
 
-          <p className="type-data text-dimmer m-0 text-[10.5px]">
-            Created with no filters, so it matches everything. Select it in the library to add
-            them.
-          </p>
-
           {serverError && (
             <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px]">
-              The server rejected this catalog: {serverError}
+              Couldn't create this catalog: {serverError}
             </p>
           )}
         </div>

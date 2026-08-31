@@ -43,7 +43,7 @@ export function CatalogRefPicker({
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search catalogs by name or genre…"
+          placeholder="Search catalogs…"
           aria-label="Search catalogs to add to this folder"
           className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px]"
         />
@@ -55,10 +55,10 @@ export function CatalogRefPicker({
       {matches.length === 0 ? (
         <p className="type-data text-dimmer m-0 px-1 py-1.5 text-[11px]">
           {options.length === 0
-            ? 'No catalogs exist yet. Build one under Manage catalogs first.'
+            ? 'No catalogs yet. Create one in the sidebar first.'
             : query.trim()
               ? 'No catalogs match this search.'
-              : 'Every catalog you can use is already in this folder.'}
+              : 'Everything available is already in this folder.'}
         </p>
       ) : (
         <ul className="m-0 flex max-h-[210px] max-w-[42rem] list-none flex-col overflow-y-auto p-0">
