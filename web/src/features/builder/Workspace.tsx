@@ -366,10 +366,12 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   // easily as "duplicate" without its label — so each raises the prompt rather
   // than acting on the tap.
   function deleteCatalog(catalog: LibraryCatalog) {
+    catalogMutations.remove.reset()
     setConfirming({ kind: 'delete-catalog', catalog })
   }
 
   function deleteCollection(collection: LibraryCollection) {
+    collectionMutations.remove.reset()
     setConfirming({ kind: 'delete-collection', collection })
   }
 
@@ -454,8 +456,13 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
           confirmLabel: catalogMutations.remove.isPending ? 'Deleting…' : 'Delete catalog',
           cancelLabel: 'Keep it',
           destructive: true,
+          pending: catalogMutations.remove.isPending,
+          error: (catalogMutations.remove.error as Error | null)?.message ?? null,
           onConfirm: () => confirmDeleteCatalog(catalog),
-          onCancel: () => setConfirming(null),
+          onCancel: () => {
+            catalogMutations.remove.reset()
+            setConfirming(null)
+          },
         }
       }
 
@@ -497,8 +504,13 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
           confirmLabel: collectionMutations.remove.isPending ? 'Deleting…' : 'Delete collection',
           cancelLabel: 'Keep it',
           destructive: true,
+          pending: collectionMutations.remove.isPending,
+          error: (collectionMutations.remove.error as Error | null)?.message ?? null,
           onConfirm: () => confirmDeleteCollection(collection),
-          onCancel: () => setConfirming(null),
+          onCancel: () => {
+            collectionMutations.remove.reset()
+            setConfirming(null)
+          },
         }
       }
 

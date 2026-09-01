@@ -18,6 +18,8 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel = 'Cancel',
   destructive = false,
+  pending = false,
+  error = null,
   onConfirm,
   onCancel,
 }: {
@@ -27,6 +29,11 @@ export function ConfirmDialog({
   confirmLabel: string
   cancelLabel?: string
   destructive?: boolean
+  /** True while the confirmed action is in flight. Disables the confirm
+   *  button so a second click can't fire a second request. */
+  pending?: boolean
+  /** Plain-text failure from the last confirm attempt, shown under the body. */
+  error?: string | null
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -66,6 +73,11 @@ export function ConfirmDialog({
           {title}
         </h2>
         <div className="text-dim text-[13px] leading-relaxed">{body}</div>
+        {error && (
+          <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="btn-ghost">
             {cancelLabel}
@@ -74,6 +86,7 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
+            disabled={pending}
             className="btn-primary"
             style={
               destructive
