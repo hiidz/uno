@@ -246,15 +246,10 @@ export function toPayload(state: CatalogFormState): CatalogPayload {
  * Structural equality over everything that reaches the wire, so the editor can
  * tell an untouched form from an edited one without diffing by hand.
  *
- * The collection builder has had this from the start; the catalog builder did
- * not, and the asymmetry was deliberate while both were modals — a modal is
- * dismissed by Escape or a backdrop click, which is narrow enough that losing a
- * short form to one was an acceptable annoyance.
- *
- * **In the pane that reasoning inverts.** The dismissal surface is now the
- * whole Library rail: selecting another row replaces the editor, and selecting
- * rows is the main thing that rail is for. So the short form needs the same
- * guard as the folder tree.
+ * The dismissal surface is the whole Library rail: selecting another row
+ * replaces the editor, and selecting rows is the main thing that rail is for.
+ * So this short form needs the same guard as the collection builder's folder
+ * tree.
  */
 export function isSameCatalog(a: CatalogFormState, b: CatalogFormState): boolean {
   return JSON.stringify(toPayload(a)) === JSON.stringify(toPayload(b))

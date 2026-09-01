@@ -6,10 +6,9 @@ import { useStackedLayout } from './stacked'
 /**
  * The frame around an editor filling the builder's pane.
  *
- * Replaces the modal chrome these forms used to sit in. The pane holds one
- * occupant at a time — either the home screen or one editor — so there is no
- * tab strip and no way to express a second open form: the title says what is
- * being edited, and the × closes it.
+ * The pane holds one occupant at a time — either the home screen or one
+ * editor — so there is no tab strip and no way to express a second open form:
+ * the title says what is being edited, and the × closes it.
  *
  * **Closing is a request, not an act.** `onRequestClose` may raise a discard
  * confirmation instead of closing, which is why Escape routes through the same
@@ -65,9 +64,9 @@ export function EditorShell({
 }) {
   const stacked = useStackedLayout()
 
-  // Escape closes, matching the modal these forms replaced — the muscle memory
-  // is already there and there's no reason to take it away. Routed through
-  // `onRequestClose` so a dirty form still confirms.
+  // Escape closes, matching the convention every modal dialog sets — the
+  // muscle memory is already there and there's no reason to take it away.
+  // Routed through `onRequestClose` so a dirty form still confirms.
   useEffect(() => {
     // Stacked there is no × for it to be the shortcut *to*, and the pane may
     // not even be what's on screen — emptying it from the rail would be a

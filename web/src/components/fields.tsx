@@ -238,18 +238,15 @@ export function Select({
 /**
  * A row of mutually exclusive choices, sized by its labels.
  *
- * **It sizes itself.** Every caller used to wrap it in a fixed pixel width
- * guessed from the labels inside it, and the guesses drifted: "High–low"
- * wrapped onto two lines, and "Square" was clipped to "Sq". `w-fit` plus
- * `whitespace-nowrap` makes the wrapper unnecessary and the clipping
- * unreachable — a label that grows takes the room it needs instead of losing
- * its tail.
+ * **It sizes itself.** `w-fit` plus `whitespace-nowrap` means no caller has to
+ * guess a pixel width for the labels it holds — a label always gets the room
+ * it needs rather than wrapping or losing its tail.
  *
  * **Which is why a narrow screen wraps the group rather than shrinking it.**
- * `w-fit` cannot shrink, so the four-option tile-shape group is 323px wide
- * whatever it is given, and in a folder card on a 375px screen it hung past the
- * card's own border. `max-w-full` with `flex-wrap` takes a second line instead;
- * the labels stay whole, which is the property this control exists to keep.
+ * `w-fit` cannot shrink, so on a screen too narrow for the group's natural
+ * width, `max-w-full` with `flex-wrap` takes a second line instead of
+ * overflowing the container — the labels stay whole, which is the property
+ * this control exists to keep.
  */
 export function Segmented<T extends string>({
   value,
@@ -293,11 +290,10 @@ export function Segmented<T extends string>({
  * to render *some* position for "unset".
  *
  * **One `onChange` carrying both bounds, not an `onLow` and an `onHigh`.** A
- * drag on either thumb produces both values at once, and reporting them
- * through two callbacks meant a consumer that writes the pair as one object
- * ran the second write over the first — `CertificationPicker` did, and the
- * effect was that its low thumb could not be moved at all: the second call
- * put the old low back from a stale closure. A control that moves two values
+ * drag on either thumb produces both values at once. Reporting them through
+ * two callbacks risks a consumer that writes the pair as one object: the
+ * second call would overwrite the first with a stale closure's value, and a
+ * thumb wired that way could never move. A control that moves two values
  * together has to say so in its signature.
  */
 export function DualRangeSlider({

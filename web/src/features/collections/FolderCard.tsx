@@ -218,9 +218,8 @@ export function FolderCard({
         <span className="type-data text-dimmer w-[52px] shrink-0 text-[10.5px]">
           tab {position + 1}/{total}
         </span>
-        {/* Sized, not stretched, and the remove button follows it directly:
-            a title box spanning the card left Remove marooned at the far
-            edge, a hand's width from the folder it removes. */}
+        {/* Sized, not stretched, so the remove button sits right beside it
+            rather than at the far edge of a full-width title box. */}
         <div className="w-full max-w-[var(--w-entry)] min-w-0">
           <TextInput
             value={folder.title}
@@ -321,8 +320,8 @@ export function FolderCard({
             items={folder.catalogIDs.map((id) => refDragID(folder.key, id))}
             strategy={verticalListSortingStrategy}
           >
-            {/* Capped: the owner column is right-aligned in the row, and across
-                a card-wide row it ended up an inch of empty space from the
+            {/* Capped: the owner column is right-aligned in the row, so an
+                uncapped, card-wide row would leave it stranded well past the
                 catalog it describes. */}
             <ul className="m-0 flex max-w-[42rem] list-none flex-col p-0">
               {folder.catalogIDs.map((catalogID, index) => (
@@ -399,9 +398,9 @@ function RefRow({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       // The owner column is dropped below `sm` and the same words go under the
-      // recipe instead. Held as a column at rail-and-pane widths it was 112px
-      // against the 56px the catalog's own name was left with — the row spent
-      // twice as much width saying "movie · community" as saying which catalog.
+      // recipe instead: held as a column at rail-and-pane widths, it would
+      // outweigh the catalog's own name, which is the more important text in
+      // the row.
       className={`border-line hover:bg-raised grid grid-cols-[16px_3px_24px_minmax(0,1fr)_24px] items-center gap-x-3 border-b py-2 transition-colors sm:grid-cols-[16px_3px_24px_minmax(0,1fr)_7rem_24px] ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}

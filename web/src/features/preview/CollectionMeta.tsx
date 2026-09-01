@@ -12,10 +12,10 @@ import type { PreviewCollection } from './model'
  * two different behaviours.
  *
  * **It also carries what a folder tile can't say for itself.** A tile is 92px
- * of emoji or cover art; the facts about it — that some of its catalogs no
- * longer resolve, that its shape was assumed rather than set — used to live
- * only in the tile's `title`, which no touch screen ever opens. Summed across
- * the row here, they are on the page for everyone.
+ * of emoji or cover art; facts about it — that some of its catalogs no longer
+ * resolve, that its shape was assumed rather than set — sit in the tile's
+ * `title`, which no touch screen ever opens. Summed across the row here, they
+ * are on the page for everyone.
  */
 export function CollectionMeta({ collection }: { collection: PreviewCollection }) {
   if (collection.missing) return null

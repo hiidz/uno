@@ -3,10 +3,10 @@ import type { ReactNode } from 'react'
 /**
  * The loading / error / empty wrapper every list in the app goes through.
  * Shared rather than per-feature so the three states read identically in the
- * Library rail, the Home pane, and the Manage overlays.
+ * Library rail and the Home pane.
  *
- * Copy rules, per .ref: errors say what happened and offer the next action —
- * no apology, no vagueness. An empty list is an invitation to act, so callers
+ * Copy rules: errors say what happened and offer the next action — no
+ * apology, no vagueness. An empty list is an invitation to act, so callers
  * pass real guidance rather than "No items".
  */
 export function ListState({

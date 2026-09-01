@@ -7,10 +7,9 @@ import { FieldNote, Select } from '@/components/fields'
 /**
  * Which streaming services a title has to be on, picked by name.
  *
- * This used to be a free-text box for TMDB's numeric provider ids, with a hint
- * telling the user to go and look them up. `GET /api/watch-providers/{type}`
- * exists precisely so it doesn't have to: services are named, ranked by TMDB's
- * own prominence, and clicked.
+ * `GET /api/watch-providers/{type}` names every service and ranks them by
+ * TMDB's own prominence, so this is a click rather than a lookup of TMDB's
+ * numeric provider ids.
  *
  * **Region first, because a service list only exists per market.** TMDB reports
  * what it has data for in one country, so the region chooses the list, and

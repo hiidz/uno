@@ -5,10 +5,9 @@ import { filterRefOptions, type RefOption } from './refs'
 /**
  * Add catalogs to a folder: search, then click as many as you want.
  *
- * Inline under the folder it fills rather than a dialog. The builder is already
- * a dialog over the Manage overlay, and a third layer would put the folder
- * being edited behind two scrims — the one thing the user needs to see while
- * choosing what goes in it.
+ * Inline under the folder it fills rather than a dialog: a dialog would put
+ * the folder being edited behind a scrim — the one thing the user needs to
+ * see while choosing what goes in it.
  *
  * It stays open after each pick and drops each chosen row out of the list, so
  * the remaining options are always exactly what can still be added. Ordering

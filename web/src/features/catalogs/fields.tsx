@@ -156,9 +156,9 @@ export function RangeField({
 /**
  * Genre picker, one row. Each chip cycles neutral → include → exclude → neutral
  * on click, rather than living in two separate pickers — a genre picked in
- * both "genres" and "exclude genres" used to be representable and made no
- * sense (TMDB would just cancel it out), so the cycle makes that state
- * unreachable instead of merely confusing.
+ * both "genres" and "exclude genres" would be representable and make no sense
+ * (TMDB would just cancel it out), so the cycle makes that state unreachable
+ * instead of merely confusing.
  */
 export function GenreCycler({
   label,
@@ -350,9 +350,9 @@ export function CertificationPicker({
         />
         {country && scale.length > 0 && (
           <div className="min-w-0 flex-1 pt-1.5">
-            {/* One `onChange`, both bounds. Written as two calls this reported
-                the moved thumb and then the stale one, and whichever ran last
-                won — which is why the low thumb used to snap straight back. */}
+            {/* One `onChange`, both bounds: two separate calls would each
+                carry only one bound from a stale closure, and whichever ran
+                last would overwrite the other with it. */}
             <DualRangeSlider
               min={0}
               max={lastIndex}

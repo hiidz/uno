@@ -24,11 +24,11 @@ let lgQuery: MediaQueryList | null = null
 /**
  * Resolved on first use rather than at import.
  *
- * The router imports this module's consumers eagerly, so a `matchMedia` call in
- * module scope makes *loading* the app depend on a browser API — which is how
- * the app's mount smoke test found it, running under jsdom. Missing, every
- * query answers as though this were a wide screen: the stacked layout is the
- * one with the extra behaviour, so not-stacked is the inert default.
+ * The router imports this module's consumers eagerly, so a `matchMedia` call
+ * in module scope makes *loading* the app depend on a browser API — one
+ * jsdom, the test environment, does not implement. Missing, every query
+ * answers as though this were a wide screen: the stacked layout is the one
+ * with the extra behaviour, so not-stacked is the inert default.
  */
 function media(query: string): MediaQueryList | null {
   if (typeof window.matchMedia !== 'function') return null

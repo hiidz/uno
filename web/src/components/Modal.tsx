@@ -2,11 +2,10 @@ import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
 /**
- * Scrim + panel, for the few things that genuinely interrupt.
- *
- * The builders used to live in one; they fill the right pane now. What's left
- * is the short, blocking question — naming a catalog before it exists — where
- * the whole point is that nothing else can be done until it's answered.
+ * Scrim + panel, for the few things that genuinely interrupt: the short,
+ * blocking question — naming a catalog before it exists — where the whole
+ * point is that nothing else can be done until it's answered. The catalog and
+ * collection editors fill the builder's right pane instead of this.
  */
 export function Modal({
   open,

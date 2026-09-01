@@ -4,12 +4,11 @@ import type { LibraryCatalog, LibraryCollection, useLibrary } from './useLibrary
 
 /**
  * The sidebar: your own catalogs and collections on top, everyone else's
- * below. The two halves used to be one filtered list — a control choosing
- * which owner to look at — but "mine" and "community" are different tasks
- * (build here, browse there), so each now gets its own permanently visible
- * section with its own scroll region and its own name/genre filter. Only
- * "Mine" gets the New buttons; you can't create a community row, only adopt
- * one by opening it.
+ * below. "Mine" and "community" are different tasks (build here, browse
+ * there), so each gets its own permanently visible section with its own
+ * scroll region and its own name/genre filter, rather than one filtered list
+ * with a control choosing which owner to look at. Only "Mine" gets the New
+ * buttons; you can't create a community row, only adopt one by opening it.
  *
  * Below `lg` the rail is the top of one long page rather than a column, with
  * the pane stacked underneath it. It keeps its link to home, which stops being

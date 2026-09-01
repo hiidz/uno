@@ -58,8 +58,7 @@ export function PushBanner({ outcome, dismiss }: Push) {
  * on success: the sentence adds nothing to the headline, and the URL is
  * ellipsised past reading at that width — copying it is the thing the reader
  * actually does with it, so the button stays and the text it labels doesn't.
- * That is 100px of frozen chrome down to 52px, on the outcome that happens
- * most.
+ * That keeps the banner short on the outcome that happens most.
  */
 function SuccessBanner({ manifestURL, dismiss }: { manifestURL?: string; dismiss: () => void }) {
   return (

@@ -13,10 +13,10 @@ import type { CatalogPayload } from '@/api'
  * The collection lists are invalidated too, because of a real cascade:
  * `DELETE FROM catalogs` drops the row's `folder_catalogs` entries
  * (`ON DELETE CASCADE`), so every cached collection that referenced it is now
- * wrong — the Manage overlay would keep listing a folder member that no longer
- * exists, and saving that collection would `400` on a catalog id the user can't
- * see. Create and `is_public` flips take the same path because they change what
- * a folder is *allowed* to reference.
+ * wrong — the collection editor would keep listing a folder member that no
+ * longer exists, and saving that collection would `400` on a catalog id the
+ * user can't see. Create and `is_public` flips take the same path because
+ * they change what a folder is *allowed* to reference.
  *
  * The selection queries are **not** invalidated. Selection is client state until
  * Push — refetching it would clobber the user's pending home-screen edits with

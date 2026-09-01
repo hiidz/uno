@@ -111,11 +111,10 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
           than the header's, and it mounts and unmounts while the page is open —
           so the band's height still moves and is still read from the DOM. */}
       <div ref={stickyRef} className="sticky top-0 z-30 shrink-0 lg:static">
-        {/* One row that never wraps, at every width. It used to be `flex-wrap`,
-            which cost 90px on a 390px screen and 133px on a 360px one, and made
-            the height depend on the pending count — the only label here whose
-            text length follows the data. The row now holds its height by
-            letting the profile chip truncate instead. */}
+        {/* One row that never wraps, at every width, so the header's height
+            stays fixed regardless of the pending count — the only label here
+            whose text length follows the data. The profile chip truncates
+            instead of letting the row wrap. */}
         <header className="bg-raised border-line flex min-h-[53px] items-center gap-3 border-b px-4 py-2 lg:h-[53px] lg:gap-4 lg:px-5 lg:py-0">
           <span className="type-wordmark shrink-0 text-[14px]">Uno</span>
 

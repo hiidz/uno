@@ -46,9 +46,9 @@ export interface PreviewFolder {
   title: string
   /** `hide_title` suppresses the title text under the folder's **tile** — the
    *  literal reading of Nuvio's own field description ("Hide the tile title
-   *  text", `.ref/Nuvio_API_Docs.md`). The folder still has a title, and
-   *  preview still needs to name it somewhere, so the renderer moves it into
-   *  the tile's accessible name rather than dropping it. */
+   *  text"). The folder still has a title, and preview still needs to name it
+   *  somewhere, so the renderer moves it into the tile's accessible name
+   *  rather than dropping it. */
   hideTitle: boolean
   /** The shape of this folder's own tile in its collection's row. Folders in
    *  one collection can disagree, so a row can be ragged — drawn as-is, since
@@ -149,8 +149,8 @@ export const ALL_TAB = '__all__'
  * How many tiles the "All" tab renders.
  *
  * Every other view is naturally bounded at one TMDB page (20). All is not — a
- * real folder in `.ref/nuvio-collections.json` carries 8+ sources, which is 160
- * tiles and 160 remote images in one grid.
+ * folder can carry 8+ sources, which is 160 tiles and 160 remote images in
+ * one grid.
  */
 export const ALL_TAB_TILE_CAP = 20
 
