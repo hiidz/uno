@@ -84,6 +84,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const [namingCollection, setNamingCollection] = useState(false)
   const [deletingCatalog, setDeletingCatalog] = useState<LibraryCatalog | null>(null)
   const [deletingCollection, setDeletingCollection] = useState<LibraryCollection | null>(null)
+  const [duplicatingCatalog, setDuplicatingCatalog] = useState<LibraryCatalog | null>(null)
+  const [duplicatingCollection, setDuplicatingCollection] = useState<LibraryCollection | null>(null)
 
   const railRef = useRef<HTMLElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -328,8 +330,22 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       : undefined
 
   // Named rather than inlined at the call site, because the rail's row and the
-  // editor's header are now two places asking for the same thing.
+  // editor's header are now two places asking for the same thing. Both routes
+  // land on the icon-only action from `LibraryItem`, which reads as "delete"
+  // as easily as "duplicate" without its label — so this asks first rather
+  // than acting on the tap.
   function duplicateCatalog(catalog: LibraryCatalog) {
+    setDuplicatingCatalog(catalog)
+  }
+
+  function duplicateCollection(collection: LibraryCollection) {
+    setDuplicatingCollection(collection)
+  }
+
+  function confirmDuplicateCatalog() {
+    if (!duplicatingCatalog) return
+    const catalog = duplicatingCatalog
+    setDuplicatingCatalog(null)
     open({
       kind: 'catalog',
       mode: 'duplicate',
@@ -338,7 +354,10 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
-  function duplicateCollection(collection: LibraryCollection) {
+  function confirmDuplicateCollection() {
+    if (!duplicatingCollection) return
+    const collection = duplicatingCollection
+    setDuplicatingCollection(null)
     open(seedCollection(collection, 'duplicate', refAccessible))
   }
 
@@ -503,6 +522,38 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         destructive
         onConfirm={confirmDeleteCatalog}
         onCancel={() => setDeletingCatalog(null)}
+      />
+
+      <ConfirmDialog
+        open={duplicatingCatalog !== null}
+        title="Duplicate this catalog?"
+        body={
+          <>
+            Creates a new, editable copy of{' '}
+            <strong className="text-ink">{duplicatingCatalog?.name}</strong>. The original is left
+            untouched.
+          </>
+        }
+        confirmLabel="Duplicate catalog"
+        cancelLabel="Cancel"
+        onConfirm={confirmDuplicateCatalog}
+        onCancel={() => setDuplicatingCatalog(null)}
+      />
+
+      <ConfirmDialog
+        open={duplicatingCollection !== null}
+        title="Duplicate this collection?"
+        body={
+          <>
+            Creates a new, editable copy of{' '}
+            <strong className="text-ink">{duplicatingCollection?.title}</strong>. The original is
+            left untouched.
+          </>
+        }
+        confirmLabel="Duplicate collection"
+        cancelLabel="Cancel"
+        onConfirm={confirmDuplicateCollection}
+        onCancel={() => setDuplicatingCollection(null)}
       />
 
       <ConfirmDialog
