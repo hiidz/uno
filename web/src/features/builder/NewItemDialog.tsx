@@ -1,0 +1,105 @@
+import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
+import { Field, TextInput } from '@/components/fields'
+import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
+
+/**
+ * Names a library item into existence, and nothing more.
+ *
+ * **It asks for what can't be changed later, plus what the row is found by**,
+ * and leaves everything else to the editor it opens on. What it creates is
+ * therefore bare — a catalog with no filters, a collection with no folders —
+ * which is a real and useful state in both cases rather than a half-made one.
+ *
+ * That rule is what decides how many fields there are, so `extra` is where a
+ * kind with a second immutable field puts it. A kind whose name is the only
+ * thing worth settling up front leaves the slot out. Both call sites are in
+ * `Workspace`, which says which is which.
+ */
+export function NewItemDialog({
+  open,
+  noun,
+  label,
+  placeholder,
+  saving,
+  serverError,
+  extra,
+  onCreate,
+  onClose,
+}: {
+  open: boolean
+  /** What is being created, carried through every line of copy here: "New
+   *  catalog", "Give this catalog a name.", "Create catalog". */
+  noun: string
+  /** What the one required field is called — "Name", "Title". */
+  label: string
+  placeholder: string
+  saving: boolean
+  /** Plain-text body of a server 400. Only the named field can be wrong here
+   *  and this form checks it, so it renders as an unexpected-case banner. */
+  serverError: string | null
+  /** A second field, for a kind that has another thing it can't ask later. */
+  extra?: ReactNode
+  onCreate: (value: string) => void
+  onClose: () => void
+}) {
+  const [value, setValue] = useState('')
+  const [showError, setShowError] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setValue('')
+    setShowError(false)
+  }, [open])
+
+  const invalid = value.trim() === ''
+
+  function submit() {
+    setShowError(true)
+    if (invalid) return
+    onCreate(value.trim())
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} labelledBy={`new-${noun}-title`} width="440px">
+      <ModalHeader>
+        <h2 id={`new-${noun}-title`} className="type-display m-0 text-[15px]">
+          New {noun}
+        </h2>
+      </ModalHeader>
+
+      <ModalBody>
+        <div className="flex flex-col gap-5">
+          <Field
+            label={label}
+            error={showError && invalid ? `Give this ${noun} a ${label.toLowerCase()}.` : undefined}
+          >
+            <TextInput
+              value={value}
+              onChange={setValue}
+              placeholder={placeholder}
+              invalid={showError && invalid}
+            />
+          </Field>
+
+          {extra}
+
+          {serverError && (
+            <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px]">
+              Couldn't create this {noun}: {serverError}
+            </p>
+          )}
+        </div>
+      </ModalBody>
+
+      <ModalFooter>
+        <button type="button" onClick={onClose} className="btn-ghost">
+          Cancel
+        </button>
+        <button type="button" onClick={submit} disabled={saving} className="btn-primary">
+          {saving ? 'Creating…' : `Create ${noun}`}
+        </button>
+      </ModalFooter>
+    </Modal>
+  )
+}

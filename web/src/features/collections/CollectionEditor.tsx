@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Checkbox, Field, Select, TextInput } from '@/components/fields'
+import { EditorFooter, SaveError } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
-import { plural } from '@/lib/plural'
+import { useEditorForm } from '@/features/builder/useEditorForm'
 import { CollectionPreview } from './CollectionPreview'
 import { FolderCard, FolderTreeDnd } from './FolderCard'
 import {
@@ -74,13 +75,11 @@ export function CollectionEditor({
   onDirtyChange: (dirty: boolean) => void
 }) {
   const baseline = useMemo(() => initial ?? emptyCollectionForm(), [initial])
-  const [state, setState] = useState<CollectionFormState>(baseline)
-  const [showErrors, setShowErrors] = useState(false)
-
-  useEffect(() => {
-    setState(baseline)
-    setShowErrors(false)
-  }, [baseline])
+  const { state, setState, showErrors, submit } = useEditorForm(
+    baseline,
+    isSameCollection,
+    onDirtyChange,
+  )
 
   const errors = useMemo(
     () => validateCollectionForm(state, accessibleIDs),
@@ -88,8 +87,6 @@ export function CollectionEditor({
   )
   const errorCount = countErrors(errors)
   const willDelete = useMemo(() => removedFolders(baseline, state), [baseline, state])
-  const dirty = !isSameCollection(baseline, state)
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
 
   function patch(update: Partial<CollectionFormState>) {
     setState((previous) => ({ ...previous, ...update }))
@@ -133,12 +130,6 @@ export function CollectionEditor({
     )
   }
 
-  function submit() {
-    setShowErrors(true)
-    if (errorCount > 0) return
-    onSave(state)
-  }
-
   const eyebrow = mode === 'edit' ? 'Edit collection' : 'Duplicate collection'
 
   return (
@@ -153,19 +144,15 @@ export function CollectionEditor({
       onDuplicate={onDuplicate}
       onDelete={onDelete}
       footer={
-        <>
-          {showErrors && errorCount > 0 && (
-            <span className="type-data text-danger mr-auto text-[10.5px]">
-              Fix the highlighted {plural(errorCount, 'field')}.
-            </span>
-          )}
-          <button type="button" onClick={onRequestClose} className="btn-ghost">
-            Cancel
-          </button>
-          <button type="button" onClick={submit} disabled={saving} className="btn-primary">
-            {saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create collection'}
-          </button>
-        </>
+        <EditorFooter
+          mode={mode}
+          noun="collection"
+          saving={saving}
+          showErrors={showErrors}
+          errorCount={errorCount}
+          onCancel={onRequestClose}
+          onSubmit={() => submit(errorCount, onSave)}
+        />
       }
     >
           {droppedRefs.length > 0 && (
@@ -306,11 +293,7 @@ export function CollectionEditor({
             </p>
           )}
 
-          {serverError && (
-            <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
-              Couldn't save this collection: {serverError}
-            </p>
-          )}
+          <SaveError noun="collection" message={serverError} />
     </EditorShell>
   )
 }

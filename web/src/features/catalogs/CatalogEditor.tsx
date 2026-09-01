@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
+import { EditorFooter, SaveError } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
+import { useEditorForm } from '@/features/builder/useEditorForm'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
-import { plural } from '@/lib/plural'
 import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
@@ -79,8 +80,11 @@ export function CatalogEditor({
   onDirtyChange: (dirty: boolean) => void
 }) {
   const baseline = useMemo(() => initial ?? emptyForm(), [initial])
-  const [state, setState] = useState<CatalogFormState>(baseline)
-  const [showErrors, setShowErrors] = useState(false)
+  const { state, setState, showErrors, revealErrors, submit } = useEditorForm(
+    baseline,
+    isSameCatalog,
+    onDirtyChange,
+  )
 
   // Sorted by the name shown, not TMDB's response order, so the dropdown
   // reads alphabetically like the country and certification pickers.
@@ -99,19 +103,15 @@ export function CatalogEditor({
   const preview = useRecipeTiles(state.type, paramsString(state))
   const resetPreview = preview.reset
 
+  // Seeding a different catalog means the tiles on screen belong to the
+  // previous one. Stale is the wrong word for that — they aren't this recipe's
+  // results at all — so they go rather than being labelled.
   useEffect(() => {
-    setState(baseline)
-    setShowErrors(false)
-    // Seeding a different catalog means the tiles on screen belong to the
-    // previous one. Stale is the wrong word for that — they aren't this
-    // recipe's results at all — so they go rather than being labelled.
     resetPreview()
   }, [baseline, resetPreview])
 
-  const dirty = !isSameCatalog(baseline, state)
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
-
   const errors = useMemo(() => validateForm(state), [state])
+  const errorCount = Object.keys(errors).length
   const errorFor = (key: string) => (showErrors ? errors[key] : undefined)
 
   // The form mirrors every server rule, so an invalid recipe never leaves the
@@ -166,19 +166,13 @@ export function CatalogEditor({
     }))
   }
 
-  function submit() {
-    setShowErrors(true)
-    if (Object.keys(errors).length > 0) return
-    onSave(state)
-  }
-
   /** Same shape as `submit`: reveal what's wrong, or go. Errors stay hidden
    *  until something is submitted, so pressing Preview has to be one of the
    *  things that reveals them — otherwise the note explaining why it won't run
    *  points at highlighting that isn't there yet. */
   function runPreview() {
     if (recipeInvalid) {
-      setShowErrors(true)
+      revealErrors()
       return
     }
     preview.run()
@@ -199,19 +193,15 @@ export function CatalogEditor({
       onDuplicate={onDuplicate}
       onDelete={onDelete}
       footer={
-        <>
-          {showErrors && Object.keys(errors).length > 0 && (
-            <span className="type-data text-danger mr-auto text-[10.5px]">
-              Fix the highlighted {plural(Object.keys(errors).length, 'field')}.
-            </span>
-          )}
-          <button type="button" onClick={onRequestClose} className="btn-ghost">
-            Cancel
-          </button>
-          <button type="button" onClick={submit} disabled={saving} className="btn-primary">
-            {saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create catalog'}
-          </button>
-        </>
+        <EditorFooter
+          mode={mode}
+          noun="catalog"
+          saving={saving}
+          showErrors={showErrors}
+          errorCount={errorCount}
+          onCancel={onRequestClose}
+          onSubmit={() => submit(errorCount, onSave)}
+        />
       }
     >
         <div className="grid gap-x-8 gap-y-6 md:grid-cols-[minmax(0,232px)_minmax(0,1fr)]">
@@ -402,11 +392,7 @@ export function CatalogEditor({
           onRun={runPreview}
         />
 
-        {serverError && (
-          <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
-            Couldn't save this catalog: {serverError}
-          </p>
-        )}
+        <SaveError noun="catalog" message={serverError} />
     </EditorShell>
   )
 }

@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import type { ComponentProps } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
 import type { CatalogType } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Field, Segmented } from '@/components/fields'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
-import { NewCatalogDialog } from '@/features/catalogs/NewCatalogDialog'
 import {
   emptyForm,
   formFromCatalog,
@@ -13,7 +14,6 @@ import {
 } from '@/features/catalogs/catalogForm'
 import { useCatalogMutations } from '@/features/catalogs/useCatalogMutations'
 import { CollectionEditor } from '@/features/collections/CollectionEditor'
-import { NewCollectionDialog } from '@/features/collections/NewCollectionDialog'
 import {
   emptyCollectionForm,
   formFromCollection,
@@ -28,6 +28,7 @@ import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
 import { useEditorGuard } from './EditorGuard'
+import { NewItemDialog } from './NewItemDialog'
 import {
   useScrollRequests,
   useStackedLayout,
@@ -35,6 +36,23 @@ import {
   type ScrollDestination,
 } from './stacked'
 import type { EditorTarget } from './target'
+
+/**
+ * What the workspace is waiting on an answer to.
+ *
+ * The four row actions all ask before they act, and only one can be asked at a
+ * time: the prompt is a modal over the whole builder, so there is nothing to
+ * raise a second one with while one is up, and this can't express two.
+ */
+type Confirmation =
+  | { kind: 'delete-catalog'; catalog: LibraryCatalog }
+  | { kind: 'duplicate-catalog'; catalog: LibraryCatalog }
+  | { kind: 'delete-collection'; collection: LibraryCollection }
+  | { kind: 'duplicate-collection'; collection: LibraryCollection }
+
+/** Everything the prompt needs except whether it is up, which is answered by
+ *  there being one at all. */
+type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
 
 /**
  * The builder's two regions and the state that spans them.
@@ -82,11 +100,13 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   // closing one gives back the view you left rather than resetting to List.
   const [homeView, setHomeView] = useState<HomeView>('list')
   const [namingCatalog, setNamingCatalog] = useState(false)
+  // The naming dialog's second field, held here because it is the answer the
+  // dialog is collecting rather than something it displays — `createBareCatalog`
+  // is what reads it. Reset when the dialog is opened, not when it closes, so a
+  // create the server rejected keeps the choice for the retry.
+  const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
   const [namingCollection, setNamingCollection] = useState(false)
-  const [deletingCatalog, setDeletingCatalog] = useState<LibraryCatalog | null>(null)
-  const [deletingCollection, setDeletingCollection] = useState<LibraryCollection | null>(null)
-  const [duplicatingCatalog, setDuplicatingCatalog] = useState<LibraryCatalog | null>(null)
-  const [duplicatingCollection, setDuplicatingCollection] = useState<LibraryCollection | null>(null)
+  const [confirming, setConfirming] = useState<Confirmation | null>(null)
 
   const railRef = useRef<HTMLElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -218,8 +238,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
    * hasn't made yet. Declining here costs nothing — the catalog is in the rail
    * either way, ready to be selected later.
    */
-  function createBareCatalog(name: string, type: CatalogType) {
-    catalogMutations.create.mutate(toPayload({ ...emptyForm(type), name }), {
+  function createBareCatalog(name: string) {
+    catalogMutations.create.mutate(toPayload({ ...emptyForm(newCatalogType), name }), {
       onSuccess: (catalog) => {
         setNamingCatalog(false)
         // Anything you just made is yours, so this can't be a duplicate target.
@@ -272,15 +292,14 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     }
   }
 
-  function confirmDeleteCatalog() {
-    if (!deletingCatalog) return
-    const id = deletingCatalog.id
+  function confirmDeleteCatalog(catalog: LibraryCatalog) {
+    const id = catalog.id
     catalogMutations.remove.mutate(id, {
       onSuccess: () => {
         // A deleted catalog can't stay on the home screen — drop it from the
         // pending selection too, or Push would reject the stale reference.
         home.removeCatalog(id)
-        setDeletingCatalog(null)
+        setConfirming(null)
         // Nor can it stay in the pane. This is the one close that doesn't ask:
         // the row it was editing is gone, so there is nothing to go back to and
         // nothing left to save. Back to the rail rather than the home screen
@@ -292,13 +311,12 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
-  function confirmDeleteCollection() {
-    if (!deletingCollection) return
-    const id = deletingCollection.id
+  function confirmDeleteCollection(collection: LibraryCollection) {
+    const id = collection.id
     collectionMutations.remove.mutate(id, {
       onSuccess: () => {
         home.removeCollection(id)
-        setDeletingCollection(null)
+        setConfirming(null)
         if (target?.sourceID === id) show(null, 'rail')
       },
     })
@@ -342,23 +360,29 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     open(collectionTarget(collection, refAccessible))
   }
 
-  // Named rather than inlined at the call site, because the rail's row and the
-  // editor's header are now two places asking for the same thing. Both routes
-  // land on the icon-only action from `LibraryItem`, which reads as "delete"
-  // as easily as "duplicate" without its label — so this asks first rather
+  // Named rather than inlined at the call sites, because the rail's row and the
+  // editor's header are two places asking for the same four things. Both routes
+  // land on the icon-only action from `LibraryItem`, which reads as "delete" as
+  // easily as "duplicate" without its label — so each raises the prompt rather
   // than acting on the tap.
+  function deleteCatalog(catalog: LibraryCatalog) {
+    setConfirming({ kind: 'delete-catalog', catalog })
+  }
+
+  function deleteCollection(collection: LibraryCollection) {
+    setConfirming({ kind: 'delete-collection', collection })
+  }
+
   function duplicateCatalog(catalog: LibraryCatalog) {
-    setDuplicatingCatalog(catalog)
+    setConfirming({ kind: 'duplicate-catalog', catalog })
   }
 
   function duplicateCollection(collection: LibraryCollection) {
-    setDuplicatingCollection(collection)
+    setConfirming({ kind: 'duplicate-collection', collection })
   }
 
-  function confirmDuplicateCatalog() {
-    if (!duplicatingCatalog) return
-    const catalog = duplicatingCatalog
-    setDuplicatingCatalog(null)
+  function confirmDuplicateCatalog(catalog: LibraryCatalog) {
+    setConfirming(null)
     open({
       kind: 'catalog',
       mode: 'duplicate',
@@ -367,12 +391,138 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
-  function confirmDuplicateCollection() {
-    if (!duplicatingCollection) return
-    const collection = duplicatingCollection
-    setDuplicatingCollection(null)
+  function confirmDuplicateCollection(collection: LibraryCollection) {
+    setConfirming(null)
     open(seedCollection(collection, 'duplicate', refAccessible))
   }
+
+  /**
+   * The prompt this level is raising, if any, and what it says.
+   *
+   * One dialog rather than five. The discard guard and the four row actions
+   * differ only in their copy and in what answering yes does, so they are one
+   * set of props built from one piece of state — a sixth question added later
+   * inherits the same shape instead of arriving as a sixth element that has to
+   * be kept in step with the other five.
+   *
+   * The guard is asked first when both could be: it stands for a request to
+   * leave the editor, which is the thing already in progress.
+   */
+  function confirmation(): ConfirmProps | null {
+    if (blocked) {
+      return {
+        title: 'Discard unsaved changes?',
+        body: (
+          <>
+            Your changes to <strong className="text-ink">{editorSubject(target)}</strong> haven't
+            been saved. Leaving discards them.
+          </>
+        ),
+        confirmLabel: 'Discard',
+        cancelLabel: 'Keep editing',
+        destructive: true,
+        onConfirm: proceed,
+        onCancel: cancel,
+      }
+    }
+
+    if (confirming === null) return null
+
+    switch (confirming.kind) {
+      case 'delete-catalog': {
+        const { catalog } = confirming
+        return {
+          title: 'Delete this catalog?',
+          // Delete only ever reaches an owned item (`LibrarySection` wires
+          // `onDelete` for owned rows alone), so the axis that actually varies
+          // here is `is_public`, not who owns it: a catalog shared with the
+          // community can be sitting on someone else's home screen right now,
+          // where a private one can only ever be on yours.
+          body: catalog.is_public ? (
+            <>
+              <strong className="text-ink">{catalog.name}</strong> is removed for{' '}
+              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
+              with the community. This can't be undone.
+            </>
+          ) : (
+            <>
+              <strong className="text-ink">{catalog.name}</strong> is deleted permanently.
+              Any references to this catalog from a collection will also be removed.
+              This can't be undone.
+            </>
+          ),
+          confirmLabel: catalogMutations.remove.isPending ? 'Deleting…' : 'Delete catalog',
+          cancelLabel: 'Keep it',
+          destructive: true,
+          onConfirm: () => confirmDeleteCatalog(catalog),
+          onCancel: () => setConfirming(null),
+        }
+      }
+
+      case 'duplicate-catalog': {
+        const { catalog } = confirming
+        return {
+          title: 'Duplicate this catalog?',
+          body: (
+            <>
+              Creates a new, editable copy of{' '}
+              <strong className="text-ink">{catalog.name}</strong>. The original is left untouched.
+            </>
+          ),
+          confirmLabel: 'Duplicate catalog',
+          cancelLabel: 'Cancel',
+          onConfirm: () => confirmDuplicateCatalog(catalog),
+          onCancel: () => setConfirming(null),
+        }
+      }
+
+      case 'delete-collection': {
+        const { collection } = confirming
+        return {
+          title: 'Delete this collection?',
+          body: collection.is_public ? (
+            <>
+              <strong className="text-ink">{collection.title}</strong> and its{' '}
+              {folderCount(collection)} are removed for{' '}
+              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
+              with the community. The catalogs inside it are kept. This can't be undone.
+            </>
+          ) : (
+            <>
+              <strong className="text-ink">{collection.title}</strong> and its{' '}
+              {folderCount(collection)} are deleted permanently. The catalogs inside it are kept.
+              This can't be undone.
+            </>
+          ),
+          confirmLabel: collectionMutations.remove.isPending ? 'Deleting…' : 'Delete collection',
+          cancelLabel: 'Keep it',
+          destructive: true,
+          onConfirm: () => confirmDeleteCollection(collection),
+          onCancel: () => setConfirming(null),
+        }
+      }
+
+      case 'duplicate-collection': {
+        const { collection } = confirming
+        return {
+          title: 'Duplicate this collection?',
+          body: (
+            <>
+              Creates a new, editable copy of{' '}
+              <strong className="text-ink">{collection.title}</strong>. The original is left
+              untouched.
+            </>
+          ),
+          confirmLabel: 'Duplicate collection',
+          cancelLabel: 'Cancel',
+          onConfirm: () => confirmDuplicateCollection(collection),
+          onCancel: () => setConfirming(null),
+        }
+      }
+    }
+  }
+
+  const prompt = confirmation()
 
   return (
     <>
@@ -423,6 +573,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               // A rejection from a previous attempt — or from a duplicate,
               // which shares this mutation — must not greet the next one.
               resetCatalogCreate()
+              setNewCatalogType('movie')
               setNamingCatalog(true)
             }}
             onNewCollection={() => {
@@ -433,8 +584,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
             onSelectCollection={selectCollection}
             onDuplicateCatalog={duplicateCatalog}
             onDuplicateCollection={duplicateCollection}
-            onDeleteCatalog={setDeletingCatalog}
-            onDeleteCollection={setDeletingCollection}
+            onDeleteCatalog={deleteCatalog}
+            onDeleteCollection={deleteCollection}
           />
           <LibrarySection
             owned={false}
@@ -444,8 +595,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
             onSelectCollection={selectCollection}
             onDuplicateCatalog={duplicateCatalog}
             onDuplicateCollection={duplicateCollection}
-            onDeleteCatalog={setDeletingCatalog}
-            onDeleteCollection={setDeletingCollection}
+            onDeleteCatalog={deleteCatalog}
+            onDeleteCollection={deleteCollection}
           />
         </aside>
 
@@ -487,7 +638,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               onSave={saveCatalog}
               onRequestClose={close}
               onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
-              onDelete={activeCatalog ? () => setDeletingCatalog(activeCatalog) : undefined}
+              onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
               onDirtyChange={setDirty}
             />
           ) : (
@@ -508,17 +659,37 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               onSave={saveCollection}
               onRequestClose={close}
               onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
-              onDelete={activeCollection ? () => setDeletingCollection(activeCollection) : undefined}
+              onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
               onDirtyChange={setDirty}
             />
           )}
         </div>
       </div>
 
-      <NewCatalogDialog
+      {/* Two fields, because two of them are hard to change later: a name is
+          how the row is found in the rail, and `type` is immutable once the
+          catalog exists — every filter in the builder branches on it, and the
+          supported way to change one is to duplicate. */}
+      <NewItemDialog
         open={namingCatalog}
+        noun="catalog"
+        label="Name"
+        placeholder="Trending Sci-Fi"
         saving={catalogMutations.create.isPending}
         serverError={(catalogMutations.create.error as Error | null)?.message ?? null}
+        extra={
+          <Field label="Type" hint="Can't be changed later.">
+            <Segmented
+              ariaLabel="Catalog type"
+              value={newCatalogType}
+              onChange={setNewCatalogType}
+              options={[
+                { value: 'movie', label: 'Movie' },
+                { value: 'series', label: 'Series' },
+              ]}
+            />
+          </Field>
+        }
         onCreate={createBareCatalog}
         onClose={() => {
           setNamingCatalog(false)
@@ -526,8 +697,15 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         }}
       />
 
-      <NewCollectionDialog
+      {/* One field, by the same rule: nothing about a collection is immutable
+          the way a catalog's `type` is. View mode, pinning, the All tab and the
+          backdrop are all editable afterwards, and folders are the substance of
+          the editor rather than something to guess at up front. */}
+      <NewItemDialog
         open={namingCollection}
+        noun="collection"
+        label="Title"
+        placeholder="Saturday night"
         saving={collectionMutations.create.isPending}
         serverError={(collectionMutations.create.error as Error | null)?.message ?? null}
         onCreate={createBareCollection}
@@ -539,109 +717,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
 
       {/* Rendered here rather than beside the guard itself, because this is the
           level that knows what is being edited — the prompt names it. */}
-      <ConfirmDialog
-        open={blocked}
-        title="Discard unsaved changes?"
-        body={
-          <>
-            Your changes to <strong className="text-ink">{editorSubject(target)}</strong> haven't
-            been saved. Leaving discards them.
-          </>
-        }
-        confirmLabel="Discard"
-        cancelLabel="Keep editing"
-        destructive
-        onConfirm={proceed}
-        onCancel={cancel}
-      />
-
-      <ConfirmDialog
-        open={deletingCatalog !== null}
-        title="Delete this catalog?"
-        body={
-          // Delete only ever reaches an owned item (`LibrarySection` wires
-          // `onDelete` for owned rows alone), so the axis that actually varies
-          // here is `is_public`, not who owns it: a catalog shared with the
-          // community can be sitting on someone else's home screen right now,
-          // where a private one can only ever be on yours.
-          deletingCatalog?.is_public ? (
-            <>
-              <strong className="text-ink">{deletingCatalog?.name}</strong> is removed for{' '}
-              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
-              with the community. This can't be undone.
-            </>
-          ) : (
-            <>
-              <strong className="text-ink">{deletingCatalog?.name}</strong> is deleted permanently.
-              Any references to this catalog from a collection will also be removed.
-              This can't be undone.
-            </>
-          )
-        }
-        confirmLabel={catalogMutations.remove.isPending ? 'Deleting…' : 'Delete catalog'}
-        cancelLabel="Keep it"
-        destructive
-        onConfirm={confirmDeleteCatalog}
-        onCancel={() => setDeletingCatalog(null)}
-      />
-
-      <ConfirmDialog
-        open={duplicatingCatalog !== null}
-        title="Duplicate this catalog?"
-        body={
-          <>
-            Creates a new, editable copy of{' '}
-            <strong className="text-ink">{duplicatingCatalog?.name}</strong>. The original is left
-            untouched.
-          </>
-        }
-        confirmLabel="Duplicate catalog"
-        cancelLabel="Cancel"
-        onConfirm={confirmDuplicateCatalog}
-        onCancel={() => setDuplicatingCatalog(null)}
-      />
-
-      <ConfirmDialog
-        open={duplicatingCollection !== null}
-        title="Duplicate this collection?"
-        body={
-          <>
-            Creates a new, editable copy of{' '}
-            <strong className="text-ink">{duplicatingCollection?.title}</strong>. The original is
-            left untouched.
-          </>
-        }
-        confirmLabel="Duplicate collection"
-        cancelLabel="Cancel"
-        onConfirm={confirmDuplicateCollection}
-        onCancel={() => setDuplicatingCollection(null)}
-      />
-
-      <ConfirmDialog
-        open={deletingCollection !== null}
-        title="Delete this collection?"
-        body={
-          deletingCollection?.is_public ? (
-            <>
-              <strong className="text-ink">{deletingCollection?.title}</strong> and its{' '}
-              {folderCount(deletingCollection)} are removed for{' '}
-              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
-              with the community. The catalogs inside it are kept. This can't be undone.
-            </>
-          ) : (
-            <>
-              <strong className="text-ink">{deletingCollection?.title}</strong> and its{' '}
-              {folderCount(deletingCollection)} are deleted permanently. The catalogs inside it are
-              kept. This can't be undone.
-            </>
-          )
-        }
-        confirmLabel={collectionMutations.remove.isPending ? 'Deleting…' : 'Delete collection'}
-        cancelLabel="Keep it"
-        destructive
-        onConfirm={confirmDeleteCollection}
-        onCancel={() => setDeletingCollection(null)}
-      />
+      {prompt && <ConfirmDialog open {...prompt} />}
     </>
   )
 }
@@ -698,6 +774,6 @@ function editorSubject(target: EditorTarget | null): string {
   return target.initial.title.trim() || 'this collection'
 }
 
-function folderCount(collection: LibraryCollection | null): string {
-  return pluralCount(collection?.folders.length ?? 0, 'folder')
+function folderCount(collection: LibraryCollection): string {
+  return pluralCount(collection.folders.length, 'folder')
 }
