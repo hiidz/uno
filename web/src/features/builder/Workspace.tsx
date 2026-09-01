@@ -24,8 +24,9 @@ import { accessibleIDs, buildRefOptions, indexRefOptions } from '@/features/coll
 import { useCollectionMutations } from '@/features/collections/useCollectionMutations'
 import { HomePane, type HomeView } from '@/features/home/HomePane'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
-import { LibraryRail } from '@/features/library/LibraryRail'
+import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
+import { pluralCount } from '@/lib/plural'
 import { useEditorGuard } from './EditorGuard'
 import {
   useScrollRequests,
@@ -329,6 +330,18 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         )
       : undefined
 
+  // Named rather than inlined at each call site: both Library sections —
+  // "Mine" and "Community" — select into the same pane, so this is one
+  // function shared by two rows of JSX rather than two closures doing the
+  // same thing.
+  function selectCatalog(catalog: LibraryCatalog) {
+    open(catalogTarget(catalog))
+  }
+
+  function selectCollection(collection: LibraryCollection) {
+    open(collectionTarget(collection, refAccessible))
+  }
+
   // Named rather than inlined at the call site, because the rail's row and the
   // editor's header are now two places asking for the same thing. Both routes
   // land on the icon-only action from `LibraryItem`, which reads as "delete"
@@ -364,29 +377,77 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   return (
     <>
       <div className="grid min-h-0 flex-1 lg:grid-cols-[372px_minmax(0,1fr)]">
-        <LibraryRail
-          scrollRef={railRef}
-          library={library}
-          homeSelected={target === null}
-          onShowHome={showHome}
-          selectedID={target?.sourceID ?? null}
-          onNewCatalog={() => {
-            // A rejection from a previous attempt — or from a duplicate, which
-            // shares this mutation — must not greet the next one.
-            resetCatalogCreate()
-            setNamingCatalog(true)
-          }}
-          onNewCollection={() => {
-            resetCollectionCreate()
-            setNamingCollection(true)
-          }}
-          onSelectCatalog={(catalog) => open(catalogTarget(catalog))}
-          onSelectCollection={(collection) => open(collectionTarget(collection, refAccessible))}
-          onDuplicateCatalog={duplicateCatalog}
-          onDuplicateCollection={duplicateCollection}
-          onDeleteCatalog={setDeletingCatalog}
-          onDeleteCollection={setDeletingCollection}
-        />
+        {/* The sidebar: your own catalogs and collections on top, everyone
+            else's below. "Mine" and "community" are different tasks (build
+            here, browse there), so each gets its own permanently visible
+            section with its own scroll region and its own name/genre filter,
+            rather than one filtered list with a control choosing which owner
+            to look at. Only "Mine" gets the New buttons; you can't create a
+            community row, only adopt one by opening it.
+
+            Below `lg` the rail is the top of one long page rather than a
+            column, with the pane stacked underneath it. It keeps its link to
+            home, which stops being a way *across* to the pane and becomes a
+            shortcut *down* to it. */}
+        <aside
+          ref={railRef}
+          tabIndex={-1}
+          data-landing
+          aria-label="Library"
+          className="bg-sidebar border-line flex scroll-mt-[var(--app-h)] flex-col outline-none lg:min-h-0 lg:border-r"
+        >
+          {/* Above `lg` home is simply the other half of the screen and needs
+              no link. Below it the pane is further down the same page, so
+              this is a shortcut to it rather than a way across — hence `↓`
+              and not `›`. It still guards, because arriving at home means the
+              open editor is replaced by it. */}
+          <button
+            type="button"
+            onClick={showHome}
+            aria-current={target === null ? 'true' : undefined}
+            className={`border-line hover:bg-raised flex items-center gap-3 border-b px-4 py-3 text-left transition-colors lg:hidden ${
+              target === null ? 'bg-raised-hi' : ''
+            }`}
+          >
+            <span className="type-display flex-1 text-[12px]">Your home screen</span>
+            <span aria-hidden="true" className="type-data text-dimmer text-[13px] leading-none">
+              ↓
+            </span>
+          </button>
+
+          <LibrarySection
+            owned
+            library={library}
+            selectedID={target?.sourceID ?? null}
+            onNewCatalog={() => {
+              // A rejection from a previous attempt — or from a duplicate,
+              // which shares this mutation — must not greet the next one.
+              resetCatalogCreate()
+              setNamingCatalog(true)
+            }}
+            onNewCollection={() => {
+              resetCollectionCreate()
+              setNamingCollection(true)
+            }}
+            onSelectCatalog={selectCatalog}
+            onSelectCollection={selectCollection}
+            onDuplicateCatalog={duplicateCatalog}
+            onDuplicateCollection={duplicateCollection}
+            onDeleteCatalog={setDeletingCatalog}
+            onDeleteCollection={setDeletingCollection}
+          />
+          <LibrarySection
+            owned={false}
+            library={library}
+            selectedID={target?.sourceID ?? null}
+            onSelectCatalog={selectCatalog}
+            onSelectCollection={selectCollection}
+            onDuplicateCatalog={duplicateCatalog}
+            onDuplicateCollection={duplicateCollection}
+            onDeleteCatalog={setDeletingCatalog}
+            onDeleteCollection={setDeletingCollection}
+          />
+        </aside>
 
         {/* `min-h` below `lg` is what makes the pane scrollable *to*: a short
             form is shorter than the viewport, and the browser cannot scroll a
@@ -638,6 +699,5 @@ function editorSubject(target: EditorTarget | null): string {
 }
 
 function folderCount(collection: LibraryCollection | null): string {
-  const n = collection?.folders.length ?? 0
-  return `${n} ${n === 1 ? 'folder' : 'folders'}`
+  return pluralCount(collection?.folders.length ?? 0, 'folder')
 }

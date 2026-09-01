@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react'
 import type { PreviewItem, TileShape, TMDBKind } from '@/api'
+import { pluralCount } from '@/lib/plural'
 import type { PreviewFolder } from './model'
 
 /**
@@ -69,9 +71,7 @@ export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
   const width = height * TILE_ASPECT[folder.tileShape]
   const name = folder.title || 'Untitled folder'
 
-  const notes = [
-    `${folder.sources.length} ${folder.sources.length === 1 ? 'catalog' : 'catalogs'}`,
-  ]
+  const notes = [pluralCount(folder.sources.length, 'catalog')]
   if (folder.unresolved > 0) notes.push(`${folder.unresolved} unavailable`)
   if (folder.tileShapeAssumed) notes.push('no shape set — shown as poster')
 
@@ -289,6 +289,16 @@ export function PlaceholderTile({ width, height }: { width: number; height: numb
       style={{ width: `${width}px`, height: `${height}px` }}
     />
   )
+}
+
+/**
+ * A small, dim, mono aside beside a preview row's own heading — "pinned to
+ * the top of home", "not in library" — for a fact that doesn't need its own
+ * line. The leading `·` is drawn here, not by the caller, so two of these
+ * side by side read as one clause rather than two independent sentences.
+ */
+export function Note({ children }: { children: ReactNode }) {
+  return <span className="type-data text-dimmer shrink-0 text-[10px]">· {children}</span>
 }
 
 /**

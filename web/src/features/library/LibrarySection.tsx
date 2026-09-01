@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import { tmdbKind } from '@/api'
 import { ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
+import { describeCollection } from './collection'
 import { LibraryItem } from './LibraryItem'
 import { catalogSearchText } from './recipe'
-import type { LibraryCatalog, LibraryCollection, useLibrary } from './useLibrary'
+import type { Library, LibraryCatalog, LibraryCollection } from './useLibrary'
 
 /**
  * One half of the Library rail — either "Mine" or "Community" — with its own
@@ -31,7 +32,7 @@ export function LibrarySection({
   onDeleteCollection,
 }: {
   owned: boolean
-  library: ReturnType<typeof useLibrary>
+  library: Library
   /** The row whose editor is open in the pane, or `null` for none. */
   selectedID: string | null
   /** Only the "Mine" section can create rows — a community row is adopted by
@@ -244,11 +245,4 @@ function LibraryGroup({
  *  and the summary shows them until it runs out of room. */
 function collectionSearchText(collection: LibraryCollection): string {
   return `${collection.title} ${collection.folders.map((f) => f.title).join(' ')}`.toLowerCase()
-}
-
-function describeCollection(collection: LibraryCollection): string {
-  const n = collection.folders.length
-  const count = `${n} ${n === 1 ? 'folder' : 'folders'}`
-  if (n === 0) return count
-  return `${count} · ${collection.folders.map((f) => f.title).join(', ')}`
 }

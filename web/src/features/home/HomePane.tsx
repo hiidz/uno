@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { tmdbKind } from '@/api'
-import type { Collection } from '@/api'
 import { ListState } from '@/components/ListState'
 import { TypeBar } from '@/components/TypeBar'
+import { describeCollection } from '@/features/library/collection'
 import { describeRecipe } from '@/features/library/recipe'
 import { HomePreview } from './HomePreview'
 import { SortableList, SortableRow } from './SortableList'
@@ -319,12 +319,4 @@ function RemoveButton({ label, onClick }: { label: string; onClick: () => void }
 
 function EmptyBlock({ children }: { children: ReactNode }) {
   return <p className="type-data text-dimmer m-0 py-3 text-[11px]">{children}</p>
-}
-
-function describeCollection(collection: Collection | undefined): string {
-  if (!collection) return 'no longer available'
-  const folders = collection.folders ?? []
-  const count = `${folders.length} ${folders.length === 1 ? 'folder' : 'folders'}`
-  if (folders.length === 0) return count
-  return `${count} · ${folders.map((f) => f.title).join(', ')}`
 }

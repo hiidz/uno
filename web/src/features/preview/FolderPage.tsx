@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { tmdbKind } from '@/api'
 import { TypeBar } from '@/components/TypeBar'
+import { plural } from '@/lib/plural'
 import {
   ALL_TAB,
   ALL_TAB_TILE_CAP,
@@ -11,7 +12,7 @@ import {
   type PreviewFolder,
   type PreviewSource,
 } from './model'
-import { CONTENT_TILE_SHAPE, TileGrid, TilesNote, TileStrip, noTiles } from './tiles'
+import { CONTENT_TILE_SHAPE, Note, TileGrid, TilesNote, TileStrip, noTiles } from './tiles'
 import type { CatalogTiles } from './tiles'
 
 /**
@@ -188,8 +189,7 @@ function TabbedCatalogs({
               and Nuvio's merge order for a folder is unspecified (folders
               aren't an addon concept), so the caveat is stated outright. */}
           <p className="type-data text-dimmer m-0 text-[10px]">
-            A sample from {folder.sources.length}{' '}
-            {folder.sources.length === 1 ? 'catalog' : 'catalogs'}
+            A sample from {folder.sources.length} {plural(folder.sources.length, 'catalog')}
             {folder.unresolved > 0 && `, ${folder.unresolved} of them unavailable`} · your TV may
             order these differently
             {allTiles.randomized && ' · one of them shuffles, so it will differ'}
@@ -293,8 +293,4 @@ function Tab({
       <span className="max-w-[180px] truncate">{label}</span>
     </button>
   )
-}
-
-function Note({ children }: { children: ReactNode }) {
-  return <span className="type-data text-dimmer shrink-0 text-[10px]">· {children}</span>
 }

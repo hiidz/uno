@@ -15,6 +15,13 @@
     --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     --font-heading: var(--font-sans);
 
+    /* Tailwind's own default for `lg` — asserted explicitly, rather than left
+       implicit, because `src/lib/breakpoints.ts` mirrors this same value for
+       the one place JS needs the threshold too (`stacked.ts`'s `matchMedia`
+       query, which drives the builder's stacked-below-`lg` layout). Change
+       this value and that one together, or the two can silently disagree. */
+    --breakpoint-lg: 64rem;
+
     /* Uno palette, exposed as utilities: bg-raised, text-dim, border-line… */
     --color-ground: var(--uno-ground);
     --color-raised: var(--uno-raised);

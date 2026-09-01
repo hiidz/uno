@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Checkbox, Field, Select, TextInput } from '@/components/fields'
 import { EditorShell } from '@/features/builder/EditorShell'
+import { plural } from '@/lib/plural'
 import { CollectionPreview } from './CollectionPreview'
 import { FolderCard, FolderTreeDnd } from './FolderCard'
 import {
@@ -155,7 +156,7 @@ export function CollectionEditor({
         <>
           {showErrors && errorCount > 0 && (
             <span className="type-data text-danger mr-auto text-[10.5px]">
-              Fix the highlighted {errorCount === 1 ? 'field' : 'fields'}.
+              Fix the highlighted {plural(errorCount, 'field')}.
             </span>
           )}
           <button type="button" onClick={onRequestClose} className="btn-ghost">

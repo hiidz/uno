@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { GlyphButton } from '@/components/GlyphButton'
 import { TypeBar, type BarKind } from '@/components/TypeBar'
 import { useStackedLayout } from './stacked'
 
@@ -111,10 +112,21 @@ export function EditorShell({
         {/* The row's actions and the way out, below `lg` only. */}
         <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
           {onDuplicate && (
-            <HeaderAction label={`Duplicate ${title}`} glyph="⧉" onClick={onDuplicate} />
+            <GlyphButton
+              label={`Duplicate ${title}`}
+              glyph="⧉"
+              onClick={onDuplicate}
+              variant="icon"
+            />
           )}
           {onDelete && (
-            <HeaderAction label={`Delete ${title}`} glyph="🗑" onClick={onDelete} destructive />
+            <GlyphButton
+              label={`Delete ${title}`}
+              glyph="🗑"
+              onClick={onDelete}
+              destructive
+              variant="icon"
+            />
           )}
           {/* Same call as the desktop ×, not a scroll of its own — see the
               doc comment on `onRequestClose` above. A held discard prompt has
@@ -165,33 +177,5 @@ export function EditorShell({
         {footer}
       </div>
     </main>
-  )
-}
-
-/** Glyph-only: the header is one line on the screens this renders on, and the
- *  title beside it is what needs the room. */
-function HeaderAction({
-  label,
-  glyph,
-  onClick,
-  destructive,
-}: {
-  label: string
-  glyph: string
-  onClick: () => void
-  destructive?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={`tap border-line-hi text-dim grid h-7 w-7 shrink-0 place-items-center rounded-[2px] border text-[12px] leading-none transition-colors ${
-        destructive ? 'hover:border-danger hover:text-danger' : 'hover:border-dim hover:text-ink'
-      }`}
-    >
-      <span aria-hidden="true">{glyph}</span>
-    </button>
   )
 }

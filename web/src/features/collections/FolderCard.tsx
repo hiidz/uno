@@ -1,24 +1,10 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { DndContext, closestCenter, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TypeBar } from '@/components/TypeBar'
+import { Grip, reorder, useDragSensors } from '@/components/dnd'
 import { Checkbox, FieldNote, Segmented, TextInput } from '@/components/fields'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import { TILE_SHAPES, type FolderErrors, type FolderFormState } from './collectionForm'
@@ -86,19 +72,7 @@ export function FolderTreeDnd({
   onReorderRefs: (folderKey: string, orderedCatalogIDs: string[]) => void
   children: ReactNode
 }) {
-  const sensors = useSensors(
-    // Small activation distance so a click on a control inside a row still
-    // registers as a click rather than starting a drag.
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    // Touch takes a hold rather than a distance. A 4px threshold on a finger is
-    // met by the start of a scroll, so `PointerSensor` alone made a grip inside
-    // a scrolling page either a drag that fired on every swipe or a scroll that
-    // never started — which is why the grips can drop `touch-none` for a
-    // `touch-manipulation` that lets a quick swipe through.
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
-    // The only way this tree is operable for anyone who can't drag.
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useDragSensors()
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -132,38 +106,6 @@ export function FolderTreeDnd({
         {children}
       </SortableContext>
     </DndContext>
-  )
-}
-
-function reorder(ids: string[], from: string, to: string): string[] {
-  const fromIndex = ids.indexOf(from)
-  const toIndex = ids.indexOf(to)
-  if (fromIndex === -1 || toIndex === -1) return ids
-  const next = [...ids]
-  next.splice(toIndex, 0, ...next.splice(fromIndex, 1))
-  return next
-}
-
-/** Drag listeners go on the grip alone, never the whole card — a folder card is
- *  full of inputs, and a row-wide drag surface would swallow every click in it.
- *  Typed off `useSortable`'s own return so dnd-kit owns the shape. */
-function Grip({
-  label,
-  sortable,
-}: {
-  label: string
-  sortable: Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners'>
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      className="tap text-dimmer hover:text-dim cursor-grab touch-none text-center leading-none transition-colors active:cursor-grabbing pointer-coarse:touch-manipulation"
-      {...sortable.attributes}
-      {...sortable.listeners}
-    >
-      ⠿
-    </button>
   )
 }
 

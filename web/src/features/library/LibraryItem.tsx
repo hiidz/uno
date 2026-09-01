@@ -1,3 +1,4 @@
+import { GlyphButton } from '@/components/GlyphButton'
 import { TypeBar, type BarKind } from '@/components/TypeBar'
 
 const KIND_LABEL: Record<BarKind, string> = {
@@ -141,46 +142,25 @@ export function LibraryItem({
 
       {hasActions && selected && (
         <div className="hidden items-center gap-1.5 px-2 pb-2.5 pl-[23px] lg:flex">
-          {onDuplicate && <ItemAction label={`Duplicate ${name}`} glyph="⧉" onClick={onDuplicate} />}
+          {onDuplicate && (
+            <GlyphButton
+              label={`Duplicate ${name}`}
+              glyph="⧉"
+              onClick={onDuplicate}
+              variant="labeled"
+            />
+          )}
           {onDelete && (
-            <ItemAction label={`Delete ${name}`} glyph="🗑" onClick={onDelete} destructive />
+            <GlyphButton
+              label={`Delete ${name}`}
+              glyph="🗑"
+              onClick={onDelete}
+              destructive
+              variant="labeled"
+            />
           )}
         </div>
       )}
     </div>
-  )
-}
-
-function ItemAction({
-  label,
-  glyph,
-  onClick,
-  destructive,
-}: {
-  label: string
-  glyph: string
-  onClick: () => void
-  destructive?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation()
-        onClick()
-      }}
-      aria-label={label}
-      title={label}
-      className={`type-data flex h-6 items-center gap-1 rounded-[2px] border px-2 text-[10px] tracking-[0.06em] uppercase transition-colors pointer-coarse:h-9 ${
-        destructive
-          ? 'border-line-hi text-dim hover:border-danger hover:text-danger'
-          : 'border-line-hi text-dim hover:border-dim hover:text-ink'
-      }`}
-    >
-      <span aria-hidden="true" className="text-[11px] leading-none">
-        {glyph}
-      </span>
-      {label.split(' ')[0]}
-    </button>
   )
 }

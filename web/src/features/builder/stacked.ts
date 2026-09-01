@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useState, useSyncExternalStore, type RefObject } from 'react'
+import { LG_MEDIA_QUERY } from '@/lib/breakpoints'
 
 /**
  * The one-column builder, and the scrolling that makes it usable.
@@ -15,9 +16,6 @@ import { useCallback, useLayoutEffect, useState, useSyncExternalStore, type RefO
  * scroll has to happen after the browser has laid out whatever it is scrolling
  * to.
  */
-
-/** Tailwind's `lg`, as the query the class generates. */
-const LG = '(min-width: 64rem)'
 
 let lgQuery: MediaQueryList | null = null
 
@@ -36,7 +34,7 @@ function media(query: string): MediaQueryList | null {
 }
 
 function lg(): MediaQueryList | null {
-  lgQuery ??= media(LG)
+  lgQuery ??= media(LG_MEDIA_QUERY)
   return lgQuery
 }
 

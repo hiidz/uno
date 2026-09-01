@@ -1,35 +1,15 @@
 import type { ReactNode } from 'react'
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Grip, reorder, useDragSensors } from '@/components/dnd'
 
 /**
  * Vertical drag-to-reorder for the Home pane's two lists. Order *is* the value
  * — there is no sort field in the payload, array position becomes
  * `sort_order` at write time — so this is the pane's central interaction rather
- * than a convenience.
- *
- * Three sensors:
- *  - Pointer, with a small activation distance so a click on a button inside a
- *    row still registers as a click rather than starting a drag.
- *  - Touch, on a hold rather than a distance: 4px of movement is the start of a
- *    scroll on a finger, not the start of a drag, and a grip inside a scrolling
- *    page has to let a swipe through.
- *  - Keyboard, the only way this list is operable for anyone who can't drag.
+ * than a convenience. The sensors are `useDragSensors` — see there for why
+ * each of the three is needed.
  */
 export function SortableList({
   ids,
@@ -40,21 +20,12 @@ export function SortableList({
   onReorder: (orderedIds: string[]) => void
   children: ReactNode
 }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
+  const sensors = useDragSensors()
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const from = ids.indexOf(String(active.id))
-    const to = ids.indexOf(String(over.id))
-    if (from === -1 || to === -1) return
-    const next = [...ids]
-    next.splice(to, 0, ...next.splice(from, 1))
-    onReorder(next)
+    onReorder(reorder(ids, String(active.id), String(over.id)))
   }
 
   return (
@@ -92,15 +63,7 @@ export function SortableRow({
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >
-      <button
-        type="button"
-        aria-label={label}
-        className="tap text-dimmer hover:text-dim cursor-grab touch-none text-center leading-none transition-colors active:cursor-grabbing pointer-coarse:touch-manipulation"
-        {...attributes}
-        {...listeners}
-      >
-        ⠿
-      </button>
+      <Grip label={label} sortable={{ attributes, listeners }} />
       {children}
     </div>
   )

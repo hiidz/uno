@@ -10,6 +10,7 @@ import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { useUnloadGuard } from '@/features/home/useUnloadGuard'
 import { AddonURLButton, PushBanner, PushButton } from '@/features/push/PushControls'
 import { usePush } from '@/features/push/usePush'
+import { pluralCount } from '@/lib/plural'
 
 export interface BuilderProfile {
   profileIndex: number
@@ -124,27 +125,16 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
               in-app exit, and therefore the one control that has to guard
               pending changes.
 
-              Two chips, one at a time. Below `lg` it is the trigger for the
-              header's only menu, which also carries the addon URL; above `lg`
-              there is room for both controls and the chip stays the one-tap
-              switch it has always been. `hidden` rather than a single chip
-              styled twice, because `display: none` is what keeps the one that
-              isn't on screen out of the accessibility tree as well. */}
+              One chip, whose shape follows the breakpoint internally — see
+              `ProfileMenu`. Below `lg` it is the trigger for the header's
+              only menu, which also carries the addon URL; above `lg` there is
+              room for both controls and the chip is a plain, one-tap switch. */}
           <ProfileMenu
             profileIndex={profile.profileIndex}
             profileName={profile.profileName}
             manifestURL={profile.manifestURL}
             onSwitchProfile={requestLeave}
-            className="lg:hidden"
           />
-          <button
-            type="button"
-            onClick={requestLeave}
-            title="Switch profile"
-            className="type-data border-line-hi text-dim hover:text-ink hover:border-dim hidden shrink-0 rounded-[2px] border px-2 py-[3px] text-[11px] whitespace-nowrap transition-colors lg:block"
-          >
-            profile {profile.profileIndex} · {profile.profileName}
-          </button>
 
           {/* Grouped so the row doesn't reflow while PendingIndicator is still
               withholding itself during load. `shrink-0`: what the row runs out
@@ -238,5 +228,5 @@ function PendingIndicator() {
 }
 
 function countLabel(count: number): string {
-  return `${count} ${count === 1 ? 'change' : 'changes'}`
+  return pluralCount(count, 'change')
 }

@@ -150,6 +150,77 @@ export function HomeSelectionProvider({
     setCurrent((previous) => (previous === null ? previous : update(previous)))
   }, [])
 
+  // Data derived from the library and the selection responses — changes only
+  // when one of those actually changes, not on every edit to `current`. Split
+  // out so an edit that doesn't touch any of this (most of them) doesn't force
+  // a new `isDetached`/`isOwned` closure on every keystroke.
+  const readData = useMemo(
+    () => ({
+      catalogById,
+      collectionById,
+
+      // Only meaningful once the library has actually loaded; before that
+      // everything would look detached.
+      isDetached: (id: string) => !library.isLoading && !libraryIds.has(id),
+      isOwned: (id: string) => ownedIds.has(id),
+      genres: library.genres,
+
+      pendingCount,
+    }),
+    [catalogById, collectionById, library.isLoading, libraryIds, ownedIds, library.genres, pendingCount],
+  )
+
+  // Every one of these only closes over `edit`, which is itself stable for
+  // the life of the provider — so this whole cluster needs recomputing
+  // exactly once, not on every render that changes `state`.
+  const editFns = useMemo(
+    () => ({
+      addCatalog: (id: string) =>
+        edit((previous) =>
+          previous.catalogs.some((c) => c.id === id)
+            ? previous
+            : // New rows default to showing on home: adding a catalog you
+              // can't see would be a confusing default.
+              { ...previous, catalogs: [...previous.catalogs, { id, showInHome: true }] },
+        ),
+      removeCatalog: (id: string) =>
+        edit((previous) => ({
+          ...previous,
+          catalogs: previous.catalogs.filter((c) => c.id !== id),
+        })),
+      toggleShowInHome: (id: string) =>
+        edit((previous) => ({
+          ...previous,
+          catalogs: previous.catalogs.map((c) =>
+            c.id === id ? { ...c, showInHome: !c.showInHome } : c,
+          ),
+        })),
+      reorderCatalogs: (orderedIds: string[]) =>
+        edit((previous) => ({ ...previous, catalogs: applyOrder(previous.catalogs, orderedIds) })),
+
+      addCollection: (id: string) =>
+        edit((previous) =>
+          previous.collections.includes(id)
+            ? previous
+            : { ...previous, collections: [...previous.collections, id] },
+        ),
+      removeCollection: (id: string) =>
+        edit((previous) => ({
+          ...previous,
+          collections: previous.collections.filter((c) => c !== id),
+        })),
+      reorderCollections: (orderedIds: string[]) =>
+        edit((previous) => ({
+          ...previous,
+          collections: applyOrder(
+            previous.collections.map((id) => ({ id })),
+            orderedIds,
+          ).map((entry) => entry.id),
+        })),
+    }),
+    [edit],
+  )
+
   const value = useMemo<HomeSelection>(
     () => ({
       ready: current !== null,
@@ -159,16 +230,8 @@ export function HomeSelectionProvider({
 
       catalogs: state.catalogs,
       collections: state.collections,
-      catalogById,
-      collectionById,
+      ...readData,
 
-      // Only meaningful once the library has actually loaded; before that
-      // everything would look detached.
-      isDetached: (id) => !library.isLoading && !libraryIds.has(id),
-      isOwned: (id) => ownedIds.has(id),
-      genres: library.genres,
-
-      pendingCount,
       isDirty: pendingCount > 0,
 
       snapshot: () => state,
@@ -177,66 +240,20 @@ export function HomeSelectionProvider({
       hasCatalog: (id) => state.catalogs.some((c) => c.id === id),
       hasCollection: (id) => state.collections.includes(id),
 
-      addCatalog: (id) =>
-        edit((previous) =>
-          previous.catalogs.some((c) => c.id === id)
-            ? previous
-            : // New rows default to showing on home: adding a catalog you
-              // can't see would be a confusing default.
-              { ...previous, catalogs: [...previous.catalogs, { id, showInHome: true }] },
-        ),
-      removeCatalog: (id) =>
-        edit((previous) => ({
-          ...previous,
-          catalogs: previous.catalogs.filter((c) => c.id !== id),
-        })),
-      toggleShowInHome: (id) =>
-        edit((previous) => ({
-          ...previous,
-          catalogs: previous.catalogs.map((c) =>
-            c.id === id ? { ...c, showInHome: !c.showInHome } : c,
-          ),
-        })),
-      reorderCatalogs: (orderedIds) =>
-        edit((previous) => ({ ...previous, catalogs: applyOrder(previous.catalogs, orderedIds) })),
-
-      addCollection: (id) =>
-        edit((previous) =>
-          previous.collections.includes(id)
-            ? previous
-            : { ...previous, collections: [...previous.collections, id] },
-        ),
-      removeCollection: (id) =>
-        edit((previous) => ({
-          ...previous,
-          collections: previous.collections.filter((c) => c !== id),
-        })),
-      reorderCollections: (orderedIds) =>
-        edit((previous) => ({
-          ...previous,
-          collections: applyOrder(
-            previous.collections.map((id) => ({ id })),
-            orderedIds,
-          ).map((entry) => entry.id),
-        })),
+      ...editFns,
     }),
     [
       current,
       state,
-      baseline,
       pendingCount,
-      catalogById,
-      collectionById,
-      libraryIds,
-      ownedIds,
-      library.genres,
       library.isLoading,
       library.error,
       catalogSelection.isPending,
       catalogSelection.error,
       collectionSelection.isPending,
       collectionSelection.error,
-      edit,
+      readData,
+      editFns,
     ],
   )
 

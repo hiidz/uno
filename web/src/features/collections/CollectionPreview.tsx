@@ -11,7 +11,7 @@ import {
   type PreviewFolder,
   type PreviewSource,
 } from '@/features/preview/model'
-import { FolderTile } from '@/features/preview/tiles'
+import { FolderTile, Note } from '@/features/preview/tiles'
 import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
 import type { CollectionFormState } from './collectionForm'
 import type { RefOption } from './refs'
@@ -95,11 +95,7 @@ function CollectionRow({
         <h3 className="m-0 text-[13px] font-medium">
           {collection.title || 'Untitled collection'}
         </h3>
-        {collection.pinned && (
-          <span className="type-data text-dimmer shrink-0 text-[10px]">
-            · pinned to the top of home
-          </span>
-        )}
+        {collection.pinned && <Note>pinned to the top of home</Note>}
       </div>
 
       {collection.folders.length === 0 ? (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
+import { plural } from '@/lib/plural'
 import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
@@ -201,7 +202,7 @@ export function CatalogEditor({
         <>
           {showErrors && Object.keys(errors).length > 0 && (
             <span className="type-data text-danger mr-auto text-[10.5px]">
-              Fix the highlighted {Object.keys(errors).length === 1 ? 'field' : 'fields'}.
+              Fix the highlighted {plural(Object.keys(errors).length, 'field')}.
             </span>
           )}
           <button type="button" onClick={onRequestClose} className="btn-ghost">

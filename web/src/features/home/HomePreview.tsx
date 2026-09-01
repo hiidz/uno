@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
 import { tmdbKind } from '@/api'
 import { TypeBar } from '@/components/TypeBar'
 import { CollectionMeta } from '@/features/preview/CollectionMeta'
 import { FolderPage } from '@/features/preview/FolderPage'
 import type { PreviewChrome } from '@/features/preview/FolderPage'
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
-import { CONTENT_TILE_SHAPE, FolderTile, TileStrip, TilesNote, noTiles } from '@/features/preview/tiles'
+import { CONTENT_TILE_SHAPE, FolderTile, Note, TileStrip, TilesNote, noTiles } from '@/features/preview/tiles'
 import type { CatalogTiles } from '@/features/preview/tiles'
 import { useHomeSelection } from './useHomeSelection'
 import { useCatalogTiles } from './useCatalogTiles'
@@ -283,10 +282,6 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
       </div>
     </section>
   )
-}
-
-function Note({ children }: { children: ReactNode }) {
-  return <span className="type-data text-dimmer shrink-0 text-[10px]">· {children}</span>
 }
 
 /**

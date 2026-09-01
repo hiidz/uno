@@ -1,4 +1,5 @@
 import type { Catalog, Genre, TMDBParams } from '@/api'
+import { plural } from '@/lib/plural'
 
 /**
  * Renders a catalog's stored params as a plain-English summary — what the
@@ -217,7 +218,7 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
   // where the choice is actually made.
   if (p.with_watch_providers) {
     const count = p.with_watch_providers.split(/[,|]/).filter(Boolean).length
-    const services = `${count} streaming ${count === 1 ? 'service' : 'services'}`
+    const services = `${count} streaming ${plural(count, 'service')}`
     out.push(p.watch_region ? `on ${services} in ${countryLabel(p.watch_region)}` : `on ${services}`)
   }
 
