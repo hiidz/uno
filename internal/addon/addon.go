@@ -21,7 +21,7 @@ import (
 
 // ID stays constant across every profile — identity in the addon protocol
 // comes from the URL path (/u/{token}/...), never from this id.
-// See .ref/Uno_Reference.md §1-§2.
+// See docs/architecture.md.
 const (
 	ID = "hiidz.uno.catalog"
 	// Name is also the display name Nuvio's own UI shows for this addon —
@@ -37,10 +37,10 @@ const (
 	catalogPageSize = 20
 
 	// catalogCacheMaxAge/catalogStaleRevalidate tell Stremio how long it may
-	// serve a catalog response before refetching — same order of magnitude
-	// as the real sample in .ref/catalog-addon-return.json (3h / 1h). There's
-	// no server-side response cache yet, so these are the only thing keeping
-	// Stremio from re-hitting TMDB on every reopen of the app.
+	// serve a catalog response before refetching — the same values (3h / 1h)
+	// as the real sample in docs/api/samples/catalog-response.json.
+	// There's no server-side response cache, so these are the only thing
+	// keeping Stremio from re-hitting TMDB on every reopen of the app.
 	catalogCacheMaxAge     = 10800
 	catalogStaleRevalidate = 3600
 )
@@ -84,9 +84,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // Public wraps a handler on the public, unauthenticated addon surface:
 // recovers panics (nothing else on this path can, since it's deliberately
-// outside requireNuvioAuth) and opens CORS, per the "Public, stateless,
-// cached... CORS-open" addon server description in .ref/Uno_Reference.md
-// §1-§2.
+// outside requireNuvioAuth) and opens CORS — see the "Addon server —
+// public, unauthenticated, CORS-open, cacheable" section of
+// docs/architecture.md.
 func (s *Server) Public(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -125,8 +125,9 @@ type manifest struct {
 
 // ManifestID is the manifest-facing id for one catalog: provider-prefixed so
 // it's the same string that would later round-trip as Nuvio's collections
-// catalogSources[].catalogId, verified against a real pulled sample — see
-// .ref/Uno_Reference.md §6.
+// catalogSources[].catalogId — see the "Push wire shape" section of
+// docs/data-model.md and the sample in
+// docs/api/samples/collections-basic.json.
 func ManifestID(c vault.Catalog) string {
 	return c.Provider + "-" + c.ID.String()
 }

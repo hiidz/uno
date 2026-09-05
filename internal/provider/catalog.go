@@ -188,9 +188,9 @@ func tmdbItemToMeta(catalogType, imdbID string, item tmdbDiscoverItem) Meta {
 }
 
 // releaseYear trims TMDB's full "YYYY-MM-DD" date down to just the year —
-// Stremio's own convention for releaseInfo (confirmed against a real
-// Cinemeta catalog response, .ref/catalog-addon-return.json: "releaseInfo":"2008",
-// not the full date).
+// Stremio's own convention for releaseInfo (per the real Cinemeta catalog
+// response in docs/api/samples/catalog-response.json:
+// "releaseInfo":"2008", not the full date).
 func releaseYear(date string) string {
 	if len(date) < 4 {
 		return ""

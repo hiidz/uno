@@ -16,9 +16,10 @@ import (
 )
 
 // pushRequest is POST /api/p/{i}/push's body: the full pending home-screen
-// selection, carried in one call rather than the two standalone
-// PUT .../selection endpoints — see .ref/Uno_Reference.md §7 and
-// Open_Items.md for why.
+// selection, carried in one call rather than standalone PUT .../selection
+// endpoints — selection is only ever written here, in one transaction,
+// after Nuvio has accepted the push. See the "HTTP surface" section of
+// docs/architecture.md.
 type pushRequest struct {
 	Catalogs    vault.CatalogSelectionForm    `json:"catalogs"`
 	Collections vault.CollectionSelectionForm `json:"collections"`
@@ -125,8 +126,9 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 
 // pushAddons runs the addons read-modify-write cycle: pull the profile's
 // current addons, upsert Uno's own manifest URL into that list by URL
-// match (Nuvio's own dedup key, per .ref/Uno_Reference.md §6), and push the
-// complete merged list back — omitting any existing addon would delete it.
+// match (Nuvio's own dedup key — see the "Push" section of
+// docs/architecture.md), and push the complete merged list back —
+// omitting any existing addon would delete it.
 // Has no dependency on the pending selection, so it's unaffected by push's
 // Nuvio-first ordering.
 func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfileIndex int, manifestURL string) error {

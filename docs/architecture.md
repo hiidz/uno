@@ -1,0 +1,363 @@
+# Architecture
+
+Uno builds personal Stremio-protocol catalog addons for [Nuvio](https://api.nuvio.tv) profiles. A
+user logs in with their Nuvio account, authors or borrows *catalogs* (standing TMDB discover
+queries) and *collections* (folders of catalogs), arranges them into a home screen, and pushes the
+result into their Nuvio profile — which then reads the catalogs back out of Uno's public addon
+server.
+
+```mermaid
+flowchart TD
+    Presentation["Presentation<br/><small>React SPA</small>"]
+    NuvioCloud["Nuvio cloud<br/><small>Supabase-compatible, external</small>"]
+    AddonServer["Addon server<br/><small>Public, stateless</small>"]
+    BuilderAPI["API<br/><small>CRUD + orchestration</small>"]
+    MediaAdapter["Provider<br/><small>TMDB client</small>"]
+    NuvioPkg["Nuvio<br/><small>JWT verify + REST/RPC client</small>"]
+    CatalogStore["Vault<br/><small>Source of truth</small>"]
+
+    Presentation -->|"login, refresh, list profiles"| NuvioCloud
+    Presentation -->|"Bearer access token"| BuilderAPI
+    AddonServer --> MediaAdapter
+    AddonServer --> CatalogStore
+    BuilderAPI --> MediaAdapter
+    BuilderAPI --> NuvioPkg
+    BuilderAPI --> CatalogStore
+    NuvioPkg -->|"JWKS, sync_* RPCs"| NuvioCloud
+```
+
+One Go binary (`github.com/hiidz/uno`) serves all three HTTP surfaces on one port, plus the
+embedded frontend build.
+
+| Package | Owns |
+| --- | --- |
+| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). The only leaf — imports no other Uno package |
+| `internal/addon` | Stremio-protocol manifest + catalog responses, `/u/{token}/...` |
+| `internal/api` | Bearer-token auth, CRUD orchestration, push, the route table |
+| `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |
+| `internal/nuvio` | JWT verification against JWKS; authenticated REST/RPC calls |
+| `internal/config` | Env loading with defaults (`godotenv`) |
+| `internal/static` | SPA-fallback file serving + gzip middleware |
+| `web` | `//go:embed all:dist` — the built frontend |
+
+**`internal/addon` never depends on Nuvio anything**, and this is enforced at the package level: it
+imports only `vault` and `provider`. That keeps the one public-facing surface simple, stateless,
+and independently scalable. The split exists because these are three surfaces with three different
+trust boundaries — authenticated SPA API, push orchestrator, public unauthenticated addon server.
+
+`addon.ID` (`"hiidz.uno.catalog"`) is constant across every profile. Identity in the addon
+protocol comes from the URL path (`/u/{token}/...`), never from the addon id.
+
+**`addon.ManifestID(c)` is `c.Provider + "-" + c.ID.String()`** — the same literal string that
+round-trips as Nuvio's `catalogSources[].catalogId`. Whatever string Uno's manifest uses for a
+catalog id must be the same string in a pushed source entry; both go through `addon.ManifestID`,
+and it has to stay that way.
+
+## Server construction
+
+`api.Server` is built from a `Deps` struct — `New(d Deps) *Server`, with `Deps{Vault, Provider,
+Verifier, Nuvio, SiteBaseURL}` (`internal/api/deps.go`). `Verifier` (`TokenVerifier`, one method)
+and `Nuvio` (`NuvioClient`, five methods) are narrow *consumer-side* interfaces over
+`*nuvio.Client`'s method set, not the concrete type — the seam that makes `requireNuvioAuth` and
+`listProfiles` testable against a fake. Compile-time assertions in `deps.go` turn a signature
+drift in `internal/nuvio` into a build error in `internal/api` rather than a surprise at the call
+site. `cmd/server/main.go` passes the same `*nuvio.Client` value for both fields; a second,
+independently constructed `Verifier` would mean a second, out-of-sync JWKS key cache. Because a
+struct literal can silently omit a field, `New` checks each required field and `log.Fatal`s at
+startup rather than nil-panicking on the first request that reaches it.
+
+## Auth model
+
+| Question | Answer |
+| --- | --- |
+| Can a profile exist without Nuvio? | No. Every profile is born from a resolve-or-create against a live Nuvio account. |
+| Proxy or direct? | Direct. Frontend → Nuvio for auth; Uno verifies the resulting JWT locally. |
+| Password handling | Uno never sees one. The frontend posts credentials straight to Nuvio's auth endpoint. |
+| Token persistence | None. Refresh tokens never touch Uno. Access tokens live only for the duration of a request. |
+| Background/automatic push | No. Push is an explicit user action, while a live token is in hand. |
+| What's public | Addon protocol only (`/u/{token}/...`). Everything else requires a bearer token, community reads included. |
+
+**Uno is stateless with respect to auth.** No session store, no session cookie, no cookie secret.
+Every authenticated request carries its own bearer token; identity is the verified `sub` claim,
+nothing else.
+
+Direct auth is viable because Nuvio's JWKS endpoint (`/auth/v1/.well-known/jwks.json`) serves a
+live **ES256 (P-256)** asymmetric key, so verification is local, cached, and costs zero network
+round trips per request. On symmetric HS256 signing the JWKS response would be empty and the only
+options would be a `GET /auth/v1/user` round trip per request, or a proxy design where Uno holds
+credentials.
+
+`profiles.token` is a capability URL for a public, read-only surface. Acceptable in browser
+memory; never log it or place it in a URL the user might share.
+
+## HTTP surface
+
+**Public means the addon protocol. Authenticated means everything else** — community/public reads
+included, because login gates the entire builder experience, browsing included. The split is
+visible at the URL level (`/u/...` vs `/api/...`), not merely enforced by middleware.
+
+Route registration is in `internal/api/server.go`. Everything not matching a registered route
+falls through to the embedded SPA (`static.Gzip(static.Handler(distFS))`); Go's `ServeMux`
+matches the most specific registered pattern first.
+
+`requireNuvioAuth` (`internal/api/auth.go`) reads `Authorization: Bearer`, calls
+`s.verifier.Verify`, maps `ErrInvalidToken` → `401` and `ErrJWKSUnavailable` → `502`, then stashes
+both the verified `sub` and the raw token in the request context under an unexported `contextKey`
+type. Handlers read them via `nuvioUserIDFrom(ctx)` / `nuvioTokenFrom(ctx)`. The raw token is
+stashed so exactly one place in the codebase understands the `Authorization` header format.
+
+`requireProfile` chains *after* it on every profile-scoped route: reads `sub` from context, reads
+`{profileIndex}` from the path, validates it's an integer 1–6 (`400` otherwise, before touching
+the DB), calls `vault.GetProfileBySlot`, maps `ErrProfileNotFound` → `404`, then stashes the
+resolved profile ID. It is a **lookup-only** resolver — no create, no drift-overwrite. A client
+hitting a CRUD route before ever calling `POST /api/profiles/select` gets a clean `404`, not a
+silent auto-provision.
+
+Three route-semantics facts the client has to honour:
+
+- **Selection is read via `GET .../selection` but never written there.** The whole pending
+  selection travels in `POST .../push`'s body and is written by that handler, in one transaction,
+  only after Nuvio has accepted the push. There are no `PUT .../selection` routes; the
+  transactional write bodies are `saveCatalogSelectionTx`/`saveCollectionSelectionTx` inside
+  `internal/vault`.
+- **Community list endpoints return your own public rows too.** `GetCommunityCatalogs` is
+  `queryCatalogs(ctx, "is_public = TRUE")` with no owner exclusion; collections are the same
+  query. Dedup on the union is *required*, not defensive, and **ownership is a per-row fact
+  derived from membership in the owned set, never from which endpoint a row arrived on.**
+- **The selection endpoints have no visibility filter.** They join straight through
+  `profile_catalogs`/`profile_collections`, so the response can contain a community catalog whose
+  owner has since made it private. Render selected rows from *that* response, never by looking
+  them up in the library.
+
+### Addon server — public, unauthenticated, CORS-open, cacheable
+
+Two routes: `GET /u/{token}/manifest.json` and `GET /u/{token}/catalog/{type}/{rest...}`, where
+`rest` is `{id}.json` or `{id}/{extra}.json` (skip pagination). An unknown/invalid token, or a
+catalog id that is not in this profile's *persisted selection*, both return **404** rather than an
+empty or error response — `findSelectedCatalog` doubles as the access check, so a leaked or
+guessed catalog UUID can't pull data through a profile it was never shared with.
+
+The tile flow is `CatalogHandler` → `TMDBClient.FetchCatalogPage` → TMDB `/discover/{movie|tv}` →
+per-item `/external_ids` → `Meta`. Direct per-request TMDB call; there is **no response cache**,
+only an in-memory, never-expiring TMDB-id→IMDB-id cache on `TMDBClient` (a pairing never changes
+once resolved, so it is correct to cache permanently; a discover ranking is not, so it isn't).
+`resolveMetas` bounds the per-page `/external_ids` fan-out at 8 concurrent lookups. `releaseInfo`
+is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
+`docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
+per-item `external_ids` resolution exists at all.
+
+Every catalog declares only `extra: [{name: "skip"}]`; there is no genre picker and no
+`isRequired`, and `buildManifest` does not consume `profile_catalogs.show_in_home`.
+
+Cache headers: `cacheMaxAge` 10800s / `staleRevalidate` 3600s — the same values the Cinemeta
+sample carries. With no server-side response cache, these are the only thing keeping Stremio from
+re-hitting TMDB on every reopen.
+
+**No server-side cache, deliberately.** At this project's scale (~10 people, ≤30 devices) the
+addon path is roughly 30 devices × 5 opens/day × 15 rows ≈ 2,250 discover calls/day, ~0.03 req/s —
+orders of magnitude under TMDB's limits. `discover()` (`internal/provider/tmdb.go`) remains the
+one place a server cache drops in if that stops being true.
+
+### `POST /api/profiles/select`
+
+Body is `{"profile_index": N}` only. The handler calls `s.nuvio.ListProfiles` with the caller's
+own bearer token, matches the requested index against that **live** response (a client-supplied
+index absent from the account's real profile list is rejected with `400` before `vault` is ever
+touched — the client's index is never trusted directly), then calls
+`vault.ResolveOrCreateProfile`. That match-then-resolve sequence is
+`Server.resolveSelectedProfile` (`internal/api/profiles.go`); it stays in `api` rather than
+`nuvio` because it composes both `nuvio` and `vault`, and `api` is the only package depending on
+both — moving it would force `nuvio` to import `vault` and break its leaf status.
+
+The response is the whole `vault.Profile` plus `manifest_url`
+(`SITE_BASE_URL + addon.ManifestPath(token)`), built server-side so it is correct in dev and prod
+alike and never depends on `window.location.origin`. Handing it over at selection time rather than
+waiting on a first push means the builder can show the addon URL immediately. This puts
+`profiles.token` in browser memory on `/configure` — see the capability-URL note above.
+
+### `POST /api/catalogs/preview`
+
+The authenticated "run this recipe, show me tiles, save nothing" endpoint
+(`internal/api/preview.go` + `provider.PreviewCatalog`).
+
+| | |
+| --- | --- |
+| Auth | `requireNuvioAuth` only — **not profile-scoped**. No vault read, so nothing to scope. |
+| Request | `{type, params}` — no `endpoint`, no `provider`, no `page` |
+| Response | `{randomized, items: [{tmdb_id, title, year, poster}], total_results}` — `total_results` is TMDB's count across every page these filters match, not the page `items` carries, so the builder can say "20 of N" rather than implying the page in hand is the whole answer |
+| Cost | **1 TMDB call** per recipe |
+| Errors | `400` invalid recipe, `502` TMDB unreachable |
+
+Four properties, each load-bearing:
+
+- **It skips `resolveMetas` entirely.** That function's ~20 per-page `/external_ids` calls exist
+  solely to mint IMDB ids for Stremio, and a preview has no use for them — poster, title, and
+  year are all already on the discover response. Reusing `FetchCatalogPage` would make preview
+  **21** TMDB calls per catalog instead of **1**. It does share `catalogEndpoint` +
+  `buildDiscoverQuery` + `discover`, which is the point: the underscore-to-dot param translation
+  must live in exactly one place.
+- **It takes a raw recipe, not a saved catalog id.** A saved id would serve only the home preview
+  and force a second endpoint for the catalog builder's unsaved edits.
+- **It derives the discover path from `type`; it never accepts one.** `TMDBClient.get` builds
+  requests as `baseURL + path + "?" + query`, so a caller-supplied path is a request-forgery
+  surface: it would let whoever wrote the row point the server's own outbound request, API key
+  included, wherever they want. `FetchCatalogPage` and `PreviewCatalog` both derive the path from
+  `catalogType` via `catalogEndpoint` (`internal/provider/catalog.go`), the single lookup from
+  catalog type to discover path. **Never accept a caller-supplied path or endpoint that gets
+  concatenated onto an upstream base URL.** This is a security property, not a style choice —
+  and it is the same reason the TMDB key stays server-side while preview is a backend endpoint
+  rather than a browser-to-TMDB call.
+- **It is always page 1, even for a `randomized` recipe**, with the flag returned in the
+  response. Honouring the random page would make preview show different titles on every remount,
+  which reads as a bug rather than as shuffling; returning the flag lets the client say plainly
+  that this catalog will differ on the TV.
+
+**It is not routed through the selection**, which is what makes it usable at all:
+`CatalogHandler` resolves via `findSelectedCatalog` over `GetCurrentCatalogSelection`, so the
+public addon route can only ever serve the *persisted* selection — useless for previewing
+pending, unpushed edits. That is a disqualification for reusing it from the browser, not a
+tradeoff.
+
+### Error responses
+
+`400`s from the CRUD handlers are **plain text**, via `http.Error(w, err.Error(), ...)` — no
+field name in a machine-readable position. Per-field form errors are therefore generated
+client-side by mirroring `provider`'s `Validate()`; a server 400 firing in normal use means the
+mirror has drifted, and that is its only job in the UI (an unexpected-case banner, not the
+primary error channel).
+
+Classification is unified: `writeVaultError` (`internal/api/respond.go`) handles
+create/update/delete for both resources identically, and `validateCatalogParams` wraps its errors
+in `vault.ErrInvalidInput` so there is one path to a 400 rather than two. `writeNuvioError`
+delegates to `nuvioErrorStatus` so push's JSON responses and the plain-text ones classify Nuvio
+failures identically — `nuvio.ErrNuvioRequestFailed` → `502`, anything else → `500`.
+
+### Static serving
+
+`internal/static` serves the embedded build as a single-page app: any path that doesn't resolve
+to a real file is rewritten to `/` so React Router handles it. Cache-Control splits on Vite's
+hashed output: everything under `/assets/` is `public, max-age=31536000, immutable`; everything
+else (`index.html`, icons) is `no-cache`, because caching the shell would strand clients on a
+page referencing asset hashes a new build no longer has.
+
+Gzip is `gzhttp` (`internal/static/gzip.go`) with an explicit content-type allow-list rather than
+gzhttp's default filter, because the default still compresses fonts — and woff2/woff are already
+compressed, so gzipping them buys nothing on ~38% of the bytes served. The decision to compress
+depends on the `Content-Type` the file server only sets as it starts writing, which is why this
+is gzhttp rather than a hand-rolled up-front wrapper. Range requests bypass gzip entirely — the
+file server's byte-range math is over the uncompressed file — and the bypass path adds
+`Vary: Accept-Encoding` itself, since gzhttp can't.
+
+## Nuvio integration
+
+`docs/api/nuvio-v1.3.md` is Nuvio's own public API documentation, kept verbatim as the authority
+when anything here disagrees with it. The facts Uno's integration leans on:
+
+- **Base URL** `https://api.nuvio.tv`. Auth at `/auth/v1/`, REST/RPC at `/rest/v1/`.
+- **Supabase-compatible.** GoTrue for auth, PostgREST for data. PostgREST error bodies carry
+  `code`/`message`/`details`/`hint`. Uno parses none of these fields — it classifies on status
+  code alone.
+- **The publishable key** goes in an `apikey` header on essentially every call. Public by design —
+  it is printed in Nuvio's own docs and intended for embedding in client apps. The TMDB key is
+  not public, which is why every TMDB call is server-side.
+- **Access tokens are JWTs with `expires_in: 3600`.** `internal/nuvio/verify.go` accepts **ES256**
+  signatures only, over **P-256** JWKS keys, and requires `iss` to equal the configured base URL
+  plus `/auth/v1` and `sub` to be non-empty. It does not inspect any other claim.
+- **Refresh tokens rotate.** `grant_type=refresh_token` returns a *new* refresh token as well as
+  a new access token; the old one is burned. The frontend owns this loop entirely.
+- **Profiles are numbered slots, 1–6**, unique per user. `p_profile_id` on every scoped call is
+  the integer slot, never a UUID.
+- **Sync strategies differ per resource**, and getting this wrong destroys data. Addons,
+  profiles, and collections — everything Uno pushes — are **full replace**: anything omitted from
+  the payload is **deleted**. (Nuvio's other resources use incremental mutations, atomic blob
+  upserts, or non-destructive merges; Uno touches none of them.)
+
+### Endpoints Uno uses
+
+| Endpoint | Method | Purpose | Wrapped by |
+| --- | --- | --- | --- |
+| `/auth/v1/.well-known/jwks.json` | GET | Public signing keys for local verification | `Verifier` |
+| `/rest/v1/rpc/sync_pull_profiles` | POST | List the account's profiles (no body) | `Client.ListProfiles` |
+| `/rest/v1/addons?profile_id=eq.{n}` | GET | Read current addons before a merge | `Client.ListAddons` |
+| `/rest/v1/rpc/sync_push_addons` | POST | Full-replace the profile's addon list | `Client.PushAddons` |
+| `/rest/v1/rpc/sync_pull_collections` | POST | Read current collections blob | `Client.PullCollections` |
+| `/rest/v1/rpc/sync_push_collections` | POST | Full-replace the collections blob | `Client.PushCollections` |
+| `/auth/v1/token?grant_type=password` | POST | Login — **frontend only**, never Uno | — |
+| `/auth/v1/token?grant_type=refresh_token` | POST | Refresh — **frontend only**, never Uno | — |
+
+### `internal/nuvio` shape
+
+- **`Verifier`** — `baseURL`, HTTP client, `sync.RWMutex`-guarded `map[string]*ecdsa.PublicKey`,
+  `fetched time.Time`. Holds no credential; JWKS is public.
+- **`Client`** — embeds `*Verifier` (so `Verify` promotes through unchanged), plus
+  `publishableKey` and its own separate HTTP client for REST calls, deliberately not sharing
+  `Verifier`'s.
+- **Sentinels**: `ErrInvalidToken`, `ErrJWKSUnavailable`, `ErrNuvioRequestFailed`. Error wrapping
+  uses `%w: %w` (multi-wrap) so the inner error survives `errors.Is`/`errors.As`.
+- **Key caching is reactive, not polled.** `Verify` extracts `kid` from the token header (via
+  `ParseUnverified` — reading the header only, trusting nothing), looks it up, and on a miss
+  refetches the whole JWKS once, subject to a `minRefetchInterval` debounce so a burst of tokens
+  with a bogus `kid` cannot trigger a fetch per request. `fetchKeys` **replaces** the cache
+  wholesale rather than merging, so retired keys actually disappear.
+
+> **`ListProfiles` checks for exactly `200`, not a 2xx range.** That is correct for a pull, which
+> always returns data. **Do not copy that check into a push RPC** — `PushAddons` and
+> `PushCollections` legitimately succeed with `204 No Content`, and both check for exactly that.
+
+### Push
+
+`POST /api/p/{profileIndex}/push` (`internal/api/push.go`). Body is the full pending selection,
+`{catalogs: CatalogSelectionForm, collections: CollectionSelectionForm}`. Response, past auth and
+profile resolution, is always JSON and deliberately flat:
+`{success, manifest_url, error?, undo_failed?}` — no partial-progress flags, because the ordering
+below guarantees an ordinary failure means nothing changed at all.
+
+**Ordering is Nuvio-first, local-write-last**, and this is load-bearing in two independent ways:
+
+1. Validate access to every id in the body. *Load-bearing, not a fail-fast nicety* — with the
+   write moved to the end, this is the only check standing between the request body and a
+   third-party API call.
+2. `pushAddons` — read the profile's current addons, upsert Uno's manifest URL into that list by
+   **URL match** (Nuvio's own dedup key is `md5(url)` per user+profile), push the **complete**
+   merged list back. Omitting any existing addon would delete it.
+3. `pushCollections` — pull, merge, push (detail below).
+4. One local transaction writing both selections, committing at the very end.
+
+Reversing this reopens two problems at once. A write-first design has to hold a SQLite write
+transaction open across up to four sequential Nuvio HTTP calls, each capped at a 10s client
+timeout — a concurrent vault write in that window waits out the 5s `busy_timeout` and then fails.
+It also means a failed push can still leave the catalog manifest live, which is the atomicity gap
+this ordering *deletes* rather than documents.
+
+**Addons before collections:** a pushed collection's `catalogSources` reference this addon's
+manifest id, so installing the addon first means a client reading collections right after a push
+already has something to resolve those references against. If the addons push fails, collections
+is never attempted.
+
+**The collections merge.** Nuvio's blob is full-replace and holds collections Uno knows nothing
+about (its own native UI, or another client), so the merge must touch only what Uno manages:
+
+1. Pull the current blob as **raw `json.RawMessage` per element** — never decoded into a generic
+   map. Round-tripping through `map[string]any` converts JSON numbers to `float64` and would
+   silently corrupt any collection Uno doesn't own.
+2. Drop every pulled entry whose `id` is one Uno can name for this profile. **The union is
+   `owned ∪ old selection ∪ new selection`.** Using only `owned ∪ new` silently stops removing a
+   deselected, non-owned collection from Nuvio — forever, since it is absent from the current
+   selection but also never matched for removal. The old selection is still readable at that
+   point precisely because nothing has been written yet.
+3. Append freshly built entries for the pending selection.
+
+**The one gap the ordering can't close, and its mitigation.** If the local commit fails *after*
+both Nuvio calls succeeded, Nuvio has the new collections but Uno's vault doesn't record them. On
+that failure the handler re-pushes the collections blob it pulled at the very start (still held
+in memory), restoring Nuvio to its prior state. If that compensating push *also* fails — two
+independent failures back to back — the response sets `undo_failed` and the user gets distinct
+copy. Retry is always safe: every local write is diff-replace and every Nuvio push is
+upsert/full-replace.
+
+**Lost update, accepted.** A reorder on the user's TV between pull and push gets clobbered. The
+window is seconds and push is a manual click, so this is accepted — but **the pull must sit
+immediately adjacent to the push, never cached from page load.**
+
+The wire shape push sends is camelCase and is not Uno's own — see the push wire shape section in
+`docs/data-model.md`.

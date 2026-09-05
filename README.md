@@ -1,0 +1,67 @@
+# Uno
+
+Uno builds personal Stremio-protocol catalog addons for [Nuvio](https://api.nuvio.tv) profiles.
+You log in with your Nuvio account, pick or build TMDB-powered catalogs (movies and shows
+filtered by genre, rating, watch provider, and more), arrange them into a home screen, and push
+the result straight into your Nuvio profile — so it shows up as rows on your TV.
+
+![Uno's configure screen](docs/img/configure.png)
+
+## What it does
+
+- Sign in with your existing Nuvio account — no separate account to create.
+- Browse a shared library of catalogs and collections other users on your Nuvio account have
+  made public, or build your own from TMDB filters (genre, rating, release window, watch
+  provider, age rating, and more).
+- Group catalogs into collections and folders, and arrange everything into one home screen.
+- Preview what a catalog or your whole home screen will look like before committing to it.
+- Push your home screen to Nuvio in one action — it installs the addon and syncs your
+  collections for you.
+
+## Requirements
+
+- Go 1.26+
+- Node 22+
+- A Nuvio account, a [TMDB](https://www.themoviedb.org/) API key, and a Nuvio publishable key
+
+## Running it locally
+
+```
+cp .env.example .env   # fill in TMDB_API_KEY and NUVIO_PUBLISHABLE_KEY
+cd web && npm ci && npm run build && cd ..
+go run ./cmd/server
+```
+
+`go build`/`go run` need `web/dist` to exist first — `web/embed.go` embeds it into the binary,
+and it's gitignored, so a fresh clone has nothing there until `npm run build` runs.
+
+For day-to-day frontend work, run `npm run dev` in `web/` instead. It starts Vite on its own
+port and proxies API and addon requests to a Go server running locally on `http://localhost:8123`,
+so you can edit the frontend without rebuilding it into the Go binary, and edit the backend
+without restarting Vite.
+
+## Checks
+
+```
+go build ./...
+go vet ./...
+go test ./...
+```
+
+and in `web/`:
+
+```
+npm run lint     # oxlint
+npm run build    # tsc -b && vite build — this is also the type check
+npm test         # vitest
+```
+
+## Documentation
+
+| Doc | Covers |
+| --- | --- |
+| [`docs/architecture.md`](docs/architecture.md) | How the three HTTP surfaces, the vault, and the Nuvio integration fit together |
+| [`docs/configuration.md`](docs/configuration.md) | Environment variables, the dev auth bypass, and deployment |
+| [`docs/data-model.md`](docs/data-model.md) | The SQLite schema, TMDB recipe params, and the Nuvio push wire shape |
+| [`docs/frontend.md`](docs/frontend.md) | The builder UI's structure, conventions, and visual direction |
+| [`docs/api/nuvio-v1.3.md`](docs/api/nuvio-v1.3.md) | Nuvio's own public API documentation, vendored verbatim |
