@@ -259,11 +259,9 @@ function RowMeta({ name, detail, detached }: { name: string; detail: string; det
 }
 
 /**
- * `show_in_home = false` is meant to hide a catalog's row from home while
- * keeping it in Discover, by marking its genre filter `isRequired` in the
- * manifest. **`buildManifest` (`internal/addon/addon.go`) does not consume the
- * flag**, so the tooltip says the toggle isn't live rather than letting it
- * appear to work.
+ * `show_in_home = false` hides a catalog's row from home while keeping it in
+ * Discover, by marking its genre filter `isRequired` in the manifest
+ * (`buildManifest`, `internal/addon/addon.go`).
  */
 function ShowInHomeToggle({
   name,
@@ -282,7 +280,7 @@ function ShowInHomeToggle({
       title={
         showInHome
           ? `${name} shows on your home screen`
-          : `${name} is meant to be hidden from your home screen — not active yet, so it still shows`
+          : `${name} stays in Discover, off your home screen`
       }
       // A fixed width, because the two labels are different lengths and the
       // toggles sit in a column: sized to their content, "on home" and

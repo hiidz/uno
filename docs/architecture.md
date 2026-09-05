@@ -146,8 +146,9 @@ is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
 `docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
 per-item `external_ids` resolution exists at all.
 
-Every catalog declares only `extra: [{name: "skip"}]`; there is no genre picker and no
-`isRequired`, and `buildManifest` does not consume `profile_catalogs.show_in_home`.
+Every catalog declares `extra: [{name: "skip"}]`; a catalog with
+`profile_catalogs.show_in_home = false` also declares a required `genre` extra, which keeps it
+out of the home screen's automatic rows while leaving it reachable from Discover.
 
 Cache headers: `cacheMaxAge` 10800s / `staleRevalidate` 3600s — the same values the Cinemeta
 sample carries. With no server-side response cache, these are the only thing keeping Stremio from

@@ -214,9 +214,8 @@ Add/remove from the rail, drag-reorder, `show_in_home` per catalog row. Hydrates
   owner has since made it private. Rendering by library lookup would make those rows vanish from
   the page while still being live on the user's TV. Such rows are marked "not in library": they
   work, but removing them is one-way.
-- **`show_in_home` is labelled for what it will do, with a tooltip saying it isn't wired up
-  yet** — `buildManifest` does not consume the flag, so the control is inert, and shipping it
-  silent would be worse than shipping it honest.
+- **`show_in_home` toggles whether the catalog gets a home row** — off keeps it in Discover only,
+  via a required `genre` extra `buildManifest` adds to that catalog's manifest entry.
 - The header pending indicator is information, not an affordance, which is why it can exist
   before Push does. `countPendingChanges` drives both it and the navigation guard's dialog.
 
@@ -287,11 +286,8 @@ Decisions that shape the code:
   navigation *within the mock*, not an edit. The open page is held as
   `{collectionId, folderId}`, **never indices**, so a folder deleted in List collapses back to
   home instead of silently rendering a different folder that happens to occupy the same slot.
-- **`show_in_home` does not hide anything.** Discover-only rows render as a dimmed, labelled
-  group carrying the same "not wired up yet" caveat as the List toggle. Dropping them would be
-  the app's first claim that the split is live. When the manifest builder consumes the flag,
-  that group becomes a genuine omission and the caveat text in `HomePreview.tsx` and the
-  `ShowInHomeToggle` tooltip both come out.
+- **Discover-only rows render as a dimmed, labelled group**, separate from the home rows above —
+  a genuine omission from home, since `buildManifest` marks their genre filter `isRequired`.
 - **A folder's `catalog_ids` are *sources*, never tiles.** Each is a standing query contributing
   an unknown number of items, so no view draws one tile per ref — that would misstate how much
   the folder holds. They are the folder page's spine: one row or one tab each.
@@ -508,11 +504,6 @@ to know. Three rules, in order:
    decides the real layout", not "Uno can't read the app's layout setting". Errors name the
    failure and the next action without naming the machinery: "Couldn't load the preview. Your
    filters are fine — try again."
-
-**The one place a caveat survives in full** is the `show_in_home` toggle, because
-`buildManifest` does not consume the flag: the control is inert, and its "not active yet"
-wording is the only thing stopping the UI from claiming a feature that doesn't work. Delete that
-text only together with the control.
 
 **`InfoTip` is not a place to move hints to.** A hint the user needs *before* filling a field in
 stays on the page as a `FieldNote`; one that doesn't survive "is this needed at all" is deleted.

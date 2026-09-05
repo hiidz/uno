@@ -125,12 +125,10 @@ write credential.
   - **Unselect**: profile-scoped diff-based save, reachable only through push. IDs absent from
     the payload are deleted, present ones upserted with sort order from array index, every
     incoming ID validated (ownership-or-public).
-- **`profile_catalogs.show_in_home` is stored and toggleable, and `buildManifest` does not
-  consume it** — every catalog declares only `extra: [{name: "skip"}]`, with no genre entry and
-  no `isRequired`. The Stremio mechanism it is meant to drive is marking a catalog's genre filter
-  `isRequired`, which keeps it out of home rows while leaving it reachable in Discover. Both the
-  Home-pane toggle's tooltip and Preview's dimmed Discover-only group carry a "not active yet"
-  caveat that comes out only when the manifest builder consumes the flag.
+- **`profile_catalogs.show_in_home` drives the manifest's per-catalog genre extra.** A catalog
+  with `show_in_home = false` gets a `{name: "genre", isRequired: true}` extra in `buildManifest`
+  (`internal/addon/addon.go`), which is the Stremio mechanism for keeping a catalog out of home's
+  automatic rows while leaving it reachable in Discover.
 - **No cascade on `profile_id`** (`profile_catalogs`/`profile_collections`) or `owner_id`
   (`catalogs`/`collections`). Irrelevant until profile deletion exists; revisit then.
 - **`folder_catalogs` has no column for a per-reference selector** (e.g. a genre override),

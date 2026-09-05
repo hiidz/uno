@@ -101,7 +101,8 @@ func (s *Server) Public(next http.HandlerFunc) http.HandlerFunc {
 }
 
 type manifestExtra struct {
-	Name string `json:"name"`
+	Name       string `json:"name"`
+	IsRequired bool   `json:"isRequired,omitempty"`
 }
 
 type manifestCatalog struct {
@@ -133,17 +134,23 @@ func ManifestID(c vault.Catalog) string {
 }
 
 // buildManifest builds Stremio's manifest catalog list. Every catalog
-// declares only "skip" (pagination) as an extra; nothing is conditional on
-// ShowInHome yet.
+// declares "skip" (pagination) as an extra; a catalog with
+// ShowInHome == false also declares a required "genre" extra, which is the
+// Stremio mechanism for keeping a catalog out of the home screen's automatic
+// rows while leaving it reachable from Discover.
 func buildManifest(selection []vault.SelectedCatalog) manifest {
 	catalogs := make([]manifestCatalog, len(selection))
 	for i, sc := range selection {
+		extra := []manifestExtra{{Name: "skip"}}
+		if !sc.ShowInHome {
+			extra = append(extra, manifestExtra{Name: "genre", IsRequired: true})
+		}
 		catalogs[i] = manifestCatalog{
 			Type:     sc.Type,
 			ID:       ManifestID(sc.Catalog),
 			Name:     sc.Name,
 			PageSize: catalogPageSize,
-			Extra:    []manifestExtra{{Name: "skip"}},
+			Extra:    extra,
 		}
 	}
 

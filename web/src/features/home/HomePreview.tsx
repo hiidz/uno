@@ -255,10 +255,9 @@ function CatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTiles }) {
 
 /**
  * `show_in_home = false` means "stay in Discover, don't take a row on home".
- * The manifest builder does not consume the flag (`buildManifest` in
- * `internal/addon/addon.go`), so these rows still appear on the real home
- * screen. Dropping them silently here would imply a split that isn't live —
- * hence a labelled group carrying the same caveat as the List view's toggle.
+ * `buildManifest` (`internal/addon/addon.go`) enforces this by marking the
+ * catalog's genre filter `isRequired`, so these rows are a genuine omission
+ * from the home screen, not just from this preview.
  */
 function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
   const home = useHomeSelection()
@@ -267,9 +266,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
     <section className="border-line flex flex-col gap-2 border-t pt-4">
       <div className="flex items-baseline gap-3">
         <span className="type-eyebrow">Discover only</span>
-        <span className="type-data text-dimmer text-[10px]">
-          not active yet — these still show on your home screen
-        </span>
+        <span className="type-data text-dimmer text-[10px]">no home row</span>
       </div>
       <div className="flex flex-col gap-1">
         {rows.map((row) => (
