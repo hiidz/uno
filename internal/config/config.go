@@ -33,7 +33,7 @@ func Load() (Config, error) {
 		TMDBAPIKey:          getEnv("TMDB_API_KEY", ""),
 		NuvioBaseURL:        getEnv("NUVIO_BASE_URL", "https://api.nuvio.tv"),
 		NuvioPublishableKey: getEnv("NUVIO_PUBLISHABLE_KEY", ""),
-		SiteBaseURL:         getEnv("SITE_BASE_URL", "http://localhost:8123"),
+		SiteBaseURL:         getEnv("SITE_BASE_URL", ""),
 		DevAuthBypassToken:  getEnv("DEV_AUTH_BYPASS_TOKEN", ""),
 	}
 
@@ -43,6 +43,9 @@ func Load() (Config, error) {
 	}
 	if cfg.NuvioPublishableKey == "" {
 		missing = append(missing, "NUVIO_PUBLISHABLE_KEY")
+	}
+	if cfg.SiteBaseURL == "" {
+		missing = append(missing, "SITE_BASE_URL")
 	}
 	if len(missing) > 0 {
 		return Config{}, fmt.Errorf("missing required environment variable(s): %v", missing)

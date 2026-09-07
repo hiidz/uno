@@ -9,10 +9,10 @@ environment. See `.env.example`.
 | --- | --- | --- | --- |
 | `TMDB_API_KEY` | **yes** — startup fails if empty | none | Provider's upstream key. Not public — every TMDB call is server-side for this reason |
 | `NUVIO_PUBLISHABLE_KEY` | **yes** — startup fails if empty | none | `apikey` header on Nuvio REST/RPC calls. Public by design; it is printed in Nuvio's own public docs and intended for embedding in client apps. Not a service credential |
+| `SITE_BASE_URL` | **yes** — startup fails if empty | none | Base for the absolute manifest URL handed to clients and pushed into Nuvio — see below |
 | `VAULT_DB` | no | `vault.db` | Path to the SQLite file |
 | `PORT` | no | `8123` | Listen port (plain HTTP, no TLS) |
 | `NUVIO_BASE_URL` | no | `https://api.nuvio.tv` | Base for JWKS discovery and all REST/RPC calls |
-| `SITE_BASE_URL` | no — but see below | `http://localhost:8123` | Base for the absolute manifest URL handed to clients and pushed into Nuvio |
 | `DEV_AUTH_BYPASS_TOKEN` | no | empty (bypass off) | **Local development only** — see below |
 
 `config.Load` collects *all* missing required vars before failing, so a fresh setup gets one
@@ -20,13 +20,19 @@ error naming both rather than two runs.
 
 ### The `SITE_BASE_URL` hazard
 
-`config.Load` (`internal/config/config.go`) defaults `SITE_BASE_URL` to `http://localhost:8123`
-and returns no error when it is unset — only `TMDB_API_KEY` and `NUVIO_PUBLISHABLE_KEY` are in
-the required set, and `cmd/server/main.go` does not check it either. `selectProfile` and
-`pushAddons` both build the absolute manifest URL from it, so a deploy with the variable unset —
-or left at `.env.example`'s `http://localhost:8123` placeholder — pushes
-`http://localhost:8123/u/{token}/manifest.json` into the user's real Nuvio profile, a URL their
-TV can never resolve, with no warning at any point.
+`selectProfile` and `pushAddons` both build the absolute manifest URL pushed into Nuvio from
+`SiteBaseURL`, so a deploy that left it unset — or, previously, that inherited a silent
+`http://localhost:8123` default — would push an unreachable URL into the user's real Nuvio
+profile with no warning at any point. `config.Load` (`internal/config/config.go`) now has no
+default for `SITE_BASE_URL` and includes it in the required-var check alongside `TMDB_API_KEY`
+and `NUVIO_PUBLISHABLE_KEY`, so an unset value fails startup immediately instead of silently
+defaulting. `.env.example` still ships `SITE_BASE_URL=http://localhost:8123` as the correct local
+dev value — that's fine for local dev, since the value is explicit there, not defaulted.
+
+**This does not catch a value that's wrong but non-empty** — e.g. `.env.example`'s
+`http://localhost:8123` placeholder copied verbatim into a production `.env`. Startup still
+succeeds, and the wrong URL still gets pushed to Nuvio with no warning. `SITE_BASE_URL` must be
+set correctly, not merely set, at deploy time.
 
 **Correcting a profile already pushed with the wrong URL takes more than re-pushing.**
 `pushAddons` (`internal/api/push.go`) reads the profile's current addon list, upserts Uno's entry
