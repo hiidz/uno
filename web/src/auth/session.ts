@@ -79,9 +79,9 @@ function broadcast(message: BroadcastMessage) {
   channel?.postMessage(message)
 }
 
-function applySession(next: Session, opts: { broadcast: boolean }) {
+function applySession(next: Session, opts: { broadcast: boolean; persist: boolean }) {
   session = next
-  writeStoredRefreshToken(next.refreshToken)
+  if (opts.persist) writeStoredRefreshToken(next.refreshToken)
   setPublicState({ status: 'authenticated', user: next.user })
   if (opts.broadcast) {
     broadcast({
@@ -157,7 +157,7 @@ export function refresh(): Promise<Session> {
   refreshInFlight = refreshWithToken(attemptedToken)
     .then((res) => {
       const next = toSession(res)
-      applySession(next, { broadcast: true })
+      applySession(next, { broadcast: true, persist: true })
       return next
     })
     .catch((err: unknown) => {
@@ -202,7 +202,7 @@ async function doBootstrap(): Promise<void> {
 
 export async function login(email: string, password: string): Promise<void> {
   const res = await signInWithPassword(email, password)
-  applySession(toSession(res), { broadcast: true })
+  applySession(toSession(res), { broadcast: true, persist: true })
 }
 
 export async function logout(): Promise<void> {
@@ -211,4 +211,25 @@ export async function logout(): Promise<void> {
   if (accessToken) {
     await nuvioSignOut(accessToken).catch(() => {})
   }
+}
+
+// Authenticates as the server's dev-bypass fake account without a Nuvio round
+// trip: `token` is sent as the bearer on every /api/* call, and the server
+// (internal/api/devauth.go) recognises it only if it equals its own
+// DEV_AUTH_BYPASS_TOKEN. Nothing checks that the two match — a mismatch is
+// rejected as an ordinary 401, which lands as a redirect back to /login.
+//
+// The synthetic session carries no refresh token, so it is neither persisted
+// nor recoverable: a reload returns to /login. It is also not broadcast, so a
+// real session in another tab is left alone.
+export function loginWithBypassToken(token: string): void {
+  applySession(
+    {
+      accessToken: token,
+      refreshToken: '',
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+      user: { id: 'dev-user', email: 'dev@localhost', created_at: new Date(0).toISOString() },
+    },
+    { broadcast: false, persist: false },
+  )
 }

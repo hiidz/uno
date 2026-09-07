@@ -53,7 +53,16 @@ decorators from `devauth.go` before building `api.Deps` — `internal/api` itsel
 still sees one verifier and one client. Every Nuvio call carrying the bypass token is served from
 an in-memory fake account: one profile at slot 1, plus in-memory addon and collections stores
 that start empty and hold whatever pushes write into them. Any other token verifies and routes
-normally. Set it and the whole authenticated UI is drivable with no Nuvio credentials.
+normally.
+
+Driving the SPA with it takes a second entry: Vite reads env files from `web/` only and exposes
+only `VITE_`-prefixed vars, so the root `.env` is invisible to the frontend. Set
+`VITE_DEV_AUTH_BYPASS_TOKEN` in `web/.env` (see `web/.env.example`) to the **same value** as the
+root `.env`'s `DEV_AUTH_BYPASS_TOKEN`, and `/login` grows a "Dev bypass login" button that signs
+in as the fake account — the whole authenticated UI is then drivable with no Nuvio credentials.
+The button only exists in a dev build (`import.meta.env.DEV`). Nothing checks that the two values
+match: a mismatch is rejected as an ordinary 401, which surfaces only as a redirect back to
+`/login` with no hint that the token is the cause.
 
 What the bypass reaches, and what it does not:
 

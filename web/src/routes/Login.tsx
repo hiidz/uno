@@ -2,7 +2,14 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Location } from 'react-router-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { NuvioAuthError, useAuth } from '@/auth'
+import { NuvioAuthError, loginWithBypassToken, useAuth } from '@/auth'
+
+// Gated on import.meta.env.DEV so the whole bypass branch is statically dead
+// in a production build. Must equal the server's DEV_AUTH_BYPASS_TOKEN — see
+// web/.env.example.
+const devBypassToken: string | undefined = import.meta.env.DEV
+  ? import.meta.env.VITE_DEV_AUTH_BYPASS_TOKEN
+  : undefined
 
 export function Login() {
   const [email, setEmail] = useState('')
@@ -13,14 +20,19 @@ export function Login() {
   const location = useLocation()
   const { login } = useAuth()
 
+  // Where RequireAuth bounced from, if it did — shared by both sign-in paths.
+  function destination(): string {
+    const from = (location.state as { from?: Location } | null)?.from
+    return from ? `${from.pathname}${from.search}${from.hash}` : '/'
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setSubmitting(true)
     setError(null)
     try {
       await login(email, password)
-      const from = (location.state as { from?: Location } | null)?.from
-      navigate(from ? `${from.pathname}${from.search}${from.hash}` : '/', { replace: true })
+      navigate(destination(), { replace: true })
     } catch (err) {
       setError(
         err instanceof NuvioAuthError
@@ -29,6 +41,12 @@ export function Login() {
       )
       setSubmitting(false)
     }
+  }
+
+  function handleDevBypass() {
+    if (!devBypassToken) return
+    loginWithBypassToken(devBypassToken)
+    navigate(destination(), { replace: true })
   }
 
   return (
@@ -67,6 +85,17 @@ export function Login() {
         <button type="submit" disabled={submitting} className="btn-primary">
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
+
+        {devBypassToken && (
+          <div className="flex flex-col gap-2 border-line border-t pt-4">
+            <button type="button" onClick={handleDevBypass} className="btn-ghost">
+              Dev bypass login
+            </button>
+            <p className="type-data text-dim m-0 text-[11.5px]">
+              Local dev only — signs in as the server's fake account.
+            </p>
+          </div>
+        )}
       </form>
     </div>
   )

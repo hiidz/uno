@@ -60,6 +60,13 @@ Entirely frontend code. Uno's Go side never mints, refreshes, or stores a Nuvio 
   catches `401`, refreshes once, retries the original request, and only then clears session
   state and navigates to `/login` via the `router` singleton exported from
   `web/src/routes/router.tsx`.
+- **Dev bypass** — in a dev build only, `/login` renders a "Dev bypass login" button when
+  `VITE_DEV_AUTH_BYPASS_TOKEN` is set in `web/.env`. `loginWithBypassToken` (`session.ts`) builds
+  a synthetic session holding that token as its access token and applies it directly, with no
+  Nuvio round trip; the server accepts it via `DEV_AUTH_BYPASS_TOKEN` (see
+  `docs/configuration.md`). The session carries no refresh token, so it is neither persisted nor
+  broadcast: a reload returns to `/login`, and a real session in another tab is untouched. The
+  whole branch is gated on `import.meta.env.DEV` and cannot exist in a production build.
 - **`RequireAuth`** wraps `/`, `/profiles`, and `/configure`. `AuthProvider` withholds rendering
   entirely while the load-time exchange is in flight, so routes only ever see a settled status,
   never `'loading'`.
