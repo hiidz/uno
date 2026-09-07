@@ -8,9 +8,11 @@ import type { CollectionPayload } from '@/api'
  * Same rule as `useCatalogMutations`, for the same reason: both the owned list
  * and the community list have to be invalidated on every write, because
  * `is_public` can change on any save and a public collection appears in *both*
- * responses. The selection queries are left alone — selection is client state
- * until Push, so refetching it would clobber the user's pending home-screen
- * edits.
+ * responses. That also refetches the collection selection query, since
+ * `['p', i, 'collections']` prefix-matches its `…, 'selection'` child;
+ * selection is client state until Push, and the one-shot hydration guard in
+ * `HomeSelectionContext` is what keeps that refetch from clobbering the user's
+ * pending home-screen edits.
  *
  * Nothing here touches the catalog queries. A collection references catalogs
  * but never modifies them; the dependency runs the other way, which is why

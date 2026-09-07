@@ -18,9 +18,12 @@ import type { CatalogPayload } from '@/api'
  * user can't see. Create and `is_public` flips take the same path because
  * they change what a folder is *allowed* to reference.
  *
- * The selection queries are **not** invalidated. Selection is client state until
- * Push — refetching it would clobber the user's pending home-screen edits with
- * what the server last saw.
+ * The selection queries are refetched as well: their keys sit under the owned
+ * list keys and invalidation prefix-matches, so `['p', i, 'catalogs']` and
+ * `['p', i, 'collections']` each take their `…, 'selection'` child with them.
+ * Selection is client state until Push, and the one-shot hydration guard in
+ * `HomeSelectionContext` is what keeps those refetches from clobbering the
+ * user's pending home-screen edits.
  */
 export function useCatalogMutations(profileIndex: number) {
   const queryClient = useQueryClient()

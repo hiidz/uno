@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "node -e \"require('fs').closeSync(require('fs').openSync('dist/.gitkeep','a'))\"",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",

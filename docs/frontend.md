@@ -7,8 +7,8 @@ there is no server-side session to render against.
 Monorepo: `web/` at the repo root beside the Go module. One repo, one pipeline. `vite build` →
 `web/dist` → `//go:embed all:dist` (`web/embed.go`) → served same-origin on the same port as the
 API and addon server. No CORS in production; the Vite proxy is a dev-only convenience. `web/dist`
-is gitignored except for a `.gitkeep` exception, so the embed target only exists after a build
-has run in that working tree.
+is gitignored except for the committed `.gitkeep`, which keeps the embed target present — and
+`go build ./...` working — in a tree where no frontend build has run.
 
 | Concern | Choice |
 | --- | --- |

@@ -30,9 +30,9 @@ export function createCatalog(profileIndex: number, body: CatalogPayload): Promi
 }
 
 /**
- * `type`, `provider` and `endpoint` are immutable once a catalog exists — but
- * that is a **UI-enforced rule, not a backend one**: `PUT` still accepts and
- * writes all three. The edit form renders `type` as read-only and re-sends the
+ * `type` and `provider` are immutable once a catalog exists — but that is a
+ * **UI-enforced rule, not a backend one**: `PUT` still accepts and writes
+ * both. The edit form renders `type` as read-only and re-sends the
  * catalog's existing values, so the rule holds as long as every caller goes
  * through the form. Duplicate is the supported way to "change a catalog's type".
  */
