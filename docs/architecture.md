@@ -120,20 +120,31 @@ Three route-semantics facts the client has to honour:
   only after Nuvio has accepted the push. There are no `PUT .../selection` routes; the
   transactional write bodies are `saveCatalogSelectionTx`/`saveCollectionSelectionTx` inside
   `internal/vault`.
-- **Community list endpoints return your own public rows too.** `GetCommunityCatalogs` is
-  `queryCatalogs(ctx, "is_public = TRUE")` with no owner exclusion; collections are the same
-  query. Dedup on the union is *required*, not defensive, and **ownership is a per-row fact
-  derived from membership in the owned set, never from which endpoint a row arrived on.**
-- **The selection endpoints have no visibility filter.** They join straight through
-  `profile_catalogs`/`profile_collections`, so the response can contain a community catalog whose
-  owner has since made it private. Render selected rows from *that* response, never by looking
-  them up in the library.
+- **Community list endpoints are profile-scoped and exclude your own rows.**
+  `GET /api/p/{i}/community/catalogs` and `GET /api/p/{i}/community/collections`
+  (`GetCommunityCatalogs`/`GetCommunityCollections`) are `is_public = TRUE AND owner_id != ?`,
+  so — unlike the pre-closed-graph community routes — there is no merge or dedup left for the
+  frontend to do: a row you own never appears there. Catalogs additionally collapse to one row
+  per fingerprint (§3.3 of the sharing model plan), oldest `created_at` wins. Both responses carry
+  a per-row `taken: bool` — `EXISTS` a row in that table owned by the caller with `taken_from`
+  pointing at this id — computed server-side, never inferred client-side.
+  `POST /api/p/{i}/community/catalogs/{id}/take` and `.../community/collections/{id}/take`
+  (`TakeCatalog`/`TakeCollection`) deep-copy a public, not-own source into a new row the caller
+  fully owns (§3.5); both 404 via `ErrCatalogNotFound`/`ErrCollectionNotFound` if the source isn't
+  public or is already the caller's own. `GET /api/catalogs` and `GET /api/collections` (the old
+  unscoped, unauthenticated-by-profile community routes) are removed.
+- **Selection lives on the rows themselves, not a join table.** `catalogs.home_sort_order`/
+  `show_in_home` and `collections.home_sort_order` replaced `profile_catalogs`/
+  `profile_collections`; the selection endpoints are `owner_id = ? AND home_sort_order IS NOT
+  NULL`, ordered by it. The closed graph means a selection can only ever contain rows the caller
+  owns — there is no visibility filter to reason about, and no "selected but since made private"
+  case to render around.
 
 ### Addon server — public, unauthenticated, CORS-open, cacheable
 
 Two routes: `GET /u/{token}/manifest.json` and `GET /u/{token}/catalog/{type}/{rest...}`, where
 `rest` is `{id}.json` or `{id}/{extra}.json` (skip pagination). An unknown/invalid token, or a
-catalog id that is not in this profile's *persisted selection*, both return **404** rather than an
+catalog id that is not in this profile's *published set*, both return **404** rather than an
 empty or error response — `findSelectedCatalog` doubles as the access check, so a leaked or
 guessed catalog UUID can't pull data through a profile it was never shared with.
 
@@ -146,9 +157,17 @@ is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
 `docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
 per-item `external_ids` resolution exists at all.
 
-Every catalog declares `extra: [{name: "skip"}]`; a catalog with
-`profile_catalogs.show_in_home = false` also declares a required `genre` extra, which keeps it
-out of the home screen's automatic rows while leaving it reachable from Discover.
+Both routes read `vault.GetPublishedCatalogs`, not `GetCurrentCatalogSelection` — the derived
+union of listed catalogs on the home screen and every catalog referenced by a folder of a
+collection on the home screen (§3.4 of the sharing model plan), deduped by id with the home row's
+`ShowInHome` winning over a folder-derived one. `GetCurrentCatalogSelection` stays the narrower
+pre-push validation/selection-editor view; the addon server needs the wider set so a catalog used
+only inside an on-TV collection's folder is still published, not a dangling reference.
+
+Every catalog declares `extra: [{name: "skip"}]`; a catalog whose *published* `ShowInHome` is
+false — off the home screen entirely, or on the TV only through a folder — also declares a
+required `genre` extra, which keeps it out of the home screen's automatic rows while leaving it
+reachable from Discover.
 
 Cache headers: `cacheMaxAge` 10800s / `staleRevalidate` 3600s — the same values the Cinemeta
 sample carries. With no server-side response cache, these are the only thing keeping Stremio from
@@ -214,8 +233,8 @@ Four properties, each load-bearing:
   that this catalog will differ on the TV.
 
 **It is not routed through the selection**, which is what makes it usable at all:
-`CatalogHandler` resolves via `findSelectedCatalog` over `GetCurrentCatalogSelection`, so the
-public addon route can only ever serve the *persisted* selection — useless for previewing
+`CatalogHandler` resolves via `findSelectedCatalog` over `GetPublishedCatalogs`, so the
+public addon route can only ever serve the *persisted, published* set — useless for previewing
 pending, unpushed edits. That is a disqualification for reusing it from the browser, not a
 tradeoff.
 
@@ -341,11 +360,16 @@ about (its own native UI, or another client), so the merge must touch only what 
 1. Pull the current blob as **raw `json.RawMessage` per element** — never decoded into a generic
    map. Round-tripping through `map[string]any` converts JSON numbers to `float64` and would
    silently corrupt any collection Uno doesn't own.
-2. Drop every pulled entry whose `id` is one Uno can name for this profile. **The union is
-   `owned ∪ old selection ∪ new selection`.** Using only `owned ∪ new` silently stops removing a
-   deselected, non-owned collection from Nuvio — forever, since it is absent from the current
-   selection but also never matched for removal. The old selection is still readable at that
-   point precisely because nothing has been written yet.
+2. Drop every pulled entry that is either **owned by this profile**, or **Uno-managed by the
+   addon-id heuristic** (`isUnoManaged`, `internal/api/push.go`): every source in every folder
+   carries this addon's id. With the closed graph, everything selected is owned, so the owned set
+   alone covers a deselected collection — there's no "old selection" case left to union in, since
+   a non-owned collection can never have been selected in the first place. The heuristic instead
+   covers a collection Uno *once* pushed but no longer knows the id of (hard-deleted locally, or a
+   recreated database): nothing else ever writes a source pointing at this addon's id, so that's
+   the only place such a collection could have come from. A pulled collection with no sources at
+   all doesn't match the heuristic — there's nothing to compare against `addon.ID`, and treating
+   it as a match would risk deleting a Nuvio-native collection whose folders are simply empty.
 3. Append freshly built entries for the pending selection.
 
 **The one gap the ordering can't close, and its mitigation.** If the local commit fails *after*

@@ -1,6 +1,8 @@
 package vault
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -26,6 +28,26 @@ type Catalog struct {
 	Params   string    `json:"params"`
 	OwnerID  uuid.UUID `json:"owner_id"`
 	IsPublic bool      `json:"is_public"`
+	// CollectionID scopes this catalog to one collection (hidden from the
+	// library, usable only in that collection's folders); nil means listed.
+	CollectionID *uuid.UUID `json:"collection_id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	// HomeSortOrder is this catalog's position in its owner's home-screen
+	// selection; nil means it isn't on the TV. Never on the wire — the
+	// selection endpoints (GetCurrentCatalogSelection) return catalogs
+	// already ordered by it.
+	HomeSortOrder *int `json:"-"`
+	// ShowInHome is only meaningful while HomeSortOrder is non-nil; it drives
+	// the manifest's per-catalog genre extra (see buildManifest). Never on
+	// the wire directly — SelectedCatalog carries its own copy for that.
+	ShowInHome bool `json:"-"`
+	// TakenFrom is the source catalog a Take copied this row from, kept only
+	// to answer "you already took this" — never rendered as attribution.
+	TakenFrom *uuid.UUID `json:"-"`
+	// Fingerprint collapses duplicate community catalogs by recipe; never on
+	// the wire.
+	Fingerprint string `json:"-"`
 	// IsDefault is never set true by any code path today — kept internal,
 	// not exposed on the wire, so the API doesn't assert a value it isn't
 	// actually tracking. See UpdateUserCatalog/UpdateUserCollection.
@@ -43,6 +65,20 @@ type Collection struct {
 	ViewMode         string    `json:"view_mode"`
 	ShowAllTab       bool      `json:"show_all_tab"`
 	BackdropImageURL string    `json:"backdrop_image_url"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	// PushedAt is set by push (SaveSelectionsForPush) for every collection in
+	// the pushed selection; nil means never pushed. Compared against
+	// UpdatedAt by the frontend to flag a pending change (WP7).
+	PushedAt *time.Time `json:"pushed_at"`
+	// HomeSortOrder is this collection's position in its owner's home-screen
+	// selection; nil means it isn't on the TV. Never on the wire — the
+	// selection endpoint (GetCurrentCollectionSelection) returns collections
+	// already ordered by it.
+	HomeSortOrder *int `json:"-"`
+	// TakenFrom is the source collection a Take copied this row from, kept
+	// only to answer "you already took this" — never rendered as attribution.
+	TakenFrom *uuid.UUID `json:"-"`
 	// IsDefault is never set true by any code path today — kept internal,
 	// not exposed on the wire, so the API doesn't assert a value it isn't
 	// actually tracking. See UpdateUserCatalog/UpdateUserCollection.
@@ -83,6 +119,13 @@ type CatalogForm struct {
 	Provider string `json:"provider"`
 	Params   string `json:"params"`
 	IsPublic bool   `json:"is_public"`
+	// CollectionID scopes the catalog to one collection; nil (or absent on
+	// the wire) means listed. On update, setting it demotes the catalog and
+	// clearing it promotes — see CreateUserCatalog/UpdateUserCatalog.
+	CollectionID *uuid.UUID `json:"collection_id"`
+	// Fingerprint is computed server-side after validation, never accepted
+	// from the client.
+	Fingerprint string `json:"-"`
 }
 
 // CollectionForm is the create/update request body for a Collection,
@@ -117,13 +160,13 @@ type SelectedCatalogInput struct {
 // CatalogSelectionForm is the request body for setting a profile's active
 // catalog selection.
 type CatalogSelectionForm struct {
-	Catalogs []SelectedCatalogInput `json:"catalogs"` // ordered — index gives profile_catalogs.sort_order
+	Catalogs []SelectedCatalogInput `json:"catalogs"` // ordered — index gives catalogs.home_sort_order
 }
 
 // CollectionSelectionForm is the request body for setting a profile's
 // active collection selection.
 type CollectionSelectionForm struct {
-	CollectionIDs []uuid.UUID `json:"collection_ids"` // ordered — index gives profile_collections.sort_order
+	CollectionIDs []uuid.UUID `json:"collection_ids"` // ordered — index gives collections.home_sort_order
 }
 
 // HTTP Outbound Model-------------------------
@@ -136,10 +179,12 @@ type FolderWithCatalogs struct {
 }
 
 // CollectionWithFolders is a Collection plus its folders, each with their
-// member catalog IDs.
+// member catalog IDs, and every catalog those folders reference (listed or
+// scoped) so the editor never needs the library to render a folder.
 type CollectionWithFolders struct {
 	Collection
-	Folders []FolderWithCatalogs `json:"folders"`
+	Folders  []FolderWithCatalogs `json:"folders"`
+	Catalogs []Catalog            `json:"catalogs"`
 }
 
 // SelectedCatalog is a Catalog as it appears in a profile's active
@@ -147,4 +192,21 @@ type CollectionWithFolders struct {
 type SelectedCatalog struct {
 	Catalog
 	ShowInHome bool `json:"show_in_home"`
+}
+
+// CommunityCatalog is a Catalog as it appears in the community list: public,
+// owned by someone else, collapsed to one row per fingerprint (§3.3 of the
+// sharing model plan), plus whether the caller has already taken a copy.
+type CommunityCatalog struct {
+	Catalog
+	Taken bool `json:"taken"`
+}
+
+// CommunityCollection is a CollectionWithFolders as it appears in the
+// community list: public, owned by someone else, plus whether the caller has
+// already taken a copy. Unlike CommunityCatalog there is no fingerprint
+// collapse — that's a catalog-only concept.
+type CommunityCollection struct {
+	CollectionWithFolders
+	Taken bool `json:"taken"`
 }

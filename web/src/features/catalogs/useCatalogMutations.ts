@@ -30,9 +30,9 @@ export function useCatalogMutations(profileIndex: number) {
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCatalogs() })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCatalogs(profileIndex) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections() })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections(profileIndex) })
   }
 
   const create = useMutation({

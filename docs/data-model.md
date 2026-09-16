@@ -12,11 +12,8 @@ existing table. Any schema change means deleting and recreating both the local `
 erDiagram
   PROFILES ||--o{ CATALOGS : owns
   PROFILES ||--o{ COLLECTIONS : owns
-  PROFILES ||--o{ PROFILE_CATALOGS : selects
-  CATALOGS ||--o{ PROFILE_CATALOGS : "selected via"
-  PROFILES ||--o{ PROFILE_COLLECTIONS : selects
-  COLLECTIONS ||--o{ PROFILE_COLLECTIONS : "selected via"
   COLLECTIONS ||--o{ FOLDERS : contains
+  COLLECTIONS ||--o{ CATALOGS : scopes
   FOLDERS ||--o{ FOLDER_CATALOGS : contains
   CATALOGS ||--o{ FOLDER_CATALOGS : "referenced via"
 
@@ -36,12 +33,13 @@ erDiagram
     uuid owner_id FK
     bool is_public
     bool is_default
-  }
-  PROFILE_CATALOGS {
-    uuid profile_id PK_FK
-    uuid catalog_id PK_FK
+    uuid collection_id FK "nullable — NULL means listed"
+    int home_sort_order "nullable — NULL means not on the TV"
     bool show_in_home
-    int sort_order
+    uuid taken_from FK "nullable — bookkeeping only, never rendered"
+    string fingerprint "sha256 hex of type+provider+canonical params"
+    string created_at
+    string updated_at
   }
   COLLECTIONS {
     uuid id PK
@@ -54,6 +52,11 @@ erDiagram
     bool show_all_tab
     string backdrop_image_url
     bool focus_glow_enabled
+    int home_sort_order "nullable — NULL means not on the TV"
+    string pushed_at "nullable — NULL means never pushed"
+    uuid taken_from FK "nullable — bookkeeping only, never rendered"
+    string created_at
+    string updated_at
   }
   FOLDERS {
     uuid id PK
@@ -68,11 +71,6 @@ erDiagram
   FOLDER_CATALOGS {
     uuid folder_id PK_FK
     uuid catalog_id PK_FK
-    int sort_order
-  }
-  PROFILE_COLLECTIONS {
-    uuid profile_id PK_FK
-    uuid collection_id PK_FK
     int sort_order
   }
 ```
@@ -111,6 +109,44 @@ write credential.
 
 ## Key rules
 
+- **A catalog has a scope: listed or scoped to one collection.** `catalogs.collection_id` is
+  `NULL` for a listed catalog (in the library, usable on home and in any of the owner's folders)
+  or a collection id for one scoped to exactly that collection (hidden from the library, usable
+  only in that collection's folders, deleted with it). `CreateUserCatalog`/`UpdateUserCatalog`
+  enforce that the target collection is owned by the same profile, that a scoped catalog is never
+  public, and that a scoped catalog is never on the home screen — the schema's own
+  `CHECK (collection_id IS NULL OR (is_public = 0 AND home_sort_order IS NULL))` exists as a
+  backstop and would surface as a 500, so the Go layer rejects all three before that CHECK is ever
+  hit. Demoting a listed catalog into a collection (`UpdateUserCatalog` with `collection_id` set)
+  additionally requires it to be off the home screen (`requireNotOnHome`, checking
+  `home_sort_order IS NULL` directly on the row) and every existing folder ref to it to already be
+  inside the target collection; promoting a scoped catalog back to listed (clearing
+  `collection_id`) is always allowed. `GetUserCatalogs` (the library) returns listed catalogs
+  only — a scoped one is reached through its owning collection's own response instead.
+- **A profile's data graph is closed: references never cross an owner boundary.** A folder may
+  reference a catalog only if `internal/vault/access.go`'s `validateFolderRefs` accepts it: the
+  catalog's `owner_id` must equal the collection's `owner_id`, and the catalog's `collection_id`
+  must be `NULL` (listed) or equal to that same collection (scoped to it already). There is no
+  "or public" branch anywhere in a write path — a community catalog can only enter another
+  profile's graph through Take (a copy with a fresh id), never through a live reference.
+  `CreateUserCollection` has no collection id yet, so its folders may reference listed catalogs
+  only. `CollectionWithFolders.Catalogs` carries every catalog a collection's folders reference,
+  listed or scoped, so the editor never needs the library to render a folder.
+- **A scoped catalog with no remaining folder reference in its collection is deleted on that
+  collection's next whole-tree Save.** `UpdateUserCollection` runs this cleanup in the same
+  transaction as the folder rewrite, right after `replaceFolderCatalogRefs` for every folder:
+  `DELETE FROM catalogs WHERE collection_id = ? AND id NOT IN (` the catalog ids still referenced
+  by that collection's folders `)`. This is also what catches a scoped catalog created via
+  `POST .../catalogs` and abandoned before Save — it has no folder ref yet, so the next Save (or
+  the collection's own deletion, by cascade) removes it.
+- **`catalogs.fingerprint` and `catalogs.taken_from`/`collections.taken_from` back the
+  cross-owner sharing model.** `fingerprint` is a sha256 hex of the catalog's type, provider, and
+  canonically re-marshaled params (`provider.Fingerprint`), computed by the create/update
+  handlers before every insert/update — `GetCommunityCatalogs` collapses rows sharing a
+  fingerprint to the oldest `created_at`, and it never reaches the wire. `taken_from` records the
+  source row `TakeCatalog`/`TakeCollection` copied from, purely to answer "you already took this"
+  (`taken: bool` on community rows, an `EXISTS` against the caller's own `taken_from` values);
+  both are `json:"-"` and never rendered as attribution.
 - **`catalogs.id` is permanent once created** — never rename or recycle it. It is baked into
   `addon.ManifestID` and therefore into Nuvio's `catalogSources[].catalogId`.
 - **`catalogs.params` is opaque `TEXT` at the schema level.** For `provider = 'tmdb'` there is an
@@ -122,15 +158,32 @@ write credential.
   - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped single `DELETE`,
     all downstream cleanup via `ON DELETE CASCADE`. Removes the row for *everyone*, not just the
     caller. The frontend warns the owner; the backend gives no signal to affected profiles.
-  - **Unselect**: profile-scoped diff-based save, reachable only through push. IDs absent from
-    the payload are deleted, present ones upserted with sort order from array index, every
-    incoming ID validated (ownership-or-public).
-- **`profile_catalogs.show_in_home` drives the manifest's per-catalog genre extra.** A catalog
-  with `show_in_home = false` gets a `{name: "genre", isRequired: true}` extra in `buildManifest`
-  (`internal/addon/addon.go`), which is the Stremio mechanism for keeping a catalog out of home's
-  automatic rows while leaving it reachable in Discover.
-- **No cascade on `profile_id`** (`profile_catalogs`/`profile_collections`) or `owner_id`
-  (`catalogs`/`collections`). Irrelevant until profile deletion exists; revisit then.
+  - **Unselect**: reachable only through push, which folds the whole pending selection straight
+    into `catalogs.home_sort_order`/`show_in_home` and `collections.home_sort_order`
+    (`saveCatalogSelectionTx`/`saveCollectionSelectionTx`, `internal/vault`). Every owned row's
+    `home_sort_order` is cleared first, then each incoming id is set in turn with its array index;
+    an id that isn't owned (or, for a catalog, isn't listed — `AND collection_id IS NULL`) affects
+    0 rows and is `ErrInvalidInput` naming the id. There is no separate join table and no separate
+    access-check query — the `UPDATE`'s own `WHERE` clause is the validation.
+- **`catalogs.show_in_home` drives the manifest's per-catalog genre extra, but the addon server
+  reads it through `vault.GetPublishedCatalogs`, not the raw column.** `GetPublishedCatalogs` is
+  the union §3.4 of the sharing model plan defines: every owned catalog with `home_sort_order`
+  non-`NULL` (its own `show_in_home`), plus every catalog referenced by a folder of a collection
+  that is itself on the home screen (`collections.home_sort_order` non-`NULL`), with a forced
+  `ShowInHome = false` — a catalog reachable only through a folder never gets an automatic home
+  row. Deduped by id: a catalog on both the home screen and in an on-TV folder appears once,
+  keeping its own `show_in_home`. A `ShowInHome = false` result gets a
+  `{name: "genre", isRequired: true}` extra in `buildManifest` (`internal/addon/addon.go`), the
+  Stremio mechanism for keeping a catalog out of home's automatic rows while leaving it reachable
+  in Discover. `GetCurrentCatalogSelection` (the narrower `home_sort_order IS NOT NULL` query)
+  remains the pre-push validation/selection-editor view; only the addon server needs the wider
+  published set.
+- **`collections.pushed_at` is stamped by `SaveSelectionsForPush` for every collection in the
+  pushed selection**, and only there — a collection's own create/update never touches it. `NULL`
+  means never pushed. Intended (WP7) to pair with `updated_at` to flag a pending change: both are
+  `TEXT` RFC3339 at second precision, so a save and a push inside the same second compare equal.
+- **No cascade on `owner_id`** (`catalogs`/`collections`). Irrelevant until profile deletion
+  exists; revisit then.
 - **`folder_catalogs` has no column for a per-reference selector** (e.g. a genre override),
   unlike real Nuvio `sources[]` entries, which can carry one. Not a gap:
   `folder_catalogs.catalog_id` only ever references Uno's own catalogs, and those bake their
@@ -147,6 +200,10 @@ write credential.
   sends a value — including `''`, which it keeps as its own "Default" option rather than
   normalising. Nothing inserts a folder without `tile_shape`, so the schema default is
   unreachable in practice.
+- **`catalogs.created_at`/`updated_at` and `collections.created_at`/`updated_at` are `TEXT`
+  RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
+  `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
+  the wire. Every insert sets both to the same instant; every update rewrites only `updated_at`.
 - **Dead-by-design columns.** `is_default` on `catalogs`/`collections` is never read and never
   set true by any code path, and is tagged `json:"-"` on both structs so it doesn't reach the
   wire; the column stays because a real "default catalog" feature is buildable later and
@@ -247,7 +304,10 @@ missing from the resolved map) is skipped rather than failing the whole push.
 **Field name:** the code sends `catalogSources`, as the public doc documents. Pulled real data
 uses `sources` for the containing array name; the entry shape itself is identical. If a push ever
 errors on the primary name, `sources` is the key to try — `internal/nuvio/types.go` carries a
-comment marking the spot.
+comment marking the spot. Push's own merge (`pushCollections`, `internal/api/push.go`) parses
+**both** keys when deciding whether a pulled collection is Uno-managed (`isUnoManaged`), since
+which key a previously-Uno-pushed collection round-trips under isn't confirmed against a real
+Nuvio profile.
 
 **The real `sources[]` entry is wider than what Uno emits.** The entries in
 `docs/api/samples/collections-basic.json` carry five keys — `addonId`, `catalogId`, `type`,

@@ -11,25 +11,6 @@ CREATE TABLE IF NOT EXISTS profiles (
     UNIQUE (nuvio_user_id, nuvio_profile_index),
     CHECK  (nuvio_profile_index BETWEEN 1 AND 6)
 );
-CREATE TABLE IF NOT EXISTS catalogs (
-    id         TEXT PRIMARY KEY,          -- UUID, permanent once selected
-    type       TEXT    NOT NULL,          -- Stremio's word: movie | series
-    name       TEXT    NOT NULL,
-    provider   TEXT    NOT NULL,          -- tmdb, for now
-    params     TEXT    NOT NULL DEFAULT '',
-    owner_id   TEXT    NOT NULL REFERENCES profiles(id),
-    is_public  INTEGER NOT NULL DEFAULT 0,
-    is_default INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS catalogs_by_owner ON catalogs (owner_id);
-CREATE TABLE IF NOT EXISTS profile_catalogs (
-    profile_id   TEXT    NOT NULL REFERENCES profiles(id),
-    catalog_id   TEXT    NOT NULL REFERENCES catalogs(id) ON DELETE CASCADE,
-    show_in_home INTEGER NOT NULL DEFAULT 1,
-    sort_order   INTEGER NOT NULL,
-    PRIMARY KEY (profile_id, catalog_id)
-);
-CREATE INDEX IF NOT EXISTS profile_catalogs_by_order ON profile_catalogs (profile_id, sort_order);
 CREATE TABLE IF NOT EXISTS collections (
     id                 TEXT    PRIMARY KEY,
     title              TEXT    NOT NULL,
@@ -40,9 +21,34 @@ CREATE TABLE IF NOT EXISTS collections (
     view_mode          TEXT    NOT NULL DEFAULT 'TABBED_GRID',
     show_all_tab       INTEGER NOT NULL DEFAULT 0,
     backdrop_image_url TEXT    NOT NULL DEFAULT '',
-    focus_glow_enabled INTEGER NOT NULL DEFAULT 0
+    focus_glow_enabled INTEGER NOT NULL DEFAULT 0,
+    home_sort_order    INTEGER,                 -- NULL = not on the TV; replaces profile_collections
+    pushed_at          TEXT,                    -- RFC3339 UTC, set by push; NULL = never pushed
+    taken_from         TEXT    REFERENCES collections(id) ON DELETE SET NULL,
+    created_at         TEXT    NOT NULL,        -- RFC3339 UTC
+    updated_at         TEXT    NOT NULL         -- RFC3339 UTC
 );
 CREATE INDEX IF NOT EXISTS collections_by_owner ON collections (owner_id);
+CREATE TABLE IF NOT EXISTS catalogs (
+    id              TEXT    PRIMARY KEY,          -- UUID, permanent once selected
+    type            TEXT    NOT NULL,             -- Stremio's word: movie | series
+    name            TEXT    NOT NULL,
+    provider        TEXT    NOT NULL,             -- tmdb, for now
+    params          TEXT    NOT NULL DEFAULT '',
+    owner_id        TEXT    NOT NULL REFERENCES profiles(id),
+    is_public       INTEGER NOT NULL DEFAULT 0,
+    is_default      INTEGER NOT NULL DEFAULT 0,
+    collection_id   TEXT    REFERENCES collections(id) ON DELETE CASCADE, -- NULL = listed
+    home_sort_order INTEGER,                    -- NULL = not on the TV; replaces profile_catalogs
+    show_in_home    INTEGER NOT NULL DEFAULT 1, -- moved from profile_catalogs
+    taken_from      TEXT    REFERENCES catalogs(id) ON DELETE SET NULL,
+    fingerprint     TEXT    NOT NULL,             -- sha256 hex, see internal/provider.Fingerprint
+    created_at      TEXT    NOT NULL,             -- RFC3339 UTC
+    updated_at      TEXT    NOT NULL,             -- RFC3339 UTC
+    CHECK (collection_id IS NULL OR (is_public = 0 AND home_sort_order IS NULL))
+);
+CREATE INDEX IF NOT EXISTS catalogs_by_owner      ON catalogs (owner_id);
+CREATE INDEX IF NOT EXISTS catalogs_by_collection ON catalogs (collection_id);
 CREATE TABLE IF NOT EXISTS folders (
     id                TEXT    PRIMARY KEY,
     collection_id     TEXT    NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
@@ -66,11 +72,4 @@ CREATE TABLE IF NOT EXISTS folder_catalogs (
     PRIMARY KEY (folder_id, catalog_id)
 );
 CREATE INDEX IF NOT EXISTS folder_catalogs_by_order ON folder_catalogs (folder_id, sort_order);
-CREATE TABLE IF NOT EXISTS profile_collections (
-    profile_id    TEXT    NOT NULL REFERENCES profiles(id),
-    collection_id TEXT    NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-    sort_order    INTEGER NOT NULL,
-    PRIMARY KEY (profile_id, collection_id)
-);
-CREATE INDEX IF NOT EXISTS profile_collections_by_order ON profile_collections (profile_id, sort_order);
 `

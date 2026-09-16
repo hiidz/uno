@@ -156,6 +156,47 @@ func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfil
 	return s.nuvio.PushAddons(ctx, accessToken, nuvioProfileIndex, merged)
 }
 
+// pulledCollection is the subset of a pulled Nuvio collection's fields push's
+// merge needs to decide whether to drop it: its id, for the owned-set match,
+// and each folder's sources, for the addon-id heuristic below (isUnoManaged).
+// Real pulled data keys the sources array "sources"; Uno's own push writes it
+// as "catalogSources" (the field name the public doc documents — see the
+// "Push wire shape" section of docs/data-model.md). Which key a
+// previously-Uno-pushed collection round-trips under hasn't been confirmed
+// against a real Nuvio profile, so both are parsed and unioned.
+type pulledCollection struct {
+	ID      string `json:"id"`
+	Folders []struct {
+		Sources        []pulledSource `json:"sources"`
+		CatalogSources []pulledSource `json:"catalogSources"`
+	} `json:"folders"`
+}
+
+type pulledSource struct {
+	AddonID string `json:"addonId"`
+}
+
+// isUnoManaged reports whether every source in every folder of a pulled
+// collection carries this addon's id — the signal that Uno once pushed the
+// collection but no longer knows its id (hard-deleted locally, or from a
+// recreated database). Nothing but Uno's own push ever writes a source
+// pointing at addon.ID, so this has nowhere else to come from. A collection
+// with no sources at all (no folders, or folders with none) is not treated
+// as Uno-managed — there's nothing to match on, and a false positive here
+// would silently delete a Nuvio-native collection from the pushed blob.
+func isUnoManaged(c pulledCollection) bool {
+	found := false
+	for _, f := range c.Folders {
+		for _, src := range append(f.Sources, f.CatalogSources...) {
+			found = true
+			if src.AddonID != addon.ID {
+				return false
+			}
+		}
+	}
+	return found
+}
+
 // pushCollections runs the collections read-modify-write cycle, sourcing
 // the pending selection from the request body rather than reading it back
 // out of the vault — the local write hasn't happened yet at this point in
@@ -167,12 +208,13 @@ func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfil
 //  1. Pull the current blob as raw JSON per element — never decoded into a
 //     generic map, which would round-trip numbers through float64 and
 //     silently corrupt any collection Uno doesn't own.
-//  2. Drop every pulled entry whose id is one Uno can name for this profile
-//     — owned, or selected either before or after this push. Owned-and-new
-//     alone isn't enough: a deselected, non-owned collection is in neither
-//     set, so its stale copy would survive in Nuvio forever without also
-//     including what was selected *before* this push (still readable here
-//     — nothing has been written yet).
+//  2. Drop every pulled entry that is either owned by this profile, or
+//     Uno-managed by the addon-id heuristic (isUnoManaged). With the closed
+//     graph, everything selected is owned, so the owned set alone is what
+//     the old selection-union used to be for; the heuristic covers the
+//     residual case that union existed for — a collection Uno once pushed
+//     but has since forgotten (hard-deleted, or from a recreated database)
+//     — without needing to read the profile's previous selection at all.
 //  3. Append freshly built entries for the profile's pending selection.
 //
 // Returns the pulled blob on success so push can use it for a compensating
@@ -187,25 +229,15 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 	if err != nil {
 		return nil, fmt.Errorf("loading owned collections: %w", err)
 	}
-	previouslySelected, err := s.vault.GetCurrentCollectionSelection(ctx, profileID)
-	if err != nil {
-		return nil, fmt.Errorf("loading previous collection selection: %w", err)
-	}
 	selected, err := s.vault.GetCollectionsByIDs(ctx, orderedCollectionIDs)
 	if err != nil {
 		return nil, fmt.Errorf("loading pending collection selection: %w", err)
 	}
 	selected = reorderCollections(selected, orderedCollectionIDs)
 
-	managedIDs := make(map[string]bool, len(ownedIDs)+len(previouslySelected)+len(selected))
+	ownedByID := make(map[string]bool, len(ownedIDs))
 	for _, id := range ownedIDs {
-		managedIDs[id.String()] = true
-	}
-	for _, c := range previouslySelected {
-		managedIDs[c.ID.String()] = true
-	}
-	for _, c := range selected {
-		managedIDs[c.ID.String()] = true
+		ownedByID[id.String()] = true
 	}
 
 	var allCatalogIDs []uuid.UUID
@@ -225,13 +257,11 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 
 	kept := make([]json.RawMessage, 0, len(pulled)+len(selected))
 	for _, raw := range pulled {
-		var idOnly struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(raw, &idOnly); err != nil {
+		var parsed pulledCollection
+		if err := json.Unmarshal(raw, &parsed); err != nil {
 			return nil, fmt.Errorf("parsing pulled collection: %w", err)
 		}
-		if managedIDs[idOnly.ID] {
+		if ownedByID[parsed.ID] || isUnoManaged(parsed) {
 			continue
 		}
 		kept = append(kept, raw)

@@ -5,16 +5,17 @@ import type { CatalogType } from './types'
  *
  * Everything under `/api/p/{i}/...` keys on `['p', profileIndex, …]` so
  * switching profile slots invalidates the whole subtree in one call and no
- * stale row from another profile can survive. Community reads and genre
- * lookups are account-wide, so they sit outside that prefix and stay cached
- * across a profile switch.
+ * stale row from another profile can survive — this includes the community
+ * routes, which are profile-scoped (they exclude the caller's own rows and
+ * compute `taken` per profile). Genre lookups are account-wide, so they sit
+ * outside that prefix and stay cached across a profile switch.
  */
 export const queryKeys = {
   profile: (profileIndex: number) => ['p', profileIndex] as const,
 
   /** `GET /api/profiles` — the caller's Nuvio account, not any one selected
-   *  profile, so this sits outside the `['p', i, …]` prefix like the
-   *  community and genre keys below. */
+   *  profile, so this sits outside the `['p', i, …]` prefix like the genre
+   *  keys below. */
   profiles: () => ['profiles'] as const,
 
   ownedCatalogs: (profileIndex: number) => ['p', profileIndex, 'catalogs'] as const,
@@ -25,8 +26,9 @@ export const queryKeys = {
   collectionSelection: (profileIndex: number) =>
     ['p', profileIndex, 'collections', 'selection'] as const,
 
-  communityCatalogs: () => ['catalogs', 'community'] as const,
-  communityCollections: () => ['collections', 'community'] as const,
+  communityCatalogs: (profileIndex: number) => ['p', profileIndex, 'catalogs', 'community'] as const,
+  communityCollections: (profileIndex: number) =>
+    ['p', profileIndex, 'collections', 'community'] as const,
 
   genres: (type: CatalogType) => ['genres', type] as const,
   certifications: (type: CatalogType) => ['certifications', type] as const,

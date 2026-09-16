@@ -6,6 +6,8 @@ export {
   createCollection,
   deleteCatalog,
   deleteCollection,
+  takeCatalog,
+  takeCollection,
   updateCatalog,
   updateCollection,
 } from './mutations'
@@ -38,6 +40,8 @@ export type {
   Certification,
   CertificationsByCountry,
   Collection,
+  CommunityCatalog,
+  CommunityCollection,
   Country,
   Folder,
   Genre,

@@ -1,6 +1,21 @@
 import { sendJSON } from './http'
 import type { Catalog, CatalogType, Collection, TileShape } from './types'
 
+/** Deep-copies a community catalog into a new, private, listed catalog owned
+ *  by this profile — `POST .../community/catalogs/{id}/take`. 404s if the
+ *  source isn't public or is already owned by this profile. */
+export function takeCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/community/catalogs/${catalogID}/take`)
+}
+
+/** Deep-copies a community collection — its folders and every catalog they
+ *  reference — into a new collection owned by this profile —
+ *  `POST .../community/collections/{id}/take`. 404s if the source isn't
+ *  public or is already owned by this profile. */
+export function takeCollection(profileIndex: number, collectionID: string): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/community/collections/${collectionID}/take`)
+}
+
 /**
  * The create/update payload — `vault.CatalogForm`.
  *
@@ -14,6 +29,9 @@ import type { Catalog, CatalogType, Collection, TileShape } from './types'
  * row.
  *
  * `params` is a JSON-encoded *string*, not a nested object.
+ *
+ * `collection_id` scopes the catalog to one collection; omitted or `null`
+ * means listed. No editor sets it yet.
  */
 export interface CatalogPayload {
   type: CatalogType
@@ -21,6 +39,7 @@ export interface CatalogPayload {
   provider: string
   params: string
   is_public: boolean
+  collection_id?: string | null
 }
 
 export const CATALOG_PROVIDER = 'tmdb'

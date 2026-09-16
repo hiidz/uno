@@ -182,7 +182,7 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	selection, err := s.vault.GetCurrentCatalogSelection(r.Context(), profileID)
+	selection, err := s.vault.GetPublishedCatalogs(r.Context(), profileID)
 	if err != nil {
 		http.Error(w, "failed to load catalogs", http.StatusInternalServerError)
 		return
@@ -235,7 +235,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimSuffix(r.PathValue("rest"), ".json")
 	manifestID, extra, _ := strings.Cut(rest, "/")
 
-	selection, err := s.vault.GetCurrentCatalogSelection(r.Context(), profileID)
+	selection, err := s.vault.GetPublishedCatalogs(r.Context(), profileID)
 	if err != nil {
 		http.Error(w, "failed to load catalogs", http.StatusInternalServerError)
 		return

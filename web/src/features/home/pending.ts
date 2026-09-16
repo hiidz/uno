@@ -12,7 +12,7 @@ import type { PushRequest } from '@/api'
 
 export interface HomeCatalogEntry {
   id: string
-  /** Per-profile, from `profile_catalogs` — not a property of the catalog. */
+  /** Mirrors `catalogs.show_in_home`. */
   showInHome: boolean
 }
 

@@ -62,22 +62,23 @@ func New(d Deps) *Server {
 }
 
 func (s *Server) routes() {
-	s.router.HandleFunc("GET /api/catalogs", s.requireNuvioAuth(s.listCommunityCatalogs))
 	// Not profile-scoped: previewing a recipe reads nothing from the vault, so
-	// there is no profile to resolve. No mux precedence question either — the
-	// only sibling here is the literal GET /api/catalogs, and every wildcard
-	// catalog route lives under /api/p/{profileIndex}/.
+	// there is no profile to resolve. Every other catalog route, including the
+	// community list and take, lives under /api/p/{profileIndex}/.
 	s.router.HandleFunc("POST /api/catalogs/preview", s.requireNuvioAuth(s.previewCatalog))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs", s.requireNuvioAuth(s.requireProfile(s.listUserCatalogs)))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs", s.requireNuvioAuth(s.requireProfile(s.createUserCatalog)))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireNuvioAuth(s.requireProfile(s.updateUserCatalog)))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireNuvioAuth(s.requireProfile(s.deleteUserCatalog)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community/catalogs", s.requireNuvioAuth(s.requireProfile(s.listCommunityCatalogs)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/take", s.requireNuvioAuth(s.requireProfile(s.takeCatalog)))
 
-	s.router.HandleFunc("GET /api/collections", s.requireNuvioAuth(s.listCommunityCollections))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireNuvioAuth(s.requireProfile(s.listUserCollections)))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireNuvioAuth(s.requireProfile(s.createUserCollection)))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireNuvioAuth(s.requireProfile(s.updateUserCollection)))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireNuvioAuth(s.requireProfile(s.deleteUserCollection)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community/collections", s.requireNuvioAuth(s.requireProfile(s.listCommunityCollections)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/take", s.requireNuvioAuth(s.requireProfile(s.takeCollection)))
 
 	// Selection is read here but never written here: the whole selection
 	// travels in POST .../push's body and is written by that handler, in one

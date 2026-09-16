@@ -30,6 +30,29 @@ func buildInClause(ids []uuid.UUID) (string, []any) {
 	return strings.Join(placeholders, ", "), args
 }
 
+// dedupeUUIDs returns ids with duplicates removed, preserving first-seen
+// order.
+func dedupeUUIDs(ids []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]bool, len(ids))
+	unique := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
+		}
+	}
+	return unique
+}
+
+// nullableUUIDString returns id.String(), or nil (a SQL NULL) when id is
+// nil — for writing an optional *uuid.UUID column.
+func nullableUUIDString(id *uuid.UUID) any {
+	if id == nil {
+		return nil
+	}
+	return id.String()
+}
+
 // orEmpty returns s unchanged unless it's nil, in which case it returns a
 // non-nil empty slice. A nil slice and a zero-length slice are the same
 // slice to Go, but not to encoding/json: nil marshals as "null", not "[]".

@@ -5,6 +5,8 @@ import type {
   CatalogType,
   CertificationsByCountry,
   Collection,
+  CommunityCatalog,
+  CommunityCollection,
   Country,
   Genre,
   Language,
@@ -16,28 +18,24 @@ import type {
   WatchRegion,
 } from './types'
 
-/**
- * One function per endpoint. Both halves of each pair are always fetched —
- * `GET /api/catalogs` returns *your own* public catalogs alongside everyone
- * else's (`GetCommunityCatalogs` is `is_public = TRUE` with no owner
- * exclusion), so neither response alone can tell you what you own. The merge
- * and the ownership tagging live in `features/library/useLibrary`.
- */
+/** One function per endpoint. The community routes are profile-scoped: the
+ *  closed graph means the server excludes the caller's own rows and computes
+ *  `taken` server-side, so there is no merge to do on this side. */
 
 export function fetchOwnedCatalogs(profileIndex: number): Promise<Catalog[]> {
   return getList<Catalog>(`/api/p/${profileIndex}/catalogs`)
 }
 
-export function fetchCommunityCatalogs(): Promise<Catalog[]> {
-  return getList<Catalog>('/api/catalogs')
+export function fetchCommunityCatalogs(profileIndex: number): Promise<CommunityCatalog[]> {
+  return getList<CommunityCatalog>(`/api/p/${profileIndex}/community/catalogs`)
 }
 
 export function fetchOwnedCollections(profileIndex: number): Promise<Collection[]> {
   return getList<Collection>(`/api/p/${profileIndex}/collections`)
 }
 
-export function fetchCommunityCollections(): Promise<Collection[]> {
-  return getList<Collection>('/api/collections')
+export function fetchCommunityCollections(profileIndex: number): Promise<CommunityCollection[]> {
+  return getList<CommunityCollection>(`/api/p/${profileIndex}/community/collections`)
 }
 
 /**

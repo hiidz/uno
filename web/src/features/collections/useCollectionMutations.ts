@@ -23,7 +23,7 @@ export function useCollectionMutations(profileIndex: number) {
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections() })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections(profileIndex) })
   }
 
   const create = useMutation({

@@ -74,12 +74,18 @@ export function useLibrary(profileIndex: number): Library {
         queryKey: queryKeys.ownedCatalogs(profileIndex),
         queryFn: () => fetchOwnedCatalogs(profileIndex),
       },
-      { queryKey: queryKeys.communityCatalogs(), queryFn: fetchCommunityCatalogs },
+      {
+        queryKey: queryKeys.communityCatalogs(profileIndex),
+        queryFn: () => fetchCommunityCatalogs(profileIndex),
+      },
       {
         queryKey: queryKeys.ownedCollections(profileIndex),
         queryFn: () => fetchOwnedCollections(profileIndex),
       },
-      { queryKey: queryKeys.communityCollections(), queryFn: fetchCommunityCollections },
+      {
+        queryKey: queryKeys.communityCollections(profileIndex),
+        queryFn: () => fetchCommunityCollections(profileIndex),
+      },
     ],
   })
 

@@ -3,17 +3,73 @@ package vault
 import (
 	"database/sql"
 	"fmt"
+	"time"
+
+	"github.com/google/uuid"
 )
+
+// parseTimestamp parses an RFC3339 TEXT column into a time.Time, wrapping
+// any error with the given field name.
+func parseTimestamp(s, field string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parsing %s: %w", field, err)
+	}
+	return t, nil
+}
+
+// parseNullableUUID parses a nullable TEXT column into a *uuid.UUID, nil
+// when the column is NULL, wrapping any parse error with the given field
+// name.
+func parseNullableUUID(s sql.NullString, field string) (*uuid.UUID, error) {
+	if !s.Valid {
+		return nil, nil
+	}
+	id, err := parseUUID(s.String, field)
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+// parseNullableTimestamp parses a nullable RFC3339 TEXT column into a
+// *time.Time, nil when the column is NULL, wrapping any parse error with the
+// given field name.
+func parseNullableTimestamp(s sql.NullString, field string) (*time.Time, error) {
+	if !s.Valid {
+		return nil, nil
+	}
+	t, err := parseTimestamp(s.String, field)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// nullableInt converts a nullable INTEGER column into a *int, nil when the
+// column is NULL — used for catalogs.home_sort_order/collections.home_sort_order.
+func nullableInt(n sql.NullInt64) *int {
+	if !n.Valid {
+		return nil
+	}
+	v := int(n.Int64)
+	return &v
+}
 
 func parseCatalogs(rows *sql.Rows) ([]Catalog, error) {
 	catalogs := []Catalog{}
 	for rows.Next() {
 		var c Catalog
 		var idStr, ownerIDStr string
-		var isPublic, isDefault int
+		var isPublic, isDefault, showInHome int
+		var collectionIDStr, takenFromStr sql.NullString
+		var homeSortOrder sql.NullInt64
+		var createdAtStr, updatedAtStr string
 
 		if err := rows.Scan(&idStr, &c.Type, &c.Name, &c.Provider,
-			&c.Params, &ownerIDStr, &isPublic, &isDefault); err != nil {
+			&c.Params, &ownerIDStr, &isPublic, &isDefault,
+			&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &c.Fingerprint,
+			&createdAtStr, &updatedAtStr); err != nil {
 			return nil, fmt.Errorf("scanning catalog row: %w", err)
 		}
 
@@ -30,6 +86,26 @@ func parseCatalogs(rows *sql.Rows) ([]Catalog, error) {
 		c.IsPublic = isPublic != 0
 		c.IsDefault = isDefault != 0
 
+		c.CollectionID, err = parseNullableUUID(collectionIDStr, "collection id")
+		if err != nil {
+			return nil, err
+		}
+		c.HomeSortOrder = nullableInt(homeSortOrder)
+		c.ShowInHome = showInHome != 0
+		c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
+		if err != nil {
+			return nil, err
+		}
+
+		c.CreatedAt, err = parseTimestamp(createdAtStr, "catalog created_at")
+		if err != nil {
+			return nil, err
+		}
+		c.UpdatedAt, err = parseTimestamp(updatedAtStr, "catalog updated_at")
+		if err != nil {
+			return nil, err
+		}
+
 		catalogs = append(catalogs, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -44,9 +120,13 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 		var c Collection
 		var idStr, ownerIDStr string
 		var isPublic, isDefault, pinToTop, showAllTab int
+		var takenFromStr, pushedAtStr sql.NullString
+		var homeSortOrder sql.NullInt64
+		var createdAtStr, updatedAtStr string
 
 		if err := rows.Scan(&idStr, &c.Title, &ownerIDStr, &isPublic, &isDefault,
-			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL); err != nil {
+			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL,
+			&homeSortOrder, &pushedAtStr, &takenFromStr, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, fmt.Errorf("scanning collection row: %w", err)
 		}
 
@@ -64,6 +144,25 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 		c.IsDefault = isDefault != 0
 		c.PinToTop = pinToTop != 0
 		c.ShowAllTab = showAllTab != 0
+
+		c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
+		if err != nil {
+			return nil, err
+		}
+		c.HomeSortOrder = nullableInt(homeSortOrder)
+		c.PushedAt, err = parseNullableTimestamp(pushedAtStr, "collection pushed_at")
+		if err != nil {
+			return nil, err
+		}
+
+		c.CreatedAt, err = parseTimestamp(createdAtStr, "collection created_at")
+		if err != nil {
+			return nil, err
+		}
+		c.UpdatedAt, err = parseTimestamp(updatedAtStr, "collection updated_at")
+		if err != nil {
+			return nil, err
+		}
 
 		collections = append(collections, c)
 	}

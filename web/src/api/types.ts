@@ -29,6 +29,11 @@ export interface Catalog {
   params: string
   owner_id: string
   is_public: boolean
+  /** Scopes the catalog to one collection (hidden from the library, usable
+   *  only in that collection's folders); `null` means listed. */
+  collection_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
@@ -54,25 +59,38 @@ export interface Collection {
   view_mode: string
   show_all_tab: boolean
   backdrop_image_url: string
+  /** RFC3339, set by push; `null` means never pushed. */
+  pushed_at: string | null
   folders: Folder[] | null
+  /** Every catalog this collection's folders reference, listed or scoped —
+   *  so the editor never needs the library to render a folder. */
+  catalogs: Catalog[] | null
 }
 
 /**
- * `GET /api/p/{i}/catalogs/selection` — the full catalog row plus this
- * profile's own `show_in_home` flag, ordered by `sort_order`.
+ * `GET /api/p/{i}/catalogs/selection` — the full catalog row plus its own
+ * `show_in_home` flag, ordered by home position.
  *
- * `show_in_home` lives on `profile_catalogs`, so it is **per-profile, not per
- * catalog**: two profiles can select the same catalog with different values.
- * Never present it as a property of the catalog itself.
- *
- * The response is not a subset of "Mine" — it joins straight through
- * `profile_catalogs` with no visibility filter, so it can contain community
- * catalogs, including ones whose owner has since made them private. Render
- * selected rows from *this* response rather than by looking them up in the
- * library, or those rows vanish from the page while still being live.
+ * The closed graph means a catalog has exactly one owner and can only ever
+ * be selected by that owner, so `show_in_home` is a property of the catalog
+ * row itself (`catalogs.show_in_home`) — this shape exists for the ordering
+ * and the response's wire stability, not to disambiguate per-profile values.
  */
 export interface SelectedCatalog extends Catalog {
   show_in_home: boolean
+}
+
+/** `GET /api/p/{i}/community/catalogs` — a public catalog owned by someone
+ *  else, one row per distinct recipe, plus whether this profile has already
+ *  taken a copy. */
+export interface CommunityCatalog extends Catalog {
+  taken: boolean
+}
+
+/** `GET /api/p/{i}/community/collections` — a public collection owned by
+ *  someone else, plus whether this profile has already taken a copy. */
+export interface CommunityCollection extends Collection {
+  taken: boolean
 }
 
 export interface Genre {

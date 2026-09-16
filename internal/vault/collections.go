@@ -3,7 +3,10 @@ package vault
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -12,7 +15,8 @@ import (
 // clause and args, parsing the result rows.
 func (db *DB) queryCollections(ctx context.Context, where string, args ...any) ([]Collection, error) {
 	rows, err := db.conn.QueryContext(ctx, `
-		SELECT id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url
+		SELECT id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
+		       home_sort_order, pushed_at, taken_from, created_at, updated_at
 		FROM collections
 		WHERE `+where, args...)
 	if err != nil {
@@ -38,22 +42,232 @@ func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]Co
 	return db.assembleCollectionTree(ctx, collections)
 }
 
-// GetCommunityCollections returns every collection marked public,
-// regardless of owner, each with its folders assembled.
-func (db *DB) GetCommunityCollections(ctx context.Context) ([]CollectionWithFolders, error) {
-	collections, err := db.queryCollections(ctx, "is_public = TRUE")
+// GetCommunityCollections returns the community collection list for
+// profileID: every collection marked public and owned by someone else, each
+// with its folders assembled, sorted by title (no fingerprint collapse —
+// that's a catalog-only concept, §3.3), flagged with whether profileID has
+// already taken a copy (§3.5).
+func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) ([]CommunityCollection, error) {
+	collections, err := db.queryCollections(ctx, "is_public = TRUE AND owner_id != ?", profileID.String())
 	if err != nil {
 		return nil, err
 	}
-	return db.assembleCollectionTree(ctx, collections)
+	sort.Slice(collections, func(i, j int) bool { return collections[i].Title < collections[j].Title })
+
+	trees, err := db.assembleCollectionTree(ctx, collections)
+	if err != nil {
+		return nil, err
+	}
+
+	taken, err := db.takenSourceIDs(ctx, "collections", profileID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]CommunityCollection, len(trees))
+	for i, c := range trees {
+		out[i] = CommunityCollection{CollectionWithFolders: c, Taken: taken[c.ID]}
+	}
+	return out, nil
+}
+
+// TakeCollection deep-copies a public collection owned by someone else —
+// its cosmetics, folders, and every catalog its folders reference — into a
+// new collection owned by profileID, per §3.5 of the sharing model plan.
+// Every copied catalog is scoped to the new collection, even if the source
+// catalog was listed; a source catalog referenced by two folders becomes one
+// scoped copy referenced twice. Returns ErrCollectionNotFound if sourceID
+// isn't public or is already owned by profileID.
+func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (CollectionWithFolders, error) {
+	tx, err := db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback() // no-op once Commit succeeds
+
+	var title, viewMode, backdropImageURL string
+	var pinToTop, showAllTab int
+	err = tx.QueryRowContext(ctx, `
+		SELECT title, pin_to_top, view_mode, show_all_tab, backdrop_image_url
+		FROM collections WHERE id = ? AND is_public = TRUE AND owner_id != ?
+	`, sourceID.String(), profileID.String()).Scan(&title, &pinToTop, &viewMode, &showAllTab, &backdropImageURL)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CollectionWithFolders{}, ErrCollectionNotFound
+	}
+	if err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("loading source collection: %w", err)
+	}
+
+	folderRows, err := tx.QueryContext(ctx, `
+		SELECT id, title, tile_shape, hide_title, cover_emoji, cover_image_url
+		FROM folders WHERE collection_id = ? ORDER BY sort_order
+	`, sourceID.String())
+	if err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("querying source folders: %w", err)
+	}
+	type sourceFolder struct {
+		id         uuid.UUID
+		data       FolderData
+		catalogIDs []uuid.UUID
+	}
+	var sourceFolders []sourceFolder
+	for folderRows.Next() {
+		var idStr string
+		var fd FolderData
+		var hideTitleInt int
+		if err := folderRows.Scan(&idStr, &fd.Title, &fd.TileShape, &hideTitleInt, &fd.CoverEmoji, &fd.CoverImageURL); err != nil {
+			folderRows.Close()
+			return CollectionWithFolders{}, fmt.Errorf("scanning source folder: %w", err)
+		}
+		id, err := parseUUID(idStr, "folder id")
+		if err != nil {
+			folderRows.Close()
+			return CollectionWithFolders{}, err
+		}
+		fd.HideTitle = hideTitleInt != 0
+		sourceFolders = append(sourceFolders, sourceFolder{id: id, data: fd})
+	}
+	if err := folderRows.Err(); err != nil {
+		folderRows.Close()
+		return CollectionWithFolders{}, fmt.Errorf("iterating source folders: %w", err)
+	}
+	folderRows.Close()
+
+	for i := range sourceFolders {
+		catRows, err := tx.QueryContext(ctx, `
+			SELECT catalog_id FROM folder_catalogs WHERE folder_id = ? ORDER BY sort_order
+		`, sourceFolders[i].id.String())
+		if err != nil {
+			return CollectionWithFolders{}, fmt.Errorf("querying source folder catalogs: %w", err)
+		}
+		for catRows.Next() {
+			var catIDStr string
+			if err := catRows.Scan(&catIDStr); err != nil {
+				catRows.Close()
+				return CollectionWithFolders{}, fmt.Errorf("scanning source folder catalog: %w", err)
+			}
+			catID, err := parseUUID(catIDStr, "catalog id")
+			if err != nil {
+				catRows.Close()
+				return CollectionWithFolders{}, err
+			}
+			sourceFolders[i].catalogIDs = append(sourceFolders[i].catalogIDs, catID)
+		}
+		if err := catRows.Err(); err != nil {
+			catRows.Close()
+			return CollectionWithFolders{}, fmt.Errorf("iterating source folder catalogs: %w", err)
+		}
+		catRows.Close()
+	}
+
+	// Distinct source catalog ids across every folder, first-seen order —
+	// this is what collapses two folders sharing a source catalog into one
+	// scoped copy.
+	var distinctCatalogIDs []uuid.UUID
+	seenCatalog := map[uuid.UUID]bool{}
+	for _, f := range sourceFolders {
+		for _, id := range f.catalogIDs {
+			if !seenCatalog[id] {
+				seenCatalog[id] = true
+				distinctCatalogIDs = append(distinctCatalogIDs, id)
+			}
+		}
+	}
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
+	newCollectionID := uuid.New()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab,
+		                          backdrop_image_url, taken_from, created_at, updated_at)
+		VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
+	`, newCollectionID.String(), title, profileID.String(), pinToTop, viewMode, showAllTab, backdropImageURL,
+		sourceID.String(), nowStr, nowStr)
+	if err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("inserting taken collection: %w", err)
+	}
+
+	idMap := make(map[uuid.UUID]uuid.UUID, len(distinctCatalogIDs))
+	if len(distinctCatalogIDs) > 0 {
+		placeholders, args := buildInClause(distinctCatalogIDs)
+		catRows, err := tx.QueryContext(ctx, fmt.Sprintf(`
+			SELECT id, type, name, provider, params, fingerprint FROM catalogs WHERE id IN (%s)
+		`, placeholders), args...)
+		if err != nil {
+			return CollectionWithFolders{}, fmt.Errorf("querying source catalogs: %w", err)
+		}
+		type sourceCatalog struct {
+			id, typ, name, provider, params, fingerprint string
+		}
+		var sourceCatalogs []sourceCatalog
+		for catRows.Next() {
+			var sc sourceCatalog
+			if err := catRows.Scan(&sc.id, &sc.typ, &sc.name, &sc.provider, &sc.params, &sc.fingerprint); err != nil {
+				catRows.Close()
+				return CollectionWithFolders{}, fmt.Errorf("scanning source catalog: %w", err)
+			}
+			sourceCatalogs = append(sourceCatalogs, sc)
+		}
+		if err := catRows.Err(); err != nil {
+			catRows.Close()
+			return CollectionWithFolders{}, fmt.Errorf("iterating source catalogs: %w", err)
+		}
+		catRows.Close()
+
+		for _, sc := range sourceCatalogs {
+			oldID, err := parseUUID(sc.id, "catalog id")
+			if err != nil {
+				return CollectionWithFolders{}, err
+			}
+			newID := uuid.New()
+			idMap[oldID] = newID
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
+				                       collection_id, taken_from, fingerprint, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
+			`, newID.String(), sc.typ, sc.name, sc.provider, sc.params, profileID.String(),
+				newCollectionID.String(), oldID.String(), sc.fingerprint, nowStr, nowStr)
+			if err != nil {
+				return CollectionWithFolders{}, fmt.Errorf("inserting taken scoped catalog: %w", err)
+			}
+		}
+	}
+
+	for i, f := range sourceFolders {
+		newFolder, err := insertFolder(ctx, tx, newCollectionID, i, f.data)
+		if err != nil {
+			return CollectionWithFolders{}, err
+		}
+		newCatalogIDs := make([]uuid.UUID, len(f.catalogIDs))
+		for j, oldID := range f.catalogIDs {
+			newCatalogIDs[j] = idMap[oldID]
+		}
+		if err := replaceFolderCatalogRefs(ctx, tx, newFolder.ID, newCatalogIDs); err != nil {
+			return CollectionWithFolders{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("committing transaction: %w", err)
+	}
+
+	trees, err := db.GetCollectionsByIDs(ctx, []uuid.UUID{newCollectionID})
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+	if len(trees) == 0 {
+		return CollectionWithFolders{}, fmt.Errorf("loading taken collection %s: not found after insert", newCollectionID)
+	}
+	return trees[0], nil
 }
 
 // GetCollectionsByIDs batch-loads collections (with folders) by id, no
 // ownership check and no ordering guarantee — push uses this to resolve the
 // pending collection selection straight from the request body rather than
-// reading profile_collections back, so it needs the same shape
+// reading the persisted selection back, so it needs the same shape
 // GetCurrentCollectionSelection returns, keyed by an explicit id list
-// instead of a profile join. Mirrors internal/vault/catalogs.go's
+// instead of a home_sort_order filter. Mirrors internal/vault/catalogs.go's
 // GetCatalogsByIDs.
 func (db *DB) GetCollectionsByIDs(ctx context.Context, ids []uuid.UUID) ([]CollectionWithFolders, error) {
 	if len(ids) == 0 {
@@ -157,10 +371,12 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 	for _, fd := range input.Folders {
 		allCatalogIDs = append(allCatalogIDs, fd.CatalogIDs...)
 	}
-	if err := validateCatalogAccess(ctx, tx, profileID, allCatalogIDs); err != nil {
+	if err := validateFolderRefs(ctx, tx, profileID, nil, allCatalogIDs); err != nil {
 		return CollectionWithFolders{}, err
 	}
 
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
 	c := Collection{
 		ID:               uuid.New(),
 		Title:            input.Title,
@@ -171,12 +387,16 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 		ViewMode:         input.ViewMode,
 		ShowAllTab:       input.ShowAllTab,
 		BackdropImageURL: input.BackdropImageURL,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Title, c.OwnerID.String(), c.IsPublic, c.IsDefault, c.PinToTop, c.ViewMode, c.ShowAllTab, c.BackdropImageURL)
+		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
+		                          created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Title, c.OwnerID.String(), c.IsPublic, c.IsDefault, c.PinToTop, c.ViewMode, c.ShowAllTab, c.BackdropImageURL,
+		nowStr, nowStr)
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("inserting collection: %w", err)
 	}
@@ -198,7 +418,12 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 		return CollectionWithFolders{}, fmt.Errorf("committing transaction: %w", err)
 	}
 
-	return CollectionWithFolders{Collection: c, Folders: folders}, nil
+	catalogs, err := db.GetCatalogsByIDs(ctx, dedupeUUIDs(allCatalogIDs))
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+
+	return CollectionWithFolders{Collection: c, Folders: folders, Catalogs: orEmpty(catalogs)}, nil
 }
 
 // UpdateUserCollection validates input and replaces the collection
@@ -215,11 +440,27 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	}
 	defer tx.Rollback() // no-op once Commit succeeds
 
+	var createdAtStr string
+	var homeSortOrder sql.NullInt64
+	var pushedAtStr sql.NullString
+	err = tx.QueryRowContext(ctx, `
+		SELECT created_at, home_sort_order, pushed_at FROM collections WHERE id = ? AND owner_id = ?
+	`, collectionID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &pushedAtStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CollectionWithFolders{}, ErrCollectionNotFound
+	}
+	if err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("loading collection: %w", err)
+	}
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
 	result, err := tx.ExecContext(ctx, `
 		UPDATE collections
-		SET title = ?, is_public = ?, pin_to_top = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?
+		SET title = ?, is_public = ?, pin_to_top = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, updated_at = ?
 		WHERE id = ? AND owner_id = ?
-	`, input.Title, input.IsPublic, input.PinToTop, input.ViewMode, input.ShowAllTab, input.BackdropImageURL,
+	`, input.Title, input.IsPublic, input.PinToTop, input.ViewMode, input.ShowAllTab, input.BackdropImageURL, nowStr,
 		collectionID.String(), profileID.String())
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("updating collection: %w", err)
@@ -288,7 +529,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	for _, fd := range input.Folders {
 		allCatalogIDs = append(allCatalogIDs, fd.CatalogIDs...)
 	}
-	if err := validateCatalogAccess(ctx, tx, profileID, allCatalogIDs); err != nil {
+	if err := validateFolderRefs(ctx, tx, profileID, &collectionID, allCatalogIDs); err != nil {
 		return CollectionWithFolders{}, err
 	}
 
@@ -323,8 +564,31 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 		folders[i] = FolderWithCatalogs{Folder: f, CatalogIDs: orEmpty(fd.CatalogIDs)}
 	}
 
+	// §3.2: a scoped catalog with no remaining folder reference in this
+	// collection is deleted here, in the same transaction as the folder
+	// rewrite above — this is what catches a scoped catalog created via
+	// POST .../catalogs and never referenced (editor abandoned before Save).
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM catalogs
+		WHERE collection_id = ?
+		  AND id NOT IN (SELECT fc.catalog_id FROM folder_catalogs fc
+		                 JOIN folders f ON f.id = fc.folder_id
+		                 WHERE f.collection_id = ?)
+	`, collectionID.String(), collectionID.String()); err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("deleting orphaned scoped catalogs: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("committing transaction: %w", err)
+	}
+
+	createdAt, err := parseTimestamp(createdAtStr, "collection created_at")
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+	pushedAt, err := parseNullableTimestamp(pushedAtStr, "collection pushed_at")
+	if err != nil {
+		return CollectionWithFolders{}, err
 	}
 
 	c := Collection{
@@ -332,9 +596,18 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 		IsPublic: input.IsPublic, IsDefault: false, // not returned by UPDATE
 		PinToTop: input.PinToTop, ViewMode: input.ViewMode,
 		ShowAllTab: input.ShowAllTab, BackdropImageURL: input.BackdropImageURL,
+		// HomeSortOrder/PushedAt are unchanged by this update, read back above
+		// for an accurate response.
+		HomeSortOrder: nullableInt(homeSortOrder), PushedAt: pushedAt,
+		CreatedAt: createdAt, UpdatedAt: now,
 	}
 
-	return CollectionWithFolders{Collection: c, Folders: folders}, nil
+	catalogs, err := db.GetCatalogsByIDs(ctx, dedupeUUIDs(allCatalogIDs))
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+
+	return CollectionWithFolders{Collection: c, Folders: folders, Catalogs: orEmpty(catalogs)}, nil
 }
 
 // DeleteUserCollection deletes the collection identified by collectionID,
@@ -360,50 +633,59 @@ func (db *DB) DeleteUserCollection(ctx context.Context, profileID uuid.UUID, col
 }
 
 // GetCurrentCollectionSelection returns profileID's active collection
-// selection, in sort order, each with its folders assembled.
+// selection — every owned collection with a non-nil home_sort_order —
+// ordered by it, each with its folders assembled.
 func (db *DB) GetCurrentCollectionSelection(ctx context.Context, profileID uuid.UUID) ([]CollectionWithFolders, error) {
-	rows, err := db.conn.QueryContext(ctx, `
-		SELECT c.id, c.title, c.owner_id, c.is_public, c.is_default, c.pin_to_top, c.view_mode, c.show_all_tab, c.backdrop_image_url
-		FROM collections c
-		JOIN profile_collections pc ON pc.collection_id = c.id
-		WHERE pc.profile_id = ?
-		ORDER BY pc.sort_order
-	`, profileID.String())
+	collections, err := db.queryCollections(ctx, "owner_id = ? AND home_sort_order IS NOT NULL", profileID.String())
 	if err != nil {
-		return nil, fmt.Errorf("querying collection selection: %w", err)
+		return nil, err
 	}
 
-	collections, err := parseCollections(rows)
-	rows.Close()
-	if err != nil {
-		return nil, fmt.Errorf("parsing collection rows: %w", err)
-	}
+	sort.Slice(collections, func(i, j int) bool {
+		return *collections[i].HomeSortOrder < *collections[j].HomeSortOrder
+	})
 
 	return db.assembleCollectionTree(ctx, collections)
 }
 
 // saveCollectionSelectionTx resets this profile's collection selection to
-// exactly input, in order, after checking it may reference every incoming
-// collection. Takes a caller-supplied transaction — see
-// saveCatalogSelectionTx in catalogs.go for why, and for why there is no
-// exported single-selection wrapper.
+// exactly input, in order, and stamps pushed_at on every collection it
+// includes — this is push's only caller, so every collection reaching this
+// point is, by definition, being pushed right now. Every owned collection's
+// home_sort_order is cleared first, then each incoming id is set in turn; a
+// 0-rows-affected update (an id that isn't owned) is ErrInvalidInput naming
+// the id, the same pattern as saveCatalogSelectionTx.
+//
+// Takes a caller-supplied transaction — see saveCatalogSelectionTx in
+// catalogs.go for why, and for why there is no exported single-selection
+// wrapper.
 func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CollectionSelectionForm) error {
-	if err := validateCollectionAccess(ctx, tx, profileID, input.CollectionIDs); err != nil {
-		return err
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE collections SET home_sort_order = NULL WHERE owner_id = ?
+	`, profileID.String()); err != nil {
+		return fmt.Errorf("clearing collection home selection: %w", err)
 	}
 
-	return syncSelection(ctx, tx, "profile_collections", "collection_id", profileID, input.CollectionIDs, func(i int, id uuid.UUID) error {
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO profile_collections (profile_id, collection_id, sort_order)
-			VALUES (?, ?, ?)
-			ON CONFLICT(profile_id, collection_id) DO UPDATE SET
-				sort_order = excluded.sort_order
-		`, profileID.String(), id.String(), i)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	for i, id := range input.CollectionIDs {
+		result, err := tx.ExecContext(ctx, `
+			UPDATE collections
+			SET home_sort_order = ?, pushed_at = ?
+			WHERE id = ? AND owner_id = ?
+		`, i, nowStr, id.String(), profileID.String())
 		if err != nil {
 			return fmt.Errorf("saving collection selection: %w", err)
 		}
-		return nil
-	})
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("checking rows affected: %w", err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("%w: collection %s is not accessible to this profile", ErrInvalidInput, id)
+		}
+	}
+
+	return nil
 }
 
 // assembleCollectionTree fetches folders and folder_catalogs for the given
@@ -465,18 +747,43 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 	}
 
 	foldersByCollection := make(map[uuid.UUID][]FolderWithCatalogs)
+	catalogIDsByCollection := make(map[uuid.UUID][]uuid.UUID)
 	for _, f := range folders {
 		foldersByCollection[f.CollectionID] = append(foldersByCollection[f.CollectionID], FolderWithCatalogs{
 			Folder:     f,
 			CatalogIDs: orEmpty(catalogIDsByFolder[f.ID]),
 		})
+		catalogIDsByCollection[f.CollectionID] = append(catalogIDsByCollection[f.CollectionID], catalogIDsByFolder[f.ID]...)
+	}
+
+	var allCatalogIDs []uuid.UUID
+	for _, ids := range catalogIDsByCollection {
+		allCatalogIDs = append(allCatalogIDs, ids...)
+	}
+	catalogsByID := make(map[uuid.UUID]Catalog)
+	if len(allCatalogIDs) > 0 {
+		catalogs, err := db.GetCatalogsByIDs(ctx, dedupeUUIDs(allCatalogIDs))
+		if err != nil {
+			return nil, err
+		}
+		for _, cat := range catalogs {
+			catalogsByID[cat.ID] = cat
+		}
 	}
 
 	result := make([]CollectionWithFolders, len(collections))
 	for i, c := range collections {
+		ids := dedupeUUIDs(catalogIDsByCollection[c.ID])
+		catalogs := make([]Catalog, 0, len(ids))
+		for _, id := range ids {
+			if cat, ok := catalogsByID[id]; ok {
+				catalogs = append(catalogs, cat)
+			}
+		}
 		result[i] = CollectionWithFolders{
 			Collection: c,
 			Folders:    orEmpty(foldersByCollection[c.ID]),
+			Catalogs:   orEmpty(catalogs),
 		}
 	}
 
