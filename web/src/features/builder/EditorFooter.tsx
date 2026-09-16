@@ -1,11 +1,15 @@
+import type { ReactNode } from 'react'
 import { plural } from '@/lib/plural'
 
 /**
  * The band an editor ends on: what is stopping the save, the way out, and the
- * save itself.
+ * save itself — DESIGN.md's save bar, shared by both builders.
  *
- * Both builders end the same way, so what varies is the noun — the button
- * commits to "Create catalog" or "Create collection", never a bare "Create".
+ * Both builders end the same way, so what varies is the noun and (for the
+ * catalog editor's own credit-row status line) the `status` slot. `status`
+ * and `saveLabel` are additive and optional: omitted, this renders exactly as
+ * it did before either builder was restyled to DESIGN.md — the collection
+ * editor keeps that default until its own phase.
  */
 export function EditorFooter({
   mode,
@@ -15,9 +19,12 @@ export function EditorFooter({
   errorCount,
   onCancel,
   onSubmit,
+  status,
+  saveLabel,
+  cancelLabel,
 }: {
   mode: 'edit' | 'duplicate'
-  /** What is being saved, for the create button's label. */
+  /** What is being saved, for the create button's default label. */
   noun: string
   saving: boolean
   /** Errors are on show only from the first submit, so the note arrives with
@@ -26,19 +33,39 @@ export function EditorFooter({
   errorCount: number
   onCancel: () => void
   onSubmit: () => void
+  /** DESIGN.md's status text ("No changes yet" / "Unsaved changes" / "N
+   *  things need fixing: …"), replacing the plain "Fix the highlighted N
+   *  fields." line below when given. */
+  status?: ReactNode
+  /** Overrides the primary button's label outright — DESIGN.md's Save bar
+   *  always reads "Save" (or "Save collection"), never "Create catalog". */
+  saveLabel?: string
+  /** Overrides the quiet button's label — the collection editor's own save bar
+   *  reads "Discard changes" (DESIGN.md's Collection editor spec), not
+   *  "Cancel". Both still route through `onCancel`, i.e. this editor's own
+   *  `onRequestClose` and the shared `EditorGuard`'s leave-with-unsaved-changes
+   *  prompt behind it — a second, editor-specific confirm isn't added here. */
+  cancelLabel?: string
 }) {
   return (
     <>
-      {showErrors && errorCount > 0 && (
-        <span className="type-data text-danger mr-auto text-[10.5px]">
-          Fix the highlighted {plural(errorCount, 'field')}.
-        </span>
-      )}
-      <button type="button" onClick={onCancel} className="btn-ghost">
-        Cancel
+      {status ??
+        (showErrors && errorCount > 0 && (
+          <span className="type-data text-danger mr-auto text-[10.5px]">
+            Fix the highlighted {plural(errorCount, 'field')}.
+          </span>
+        ))}
+      <button type="button" onClick={onCancel} className="btn-quiet">
+        {cancelLabel ?? 'Cancel'}
       </button>
-      <button type="button" onClick={onSubmit} disabled={saving} className="btn-primary">
-        {saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : `Create ${noun}`}
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={saving}
+        aria-disabled={!saving && errorCount > 0}
+        className="btn-primary"
+      >
+        {saving ? 'Saving…' : (saveLabel ?? (mode === 'edit' ? 'Save changes' : `Create ${noun}`))}
       </button>
     </>
   )

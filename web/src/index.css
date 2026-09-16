@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
-/* Archivo carries display and body on one family via its width axis
-   (wdth 62–125), so both roles cost a single download. IBM Plex Mono
-   carries recipes, ids, and numbers — a catalog's params line is query
-   syntax and should read like it. */
-@import "@fontsource-variable/archivo/wdth.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
+/* Jost carries every word Uno says, at two weights (400 body, 500 label/
+   button/heading) — see docs/frontend.md and web/_incoming-design/DESIGN.md.
+   Roboto (the TV's own face) is loaded separately, only where the TV preview
+   needs it, never here. */
+@import "@fontsource-variable/jost/wght.css";
+@import "@fontsource/roboto/400.css";
+@import "@fontsource/roboto/500.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
-    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font-sans: 'Jost Variable', Futura, 'Century Gothic', ui-sans-serif, sans-serif;
+    --font-mono: var(--font-sans);
     --font-heading: var(--font-sans);
 
     /* Tailwind's own default for `lg` — asserted explicitly, rather than left
@@ -35,6 +35,24 @@
     --color-series: var(--uno-series);
     --color-collection: var(--uno-collection);
     --color-danger: var(--uno-danger);
+    --color-danger-hover: var(--uno-danger-hover);
+    --color-danger-pressed: var(--uno-danger-pressed);
+    --color-danger-text-hover: var(--uno-danger-text-hover);
+    --color-danger-ink: var(--uno-danger-ink);
+    --color-pending: var(--uno-pending);
+    --color-primary-hover: var(--uno-primary-hover);
+    --color-primary-pressed: var(--uno-primary-pressed);
+
+    /* The TV's own colours — used only inside the frame and on the screen. */
+    --color-tv-bezel: var(--uno-tv-bezel);
+    --color-tv-screen: var(--uno-tv-screen);
+    --color-tv-text: var(--uno-tv-text);
+    --color-tv-text-2: var(--uno-tv-text-2);
+
+    /* Flat placeholder tiles, cycled across strips and results grids. */
+    --color-tile-a: var(--uno-tile-a);
+    --color-tile-b: var(--uno-tile-b);
+    --color-tile-c: var(--uno-tile-c);
 
     /* Base tokens the `@layer base` rule below and `bg-sidebar` (the rail's
        own background) draw on. */
@@ -47,27 +65,53 @@
 
 /* Single-theme by design, not by omission: this configures a television,
    and every reference client in the space (Stremio, Nuvio, Plex) is dark.
-   There is no light palette to fall back to. */
+   There is no light palette to fall back to.
+
+   "End Credits": pure type on near-black, credited like a film's end roll —
+   see DESIGN.md. A warm neutral ramp carries almost everything; amber
+   (pending) and red (danger) each hold exactly one meaning. */
 :root,
 .dark {
-    /* Ground: cool near-black, biased toward the cyan accent rather than
-       a neutral grey. */
-    --uno-ground: #0D0F13;
-    --uno-raised: #14171D;
-    --uno-raised-hi: #191D25;
-    --uno-line: #232833;
-    --uno-line-hi: #333A48;
-    --uno-ink: #E6E9EE;
-    --uno-dim: #868E9D;
-    --uno-dimmer: #5C6473;
+    --uno-ground: #0B0B0C;
+    --uno-raised: #151516;
+    --uno-raised-hi: var(--uno-raised);
+    --uno-line: #262627;
+    --uno-line-hi: #3A3A3C;
+    --uno-ink: #F2F1EE;
+    --uno-dim: #9A9996;
+    --uno-dimmer: #62615E;
 
-    /* Working hues, derived from SMPTE colour bars and desaturated.
-       Two types of thing, three hues, and red held back for destructive
-       actions only. */
+    --uno-primary-hover: #FAF8F4;
+    --uno-primary-pressed: #D8D6D1;
+
+    --uno-pending: #E3A63B;
+
+    --uno-danger: #E0594E;
+    --uno-danger-hover: #E86E64;
+    --uno-danger-pressed: #C94B41;
+    --uno-danger-text-hover: #EA766C;
+    --uno-danger-ink: #140605;
+
+    --uno-scrim: rgba(0, 0, 0, 0.66);
+
+    /* The TV's own colours: a lifted, cooler black than the workspace's. */
+    --uno-tv-bezel: #000000;
+    --uno-tv-screen: #121418;
+    --uno-tv-text: #E8EBEE;
+    --uno-tv-text-2: #A2A8AF;
+
+    /* Flat placeholder tiles, cycled in order along a strip. */
+    --uno-tile-a: #22262B;
+    --uno-tile-b: #1B1E22;
+    --uno-tile-c: #292D33;
+
+    /* Working hues for catalog/collection kind, unrelated to DESIGN.md's
+       "End Credits" system — still consumed by screens this migration
+       hasn't reached yet (features/push, features/home, features/catalogs).
+       Left as-is until each consumer is restyled in its own phase. */
     --uno-movie: #4EA8B8;
     --uno-series: #C39A3E;
     --uno-collection: #8E7BC4;
-    --uno-danger: #C0483F;
 
     /* Full-amplitude bars. Used in exactly one place — the empty home
        screen — and nowhere else. Resist reaching for these. */
@@ -82,7 +126,7 @@
     --background: var(--uno-ground);
     --foreground: var(--uno-ink);
     --border: var(--uno-line);
-    --ring: var(--uno-movie);
+    --ring: var(--uno-ink);
 
     /* Tells the browser to draw its own chrome dark: the option list a
        `<select>` drops, `input[type=date]`'s calendar and picker, the number
@@ -122,7 +166,7 @@
        content beneath it. */
     --app-h: 58.4px;
 
-    --sidebar: #0B0D11;
+    --sidebar: var(--uno-ground);
 }
 
 /* Keyed on the input device, not the screen: a field a finger reaches is the
@@ -156,78 +200,171 @@
 }
 
 @layer components {
-    /* Three type roles. Archivo expanded reads as broadcast titling —
-       lower thirds, channel idents — which is where the width axis earns
-       its keep over just bolding the body face. */
+    /* A heading: Jost 500, mixed case, brighter than the body around it — the
+       Credit Roll Rule's "names outshine the words around them" applied to
+       page and dialog titles. Callers set their own size and line-height. */
     .type-display {
-        font-weight: 600;
-        font-stretch: 118%;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        font-weight: 500;
+        letter-spacing: 0.005em;
     }
 
+    /* The "UNO" wordmark: tracked capitals, the one place in the app that
+       still shouts. */
     .type-wordmark {
-        font-weight: 700;
-        font-stretch: 122%;
-        letter-spacing: 0.14em;
+        font-weight: 500;
+        letter-spacing: 0.24em;
         text-transform: uppercase;
     }
 
-    /* Column headers and group labels. Small, wide-tracked, never a
+    /* Roles: small, grey, tracked capitals — the left half of every credit
+       pair (a field's label, a group heading, a role column entry). Never a
        heading in its own right. */
     .type-eyebrow {
-        font-size: 0.6rem;
+        font-size: 11.5px;
+        font-weight: 500;
         line-height: 1;
-        letter-spacing: 0.16em;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
-        color: var(--uno-dimmer);
+        color: var(--uno-dim);
     }
 
-    /* Recipes, ids, counts. Tabular by default — these line up in columns
-       often enough that opting in per-use would just get forgotten. */
+    /* Values that read as data: counts, positions, recipe params, range
+       readouts. Tabular by default — these line up in columns often enough
+       that opting in per-use would just get forgotten. Jost, same as every
+       other word in the app (the Two Faces Rule reserves a second family for
+       the TV screen only). */
     .type-data {
-        font-family: var(--font-mono);
         font-variant-numeric: tabular-nums;
     }
 
-    /* The app's only buttons. Uppercase and tracked to match the display
-       face — every action in the app (sign in, push, new, save, cancel)
-       goes through one of these two. */
+    /* The app's four button weights (DESIGN.md, "Buttons"). Square, 40px on
+       desktop; `pointer: coarse` grows standalone ones toward the phone's
+       44/48px targets. */
+    .btn-primary,
+    .btn-secondary,
+    .btn-quiet,
+    .btn-danger,
+    .btn-danger-text,
+    .btn-ghost {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5em;
+        border-radius: 0;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        height: 40px;
+        padding: 0 20px;
+        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+
+    /* Primary: Warm White fill, ground label. One per screen. */
     .btn-primary {
         background: var(--uno-ink);
         color: var(--uno-ground);
-        border: 1px solid var(--uno-ink);
-        border-radius: 2px;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-        padding: 8px 15px;
-        transition: background 120ms ease, border-color 120ms ease;
+        border: none;
     }
     .btn-primary:hover:not(:disabled) {
-        background: #fff;
-        border-color: #fff;
+        background: var(--uno-primary-hover);
+    }
+    .btn-primary:active:not(:disabled) {
+        background: var(--uno-primary-pressed);
     }
     .btn-primary:disabled {
-        opacity: 0.45;
+        background: var(--uno-dimmer);
+        color: var(--uno-ground);
         cursor: default;
     }
+    /* Greyed but still pressable (DESIGN.md, "Greyed"): Save while the form
+       has errors stays focusable and clickable — pressing it is what reveals
+       and focuses what needs fixing — so this is a visual state, not
+       `disabled`. */
+    .btn-primary[aria-disabled='true'] {
+        background: var(--uno-dimmer);
+        color: var(--uno-ground);
+        cursor: not-allowed;
+    }
 
+    /* Small size: actions inside panes, rows and empty states (DESIGN.md,
+       "Buttons") — combine with a weight class, e.g. `.btn-secondary.btn-sm`. */
+    .btn-sm {
+        height: 32px;
+        padding: 0 12px;
+        font-size: 13.5px;
+    }
+
+    /* Secondary: outlined, warm-white label. A real action that isn't the
+       screen's main one. */
+    .btn-secondary {
+        background: transparent;
+        color: var(--uno-ink);
+        border: 1px solid var(--uno-dim);
+    }
+    .btn-secondary:hover:not(:disabled) {
+        border-color: var(--uno-ink);
+    }
+    .btn-secondary:active:not(:disabled) {
+        background: var(--uno-raised);
+    }
+
+    /* Quiet: grey label, underlined — Cancel, Stay, Hide, Undo. `.btn-ghost`
+       is this same weight under its earlier name; existing call sites keep
+       working until each is restyled in its own phase. */
+    .btn-quiet,
     .btn-ghost {
         background: transparent;
         color: var(--uno-dim);
-        border: 1px solid var(--uno-line-hi);
-        border-radius: 2px;
-        font-size: 10.5px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        padding: 5px 10px;
-        transition: color 120ms ease, border-color 120ms ease;
+        border: none;
+        padding: 0 12px;
+        text-decoration: underline;
+        text-decoration-color: var(--uno-line-hi);
+        text-underline-offset: 0.3em;
     }
+    .btn-quiet:hover:not(:disabled),
     .btn-ghost:hover:not(:disabled) {
         color: var(--uno-ink);
-        border-color: var(--uno-dim);
+        text-decoration-color: var(--uno-dim);
+    }
+    .btn-quiet:disabled,
+    .btn-ghost:disabled {
+        color: var(--uno-dimmer);
+        text-decoration-color: var(--uno-line);
+    }
+
+    /* Destructive: Signal Red fill, red-ink label. Only for actions that
+       can't be taken back. */
+    .btn-danger {
+        background: var(--uno-danger);
+        color: var(--uno-danger-ink);
+        border: none;
+    }
+    .btn-danger:hover:not(:disabled) {
+        background: var(--uno-danger-hover);
+    }
+    .btn-danger:active:not(:disabled) {
+        background: var(--uno-danger-pressed);
+    }
+    .btn-danger:disabled {
+        background: var(--uno-line-hi);
+        color: var(--uno-dim);
+        cursor: default;
+    }
+
+    /* Red text button: the quiet weight in Signal Red, for a destructive
+       action that opens its own confirmation ("Delete this catalog"). */
+    .btn-danger-text {
+        background: transparent;
+        color: var(--uno-danger);
+        border: none;
+        padding: 0;
+        text-decoration: underline;
+        text-decoration-color: color-mix(in srgb, var(--uno-danger) 50%, transparent);
+        text-underline-offset: 0.3em;
+    }
+    .btn-danger-text:hover:not(:disabled) {
+        color: var(--uno-danger-text-hover);
+        text-decoration-color: var(--uno-danger-text-hover);
     }
 
     /* Both buttons are drawn to sit quietly in a header or a footer, which at
@@ -235,29 +372,39 @@
        can aim at. The padding grows rather than the type: the label is the size
        it is for the same reason the eyebrows are. */
     @media (pointer: coarse) {
+        .btn-quiet,
         .btn-ghost {
-            padding: 9px 12px;
+            padding: 0 12px;
+            height: 44px;
         }
-        .btn-primary {
-            padding: 11px 16px;
+        .btn-primary,
+        .btn-secondary,
+        .btn-danger {
+            height: 44px;
         }
     }
 
-    /* Text inputs and selects. */
+    /* Text inputs and selects. Raised Black, Strong Hairline, square. */
     .field {
         background: var(--uno-raised);
-        border: 1px solid var(--uno-line);
+        border: 1px solid var(--uno-line-hi);
         color: var(--uno-ink);
-        border-radius: 2px;
-        padding: 8px 11px;
-        font-size: 13px;
+        border-radius: 0;
+        padding: 0 14px;
+        height: 44px;
+        font-size: 15px;
         transition: border-color 120ms ease;
     }
     .field::placeholder {
         color: var(--uno-dimmer);
     }
+    .field:hover:not(:disabled):not(:focus) {
+        border-color: var(--uno-dim);
+    }
     .field:focus {
         border-color: var(--uno-dim);
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 2px;
     }
 
     /* 16px is the threshold under which Safari zooms the page to the focused
@@ -312,36 +459,37 @@
         }
     }
 
-    /* The palette's own checkbox. `accent-color` only tints the platform's
-       box — it keeps the platform's radius and its border, which is the one
-       control that stayed rounded in a design that is square throughout. */
+    /* The palette's own checkbox: square, per the Square Corner Rule.
+       `accent-color` only tints the platform's box, which keeps the
+       platform's own radius and border — no good in a design with none. */
     .checkbox {
         appearance: none;
         flex: none;
-        width: 13px;
-        height: 13px;
-        border: 1px solid var(--uno-line-hi);
-        border-radius: 2px;
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--uno-dim);
+        border-radius: 0;
         background: var(--uno-raised);
         transition:
             background 120ms ease,
             border-color 120ms ease;
     }
     .checkbox:hover:not(:checked) {
-        border-color: var(--uno-dim);
+        border-color: var(--uno-ink);
     }
     .checkbox:checked {
         background: var(--uno-ink);
         border-color: var(--uno-ink);
         /* The tick as a path rather than a glyph: a font's ✓ carries its own
-           side bearings and sits off-centre in a 13px box. */
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 4.8 8.5 9.5 3.8' fill='none' stroke='%230D0F13' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
-        background-size: 100% 100%;
+           side bearings and sits off-centre in a 16px box. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 4.8 8.5 9.5 3.8' fill='none' stroke='%230B0B0C' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+        background-size: 65% 65%;
+        background-position: center;
         background-repeat: no-repeat;
     }
     .checkbox:focus-visible {
-        outline: 2px solid var(--uno-movie);
-        outline-offset: 1px;
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 2px;
     }
     @media (pointer: coarse) {
         .checkbox {
@@ -375,15 +523,650 @@
         }
     }
 
-    /* Ownership, encoded on the same device that carries type rather than
-       as a second badge: solid = yours, hatched = community. Pair with a
-       text colour, not a background — the hatch draws in currentColor. */
-    .hatch {
-        background-color: transparent;
-        background-image: repeating-linear-gradient(
-            45deg,
-            currentColor 0 2px,
-            transparent 2px 5px
-        );
+    /* The TV preview: a framed 16:9 picture, not a panel — DESIGN.md's "TV
+       preview (signature)". `container-type` on the bezel is why every size
+       below is `cqw`: the picture scales like a picture, against its own
+       frame, not the viewport. Roboto only inside `.tv-screen` — the Two
+       Faces Rule (`.type-data` above) — everything Uno itself says around the
+       frame stays Jost. */
+    .tv-bezel {
+        container-type: inline-size;
+        background: var(--uno-tv-bezel);
+        border: 1px solid var(--uno-line-hi);
+        padding: 10px;
     }
+    @media (pointer: coarse) {
+        .tv-bezel {
+            padding: 8px;
+        }
+    }
+    .tv-screen {
+        aspect-ratio: 16 / 9;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background: var(--uno-tv-screen);
+        color: var(--uno-tv-text);
+        font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+        padding: 3.4cqw 0 3cqw 4.5cqw;
+        scrollbar-color: var(--uno-tile-c) var(--uno-tv-screen);
+    }
+    @media (pointer: coarse) {
+        .tv-screen {
+            padding: 4.5cqw 0 3cqw 5cqw;
+        }
+    }
+
+    .tv-band {
+        margin-bottom: 2.6cqw;
+    }
+    @media (pointer: coarse) {
+        .tv-band {
+            margin-bottom: 5cqw;
+        }
+    }
+    .tv-row-title {
+        font-size: 1.95cqw;
+        font-weight: 500;
+        line-height: 1.2;
+        margin-bottom: 1.1cqw;
+    }
+    @media (pointer: coarse) {
+        .tv-row-title {
+            font-size: 4.3cqw;
+            margin-bottom: 2.2cqw;
+        }
+    }
+    .tv-strip {
+        display: flex;
+        gap: 1.1cqw;
+        align-items: flex-end;
+        overflow: hidden;
+    }
+    @media (pointer: coarse) {
+        .tv-strip {
+            gap: 2.5cqw;
+        }
+    }
+    .tv-tile {
+        flex: none;
+        display: grid;
+        gap: 0.6cqw;
+        text-align: left;
+        color: inherit;
+        font: inherit;
+        background: none;
+        border: none;
+        padding: 0;
+    }
+    .tv-tile .cap {
+        font-size: max(1.28cqw, 10.5px);
+        line-height: 1.25;
+        color: var(--uno-tv-text-2);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    @media (pointer: coarse) {
+        .tv-tile .cap {
+            font-size: max(3.2cqw, 10.5px);
+        }
+    }
+
+    /* A poster tile: the flat tone underneath (cycled a/b/c along the strip)
+       shows while the real poster loads, or in its place if there is none. */
+    .tv-poster .art {
+        width: 9.4cqw;
+        aspect-ratio: 2 / 3;
+        position: relative;
+        overflow: hidden;
+    }
+    @media (pointer: coarse) {
+        .tv-poster .art {
+            width: 20cqw;
+        }
+    }
+    .tv-poster .art img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    /* A folder's own tile — always Placeholder Tile C, per DESIGN.md's
+       `tv-folder-tile` token, never cycled like a poster strip. */
+    .tv-folder .art {
+        display: grid;
+        place-items: center;
+        position: relative;
+        overflow: hidden;
+        background: var(--uno-tile-c);
+    }
+    .tv-folder .art span {
+        font-size: 3.4cqw;
+        line-height: 1;
+    }
+    .tv-folder .art img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    @media (pointer: coarse) {
+        .tv-folder .art span {
+            font-size: 6cqw;
+        }
+    }
+    .tv-folder {
+        cursor: pointer;
+    }
+    .tv-folder .cap {
+        color: var(--uno-tv-text);
+        font-weight: 500;
+    }
+    .tv-folder .cap.is-hidden {
+        visibility: hidden;
+    }
+    .tv-folder.poster .art {
+        width: 9.4cqw;
+        aspect-ratio: 2 / 3;
+    }
+    .tv-folder.landscape .art {
+        width: 23cqw;
+        aspect-ratio: 16 / 9;
+    }
+    .tv-folder.square .art {
+        width: 14.1cqw;
+        aspect-ratio: 1;
+    }
+    @media (pointer: coarse) {
+        .tv-folder.poster .art {
+            width: 15cqw;
+        }
+        .tv-folder.landscape .art {
+            width: 36cqw;
+        }
+        .tv-folder.square .art {
+            width: 22cqw;
+        }
+    }
+    .tv-folder:hover .art {
+        outline: 0.25cqw solid var(--uno-tv-text);
+        outline-offset: 0.2cqw;
+    }
+    .tv-folder:focus-visible .art {
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 2px;
+    }
+
+    /* A folder page's own heading, back arrow and tabs — inside the screen,
+       so the way back lives on the picture (the Back Like the Remote
+       amendment): the arrow, Escape and the browser's Back all leave the
+       folder the same way. */
+    .fp-title {
+        font-size: 2.6cqw;
+        font-weight: 500;
+        line-height: 1.2;
+        margin-bottom: 1.6cqw;
+        display: flex;
+        align-items: center;
+        gap: 1cqw;
+    }
+    @media (pointer: coarse) {
+        .fp-title {
+            font-size: 5cqw;
+            margin-bottom: 7.5cqw;
+        }
+    }
+    .fp-back {
+        position: relative;
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 3.6cqw;
+        height: 3.6cqw;
+        margin-left: -0.8cqw;
+        color: var(--uno-tv-text);
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        transition: background-color 120ms ease;
+    }
+    .fp-back svg {
+        width: 2.2cqw;
+        height: 2.2cqw;
+    }
+    .fp-back:hover {
+        background: var(--uno-tile-c);
+    }
+    .fp-back:focus-visible {
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 2px;
+    }
+    @media (pointer: coarse) {
+        .fp-back {
+            width: 7cqw;
+            height: 7cqw;
+            margin-left: -1.5cqw;
+        }
+        .fp-back svg {
+            width: 4.4cqw;
+            height: 4.4cqw;
+        }
+        /* The 44px touch reach the back arrow needs beyond its drawn square. */
+        .fp-back::before {
+            content: '';
+            position: absolute;
+            inset: min(0px, calc((7cqw - 44px) / 2));
+        }
+    }
+    .fp-tabs {
+        display: flex;
+        gap: 2.4cqw;
+        margin-bottom: 1.6cqw;
+        white-space: nowrap;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+    }
+    @media (pointer: coarse) {
+        .fp-tabs {
+            gap: 4cqw;
+        }
+    }
+    .fp-tab {
+        color: var(--uno-tv-text-2);
+        font: inherit;
+        font-size: 1.55cqw;
+        font-weight: 500;
+        background: none;
+        border: none;
+        padding: 0 0 0.5cqw;
+        border-bottom: 0.2cqw solid transparent;
+        cursor: pointer;
+        transition: color 120ms ease;
+    }
+    .fp-tab[data-state='active'] {
+        color: var(--uno-tv-text);
+        border-bottom-color: var(--uno-tv-text);
+    }
+    @media (pointer: coarse) {
+        .fp-tab {
+            font-size: 3.4cqw;
+        }
+    }
+    .fp-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, 9.4cqw);
+        gap: 1.6cqw 1.1cqw;
+        padding-right: 4.5cqw;
+    }
+    @media (pointer: coarse) {
+        .fp-grid {
+            grid-template-columns: repeat(auto-fill, 20cqw);
+            gap: 3cqw 2.5cqw;
+        }
+    }
+    .fp-grid .tv-poster .art {
+        width: 9.4cqw;
+    }
+    @media (pointer: coarse) {
+        .fp-grid .tv-poster .art {
+            width: 20cqw;
+        }
+    }
+
+    /* ---------- The catalog editor (DESIGN.md, "Catalog editor (signature)") ---------- */
+
+    /* The two-column layout's own container: the results panel undocks under
+       the form once the *pane* — not the viewport — gets too narrow for both,
+       which is a `@container` question, not a media query. The builder's pane
+       is the viewport minus a library rail whose own width changes at its own
+       breakpoints (400px, 340px below 1100px), so a `min-width` media query
+       would undock the panel at the wrong pane width whenever the rail's width
+       changes underneath it. */
+    .ed-container {
+        container-type: inline-size;
+    }
+    .ed {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 290px;
+        column-gap: 40px;
+        align-items: start;
+        padding-top: 24px;
+    }
+    .ed-form {
+        min-width: 0;
+    }
+
+    /* Every setting is a credit: role right-aligned, value left-aligned across
+       the gutter. */
+    .cr {
+        display: grid;
+        grid-template-columns: 168px minmax(0, 1fr);
+        column-gap: 32px;
+        align-items: baseline;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--uno-line);
+    }
+    .cr > .cr-role {
+        text-align: right;
+        color: var(--uno-dim);
+    }
+    .cr-val {
+        min-width: 0;
+    }
+    .cr-val .aside {
+        color: var(--uno-dim);
+        font-size: 13px;
+    }
+    .cr.is-field {
+        align-items: start;
+    }
+    .cr.is-field > .cr-role {
+        padding-top: 14px;
+    }
+    /* The sharing switch has no text baseline of its own, so its row centres
+       instead of sharing one with the value column. */
+    .cr.is-switch {
+        align-items: center;
+    }
+    .ed .field {
+        max-width: 360px;
+    }
+    /* A field's own error line, directly beneath it (DESIGN.md, "Error"):
+       icon column, then the words that say what to do. */
+    .field-error {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr);
+        column-gap: 8px;
+        margin-top: 8px;
+        font-size: 13px;
+        line-height: 18px;
+        color: var(--uno-ink);
+    }
+
+    .sec-head {
+        display: grid;
+        grid-template-columns: 168px minmax(0, 1fr) 16px;
+        column-gap: 32px;
+        align-items: baseline;
+        width: 100%;
+        padding: 14px 0;
+        text-align: left;
+        border-bottom: 1px solid var(--uno-line);
+        transition: background-color 120ms ease;
+    }
+    button.sec-head:hover {
+        background: var(--uno-raised);
+    }
+    .sec-head > .cr-role {
+        text-align: right;
+        color: var(--uno-dim);
+    }
+    .sec-sum {
+        font-size: 15px;
+        line-height: 22px;
+        min-width: 0;
+        color: var(--uno-ink);
+    }
+    .sec-head .ico {
+        align-self: center;
+        color: var(--uno-dim);
+        transition: transform 120ms ease;
+    }
+    .sec-head[aria-expanded='true'] .ico {
+        transform: rotate(180deg);
+        color: var(--uno-ink);
+    }
+    .sec-head[aria-expanded='true'] {
+        border-bottom-color: transparent;
+    }
+    .sec-body {
+        padding: 4px 0 24px calc(168px + 32px);
+        border-bottom: 1px solid var(--uno-line);
+        display: grid;
+        gap: 16px;
+        justify-items: start;
+    }
+    .sec-body[hidden] {
+        display: none;
+    }
+    .sec-body > * {
+        max-width: 100%;
+    }
+    .ed-dateline {
+        font-size: 15px;
+        line-height: 22px;
+    }
+    .ed-note {
+        font-size: 13px;
+        line-height: 18px;
+        color: var(--uno-dim);
+        max-width: 52ch;
+    }
+    .ed-line {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    /* Single choices that don't fit a segmented control, and the genre
+       chips (tri-state): every value visible. */
+    .choices {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .choice,
+    .gchip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        padding: 0 12px;
+        font-size: 13.5px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        color: var(--uno-dim);
+        border: 1px solid var(--uno-line-hi);
+        border-radius: 0;
+        background: transparent;
+        transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .choice:hover,
+    .gchip:hover {
+        color: var(--uno-ink);
+        border-color: var(--uno-dim);
+    }
+    .choice[aria-pressed='true'] {
+        background: var(--uno-raised);
+        color: var(--uno-ink);
+        border-color: var(--uno-dim);
+    }
+    .gchip[data-g='inc'] {
+        color: var(--uno-ink);
+        border-color: var(--uno-dim);
+        background: var(--uno-raised);
+    }
+    .gchip[data-g='exc'] {
+        color: var(--uno-dim);
+    }
+    .gchip[data-g='exc'] .gname {
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+    }
+    .choice:active,
+    .gchip:active {
+        background: var(--uno-line);
+    }
+
+    /* The app's one switch, scoped to sharing. */
+    .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 15px;
+        background: none;
+        border: none;
+        padding: 0;
+        color: var(--uno-ink);
+        cursor: pointer;
+    }
+    .switch-track {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        border: 1px solid var(--uno-dim);
+        border-radius: 0;
+        flex: none;
+        transition: border-color 120ms ease;
+    }
+    .switch-knob {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 12px;
+        height: 12px;
+        background: var(--uno-dim);
+        border-radius: 0;
+        transition: transform 120ms ease, background-color 120ms ease;
+    }
+    .switch[aria-checked='true'] .switch-track {
+        border-color: var(--uno-ink);
+    }
+    .switch[aria-checked='true'] .switch-knob {
+        transform: translateX(16px);
+        background: var(--uno-ink);
+    }
+    .switch:hover .switch-track {
+        border-color: var(--uno-ink);
+    }
+
+    .ed select.select {
+        height: 44px;
+        min-width: 240px;
+        font-size: 15px;
+    }
+    .ed input[type='date'],
+    .ed input[type='number'] {
+        width: 180px;
+    }
+
+    .ed-delete {
+        padding: 32px 0 8px;
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .ed-delete p {
+        font-size: 13px;
+        color: var(--uno-dim);
+    }
+
+    /* A new catalog says what "nothing set" shows, so empty never reads as
+       broken. */
+    .ed-fresh {
+        padding: 14px 0 14px calc(168px + 32px);
+        border-bottom: 1px solid var(--uno-line);
+        font-size: 14px;
+        line-height: 20px;
+        color: var(--uno-dim);
+    }
+
+    /* Results, docked right, run on request. */
+    .ed-pv {
+        position: sticky;
+        top: 0;
+        display: grid;
+        gap: 12px;
+        padding-top: 14px;
+    }
+    .ed-pv-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+    .ed-pv p {
+        font-size: 13px;
+        line-height: 18px;
+        color: var(--uno-dim);
+    }
+    .ed-pv .neqline {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr);
+        column-gap: 8px;
+        color: var(--uno-ink);
+        font-size: 13px;
+        line-height: 18px;
+    }
+    .ed-pv .pv-stale {
+        color: var(--uno-ink);
+    }
+
+    /* The catalog/collection editors' shared save bar, sticky at the pane's
+       foot — `EditorShell`'s own footer band already supplies the sticky
+       position, the ground fill and the Hairline above. */
+    .ed-status {
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--uno-ink);
+    }
+    .ed-status.is-error {
+        color: var(--uno-ink);
+    }
+    .ed-status.is-error svg {
+        color: var(--uno-danger);
+    }
+    .ed-status.is-muted {
+        color: var(--uno-dim);
+    }
+
+    @container (max-width: 860px) {
+        .ed {
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .ed-pv {
+            position: static;
+            order: 2;
+            border-top: 1px solid var(--uno-line);
+            margin-top: 24px;
+        }
+    }
+    @media (max-width: 640px) {
+        .cr,
+        .sec-head {
+            grid-template-columns: minmax(0, 1fr);
+            row-gap: 4px;
+        }
+        .sec-head {
+            grid-template-columns: minmax(0, 1fr) 16px;
+        }
+        .cr > .cr-role,
+        .sec-head > .cr-role {
+            text-align: left;
+        }
+        .sec-head .sec-sum {
+            grid-column: 1;
+        }
+        .sec-head .ico {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+        }
+        .cr.is-field > .cr-role {
+            padding-top: 0;
+        }
+        .sec-body,
+        .ed-fresh {
+            padding-left: 0;
+        }
+    }
+
 }

@@ -1,37 +1,29 @@
-import { useMemo, useState } from 'react'
-import { TypeBar } from '@/components/TypeBar'
+import { useMemo } from 'react'
 import { CollectionMeta } from '@/features/preview/CollectionMeta'
-import { FolderPage } from '@/features/preview/FolderPage'
-import type { PreviewChrome } from '@/features/preview/FolderPage'
 import {
-  folderRecipes,
   normalizeTileShape,
   normalizeViewMode,
   type PreviewCollection,
   type PreviewFolder,
   type PreviewSource,
 } from '@/features/preview/model'
-import { FolderTile, Note } from '@/features/preview/tiles'
-import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
+import { TILE_ASPECT } from '@/features/preview/tiles'
 import type { CollectionFormState } from './collectionForm'
 import type { RefOption } from './refs'
 
 /**
- * What the collection being edited will look like.
+ * "On your TV" — DESIGN.md's docked panel, in the catalog editor's results
+ * panel's place: a 16:9 frame holding the collection's row from the live
+ * draft, **not interactive**. Opening a folder to see its content lives in
+ * Preview on TV once the collection is saved, not here — this only has to
+ * answer "what will the row itself look like", which is layout, not content,
+ * so nothing is fetched to draw it.
  *
- * **Layout, not content.** A collection has no recipe of its own — it's folders
- * of catalog references — so there is nothing to run against TMDB at this
- * level. What it does have is a shape: folders as tiles at their own
- * `tile_shape`, and a `view_mode` deciding what a folder opens into. That shape
- * comes entirely from form state, so the row below costs no request and is
- * drawn without asking.
- *
- * Content appears one level down, where a catalog finally has a recipe behind
- * it: opening a folder tile fetches that folder's catalogs. Opening a folder is
- * itself the request, so nothing is fetched until someone asks for it.
- *
- * Renders the same components as the Home pane's Preview view, from the same
- * model, so the two can't disagree about what a layout will do.
+ * **Layout, not content.** A collection has no recipe of its own — it's
+ * folders of catalog references — so there is nothing to run against TMDB at
+ * this level. What it does have is a shape: folders as tiles at their own
+ * `tile_shape`. That shape comes entirely from form state, so the row below
+ * costs no request and is drawn without asking.
  */
 export function CollectionPreview({
   state,
@@ -40,126 +32,72 @@ export function CollectionPreview({
   state: CollectionFormState
   optionByID: ReadonlyMap<string, RefOption>
 }) {
-  const collection = useMemo(
-    () => previewFromForm(state, optionByID),
-    [state, optionByID],
-  )
-
-  // Which folder page is open, held as the folder's form `key`. A folder
-  // removed from the tree while its page is open no longer resolves, and the
-  // view falls back to the row rather than showing a different folder now at
-  // the same position.
-  const [openKey, setOpenKey] = useState<string | null>(null)
-  const openFolder = openKey ? collection.folders.find((f) => f.id === openKey) : undefined
+  const collection = useMemo(() => previewFromForm(state, optionByID), [state, optionByID])
 
   return (
-    <section className="border-line mt-6 flex flex-col gap-3 border-t pt-5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="type-eyebrow flex-1">Preview</span>
-        <span className="type-data text-dimmer text-[10.5px]">
-          shows layout only — open a folder to see content
-        </span>
+    <div className="ed-pv">
+      <div className="ed-pv-head">
+        <span className="type-eyebrow">On your TV</span>
       </div>
 
-      <div className="border-line bg-ground flex flex-col gap-4 rounded-[2px] border p-5">
-        {openFolder ? (
-          <OpenFolder
-            collection={collection}
-            folder={openFolder}
-            optionByID={optionByID}
-            onBack={() => setOpenKey(null)}
-          />
-        ) : (
-          <CollectionRow collection={collection} onOpenFolder={setOpenKey} />
-        )}
-      </div>
-    </section>
-  )
-}
-
-/** The collection as one row on home: its tiles are its folders, never its
- *  content. Ragged by design — `tile_shape` is per folder, so folders in one
- *  collection can disagree and the real row is uneven too. */
-function CollectionRow({
-  collection,
-  onOpenFolder,
-}: {
-  collection: PreviewCollection
-  onOpenFolder: (folderKey: string) => void
-}) {
-  return (
-    <>
-      <div className="flex flex-wrap items-center gap-2.5">
-        {/* Always solid: you can only edit a collection that's yours. */}
-        <TypeBar kind="collection" owned className="h-[13px] self-auto" />
-        <h3 className="m-0 text-[13px] font-medium">
-          {collection.title || 'Untitled collection'}
-        </h3>
-        {collection.pinned && <Note>pinned to the top of home</Note>}
-      </div>
-
-      {collection.folders.length === 0 ? (
-        <p className="type-data text-dimmer m-0 text-[11px]">
-          No folders yet, so this collection's row is empty. Add one above.
-        </p>
-      ) : (
-        <div className="flex items-end gap-3 overflow-x-auto overscroll-x-contain">
-          {collection.folders.map((folder) => (
-            <FolderTile
-              key={folder.id}
-              folder={folder}
-              onOpen={() => onOpenFolder(folder.id)}
-            />
-          ))}
+      <div className="bg-tv-bezel border-line-hi border p-2.5">
+        <div className="bg-tv-screen relative flex aspect-video items-end overflow-hidden p-3">
+          {collection.folders.length === 0 ? (
+            <p className="type-data text-dimmer m-0 text-[10.5px] leading-[1.45]">
+              No folders yet, so this row is empty.
+            </p>
+          ) : (
+            <div className="flex items-end gap-2 overflow-hidden">
+              {collection.folders.map((folder) => (
+                <TVFolderTile key={folder.id} folder={folder} />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      <p>Folders open in Preview on TV once saved.</p>
 
       <CollectionMeta collection={collection} />
-    </>
+    </div>
   )
 }
 
-/**
- * One folder's page, with its catalogs' content fetched on open.
- *
- * A separate component so the fetch is mounted with the page: closing the page
- * unmounts it, and nothing is requested for a folder nobody opened.
- */
-function OpenFolder({
-  collection,
-  folder,
-  optionByID,
-  onBack,
-}: {
-  collection: PreviewCollection
-  folder: PreviewFolder
-  optionByID: ReadonlyMap<string, RefOption>
-  onBack: () => void
-}) {
-  const recipes = useMemo(() => folderRecipes(folder), [folder])
-  const tiles = useRecipesTiles(recipes)
-
-  const chrome: PreviewChrome = useMemo(
-    () => ({
-      // The library is `owned ∪ is_public`, and a folder can only reference
-      // what's in it, so ownership is whatever the picker already knows. There
-      // is no `note` — "no longer in the library" is a Home-selection question,
-      // and here an unavailable reference is a validation error the form
-      // reports on the folder itself.
-      isOwned: (id) => optionByID.get(id)?.catalog.owned ?? false,
-    }),
-    [optionByID],
-  )
+/** A folder, drawn the way its tile would sit on the real TV row — cover
+ *  image, then emoji, then title, at the folder's own shape — but as a plain
+ *  `<span>`, never a button: this panel draws no folder page, so nothing here
+ *  is a target to open. */
+function TVFolderTile({ folder }: { folder: PreviewFolder }) {
+  const height = 76
+  const width = height * TILE_ASPECT[folder.tileShape]
+  const name = folder.title || 'Untitled folder'
 
   return (
-    <FolderPage
-      collection={collection}
-      folder={folder}
-      tiles={tiles}
-      chrome={chrome}
-      onBack={onBack}
-      backLabel="← Back"
-    />
+    <span
+      style={{ width: `${width}px`, height: `${height}px` }}
+      title={name}
+      className="bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border px-1"
+    >
+      {folder.coverEmoji ? (
+        <span aria-hidden="true" className="text-[16px] leading-none">
+          {folder.coverEmoji}
+        </span>
+      ) : (
+        !folder.hideTitle && (
+          <span aria-hidden="true" className="type-data text-dimmer text-center text-[8px] leading-tight">
+            {name}
+          </span>
+        )
+      )}
+      {folder.coverImageUrl && (
+        <img
+          src={folder.coverImageUrl}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+    </span>
   )
 }
 
@@ -167,12 +105,12 @@ function OpenFolder({
  * The form's own state as a previewable collection.
  *
  * A folder's identity here is its form `key`, not its server `id`: a folder
- * that hasn't been saved yet has no id, and the preview still has to be able to
- * open it.
+ * that hasn't been saved yet has no id, and `CollectionMeta` still has to be
+ * able to count it.
  *
  * An id the picker can't resolve becomes an unresolved source — the same shape
  * Home uses for a catalog whose owner made it private. In this form that state
- * is also a validation error, so the form names it on the folder; the preview
+ * is also a validation error, so the form names it on the folder; this panel
  * only has to avoid claiming content that isn't there.
  */
 function previewFromForm(

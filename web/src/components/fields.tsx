@@ -116,6 +116,7 @@ export function TextInput({
   invalid,
   maxLength,
   ariaLabel,
+  id,
   width,
 }: {
   value: string
@@ -127,12 +128,16 @@ export function TextInput({
   /** For inputs inside a row that carries its own label elsewhere — a folder
    *  title next to its controls, say — where a `<label>` would be redundant. */
   ariaLabel?: string
+  /** Pairs this input with an external `<label htmlFor>` — a credit row's
+   *  role, which sits outside this component's own markup. */
+  id?: string
   /** How much room the content actually needs. Omitted for the genuinely
    *  unbounded — a URL, a search — which fill what they're given. */
   width?: string
 }) {
   return (
     <input
+      id={id}
       type={type}
       value={value}
       placeholder={placeholder}
@@ -253,26 +258,38 @@ export function Segmented<T extends string>({
   onChange,
   options,
   ariaLabel,
+  disabled = false,
 }: {
   value: T
   onChange: (value: T) => void
   options: { value: T; label: string }[]
   ariaLabel: string
+  /** Greyed as a whole while the control can't do anything — the "All" tab
+   *  segmented control outside Tabbed Grids. Keeps its value: the selected
+   *  segment stays focusable (aria-disabled) with a not-allowed cursor and
+   *  shows the kept value underlined rather than filled, so it reads as "on,
+   *  but inert" rather than "cleared". The reason lives in a grey note beside
+   *  it, which the caller supplies — this control only draws the grey state. */
+  disabled?: boolean
 }) {
   return (
     <div
       role="group"
       aria-label={ariaLabel}
+      aria-disabled={disabled || undefined}
       className="border-line-hi flex w-fit max-w-full shrink-0 flex-wrap overflow-hidden rounded-[2px] border"
     >
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
-          onClick={() => onChange(option.value)}
+          onClick={() => !disabled && onChange(option.value)}
           aria-pressed={value === option.value}
-          className={`border-line-hi hover:text-ink flex-1 border-r px-3 py-1.5 text-[10.5px] tracking-[0.08em] whitespace-nowrap uppercase transition-colors last:border-r-0 pointer-coarse:py-2.5 ${
-            value === option.value ? 'bg-raised-hi text-ink' : 'text-dim'
+          aria-disabled={disabled || undefined}
+          className={`border-line-hi flex-1 border-r px-3 py-1.5 text-[10.5px] tracking-[0.08em] whitespace-nowrap uppercase transition-colors last:border-r-0 pointer-coarse:py-2.5 ${
+            disabled
+              ? `text-dimmer cursor-not-allowed ${value === option.value ? 'underline decoration-1 underline-offset-[0.3em]' : ''}`
+              : `hover:text-ink ${value === option.value ? 'bg-raised-hi text-ink' : 'text-dim'}`
           }`}
         >
           {option.label}
@@ -391,6 +408,43 @@ function ThumbValue({ fraction, label }: { fraction: number; label: string }) {
     >
       {label}
     </span>
+  )
+}
+
+/**
+ * The app's one switch, scoped to sharing (DESIGN.md, "Sharing switch"). A
+ * catalog's or a collection's Sharing row is the only setting that uses one —
+ * every other yes/no in the app is a segmented control, because a switch
+ * flips state on its own while a segment shows every value at once, and
+ * "shared or not" is the one setting whose current value is worth reading at
+ * a glance without the words beside it (which this still carries — the state
+ * is never colour or position alone).
+ */
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  /** The state in words, beside the track — "Shared, so anyone can import
+   *  it" / "Not shared, only you can use it". Never omitted: the switch has
+   *  no label of its own. */
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="switch"
+    >
+      <span className="switch-track">
+        <span className="switch-knob" />
+      </span>
+      <span>{label}</span>
+    </button>
   )
 }
 

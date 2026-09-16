@@ -1,9 +1,12 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, TriangleAlert } from 'lucide-react'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
+import { Icon } from '@/components/Icon'
 import { EditorFooter, SaveError } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { useEditorForm } from '@/features/builder/useEditorForm'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
+import { pluralCount } from '@/lib/plural'
 import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
@@ -20,16 +23,29 @@ import {
   type DateMode,
 } from './catalogForm'
 import { RecipePreview } from './RecipePreview'
+import {
+  DATE_PRESETS,
+  DAYS_PER_YEAR,
+  UPCOMING_DAYS,
+  formatWindowStart,
+  sumAge,
+  sumDate,
+  sumGenres,
+  sumLanguage,
+  sumOrder,
+  sumRatings,
+  sumShuffle,
+  sumWatch,
+} from './summary'
 import { WatchProviderPicker } from './WatchProviderPicker'
 import {
   CertificationPicker,
-  Checkbox,
-  Field,
   FieldNote,
   GenreCycler,
   RangeField,
   Segmented,
   Select,
+  Switch,
   TextInput,
 } from './fields'
 
@@ -44,6 +60,16 @@ import {
  * originates outside it — the × in the shell, Escape, selecting another row in
  * the rail, switching profile — so the pane owns the confirmation and this only
  * has to say whether there is anything to lose.
+ *
+ * **The read-only view of an imported catalog (DESIGN.md's own spec for this
+ * editor) isn't built here.** It needs the owner's `@handle` for its banner
+ * ("Imported from **@dan**…"), and handle/attribution is paused work (see the
+ * migration plan's §2). It would also be a regression on today's app: opening
+ * a community row here has always meant an immediately-editable duplicate
+ * (`BuilderMode` is `'edit' | 'duplicate'`, with no third "viewing" mode) —
+ * swapping that for a read-only screen plus a Duplicate button is strictly
+ * more steps to the one thing that screen lets you do, which the migration
+ * plan's own preamble rules out. Logged in the plan's Open decisions.
  */
 export function CatalogEditor({
   mode,
@@ -85,6 +111,15 @@ export function CatalogEditor({
     isSameCatalog,
     onDirtyChange,
   )
+  const dirty = !isSameCatalog(baseline, state)
+
+  // One section open at a time (DESIGN.md's "Collapsible sections as
+  // credit-row buttons"). Every body stays mounted regardless — toggled with
+  // `hidden`, not unmounted — because `WatchProviderPicker` keeps its own
+  // region/search state locally and losing it every time the section closes
+  // would mean re-picking a region on every reopen.
+  const [openSection, setOpenSection] = useState<SectionKey | null>(null)
+  const [genresExpanded, setGenresExpanded] = useState(false)
 
   // Sorted by the name shown, not TMDB's response order, so the dropdown
   // reads alphabetically like the country and certification pickers.
@@ -136,6 +171,16 @@ export function CatalogEditor({
   // Same split as genres: movie and tv certifications are different scales
   // per country, even though both are scoped by the same certification_country.
   const activeCertifications = state.type === 'movie' ? certifications.movie : certifications.tv
+  const activeScale = state.params.certification_country
+    ? (activeCertifications[state.params.certification_country] ?? [])
+    : []
+  const isMovie = state.type === 'movie'
+  const dateGte = isMovie ? state.params.primary_release_date_gte : state.params.first_air_date_gte
+  const dateLte = isMovie ? state.params.primary_release_date_lte : state.params.first_air_date_lte
+  const dateDays = isMovie ? state.params.released_within_days : state.params.aired_within_days
+  const watchProviderCount = state.params.with_watch_providers
+    ? state.params.with_watch_providers.split(/[,|]/).filter(Boolean).length
+    : 0
 
   function patch(update: Partial<CatalogFormState>) {
     setState((previous) => ({ ...previous, ...update }))
@@ -178,17 +223,80 @@ export function CatalogEditor({
     preview.run()
   }
 
-  const eyebrow =
-    mode === 'edit' ? 'Edit catalog' : 'Duplicate catalog'
+  /** DESIGN.md: pressing a greyed Save "takes focus to the field that needs
+   *  fixing" — with one section open at a time, that field may be behind a
+   *  closed head, so this opens it first. `name` sits outside every section. */
+  function focusFirstError() {
+    const firstKey = ERROR_PRIORITY.find((key) => key in errors)
+    if (!firstKey) return
+    if (firstKey === 'name') {
+      document.getElementById('cat-name')?.focus()
+      return
+    }
+    const section = ERROR_SECTION[firstKey]
+    if (!section) return
+    setOpenSection(section)
+    requestAnimationFrame(() => document.getElementById(`sec-head-${section}`)?.focus())
+  }
+
+  function trySubmit() {
+    if (errorCount > 0) {
+      revealErrors()
+      focusFirstError()
+      return
+    }
+    submit(errorCount, onSave)
+  }
+
+  const sections = buildSections({
+    state,
+    sortField,
+    sortDirection,
+    activeGenres,
+    withGenres,
+    withoutGenres,
+    genresExpanded,
+    setGenresExpanded,
+    languageOptions,
+    languages,
+    isMovie,
+    dateGte,
+    dateLte,
+    dateDays,
+    activeCertifications,
+    countryNames,
+    activeScale,
+    watchProviderCount,
+    errorFor,
+    patch,
+    patchParams,
+  })
+
+  const roleLabels = showErrors
+    ? Array.from(
+        new Set(Object.keys(errors).map((key) => roleLabelFor(key, isMovie))),
+      )
+    : []
+
+  const status =
+    errorCount > 0 ? (
+      <span className="ed-status is-error">
+        <Icon icon={TriangleAlert} size={16} />
+        {pluralCount(errorCount, 'thing')} {errorCount === 1 ? 'needs' : 'need'} fixing:{' '}
+        {roleLabels.join(', ')}
+      </span>
+    ) : dirty ? (
+      <span className="ed-status">Unsaved changes</span>
+    ) : (
+      <span className="ed-status is-muted">No changes yet</span>
+    )
+
+  const isBare = paramsString(state) === '{}'
 
   return (
     <EditorShell
-      eyebrow={eyebrow}
+      eyebrow={mode === 'edit' ? 'Edit catalog' : 'Duplicate catalog'}
       title={state.name.trim() || 'Untitled catalog'}
-      kind={state.type}
-      // A duplicate is born yours whoever you copied it from, and so is a new
-      // one — the only editable catalog is one you own.
-      owned
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
@@ -200,201 +308,422 @@ export function CatalogEditor({
           showErrors={showErrors}
           errorCount={errorCount}
           onCancel={onRequestClose}
-          onSubmit={() => submit(errorCount, onSave)}
+          onSubmit={trySubmit}
+          status={status}
+          saveLabel="Save"
         />
       }
     >
-        <div className="grid gap-x-8 gap-y-6 md:grid-cols-[minmax(0,232px)_minmax(0,1fr)]">
-          {/* --- identity ------------------------------------------------ */}
-          <div className="flex flex-col gap-6">
-            <Field label="Name" error={errorFor('name')}>
-              <TextInput
-                value={state.name}
-                onChange={(name) => patch({ name })}
-                placeholder="Trending Sci-Fi"
-                invalid={Boolean(errorFor('name'))}
-              />
-            </Field>
-
-            <Field
-              label="Type"
-              hint={mode === 'edit' ? 'Fixed once created — duplicate to change it.' : undefined}
-            >
-              {mode === 'edit' ? (
-                <p className="type-data text-dim m-0 py-2 text-[13px]">
-                  {state.type === 'movie' ? 'Movie' : 'Series'}
-                </p>
-              ) : (
-                <Segmented
-                  ariaLabel="Catalog type"
-                  value={state.type}
-                  onChange={changeType}
-                  options={[
-                    { value: 'movie', label: 'Movie' },
-                    { value: 'series', label: 'Series' },
-                  ]}
+      <div className="ed-container">
+        <div className="ed">
+          <div className="ed-form">
+            <div className="cr is-field">
+              <label htmlFor="cat-name" className="cr-role type-eyebrow">
+                Name
+              </label>
+              <div className="cr-val">
+                <TextInput
+                  id="cat-name"
+                  value={state.name}
+                  onChange={(name) => patch({ name })}
+                  placeholder="Trending Sci-Fi"
+                  invalid={Boolean(errorFor('name'))}
                 />
-              )}
-            </Field>
-
-            <Checkbox
-              checked={state.isPublic}
-              onChange={(isPublic) => patch({ isPublic })}
-              label="Share with the community"
-              hint="Others can add it to their own home screen."
-            />
-          </div>
-
-          {/* --- filters -------------------------------------------------- */}
-          <div className="flex flex-col gap-6">
-            <Field label="Sort by" error={errorFor('sort_by')}>
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={sortField}
-                  onChange={(field) =>
-                    patchParams({ sort_by: serializeSortBy(field, sortDirection) })
-                  }
-                  placeholder="Popularity"
-                  options={SORT_FIELDS[state.type]}
-                />
-                <Segmented
-                  ariaLabel="Sort direction"
-                  value={sortDirection}
-                  onChange={(direction) =>
-                    patchParams({ sort_by: serializeSortBy(sortField || 'popularity', direction) })
-                  }
-                  options={[
-                    { value: 'desc', label: 'High to low' },
-                    { value: 'asc', label: 'Low to high' },
-                  ]}
-                />
-              </div>
-            </Field>
-
-            <GenreCycler
-              label="Genres"
-              genres={activeGenres}
-              withIds={withGenres.ids}
-              withJoin={withGenres.join}
-              withoutIds={withoutGenres.ids}
-              onChange={(withIds, withJoin, withoutIds) =>
-                patchParams({
-                  with_genres: withIds.length ? serializeGenreList(withIds, withJoin) : undefined,
-                  without_genres: withoutIds.length
-                    ? serializeGenreList(withoutIds, 'and')
-                    : undefined,
-                })
-              }
-            />
-
-            {/* `xl`, not `sm`: the breakpoint measures the viewport, and from
-                `lg` up this grid sits in a pane that is the viewport minus a
-                372px rail minus the identity column. Splitting at `sm` gave
-                each half about 150px, which is narrower than the two number
-                boxes inside it — they overflowed the column rather than
-                wrapping.
-
-                Below `lg` the rail is a screen of its own rather than a column
-                beside this one, so the pane is the whole viewport and the
-                mismatch doesn't arise — the grid is single-column there
-                anyway. */}
-            <div className="grid gap-x-8 gap-y-6 xl:grid-cols-2">
-              <RangeField
-                label="Rating"
-                error={errorFor('vote_average')}
-                low={state.params.vote_average_gte}
-                high={state.params.vote_average_lte}
-                onLow={(vote_average_gte) => patchParams({ vote_average_gte })}
-                onHigh={(vote_average_lte) => patchParams({ vote_average_lte })}
-                step="0.1"
-                min={0}
-                max={10}
-              />
-              <RangeField
-                label="Number of ratings"
-                error={errorFor('vote_count')}
-                low={state.params.vote_count_gte}
-                high={state.params.vote_count_lte}
-                onLow={(vote_count_gte) => patchParams({ vote_count_gte })}
-                onHigh={(vote_count_lte) => patchParams({ vote_count_lte })}
-                step="10"
-                min={0}
-                max={5000}
-                formatValue={(value) => (value >= 5000 ? '5000+' : String(value))}
-              />
-              <RangeField
-                label="Runtime"
-                unit="min"
-                error={errorFor('with_runtime')}
-                low={state.params.with_runtime_gte}
-                high={state.params.with_runtime_lte}
-                onLow={(with_runtime_gte) => patchParams({ with_runtime_gte })}
-                onHigh={(with_runtime_lte) => patchParams({ with_runtime_lte })}
-                step="5"
-                min={0}
-                max={300}
-                formatValue={(value) => (value >= 300 ? '300+' : String(value))}
-              />
-              <Field label="Original language">
-                <Select
-                  value={state.params.with_original_language ?? ''}
-                  onChange={(value) =>
-                    patchParams({ with_original_language: value || undefined })
-                  }
-                  placeholder="Any"
-                  options={languageOptions}
-                />
-                {languageOptions.length === 0 && (
-                  <FieldNote>Couldn't load languages.</FieldNote>
+                {errorFor('name') && (
+                  <p className="field-error">
+                    <Icon icon={TriangleAlert} size={16} className="text-danger" />
+                    <span>{errorFor('name')}</span>
+                  </p>
                 )}
-              </Field>
+              </div>
             </div>
 
-            <DateWindow
-              state={state}
-              error={errorFor('within_days')}
-              onMode={(dateMode) => patch({ dateMode })}
-              onParams={patchParams}
-            />
+            <div className="cr">
+              <span className="cr-role type-eyebrow">Movies or series</span>
+              <div className="cr-val">
+                {mode === 'edit' ? (
+                  <span className="type-data text-[15px]">
+                    {state.type === 'movie' ? 'Movie' : 'Series'}{' '}
+                    <span className="aside">
+                      · locked. Duplicate it to make a {state.type === 'movie' ? 'series' : 'movie'}{' '}
+                      version.
+                    </span>
+                  </span>
+                ) : (
+                  <Segmented
+                    ariaLabel="Catalog type"
+                    value={state.type}
+                    onChange={changeType}
+                    options={[
+                      { value: 'movie', label: 'Movie' },
+                      { value: 'series', label: 'Series' },
+                    ]}
+                  />
+                )}
+              </div>
+            </div>
 
-            <CertificationPicker
-              label="Age rating"
-              tip="Ratings differ by country, so pick one first. The slider then sets the lowest and highest rating allowed."
-              countries={activeCertifications}
-              countryNames={countryNames}
-              country={state.params.certification_country}
-              gte={state.params.certification_gte ?? state.params.certification}
-              lte={state.params.certification_lte ?? state.params.certification}
-              error={errorFor('certification_country')}
-              onChange={(update) => patchParams({ ...update, certification: undefined })}
-            />
+            <div className="cr is-switch">
+              <span className="cr-role type-eyebrow">Sharing</span>
+              <div className="cr-val">
+                <Switch
+                  checked={state.isPublic}
+                  onChange={(isPublic) => patch({ isPublic })}
+                  label={
+                    state.isPublic
+                      ? 'Shared, so anyone can import it'
+                      : 'Not shared, only you can use it'
+                  }
+                />
+              </div>
+            </div>
 
-            <WatchProviderPicker
-              type={state.type}
-              params={state.params}
-              error={errorFor('watch_region')}
-              onParams={patchParams}
-            />
+            {isBare && (
+              <p className="ed-fresh">
+                Nothing set yet, so this row would show the most popular{' '}
+                {state.type === 'movie' ? 'movies' : 'series'} overall. Narrow it down below.
+              </p>
+            )}
 
-            <Checkbox
-              checked={Boolean(state.params.randomized)}
-              onChange={(randomized) => patchParams({ randomized: randomized || undefined })}
-              label="Shuffle results"
-              hint="Shows a different set of titles each time the row opens."
-            />
+            {sections.map((section) => (
+              <div key={section.key}>
+                <button
+                  type="button"
+                  id={`sec-head-${section.key}`}
+                  className="sec-head"
+                  aria-expanded={openSection === section.key}
+                  aria-controls={`sec-body-${section.key}`}
+                  onClick={() =>
+                    setOpenSection((current) => (current === section.key ? null : section.key))
+                  }
+                >
+                  <span className="cr-role type-eyebrow">{section.role}</span>
+                  <span className="sec-sum">{section.summary}</span>
+                  <Icon icon={ChevronDown} size={16} className="ico" />
+                </button>
+                <div
+                  id={`sec-body-${section.key}`}
+                  className="sec-body"
+                  hidden={openSection !== section.key}
+                >
+                  {section.body}
+                </div>
+              </div>
+            ))}
+
+            <div className="cr">
+              <span className="cr-role type-eyebrow">Shuffle the results</span>
+              <div className="cr-val ed-line">
+                <Segmented<'off' | 'on'>
+                  ariaLabel="Shuffle the results"
+                  value={state.params.randomized ? 'on' : 'off'}
+                  onChange={(value) => patchParams({ randomized: value === 'on' || undefined })}
+                  options={[
+                    { value: 'off', label: 'Off' },
+                    { value: 'on', label: 'On' },
+                  ]}
+                />
+                <span className="ed-note">{sumShuffle(Boolean(state.params.randomized))}</span>
+              </div>
+            </div>
+
+            {onDelete && (
+              <div className="ed-delete">
+                <button type="button" className="btn-danger-text" onClick={onDelete}>
+                  Delete this catalog
+                </button>
+                <p>{baseline.isPublic ? 'It goes for everyone who imported it.' : "It isn't shared, so only you lose it."}</p>
+              </div>
+            )}
           </div>
+
+          <RecipePreview preview={preview} type={state.type} invalid={recipeInvalid} onRun={runPreview} />
         </div>
+      </div>
 
-        <RecipePreview
-          preview={preview}
-          type={state.type}
-          invalid={recipeInvalid}
-          onRun={runPreview}
-        />
-
-        <SaveError noun="catalog" message={serverError} />
+      <SaveError noun="catalog" message={serverError} />
     </EditorShell>
   )
+}
+
+type SectionKey = 'order' | 'genres' | 'ratings' | 'lang' | 'date' | 'age' | 'watch'
+
+/** Which section a server-mirrored validation error belongs to, so an
+ *  invalid Save can open it. `name` isn't here — it's the one error outside
+ *  every section, on the basics above them. */
+const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
+  sort_by: 'order',
+  vote_average: 'ratings',
+  with_runtime: 'ratings',
+  vote_count: 'ratings',
+  certification_country: 'age',
+  watch_region: 'watch',
+  within_days: 'date',
+}
+
+/** The order Save focuses errors in when more than one applies at once. */
+const ERROR_PRIORITY = [
+  'name',
+  'sort_by',
+  'watch_region',
+  'certification_country',
+  'within_days',
+  'vote_average',
+  'with_runtime',
+  'vote_count',
+]
+
+function roleLabelFor(key: string, isMovie: boolean): string {
+  if (key === 'name') return 'Name'
+  if (key === 'within_days') return isMovie ? 'Release date' : 'First aired'
+  const section = ERROR_SECTION[key]
+  return section ? SECTION_ROLE[section](isMovie) : key
+}
+
+const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
+  order: () => 'Order the row',
+  genres: () => 'Genres',
+  ratings: () => 'Ratings and runtime',
+  lang: () => 'Original language',
+  date: (isMovie) => (isMovie ? 'Release date' : 'First aired'),
+  age: () => 'Age rating',
+  watch: () => 'Where to watch',
+}
+
+/** Builds the seven collapsible sections: each carries the plain-English
+ *  summary its closed head shows, so the whole recipe reads down the page
+ *  without opening anything. Kept as one function rather than inlined JSX so
+ *  the summaries — which need almost every piece of derived state the editor
+ *  already computed — don't have to be threaded through seven separate
+ *  components a second time. */
+function buildSections(args: {
+  state: CatalogFormState
+  sortField: string
+  sortDirection: 'asc' | 'desc'
+  activeGenres: Genre[]
+  withGenres: { ids: number[]; join: 'and' | 'or' }
+  withoutGenres: { ids: number[]; join: 'and' | 'or' }
+  genresExpanded: boolean
+  setGenresExpanded: (expanded: boolean) => void
+  languageOptions: { value: string; label: string }[]
+  languages: Language[]
+  isMovie: boolean
+  dateGte: string | undefined
+  dateLte: string | undefined
+  dateDays: number | undefined
+  activeCertifications: CertificationsByCountry
+  countryNames: CountryLookup
+  activeScale: CertificationsByCountry[string]
+  watchProviderCount: number
+  errorFor: (key: string) => string | undefined
+  patch: (update: Partial<CatalogFormState>) => void
+  patchParams: (update: Partial<TMDBParams>) => void
+}) {
+  const {
+    state,
+    sortField,
+    sortDirection,
+    activeGenres,
+    withGenres,
+    withoutGenres,
+    genresExpanded,
+    setGenresExpanded,
+    languageOptions,
+    languages,
+    isMovie,
+    dateGte,
+    dateLte,
+    dateDays,
+    activeCertifications,
+    countryNames,
+    activeScale,
+    watchProviderCount,
+    errorFor,
+    patch,
+    patchParams,
+  } = args
+
+  return [
+    {
+      key: 'order' as const,
+      role: 'Order the row',
+      summary: sumOrder(state.type, sortField, sortDirection),
+      body: (
+        <>
+          <div className="choices" role="group" aria-label="Order by">
+            {SORT_FIELDS[state.type].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className="choice"
+                aria-pressed={sortField === option.value || (!sortField && option.value === 'popularity')}
+                onClick={() =>
+                  patchParams({ sort_by: serializeSortBy(option.value, sortDirection) })
+                }
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <Segmented
+            ariaLabel="Direction"
+            value={sortDirection}
+            onChange={(direction) =>
+              patchParams({ sort_by: serializeSortBy(sortField || 'popularity', direction) })
+            }
+            options={[
+              { value: 'desc', label: 'High to low' },
+              { value: 'asc', label: 'Low to high' },
+            ]}
+          />
+          <p className="ed-note">
+            This is the order of titles inside the row, not where the row sits on your home
+            screen.
+          </p>
+          {errorFor('sort_by') && <FieldNote tone="danger">{errorFor('sort_by')}</FieldNote>}
+        </>
+      ),
+    },
+    {
+      key: 'genres' as const,
+      role: 'Genres',
+      summary: sumGenres(activeGenres, withGenres.ids, withGenres.join, withoutGenres.ids),
+      body: (
+        <GenreCycler
+          genres={activeGenres}
+          withIds={withGenres.ids}
+          withJoin={withGenres.join}
+          withoutIds={withoutGenres.ids}
+          expanded={genresExpanded}
+          onExpandedChange={setGenresExpanded}
+          onChange={(withIds, withJoin, withoutIds) =>
+            patchParams({
+              with_genres: withIds.length ? serializeGenreList(withIds, withJoin) : undefined,
+              without_genres: withoutIds.length ? serializeGenreList(withoutIds, 'and') : undefined,
+            })
+          }
+        />
+      ),
+    },
+    {
+      key: 'ratings' as const,
+      role: 'Ratings and runtime',
+      summary: sumRatings(
+        state.params.vote_average_gte,
+        state.params.vote_average_lte,
+        state.params.vote_count_gte,
+        state.params.vote_count_lte,
+        state.params.with_runtime_gte,
+        state.params.with_runtime_lte,
+      ),
+      body: (
+        <>
+          <RangeField
+            label="Rating"
+            error={errorFor('vote_average')}
+            low={state.params.vote_average_gte}
+            high={state.params.vote_average_lte}
+            onLow={(vote_average_gte) => patchParams({ vote_average_gte })}
+            onHigh={(vote_average_lte) => patchParams({ vote_average_lte })}
+            step="0.1"
+            min={0}
+            max={10}
+          />
+          <RangeField
+            label="Number of ratings"
+            error={errorFor('vote_count')}
+            low={state.params.vote_count_gte}
+            high={state.params.vote_count_lte}
+            onLow={(vote_count_gte) => patchParams({ vote_count_gte })}
+            onHigh={(vote_count_lte) => patchParams({ vote_count_lte })}
+            step="10"
+            min={0}
+            max={5000}
+            formatValue={(value) => (value >= 5000 ? '5000+' : String(value))}
+          />
+          <RangeField
+            label="Runtime"
+            unit="min"
+            error={errorFor('with_runtime')}
+            low={state.params.with_runtime_gte}
+            high={state.params.with_runtime_lte}
+            onLow={(with_runtime_gte) => patchParams({ with_runtime_gte })}
+            onHigh={(with_runtime_lte) => patchParams({ with_runtime_lte })}
+            step="5"
+            min={0}
+            max={300}
+            formatValue={(value) => (value >= 300 ? '300+' : String(value))}
+          />
+        </>
+      ),
+    },
+    {
+      key: 'lang' as const,
+      role: 'Original language',
+      summary: sumLanguage(state.params.with_original_language, languages),
+      body: (
+        <>
+          <Select
+            value={state.params.with_original_language ?? ''}
+            onChange={(value) => patchParams({ with_original_language: value || undefined })}
+            placeholder="Any language"
+            options={languageOptions}
+          />
+          {languageOptions.length === 0 && <FieldNote>Couldn't load languages.</FieldNote>}
+        </>
+      ),
+    },
+    {
+      key: 'date' as const,
+      role: isMovie ? 'Release date' : 'First aired',
+      summary: sumDate(state.type, state.dateMode, dateGte, dateLte, dateDays),
+      body: (
+        <DateWindow
+          state={state}
+          error={errorFor('within_days')}
+          onMode={(dateMode) => patch({ dateMode })}
+          onParams={patchParams}
+        />
+      ),
+    },
+    {
+      key: 'age' as const,
+      role: 'Age rating',
+      summary: sumAge(
+        state.params.certification_country,
+        countryNames,
+        state.params.certification_gte ?? state.params.certification,
+        state.params.certification_lte ?? state.params.certification,
+        activeScale,
+      ),
+      body: (
+        <CertificationPicker
+          label="Age rating"
+          tip="Ratings differ by country, so pick one first. The slider then sets the lowest and highest rating allowed."
+          countries={activeCertifications}
+          countryNames={countryNames}
+          country={state.params.certification_country}
+          gte={state.params.certification_gte ?? state.params.certification}
+          lte={state.params.certification_lte ?? state.params.certification}
+          error={errorFor('certification_country')}
+          onChange={(update) => patchParams({ ...update, certification: undefined })}
+        />
+      ),
+    },
+    {
+      key: 'watch' as const,
+      role: 'Where to watch',
+      summary: sumWatch(state.params.watch_region, countryNames, watchProviderCount),
+      body: (
+        <WatchProviderPicker
+          type={state.type}
+          params={state.params}
+          error={errorFor('watch_region')}
+          onParams={patchParams}
+        />
+      ),
+    },
+  ]
 }
 
 /**
@@ -413,33 +742,37 @@ function DateWindow({
   onParams: (update: Partial<TMDBParams>) => void
 }) {
   const isMovie = state.type === 'movie'
-  const label = isMovie ? 'Release date' : 'First aired'
   const gte = isMovie ? state.params.primary_release_date_gte : state.params.first_air_date_gte
   const lte = isMovie ? state.params.primary_release_date_lte : state.params.first_air_date_lte
   const days = isMovie ? state.params.released_within_days : state.params.aired_within_days
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* The mode toggle sits beside its label rather than at the far edge of
-          the column: pushed apart by a `flex-1` label the two stopped reading
-          as one control. Same for Genres below. */}
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="type-eyebrow">{label}</label>
-        <Segmented
-          ariaLabel={`${label} mode`}
-          value={state.dateMode}
-          onChange={onMode}
-          options={[
-            { value: 'any', label: 'Any' },
-            { value: 'fixed', label: 'Range' },
-            { value: 'rolling', label: 'Recent' },
-          ]}
-        />
-      </div>
+    <>
+      <Segmented
+        ariaLabel="Date window"
+        value={state.dateMode}
+        onChange={onMode}
+        options={[
+          { value: 'any', label: 'Any time' },
+          { value: 'fixed', label: 'Fixed dates' },
+          { value: 'rolling', label: 'Recent' },
+        ]}
+      />
+
+      {state.dateMode === 'any' && (
+        <p className="ed-note">
+          No date limit. Choose Recent for a window that moves with today, like "the last 90
+          days".
+        </p>
+      )}
 
       {state.dateMode === 'fixed' && (
-        <div className="flex items-center gap-2">
+        <div className="ed-line">
+          <label className="cr-role type-eyebrow" htmlFor="ed-from">
+            From
+          </label>
           <input
+            id="ed-from"
             type="date"
             value={gte ?? ''}
             onChange={(event) =>
@@ -449,10 +782,13 @@ function DateWindow({
                   : { first_air_date_gte: event.target.value || undefined },
               )
             }
-            className="field type-data w-full max-w-[var(--w-date)]"
+            className="field type-data"
           />
-          <span className="text-dimmer shrink-0 text-[12.5px]">–</span>
+          <label className="cr-role type-eyebrow" htmlFor="ed-to">
+            To
+          </label>
           <input
+            id="ed-to"
             type="date"
             value={lte ?? ''}
             onChange={(event) =>
@@ -462,7 +798,7 @@ function DateWindow({
                   : { first_air_date_lte: event.target.value || undefined },
               )
             }
-            className="field type-data w-full max-w-[var(--w-date)]"
+            className="field type-data"
           />
         </div>
       )}
@@ -477,41 +813,22 @@ function DateWindow({
           }
         />
       )}
-    </div>
+    </>
   )
 }
 
 /**
- * The windows people actually ask for, as a row of presets rather than a box
- * that wants a number of days.
- *
- * "90" is not a thing anyone thinks in — they think "the last three months" —
- * and a bare number field made the user do the arithmetic and then guess
- * whether they'd got it right. Each preset is still just `_within_days` on the
- * wire, so nothing about the recipe or its validation changes; only the way
- * the number is arrived at.
+ * The windows people actually ask for, as a row of preset choice buttons
+ * (`DATE_PRESETS`, `summary.ts`) rather than a box that wants a number of
+ * days — "90" is not a thing anyone thinks in. Each preset is still just
+ * `_within_days` on the wire; only the way the number is arrived at differs.
+ * "Upcoming" is the same rolling filter closed up to yesterday: `_within_days`
+ * becomes a `.gte` and nothing else, so a one-day window is "dated yesterday
+ * or later" — over a discover page sorted by popularity, the unreleased
+ * slate. It recalculates daily like every other preset, unlike a fixed `gte`
+ * pinned to the day the catalog was saved, which would read as "upcoming" for
+ * one day and then quietly rot.
  */
-const DATE_PRESETS: { days: number; label: string }[] = [
-  { days: 30, label: '30 days' },
-  { days: 90, label: '90 days' },
-  { days: 182, label: '6 months' },
-  { days: 365, label: '1 year' },
-]
-
-/**
- * Upcoming is the same rolling filter with the window closed up to yesterday.
- *
- * `_within_days` becomes a `.gte` and nothing else — there is no upper bound —
- * so a one-day window is "dated yesterday or later", which over a discover
- * page sorted by popularity is the unreleased slate. It is a day wider than
- * the word promises, and it recalculates daily like every other preset; the
- * alternative, a fixed `gte` pinned to the day the catalog was saved, would
- * read as "upcoming" for one day and then quietly rot.
- */
-const UPCOMING_DAYS = 1
-
-const DAYS_PER_YEAR = 365
-
 function RollingWindow({
   isMovie,
   days,
@@ -543,53 +860,47 @@ function RollingWindow({
     days !== undefined && !isPreset && !isUpcoming && customYears === undefined ? days : undefined
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
+    <>
+      <div className="choices" role="group" aria-label="How recent">
         {DATE_PRESETS.map((option) => (
-          <PresetChip
+          <button
             key={option.days}
-            label={option.label}
-            selected={option.days === days}
+            type="button"
+            className="choice"
+            aria-pressed={option.days === days}
             onClick={() => onDays(option.days)}
-          />
+          >
+            {option.label}
+          </button>
         ))}
-        <PresetChip
-          label="Upcoming"
-          selected={isUpcoming}
-          onClick={() => onDays(UPCOMING_DAYS)}
-        />
+        <button type="button" className="choice" aria-pressed={isUpcoming} onClick={() => onDays(UPCOMING_DAYS)}>
+          Upcoming
+        </button>
         {oddDays !== undefined && (
-          <PresetChip
-            label={`${oddDays} days`}
-            selected
-            onClick={() => onDays(oddDays)}
-          />
+          <button type="button" className="choice" aria-pressed onClick={() => onDays(oddDays)}>
+            {oddDays} days
+          </button>
         )}
+      </div>
 
-        <span className="bg-line mx-1 h-4 w-px shrink-0" aria-hidden="true" />
-
-        <label className="flex items-center gap-1.5">
-          <span className="sr-only">Custom window, in years</span>
-          <input
-            type="number"
-            min={1}
-            max={50}
-            value={customYears ?? ''}
-            placeholder="#"
-            onChange={(event) => {
-              const years = Number(event.target.value)
-              onDays(
-                event.target.value === '' || years < 1
-                  ? undefined
-                  : years * DAYS_PER_YEAR,
-              )
-            }}
-            className={`field type-data w-[3.25rem] px-2 py-1 text-center text-[12px] pointer-coarse:w-[4rem] pointer-coarse:text-[16px] ${
-              customYears !== undefined ? 'border-dim text-ink' : ''
-            }`}
-          />
-          <span className="type-data text-dimmer text-[10.5px]">years</span>
+      <div className="ed-line">
+        <label className="cr-role type-eyebrow" htmlFor="ed-years">
+          Last
         </label>
+        <input
+          id="ed-years"
+          type="number"
+          min={1}
+          max={50}
+          value={customYears ?? ''}
+          placeholder="#"
+          onChange={(event) => {
+            const years = Number(event.target.value)
+            onDays(event.target.value === '' || years < 1 ? undefined : years * DAYS_PER_YEAR)
+          }}
+          className="field type-data"
+        />
+        <span>years</span>
       </div>
 
       {error && <FieldNote tone="danger">{error}</FieldNote>}
@@ -598,44 +909,12 @@ function RollingWindow({
           server-side per request, so this moves with the calendar — which is
           the one thing the chip's own label can't say. */}
       {days !== undefined && !error && (
-        <FieldNote>
+        <p className="ed-dateline">
           {isUpcoming
             ? `${isMovie ? 'Released' : 'Airing'} from ${formatWindowStart(UPCOMING_DAYS)} onward, updated daily.`
             : `${isMovie ? 'Released' : 'Aired'} since ${formatWindowStart(days)}, updated daily.`}
-        </FieldNote>
+        </p>
       )}
-    </div>
+    </>
   )
-}
-
-function PresetChip({
-  label,
-  selected,
-  onClick,
-}: {
-  label: string
-  selected: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={`rounded-[2px] border px-2.5 py-1 text-[11px] whitespace-nowrap transition-colors pointer-coarse:py-2 ${
-        selected
-          ? 'bg-raised-hi border-dim text-ink'
-          : 'border-line text-dim hover:border-dim hover:text-ink'
-      }`}
-    >
-      {label}
-    </button>
-  )
-}
-
-/** The date the server's `daysAgo` would produce for this window today. */
-function formatWindowStart(days: number): string {
-  const start = new Date()
-  start.setDate(start.getDate() - days)
-  return start.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 }

@@ -1,20 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
-import { tmdbKind } from '@/api'
-import { TypeBar } from '@/components/TypeBar'
-import { CollectionMeta } from '@/features/preview/CollectionMeta'
-import { FolderPage } from '@/features/preview/FolderPage'
-import type { PreviewChrome } from '@/features/preview/FolderPage'
-import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
-import { CONTENT_TILE_SHAPE, FolderTile, Note, TileStrip, TilesNote, noTiles } from '@/features/preview/tiles'
-import type { CatalogTiles } from '@/features/preview/tiles'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { plural } from '@/lib/plural'
+import { noTiles } from '@/features/preview/tiles'
 import { useHomeSelection } from './useHomeSelection'
 import { useCatalogTiles } from './useCatalogTiles'
 import { buildHomePreview, findFolderPage } from './preview'
 import type { FolderPageTarget, HomeScreenPreview, PreviewRow } from './preview'
+import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from './tv'
 
 /**
- * The Home pane's second view: the same pending state, drawn as the shape of
- * the home screen it will become. Reorder in List, flip to here, see it move.
+ * The Home pane's second view: the same pending state, drawn as the framed
+ * 16:9 picture DESIGN.md's "TV preview (signature)" specs — Roboto inside
+ * the frame, Jost around it. Reorder in List, flip to here, see it move.
  *
  * **Two levels, matching the real screen.** Home is one page — pinned
  * collections, then catalog rows, then the rest of the collections. A
@@ -24,6 +20,11 @@ import type { FolderPageTarget, HomeScreenPreview, PreviewRow } from './preview'
  *
  * **Read-only by construction.** The one interaction — opening a folder — is
  * navigation within the mock, not an edit. Every edit lives in the List view.
+ *
+ * **Uno pins nothing onto the screen — the Clean Preview amendment.** Every
+ * caveat this view has to state (the pending count, how to get back to home)
+ * is Uno's own words *around* the frame, in Jost; the picture itself carries
+ * only what the real TV would show. See `tv.tsx` for what that drops.
  */
 export function HomePreview() {
   const home = useHomeSelection()
@@ -39,90 +40,154 @@ export function HomePreview() {
     [home.catalogs, home.collections, home.catalogById, home.collectionById],
   )
 
-  // Which folder page is open; `null` is home itself. Held as ids, not indices,
-  // so removing the collection or folder in the List view falls back to home
-  // rather than pointing at whatever now sits in the same slot —
-  // `findFolderPage` returns `null` for a target that no longer resolves.
+  const { page, openFolder, closeFolder } = useFolderPage(preview)
+
+  if (preview.isEmpty) return <EmptyHomeScreen />
+
+  return page ? (
+    <FolderPageView collection={page.collection} folder={page.folder} onBack={closeFolder} />
+  ) : (
+    <HomeScreenView preview={preview} onOpenFolder={openFolder} pendingCount={home.pendingCount} />
+  )
+}
+
+/**
+ * Which folder page is open, and the browser history entry that makes the
+ * back arrow, Escape and the browser's own Back all do the same thing — the
+ * Back Like the Remote amendment. Held as ids, not indices, so removing the
+ * collection or folder in the List view falls back to home rather than
+ * pointing at whatever now sits in the same slot.
+ */
+function useFolderPage(preview: HomeScreenPreview) {
   const [target, setTarget] = useState<FolderPageTarget | null>(null)
   const page = target ? findFolderPage(preview, target) : null
 
-  // Clear the target too, not just the rendered page: an unresolvable target
-  // left in state reopens the page if the same id comes back (remove a
-  // collection in List, add it again).
+  // Whether opening the current target pushed a history entry. A sandboxed
+  // frame can throw on `pushState`; Escape and the in-screen arrow still work
+  // without it, only the browser's own Back doesn't.
+  const pushed = useRef(false)
+
+  const openFolder = useCallback((next: FolderPageTarget) => {
+    try {
+      window.history.pushState({ unoFolder: true }, '')
+      pushed.current = true
+    } catch {
+      pushed.current = false
+    }
+    setTarget(next)
+  }, [])
+
+  // The one way this component asks to leave: the in-screen back arrow or
+  // Escape. If opening pushed an entry, consuming it via `history.back()` is
+  // what makes the browser's own Back symmetric with these — the `popstate`
+  // listener below does the actual close once that navigation lands.
+  const closeFolder = useCallback(() => {
+    if (pushed.current) {
+      window.history.back()
+    } else {
+      setTarget(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    function onPopState() {
+      if (pushed.current) {
+        pushed.current = false
+        setTarget(null)
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
+    if (target === null) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeFolder()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [target, closeFolder])
+
+  // Leaving any other way — the target stopped resolving (removed in List
+  // view), or this view unmounts entirely (the List | Preview switch, or an
+  // editor opens) — still has to consume a pushed entry, or a later physical
+  // Back press does nothing: the history stack would hold a dead entry this
+  // component is no longer listening for.
   useEffect(() => {
     if (target !== null && page === null) setTarget(null)
   }, [target, page])
 
-  if (preview.isEmpty) return <EmptyHomeScreen />
+  useEffect(() => {
+    if (target === null && pushed.current) {
+      pushed.current = false
+      window.history.back()
+    }
+  }, [target])
 
-  return (
-    <div className="border-line bg-raised flex flex-col overflow-hidden rounded-[2px] border">
-      <div className="bg-ground min-h-[280px] p-5">
-        {page ? (
-          <HomeFolderPage
-            collection={page.collection}
-            folder={page.folder}
-            onBack={() => setTarget(null)}
-          />
-        ) : (
-          <HomeScreen preview={preview} onOpenFolder={setTarget} />
-        )}
-      </div>
-    </div>
-  )
+  useEffect(() => {
+    return () => {
+      if (pushed.current) {
+        pushed.current = false
+        window.history.back()
+      }
+    }
+  }, [])
+
+  return { target, page, openFolder, closeFolder }
 }
 
-/**
- * The shared folder page, fetched and annotated the way Home needs it.
- *
- * Every catalog in the folder is fetched on open: both layouts need the same
- * set, so switching tabs inside never triggers a new call.
- */
-function HomeFolderPage({
+function FolderPageView({
   collection,
   folder,
   onBack,
 }: {
-  collection: PreviewCollection
-  folder: PreviewFolder
+  collection: NonNullable<ReturnType<typeof findFolderPage>>['collection']
+  folder: NonNullable<ReturnType<typeof findFolderPage>>['folder']
   onBack: () => void
 }) {
   const tiles = useCatalogTiles(folder.sources.map((source) => source.id))
-  const chrome = useHomeChrome()
+
   return (
-    <FolderPage
-      collection={collection}
-      folder={folder}
-      tiles={tiles}
-      chrome={chrome}
-      onBack={onBack}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <p className="type-data text-dim m-0 text-[11px]">
+          {collection.title || 'Untitled collection'} · <b className="text-ink">{folder.title || 'Untitled folder'}</b>
+        </p>
+        <span className="type-data text-dimmer text-[10.5px]">{FOLDER_LAYOUT_LABEL[collection.viewMode]}</span>
+      </div>
+
+      <div className="tv-bezel">
+        <div
+          className="tv-screen"
+          tabIndex={0}
+          role="region"
+          aria-label={`${folder.title || 'Untitled folder'}, a folder in ${collection.title || 'Untitled collection'}, as your TV shows it`}
+        >
+          <TVFolderPage collection={collection} folder={folder} tiles={tiles} onBack={onBack} />
+        </div>
+      </div>
+
+      <p className="type-data text-dimmer m-0 text-[10px] pointer-coarse:hidden">
+        The arrow beside the folder name goes back to the home screen, like Back on the remote. So
+        do Esc and your browser's Back.
+      </p>
+      <p className="type-data text-dimmer m-0 hidden text-[10px] pointer-coarse:block">
+        The arrow beside the folder name goes back to the home screen, like Back on the remote. So
+        does your phone's Back.
+      </p>
+    </div>
   )
 }
 
-/** Home can say something about a catalog the builder can't: that a row still
- *  on the home screen has since left the library. */
-function useHomeChrome(): PreviewChrome {
-  const home = useHomeSelection()
-  return {
-    isOwned: home.isOwned,
-    note: (id) => <DetachedNote id={id} />,
-  }
-}
-
-/**
- * Home, in the order the screen renders it: pinned collection rows above
- * everything, then the catalog rows, then the remaining collection rows.
- *
- * Discover-only catalogs come last and outside the three bands, because they
- * are precisely the thing that is *not* on this screen.
- */
-function HomeScreen({
+function HomeScreenView({
   preview,
   onOpenFolder,
+  pendingCount,
 }: {
   preview: HomeScreenPreview
   onOpenFolder: (target: FolderPageTarget) => void
+  pendingCount: number
 }) {
   const nothingOnHome =
     preview.rows.length === 0 &&
@@ -135,121 +200,60 @@ function HomeScreen({
   const tiles = useCatalogTiles(preview.rows.map((row) => row.id))
 
   return (
-    <div className="flex flex-col gap-7">
-      {preview.pinnedCollections.map((collection) => (
-        <CollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
-      ))}
-
-      {preview.rows.map((row) => (
-        <CatalogRow key={row.id} row={row} tiles={tiles.get(row.id) ?? noTiles()} />
-      ))}
-
-      {preview.unpinnedCollections.map((collection) => (
-        <CollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
-      ))}
-
-      {nothingOnHome && (
-        <p className="type-data text-dimmer m-0 text-[11px]">
-          Nothing on home — every selected catalog is set to Discover only.
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <p className="type-data text-dim m-0 max-w-[60ch] text-[11px]">
+          Your TV shows pinned collections first, then catalog rows, then your other collections.
+          Nothing here can be changed; open a folder to look inside it.
         </p>
-      )}
-
-      {preview.discoverOnly.length > 0 && <DiscoverOnly rows={preview.discoverOnly} />}
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
-/* Home — collection rows                                                     */
-/* -------------------------------------------------------------------------- */
-
-/**
- * A collection is **one row on home**, and its tiles are its folders — not its
- * content. Nothing here draws a catalog: a folder's tile is its cover emoji,
- * its title, and its own `tile_shape`.
- *
- * That last one is a folder field describing the folder's *own* tile, so
- * folders in one collection can disagree and the row can be ragged. Drawn
- * as-is — the raggedness is part of what is being previewed, not a glitch to
- * normalise away.
- */
-function CollectionRow({
-  collection,
-  onOpenFolder,
-}: {
-  collection: PreviewCollection
-  onOpenFolder: (target: FolderPageTarget) => void
-}) {
-  const home = useHomeSelection()
-
-  return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2.5">
-        <TypeBar
-          kind="collection"
-          owned={home.isOwned(collection.id)}
-          className="h-[13px] self-auto"
-        />
-        <h3 className="m-0 text-[13px] font-medium">{collection.title}</h3>
-        {collection.pinned && <Note>pinned to the top of home</Note>}
-        <DetachedNote id={collection.id} />
+        {pendingCount > 0 && (
+          <span className="text-pending type-data text-[10.5px]">
+            Includes the {pendingCount} {plural(pendingCount, 'change')} not on your TV yet.
+          </span>
+        )}
       </div>
 
-      {/* Two distinct failures. `missing` means nothing in this browser can
-          describe the collection at all — neither the library nor the selection
-          response has it — so there is no layout to draw. Detached means the
-          selection response still carries it (so it renders, and still works on
-          the TV) but the library no longer lists it. */}
-      {collection.missing ? (
-        <p className="type-data text-dimmer m-0 text-[11px]">
-          This collection is no longer available, so there's nothing to draw. It stays on your home
-          screen until you remove it in the List view.
-        </p>
-      ) : collection.folders.length === 0 ? (
-        <p className="type-data text-dimmer m-0 text-[11px]">
-          This collection has no folders, so its row is empty.
-        </p>
-      ) : (
-        // Scrolls rather than clips, matching the same row in the collection
-        // builder. A folder past the pane's edge is a folder you can open on a
-        // TV, so it has to be reachable here too — and narrow enough, the
-        // second one was already gone.
-        <div className="flex items-end gap-3 overflow-x-auto overscroll-x-contain">
-          {collection.folders.map((folder) => (
-            <FolderTile
-              key={folder.id}
-              folder={folder}
-              onOpen={() => onOpenFolder({ collectionId: collection.id, folderId: folder.id })}
+      {nothingOnHome ? (
+        <>
+          <p className="type-data text-dimmer m-0 text-[11px]">
+            Nothing on home — every selected catalog is set to Discover only.
+          </p>
+          <div className="tv-bezel">
+            <div
+              className="tv-screen"
+              role="img"
+              aria-label="Preview of your TV home screen, with no rows yet"
             />
-          ))}
+          </div>
+        </>
+      ) : (
+        <div className="tv-bezel">
+          <div
+            className="tv-screen"
+            tabIndex={0}
+            role="region"
+            aria-label="Preview of your TV home screen. Scroll inside it to see every row."
+          >
+            {preview.pinnedCollections.map((collection) => (
+              <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
+            ))}
+            {preview.rows.map((row) => (
+              <TVCatalogRow key={row.id} row={row} tiles={tiles.get(row.id) ?? noTiles()} />
+            ))}
+            {preview.unpinnedCollections.map((collection) => (
+              <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
+            ))}
+          </div>
         </div>
       )}
 
-      <CollectionMeta collection={collection} />
-    </section>
-  )
-}
+      <p className="type-data text-dimmer m-0 text-[10px]">
+        The screen scrolls, like your TV. Poster tiles are placeholders with the real titles under
+        them.
+      </p>
 
-/* -------------------------------------------------------------------------- */
-/* Home — catalog rows                                                        */
-/* -------------------------------------------------------------------------- */
-
-function CatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTiles }) {
-  const home = useHomeSelection()
-
-  return (
-    <section className="flex flex-col gap-2">
-      {/* `DetachedNote` and `TilesNote` can both fire on one row — a catalog
-          whose owner made it private *and* whose fetch failed — so the header
-          wraps rather than overflowing in a narrow pane. */}
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <TypeBar kind={row.type} owned={home.isOwned(row.id)} className="h-[13px] self-auto" />
-        <h3 className="m-0 min-w-0 truncate text-[13px] font-medium">{row.name}</h3>
-        <DetachedNote id={row.id} />
-        <TilesNote tiles={tiles} />
-      </div>
-      <TileStrip shape={CONTENT_TILE_SHAPE} tiles={tiles} kind={tmdbKind(row.type)} />
-    </section>
+      {preview.discoverOnly.length > 0 && <DiscoverOnly rows={preview.discoverOnly} />}
+    </div>
   )
 }
 
@@ -257,23 +261,31 @@ function CatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTiles }) {
  * `show_in_home = false` means "stay in Discover, don't take a row on home".
  * `buildManifest` (`internal/addon/addon.go`) enforces this by marking the
  * catalog's genre filter `isRequired`, so these rows are a genuine omission
- * from the home screen, not just from this preview.
+ * from the home screen, not just from this preview. Listed beneath the
+ * frame, never drawn as a TV row.
  */
 function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
   const home = useHomeSelection()
-
   return (
     <section className="border-line flex flex-col gap-2 border-t pt-4">
       <div className="flex items-baseline gap-3">
-        <span className="type-eyebrow">Discover only</span>
-        <span className="type-data text-dimmer text-[10px]">no home row</span>
+        <span className="type-eyebrow">Not on home</span>
       </div>
       <div className="flex flex-col gap-1">
         {rows.map((row) => (
-          <div key={row.id} className="flex items-center gap-2.5 opacity-55">
-            <TypeBar kind={row.type} owned={home.isOwned(row.id)} className="h-[11px] self-auto" />
+          <div key={row.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-dim truncate text-[12px]">{row.name}</span>
-            <DetachedNote id={row.id} />
+            <span className="type-data text-dimmer text-[10.5px]">
+              · in Discover only, so not a row on the home screen
+            </span>
+            {home.isDetached(row.id) && (
+              <span
+                className="type-data text-series text-[10.5px]"
+                title="Its owner deleted it or made it private. It still works on your home screen, but removing it here can't be undone."
+              >
+                · not in library
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -282,30 +294,13 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
 }
 
 /**
- * "Not in library" is **not** the same question as "did this row resolve".
- * `catalogById` is assembled from the selection response *and* the library, so
- * a row whose owner has made it private since it was selected still resolves —
- * the selection endpoint joins through `profile_catalogs` with no visibility
- * filter. Hence `isDetached`, in the List view's wording: the two views must
- * not disagree about the same row.
- */
-function DetachedNote({ id }: { id: string }) {
-  const home = useHomeSelection()
-  if (!home.isDetached(id)) return null
-
-  return (
-    <span
-      className="type-data text-series shrink-0 text-[10px]"
-      title="Its owner deleted it or made it private. It still works on your home screen, but removing it here can't be undone."
-    >
-      · not in library
-    </span>
-  )
-}
-
-/**
- * An empty home screen renders SMPTE colour bars — television's own artifact
- * for "nothing to show". The only place the palette goes to full amplitude.
+ * First run, nothing selected anywhere — not merely "no rows on home", which
+ * `HomeScreenView`'s own empty case reports. The tab still works and shows
+ * its own picture, per DESIGN.md's empty-state list; this one Uno moment
+ * predates the redesign and stays: SMPTE colour bars, television's own
+ * artifact for "nothing to show", now filling the real TV screen instead of
+ * a plain panel. `docs/frontend.md`'s Visual direction section has the
+ * rationale.
  */
 function EmptyHomeScreen() {
   const bars = [
@@ -319,18 +314,28 @@ function EmptyHomeScreen() {
   ]
 
   return (
-    <div className="border-line relative overflow-hidden rounded-[2px] border">
-      <div aria-hidden="true" className="flex h-[280px]">
-        {bars.map((color) => (
-          <span key={color} className="flex-1" style={{ background: color }} />
-        ))}
+    <div className="flex flex-col gap-3">
+      <p className="type-data text-dim m-0 max-w-[60ch] text-[11px]">
+        Nothing is on your home screen yet, so there's nothing to show. Add rows and they appear
+        here the way your TV shows them.
+      </p>
+      <div className="tv-bezel">
+        <div
+          className="tv-screen relative"
+          role="img"
+          aria-label="Preview of your TV home screen, with no rows yet"
+        >
+          <div aria-hidden="true" className="absolute inset-0 flex">
+            {bars.map((color) => (
+              <span key={color} className="flex-1" style={{ background: color }} />
+            ))}
+          </div>
+          <p className="type-display bg-ground text-ink absolute inset-x-0 top-1/2 m-0 -translate-y-1/2 px-5 py-3 text-center text-[13px]">
+            No signal — nothing on your home screen yet
+          </p>
+        </div>
       </div>
-      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2">
-        <p className="type-display bg-ground text-ink m-0 px-5 py-3 text-center text-[13px]">
-          No signal — nothing on your home screen yet
-        </p>
-      </div>
-      <p className="type-data text-dimmer border-line m-0 border-t px-5 py-2 text-[10px]">
+      <p className="type-data text-dimmer m-0 text-[10px]">
         Add catalogs and collections from the sidebar, then push.
       </p>
     </div>

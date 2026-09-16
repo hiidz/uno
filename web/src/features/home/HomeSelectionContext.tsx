@@ -4,7 +4,9 @@ import { useQueries } from '@tanstack/react-query'
 import { fetchCatalogSelection, fetchCollectionSelection, queryKeys } from '@/api'
 import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
-import { applyOrder, countPendingChanges, EMPTY_HOME } from './pending'
+import { computeHomeChanges } from './changes'
+import type { HomeChange } from './changes'
+import { EMPTY_HOME, moveWithinBand, reorderWithinBand } from './pending'
 import type { HomeCatalogEntry, HomeState } from './pending'
 
 export interface HomeSelection {
@@ -32,10 +34,19 @@ export interface HomeSelection {
    *  rule the rail uses — a selected row absent from the library isn't yours. */
   isOwned: (id: string) => boolean
 
+  /** `pin_to_top`, read through `collectionById` — a property of the
+   *  collection itself, set in its own editor, never edited from this pane.
+   *  Drives which of the two collection bands a row renders in. */
+  isPinned: (id: string) => boolean
+
   /** Genre lookups, so the Home pane can render recipes without calling
    *  `useLibrary` again and re-deriving the whole dataset. */
   genres: ReturnType<typeof useLibrary>['genres']
 
+  /** Named, per-row edits waiting to be pushed — see `computeHomeChanges`.
+   *  `pendingCount` is this list's length, so the header's count and the list
+   *  of changes it opens can never disagree about how many there are. */
+  changes: HomeChange[]
   pendingCount: number
   isDirty: boolean
 
@@ -56,10 +67,19 @@ export interface HomeSelection {
   addCatalog: (id: string) => void
   removeCatalog: (id: string) => void
   toggleShowInHome: (id: string) => void
-  reorderCatalogs: (orderedIds: string[]) => void
+  /** Reorders the shown (home-row) catalogs only — Discover-only catalogs
+   *  keep their existing relative order, off to one side. */
+  reorderCatalogs: (orderedShownIds: string[]) => void
+  /** Moves a catalog one step within its own band: shown, or Discover-only. */
+  moveCatalog: (id: string, direction: -1 | 1) => void
   addCollection: (id: string) => void
   removeCollection: (id: string) => void
-  reorderCollections: (orderedIds: string[]) => void
+  /** Reorders one collection band — pinned or not — leaving the other
+   *  untouched. A row moves only within its own band, matching the running
+   *  order's three groups. */
+  reorderCollections: (band: 'pinned' | 'unpinned', orderedBandIds: string[]) => void
+  /** Moves a collection one step within its own band (pinned or not). */
+  moveCollection: (id: string, direction: -1 | 1) => void
 }
 
 export const HomeSelectionContext = createContext<HomeSelection | null>(null)
@@ -143,8 +163,17 @@ export function HomeSelectionProvider({
     [library.catalogs, library.collections],
   )
 
+  const isPinned = useCallback(
+    (id: string) => collectionById.get(id)?.pin_to_top ?? false,
+    [collectionById],
+  )
+
   const state = current ?? EMPTY_HOME
-  const pendingCount = useMemo(() => countPendingChanges(baseline, state), [baseline, state])
+  const changes = useMemo(
+    () => computeHomeChanges({ baseline, current: state, catalogById, collectionById, isPinned }),
+    [baseline, state, catalogById, collectionById, isPinned],
+  )
+  const pendingCount = changes.length
 
   const edit = useCallback((update: (previous: HomeState) => HomeState) => {
     setCurrent((previous) => (previous === null ? previous : update(previous)))
@@ -163,16 +192,29 @@ export function HomeSelectionProvider({
       // everything would look detached.
       isDetached: (id: string) => !library.isLoading && !libraryIds.has(id),
       isOwned: (id: string) => ownedIds.has(id),
+      isPinned,
       genres: library.genres,
 
+      changes,
       pendingCount,
     }),
-    [catalogById, collectionById, library.isLoading, libraryIds, ownedIds, library.genres, pendingCount],
+    [
+      catalogById,
+      collectionById,
+      library.isLoading,
+      libraryIds,
+      ownedIds,
+      isPinned,
+      library.genres,
+      changes,
+      pendingCount,
+    ],
   )
 
-  // Every one of these only closes over `edit`, which is itself stable for
-  // the life of the provider — so this whole cluster needs recomputing
-  // exactly once, not on every render that changes `state`.
+  // Every one of these only closes over `edit` (plus, for the band-aware ones,
+  // `isPinned`) — stable for the life of the provider — so this whole cluster
+  // needs recomputing only when `isPinned` itself changes, not on every render
+  // that changes `state`.
   const editFns = useMemo(
     () => ({
       addCatalog: (id: string) =>
@@ -195,8 +237,16 @@ export function HomeSelectionProvider({
             c.id === id ? { ...c, showInHome: !c.showInHome } : c,
           ),
         })),
-      reorderCatalogs: (orderedIds: string[]) =>
-        edit((previous) => ({ ...previous, catalogs: applyOrder(previous.catalogs, orderedIds) })),
+      reorderCatalogs: (orderedShownIds: string[]) =>
+        edit((previous) => ({
+          ...previous,
+          catalogs: reorderWithinBand(previous.catalogs, (c) => c.showInHome, orderedShownIds),
+        })),
+      moveCatalog: (id: string, direction: -1 | 1) =>
+        edit((previous) => ({
+          ...previous,
+          catalogs: moveWithinBand(previous.catalogs, (c) => c.showInHome, id, direction),
+        })),
 
       addCollection: (id: string) =>
         edit((previous) =>
@@ -209,16 +259,35 @@ export function HomeSelectionProvider({
           ...previous,
           collections: previous.collections.filter((c) => c !== id),
         })),
-      reorderCollections: (orderedIds: string[]) =>
-        edit((previous) => ({
-          ...previous,
-          collections: applyOrder(
-            previous.collections.map((id) => ({ id })),
-            orderedIds,
-          ).map((entry) => entry.id),
-        })),
+      reorderCollections: (band: 'pinned' | 'unpinned', orderedBandIds: string[]) =>
+        edit((previous) => {
+          const inBand = (id: string) => (band === 'pinned' ? isPinned(id) : !isPinned(id))
+          const asEntries = previous.collections.map((id) => ({ id }))
+          return {
+            ...previous,
+            collections: reorderWithinBand(
+              asEntries,
+              (entry) => inBand(entry.id),
+              orderedBandIds,
+            ).map((entry) => entry.id),
+          }
+        }),
+      moveCollection: (id: string, direction: -1 | 1) =>
+        edit((previous) => {
+          const pinned = isPinned(id)
+          const asEntries = previous.collections.map((cid) => ({ id: cid }))
+          return {
+            ...previous,
+            collections: moveWithinBand(
+              asEntries,
+              (entry) => isPinned(entry.id) === pinned,
+              id,
+              direction,
+            ).map((entry) => entry.id),
+          }
+        }),
     }),
-    [edit],
+    [edit, isPinned],
   )
 
   const value = useMemo<HomeSelection>(

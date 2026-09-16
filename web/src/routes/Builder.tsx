@@ -8,7 +8,7 @@ import { Workspace } from '@/features/builder/Workspace'
 import { HomeSelectionProvider } from '@/features/home/HomeSelectionContext'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { useUnloadGuard } from '@/features/home/useUnloadGuard'
-import { AddonURLButton, PushBanner, PushButton } from '@/features/push/PushControls'
+import { AddonURLButton, ChangesStrip, PushBanner, PushButton } from '@/features/push/PushControls'
 import { usePush } from '@/features/push/usePush'
 import { pluralCount } from '@/lib/plural'
 
@@ -66,6 +66,7 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
   const editor = useEditorGuard()
   const push = usePush(profile.profileIndex)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
+  const [changesOpen, setChangesOpen] = useState(false)
   const stickyRef = useRef<HTMLDivElement>(null)
 
   usePublishedHeaderHeight(stickyRef)
@@ -141,7 +142,7 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
               of room for is absorbed by the chip, not taken out of the status
               and the action. */}
           <div className="ml-auto flex shrink-0 items-center gap-3 lg:gap-4">
-            <PendingIndicator />
+            <PendingIndicator open={changesOpen} onToggle={() => setChangesOpen((o) => !o)} />
             {profile.manifestURL && (
               <AddonURLButton url={profile.manifestURL} className="hidden lg:block" />
             )}
@@ -149,6 +150,11 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
           </div>
         </header>
 
+        <ChangesStrip
+          changes={home.changes}
+          open={changesOpen && home.isDirty}
+          onHide={() => setChangesOpen(false)}
+        />
         <PushBanner {...push} />
       </div>
 
@@ -182,8 +188,14 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
  * gets, and it is drawn rather than dropped: this returns `null` until
  * `home.ready`, so rendering nothing already means "not loaded yet", and a
  * silent clean state would be indistinguishable from one still loading.
+ *
+ * **Opens the list of changes.** While dirty, this is the toggle for
+ * `ChangesStrip` — the count and the sentences it names must never disagree,
+ * so the one control that states the count is also the one that opens the
+ * list behind it. Clean, there's nothing to open, so it stays a plain,
+ * unclickable span.
  */
-function PendingIndicator() {
+function PendingIndicator({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const home = useHomeSelection()
   if (!home.ready) return null
 
@@ -191,17 +203,8 @@ function PendingIndicator() {
     ? `${countLabel(home.pendingCount)} unpushed`
     : 'no unpushed changes'
 
-  return (
-    <span
-      className={`type-data flex shrink-0 items-center gap-1.5 text-[11px] whitespace-nowrap lg:gap-2 ${
-        home.isDirty ? 'text-dim' : 'text-dimmer'
-      }`}
-      title={
-        home.isDirty
-          ? 'These changes only exist in this tab until you push.'
-          : 'Your home screen matches what was last pushed.'
-      }
-    >
+  const content = (
+    <>
       <span
         aria-hidden="true"
         className={`h-[6px] w-[6px] rounded-full ${home.isDirty ? 'bg-series' : 'bg-dimmer'}`}
@@ -223,7 +226,32 @@ function PendingIndicator() {
         </span>
       )}
       <span className="hidden lg:inline">{sentence}</span>
-    </span>
+    </>
+  )
+
+  const className = `type-data flex shrink-0 items-center gap-1.5 text-[11px] whitespace-nowrap transition-colors lg:gap-2 ${
+    home.isDirty ? 'text-dim' : 'text-dimmer'
+  }`
+
+  if (!home.isDirty) {
+    return (
+      <span className={className} title="Your home screen matches what was last pushed.">
+        {content}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={`${sentence}. ${open ? 'Hide' : 'Show'} the list of changes.`}
+      title="These changes only exist in this tab until you push."
+      className={`${className} hover:text-ink`}
+    >
+      {content}
+    </button>
   )
 }
 

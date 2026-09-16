@@ -1,11 +1,16 @@
-import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { Dialog } from 'radix-ui'
 
 /**
  * Scrim + panel, for the few things that genuinely interrupt: the short,
  * blocking question — naming a catalog before it exists — where the whole
  * point is that nothing else can be done until it's answered. The catalog and
  * collection editors fill the builder's right pane instead of this.
+ *
+ * Built on Radix `Dialog` for a real focus trap and return-focus-on-close —
+ * the hand-rolled scrim this replaced had Escape and click-outside but no Tab
+ * cycling. `labelledBy` is kept for callers that already `id` their own
+ * heading; new callers can pass a `Dialog.Title` as the first child instead.
  */
 export function Modal({
   open,
@@ -20,43 +25,20 @@ export function Modal({
   width?: string
   children: ReactNode
 }) {
-  useEffect(() => {
-    if (!open) return
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    // Nested scrolling inside a full-height panel fights with the page
-    // scrolling behind it; lock the body while one is open. Safari ignores this
-    // for its rubber-band, which is what `overscroll-contain` on the scrim and
-    // the body covers.
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previous
-    }
-  }, [open, onClose])
-
-  if (!open) return null
-
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-[rgba(4,5,7,0.72)] p-4 sm:p-8"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={labelledBy}
-        style={{ width: `min(${width}, 100%)` }}
-        className="bg-ground border-line-hi flex max-h-full flex-col overflow-hidden border"
-      >
-        {children}
-      </div>
-    </div>
+    <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-[var(--uno-scrim)] p-4 sm:p-8">
+          <Dialog.Content
+            aria-labelledby={labelledBy}
+            style={{ width: `min(${width}, 100%)` }}
+            className="bg-raised border-line-hi flex max-h-full flex-col overflow-hidden border outline-none"
+          >
+            {children}
+          </Dialog.Content>
+        </Dialog.Overlay>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 

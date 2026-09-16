@@ -1,3 +1,4 @@
+import type { HomeChange } from '@/features/home/changes'
 import type { Push } from './usePush'
 import { useCopy } from './useCopy'
 
@@ -49,6 +50,51 @@ export function PushBanner({ outcome, dismiss }: Push) {
     return <SuccessBanner manifestURL={outcome.manifestURL} dismiss={dismiss} />
   }
   return <ProblemBanner kind={outcome.kind} dismiss={dismiss} />
+}
+
+/**
+ * The list of changes: every named edit waiting to be pushed, opened from the
+ * pending count beside Push. A strip under the header, ahead of the push
+ * outcome, matching DESIGN.md's stacking order for the two.
+ *
+ * Renders nothing while closed or clean — `open` already accounts for both
+ * (see `Builder.tsx`'s `PendingIndicator`), so a caller doesn't have to gate
+ * this itself.
+ */
+export function ChangesStrip({
+  changes,
+  open,
+  onHide,
+}: {
+  changes: HomeChange[]
+  open: boolean
+  onHide: () => void
+}) {
+  if (!open || changes.length === 0) return null
+
+  return (
+    <div className="bg-raised border-line flex flex-col gap-1.5 border-b px-4 py-2.5 lg:px-5">
+      <div className="flex items-start justify-between gap-3">
+        <p className="type-data text-dim m-0 text-[10.5px] tracking-[0.06em] uppercase">
+          What's not on your TV yet
+        </p>
+        <button
+          type="button"
+          onClick={onHide}
+          className="type-data text-dim decoration-line-hi hover:text-ink shrink-0 text-[10.5px] underline underline-offset-[0.3em] transition-colors"
+        >
+          Hide
+        </button>
+      </div>
+      <ul className="flex flex-col gap-1">
+        {changes.map((change) => (
+          <li key={change.key} className="type-data text-dim text-[11px] leading-[1.5]">
+            {change.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 /**

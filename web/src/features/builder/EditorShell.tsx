@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { GlyphButton } from '@/components/GlyphButton'
-import { TypeBar, type BarKind } from '@/components/TypeBar'
 import { useStackedLayout } from './stacked'
 
 /**
@@ -33,8 +32,6 @@ import { useStackedLayout } from './stacked'
 export function EditorShell({
   eyebrow,
   title,
-  kind,
-  owned,
   onRequestClose,
   onDuplicate,
   onDelete,
@@ -46,10 +43,6 @@ export function EditorShell({
    *  Dropped below `lg`, where the header is one compact line. */
   eyebrow: string
   title: string
-  /** Carries the rail row's hue into the pane, so the thing you clicked and the
-   *  thing in front of you are visibly the same thing. */
-  kind: BarKind
-  owned: boolean
   /** Above `lg` this is the × in this header and Escape. Below it, it's also
    *  the mobile Library button — there is no separate scroll-only path back to
    *  the rail here, because leaving this row *is* an exit: it deselects, which
@@ -94,7 +87,6 @@ export function EditorShell({
           beneath it. Above `lg` the flex column already holds this in place and
           `static` restores exactly what was here before. */}
       <header className="border-line bg-ground sticky top-[var(--app-h)] z-20 flex shrink-0 items-center gap-3 border-b px-4 py-3 lg:static lg:bg-transparent lg:px-6 lg:py-4">
-        <TypeBar kind={kind} owned={owned} className="min-h-[26px] lg:min-h-[30px]" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="type-eyebrow hidden lg:block">{eyebrow}</span>
           {/* Where focus lands when the page scrolls here. A scroll moves the

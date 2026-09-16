@@ -30,9 +30,14 @@ while `web/src/features/catalogs/fields.tsx` re-exports them and keeps `NumberIn
 `RangeField`, `GenrePicker`, which are catalog-shaped. `EditorShell` + `EditorFooter` +
 `useEditorForm` under `web/src/features/builder/` are the scaffolding both editors sit in, so a
 catalog and a collection get the same header, dirty state, footer, and save/discard behaviour
-from one place. `web/src/features/preview/` holds the tile rendering shared by Home's Preview
-view, the folder page, and the catalog editor's Run button. Nothing under `features/` is a
-separate URL; `Builder` composes all of it.
+from one place. `web/src/features/preview/` holds the Jost-styled tile rendering shared by the
+collection editor's own preview panel and the catalog editor's Run button. The Home pane's
+Preview on TV tab is a separate tree, `web/src/features/home/tv.tsx` — Roboto inside a real
+framed bezel, not a restyle of `features/preview/` — because `cqw` sizing only means anything
+against that frame's own `container-type`, and the two panels carry different content (the
+collection editor's panel states layout only; the TV picture never pins a note onto itself — see
+"Home pane — Preview view" below). Nothing under `features/` is a separate URL; `Builder`
+composes all of it.
 
 `BuilderMode = 'edit' | 'duplicate'` is declared twice — once in
 `web/src/features/catalogs/catalogForm.ts`, once in
@@ -211,8 +216,8 @@ Other decisions worth keeping:
 
 ## Home pane — List view
 
-Add/remove from the rail, drag-reorder, `show_in_home` per catalog row. Hydrates once from both
-`GET .../selection` endpoints; client state only, nothing writes until Push.
+Add/remove from the rail, drag/keyboard/↑↓-reorder, `show_in_home` per catalog row. Hydrates once
+from both `GET .../selection` endpoints; client state only, nothing writes until Push.
 
 - **The baseline is snapshotted at hydration, not read live from the query cache.** A background
   refetch must not move the baseline under the user and silently change the diff.
@@ -221,10 +226,26 @@ Add/remove from the rail, drag-reorder, `show_in_home` per catalog row. Hydrates
   owner has since made it private. Rendering by library lookup would make those rows vanish from
   the page while still being live on the user's TV. Such rows are marked "not in library": they
   work, but removing them is one-way.
+- **List groups in the same three TV bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
+  a separate derivation): pinned collections, then home-shown catalogs, then unpinned collections,
+  numbered with one ordinal straight through all three — a row's number is its place on the TV. A
+  reorder (drag, keyboard, or a row's own ↑/↓) only ever moves a row within its own band;
+  `HomeSelectionContext`'s `reorderCollections`/`reorderCatalogs`/`moveCollection`/`moveCatalog`
+  reconstruct the *complete* underlying list on every edit (`pending.ts`'s `reorderWithinBand` /
+  `moveWithinBand`) rather than replacing just the touched band, so the untouched band can't
+  silently relocate to the array's tail and register as a phantom pending change.
 - **`show_in_home` toggles whether the catalog gets a home row** — off keeps it in Discover only,
-  via a required `genre` extra `buildManifest` adds to that catalog's manifest entry.
-- The header pending indicator is information, not an affordance, which is why it can exist
-  before Push does. `countPendingChanges` drives both it and the navigation guard's dialog.
+  via a required `genre` extra `buildManifest` adds to that catalog's manifest entry. Off-catalogs
+  render outside the numbered bands entirely, in their own "Not on home" tray (no drag, no
+  ordinal — they have no place in the TV's order); the flip itself is a row's ⋯ menu
+  ("Move to Discover" / the tray's "Move to home"), not a dedicated toggle control.
+- **The pending count is the list of changes' length, not a separate tally.** `changes.ts`'s
+  `computeHomeChanges` diffs `baseline` against `current` into named, per-row sentences ("Moved
+  “X” from 5th to 3rd"), using a longest-increasing-subsequence pass per band so a drag reports
+  only the row that actually moved. `HomeSelectionContext.pendingCount` is `changes.length`; the
+  header's pending indicator and the navigation guard's dialog both read it, and the indicator
+  doubles as the toggle that opens the list itself (`ChangesStrip` in `PushControls.tsx`) — the
+  count and the sentences behind it must never disagree, which is why there is only one number.
 
 **Selection is client state until Push, and the one thing enforcing that is the one-shot
 hydration guard** in `web/src/features/home/HomeSelectionContext.tsx`
@@ -301,11 +322,12 @@ Decisions that shape the code:
 - **"Not in library" and "nothing resolves" are two different conditions here**, and conflating
   them is a real bug. `catalogById`/`collectionById` are assembled from the selection response
   *as well as* the library, and the selection endpoint has no visibility filter — so a row whose
-  owner made it private after selection still resolves. Testing *resolvability* would mean the
-  "not in library" marker essentially never fires in Preview while List shows it for exactly
-  that row: two views of one state disagreeing. Preview asks `isDetached` for the marker (same
-  predicate, same wording as List) and keeps unresolvability for the genuinely-nothing-known
-  fallback.
+  owner made it private after selection still resolves. Since the Clean Preview amendment
+  (`web/_incoming-design/DESIGN.md`'s ninth), `isDetached` no longer marks anything *inside* the
+  TV frame — the real TV shows a detached row plainly, with no note pinned onto it — but the
+  Discover-only list beneath the frame still asks it, in List's own wording, because that list is
+  Uno's own words about the picture, not the picture itself. Unresolvability still degrades a row
+  inside the frame to an empty strip, no explanation, matching how the TV would show it.
 - **Slack wire values are handled, not cast away.** `tile_shape` can be `''` (falls back to
   `POSTER`, and says so on screen); `view_mode` is a bare `string`, so `FOLLOW_LAYOUT` and
   anything unrecognised land in one branch that admits it's guessing.
@@ -328,17 +350,32 @@ row rather than a first page of one; at fifteen rows, deferring them isn't worth
 complexity. The catalog editor's Run button is the one place a preview fetch is gated, and it is
 gated on a keypress, not on visibility.
 
-Two fidelity limits are named in the UI rather than papered over:
+Two fidelity limits exist and are silently absorbed rather than named in the UI — the Clean
+Preview amendment (DESIGN.md's ninth) drops the notes that used to state them on screen, on the
+owner's instruction that Uno pin nothing onto the TV picture anywhere:
 
 - **Merged catalogs.** Nuvio merges N catalogs into one view and **its merge rule is
   unspecified** — folders aren't an addon concept, so nothing in the addon protocol or Nuvio's
   docs specifies the order, and Uno cannot derive it. This applies to **exactly one view**: the
-  `show_all_tab` "All" tab on a `TABBED_GRID` folder page. Every other view is one catalog per
-  row or grid. Preview concatenates and labels it rather than implying the order is real.
-- **`randomized` catalogs** take a random TMDB page per call on the addon path while preview
-  always asks page 1, so preview genuinely won't match the TV. The one case where a placeholder
-  is *more* accurate than real content. The flag comes from the server rather than being
-  re-derived client-side.
+  `show_all_tab` "All" tab on a `TABBED_GRID` folder page (`interleaveTiles` in
+  `features/preview/model.ts`, still shared with the collection editor's own preview panel, which
+  keeps its own caveat text — the Clean Preview amendment only reaches the TV frame). The TV's
+  own "All" tab just shows the merged tiles, with no caption saying the order is a guess.
+- **`randomized` catalogs** take a random TMDB page per call on the addon path while the TV
+  preview always asks page 1, so it genuinely won't match the TV. No longer flagged inline; the
+  placeholder-tone tile behind a poster is the only visual difference now, and it isn't specific
+  to this case.
+
+**The folder page's back arrow lives inside the TV frame, beside the folder's own title** — the
+Back Like the Remote amendment — not as a button in Uno's own chrome above it. Escape and the
+browser's own Back do the same thing. `HomePreview.tsx`'s `useFolderPage` hook owns this: opening
+a folder pushes one `history.pushState({unoFolder: true}, '')` entry (a `try`/`catch` — a
+sandboxed frame can throw, and Escape/the arrow still work without it, only the browser's own
+Back doesn't); a `popstate` listener closes the folder when that entry is popped. Leaving any
+other way — the arrow, Escape, the target becoming unresolvable, or this view unmounting entirely
+(the List | Preview switch, or an editor opening) — consumes the pushed entry with one more
+`history.back()` rather than leaving it to `popstate`, so a later physical Back press never lands
+on a dead entry nobody is listening for.
 
 ## Collection authoring
 
@@ -385,12 +422,15 @@ button.
 - **Removing a folder is a standing warning, not a confirm.** Omitting a folder from the payload
   deletes it server-side and cascades its refs — but nothing commits until Save, so
   `removedFolders(initial, current)` names exactly which folders the next save would destroy,
-  shown continuously above the footer. A confirm would ask the user to approve something that
-  hasn't happened. Dropping a folder that was never saved is correctly silent.
-- **This editor confirms on discard; the catalog editor doesn't.** A deliberate asymmetry:
-  losing a three-field form to a stray Escape is an annoyance, losing a folder tree is an
-  evening. `EditorGuard` is what a rail click has to clear before the pane's occupant changes,
-  so the confirm has one place to fire from rather than one per exit route.
+  shown above the folder list as soon as any exist. A confirm would ask the user to approve
+  something that hasn't happened. Dropping a folder that was never saved is correctly silent.
+  "Undo removing it" reinserts the removed rows verbatim — they still carry their original form
+  `key`, which is what makes putting them straight back into `state.folders` safe.
+- **The save bar's quiet button reads "Discard changes" here, "Cancel" in the catalog editor**
+  (`EditorFooter`'s `cancelLabel`) — DESIGN.md's own wording for the heavier thing this editor can
+  lose. Both route through the same call, this editor's own `onRequestClose`, and from there
+  through the one shared `EditorGuard` confirm every exit from a dirty editor already goes
+  through — there is no second, folder-aware confirm layered on top of it.
 - **`tile_shape: ''` and an unknown `view_mode` are handled differently, and both are honest.**
   `''` is a value the server accepts and Preview reads as an assumed poster, so it's kept as its
   own "Default" option rather than normalised — a round trip through this form must not silently
@@ -400,12 +440,35 @@ button.
   codepoints), not a picker — a bundled emoji picker is a large dependency for a field every
   keyboard already has an input method for.
 - **Ordering is array position.** No `sort_order` field in the form; drag order *is* the value.
-  Each folder shows `tab n/N` and each ref its index, so the thing being written is legible and
-  not only draggable.
+  Folders and folder-catalogs both restyled onto DESIGN.md's running-order row (grip, ↑/↓, an
+  ordinal against the name, ⋯) — the same shared pieces the Home pane's rows use
+  (`components/dnd.tsx`'s `Grip`, `RowIconButton`/`MoveUpButton`/`MoveDownButton`, `moveByOne`), so
+  a folder now numbers "1st, 2nd…" like a home row rather than "tab n/N", and a folder's own
+  catalogs number in plain figures ("1", "2"). One folder is open at a time, the same shape the
+  catalog editor's collapsible sections use.
 - **The catalog-ref picker is inline under the folder**, not a dialog — a scrim would hide the
   folder being filled. It stays open across picks and drops each chosen row out of the list, so
-  what remains is always exactly what can still be added. Rows carry the type bar **and** state
-  ownership in text, since the bar is `aria-hidden`.
+  what remains is always exactly what can still be added. Restyled to DESIGN.md's copy-from-library
+  choice-button list (one plus icon and a catalog name per button); the type bar it used to carry
+  is gone with the rest of them (Phase 0), and ownership sits in the button's title text instead.
+- **A folder-catalog row carries no Edit**, unlike DESIGN.md's spec for it. DESIGN's quiet Edit
+  opens the folder's own *copy* of the catalog one level down — the
+  folder-catalogs-as-private-copies model this migration explicitly hasn't built (see the
+  migration plan's §2; Phase 5 ships against today's reference-based `folder_catalogs` model on
+  purpose). Here a ref is a live pointer at the same catalog row everywhere it's used, so an
+  "Edit" launching the real catalog editor from inside a folder would change it for every other
+  folder and the library too, silently contradicting DESIGN's own copy note text. Editing a
+  folder's catalog stays where it already was: select it from the library rail. The picker's own
+  note is reworded to match — "stays linked", not "a copy is made" — for the same reason.
+- **Sharing is the shared `Switch` here too now** (Phase 5), same as the catalog editor since its
+  own phase; Show first and the "All" tab are `Segmented`, the latter greyed (DESIGN.md's
+  "Greyed" segmented state, `Segmented`'s `disabled` prop) rather than hidden while the view mode
+  isn't Tabbed Grids, keeping its value for when it switches back.
+- **The "On your TV" panel, docked right in the results panel's place, is not interactive** —
+  DESIGN.md's own spec for it. It draws the collection's row from the live form state at the
+  folder's own tile shapes, framed in the `--uno-tv-bezel`/`--uno-tv-screen` tokens, but opening a
+  folder to see its content is Preview on TV's job once the collection is saved, not this panel's;
+  nothing here fetches, and nothing here is a button.
 
 ## Push UI
 

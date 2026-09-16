@@ -38,7 +38,7 @@ export function buildGenreLookup(genres: Genre[]): GenreLookup {
  *  included, because "newest first" and "oldest first" are different phrases
  *  rather than one phrase plus a suffix. An unrecognised value falls through
  *  to itself — better an unfamiliar word than a wrong one. */
-const SORT_PHRASE: Record<string, string> = {
+export const SORT_PHRASE: Record<string, string> = {
   'popularity.desc': 'Most popular',
   'popularity.asc': 'Least popular',
   'vote_average.desc': 'Highest rated',
@@ -89,13 +89,15 @@ function displayName(type: 'language' | 'region', code: string): string {
 
 /** `CA-QC` is a certification key, not a country — TMDB scopes a few rating
  *  boards to a subdivision. The parent country is the recognisable half. */
-function countryLabel(code: string): string {
+export function countryLabel(code: string): string {
   const [country, subdivision] = code.split('-')
   const name = displayName('region', country)
   return subdivision ? `${name} (${subdivision})` : name
 }
 
-function joinGenres(raw: string | undefined, lookup: GenreLookup): string | null {
+export { displayName }
+
+export function joinGenres(raw: string | undefined, lookup: GenreLookup): string | null {
   if (!raw) return null
   // TMDB's own convention: comma means AND, pipe means OR.
   const isOr = raw.includes('|')
@@ -110,7 +112,7 @@ function joinGenres(raw: string | undefined, lookup: GenreLookup): string | null
   return `${names.slice(0, -1).join(', ')} ${isOr ? 'or' : 'and'} ${last}`
 }
 
-function range(
+export function range(
   gte: number | undefined,
   lte: number | undefined,
   format: (n: number) => string,
@@ -128,7 +130,7 @@ function year(date: string): string {
 
 /** A rolling window in the units it was chosen in. The builder offers 30, 90,
  *  182 and 365 days plus whole years, so those are the ones worth naming. */
-function describeDays(days: number): string {
+export function describeDays(days: number): string {
   if (days === 182) return 'in the last 6 months'
   if (days % 365 === 0) {
     const years = days / 365

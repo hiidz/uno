@@ -1,5 +1,7 @@
+import { Check, X } from 'lucide-react'
 import type { Certification, CertificationsByCountry, Genre } from '@/api'
 import { DualRangeSlider, FieldNote, InfoTip, Segmented, Select } from '@/components/fields'
+import { Icon } from '@/components/Icon'
 import type { GenreJoin } from './catalogForm'
 import { countryName, type CountryLookup } from './countries'
 
@@ -25,6 +27,7 @@ export {
   InfoTip,
   Segmented,
   Select,
+  Switch,
   TextInput,
 } from '@/components/fields'
 
@@ -160,19 +163,29 @@ export function RangeField({
  * (TMDB would just cancel it out), so the cycle makes that state unreachable
  * instead of merely confusing.
  */
+/** The first ten genres show, plus any already chosen past them — a chip
+ *  someone picked never disappears out from under their finger just because
+ *  the list is showing its default slice again. */
+const GENRE_SHOWN_COUNT = 10
+
 export function GenreCycler({
-  label,
   genres,
   withIds,
   withJoin,
   withoutIds,
+  expanded,
+  onExpandedChange,
   onChange,
 }: {
-  label: string
   genres: Genre[]
   withIds: number[]
   withJoin: GenreJoin
   withoutIds: number[]
+  /** "Show all N genres" / "Show fewer genres" — lifted to the editor's own
+   *  state rather than owned here, so it survives the section body being
+   *  hidden and re-shown without a remount. */
+  expanded: boolean
+  onExpandedChange: (expanded: boolean) => void
   onChange: (withIds: number[], withJoin: GenreJoin, withoutIds: number[]) => void
 }) {
   function cycle(id: number) {
@@ -192,60 +205,65 @@ export function GenreCycler({
     }
   }
 
+  if (genres.length === 0) return <FieldNote>Couldn't load genres.</FieldNote>
+
+  const shown = expanded
+    ? genres
+    : genres.filter((genre, index) => index < GENRE_SHOWN_COUNT || withIds.includes(genre.id) || withoutIds.includes(genre.id))
+
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="type-eyebrow">{label}</label>
-        {withIds.length > 1 && (
-          <Segmented
-            ariaLabel={`How to combine ${label.toLowerCase()}`}
-            value={withJoin}
-            onChange={(next) => onChange(withIds, next, withoutIds)}
-            options={[
-              { value: 'and', label: 'All of' },
-              { value: 'or', label: 'Any of' },
-            ]}
-          />
-        )}
+    <>
+      <p className="ed-note">
+        Press once to include a genre, twice to leave it out, and again to ignore it.
+      </p>
+      <div className="choices" role="group" aria-label="Genres">
+        {shown.map((genre) => {
+          const state = withIds.includes(genre.id)
+            ? 'inc'
+            : withoutIds.includes(genre.id)
+              ? 'exc'
+              : 'off'
+          const next = { off: 'include', inc: 'leave out', exc: 'ignore' }[state]
+          return (
+            <button
+              key={genre.id}
+              type="button"
+              className="gchip"
+              data-g={state}
+              onClick={() => cycle(genre.id)}
+              aria-label={`${genre.name}: ${
+                { off: 'ignored', inc: 'included', exc: 'left out' }[state]
+              }. Press to ${next}.`}
+            >
+              {state === 'inc' && <Icon icon={Check} size={14} />}
+              {state === 'exc' && <Icon icon={X} size={14} />}
+              <span className="gname">{genre.name}</span>
+            </button>
+          )
+        })}
       </div>
-      {genres.length === 0 ? (
-        <FieldNote>Couldn't load genres.</FieldNote>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {genres.map((genre) => {
-            const state = withIds.includes(genre.id)
-              ? 'include'
-              : withoutIds.includes(genre.id)
-                ? 'exclude'
-                : 'neutral'
-            return (
-              <button
-                key={genre.id}
-                type="button"
-                onClick={() => cycle(genre.id)}
-                aria-pressed={state !== 'neutral'}
-                title={
-                  state === 'exclude'
-                    ? `No ${genre.name} — click to stop filtering on it`
-                    : state === 'include'
-                      ? `Only ${genre.name} — click to exclude it instead`
-                      : `Click to require ${genre.name}`
-                }
-                className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors pointer-coarse:py-2 ${
-                  state === 'include'
-                    ? 'bg-raised-hi border-dim text-ink'
-                    : state === 'exclude'
-                      ? 'border-danger text-danger bg-transparent line-through decoration-1'
-                      : 'border-line text-dim hover:border-dim hover:text-ink'
-                }`}
-              >
-                {genre.name}
-              </button>
-            )
-          })}
-        </div>
+      {genres.length > GENRE_SHOWN_COUNT && (
+        <button
+          type="button"
+          className="btn-quiet px-0"
+          onClick={() => onExpandedChange(!expanded)}
+        >
+          {expanded ? 'Show fewer genres' : `Show all ${genres.length} genres`}
+        </button>
       )}
-    </div>
+      <div className="ed-line">
+        <span className="cr-role type-eyebrow">Included genres</span>
+        <Segmented
+          ariaLabel="How to combine included genres"
+          value={withJoin}
+          onChange={(next) => onChange(withIds, next, withoutIds)}
+          options={[
+            { value: 'and', label: 'All of them' },
+            { value: 'or', label: 'Any of them' },
+          ]}
+        />
+      </div>
+    </>
   )
 }
 

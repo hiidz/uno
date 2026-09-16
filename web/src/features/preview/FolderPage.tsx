@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { tmdbKind } from '@/api'
-import { TypeBar } from '@/components/TypeBar'
 import { plural } from '@/lib/plural'
 import {
   ALL_TAB,
@@ -242,11 +241,6 @@ function SourceHeading({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-      <TypeBar
-        kind={source.type ?? 'movie'}
-        owned={chrome.isOwned(source.id)}
-        className="h-[13px] self-auto"
-      />
       <h3 className="m-0 min-w-0 truncate text-[13px] font-medium">
         {source.name ?? 'Unavailable catalog'}
       </h3>

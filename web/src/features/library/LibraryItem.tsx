@@ -1,5 +1,6 @@
 import { GlyphButton } from '@/components/GlyphButton'
-import { TypeBar, type BarKind } from '@/components/TypeBar'
+
+export type BarKind = 'movie' | 'series' | 'collection'
 
 const KIND_LABEL: Record<BarKind, string> = {
   movie: 'Movie catalog',
@@ -24,10 +25,10 @@ const KIND_LABEL: Record<BarKind, string> = {
  * actions would be a screen-length scroll from the thing they act on; the
  * editor's own sticky header carries them there instead.
  *
- * The type bar carries kind and ownership visually, but a 3px hatch is easy to
- * miss at rail width, so community rows say so in text too. Kind stays
- * screen-reader-only: it's redundant with the recipe for sighted users but is
- * the bar's only equivalent for everyone else.
+ * Kind and ownership carry in words only (the "End Credits" redesign drops
+ * the colored type bar outright), community rows saying so again in visible
+ * text. Kind itself stays screen-reader-only: it's redundant with the recipe
+ * for sighted users, so nothing here repeats it visibly.
  *
  * `isPublic` is a separate axis from `owned`: it marks one of *your own* rows
  * as also shared to the community, rather than which section it lives in.
@@ -84,11 +85,10 @@ export function LibraryItem({
         }}
         aria-current={selected ? 'true' : undefined}
         title={owned ? `Edit ${name}` : `Open ${name} as your own copy`}
-        className={`grid w-full grid-cols-[3px_minmax(0,1fr)_auto] items-center gap-x-3 py-2.5 pr-2 text-left transition-colors ${
+        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2.5 pr-2 text-left transition-colors ${
           selected ? '' : 'hover:bg-raised'
         } ${selected ? 'pl-2' : ''}`}
       >
-        <TypeBar kind={kind} owned={owned} className="min-h-[26px]" />
         <div className="flex min-w-0 flex-col gap-[3px]">
           <span className={`truncate text-[13px] ${selected ? 'font-semibold' : 'font-medium'}`}>
             {name}

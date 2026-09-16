@@ -1,10 +1,13 @@
+import { EqualNot } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import type { CatalogType } from '@/api'
+import { Icon } from '@/components/Icon'
 import { CONTENT_TILE_SHAPE, TileGrid } from '@/features/preview/tiles'
 import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles'
 
 /**
- * What the filters above actually return, on request.
+ * What the filters above actually return, on request — DESIGN.md's "Results
+ * panel", docked right of the form and sticky at the pane's top.
  *
  * **Nothing is fetched until the button is pressed.** The recipe changes on
  * every keystroke, so fetching as you type would mean a request per character
@@ -38,63 +41,17 @@ export function RecipePreview({
   onRun: () => void
 }) {
   return (
-    <section className="border-line mt-8 flex flex-col gap-4 border-t pt-6">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="type-eyebrow flex-1">What this returns</span>
-        <Notes preview={preview} invalid={invalid} />
-        <button
-          type="button"
-          onClick={onRun}
-          disabled={preview.tiles.isLoading}
-          className="btn-ghost"
-        >
-          {preview.tiles.isLoading
-            ? 'Loading…'
-            : preview.idle
-              ? 'Preview results'
-              : 'Preview again'}
+    <aside className="ed-pv" aria-label="Results">
+      <div className="ed-pv-head">
+        <span className="type-eyebrow">One page of results</span>
+        <button type="button" onClick={onRun} disabled={preview.tiles.isLoading} className="btn-secondary btn-sm">
+          {preview.tiles.isLoading ? 'Running…' : preview.idle ? 'Run preview' : 'Run again'}
         </button>
       </div>
 
       <Body preview={preview} type={type} invalid={invalid} />
-    </section>
+    </aside>
   )
-}
-
-/** The one-liners that sit beside the button: why it can't run, or what's true
- *  about the tiles below it. At most one applies at a time. */
-function Notes({ preview, invalid }: { preview: Preview; invalid: boolean }) {
-  if (invalid) {
-    return (
-      <span className="type-data text-dimmer text-[10.5px]">
-        fix the highlighted fields to preview
-      </span>
-    )
-  }
-
-  if (preview.isStale) {
-    return (
-      <span
-        className="type-data text-series text-[10.5px]"
-        title="These came from the filters as they were when you last pressed the button."
-      >
-        filters changed — preview again
-      </span>
-    )
-  }
-
-  if (preview.tiles.randomized) {
-    return (
-      <span
-        className="type-data text-dimmer text-[10.5px]"
-        title="This catalog shuffles, so Nuvio gets a different set each time."
-      >
-        shuffles — Nuvio will show a different set each time
-      </span>
-    )
-  }
-
-  return null
 }
 
 function Body({
@@ -106,21 +63,19 @@ function Body({
   type: CatalogType
   invalid: boolean
 }) {
+  if (invalid) {
+    return <p>Fix the highlighted filters first, then run the preview.</p>
+  }
+
   if (preview.idle) {
-    return (
-      <p className="type-data text-dimmer m-0 max-w-[var(--w-entry)] text-[11px] leading-[1.45]">
-        {invalid
-          ? 'Fix the highlighted filters first.'
-          : 'Press Preview results to see what these filters return.'}
-      </p>
-    )
+    return <p>Run it to see one page of what this row shows on your TV. It doesn't run as you type.</p>
   }
 
   // Unlike the Home pane, someone is standing here waiting for a result they
   // asked for, so a failed fetch is stated outright rather than degraded past.
   if (preview.tiles.isError) {
     return (
-      <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]">
+      <p className="text-danger">
         Couldn't load the preview. Your filters are fine — try again.
       </p>
     )
@@ -131,27 +86,25 @@ function Body({
   // there and wrong here: an empty result is precisely the answer someone
   // pressed the button to get.
   if (!preview.tiles.isLoading && preview.tiles.items.length === 0) {
-    return (
-      <div className="border-series bg-series/5 flex max-w-[var(--w-entry)] flex-col gap-2 rounded-[2px] border border-l-2 px-4 py-3">
-        <span className="text-[13px] font-medium">Nothing matches these filters.</span>
-        <p className="type-data text-dim m-0 text-[11px] leading-[1.45]">
-          This row would be empty. Loosen a filter and try again.
-        </p>
-      </div>
-    )
+    return <p>Nothing matches these filters. This row would be empty — loosen a filter and try again.</p>
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* TMDB's own count across every page these filters match, not just
-       *  the one page below — so this doesn't read as "that's all of it"
-       *  when there's more than a page's worth. */}
-      {!preview.tiles.isLoading && preview.totalResults !== null && (
-        <span className="type-data text-dimmer text-[10px]">
-          {preview.totalResults.toLocaleString()} results
-        </span>
+    <>
+      {/* The filters have moved on since these tiles were fetched — Warm
+       *  White, never amber (DESIGN.md's Words Beside Colour Rule): nothing
+       *  here is waiting for the TV the way an unpushed change is. */}
+      {preview.isStale && (
+        <p className="pv-stale">Your filters changed since this ran. Run it again to see the new results.</p>
       )}
       <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
-    </div>
+      {preview.tiles.randomized && (
+        <p className="neqline">
+          <Icon icon={EqualNot} size={16} />
+          <span>Shuffle is on. Your TV will show a different set.</span>
+        </p>
+      )}
+      <p>Open a poster to see its details.</p>
+    </>
   )
 }
