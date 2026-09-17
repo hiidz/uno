@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { DndContext, closestCenter, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, MoreHorizontal } from 'lucide-react'
+import { ChevronDown, Copy, MoreHorizontal, Plus } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { Grip, MoveDownButton, MoveUpButton, reorder, useDragSensors } from '@/components/dnd'
 import { FieldNote, Segmented, TextInput } from '@/components/fields'
@@ -130,12 +130,18 @@ export function FolderCard({
   errors,
   options,
   optionByID,
+  collectionID,
+  usedInPlaces,
   onChange,
   onMove,
   onRemove,
   onAddRef,
+  onCopyRefIntoCollection,
   onRemoveRef,
   onMoveRef,
+  onEditRef,
+  onCopyRef,
+  onAddNewInCollection,
 }: {
   folder: FolderFormState
   position: number
@@ -149,13 +155,32 @@ export function FolderCard({
    *  builder, which withholds errors until submit. */
   errors: FolderErrors | undefined
   options: RefOption[]
+  /** Merged: the library plus every scoped catalog this editor already knows
+   *  about — see `CollectionEditor`'s `mergedOptionByID`. Scoped catalogs
+   *  never appear in `options` (only listed ones are linkable), but they do
+   *  need to render once referenced. */
   optionByID: ReadonlyMap<string, RefOption>
+  /** This collection's own server id. Absent until the first Save — "copy"
+   *  and "new" both need a real collection row to scope a catalog to. */
+  collectionID?: string
+  /** Home screen plus every folder across every owned collection — only
+   *  meaningful for a listed catalog, so the row asks with its own id. */
+  usedInPlaces: (catalogID: string) => number
   onChange: (update: Partial<FolderFormState>) => void
   onMove: (direction: -1 | 1) => void
   onRemove: () => void
   onAddRef: (catalogID: string) => void
+  /** "Copy" from the picker: adds a fresh scoped copy as a new ref, rather
+   *  than linking the listed catalog picked. */
+  onCopyRefIntoCollection: (catalogID: string) => void
   onRemoveRef: (catalogID: string) => void
   onMoveRef: (catalogID: string, direction: -1 | 1) => void
+  onEditRef: (catalogID: string) => void
+  /** "Copy into this collection" offered on an already-linked listed
+   *  catalog's own row: replaces this ref with a fresh scoped copy in place,
+   *  so the folder's order doesn't change. */
+  onCopyRef: (catalogID: string) => void
+  onAddNewInCollection: () => void
 }) {
   const [picking, setPicking] = useState(false)
   const sortable = useSortable({
@@ -332,8 +357,11 @@ export function FolderCard({
                       first={index === 0}
                       last={index === folder.catalogIDs.length - 1}
                       option={optionByID.get(catalogID)}
+                      usedInPlaces={usedInPlaces}
                       onRemove={() => onRemoveRef(catalogID)}
                       onMove={(direction) => onMoveRef(catalogID, direction)}
+                      onEdit={() => onEditRef(catalogID)}
+                      onCopyIntoCollection={collectionID ? () => onCopyRef(catalogID) : undefined}
                     />
                   ))}
                 </ul>
@@ -342,21 +370,44 @@ export function FolderCard({
 
             <div className="flex flex-col gap-2 pt-1">
               {!picking && (
-                <button type="button" onClick={() => setPicking(true)} className="btn-secondary btn-sm self-start">
-                  Add catalogs
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => setPicking(true)} className="btn-secondary btn-sm self-start">
+                    Add catalogs
+                  </button>
+                  {collectionID && (
+                    <button type="button" onClick={onAddNewInCollection} className="btn-secondary btn-sm self-start">
+                      New catalog
+                    </button>
+                  )}
+                </div>
               )}
               {picking && (
                 <>
                   <p className="type-data text-dimmer m-0 text-[11px] leading-[1.45]">
-                    Adds an existing catalog from your library. It stays linked — later edits to
-                    the original reach every folder that references it.
+                    <Icon icon={Plus} size={11} className="mb-px inline" /> links an existing catalog from
+                    your library — later edits to it reach every folder that references it.
+                    {collectionID && (
+                      <>
+                        {' '}
+                        <Icon icon={Copy} size={11} className="mb-px inline" /> copies it into a fresh
+                        catalog only this collection has, which the original can't affect.
+                      </>
+                    )}
                   </p>
                   <CatalogRefPicker
                     options={options}
                     exclude={inFolder}
                     onAdd={onAddRef}
+                    onCopy={collectionID ? onCopyRefIntoCollection : undefined}
                     onClose={() => setPicking(false)}
+                    footer={
+                      !collectionID ? (
+                        <p className="type-data text-dimmer m-0 pt-1 text-[11px] leading-[1.45]">
+                          Save this collection to also copy a catalog in or create one new, scoped
+                          to it.
+                        </p>
+                      ) : undefined
+                    }
                   />
                 </>
               )}
@@ -421,21 +472,18 @@ function FolderMenu({
  * `folder_catalogs.sort_order` — so the position is stated as well as draggable.
  *
  * An option this profile can't resolve is the *same* condition as a save that
- * would 400: the builder's only source of catalogs is the library, and the
- * library predicate and `validateAccess`'s predicate are identical. (The Home
- * pane can't collapse the two that way — its selection endpoint supplies rows
- * the library doesn't have.)
+ * would 400: `optionByID` merges the library with every scoped catalog this
+ * editor already knows about (`CollectionEditor`'s `mergedOptionByID`), which
+ * is exactly the closed-graph folder-ref rule `validateFolderRefs` checks
+ * server-side.
  *
- * **No Edit here, on purpose.** DESIGN.md's folder-catalog row carries a quiet
- * Edit that opens the folder's own copy of the catalog one level down — that
- * assumes the folder-catalogs-as-private-copies model this migration phase
- * explicitly doesn't build (see the migration plan's §2 and Phase 5 scope
- * note). Today a folder ref is a live pointer at the same catalog row
- * everywhere it's used, so an "Edit" here would open the real catalog editor
- * and silently change it for every other folder and the library too — DESIGN's
- * copy note text off. Rather than ship copy that implies isolation this app
- * doesn't have, editing a folder's catalog stays where it already is: select
- * it from the library rail.
+ * **Quiet Edit** opens the referenced catalog one level down, in a modal over
+ * this editor — `CollectionEditor`'s own nested `CatalogEditor`, not the main
+ * pane. A scoped catalog is only ever used here, so editing it in place is
+ * unambiguous. A *listed* one is a live pointer the same as it always was —
+ * editing it here still reaches every other folder and the library — so this
+ * row also says how many places that is and offers "Copy into this
+ * collection" for whoever wants an independent copy instead.
  */
 function RefRow({
   folderKey,
@@ -445,8 +493,11 @@ function RefRow({
   first,
   last,
   option,
+  usedInPlaces,
   onRemove,
   onMove,
+  onEdit,
+  onCopyIntoCollection,
 }: {
   folderKey: string
   catalogID: string
@@ -457,8 +508,12 @@ function RefRow({
   first: boolean
   last: boolean
   option: RefOption | undefined
+  usedInPlaces: (catalogID: string) => number
   onRemove: () => void
   onMove: (direction: -1 | 1) => void
+  onEdit: () => void
+  /** Present only once this collection has a server id to scope a copy to. */
+  onCopyIntoCollection?: () => void
 }) {
   const sortable = useSortable({
     id: refDragID(folderKey, catalogID),
@@ -466,11 +521,9 @@ function RefRow({
   })
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
 
-  const owner = option
-    ? `${option.catalog.type === 'movie' ? 'movie' : 'series'} · ${
-        option.catalog.owned ? 'you' : 'community'
-      }`
-    : "can't be saved"
+  const kind = option ? (option.catalog.type === 'movie' ? 'movie' : 'series') : "can't be saved"
+  const isScoped = option ? option.catalog.collection_id !== null : false
+  const places = option && !isScoped ? usedInPlaces(catalogID) : 0
 
   return (
     <li
@@ -493,19 +546,25 @@ function RefRow({
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[12.5px] font-medium">{option.name}</span>
           <span className="type-data text-dimmer truncate text-[10.5px]">
-            {option.recipe} · {owner}
+            {option.recipe} · {kind}
+            {!isScoped && ` · used in ${pluralCount(places, 'place')}`}
           </span>
         </span>
       ) : (
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="text-danger truncate text-[12.5px]">Unavailable catalog</span>
-          <span className="type-data text-dimmer truncate text-[10.5px]">
-            Deleted, or made private by its owner
-          </span>
+          <span className="type-data text-dimmer truncate text-[10.5px]">Deleted</span>
         </span>
       )}
 
       <div className="flex shrink-0 items-center gap-0.5">
+        {option && (
+          <RefMenu
+            label={option.name}
+            onEdit={onEdit}
+            onCopyIntoCollection={!isScoped ? onCopyIntoCollection : undefined}
+          />
+        )}
         <MoveUpButton
           label={`Move ${option?.name ?? 'this catalog'} up${first ? ', already first' : ''}`}
           disabled={first}
@@ -521,5 +580,58 @@ function RefRow({
         </button>
       </div>
     </li>
+  )
+}
+
+/**
+ * "Edit" and "Copy in" tucked into a "⋯" menu — the same fix `FolderMenu`
+ * already applies at the folder level, for the same reason: this row also
+ * carries Move up/down and Remove, and five always-visible actions overflow
+ * the name/recipe text into unreadable truncation at phone width (measured
+ * in a dev-loop check). Move up/down and Remove stay
+ * inline — they're the same three actions this row has always had.
+ */
+function RefMenu({
+  label,
+  onEdit,
+  onCopyIntoCollection,
+}: {
+  label: string
+  onEdit: () => void
+  /** Absent for a scoped catalog — nothing else can reference it, so there's
+   *  nothing to copy it away from. */
+  onCopyIntoCollection?: () => void
+}) {
+  return (
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger
+        aria-label={`More for ${label}`}
+        className="tap text-dimmer hover:bg-line hover:text-ink grid h-7 w-7 shrink-0 place-items-center rounded-[2px] transition-colors"
+      >
+        <Icon icon={MoreHorizontal} size={14} />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          className="bg-raised-hi border-line-hi z-40 flex w-52 flex-col gap-0.5 rounded-[2px] border p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
+        >
+          <DropdownMenu.Item
+            onSelect={onEdit}
+            className="hover:bg-line focus-visible:bg-line text-ink flex items-center rounded-[2px] px-2 py-2 text-left text-[12px] transition-colors"
+          >
+            Edit
+          </DropdownMenu.Item>
+          {onCopyIntoCollection && (
+            <DropdownMenu.Item
+              onSelect={onCopyIntoCollection}
+              className="hover:bg-line focus-visible:bg-line text-ink flex items-center rounded-[2px] px-2 py-2 text-left text-[12px] transition-colors"
+            >
+              Copy into this collection
+            </DropdownMenu.Item>
+          )}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   )
 }

@@ -103,14 +103,14 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pulled, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, body.Collections.CollectionIDs)
+	pulled, collectionVersions, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, body.Collections.CollectionIDs)
 	if err != nil {
 		log.Printf("push: collections push failed: %v", err)
 		writeJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
 		return
 	}
 
-	if err := s.vault.SaveSelectionsForPush(ctx, profileID, body.Catalogs, body.Collections); err != nil {
+	if err := s.vault.SaveSelectionsForPush(ctx, profileID, body.Catalogs, body.Collections, collectionVersions); err != nil {
 		log.Printf("push: local commit failed after nuvio succeeded, reverting collections: %v", err)
 		if revertErr := s.nuvio.PushCollections(ctx, accessToken, profile.NuvioProfileIndex, pulled); revertErr != nil {
 			log.Printf("push: compensating revert also failed: %v", revertErr)
@@ -159,11 +159,12 @@ func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfil
 // pulledCollection is the subset of a pulled Nuvio collection's fields push's
 // merge needs to decide whether to drop it: its id, for the owned-set match,
 // and each folder's sources, for the addon-id heuristic below (isUnoManaged).
-// Real pulled data keys the sources array "sources"; Uno's own push writes it
-// as "catalogSources" (the field name the public doc documents — see the
-// "Push wire shape" section of docs/data-model.md). Which key a
-// previously-Uno-pushed collection round-trips under hasn't been confirmed
-// against a real Nuvio profile, so both are parsed and unioned.
+// Confirmed against a real Nuvio profile: a collection Uno has pushed
+// round-trips its folder sources under "catalogSources", the
+// same key Uno's own push writes (and the name the public doc documents —
+// see the "Push wire shape" section of docs/data-model.md). "sources" is
+// still parsed too, defensively, in case a Nuvio-native collection (never
+// pushed by Uno) uses it instead — that case wasn't exercised by this check.
 type pulledCollection struct {
 	ID      string `json:"id"`
 	Folders []struct {
@@ -218,22 +219,30 @@ func isUnoManaged(c pulledCollection) bool {
 //  3. Append freshly built entries for the profile's pending selection.
 //
 // Returns the pulled blob on success so push can use it for a compensating
-// revert if the local commit that follows this call ends up failing.
-func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, orderedCollectionIDs []uuid.UUID) ([]json.RawMessage, error) {
+// revert if the local commit that follows this call ends up failing, plus
+// the version of each selected collection as read here — never re-read
+// later, since that's the version Nuvio was actually sent (see
+// vault.SaveSelectionsForPush's pushed_version stamp).
+func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, orderedCollectionIDs []uuid.UUID) ([]json.RawMessage, map[uuid.UUID]int, error) {
 	pulled, err := s.nuvio.PullCollections(ctx, accessToken, nuvioProfileIndex)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	ownedIDs, err := s.vault.GetOwnedCollectionIDs(ctx, profileID)
 	if err != nil {
-		return nil, fmt.Errorf("loading owned collections: %w", err)
+		return nil, nil, fmt.Errorf("loading owned collections: %w", err)
 	}
 	selected, err := s.vault.GetCollectionsByIDs(ctx, orderedCollectionIDs)
 	if err != nil {
-		return nil, fmt.Errorf("loading pending collection selection: %w", err)
+		return nil, nil, fmt.Errorf("loading pending collection selection: %w", err)
 	}
 	selected = reorderCollections(selected, orderedCollectionIDs)
+
+	versions := make(map[uuid.UUID]int, len(selected))
+	for _, c := range selected {
+		versions[c.ID] = c.Version
+	}
 
 	ownedByID := make(map[string]bool, len(ownedIDs))
 	for _, id := range ownedIDs {
@@ -248,7 +257,7 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 	}
 	catalogs, err := s.vault.GetCatalogsByIDs(ctx, allCatalogIDs)
 	if err != nil {
-		return nil, fmt.Errorf("loading referenced catalogs: %w", err)
+		return nil, nil, fmt.Errorf("loading referenced catalogs: %w", err)
 	}
 	catalogsByID := make(map[uuid.UUID]vault.Catalog, len(catalogs))
 	for _, c := range catalogs {
@@ -259,7 +268,7 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 	for _, raw := range pulled {
 		var parsed pulledCollection
 		if err := json.Unmarshal(raw, &parsed); err != nil {
-			return nil, fmt.Errorf("parsing pulled collection: %w", err)
+			return nil, nil, fmt.Errorf("parsing pulled collection: %w", err)
 		}
 		if ownedByID[parsed.ID] || isUnoManaged(parsed) {
 			continue
@@ -270,15 +279,15 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 	for _, c := range selected {
 		rawFresh, err := json.Marshal(buildPushCollection(c, catalogsByID))
 		if err != nil {
-			return nil, fmt.Errorf("marshaling collection for push: %w", err)
+			return nil, nil, fmt.Errorf("marshaling collection for push: %w", err)
 		}
 		kept = append(kept, rawFresh)
 	}
 
 	if err := s.nuvio.PushCollections(ctx, accessToken, nuvioProfileIndex, kept); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return pulled, nil
+	return pulled, versions, nil
 }
 
 // reorderCollections sorts collections to match orderedIDs.

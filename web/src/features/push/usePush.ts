@@ -71,6 +71,13 @@ export function usePush(profileIndex: number): Push {
           void queryClient.invalidateQueries({
             queryKey: queryKeys.collectionSelection(profileIndex),
           })
+          // `pushed_version` lives on the owned-collection row too, and
+          // `HomeSelectionContext`'s `collectionById` map lets the owned list
+          // win over the selection response on id collision (it's built
+          // second) — so without this, a collection that's both owned and
+          // currently selected keeps showing its pre-push `pushed_version` and
+          // the "changed since it was last pushed" line never clears.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
           setOutcome({ kind: 'success', manifestURL: result.manifest_url })
         } else {
           setOutcome({ kind: result.undo_failed ? 'undo-failed' : 'failed' })

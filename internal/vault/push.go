@@ -28,8 +28,10 @@ func (db *DB) ValidateSelectionAccess(ctx context.Context, profileID uuid.UUID, 
 // SaveSelectionsForPush writes both selections in one transaction — the
 // local half of push, run only after both Nuvio calls have already
 // succeeded (internal/api/push.go). The two writes share one transaction
-// so they commit or roll back together.
-func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm) error {
+// so they commit or roll back together. collectionVersions is the version
+// pushCollections read for each pushed collection, forwarded to
+// saveCollectionSelectionTx's pushed_version stamp — see its own comment.
+func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm, collectionVersions map[uuid.UUID]int) error {
 	tx, err := db.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
@@ -39,7 +41,7 @@ func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, ca
 	if err := saveCatalogSelectionTx(ctx, tx, profileID, catalogs); err != nil {
 		return err
 	}
-	if err := saveCollectionSelectionTx(ctx, tx, profileID, collections); err != nil {
+	if err := saveCollectionSelectionTx(ctx, tx, profileID, collections, collectionVersions); err != nil {
 		return err
 	}
 

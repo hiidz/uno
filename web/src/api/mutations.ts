@@ -123,6 +123,17 @@ export function createCollection(
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections`, body)
 }
 
+/** Atomically copies a collection this profile already owns: listed folder
+ *  refs stay references, each distinct scoped catalog becomes a fresh scoped
+ *  copy — `POST .../collections/{id}/duplicate`. 404s if the source isn't
+ *  owned by this profile. */
+export function duplicateCollection(
+  profileIndex: number,
+  collectionID: string,
+): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/duplicate`)
+}
+
 /**
  * Full upsert of the whole tree. Owned only — the server matches on
  * `id = ? AND owner_id = ?` and 404s otherwise.

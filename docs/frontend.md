@@ -94,15 +94,26 @@ than offering an in-place dropdown — a second selection path would mean two wa
 thing, and `POST /api/profiles/select` needs calling either way. It confirms through a dialog
 naming the pending count when edits are pending; `useUnloadGuard` covers reload and tab-close.
 
-## `/configure` — two regions on one page
+## `/configure` — Workspace and Community
 
-**Selecting is the common path; authoring is the rare one.** A generic user browses community
-catalogs and collections, picks some, previews the result, pushes, and never opens an editor.
-That is why this is two regions rather than four co-equal tabs.
+`web/src/routes/Builder.tsx` renders one top-level `Segmented` switch, Workspace / Community
+(its own row below `lg`, matching DESIGN.md's two-row phone top bar) — everything below is one
+of the two. Push, the pending indicator, and the profile chip sit in the header outside both:
+Home's state and its commit don't belong to either tab. Switching tabs goes through the same
+`EditorGuard` an in-app exit already does, since it unmounts `Workspace` (and any editor mid-edit
+inside it) the same way leaving `/configure` would; unlike leaving the page, it also resets
+`EditorGuard`'s `dirty` flag itself, because that provider spans both tabs and a stale `true`
+from the editor just discarded would wrongly guard the next tab switch too.
+
+### Workspace tab — two regions on one page
+
+**Selecting is the common path; authoring is the rare one.** A generic user picks from their own
+catalogs and collections, previews the result, pushes, and never opens an editor. That is why
+this is two regions rather than several co-equal panes.
 
 | Region | Holds |
 | --- | --- |
-| **Library** — left rail | Every catalog and collection, yours and community, in two labelled groups. One filter chip group (Mine/Community/All) and one search box at the top of the rail narrow **both** groups at once. Compact rows: name plus a one-line recipe summary |
+| **Library** — left rail | Every catalog and collection you own, one labelled "Mine" group. One search box at the top of the rail narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — taking someone else's public catalog or collection is the separate Community tab's job, not a second group in this rail |
 | **Pane** — right | One thing at a time: your home screen (with a `List \| Preview` switch), or the editor for whichever rail row is selected. The page's centre of gravity |
 | **Push** — header | Global action, beside a persistent unpushed-changes indicator. Not a section — it's the commit for Home, so it lives where Home is always visible, whether or not Home is the pane's current occupant |
 
@@ -131,18 +142,17 @@ schema's word and stays in code, types, and endpoint names; it does not appear o
 
 ## Library rail
 
-All four list endpoints fetched via `useQueries`, merged and deduped by `mergeOwned`
-(`web/src/features/library/merge.ts`), every row tagged `owned`. Filter and search are **pure
-client-side derivations** of that one dataset, so a chip click costs no network call — justified
-by both lists being unpaginated and small. One dataset means one loading/empty/error state, not
-one per filter mode.
+**The library is exactly this profile's own catalogs and collections — `useLibrary`
+(`web/src/features/library/useLibrary.ts`) fetches only `GET /api/p/{i}/catalogs` and
+`GET /api/p/{i}/collections`.** There is no merge and no `owned` field on `LibraryCatalog`/
+`LibraryCollection`: under the closed-graph sharing model, a folder can
+only ever reference your own listed catalogs, so "the library" and "what you own" are one set by
+construction, not two sets reconciled in the frontend. Browsing and taking someone
+else's public rows is the separate Community tab's job, not this rail's (see "Community tab"
+below).
 
-All list endpoints are unpaginated; assume small N. That is what makes fetch-both-and-merge
-viable. And because the community endpoints return your own public rows too, **ownership is a
-per-row fact derived from membership in the owned set, never from which endpoint a row arrived
-on** — deriving it from the source list renders your own public catalogs as someone else's. The
-owner-vs-community distinction is applied consistently across the rail, both editors, the Home
-pane, and the folder catalog-ref picker.
+All list endpoints are unpaginated; assume small N. Filter and search are **pure client-side
+derivations** of `useLibrary`'s dataset, so typing in the rail's search box costs no network call.
 
 Two things established here that everything downstream depends on: **genre lookups are kept
 per-kind, never merged** (the movie and tv genre id spaces are separate), and **genre queries are
@@ -153,18 +163,29 @@ to raw ids rather than failing the list, so the rail never blocks on TMDB being 
 
 Create is a three-field form — name, `type`, `is_public` — plus the TMDB params sub-form.
 `provider` is derived (`"tmdb"`) and never rendered; `is_default` is excluded (and is `json:"-"`
-server-side, so it can't even appear in a fetched row). `type` renders read-only on edit; **this
-is a UI-only rule** — `PUT` still accepts it — so it holds only as long as every write goes
-through this form. `provider`, by contrast, is enforced server-side in both validation places.
+server-side, so it can't even appear in a fetched row). `type` renders read-only on edit, and
+that's backed server-side too: `UpdateUserCatalog` reads the stored `type` and rejects a
+`PUT` that changes it with `ErrInvalidInput` — a catalog's type is part of the pushed collections
+blob, so changing it would alter what Nuvio should have without bumping any collection's
+`version`. `provider` is enforced server-side the same way, in both validation places.
 
-**Duplicate is the only path to modify a community catalog** — the fork-to-make-it-mine escape
-hatch, and a first-class action, not a hidden overflow item. It reuses the create flow verbatim:
-read source → prefill builder → unsaved → `POST`. Nothing appears in the list until the user
-commits, and duplicates default to `is_public: false` regardless of source, because publishing is
-a deliberate act rather than something inherited from whoever you forked. No extra fetch is
-needed to duplicate from community — `GET /api/catalogs` returns the full row including
-`params`. Duplicate is also the only way to "change a catalog's type", which is what makes
-locking `type` acceptable.
+**Duplicate is a first-class action on your own rows, not a hidden overflow item** — every row in
+the library is yours, so opening one always edits it; `'duplicate'` mode is reached only through
+the explicit Duplicate button (`LibraryItem`'s row actions, or the editor header below `lg`). It
+reuses the create flow verbatim: read source → prefill builder → unsaved → `POST`. Nothing
+appears in the list until the user commits, and duplicates default to `is_public: false`
+regardless of source, because publishing is a deliberate act rather than something inherited from
+what was duplicated. Duplicate is also the only way to "change a catalog's type", which is what
+makes locking `type` acceptable. (Taking someone else's public catalog is a different action,
+`POST /api/p/{i}/community/catalogs/{id}/take` — a server-side deep copy with fresh ids, not this
+duplicate flow; its UI is the Community tab, below.)
+
+**Delete's confirm copy states the real consequence under the closed-graph Take model**
+(`Workspace.tsx`). A shared catalog's confirm names the actual effect — a taker holds an
+independent copy (`taken_from` nulled on this delete), so nobody else's copy is touched; the row
+just disappears from the community list for future takers — rather than claiming deletion
+"removes it for everyone using it". The unshared-catalog branch states the folder-ref cascade
+within this profile.
 
 **Validation rules are enforced structurally where possible**, and this order of preference is
 the point:
@@ -206,13 +227,21 @@ Other decisions worth keeping:
   unpushed-changes count as a side effect of a save that already succeeded, blurring the two
   persistence models the page has to keep legible: authoring writes immediately, selection is
   pending until Push. Adding from the rail defaults `show_in_home: true`.
-- **Writes invalidate both the owned and community catalog lists** (`is_public` can change on
-  any save, and a public row appears in both) but deliberately **not** the selection queries,
-  which would clobber pending edits.
+- **Writes invalidate the owned catalog list** (`useCatalogMutations` also invalidates the
+  community query keys, which the Community tab now subscribes to — an `is_public` flip changes
+  what that tab shows) but deliberately **not** the selection queries, which would clobber
+  pending edits.
 - **`useCatalogMutations` also invalidates the collection lists.** Not defensive — required.
   `DELETE FROM catalogs` cascades `folder_catalogs`, so a cached collection tree keeps a phantom
   ref: the overlay lists a folder member that no longer exists, and saving that collection
   `400`s.
+- **A scoped catalog's "Sharing" row becomes a "Scope" row** (`CatalogFormState.collectionID`):
+  it can't be shared while scoped (the schema's own CHECK), so the Switch is replaced by a note
+  and a "Move to library" button that clears `collectionID` — promote, always allowed, applied on
+  the next Save like any other field. This editor never offers the other direction (demote):
+  it's only ever opened on a scoped row from inside `CollectionEditor`, which is where "copy into
+  this collection" and "new inside this collection" already cover getting one scoped in the first
+  place.
 
 ## Home pane — List view
 
@@ -221,9 +250,9 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
 
 - **The baseline is snapshotted at hydration, not read live from the query cache.** A background
   refetch must not move the baseline under the user and silently change the diff.
-- **Selected rows render from the selection response, not by library lookup** — the selection
-  endpoints have no visibility filter, so the response can contain a community catalog whose
-  owner has since made it private. Rendering by library lookup would make those rows vanish from
+- **Selected rows render from the selection response, not by library lookup** — a selected row
+  can be deleted after selection, and the selection response still returns it until the next
+  push clears it from the TV. Rendering by library lookup would make those rows vanish from
   the page while still being live on the user's TV. Such rows are marked "not in library": they
   work, but removing them is one-way.
 - **List groups in the same three TV bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
@@ -246,6 +275,17 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   header's pending indicator and the navigation guard's dialog both read it, and the indicator
   doubles as the toggle that opens the list itself (`ChangesStrip` in `PushControls.tsx`) — the
   count and the sentences behind it must never disagree, which is why there is only one number.
+- **A collection already on the TV can itself be a pending change**, with no selection edit at
+  all: `computeHomeChanges` adds a line for any collection present in *both* `baseline.collections`
+  and `current.collections` whose `version !== pushed_version` — a save to a collection's folders
+  changes the derived manifest immediately, but Nuvio's own folder sources stay stale until the next
+  push (the "Save-to-Push window", accepted rather than closed). `version`
+  is an integer bumped on every content write and `pushed_version` is the version push actually
+  read and sent, so the compare is exact rather than a clock — an earlier timestamp-based version
+  missed a Save landing inside the same second as a push, or between push's read and its local write, and
+  the integer version has no such gap. Restricted to collections in both sets: a collection taken
+  off the TV, pushed, edited, then put back would otherwise show both "Added …" and "changed
+  since …" for the same collection; only "Added …" should fire.
 
 **Selection is client state until Push, and the one thing enforcing that is the one-shot
 hydration guard** in `web/src/features/home/HomeSelectionContext.tsx`
@@ -321,11 +361,11 @@ Decisions that shape the code:
   the folder holds. They are the folder page's spine: one row or one tab each.
 - **"Not in library" and "nothing resolves" are two different conditions here**, and conflating
   them is a real bug. `catalogById`/`collectionById` are assembled from the selection response
-  *as well as* the library, and the selection endpoint has no visibility filter — so a row whose
-  owner made it private after selection still resolves. Since the Clean Preview amendment
-  (`web/_incoming-design/DESIGN.md`'s ninth), `isDetached` no longer marks anything *inside* the
-  TV frame — the real TV shows a detached row plainly, with no note pinned onto it — but the
-  Discover-only list beneath the frame still asks it, in List's own wording, because that list is
+  *as well as* the library, so a row deleted after selection still resolves through the selection
+  response even once it's gone from the library. Per DESIGN.md's Clean Preview spec (its ninth
+  amendment, `web/_incoming-design/DESIGN.md`), `isDetached` marks nothing *inside* the TV
+  frame — the real TV shows a detached row plainly, with no note pinned onto it — but the
+  Discover-only list beneath the frame still names it, in List's own wording, because that list is
   Uno's own words about the picture, not the picture itself. Unresolvability still degrades a row
   inside the frame to an empty strip, no explanation, matching how the TV would show it.
 - **Slack wire values are handled, not cast away.** `tile_shape` can be `''` (falls back to
@@ -350,24 +390,24 @@ row rather than a first page of one; at fifteen rows, deferring them isn't worth
 complexity. The catalog editor's Run button is the one place a preview fetch is gated, and it is
 gated on a keypress, not on visibility.
 
-Two fidelity limits exist and are silently absorbed rather than named in the UI — the Clean
-Preview amendment (DESIGN.md's ninth) drops the notes that used to state them on screen, on the
-owner's instruction that Uno pin nothing onto the TV picture anywhere:
+Two fidelity limits exist and are silently absorbed rather than named in the UI, per DESIGN.md's
+Clean Preview spec and the owner's instruction that Uno pin nothing onto the TV picture anywhere:
 
 - **Merged catalogs.** Nuvio merges N catalogs into one view and **its merge rule is
   unspecified** — folders aren't an addon concept, so nothing in the addon protocol or Nuvio's
   docs specifies the order, and Uno cannot derive it. This applies to **exactly one view**: the
   `show_all_tab` "All" tab on a `TABBED_GRID` folder page (`interleaveTiles` in
   `features/preview/model.ts`, still shared with the collection editor's own preview panel, which
-  keeps its own caveat text — the Clean Preview amendment only reaches the TV frame). The TV's
-  own "All" tab just shows the merged tiles, with no caption saying the order is a guess.
+  keeps its own caveat text — Clean Preview's no-pinned-notes rule applies only inside the TV
+  frame). The TV's own "All" tab just shows the merged tiles, with no caption saying the order is
+  a guess.
 - **`randomized` catalogs** take a random TMDB page per call on the addon path while the TV
-  preview always asks page 1, so it genuinely won't match the TV. No longer flagged inline; the
-  placeholder-tone tile behind a poster is the only visual difference now, and it isn't specific
-  to this case.
+  preview always asks page 1, so it genuinely won't match the TV. Not flagged inline; the
+  placeholder-tone tile behind a poster is the only visual difference, and it isn't specific to
+  this case.
 
-**The folder page's back arrow lives inside the TV frame, beside the folder's own title** — the
-Back Like the Remote amendment — not as a button in Uno's own chrome above it. Escape and the
+**The folder page's back arrow lives inside the TV frame, beside the folder's own title**, per
+DESIGN.md's Back Like the Remote spec, not as a button in Uno's own chrome above it. Escape and the
 browser's own Back do the same thing. `HomePreview.tsx`'s `useFolderPage` hook owns this: opening
 a folder pushes one `history.pushState({unoFolder: true}, '')` entry (a `try`/`catch` — a
 sandboxed frame can throw, and Escape/the arrow still work without it, only the browser's own
@@ -399,22 +439,30 @@ button.
   `containerId` itself, so keyboard reordering works while pointer drag dies.
 - **Cross-folder ref dragging is deliberately out** — it needs an insert position and a de-dup
   rule against the destination, to replace two clicks. Remove-then-add is the supported move.
-- **"Not in the library" and "the save will 400" are one condition here**, which is the
-  *opposite* of Preview's finding and not a contradiction. `useLibrary` is `owned ∪ is_public`;
-  the server's `validateAccess` is `owner_id = ? OR is_public = 1` — identical predicates over
-  identical rows. What makes Preview's two conditions diverge is the *selection* endpoint
-  supplying rows the library doesn't have, and the builder has no selection endpoint in play. So
-  the mirror is exact, and an unresolvable ref gets one marker naming the action that clears it
-  ("Remove it to save").
-- **Edit keeps unresolvable refs and blocks the save; duplicate drops them.** Dropping on edit
-  would delete rows the user never touched. On duplicate they *have* to go — cloning a community
-  collection that references a since-private catalog would `400` on a uuid the user has never
-  seen — so the clone is partial and says which refs it left behind. The check costs nothing:
-  `accessibleIDs` is the library, the same `owned ∪ is_public` set the server validates against,
-  so no pre-flight request is needed.
-- **Clone strips folder IDs.** A folder with an existing `id` must still belong to this
-  collection or the save `400`s; stripping in `folderFromWire` when `mode === 'duplicate'` is
-  also what turns the clone's folders into inserts.
+- **"Not accessible" and "the save will 400" are one condition here**, which is the *opposite*
+  of Preview's finding and not a contradiction. Accessible is the library plus every scoped
+  catalog `CollectionEditor` already knows about (`localCatalogs`, seeded from the wire's own
+  `catalogs` array and grown by every scoped create/edit made this session) — exactly
+  `validateFolderRefs`'s closed-graph rule (owned, and listed or scoped to this collection). What
+  makes Preview's two conditions diverge is the *selection* endpoint supplying rows the library
+  doesn't have, and the builder has no selection endpoint in play. So the mirror is exact, and an
+  unresolvable ref gets one marker naming the action that clears it ("Remove it to save").
+- **Edit keeps unresolvable refs and blocks the save** — dropping them silently would delete rows
+  the user never touched, so `validateCollectionForm` flags them instead ("Remove it to save").
+- **Duplicating a collection is one atomic server call, not a client-built clone.**
+  `POST /api/p/{i}/collections/{id}/duplicate`
+  (`useCollectionMutations`'s `duplicate`) reuses `TakeCollection`'s own tree-copy logic
+  server-side: every folder ref survives, a listed source catalog stays a reference, and each
+  distinct catalog scoped to the source collection becomes a fresh scoped copy in the new one.
+  There is no client-side seed-and-drop step any more — a collection's scoped catalogs can't be
+  represented on the client without fetching them, so the copy has to happen server-side
+  regardless, which is what makes every scoped ref survive a duplicate (the client's library only
+  ever holds listed catalogs, so a client-built clone could only ever seed listed ones).
+  `Workspace.tsx`'s `confirmDuplicateCollection` calls the mutation, then
+  opens the finished copy straight into its own editor for review — `EditorTarget`'s collection
+  variant carries an `initialCatalogs` override for this, since the fresh copy's scoped rows may
+  not have reached a `library.collections` refetch yet. `CollectionEditor` itself has no
+  `'duplicate'` mode any more — every collection it opens is editing a real row.
 - **A repeat inside one folder is unrepresentable, not merely validated.** It would be a
   `PRIMARY KEY (folder_id, catalog_id)` violation surfacing as a 500 the plain-text error
   channel can't explain — so the picker omits ids already in the folder, the add handler guards,
@@ -425,7 +473,11 @@ button.
   shown above the folder list as soon as any exist. A confirm would ask the user to approve
   something that hasn't happened. Dropping a folder that was never saved is correctly silent.
   "Undo removing it" reinserts the removed rows verbatim — they still carry their original form
-  `key`, which is what makes putting them straight back into `state.folders` safe.
+  `key`, which is what makes putting them straight back into `state.folders` safe. Its body text
+  is unconditional ("Only you lose it — a taker's own copy of this collection is unaffected"),
+  matching the closed-graph Take model: a taker holds an independent copy, so removing a folder
+  from your own collection never reaches theirs regardless of sharing. `Workspace.tsx`'s delete
+  confirms state the same fact.
 - **The save bar's quiet button reads "Discard changes" here, "Cancel" in the catalog editor**
   (`EditorFooter`'s `cancelLabel`) — DESIGN.md's own wording for the heavier thing this editor can
   lose. Both route through the same call, this editor's own `onRequestClose`, and from there
@@ -443,25 +495,56 @@ button.
   Folders and folder-catalogs both restyled onto DESIGN.md's running-order row (grip, ↑/↓, an
   ordinal against the name, ⋯) — the same shared pieces the Home pane's rows use
   (`components/dnd.tsx`'s `Grip`, `RowIconButton`/`MoveUpButton`/`MoveDownButton`, `moveByOne`), so
-  a folder now numbers "1st, 2nd…" like a home row rather than "tab n/N", and a folder's own
-  catalogs number in plain figures ("1", "2"). One folder is open at a time, the same shape the
+  a folder numbers "1st, 2nd…" like a home row, and a folder's own catalogs number in plain
+  figures ("1", "2"). One folder is open at a time, the same shape the
   catalog editor's collapsible sections use.
 - **The catalog-ref picker is inline under the folder**, not a dialog — a scrim would hide the
   folder being filled. It stays open across picks and drops each chosen row out of the list, so
-  what remains is always exactly what can still be added. Restyled to DESIGN.md's copy-from-library
-  choice-button list (one plus icon and a catalog name per button); the type bar it used to carry
-  is gone with the rest of them (Phase 0), and ownership sits in the button's title text instead.
-- **A folder-catalog row carries no Edit**, unlike DESIGN.md's spec for it. DESIGN's quiet Edit
-  opens the folder's own *copy* of the catalog one level down — the
-  folder-catalogs-as-private-copies model this migration explicitly hasn't built (see the
-  migration plan's §2; Phase 5 ships against today's reference-based `folder_catalogs` model on
-  purpose). Here a ref is a live pointer at the same catalog row everywhere it's used, so an
-  "Edit" launching the real catalog editor from inside a folder would change it for every other
-  folder and the library too, silently contradicting DESIGN's own copy note text. Editing a
-  folder's catalog stays where it already was: select it from the library rail. The picker's own
-  note is reworded to match — "stays linked", not "a copy is made" — for the same reason.
-- **Sharing is the shared `Switch` here too now** (Phase 5), same as the catalog editor since its
-  own phase; Show first and the "All" tab are `Segmented`, the latter greyed (DESIGN.md's
+  what remains is always exactly what can still be added.
+- **Three sources for a folder's catalog:** the picker's plus icon **links** a listed catalog — a live pointer,
+  edits reach every folder that references it — and, once this collection has been saved at
+  least once, a second icon **copies** the same row into a fresh catalog scoped to this
+  collection alone, which the original can't drift. A third button, beside "Add catalogs",
+  starts a catalog **new inside this collection**: named first (the same two-step the library's
+  own "New catalog" uses), then opened in the nested editor below to fill its filters. The last
+  two are hidden with a hint to save first when the collection doesn't have a server id yet — a
+  scoped catalog needs a real collection row to scope to.
+- **A folder-catalog row carries a quiet Edit**, DESIGN.md's own spec for it. It opens the
+  referenced catalog one level down: for a scoped catalog that's unambiguous, since
+  nothing else can reference it. For a *listed* one it's still the real catalog editor — a live
+  pointer, so editing it here still reaches every other folder and the library — so the row also
+  says how many places it's used (home screen plus every folder across every owned collection,
+  `Workspace`'s `usedInPlaces`) and offers its own "Copy into this collection", which replaces
+  just this ref with a fresh scoped copy in place rather than adding a second reference.
+  "One level down" is a `Modal` layered over this editor, not a second pane — the builder's pane
+  holds one occupant (see Library rail, above), so a second real editor has to be a modal rather
+  than a stack. `CollectionEditor` stays mounted underneath it, so this editor's own unsaved
+  folder edits survive the round trip; the modal resets `--app-h` to `0` locally so the nested
+  `CatalogEditor`'s sticky header doesn't try to clear the outer app header's height a second
+  time. The modal's own catalog lookup checks `localCatalogs` (scoped catalogs this editor
+  created or copied) **and** falls back to `mergedOptionByID`'s library entry — a listed catalog
+  linked via the plain picker never enters `localCatalogs` at all, so without the fallback, Edit
+  on one silently did nothing (found in a mobile check; the modal's own guard,
+  `if (!catalog) return null`, made the failure invisible rather than an error).
+- **Edit and "Copy into this collection" sit behind a "⋯" menu on the row**, not inline — the
+  same fix `FolderMenu` already applies at the folder level, for the same reason: this row also
+  carries Move up/down and Remove, and five always-visible text buttons overflow the name/recipe
+  text into unreadable truncation at phone width (also found in a mobile check,
+  before the fix above). Move up/down and Remove stay inline, unchanged.
+- **The save bar's "N catalogs will be deleted"** joins "N folders will be deleted" when a
+  scoped catalog this editor knows about would lose its last folder reference on Save — the exact
+  condition `UpdateUserCollection`'s GC delete checks server-side, mirrored client-side the
+  same way the folder-delete warning already was.
+- **Delete's confirm copy (`Workspace.tsx`) states the real consequence:** no
+  claim that removing a shared collection reaches "everyone using it" — a taker's copy is
+  independent — and "the catalogs referenced here are kept" is qualified by
+  `scopedCatalogCount`: it names how many of the collection's own scoped catalogs (which have no
+  life outside it) go with it, distinct from any listed catalog it merely references and which
+  survives.
+- **Sharing is the shared `Switch` component here too**, same as the catalog editor, its label
+  saying what shares along with the collection: "along with every
+  catalog inside it" — sharing a collection shares the recipes inside it, so the switch has
+  to say so. Show first and the "All" tab are `Segmented`, the latter greyed (DESIGN.md's
   "Greyed" segmented state, `Segmented`'s `disabled` prop) rather than hidden while the view mode
   isn't Tabbed Grids, keeping its value for when it switches back.
 - **The "On your TV" panel, docked right in the results panel's place, is not interactive** —
@@ -469,6 +552,49 @@ button.
   folder's own tile shapes, framed in the `--uno-tv-bezel`/`--uno-tv-screen` tokens, but opening a
   folder to see its content is Preview on TV's job once the collection is saved, not this panel's;
   nothing here fetches, and nothing here is a button.
+
+## Community tab
+
+`web/src/features/community/` — everyone else's public catalogs and collections, browsed and
+copied rather than referenced. The closed-graph model's only path across an owner boundary:
+a folder can only ever reference your own listed catalogs (see
+"Library rail" above), so this tab never lets you *use* another owner's row live, only Take a
+private copy of it.
+
+- **`CommunityView.tsx`** owns the Catalogs / Collections `Segmented`, a name-only search field,
+  and a Name / Newest `Select` — pure client-side filtering and sorting over
+  `useCommunityCatalogs`/`useCommunityCollections` (`useCommunity.ts`), which are thin
+  `useQuery` wrappers over the community endpoints, keyed the same way the library's queries are
+  (`queryKeys.communityCatalogs`/`communityCollections`, both under the `['p', i, …]` prefix).
+  It also calls `useLibrary` for its genre lookups only — the same query key `Workspace` and
+  `HomeSelectionContext` already hold open, so this is a third subscriber to cached data, not a
+  third network round trip.
+- **No author, no handle, no "copied from" line anywhere here** —
+  that provenance is retired, not merely hidden. `taken_from` exists in the schema only so a
+  profile's own copies can answer "you already took this," which surfaces here as a plain
+  "✓ Taken" mark beside the row's Take button, from the server's own `taken` field. Taking again
+  is allowed and makes another copy, so the button never disables once a row is taken — mirroring
+  the backend's own Take semantics.
+- **Preview reuses the editors' own preview components, not a new one.** A catalog row's Preview
+  mounts `CommunityCatalogPreview`, which is `RecipePreview` run over the row's own stored
+  `type`/`params` via `useRecipeTiles` — the same on-request, one-TMDB-page component the catalog
+  editor's results panel uses, never `invalid` since a community row is always a saved catalog the
+  server already accepted. A collection row's Preview mounts `CommunityCollectionPreview`, which
+  is the collection editor's own "On your TV" panel (`CollectionPreview`) fed from
+  `buildRefOptions`/`formFromCollection` over the row's own `catalogs` array rather than the
+  library — the community row already carries every catalog its folders reference, listed or
+  scoped on the source side, so nothing resolves as unavailable the way a library-sourced ref
+  picker's accessible set would for someone else's catalog.
+- **Take invalidates both the library and the community lists** (`useCommunityMutations.ts`) —
+  the taken copy has to appear in "Mine" and the source row's `taken` flag has to flip, both from
+  one mutation. A small auto-dismissing strip (2.5s) reports "Added to your catalogs" /
+  "Added to your collections"; unlike the push outcome strip this never needs a decision, so
+  nothing about it persists past being read.
+- **The tab switch is a `Segmented` in `Builder.tsx`'s header**, not a route — `/configure` stays
+  one URL. Above `lg` it sits inline in the header row; below `lg` it drops to its own row
+  underneath, because the header row's height is measured to fit exactly what it holds at phone
+  width and a third control has no room there (see "`/configure` — Workspace and Community"
+  above for the guard this goes through).
 
 ## Push UI
 
@@ -499,6 +625,15 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **Selection queries are invalidated on success.** With `staleTime: 30_000`, a successful push
   otherwise leaves them holding pre-push data, so switching profile and returning inside that
   window re-hydrates the baseline from stale data and makes the pushed changes look undone.
+- **The owned-collections query is invalidated on success too** (found in a
+  dev-loop check). `pushed_version` lives on the `Collection` row from *both* `queryKeys.ownedCollections` and
+  `queryKeys.collectionSelection`, and `HomeSelectionContext`'s `collectionById` map is built by
+  writing the selection response first and the owned list second — so on an id present in both
+  (the ordinary case: a collection that's both owned and currently selected), the owned list's
+  copy always wins. Invalidating only the selection query left `collectionById` holding the
+  owned list's pre-push `pushed_version` forever, so the "changed since it was last pushed"
+  line (`computeHomeChanges`, Home pane section above) never cleared after a successful push —
+  it looked like every push silently failed to update anything.
 - **`ApiError` carries an optional `body`** (`web/src/api/http.ts`), best-effort JSON-parsed
   from the text it already reads on every non-2xx. Without it, push's structured failure arrives
   as an `ApiError` whose `message` is the raw JSON blob — unusable, and worse, renderable
@@ -512,8 +647,6 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - `404` from any `/api/p/{i}/...` route → profile not selected → send back to the picker
   (`ProfileNotSelectedError`, `web/src/api/http.ts`).
 - All list endpoints are unpaginated; assume small N.
-- Owner-vs-community distinction is applied consistently across the rail, both editors, the Home
-  pane, and the folder catalog-ref picker.
 
 ## Visual direction
 
@@ -527,24 +660,24 @@ choice. Preview is the one place posters land, which makes the `List | Preview` 
 rather than a mode change.
 
 **Palette — derived from SMPTE colour bars**, desaturated into a working set. Television's own
-artifact for "nothing to show", which is exactly this page's condition. Cool near-black ground
-(`#0D0F13`); two working hues — cyan `#4EA8B8` for movie, amber `#C39A3E` for series — violet
-`#8E7BC4` for collections, red `#C0483F` reserved for destructive. Tokens live in
+artifact for "nothing to show", which is exactly this page's condition. Near-black ground
+(`#0B0B0C`); two working hues — cyan `#4EA8B8` for movie, amber `#C39A3E` for series — violet
+`#8E7BC4` for collections, red `#E0594E` reserved for destructive. Tokens live in
 `web/src/index.css` as `--uno-*` custom properties, exposed to Tailwind via `@theme inline`.
 
-**Type — one family, three roles, via variable axes.** Archivo at `wdth 118` for display (a wide
-grotesque reads as broadcast titling), Archivo at `wdth 100` for body, IBM Plex Mono for
-recipes, ids, and numbers — a summary line is dense, aligned data and should look like it. (Mono
-is the *face*, not the vocabulary: the line itself is plain English — see the copy rules below.)
-`@fontsource-variable/archivo/wdth.css` ships both axes in one file. Fontsource packages, not
+**Type — one family everywhere except the TV screen.** Jost Variable, at two weights (400 body,
+500 label/button/heading) via its `wght` axis, carries every word Uno says, including recipes,
+ids, and numbers — there is no separate mono face. Roboto is the TV's own face, the Two Faces
+Rule, loaded only inside `.tv-screen`, never elsewhere. `@fontsource-variable/jost/wght.css` and
+`@fontsource/roboto` ship both. Fontsource packages, not
 the Google Fonts CDN, because the build is `go:embed`'d and must not carry a runtime font
 dependency.
 
 **Signature — the type bar.** Every row carries a 3px full-height colour bar at its left edge,
-hue by type. Read down a list, the column of bars is a test pattern. **Ownership rides the same
-device rather than adding a second one: solid = yours, 45° hatched = community.** One device,
-two facts, no badge. Applies everywhere a catalog or collection is listed. It is `aria-hidden`,
-so anywhere ownership matters the row states it in text too.
+hue by type. Read down a list, the column of bars is a test pattern. Applies everywhere a
+catalog or collection is listed. It is `aria-hidden`, so anywhere ownership matters the row
+states it in text too — every row in the library and its editors is the caller's own, so there
+is no ownership distinction left to encode in the bar itself.
 
 **The one loud moment: an empty home screen renders full-saturation colour bars** with a caption
 slug across them. It is the only place the `--smpte-*` tokens fire at full amplitude, it is

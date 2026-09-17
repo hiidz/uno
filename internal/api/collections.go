@@ -52,6 +52,24 @@ func (s *Server) takeCollection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, collection)
 }
 
+func (s *Server) duplicateUserCollection(w http.ResponseWriter, r *http.Request) {
+	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
+
+	collectionID, err := uuid.Parse(r.PathValue("collectionID"))
+	if err != nil {
+		http.Error(w, "invalid collection id", http.StatusBadRequest)
+		return
+	}
+
+	collection, err := s.vault.DuplicateCollection(r.Context(), profileID, collectionID)
+	if err != nil {
+		writeVaultError(w, "duplicateUserCollection", err, vault.ErrCollectionNotFound, "collection not found", "failed to duplicate collection")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, collection)
+}
+
 func (s *Server) createUserCollection(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 

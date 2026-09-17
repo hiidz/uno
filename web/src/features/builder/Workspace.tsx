@@ -175,7 +175,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       if (
         next.sourceID !== undefined &&
         target?.sourceID === next.sourceID &&
-        target.mode === next.mode
+        sameEditorKind(target, next)
       ) {
         // Re-selecting the open row must not re-seed the form from its saved
         // state — that would silently discard edits. Stacked, though, tapping
@@ -242,8 +242,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     catalogMutations.create.mutate(toPayload({ ...emptyForm(newCatalogType), name }), {
       onSuccess: (catalog) => {
         setNamingCatalog(false)
-        // Anything you just made is yours, so this can't be a duplicate target.
-        guard(() => show(catalogTarget({ ...catalog, owned: true })))
+        guard(() => show(catalogTarget(catalog)))
       },
     })
   }
@@ -259,8 +258,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               // `folders` is `Folder[] | null` on the wire and `Folder[]` in the
               // library; a collection created empty is exactly the case that
               // comes back null.
-              { ...collection, owned: true, folders: collection.folders ?? [] },
-              refAccessible,
+              { ...collection, folders: collection.folders ?? [] },
             ),
           ),
         )
@@ -282,7 +280,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
 
   function saveCollection(state: CollectionFormState) {
     const payload = toCollectionPayload(state)
-    if (target?.kind === 'collection' && target.mode === 'edit' && target.collectionID) {
+    if (target?.kind === 'collection' && target.collectionID) {
       collectionMutations.update.mutate(
         { id: target.collectionID, payload },
         { onSuccess: closeAfterSave },
@@ -322,6 +320,25 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
+  // Home screen plus every folder across every owned collection — what the
+  // collection editor's "Used in N places" line asks for a listed catalog.
+  // Lives here because this is the level with both the whole library and the
+  // home selection; the collection editor only ever sees one collection.
+  // Hoisted above the early return below: every Hook in this component has
+  // to run on every render, guard or not.
+  const usedInPlaces = useCallback(
+    (catalogID: string) => {
+      let count = home.hasCatalog(catalogID) ? 1 : 0
+      for (const collection of library.collections) {
+        for (const folder of collection.folders) {
+          if (folder.catalog_ids?.includes(catalogID)) count += 1
+        }
+      }
+      return count
+    },
+    [home, library.collections],
+  )
+
   // A 404 on a profile-scoped route means this slot was never selected —
   // there's nothing to retry, so send the user back to pick one.
   if (library.error instanceof ProfileNotSelectedError) {
@@ -332,32 +349,35 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const collectionSaving =
     collectionMutations.create.isPending || collectionMutations.update.isPending
 
-  // The library row the open editor was opened from, when that row is one of
-  // yours. Below `lg` the editor's own header carries that row's duplicate and
-  // delete — the row itself is a screen-length scroll away — so it has to know
-  // which row it stands for. A brand-new catalog has no row yet, and a
-  // community row has neither action, so both come back undefined.
+  // The library row the open editor was opened from. Below `lg` the editor's
+  // own header carries that row's duplicate and delete — the row itself is a
+  // screen-length scroll away — so it has to know which row it stands for. A
+  // brand-new catalog has no row yet, so this comes back undefined.
   const activeCatalog =
     target?.kind === 'catalog' && target.sourceID !== undefined
-      ? library.catalogs.find((catalog) => catalog.id === target.sourceID && catalog.owned)
+      ? library.catalogs.find((catalog) => catalog.id === target.sourceID)
       : undefined
   const activeCollection =
     target?.kind === 'collection' && target.sourceID !== undefined
-      ? library.collections.find(
-          (collection) => collection.id === target.sourceID && collection.owned,
-        )
+      ? library.collections.find((collection) => collection.id === target.sourceID)
       : undefined
 
-  // Named rather than inlined at each call site: both Library sections —
-  // "Mine" and "Community" — select into the same pane, so this is one
-  // function shared by two rows of JSX rather than two closures doing the
-  // same thing.
+  // Every catalog the open collection's folders already reference, listed or
+  // scoped — `CollectionEditor`'s seed for its own catalog registry.
+  // `target.initialCatalogs` wins when the target set it directly (a
+  // collection just duplicated, whose row may not have reached
+  // `library.collections` yet — see `confirmDuplicateCollection`); otherwise
+  // it falls back to a lookup by id, the ordinary case for a row selected
+  // straight from the rail.
+  const editingCollectionCatalogs =
+    target?.kind === 'collection' ? (target.initialCatalogs ?? activeCollection?.catalogs ?? []) : []
+
   function selectCatalog(catalog: LibraryCatalog) {
     open(catalogTarget(catalog))
   }
 
   function selectCollection(collection: LibraryCollection) {
-    open(collectionTarget(collection, refAccessible))
+    open(collectionTarget(collection))
   }
 
   // Named rather than inlined at the call sites, because the rail's row and the
@@ -380,6 +400,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   }
 
   function duplicateCollection(collection: LibraryCollection) {
+    collectionMutations.duplicate.reset()
     setConfirming({ kind: 'duplicate-collection', collection })
   }
 
@@ -393,9 +414,27 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
+  // Duplicating a collection is one atomic server call — TakeCollection's
+  // own tree-copy logic, reused via DuplicateCollection — rather than a
+  // pre-filled form the editor saves to create the copy: a
+  // collection's scoped catalogs can't be represented client-side without
+  // fetching them, so the copy has to happen server-side regardless. The
+  // finished duplicate opens straight into its own editor for review, same
+  // as the catalog duplicate's confirm copy already promises ("Creates a new,
+  // editable copy... the original is left untouched").
   function confirmDuplicateCollection(collection: LibraryCollection) {
-    setConfirming(null)
-    open(seedCollection(collection, 'duplicate', refAccessible))
+    collectionMutations.duplicate.mutate(collection.id, {
+      onSuccess: (newCollection) => {
+        setConfirming(null)
+        open({
+          kind: 'collection',
+          initial: formFromCollection(newCollection),
+          collectionID: newCollection.id,
+          sourceID: newCollection.id,
+          initialCatalogs: newCollection.catalogs ?? [],
+        })
+      },
+    })
   }
 
   /**
@@ -435,22 +474,23 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         const { catalog } = confirming
         return {
           title: 'Delete this catalog?',
-          // Delete only ever reaches an owned item (`LibrarySection` wires
-          // `onDelete` for owned rows alone), so the axis that actually varies
-          // here is `is_public`, not who owns it: a catalog shared with the
-          // community can be sitting on someone else's home screen right now,
-          // where a private one can only ever be on yours.
-          body: catalog.is_public ? (
-            <>
-              <strong className="text-ink">{catalog.name}</strong> is removed for{' '}
-              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
-              with the community. This can't be undone.
-            </>
-          ) : (
+          // Under the closed-graph sharing model a taker holds an
+          // independent copy (`taken_from` is nulled on this delete, per
+          // ON DELETE SET NULL) — deleting a shared catalog never reaches
+          // anyone else's copy, only your own row and this profile's own
+          // folder refs to it.
+          body: (
             <>
               <strong className="text-ink">{catalog.name}</strong> is deleted permanently.
-              Any references to this catalog from a collection will also be removed.
-              This can't be undone.
+              {catalog.is_public && (
+                <>
+                  {' '}
+                  Anyone who already took a copy keeps theirs — this only removes it from the
+                  community list.
+                </>
+              )}{' '}
+              Any references to this catalog from a collection will also be removed. This can't
+              be undone.
             </>
           ),
           confirmLabel: catalogMutations.remove.isPending ? 'Deleting…' : 'Delete catalog',
@@ -485,19 +525,27 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
 
       case 'delete-collection': {
         const { collection } = confirming
+        const scoped = scopedCatalogCount(collection)
         return {
           title: 'Delete this collection?',
-          body: collection.is_public ? (
+          // As with a catalog, a taker's own copy is untouched by this — but
+          // unlike a catalog, "the catalogs inside it are kept" is only true
+          // for listed ones: a scoped catalog has no life outside the
+          // collection that scopes it and cascades with it.
+          body: (
             <>
               <strong className="text-ink">{collection.title}</strong> and its{' '}
-              {folderCount(collection)} are removed for{' '}
-              <strong className="text-ink">everyone using it</strong>, not just you — it's shared
-              with the community. The catalogs inside it are kept. This can't be undone.
-            </>
-          ) : (
-            <>
-              <strong className="text-ink">{collection.title}</strong> and its{' '}
-              {folderCount(collection)} are deleted permanently. The catalogs inside it are kept.
+              {folderCount(collection)} are deleted permanently.
+              {collection.is_public && (
+                <>
+                  {' '}
+                  Anyone who already took a copy keeps theirs — this only removes it from the
+                  community list.
+                </>
+              )}{' '}
+              {scoped > 0
+                ? `${pluralCount(scoped, 'catalog')} made only for this collection ${scoped === 1 ? 'goes' : 'go'} with it. Any other catalog referenced here is kept.`
+                : 'The catalogs referenced here are kept.'}{' '}
               This can't be undone.
             </>
           ),
@@ -525,10 +573,15 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               untouched.
             </>
           ),
-          confirmLabel: 'Duplicate collection',
+          confirmLabel: collectionMutations.duplicate.isPending ? 'Duplicating…' : 'Duplicate collection',
           cancelLabel: 'Cancel',
+          pending: collectionMutations.duplicate.isPending,
+          error: (collectionMutations.duplicate.error as Error | null)?.message ?? null,
           onConfirm: () => confirmDuplicateCollection(collection),
-          onCancel: () => setConfirming(null),
+          onCancel: () => {
+            collectionMutations.duplicate.reset()
+            setConfirming(null)
+          },
         }
       }
     }
@@ -539,13 +592,11 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   return (
     <>
       <div className="grid min-h-0 flex-1 lg:grid-cols-[372px_minmax(0,1fr)]">
-        {/* The sidebar: your own catalogs and collections on top, everyone
-            else's below. "Mine" and "community" are different tasks (build
-            here, browse there), so each gets its own permanently visible
-            section with its own scroll region and its own name/genre filter,
-            rather than one filtered list with a control choosing which owner
-            to look at. Only "Mine" gets the New buttons; you can't create a
-            community row, only adopt one by opening it.
+        {/* The sidebar: every catalog and collection you own, one permanently
+            visible section with its own scroll region and its own name/genre
+            filter. The closed-graph model means the library is exactly this —
+            there's nothing else to browse here; taking someone else's public
+            catalog or collection is the Community tab's job, not this rail's.
 
             Below `lg` the rail is the top of one long page rather than a
             column, with the pane stacked underneath it. It keeps its link to
@@ -578,7 +629,6 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
           </button>
 
           <LibrarySection
-            owned
             library={library}
             selectedID={target?.sourceID ?? null}
             onNewCatalog={() => {
@@ -592,17 +642,6 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               resetCollectionCreate()
               setNamingCollection(true)
             }}
-            onSelectCatalog={selectCatalog}
-            onSelectCollection={selectCollection}
-            onDuplicateCatalog={duplicateCatalog}
-            onDuplicateCollection={duplicateCollection}
-            onDeleteCatalog={deleteCatalog}
-            onDeleteCollection={deleteCollection}
-          />
-          <LibrarySection
-            owned={false}
-            library={library}
-            selectedID={target?.sourceID ?? null}
             onSelectCatalog={selectCatalog}
             onSelectCollection={selectCollection}
             onDuplicateCatalog={duplicateCatalog}
@@ -655,10 +694,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
             />
           ) : (
             <CollectionEditor
-              key={target.sourceID ?? `new-${target.mode}`}
-              mode={target.mode}
+              key={target.sourceID}
               initial={target.initial}
-              droppedRefs={target.droppedRefs}
               options={refOptions}
               optionByID={refOptionByID}
               accessibleIDs={refAccessible}
@@ -673,6 +710,15 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
               onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
               onDirtyChange={setDirty}
+              collectionID={target.collectionID}
+              initialCatalogs={editingCollectionCatalogs}
+              profileIndex={profileIndex}
+              genres={genres}
+              genreLookups={library.genres}
+              certifications={library.certifications}
+              countryNames={library.countryNames}
+              languages={library.languages}
+              usedInPlaces={usedInPlaces}
             />
           )}
         </div>
@@ -735,47 +781,39 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
 }
 
 /**
- * Selecting a catalog row opens the only editor that row supports.
- *
- * Yours opens for editing. Someone else's opens as a duplicate — you can't
- * change a community catalog, and a read-only view of a form you can't submit
- * would be a dead end. Seeding the copy instead means the row is still
- * inspectable and the one thing you *can* do with it is already set up. A fresh
- * duplicate isn't dirty, so clicking through several community rows never
- * raises a prompt.
+ * Selecting a library row always opens it for editing — everything in the
+ * library is yours. A catalog's `'duplicate'` mode still exists on
+ * `EditorTarget`, but only the explicit Duplicate action reaches it now
+ * (`confirmDuplicateCatalog` below); opening a row never does. A collection
+ * has no such mode any more — see `EditorTarget`'s own doc comment.
  */
 function catalogTarget(catalog: LibraryCatalog): EditorTarget {
-  const mode = catalog.owned ? 'edit' : 'duplicate'
   return {
     kind: 'catalog',
-    mode,
-    initial: formFromCatalog(catalog, mode),
-    catalogID: catalog.owned ? catalog.id : undefined,
+    mode: 'edit',
+    initial: formFromCatalog(catalog, 'edit'),
+    catalogID: catalog.id,
     sourceID: catalog.id,
   }
 }
 
-function collectionTarget(
-  collection: LibraryCollection,
-  accessible: ReadonlySet<string>,
-): EditorTarget {
-  return seedCollection(collection, collection.owned ? 'edit' : 'duplicate', accessible)
-}
-
-function seedCollection(
-  collection: LibraryCollection,
-  mode: 'edit' | 'duplicate',
-  accessible: ReadonlySet<string>,
-): EditorTarget {
-  const { state, droppedRefs } = formFromCollection(collection, mode, accessible)
+function collectionTarget(collection: LibraryCollection): EditorTarget {
   return {
     kind: 'collection',
-    mode,
-    initial: state,
-    droppedRefs,
-    collectionID: mode === 'edit' ? collection.id : undefined,
+    initial: formFromCollection(collection),
+    collectionID: collection.id,
     sourceID: collection.id,
   }
+}
+
+/** Whether two targets are "the same row" for `open`'s re-selection guard.
+ *  A collection has no `mode` any more — see `EditorTarget` — so same `kind`
+ *  is enough for it; a catalog still distinguishes 'edit' from 'duplicate'
+ *  on the same source row. */
+function sameEditorKind(a: EditorTarget | null, b: EditorTarget): boolean {
+  if (a === null || a.kind !== b.kind) return false
+  if (a.kind === 'catalog' && b.kind === 'catalog') return a.mode === b.mode
+  return true
 }
 
 /** What the discard prompt is about. Named from the form's own title so it
@@ -788,4 +826,12 @@ function editorSubject(target: EditorTarget | null): string {
 
 function folderCount(collection: LibraryCollection): string {
   return pluralCount(collection.folders.length, 'folder')
+}
+
+/** How many of this collection's own catalogs (`Collection.catalogs`, every
+ *  catalog its folders reference) are scoped to it specifically — the ones
+ *  that cascade with the collection on delete. A listed catalog referenced
+ *  here survives deletion. */
+function scopedCatalogCount(collection: LibraryCollection): number {
+  return (collection.catalogs ?? []).filter((c) => c.collection_id === collection.id).length
 }

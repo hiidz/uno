@@ -46,10 +46,6 @@ export const VIEW_MODE_LABELS: Record<CollectionViewMode, string> = {
 }
 export const TILE_SHAPES: TileShape[] = ['POSTER', 'LANDSCAPE', 'SQUARE']
 
-/** As in `catalogForm.ts`: no `create`, because a collection is titled into
- *  existence by its own dialog and saved before the editor opens. */
-export type BuilderMode = 'edit' | 'duplicate'
-
 export interface FolderFormState {
   /** Stable for the lifetime of this form only — React keys and dnd-kit ids.
    *  Never sent; see the module comment. */
@@ -120,14 +116,10 @@ function toTileShape(raw: string): FolderTileShape {
   return (TILE_SHAPES as string[]).includes(raw) ? (raw as FolderTileShape) : ''
 }
 
-function folderFromWire(folder: Folder, mode: BuilderMode): FolderFormState {
+function folderFromWire(folder: Folder): FolderFormState {
   return {
     key: nextFolderKey(),
-    // A duplicate is a brand-new collection: carrying folder ids across would
-    // point at rows belonging to the *source*, which the server rejects
-    // ("folder … does not belong to this collection"). Stripping them is what
-    // turns the clone into inserts.
-    id: mode === 'duplicate' ? undefined : folder.id,
+    id: folder.id,
     title: folder.title,
     tileShape: toTileShape(folder.tile_shape),
     hideTitle: folder.hide_title,
@@ -140,59 +132,27 @@ function folderFromWire(folder: Folder, mode: BuilderMode): FolderFormState {
   }
 }
 
-export interface SeedResult {
-  state: CollectionFormState
-  /** Catalog ids dropped because this profile can't reference them. Non-empty
-   *  only when duplicating; see `formFromCollection`. */
-  droppedRefs: string[]
-}
-
 /**
- * Seed the builder from an existing collection.
+ * Seed the builder from an existing collection for editing.
  *
- * `accessibleCatalogIDs` is the set this profile may reference — the library,
- * which is exactly `owned ∪ is_public` and therefore exactly the server's
- * `owner_id = ? OR is_public = 1`. Passing it matters for **duplicate**: a
- * community collection can reference a catalog whose owner has since made it
- * private, and cloning that verbatim would `400` with a message naming a uuid
- * the user has never seen. So duplicate clones partially, and the caller is
- * expected to say which refs went.
- *
- * **Edit keeps unresolvable refs.** They're pre-existing data, and dropping
- * them silently would delete rows the user never asked to touch —
- * `validateCollectionForm` flags them instead.
+ * There's no `mode` any more: duplicating a collection is now a single
+ * atomic server call (`DuplicateCollection`) that returns a
+ * brand-new row with its own folders and scoped-catalog copies already in
+ * place, so the result opens through this same edit-mode seed rather than a
+ * pre-filled, not-yet-saved form. Unresolvable refs (pre-existing data on a
+ * row this profile can't fully reach) are kept rather than dropped —
+ * `validateCollectionForm` flags them instead of silently deleting rows the
+ * user never asked to touch.
  */
-export function formFromCollection(
-  collection: Collection,
-  mode: BuilderMode,
-  accessibleCatalogIDs: ReadonlySet<string>,
-): SeedResult {
-  const folders = (collection.folders ?? []).map((f) => folderFromWire(f, mode))
-
-  const droppedRefs: string[] = []
-  if (mode === 'duplicate') {
-    for (const folder of folders) {
-      const keep = folder.catalogIDs.filter((id) => accessibleCatalogIDs.has(id))
-      for (const id of folder.catalogIDs) {
-        if (!accessibleCatalogIDs.has(id)) droppedRefs.push(id)
-      }
-      folder.catalogIDs = keep
-    }
-  }
-
+export function formFromCollection(collection: Collection): CollectionFormState {
   return {
-    state: {
-      title: mode === 'duplicate' ? `${collection.title} (copy)` : collection.title,
-      // Never born public — publishing is a deliberate act, not something
-      // inherited from whoever you forked. Same rule as the catalog copy.
-      isPublic: mode === 'duplicate' ? false : collection.is_public,
-      pinToTop: collection.pin_to_top,
-      viewMode: toViewMode(collection.view_mode),
-      showAllTab: collection.show_all_tab,
-      backdropImageURL: collection.backdrop_image_url,
-      folders,
-    },
-    droppedRefs,
+    title: collection.title,
+    isPublic: collection.is_public,
+    pinToTop: collection.pin_to_top,
+    viewMode: toViewMode(collection.view_mode),
+    showAllTab: collection.show_all_tab,
+    backdropImageURL: collection.backdrop_image_url,
+    folders: (collection.folders ?? []).map(folderFromWire),
   }
 }
 
@@ -227,11 +187,11 @@ export function countErrors(errors: CollectionErrors): number {
  * "folder does not belong to this collection" can't be constructed.
  *
  * **`accessibleCatalogIDs` is an exact mirror, not an approximation.** The
- * builder's only source of catalogs is the library — `GET /api/p/{i}/catalogs`
- * ∪ `GET /api/catalogs`, i.e. owned ∪ public — and `validateAccess` is
- * `owner_id = ? OR is_public = 1` over the same rows. So here, unlike in the
- * Home pane, "not in the library" and "the server will reject this" are one
- * condition: no selection endpoint supplies a third source of rows.
+ * builder's only source of catalogs is the library — `GET /api/p/{i}/catalogs`,
+ * exactly this profile's own listed catalogs — and the server's
+ * `validateFolderRefs` checks the same closed-graph rule. So here, unlike in
+ * the Home pane, "not in the library" and "the server will reject this" are
+ * one condition: no selection endpoint supplies a third source of rows.
  */
 export function validateCollectionForm(
   state: CollectionFormState,

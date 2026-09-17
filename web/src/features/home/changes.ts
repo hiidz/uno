@@ -157,5 +157,25 @@ export function computeHomeChanges({
     }
   })
 
+  // A collection on the TV whose content moved on since the push that put it
+  // there — the folder sources Nuvio has are stale until the next push, even
+  // though nothing about *this* selection changed. Restricted to collections
+  // present in *both* baseline and current: a collection taken off the TV,
+  // pushed, edited, then put back would otherwise show both "Added …" and
+  // "changed since …" today, when only "Added …" should fire.
+  const baseSet = new Set(baseline.collections)
+  current.collections
+    .filter((id) => baseSet.has(id))
+    .forEach((id) => {
+      const collection = collectionById.get(id)
+      if (collection?.pushed_version == null) return
+      if (collection.version !== collection.pushed_version) {
+        list.push({
+          key: `stale:${id}`,
+          text: `${quoted({ kind: 'collection', id })} changed since it was last pushed`,
+        })
+      }
+    })
+
   return list
 }

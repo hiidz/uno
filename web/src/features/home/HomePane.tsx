@@ -475,7 +475,7 @@ function DetachedTag() {
   return (
     <span
       className="text-series shrink-0"
-      title="Its owner deleted it or made it private. It still works here, but you can't edit it."
+      title="Deleted. It still works here, but you can't edit it."
     >
       · unavailable
     </span>

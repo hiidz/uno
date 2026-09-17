@@ -125,17 +125,29 @@ Three route-semantics facts the client has to honour:
   (`GetCommunityCatalogs`/`GetCommunityCollections`) are `is_public = TRUE AND owner_id != ?`,
   so — unlike the pre-closed-graph community routes — there is no merge or dedup left for the
   frontend to do: a row you own never appears there. Catalogs additionally collapse to one row
-  per fingerprint (§3.3 of the sharing model plan), oldest `created_at` wins. Both responses carry
-  a per-row `taken: bool` — `EXISTS` a row in that table owned by the caller with `taken_from`
-  pointing at this id — computed server-side, never inferred client-side.
+  per fingerprint: the survivor is the oldest `created_at`, ties
+  broken by the smallest id — a fully deterministic rule, not the query's own row order — and the
+  final list is sorted name/title, then `created_at`, then id, so equal names never swap between
+  requests. Both responses carry a per-row `taken: bool` — for catalogs, true if the caller has
+  taken *any* row in that fingerprint group, not only the surviving one; for collections, an
+  `EXISTS` against the caller's own `taken_from` values — computed server-side, never inferred
+  client-side.
   `POST /api/p/{i}/community/catalogs/{id}/take` and `.../community/collections/{id}/take`
   (`TakeCatalog`/`TakeCollection`) deep-copy a public, not-own source into a new row the caller
-  fully owns (§3.5); both 404 via `ErrCatalogNotFound`/`ErrCollectionNotFound` if the source isn't
+  fully owns; both 404 via `ErrCatalogNotFound`/`ErrCollectionNotFound` if the source isn't
   public or is already the caller's own. `GET /api/catalogs` and `GET /api/collections` (the old
   unscoped, unauthenticated-by-profile community routes) are removed.
+- **Duplicating a collection you own is one atomic server call, not a client-built copy.**
+  `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) reuses `TakeCollection`'s
+  tree-copy logic (`copyCollectionTree`): folders and their refs are copied in order, a listed
+  source catalog stays a reference (same id), and each distinct catalog scoped to the source
+  collection becomes a fresh scoped copy in the new one — the same one-copy-per-distinct-catalog
+  rule Take uses, so a catalog referenced by two folders collapses into one new scoped copy
+  referenced twice. `taken_from` stays `NULL` throughout: this is a copy of the caller's own data,
+  not a take. 404s via `ErrCollectionNotFound` if the source isn't owned by the caller.
 - **Selection lives on the rows themselves, not a join table.** `catalogs.home_sort_order`/
-  `show_in_home` and `collections.home_sort_order` replaced `profile_catalogs`/
-  `profile_collections`; the selection endpoints are `owner_id = ? AND home_sort_order IS NOT
+  `show_in_home` and `collections.home_sort_order` are columns on the owning row; the selection
+  endpoints are `owner_id = ? AND home_sort_order IS NOT
   NULL`, ordered by it. The closed graph means a selection can only ever contain rows the caller
   owns — there is no visibility filter to reason about, and no "selected but since made private"
   case to render around.
@@ -159,7 +171,7 @@ per-item `external_ids` resolution exists at all.
 
 Both routes read `vault.GetPublishedCatalogs`, not `GetCurrentCatalogSelection` — the derived
 union of listed catalogs on the home screen and every catalog referenced by a folder of a
-collection on the home screen (§3.4 of the sharing model plan), deduped by id with the home row's
+collection on the home screen, deduped by id with the home row's
 `ShowInHome` winning over a folder-derived one. `GetCurrentCatalogSelection` stays the narrower
 pre-push validation/selection-editor view; the addon server needs the wider set so a catalog used
 only inside an on-TV collection's folder is still published, not a dangling reference.
@@ -371,6 +383,16 @@ about (its own native UI, or another client), so the merge must touch only what 
    all doesn't match the heuristic — there's nothing to compare against `addon.ID`, and treating
    it as a match would risk deleting a Nuvio-native collection whose folders are simply empty.
 3. Append freshly built entries for the pending selection.
+
+**Push stamps the version it read, not a clock.** `pushCollections` returns
+`map[uuid.UUID]int` alongside the pulled blob — each selected collection's `Version` as read at
+step 3, before Nuvio was called. The local write (step 4, `SaveSelectionsForPush` →
+`saveCollectionSelectionTx`) stamps `collections.pushed_version` from that map, never from the
+row's current `Version` at write time. A Save landing between the read and the local write —
+even inside the same second — leaves `Version` ahead of the stamped `PushedVersion`, so the
+frontend's pending-change signal (`Version !== PushedVersion`) still fires correctly for it. A
+row with no entry in the map (vanished between the read and the write) is left untouched rather
+than guessed at.
 
 **The one gap the ordering can't close, and its mitigation.** If the local commit fails *after*
 both Nuvio calls succeeded, Nuvio has the new collections but Uno's vault doesn't record them. On

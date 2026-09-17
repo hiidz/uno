@@ -16,7 +16,7 @@ import (
 func (db *DB) queryCollections(ctx context.Context, where string, args ...any) ([]Collection, error) {
 	rows, err := db.conn.QueryContext(ctx, `
 		SELECT id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
-		       home_sort_order, pushed_at, taken_from, created_at, updated_at
+		       home_sort_order, version, pushed_version, taken_from, created_at, updated_at
 		FROM collections
 		WHERE `+where, args...)
 	if err != nil {
@@ -44,15 +44,25 @@ func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]Co
 
 // GetCommunityCollections returns the community collection list for
 // profileID: every collection marked public and owned by someone else, each
-// with its folders assembled, sorted by title (no fingerprint collapse —
-// that's a catalog-only concept, §3.3), flagged with whether profileID has
-// already taken a copy (§3.5).
+// with its folders assembled, sorted by title, then created_at, then id so
+// equal titles don't swap between requests (no fingerprint collapse —
+// that's a catalog-only concept), flagged with whether profileID has
+// already taken a copy.
 func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) ([]CommunityCollection, error) {
 	collections, err := db.queryCollections(ctx, "is_public = TRUE AND owner_id != ?", profileID.String())
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(collections, func(i, j int) bool { return collections[i].Title < collections[j].Title })
+	sort.Slice(collections, func(i, j int) bool {
+		a, b := collections[i], collections[j]
+		if a.Title != b.Title {
+			return a.Title < b.Title
+		}
+		if !a.CreatedAt.Equal(b.CreatedAt) {
+			return a.CreatedAt.Before(b.CreatedAt)
+		}
+		return a.ID.String() < b.ID.String()
+	})
 
 	trees, err := db.assembleCollectionTree(ctx, collections)
 	if err != nil {
@@ -71,101 +81,129 @@ func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) 
 	return out, nil
 }
 
-// TakeCollection deep-copies a public collection owned by someone else —
-// its cosmetics, folders, and every catalog its folders reference — into a
-// new collection owned by profileID, per §3.5 of the sharing model plan.
-// Every copied catalog is scoped to the new collection, even if the source
-// catalog was listed; a source catalog referenced by two folders becomes one
-// scoped copy referenced twice. Returns ErrCollectionNotFound if sourceID
-// isn't public or is already owned by profileID.
-func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (CollectionWithFolders, error) {
-	tx, err := db.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
-	}
-	defer tx.Rollback() // no-op once Commit succeeds
+// sourceFolder is one folder of a collection tree being copied — loaded by
+// loadSourceCollectionTree, shared by TakeCollection and DuplicateCollection.
+type sourceFolder struct {
+	id         uuid.UUID
+	data       FolderData
+	catalogIDs []uuid.UUID
+}
 
-	var title, viewMode, backdropImageURL string
-	var pinToTop, showAllTab int
+// loadSourceCollectionTree loads sourceID's cosmetics (subject to
+// whereExtra, which distinguishes a Take's "public and not mine" from a
+// Duplicate's "mine") plus its folders and each folder's ordered catalog
+// refs, all inside tx so the read is part of the same transaction the copy
+// commits in. Returns ErrCollectionNotFound if whereExtra excludes sourceID.
+func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUID, whereExtra string, whereArgs ...any) (title, viewMode, backdropImageURL string, pinToTop, showAllTab int, folders []sourceFolder, err error) {
+	args := append([]any{sourceID.String()}, whereArgs...)
 	err = tx.QueryRowContext(ctx, `
 		SELECT title, pin_to_top, view_mode, show_all_tab, backdrop_image_url
-		FROM collections WHERE id = ? AND is_public = TRUE AND owner_id != ?
-	`, sourceID.String(), profileID.String()).Scan(&title, &pinToTop, &viewMode, &showAllTab, &backdropImageURL)
+		FROM collections WHERE id = ?`+whereExtra, args...,
+	).Scan(&title, &pinToTop, &viewMode, &showAllTab, &backdropImageURL)
 	if errors.Is(err, sql.ErrNoRows) {
-		return CollectionWithFolders{}, ErrCollectionNotFound
+		err = ErrCollectionNotFound
+		return
 	}
 	if err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("loading source collection: %w", err)
+		err = fmt.Errorf("loading source collection: %w", err)
+		return
 	}
 
-	folderRows, err := tx.QueryContext(ctx, `
+	folderRows, ferr := tx.QueryContext(ctx, `
 		SELECT id, title, tile_shape, hide_title, cover_emoji, cover_image_url
 		FROM folders WHERE collection_id = ? ORDER BY sort_order
 	`, sourceID.String())
-	if err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("querying source folders: %w", err)
+	if ferr != nil {
+		err = fmt.Errorf("querying source folders: %w", ferr)
+		return
 	}
-	type sourceFolder struct {
-		id         uuid.UUID
-		data       FolderData
-		catalogIDs []uuid.UUID
-	}
-	var sourceFolders []sourceFolder
 	for folderRows.Next() {
 		var idStr string
 		var fd FolderData
 		var hideTitleInt int
-		if err := folderRows.Scan(&idStr, &fd.Title, &fd.TileShape, &hideTitleInt, &fd.CoverEmoji, &fd.CoverImageURL); err != nil {
+		if serr := folderRows.Scan(&idStr, &fd.Title, &fd.TileShape, &hideTitleInt, &fd.CoverEmoji, &fd.CoverImageURL); serr != nil {
 			folderRows.Close()
-			return CollectionWithFolders{}, fmt.Errorf("scanning source folder: %w", err)
+			err = fmt.Errorf("scanning source folder: %w", serr)
+			return
 		}
-		id, err := parseUUID(idStr, "folder id")
-		if err != nil {
+		id, perr := parseUUID(idStr, "folder id")
+		if perr != nil {
 			folderRows.Close()
-			return CollectionWithFolders{}, err
+			err = perr
+			return
 		}
 		fd.HideTitle = hideTitleInt != 0
-		sourceFolders = append(sourceFolders, sourceFolder{id: id, data: fd})
+		folders = append(folders, sourceFolder{id: id, data: fd})
 	}
-	if err := folderRows.Err(); err != nil {
+	if ferr := folderRows.Err(); ferr != nil {
 		folderRows.Close()
-		return CollectionWithFolders{}, fmt.Errorf("iterating source folders: %w", err)
+		err = fmt.Errorf("iterating source folders: %w", ferr)
+		return
 	}
 	folderRows.Close()
 
-	for i := range sourceFolders {
-		catRows, err := tx.QueryContext(ctx, `
+	for i := range folders {
+		catRows, cerr := tx.QueryContext(ctx, `
 			SELECT catalog_id FROM folder_catalogs WHERE folder_id = ? ORDER BY sort_order
-		`, sourceFolders[i].id.String())
-		if err != nil {
-			return CollectionWithFolders{}, fmt.Errorf("querying source folder catalogs: %w", err)
+		`, folders[i].id.String())
+		if cerr != nil {
+			err = fmt.Errorf("querying source folder catalogs: %w", cerr)
+			return
 		}
 		for catRows.Next() {
 			var catIDStr string
-			if err := catRows.Scan(&catIDStr); err != nil {
+			if serr := catRows.Scan(&catIDStr); serr != nil {
 				catRows.Close()
-				return CollectionWithFolders{}, fmt.Errorf("scanning source folder catalog: %w", err)
+				err = fmt.Errorf("scanning source folder catalog: %w", serr)
+				return
 			}
-			catID, err := parseUUID(catIDStr, "catalog id")
-			if err != nil {
+			catID, perr := parseUUID(catIDStr, "catalog id")
+			if perr != nil {
 				catRows.Close()
-				return CollectionWithFolders{}, err
+				err = perr
+				return
 			}
-			sourceFolders[i].catalogIDs = append(sourceFolders[i].catalogIDs, catID)
+			folders[i].catalogIDs = append(folders[i].catalogIDs, catID)
 		}
-		if err := catRows.Err(); err != nil {
+		if cerr := catRows.Err(); cerr != nil {
 			catRows.Close()
-			return CollectionWithFolders{}, fmt.Errorf("iterating source folder catalogs: %w", err)
+			err = fmt.Errorf("iterating source folder catalogs: %w", cerr)
+			return
 		}
 		catRows.Close()
 	}
 
-	// Distinct source catalog ids across every folder, first-seen order —
-	// this is what collapses two folders sharing a source catalog into one
-	// scoped copy.
+	return
+}
+
+// copyCollectionTree inserts a new collection owned by profileID — titled
+// title, cosmetics from the loadSourceCollectionTree call that produced
+// pinToTop/viewMode/showAllTab/backdropImageURL and folders — plus the
+// folders themselves, refs remapped through an old-id→new-id map built as
+// follows for each distinct catalog id folders reference (first-seen
+// order, so a catalog referenced by two folders collapses into one copy
+// referenced twice):
+//
+//   - copyListedRefs true (TakeCollection): every distinct catalog, listed
+//     or scoped on the source side, becomes a fresh scoped copy in the new
+//     collection — crossing the owner boundary means there is no existing
+//     row of the taker's to point at instead.
+//   - copyListedRefs false (DuplicateCollection): a listed source catalog
+//     stays a reference — same id, same owner — while a catalog scoped to
+//     the source collection still becomes a fresh scoped copy. Every
+//     catalog a source collection's folders can reference is, by
+//     validateFolderRefs, either listed or scoped to that same source
+//     collection, so those two cases are exhaustive.
+//
+// takenFrom is stamped on the new collection row and, when copyListedRefs is
+// also true, on every copied catalog row too: TakeCollection passes the
+// source id for both; DuplicateCollection passes nil for both — a
+// duplicate is a fresh fact, not a copy taken from someone else. Must run
+// inside tx; the caller commits.
+func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, title, viewMode, backdropImageURL string, pinToTop, showAllTab int, folders []sourceFolder, takenFrom *uuid.UUID, copyListedRefs bool) (uuid.UUID, error) {
 	var distinctCatalogIDs []uuid.UUID
 	seenCatalog := map[uuid.UUID]bool{}
-	for _, f := range sourceFolders {
+	for _, f := range folders {
 		for _, id := range f.catalogIDs {
 			if !seenCatalog[id] {
 				seenCatalog[id] = true
@@ -178,74 +216,121 @@ func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID 
 	nowStr := now.Format(time.RFC3339)
 
 	newCollectionID := uuid.New()
-	_, err = tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab,
 		                          backdrop_image_url, taken_from, created_at, updated_at)
 		VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
 	`, newCollectionID.String(), title, profileID.String(), pinToTop, viewMode, showAllTab, backdropImageURL,
-		sourceID.String(), nowStr, nowStr)
+		nullableUUIDString(takenFrom), nowStr, nowStr)
 	if err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("inserting taken collection: %w", err)
+		return uuid.Nil, fmt.Errorf("inserting copied collection: %w", err)
 	}
 
 	idMap := make(map[uuid.UUID]uuid.UUID, len(distinctCatalogIDs))
 	if len(distinctCatalogIDs) > 0 {
 		placeholders, args := buildInClause(distinctCatalogIDs)
 		catRows, err := tx.QueryContext(ctx, fmt.Sprintf(`
-			SELECT id, type, name, provider, params, fingerprint FROM catalogs WHERE id IN (%s)
+			SELECT id, type, name, provider, params, fingerprint, collection_id FROM catalogs WHERE id IN (%s)
 		`, placeholders), args...)
 		if err != nil {
-			return CollectionWithFolders{}, fmt.Errorf("querying source catalogs: %w", err)
+			return uuid.Nil, fmt.Errorf("querying source catalogs: %w", err)
 		}
 		type sourceCatalog struct {
 			id, typ, name, provider, params, fingerprint string
+			collectionID                                 sql.NullString
 		}
 		var sourceCatalogs []sourceCatalog
 		for catRows.Next() {
 			var sc sourceCatalog
-			if err := catRows.Scan(&sc.id, &sc.typ, &sc.name, &sc.provider, &sc.params, &sc.fingerprint); err != nil {
+			if err := catRows.Scan(&sc.id, &sc.typ, &sc.name, &sc.provider, &sc.params, &sc.fingerprint, &sc.collectionID); err != nil {
 				catRows.Close()
-				return CollectionWithFolders{}, fmt.Errorf("scanning source catalog: %w", err)
+				return uuid.Nil, fmt.Errorf("scanning source catalog: %w", err)
 			}
 			sourceCatalogs = append(sourceCatalogs, sc)
 		}
 		if err := catRows.Err(); err != nil {
 			catRows.Close()
-			return CollectionWithFolders{}, fmt.Errorf("iterating source catalogs: %w", err)
+			return uuid.Nil, fmt.Errorf("iterating source catalogs: %w", err)
 		}
 		catRows.Close()
 
 		for _, sc := range sourceCatalogs {
 			oldID, err := parseUUID(sc.id, "catalog id")
 			if err != nil {
-				return CollectionWithFolders{}, err
+				return uuid.Nil, err
 			}
+
+			// A listed source catalog, when copyListedRefs is false, stays a
+			// reference — no new row, the new collection's folders point at
+			// the same id the caller already owns.
+			if !copyListedRefs && !sc.collectionID.Valid {
+				idMap[oldID] = oldID
+				continue
+			}
+
 			newID := uuid.New()
 			idMap[oldID] = newID
+			// Each catalog copy's own taken_from points at the catalog it was
+			// copied from — but only when this is a Take (takenFrom != nil).
+			// A Duplicate copies your own data, so its scoped catalog copies
+			// get no taken_from either, matching the new collection row.
+			var catalogTakenFrom *uuid.UUID
+			if takenFrom != nil {
+				catalogTakenFrom = &oldID
+			}
 			_, err = tx.ExecContext(ctx, `
 				INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
 				                       collection_id, taken_from, fingerprint, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
 			`, newID.String(), sc.typ, sc.name, sc.provider, sc.params, profileID.String(),
-				newCollectionID.String(), oldID.String(), sc.fingerprint, nowStr, nowStr)
+				newCollectionID.String(), nullableUUIDString(catalogTakenFrom), sc.fingerprint, nowStr, nowStr)
 			if err != nil {
-				return CollectionWithFolders{}, fmt.Errorf("inserting taken scoped catalog: %w", err)
+				return uuid.Nil, fmt.Errorf("inserting copied scoped catalog: %w", err)
 			}
 		}
 	}
 
-	for i, f := range sourceFolders {
+	for i, f := range folders {
 		newFolder, err := insertFolder(ctx, tx, newCollectionID, i, f.data)
 		if err != nil {
-			return CollectionWithFolders{}, err
+			return uuid.Nil, err
 		}
 		newCatalogIDs := make([]uuid.UUID, len(f.catalogIDs))
 		for j, oldID := range f.catalogIDs {
 			newCatalogIDs[j] = idMap[oldID]
 		}
 		if err := replaceFolderCatalogRefs(ctx, tx, newFolder.ID, newCatalogIDs); err != nil {
-			return CollectionWithFolders{}, err
+			return uuid.Nil, err
 		}
+	}
+
+	return newCollectionID, nil
+}
+
+// TakeCollection deep-copies a public collection owned by someone else —
+// its cosmetics, folders, and every catalog its folders reference — into a
+// new collection owned by profileID, with fresh ids throughout so the copy
+// is unaffected by later changes to the source. Every copied catalog is
+// scoped to the new collection, even if the source
+// catalog was listed; a source catalog referenced by two folders becomes one
+// scoped copy referenced twice. Returns ErrCollectionNotFound if sourceID
+// isn't public or is already owned by profileID.
+func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (CollectionWithFolders, error) {
+	tx, err := db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback() // no-op once Commit succeeds
+
+	title, viewMode, backdropImageURL, pinToTop, showAllTab, folders, err :=
+		loadSourceCollectionTree(ctx, tx, sourceID, " AND is_public = TRUE AND owner_id != ?", profileID.String())
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+
+	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, title, viewMode, backdropImageURL, pinToTop, showAllTab, folders, &sourceID, true)
+	if err != nil {
+		return CollectionWithFolders{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -258,6 +343,54 @@ func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID 
 	}
 	if len(trees) == 0 {
 		return CollectionWithFolders{}, fmt.Errorf("loading taken collection %s: not found after insert", newCollectionID)
+	}
+	return trees[0], nil
+}
+
+// DuplicateCollection deep-copies a collection profileID already owns —
+// its cosmetics, folders, and every catalog its folders reference — into a
+// new collection, also owned by profileID. Every folder ref survives the
+// copy: a listed source catalog stays a reference (the new collection's
+// folders point at the same row),
+// while each distinct scoped source catalog becomes a fresh scoped copy in
+// the new collection — the same one-copy-per-distinct-source-catalog rule
+// TakeCollection uses, so a catalog referenced by two folders collapses into
+// one new scoped copy referenced twice. taken_from is left nil throughout:
+// this is not a take, it's a fresh copy of your own data. The new
+// collection is never born public and its title gets a "(copy)" suffix, the
+// same two rules the frontend used to apply client-side before this existed
+// as a single atomic server operation. Returns ErrCollectionNotFound if
+// sourceID isn't owned by profileID.
+func (db *DB) DuplicateCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (CollectionWithFolders, error) {
+	tx, err := db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback() // no-op once Commit succeeds
+
+	// copyCollectionTree always inserts is_public = 0, so "born never public"
+	// falls out of reusing it rather than needing its own line here.
+	title, viewMode, backdropImageURL, pinToTop, showAllTab, folders, err :=
+		loadSourceCollectionTree(ctx, tx, sourceID, " AND owner_id = ?", profileID.String())
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+
+	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, title+" (copy)", viewMode, backdropImageURL, pinToTop, showAllTab, folders, nil, false)
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return CollectionWithFolders{}, fmt.Errorf("committing transaction: %w", err)
+	}
+
+	trees, err := db.GetCollectionsByIDs(ctx, []uuid.UUID{newCollectionID})
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+	if len(trees) == 0 {
+		return CollectionWithFolders{}, fmt.Errorf("loading duplicated collection %s: not found after insert", newCollectionID)
 	}
 	return trees[0], nil
 }
@@ -387,6 +520,7 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 		ViewMode:         input.ViewMode,
 		ShowAllTab:       input.ShowAllTab,
 		BackdropImageURL: input.BackdropImageURL,
+		Version:          1,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -441,11 +575,11 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	defer tx.Rollback() // no-op once Commit succeeds
 
 	var createdAtStr string
-	var homeSortOrder sql.NullInt64
-	var pushedAtStr sql.NullString
+	var homeSortOrder, pushedVersion sql.NullInt64
+	var version int
 	err = tx.QueryRowContext(ctx, `
-		SELECT created_at, home_sort_order, pushed_at FROM collections WHERE id = ? AND owner_id = ?
-	`, collectionID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &pushedAtStr)
+		SELECT created_at, home_sort_order, version, pushed_version FROM collections WHERE id = ? AND owner_id = ?
+	`, collectionID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &version, &pushedVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return CollectionWithFolders{}, ErrCollectionNotFound
 	}
@@ -458,7 +592,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 
 	result, err := tx.ExecContext(ctx, `
 		UPDATE collections
-		SET title = ?, is_public = ?, pin_to_top = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, updated_at = ?
+		SET title = ?, is_public = ?, pin_to_top = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, updated_at = ?, version = version + 1
 		WHERE id = ? AND owner_id = ?
 	`, input.Title, input.IsPublic, input.PinToTop, input.ViewMode, input.ShowAllTab, input.BackdropImageURL, nowStr,
 		collectionID.String(), profileID.String())
@@ -564,7 +698,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 		folders[i] = FolderWithCatalogs{Folder: f, CatalogIDs: orEmpty(fd.CatalogIDs)}
 	}
 
-	// §3.2: a scoped catalog with no remaining folder reference in this
+	// A scoped catalog with no remaining folder reference in this
 	// collection is deleted here, in the same transaction as the folder
 	// rewrite above — this is what catches a scoped catalog created via
 	// POST .../catalogs and never referenced (editor abandoned before Save).
@@ -586,19 +720,16 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
-	pushedAt, err := parseNullableTimestamp(pushedAtStr, "collection pushed_at")
-	if err != nil {
-		return CollectionWithFolders{}, err
-	}
 
 	c := Collection{
 		ID: collectionID, Title: input.Title, OwnerID: profileID,
 		IsPublic: input.IsPublic, IsDefault: false, // not returned by UPDATE
 		PinToTop: input.PinToTop, ViewMode: input.ViewMode,
 		ShowAllTab: input.ShowAllTab, BackdropImageURL: input.BackdropImageURL,
-		// HomeSortOrder/PushedAt are unchanged by this update, read back above
-		// for an accurate response.
-		HomeSortOrder: nullableInt(homeSortOrder), PushedAt: pushedAt,
+		// HomeSortOrder/PushedVersion are unchanged by this update, read back
+		// above for an accurate response. Version is the freshly bumped value
+		// the UPDATE above just wrote.
+		HomeSortOrder: nullableInt(homeSortOrder), Version: version + 1, PushedVersion: nullableInt(pushedVersion),
 		CreatedAt: createdAt, UpdatedAt: now,
 	}
 
@@ -649,30 +780,41 @@ func (db *DB) GetCurrentCollectionSelection(ctx context.Context, profileID uuid.
 }
 
 // saveCollectionSelectionTx resets this profile's collection selection to
-// exactly input, in order, and stamps pushed_at on every collection it
-// includes — this is push's only caller, so every collection reaching this
-// point is, by definition, being pushed right now. Every owned collection's
-// home_sort_order is cleared first, then each incoming id is set in turn; a
-// 0-rows-affected update (an id that isn't owned) is ErrInvalidInput naming
-// the id, the same pattern as saveCatalogSelectionTx.
+// exactly input, in order, and stamps pushed_version on every collection it
+// includes with the version pushCollections read for it — this is push's
+// only caller, so every collection reaching this point is, by definition,
+// being pushed right now. Every owned collection's home_sort_order is
+// cleared first, then each incoming id is set in turn; a 0-rows-affected
+// update (an id that isn't owned) is ErrInvalidInput naming the id, the same
+// pattern as saveCatalogSelectionTx.
+//
+// versions is keyed by collection id, built by pushCollections from the same
+// read that fed Nuvio — never the row's current version and never a clock,
+// which is what keeps a Save landing between that read and this write from
+// being mistaken for pushed. A missing entry (the collection vanished
+// between push's read and this write) leaves pushed_version untouched rather
+// than guessing.
 //
 // Takes a caller-supplied transaction — see saveCatalogSelectionTx in
 // catalogs.go for why, and for why there is no exported single-selection
 // wrapper.
-func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CollectionSelectionForm) error {
+func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CollectionSelectionForm, versions map[uuid.UUID]int) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE collections SET home_sort_order = NULL WHERE owner_id = ?
 	`, profileID.String()); err != nil {
 		return fmt.Errorf("clearing collection home selection: %w", err)
 	}
 
-	nowStr := time.Now().UTC().Format(time.RFC3339)
 	for i, id := range input.CollectionIDs {
+		var pushedVersion any
+		if v, ok := versions[id]; ok {
+			pushedVersion = v
+		}
 		result, err := tx.ExecContext(ctx, `
 			UPDATE collections
-			SET home_sort_order = ?, pushed_at = ?
+			SET home_sort_order = ?, pushed_version = COALESCE(?, pushed_version)
 			WHERE id = ? AND owner_id = ?
-		`, i, nowStr, id.String(), profileID.String())
+		`, i, pushedVersion, id.String(), profileID.String())
 		if err != nil {
 			return fmt.Errorf("saving collection selection: %w", err)
 		}

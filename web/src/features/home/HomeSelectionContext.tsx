@@ -25,14 +25,10 @@ export interface HomeSelection {
   catalogById: ReadonlyMap<string, Catalog>
   collectionById: ReadonlyMap<string, Collection>
 
-  /** True when a selected item is no longer in the library — typically a
-   *  community item whose owner made it private after it was selected. It
-   *  still works, but removing it is one-way, so the UI says so. */
+  /** True when a selected item is no longer in the library — the row was
+   *  deleted after being selected. It still works, but removing it is
+   *  one-way, so the UI says so. */
   isDetached: (id: string) => boolean
-
-  /** Ownership for the type bar. Derived from library membership, the same
-   *  rule the rail uses — a selected row absent from the library isn't yours. */
-  isOwned: (id: string) => boolean
 
   /** `pin_to_top`, read through `collectionById` — a property of the
    *  collection itself, set in its own editor, never edited from this pane.
@@ -154,15 +150,6 @@ export function HomeSelectionProvider({
     [library.catalogs, library.collections],
   )
 
-  const ownedIds = useMemo(
-    () =>
-      new Set([
-        ...library.catalogs.filter((c) => c.owned).map((c) => c.id),
-        ...library.collections.filter((c) => c.owned).map((c) => c.id),
-      ]),
-    [library.catalogs, library.collections],
-  )
-
   const isPinned = useCallback(
     (id: string) => collectionById.get(id)?.pin_to_top ?? false,
     [collectionById],
@@ -182,7 +169,7 @@ export function HomeSelectionProvider({
   // Data derived from the library and the selection responses — changes only
   // when one of those actually changes, not on every edit to `current`. Split
   // out so an edit that doesn't touch any of this (most of them) doesn't force
-  // a new `isDetached`/`isOwned` closure on every keystroke.
+  // a new `isDetached` closure on every keystroke.
   const readData = useMemo(
     () => ({
       catalogById,
@@ -191,24 +178,13 @@ export function HomeSelectionProvider({
       // Only meaningful once the library has actually loaded; before that
       // everything would look detached.
       isDetached: (id: string) => !library.isLoading && !libraryIds.has(id),
-      isOwned: (id: string) => ownedIds.has(id),
       isPinned,
       genres: library.genres,
 
       changes,
       pendingCount,
     }),
-    [
-      catalogById,
-      collectionById,
-      library.isLoading,
-      libraryIds,
-      ownedIds,
-      isPinned,
-      library.genres,
-      changes,
-      pendingCount,
-    ],
+    [catalogById, collectionById, library.isLoading, libraryIds, isPinned, library.genres, changes, pendingCount],
   )
 
   // Every one of these only closes over `edit` (plus, for the band-aware ones,

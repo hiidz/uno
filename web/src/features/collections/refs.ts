@@ -43,10 +43,10 @@ export function indexRefOptions(options: RefOption[]): ReadonlyMap<string, RefOp
 }
 
 /**
- * The ids a folder is allowed to reference — the library, which is
- * `owned ∪ is_public` and therefore exactly the server's
- * `owner_id = ? OR is_public = 1`. Handed to `validateCollectionForm` as the
- * mirror of `validateCatalogAccess`.
+ * The ids a folder is allowed to reference — the library, which under the
+ * closed-graph model is exactly this profile's own listed catalogs, the same
+ * set the server's `validateFolderRefs` checks against. Handed to
+ * `validateCollectionForm` as that mirror.
  */
 export function accessibleIDs(options: RefOption[]): ReadonlySet<string> {
   return new Set(options.map((option) => option.id))

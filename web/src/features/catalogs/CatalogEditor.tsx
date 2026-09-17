@@ -61,15 +61,13 @@ import {
  * the rail, switching profile — so the pane owns the confirmation and this only
  * has to say whether there is anything to lose.
  *
- * **The read-only view of an imported catalog (DESIGN.md's own spec for this
- * editor) isn't built here.** It needs the owner's `@handle` for its banner
- * ("Imported from **@dan**…"), and handle/attribution is paused work (see the
- * migration plan's §2). It would also be a regression on today's app: opening
- * a community row here has always meant an immediately-editable duplicate
- * (`BuilderMode` is `'edit' | 'duplicate'`, with no third "viewing" mode) —
- * swapping that for a read-only screen plus a Duplicate button is strictly
- * more steps to the one thing that screen lets you do, which the migration
- * plan's own preamble rules out. Logged in the plan's Open decisions.
+ * **There is no read-only "imported" view.** The closed-graph sharing model
+ * has no such state: a taken catalog is a private copy you fully own from
+ * the moment it's created, not a live pointer
+ * that could ever need a read-only screen. Every row this editor opens is
+ * yours, so `BuilderMode` is `'edit' | 'duplicate'` with no third "viewing"
+ * mode — `'duplicate'` is reached only through the explicit Duplicate action
+ * on one of your own rows, never by opening one.
  */
 export function CatalogEditor({
   mode,
@@ -363,20 +361,40 @@ export function CatalogEditor({
               </div>
             </div>
 
-            <div className="cr is-switch">
-              <span className="cr-role type-eyebrow">Sharing</span>
-              <div className="cr-val">
-                <Switch
-                  checked={state.isPublic}
-                  onChange={(isPublic) => patch({ isPublic })}
-                  label={
-                    state.isPublic
-                      ? 'Shared, so anyone can import it'
-                      : 'Not shared, only you can use it'
-                  }
-                />
+            {state.collectionID !== null ? (
+              <div className="cr">
+                <span className="cr-role type-eyebrow">Scope</span>
+                <div className="cr-val ed-line">
+                  <span className="type-data text-[13px]">Only inside this collection</span>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => patch({ collectionID: null, isPublic: false })}
+                  >
+                    Move to library
+                  </button>
+                </div>
+                <p className="type-data text-dimmer m-0 pt-1 text-[11px] leading-[1.45]">
+                  Scoped catalogs can't be shared. Moving it to your library makes it usable from
+                  any of your folders and lets it join the community list — takes effect on Save.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className="cr is-switch">
+                <span className="cr-role type-eyebrow">Sharing</span>
+                <div className="cr-val">
+                  <Switch
+                    checked={state.isPublic}
+                    onChange={(isPublic) => patch({ isPublic })}
+                    label={
+                      state.isPublic
+                        ? 'Shared, so anyone can import it'
+                        : 'Not shared, only you can use it'
+                    }
+                  />
+                </div>
+              </div>
+            )}
 
             {isBare && (
               <p className="ed-fresh">

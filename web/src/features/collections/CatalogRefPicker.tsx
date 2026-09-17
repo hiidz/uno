@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Copy, Plus } from 'lucide-react'
 import { Icon } from '@/components/Icon'
 import { filterRefOptions, type RefOption } from './refs'
 
@@ -14,11 +15,20 @@ import { filterRefOptions, type RefOption } from './refs'
  * the remaining options are always exactly what can still be added. Ordering
  * isn't set here: a new ref lands at the end of the folder and is dragged into
  * place in the list above, where the order is visible.
+ *
+ * Two ways to add a listed catalog, per row: the plus links it (the same
+ * catalog everywhere it's used), and — only once this collection has a real
+ * id, `onCopy` present — a second icon copies it into a fresh, scoped catalog
+ * this collection alone references. `footer` is where the caller puts the
+ * third source, "new inside this collection", which isn't a pick from this
+ * list at all.
  */
 export function CatalogRefPicker({
   options,
   exclude,
   onAdd,
+  onCopy,
+  footer,
   onClose,
 }: {
   options: RefOption[]
@@ -26,6 +36,9 @@ export function CatalogRefPicker({
    *  `filterRefOptions` for why a repeat has to be unrepresentable. */
   exclude: ReadonlySet<string>
   onAdd: (catalogID: string) => void
+  /** Absent until this collection has a server id — see `CollectionEditor`. */
+  onCopy?: (catalogID: string) => void
+  footer?: ReactNode
   onClose: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -67,22 +80,34 @@ export function CatalogRefPicker({
         // narrows the list to what's worth scanning.
         <div className="choices" role="group" aria-label="Catalogs to add">
           {matches.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => onAdd(option.id)}
-              title={`${option.recipe} · ${option.catalog.type === 'movie' ? 'movie' : 'series'} · ${
-                option.catalog.owned ? 'yours' : 'community'
-              }`}
-              className="choice"
-            >
-              <Icon icon={Plus} size={13} />
-              {option.name}
-              <span className="sr-only">to this folder</span>
-            </button>
+            <span key={option.id} className="inline-flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => onAdd(option.id)}
+                title={`Link ${option.name} — ${option.recipe} · ${option.catalog.type === 'movie' ? 'movie' : 'series'}`}
+                className="choice"
+              >
+                <Icon icon={Plus} size={13} />
+                {option.name}
+                <span className="sr-only">to this folder</span>
+              </button>
+              {onCopy && (
+                <button
+                  type="button"
+                  onClick={() => onCopy(option.id)}
+                  title={`Copy ${option.name} into this collection, instead of linking it`}
+                  aria-label={`Copy ${option.name} into this collection`}
+                  className="choice px-1.5"
+                >
+                  <Icon icon={Copy} size={12} />
+                </button>
+              )}
+            </span>
           ))}
         </div>
       )}
+
+      {footer}
     </div>
   )
 }

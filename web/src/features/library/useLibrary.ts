@@ -2,8 +2,6 @@ import { useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   fetchCertifications,
-  fetchCommunityCatalogs,
-  fetchCommunityCollections,
   fetchCountries,
   fetchGenres,
   fetchLanguages,
@@ -13,15 +11,16 @@ import {
 } from '@/api'
 import type { Catalog, CertificationsByCountry, Collection, Folder, Language } from '@/api'
 import { buildCountryLookup, type CountryLookup } from '@/features/catalogs/countries'
-import { mergeOwned } from './merge'
 import { buildGenreLookup, type GenreLookup } from './recipe'
 
-export interface LibraryCatalog extends Catalog {
-  owned: boolean
-}
+/** The library is exactly this profile's own catalogs — the closed-graph model
+ *  never offers another owner's rows to reference or edit here. Aliased,
+ *  rather than used as `Catalog` directly, so the many call sites naming
+ *  "the library's catalog type" don't all silently start meaning something
+ *  else if the two types ever diverge again. */
+export type LibraryCatalog = Catalog
 
 export interface LibraryCollection extends Omit<Collection, 'folders'> {
-  owned: boolean
   /** Coerced as a guard — `parseFolders` initialises its slice, so the wire
    *  shouldn't carry `null` for a collection with no folders. */
   folders: Folder[]
@@ -75,21 +74,13 @@ export function useLibrary(profileIndex: number): Library {
         queryFn: () => fetchOwnedCatalogs(profileIndex),
       },
       {
-        queryKey: queryKeys.communityCatalogs(profileIndex),
-        queryFn: () => fetchCommunityCatalogs(profileIndex),
-      },
-      {
         queryKey: queryKeys.ownedCollections(profileIndex),
         queryFn: () => fetchOwnedCollections(profileIndex),
-      },
-      {
-        queryKey: queryKeys.communityCollections(profileIndex),
-        queryFn: () => fetchCommunityCollections(profileIndex),
       },
     ],
   })
 
-  const [ownedCatalogs, communityCatalogs, ownedCollections, communityCollections] = results
+  const [ownedCatalogs, ownedCollections] = results
 
   // Genre lists are static and account-wide, so they're cached indefinitely and
   // excluded from the loading/error state below: a failed genre lookup degrades
@@ -147,18 +138,11 @@ export function useLibrary(profileIndex: number): Library {
   })
   const countryNames = useMemo(() => buildCountryLookup(countriesResult.data ?? []), [countriesResult.data])
 
-  const catalogs = useMemo(
-    () => mergeOwned(ownedCatalogs.data ?? [], communityCatalogs.data ?? []),
-    [ownedCatalogs.data, communityCatalogs.data],
-  )
+  const catalogs = ownedCatalogs.data ?? []
 
   const collections = useMemo(
-    () =>
-      mergeOwned(ownedCollections.data ?? [], communityCollections.data ?? []).map((c) => ({
-        ...c,
-        folders: c.folders ?? [],
-      })),
-    [ownedCollections.data, communityCollections.data],
+    () => (ownedCollections.data ?? []).map((c) => ({ ...c, folders: c.folders ?? [] })),
+    [ownedCollections.data],
   )
 
   return {

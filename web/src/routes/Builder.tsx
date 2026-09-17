@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Segmented } from '@/components/fields'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
 import { Workspace } from '@/features/builder/Workspace'
+import { CommunityView } from '@/features/community/CommunityView'
 import { HomeSelectionProvider } from '@/features/home/HomeSelectionContext'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { useUnloadGuard } from '@/features/home/useUnloadGuard'
@@ -21,16 +23,20 @@ export interface BuilderProfile {
   manifestURL?: string
 }
 
+type Tab = 'workspace' | 'community'
+
 /**
- * The single builder page. Two regions, no tabs: a Library rail on the left
- * (every catalog and collection, yours and community — the source you pick
- * from) and a pane on the right holding one thing at a time — your home screen,
- * or the editor for whichever rail row is selected. Below `lg` the same two
- * regions stack into one scrolling document rather than becoming two screens —
- * see `stacked.ts`.
+ * The single builder page: a Workspace tab (two regions — a Library rail on
+ * the left, every catalog and collection you own, and a pane on the right
+ * holding your home screen or the editor for whichever rail row is selected)
+ * and a Community tab (everyone else's public catalogs and collections,
+ * browsed and taken). Below `lg` the Workspace
+ * tab's own two regions stack into one scrolling document rather than
+ * becoming two screens — see `stacked.ts`; Community is already one column at
+ * every width, so it needs no such treatment.
  *
- * Push is a header action — the commit for Home, so it lives where Home's state
- * is, whether or not Home is the pane's current occupant.
+ * Push is a header action, outside both tabs — the commit for Home, so it
+ * lives where Home's state is, regardless of which tab is open.
  *
  * **Two kinds of unsaved work, deliberately separate.** An editor's changes are
  * saved to the server; Home's are pushed to your TV. They're lost in different
@@ -40,6 +46,7 @@ export interface BuilderProfile {
 export function Builder() {
   const location = useLocation()
   const profile = location.state as BuilderProfile | null
+  const [tab, setTab] = useState<Tab>('workspace')
 
   // Only reachable by selecting a profile on /profiles, which hands the
   // profile down via navigation state — a direct or refreshed visit to this
@@ -52,15 +59,27 @@ export function Builder() {
     <HomeSelectionProvider profileIndex={profile.profileIndex}>
       <EditorGuardProvider>
         <div className="flex min-h-svh flex-col lg:h-svh">
-          <BuilderHeader profile={profile} />
-          <Workspace profileIndex={profile.profileIndex} />
+          <BuilderHeader profile={profile} tab={tab} onTabChange={setTab} />
+          {tab === 'workspace' ? (
+            <Workspace profileIndex={profile.profileIndex} />
+          ) : (
+            <CommunityView profileIndex={profile.profileIndex} />
+          )}
         </div>
       </EditorGuardProvider>
     </HomeSelectionProvider>
   )
 }
 
-function BuilderHeader({ profile }: { profile: BuilderProfile }) {
+function BuilderHeader({
+  profile,
+  tab,
+  onTabChange,
+}: {
+  profile: BuilderProfile
+  tab: Tab
+  onTabChange: (tab: Tab) => void
+}) {
   const navigate = useNavigate()
   const home = useHomeSelection()
   const editor = useEditorGuard()
@@ -99,6 +118,25 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
     })
   }
 
+  /**
+   * Switching tabs unmounts `Workspace`, and with it any open editor — so this
+   * goes through the same guard as leaving the page, minus the pending-Home
+   * prompt: Home's own state lives in `HomeSelectionProvider`, above both
+   * tabs, and switching tabs doesn't touch it.
+   *
+   * Clears `dirty` itself, unlike `requestLeave` — leaving the page tears down
+   * `EditorGuardProvider` along with everything else, but this provider spans
+   * both tabs, so a stale `true` left over from the editor that just got
+   * discarded would wrongly guard the *next* exit, with nothing left to lose.
+   */
+  function requestTabChange(next: Tab) {
+    if (next === tab) return
+    editor.guard(() => {
+      editor.setDirty(false)
+      onTabChange(next)
+    })
+  }
+
   return (
     <>
       {/* Sticky below `lg`, where the page scrolls as one document: Push and
@@ -123,8 +161,9 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
           {/* Switching profiles means going back through the picker —
               /configure is only reachable via navigation state, so there's
               nowhere else to re-select from. That makes this the page's only
-              in-app exit, and therefore the one control that has to guard
-              pending changes.
+              way to leave it entirely, and along with the Community tab below,
+              one of the two controls that have to guard pending editor
+              changes.
 
               One chip, whose shape follows the breakpoint internally — see
               `ProfileMenu`. Below `lg` it is the trigger for the header's
@@ -136,6 +175,15 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
             manifestURL={profile.manifestURL}
             onSwitchProfile={requestLeave}
           />
+
+          {/* Above `lg` only — the header row is measured to fit exactly what
+              it holds at phone width (see the touch-target note below), and a
+              third control has no room there. Below `lg` the same tabs get
+              their own row underneath, matching DESIGN.md's two-row phone
+              top bar. */}
+          <div className="hidden lg:block">
+            <BuilderTabs tab={tab} onChange={requestTabChange} />
+          </div>
 
           {/* Grouped so the row doesn't reflow while PendingIndicator is still
               withholding itself during load. `shrink-0`: what the row runs out
@@ -149,6 +197,10 @@ function BuilderHeader({ profile }: { profile: BuilderProfile }) {
             <PushButton {...push} />
           </div>
         </header>
+
+        <div className="border-line bg-raised border-b px-4 py-2 lg:hidden">
+          <BuilderTabs tab={tab} onChange={requestTabChange} />
+        </div>
 
         <ChangesStrip
           changes={home.changes}
@@ -257,4 +309,20 @@ function PendingIndicator({ open, onToggle }: { open: boolean; onToggle: () => v
 
 function countLabel(count: number): string {
   return pluralCount(count, 'change')
+}
+
+/** The Workspace / Community switch, factored out only because it's rendered
+ *  twice — inline in the header above `lg`, on its own row below it. */
+function BuilderTabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
+  return (
+    <Segmented
+      ariaLabel="Builder section"
+      value={tab}
+      onChange={onChange}
+      options={[
+        { value: 'workspace', label: 'Workspace' },
+        { value: 'community', label: 'Community' },
+      ]}
+    />
+  )
 }

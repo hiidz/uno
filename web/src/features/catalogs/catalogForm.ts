@@ -35,6 +35,11 @@ export interface CatalogFormState {
   isPublic: boolean
   dateMode: DateMode
   params: TMDBParams
+  /** Scopes this catalog to one collection; `null` means listed. Always sent
+   *  on save (see `toPayload`) — `PUT` writes `collection_id` unconditionally,
+   *  so a form that dropped this while editing a scoped catalog would silently
+   *  promote it on every ordinary save. */
+  collectionID: string | null
 }
 
 /** TMDB's complete `sort_by` enum per discover endpoint. Mirrors
@@ -95,8 +100,8 @@ export function serializeSortBy(field: string, direction: 'asc' | 'desc'): strin
   return field ? `${field}.${direction}` : undefined
 }
 
-export function emptyForm(type: CatalogType = 'movie'): CatalogFormState {
-  return { name: '', type, isPublic: false, dateMode: 'any', params: {} }
+export function emptyForm(type: CatalogType = 'movie', collectionID: string | null = null): CatalogFormState {
+  return { name: '', type, isPublic: false, dateMode: 'any', params: {}, collectionID }
 }
 
 function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
@@ -121,6 +126,9 @@ export function formFromCatalog(catalog: Catalog, mode: BuilderMode): CatalogFor
     isPublic: mode === 'duplicate' ? false : catalog.is_public,
     dateMode: dateModeOf(params, catalog.type),
     params,
+    // A duplicate is never born scoped, same as never born public — it's
+    // only ever reachable from the library, which is listed catalogs only.
+    collectionID: mode === 'duplicate' ? null : catalog.collection_id,
   }
 }
 
@@ -239,6 +247,7 @@ export function toPayload(state: CatalogFormState): CatalogPayload {
     provider: CATALOG_PROVIDER,
     params: paramsString(state),
     is_public: state.isPublic,
+    collection_id: state.collectionID,
   }
 }
 

@@ -109,7 +109,7 @@ function TVFolderTile({ folder }: { folder: PreviewFolder }) {
  * able to count it.
  *
  * An id the picker can't resolve becomes an unresolved source — the same shape
- * Home uses for a catalog whose owner made it private. In this form that state
+ * Home uses for a catalog that's since been deleted. In this form that state
  * is also a validation error, so the form names it on the folder; this panel
  * only has to avoid claiming content that isn't there.
  */

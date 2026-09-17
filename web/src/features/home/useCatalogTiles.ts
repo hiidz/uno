@@ -9,7 +9,7 @@ import { useHomeSelection } from './useHomeSelection'
  * Resolution only: `ids` are catalog ids, and the recipe behind each is looked
  * up in `catalogById`, which merges the library with the selection response. An
  * id that resolves to nothing is skipped — a folder can reference a catalog
- * whose owner has since made it private, and there is no recipe to run for it.
+ * that has since been deleted, and there is no recipe to run for it.
  * `useRecipesTiles` does the fetching.
  *
  * A recipe with no saved catalog behind it — one still being typed in a builder

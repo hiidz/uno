@@ -11,13 +11,11 @@ const KIND_LABEL: Record<BarKind, string> = {
 /**
  * One row in the Library rail, carrying three separate intentions.
  *
- * **The row body opens it in the pane** — editing yours, or starting your own
- * copy of someone else's, which is the only thing a community row can become.
- * Selecting also reveals the row's actions — duplicating one of your own, and
- * deleting — so they belong to whichever single row the pane is showing.
- * **The toggle** puts it on the home screen or takes it off; it stops the click
- * from reaching the row, because adding something to home is not a request to
- * edit it.
+ * **The row body opens it in the pane** for editing. Selecting also reveals
+ * the row's actions — duplicating and deleting — so they belong to whichever
+ * single row the pane is showing. **The toggle** puts it on the home screen
+ * or takes it off; it stops the click from reaching the row, because adding
+ * something to home is not a request to edit it.
  *
  * The actions are `lg` and up only. There the rail sits beside the pane and the
  * selected row stays in view for as long as its editor is open. Below `lg` the
@@ -25,19 +23,12 @@ const KIND_LABEL: Record<BarKind, string> = {
  * actions would be a screen-length scroll from the thing they act on; the
  * editor's own sticky header carries them there instead.
  *
- * Kind and ownership carry in words only (the "End Credits" redesign drops
- * the colored type bar outright), community rows saying so again in visible
- * text. Kind itself stays screen-reader-only: it's redundant with the recipe
- * for sighted users, so nothing here repeats it visibly.
- *
- * `isPublic` is a separate axis from `owned`: it marks one of *your own* rows
- * as also shared to the community, rather than which section it lives in.
- * Only meaningful (and only rendered) on owned rows — a community row is
- * public by definition, so saying so again would be noise.
+ * `isPublic` marks a row as also shared to the community — the closed-graph
+ * model means every row in the rail is yours, so this is the only ownership
+ * fact left worth stating.
  */
 export function LibraryItem({
   kind,
-  owned,
   isPublic,
   name,
   summary,
@@ -49,8 +40,7 @@ export function LibraryItem({
   onDelete,
 }: {
   kind: BarKind
-  owned: boolean
-  /** Owned rows only: yours, but also visible to everyone else. */
+  /** Visible to everyone else, not just you. */
   isPublic?: boolean
   name: string
   summary: string
@@ -60,13 +50,10 @@ export function LibraryItem({
   /** Already on the home screen — the button becomes a remove. */
   onHome: boolean
   onToggle: () => void
-  /** Owned rows only: a community row's *selection* is already a duplicate. */
   onDuplicate?: () => void
-  /** Owned rows only. */
   onDelete?: () => void
 }) {
   const hasActions = Boolean(onDuplicate || onDelete)
-  const shared = owned && isPublic
 
   return (
     <div
@@ -84,7 +71,7 @@ export function LibraryItem({
           onSelect()
         }}
         aria-current={selected ? 'true' : undefined}
-        title={owned ? `Edit ${name}` : `Open ${name} as your own copy`}
+        title={`Edit ${name}`}
         className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2.5 pr-2 text-left transition-colors ${
           selected ? '' : 'hover:bg-raised'
         } ${selected ? 'pl-2' : ''}`}
@@ -94,18 +81,13 @@ export function LibraryItem({
             {name}
             <span className="sr-only">
               {' '}
-              — {KIND_LABEL[kind]}, {owned ? 'yours' : 'community'}
-              {shared ? ', shared with the community' : ''}
+              — {KIND_LABEL[kind]}
+              {isPublic ? ', shared with the community' : ''}
             </span>
           </span>
           <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
             <span className="truncate">{summary}</span>
-            {!owned && (
-              <span aria-hidden="true" className="shrink-0">
-                · community
-              </span>
-            )}
-            {shared && (
+            {isPublic && (
               <span
                 aria-hidden="true"
                 title="Also visible to the community"

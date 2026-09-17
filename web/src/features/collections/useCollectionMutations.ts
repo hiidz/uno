@@ -1,14 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { createCollection, deleteCollection, queryKeys, updateCollection } from '@/api'
+import { createCollection, deleteCollection, duplicateCollection, queryKeys, updateCollection } from '@/api'
 import type { CollectionPayload } from '@/api'
 
 /**
  * Collection writes, with the invalidation they imply.
  *
- * Same rule as `useCatalogMutations`, for the same reason: both the owned list
- * and the community list have to be invalidated on every write, because
- * `is_public` can change on any save and a public collection appears in *both*
- * responses. That also refetches the collection selection query, since
+ * Same rule as `useCatalogMutations`, for the same reason: invalidates the
+ * community query key too, since the Community tab (`features/community/`)
+ * reads it and `is_public` can change on any save. That also refetches the
+ * collection selection query, since
  * `['p', i, 'collections']` prefix-matches its `…, 'selection'` child;
  * selection is client state until Push, and the one-shot hydration guard in
  * `HomeSelectionContext` is what keeps that refetch from clobbering the user's
@@ -42,5 +42,10 @@ export function useCollectionMutations(profileIndex: number) {
     onSuccess: invalidate,
   })
 
-  return { create, update, remove }
+  const duplicate = useMutation({
+    mutationFn: (id: string) => duplicateCollection(profileIndex, id),
+    onSuccess: invalidate,
+  })
+
+  return { create, update, remove, duplicate }
 }

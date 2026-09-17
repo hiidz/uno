@@ -62,7 +62,7 @@ export interface PreviewFolder {
   coverImageUrl: string
   sources: PreviewSource[]
   /** How many of `sources` couldn't be resolved to a catalog. A folder can
-   *  reference a catalog whose owner has since made it private or deleted it. */
+   *  reference a catalog that has since been deleted. */
   unresolved: number
 }
 
@@ -86,11 +86,10 @@ export interface PreviewCollection {
    *  nor the selection response, so there's no layout to draw. The row exists
    *  because it's still selected.
    *
-   *  **Not the same as detached.** A collection whose owner has made it
-   *  private since it was selected still comes back on the selection endpoint
-   *  (which joins through with no visibility filter), so it resolves here and
-   *  renders normally. That case is `isDetached` on the Home selection, and the
-   *  renderer asks it separately — see `DetachedNote` in `HomePreview.tsx`.
+   *  **Not the same as detached.** A collection that's left the library but is
+   *  still on the selection response resolves here and renders normally. That
+   *  case is `isDetached` on the Home selection, and the renderer asks it
+   *  separately — see `DetachedNote` in `HomePreview.tsx`.
    *
    *  Never true for a collection built from builder form state: the form *is*
    *  the description. */

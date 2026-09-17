@@ -5,10 +5,9 @@ import type { CatalogPayload } from '@/api'
 /**
  * Catalog writes, with the invalidation they imply.
  *
- * Both the owned list and the community list have to be invalidated on every
- * write, not just the owned one: `is_public` can change on any save, and a
- * public catalog appears in *both* responses. Invalidating one would leave the
- * rail showing a stale copy of the row it just edited.
+ * Invalidates the community query keys too: `is_public` can change on any
+ * save, and the Community tab (`features/community/`) reads exactly those
+ * keys, so a save here has to keep its list current.
  *
  * The collection lists are invalidated too, because of a real cascade:
  * `DELETE FROM catalogs` drops the row's `folder_catalogs` entries

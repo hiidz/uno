@@ -30,7 +30,6 @@ import type { CatalogTiles } from './tiles'
  * rather than being read from Home state here.
  */
 export interface PreviewChrome {
-  isOwned: (catalogID: string) => boolean
   /** An extra note beside a catalog's name. Home uses it to mark a catalog that
    *  has left the library; the builder has nothing to add and omits it. */
   note?: (catalogID: string) => ReactNode
@@ -252,15 +251,15 @@ function SourceHeading({
   )
 }
 
-/** A folder can reference a catalog whose owner has since made it private or
- *  deleted it. The reference keeps its slot and says what happened rather than
- *  vanishing, matching how the List view draws a detached row. */
+/** A folder can reference a catalog that has since been deleted. The
+ *  reference keeps its slot and says what happened rather than vanishing,
+ *  matching how the List view draws a detached row. */
 function UnresolvedSource({ all }: { all?: boolean }) {
   return (
     <p className="type-data text-dimmer m-0 text-[10px]">
       {all
-        ? 'Every catalog in this folder was deleted or made private, so there is nothing to show. They stay in the folder until they are removed.'
-        : 'This catalog was deleted or made private by its owner. It stays in the folder until it is removed.'}
+        ? 'Every catalog in this folder was deleted, so there is nothing to show. They stay in the folder until they are removed.'
+        : 'This catalog was deleted. It stays in the folder until it is removed.'}
     </p>
   )
 }

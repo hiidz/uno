@@ -42,42 +42,74 @@ func (db *DB) GetUserCatalogs(ctx context.Context, profileID uuid.UUID) ([]Catal
 
 // GetCommunityCatalogs returns the community catalog list for profileID: a
 // public catalog owned by someone else, collapsed to one row per fingerprint
-// (§3.3 of the sharing model plan) — oldest created_at wins — sorted by
-// name, each flagged with whether profileID has already taken a copy
-// (§3.5).
+// — oldest created_at wins, ties broken by the smallest id, both fully
+// deterministic rather than left to the query's row order — sorted by name,
+// then created_at, then id so equal names don't swap between requests, each
+// flagged with whether profileID has already taken a copy of *any* row in
+// its fingerprint group — not just the surviving one, since taking a newer
+// duplicate still counts as taking it.
 func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]CommunityCatalog, error) {
 	catalogs, err := db.queryCatalogs(ctx, "is_public = TRUE AND owner_id != ?", profileID.String())
 	if err != nil {
 		return nil, err
 	}
 
-	byFingerprint := make(map[string]Catalog, len(catalogs))
-	for _, c := range catalogs {
-		existing, ok := byFingerprint[c.Fingerprint]
-		if !ok || c.CreatedAt.Before(existing.CreatedAt) {
-			byFingerprint[c.Fingerprint] = c
-		}
-	}
-	collapsed := make([]Catalog, 0, len(byFingerprint))
-	for _, c := range byFingerprint {
-		collapsed = append(collapsed, c)
-	}
-	sort.Slice(collapsed, func(i, j int) bool { return collapsed[i].Name < collapsed[j].Name })
-
 	taken, err := db.takenSourceIDs(ctx, "catalogs", profileID)
 	if err != nil {
 		return nil, err
 	}
 
+	type fingerprintGroup struct {
+		survivor Catalog
+		taken    bool
+	}
+	byFingerprint := make(map[string]fingerprintGroup, len(catalogs))
+	for _, c := range catalogs {
+		g, ok := byFingerprint[c.Fingerprint]
+		if !ok {
+			byFingerprint[c.Fingerprint] = fingerprintGroup{survivor: c, taken: taken[c.ID]}
+			continue
+		}
+		if taken[c.ID] {
+			g.taken = true
+		}
+		if isOlderCatalog(c, g.survivor) {
+			g.survivor = c
+		}
+		byFingerprint[c.Fingerprint] = g
+	}
+	collapsed := make([]fingerprintGroup, 0, len(byFingerprint))
+	for _, g := range byFingerprint {
+		collapsed = append(collapsed, g)
+	}
+	sort.Slice(collapsed, func(i, j int) bool {
+		a, b := collapsed[i].survivor, collapsed[j].survivor
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return isOlderCatalog(a, b)
+	})
+
 	out := make([]CommunityCatalog, len(collapsed))
-	for i, c := range collapsed {
-		out[i] = CommunityCatalog{Catalog: c, Taken: taken[c.ID]}
+	for i, g := range collapsed {
+		out[i] = CommunityCatalog{Catalog: g.survivor, Taken: g.taken}
 	}
 	return out, nil
 }
 
+// isOlderCatalog orders two catalogs by created_at, then by id — the
+// deterministic tie-break GetCommunityCatalogs uses both for the
+// fingerprint-collapse survivor and for the final list's stable ordering.
+func isOlderCatalog(a, b Catalog) bool {
+	if !a.CreatedAt.Equal(b.CreatedAt) {
+		return a.CreatedAt.Before(b.CreatedAt)
+	}
+	return a.ID.String() < b.ID.String()
+}
+
 // TakeCatalog deep-copies a public catalog owned by someone else into a new
-// listed catalog owned by profileID, per §3.5 of the sharing model plan.
+// listed catalog owned by profileID, with fresh ids and taken_from set to
+// the source so the copy is unaffected by later changes to the source.
 // Returns ErrCatalogNotFound if sourceID isn't public or is already owned by
 // profileID.
 func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (Catalog, error) {
@@ -130,8 +162,7 @@ func (db *DB) GetCatalogsByIDs(ctx context.Context, ids []uuid.UUID) ([]Catalog,
 
 // CreateUserCatalog validates input and inserts a new catalog owned by
 // profileID. If input.CollectionID is set, the catalog is scoped to that
-// collection (must be owned by profileID, and may not be public — see
-// §3.1 of the sharing model plan).
+// collection (must be owned by profileID, and may not be public).
 func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input CatalogForm) (Catalog, error) {
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
@@ -183,8 +214,8 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 // input.CollectionID governs scope: setting it demotes the catalog into
 // that collection (it must be owned by profileID, the catalog must not be
 // on the home screen, and every existing folder ref to it must already be
-// inside the target collection — see §3.1 of the sharing model plan);
-// clearing it promotes the catalog back to listed, always allowed.
+// inside the target collection); clearing it promotes the catalog back to
+// listed, always allowed.
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
@@ -196,17 +227,26 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 	}
 	defer tx.Rollback() // no-op once Commit succeeds
 
-	var createdAtStr string
+	var createdAtStr, existingType string
 	var homeSortOrder sql.NullInt64
 	var showInHome int
 	err = tx.QueryRowContext(ctx, `
-		SELECT created_at, home_sort_order, show_in_home FROM catalogs WHERE id = ? AND owner_id = ?
-	`, catalogID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &showInHome)
+		SELECT created_at, home_sort_order, show_in_home, type FROM catalogs WHERE id = ? AND owner_id = ?
+	`, catalogID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &showInHome, &existingType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Catalog{}, ErrCatalogNotFound
 	}
 	if err != nil {
 		return Catalog{}, fmt.Errorf("loading catalog: %w", err)
+	}
+
+	// A catalog's type is part of the pushed collections blob (each folder
+	// source names its catalog's type), so changing it here would alter what
+	// Nuvio should have without bumping any collection's version — the UI
+	// already locks the field once a catalog exists, but that's a client
+	// convention, not something this write path enforced on its own.
+	if input.Type != existingType {
+		return Catalog{}, fmt.Errorf("%w: a catalog's type can't be changed", ErrInvalidInput)
 	}
 
 	if input.CollectionID != nil {
@@ -316,8 +356,8 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 
 // GetPublishedCatalogs returns profileID's derived published catalog set —
 // the union of listed catalogs on the home screen and every catalog
-// referenced by a folder of a collection on the home screen (§3.4 of the
-// sharing model plan). This is what the addon server publishes; unlike
+// referenced by a folder of a collection on the home screen. This is what
+// the addon server publishes; unlike
 // GetCurrentCatalogSelection (the pre-push validation/selection-editor
 // view), it also surfaces folder-only catalogs so nothing a folder tile
 // shows on the TV is missing from the manifest. Deduped by id: a catalog on

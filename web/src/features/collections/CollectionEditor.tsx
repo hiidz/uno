@@ -1,11 +1,32 @@
 import { useMemo, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { TriangleAlert } from 'lucide-react'
+import type {
+  Catalog,
+  CatalogType,
+  CertificationsByCountry,
+  Genre,
+  Language,
+} from '@/api'
+import { CATALOG_PROVIDER } from '@/api'
 import { moveByOne } from '@/components/dnd'
-import { Segmented, Switch, TextInput } from '@/components/fields'
+import { Field, Segmented, Switch, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
+import { Modal } from '@/components/Modal'
 import { EditorFooter, SaveError } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
+import { NewItemDialog } from '@/features/builder/NewItemDialog'
 import { useEditorForm } from '@/features/builder/useEditorForm'
+import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
+import {
+  emptyForm,
+  formFromCatalog,
+  toPayload as toCatalogPayload,
+} from '@/features/catalogs/catalogForm'
+import type { CatalogFormState } from '@/features/catalogs/catalogForm'
+import type { CountryLookup } from '@/features/catalogs/countries'
+import { useCatalogMutations } from '@/features/catalogs/useCatalogMutations'
+import type { GenreLookups } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
 import { CollectionPreview } from './CollectionPreview'
 import { FolderCard, FolderTreeDnd } from './FolderCard'
@@ -18,16 +39,18 @@ import {
   newFolder,
   removedFolders,
   validateCollectionForm,
-  type BuilderMode,
   type CollectionFormState,
   type CollectionViewMode,
   type FolderFormState,
 } from './collectionForm'
-import type { RefOption } from './refs'
+import { buildRefOptions, indexRefOptions, type RefOption } from './refs'
 
 /**
- * Create / edit / duplicate a collection, folders and catalog refs included,
- * filling the builder's right pane.
+ * Create or edit a collection, folders and catalog refs included, filling
+ * the builder's right pane. Duplicating one is a separate, atomic server
+ * call (`DuplicateCollection`) that hands back a finished
+ * copy this editor then opens for editing like any other row — there is no
+ * duplicate mode here any more.
  *
  * **The whole tree, one save.** `POST`/`PUT` replace the collection, its
  * folders and every folder's refs in a single transaction, so this editor has
@@ -42,25 +65,36 @@ import type { RefOption } from './refs'
  * component, so the pane owns the discard confirmation and this only says
  * whether there is anything to lose.
  *
- * **Ships against today's reference-based `folder_catalogs` model, not
- * DESIGN.md's folder-catalogs-as-private-copies** — that data-model change is
- * explicitly out of scope for this phase (see the migration plan's §2). Where
- * the two disagree, this editor states today's real behaviour rather than
- * copy that assumes the other model: a folder-catalog row carries no quiet
- * Edit (see `FolderCard`'s `RefRow`), and the copy-from-library note says a
- * ref stays linked rather than claiming a copy is made.
+ * **Three sources for a folder's catalogs**, per the closed-graph sharing
+ * model: **link** one of your listed catalogs
+ * (the original picker — a live pointer, edits to it reach every folder that
+ * references it); **copy into this collection** (a fresh, scoped catalog only
+ * this collection references, which nothing else can drift); **new inside
+ * this collection** (the same, named first). The last two need this
+ * collection to already have a server id, so they're offered only once it's
+ * been saved at least once.
  *
- * **The read-only view of an imported collection (DESIGN.md's own spec for
- * this editor) isn't built here**, for the same two reasons Phase 4 gave for
- * the catalog editor: it needs the owner's `@handle`, which is paused work,
- * and today opening a community row has always meant an immediately-editable
- * duplicate — swapping that for a read-only screen plus a Duplicate button is
- * strictly more steps to the one thing that screen lets you do.
+ * **This editor keeps its own catalog registry** (`localCatalogs`), seeded
+ * from `initialCatalogs` and grown by every scoped create/edit it makes —
+ * `GET /api/p/{i}/catalogs` is listed catalogs only, so the library-wide
+ * `options`/`optionByID`/`accessibleIDs` this editor is handed never contain
+ * a scoped one. Folder rows render from this merged registry, never the
+ * library alone, which is what makes a scoped catalog show at all.
+ *
+ * **Quiet Edit opens a catalog one level down**, in a `Modal` layered over
+ * this editor rather than a second pane — the builder's pane holds one
+ * occupant (`EditorShell`'s own doc comment), so a second, real editor has to
+ * be a modal, not a stack. `CollectionEditor` stays mounted underneath, so
+ * this editor's own unsaved folder edits survive the round trip.
+ *
+ * **There is no read-only "imported" view**, for the same reason the catalog
+ * editor has none: the closed-graph sharing model has no such state — a
+ * taken collection is a private copy, fully
+ * yours from the moment it's created, folders and scoped catalogs included.
+ * Every row this editor opens is yours.
  */
 export function CollectionEditor({
-  mode,
   initial,
-  droppedRefs,
   options,
   optionByID,
   accessibleIDs,
@@ -71,12 +105,17 @@ export function CollectionEditor({
   onDuplicate,
   onDelete,
   onDirtyChange,
+  collectionID,
+  initialCatalogs,
+  profileIndex,
+  genres,
+  genreLookups,
+  certifications,
+  countryNames,
+  languages,
+  usedInPlaces,
 }: {
-  mode: BuilderMode
   initial: CollectionFormState | null
-  /** Refs the seed dropped because this profile can't reference them — only
-   *  ever non-empty when duplicating. See `formFromCollection`. */
-  droppedRefs: string[]
   options: RefOption[]
   optionByID: ReadonlyMap<string, RefOption>
   accessibleIDs: ReadonlySet<string>
@@ -92,7 +131,36 @@ export function CollectionEditor({
   onDuplicate?: () => void
   onDelete?: () => void
   onDirtyChange: (dirty: boolean) => void
+  /** This collection's own server id — present only once edit mode is seeded
+   *  from a real row, or a brand-new one has been saved once. */
+  collectionID?: string
+  /** Every catalog this collection's folders already reference, listed or
+   *  scoped — `[]` for a brand-new collection, which references nothing
+   *  yet. A duplicated collection arrives here with its own fresh scoped
+   *  copies already populated (`Workspace.tsx`'s `EditorTarget.initialCatalogs`
+   *  override). Seeds `localCatalogs`. */
+  initialCatalogs: Catalog[]
+  /** For this editor's own instance of `useCatalogMutations` — deliberately
+   *  its own, not `Workspace`'s: sharing one mutation object between the two
+   *  would let a scoped copy/create here and the top-level "New catalog"
+   *  dialog stomp each other's pending/error state. */
+  profileIndex: number
+  genres: { movie: Genre[]; tv: Genre[] }
+  /** Same genres, shaped for `buildRefOptions` rather than the nested
+   *  `CatalogEditor`'s own picker — building `RefOption`s for a freshly
+   *  scoped catalog needs the lookup form, `Workspace`'s own already computed
+   *  from this. */
+  genreLookups: GenreLookups
+  certifications: { movie: CertificationsByCountry; tv: CertificationsByCountry }
+  countryNames: CountryLookup
+  languages: Language[]
+  /** Home screen plus every folder across every owned collection — computed
+   *  in `Workspace`, which is the level that has the whole library and the
+   *  home selection. Meaningful only for a listed catalog. */
+  usedInPlaces: (catalogID: string) => number
 }) {
+  const catalogMutations = useCatalogMutations(profileIndex)
+
   const baseline = useMemo(() => initial ?? emptyCollectionForm(), [initial])
   const { state, setState, showErrors, submit } = useEditorForm(
     baseline,
@@ -105,12 +173,157 @@ export function CollectionEditor({
   // sections — DESIGN.md's "One folder is open at a time".
   const [openFolderKey, setOpenFolderKey] = useState<string | null>(null)
 
+  // This editor's own catalog registry: the library (`optionByID`) plus every
+  // scoped catalog it already knows about, grown by every copy/new/edit this
+  // session makes. Never reseeded from `initialCatalogs` after mount — this
+  // editor remounts on a different target (`key` in Workspace), so a fresh
+  // instance always starts from the current seed.
+  const [localCatalogs, setLocalCatalogs] = useState<Map<string, Catalog>>(
+    () => new Map(initialCatalogs.map((c) => [c.id, c])),
+  )
+  function rememberCatalog(catalog: Catalog) {
+    setLocalCatalogs((previous) => new Map(previous).set(catalog.id, catalog))
+  }
+
+  const localOptions = useMemo(
+    () => buildRefOptions([...localCatalogs.values()], genreLookups),
+    [localCatalogs, genreLookups],
+  )
+  const localOptionByID = useMemo(() => indexRefOptions(localOptions), [localOptions])
+  const mergedOptionByID = useMemo(
+    () => new Map([...optionByID, ...localOptionByID]),
+    [optionByID, localOptionByID],
+  )
+  const mergedAccessibleIDs = useMemo(
+    () => new Set([...accessibleIDs, ...localCatalogs.keys()]),
+    [accessibleIDs, localCatalogs],
+  )
+
+  // A catalog this editor knows about, currently scoped to *this* collection.
+  // These are exactly the rows `UpdateUserCollection`'s GC delete would drop
+  // on Save if the last folder ref to one of them is gone — the save
+  // bar's "N catalogs will be deleted" line below is this set filtered to
+  // "not referenced by any folder in `state`".
+  const scopedHere = useMemo(
+    () =>
+      collectionID === undefined
+        ? []
+        : [...localCatalogs.values()].filter((c) => c.collection_id === collectionID),
+    [localCatalogs, collectionID],
+  )
+  const catalogsWillDelete = useMemo(
+    () => scopedHere.filter((c) => !state.folders.some((f) => f.catalogIDs.includes(c.id))),
+    [scopedHere, state.folders],
+  )
+
   const errors = useMemo(
-    () => validateCollectionForm(state, accessibleIDs),
-    [state, accessibleIDs],
+    () => validateCollectionForm(state, mergedAccessibleIDs),
+    [state, mergedAccessibleIDs],
   )
   const errorCount = countErrors(errors)
   const willDelete = useMemo(() => removedFolders(baseline, state), [baseline, state])
+
+  // The nested catalog editor — a modal layered over this pane, not a second
+  // occupant of it. `null` means closed.
+  const [nestedCatalogID, setNestedCatalogID] = useState<string | null>(null)
+  // "New inside this collection" is named first, same two-step as the main
+  // library's own "New catalog" — see Workspace's `createBareCatalog`.
+  const [namingNewFolderKey, setNamingNewFolderKey] = useState<string | null>(null)
+  const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
+
+  function editRef(catalogID: string) {
+    setNestedCatalogID(catalogID)
+  }
+
+  function closeNestedCatalog() {
+    setNestedCatalogID(null)
+  }
+
+  function saveNestedCatalog(formState: CatalogFormState) {
+    if (nestedCatalogID === null) return
+    catalogMutations.update.mutate(
+      { id: nestedCatalogID, payload: toCatalogPayload(formState) },
+      {
+        onSuccess: (catalog) => {
+          rememberCatalog(catalog)
+          setNestedCatalogID(null)
+        },
+      },
+    )
+  }
+
+  /** "Copy" from the Add-catalogs picker: a fresh scoped catalog with the
+   *  source's exact saved values (never re-derived through the form, so its
+   *  `params` string round-trips byte for byte), referenced as a new ref. */
+  function copyIntoCollection(folderKey: string, source: Catalog) {
+    if (collectionID === undefined) return
+    catalogMutations.create.mutate(
+      {
+        type: source.type,
+        name: source.name,
+        provider: CATALOG_PROVIDER,
+        params: source.params,
+        is_public: false,
+        collection_id: collectionID,
+      },
+      { onSuccess: (copy) => { rememberCatalog(copy); addRef(folderKey, copy.id) } },
+    )
+  }
+
+  /** "Copy into this collection" on an already-linked listed catalog's own
+   *  row: same copy, but it replaces that ref in place rather than adding a
+   *  second one, so the folder's order doesn't change. */
+  function copyRefIntoCollection(folderKey: string, catalogID: string) {
+    if (collectionID === undefined) return
+    // A ref linked this session (via the picker) is a library catalog this
+    // editor's own registry never had reason to remember — fall back to it.
+    const source = localCatalogs.get(catalogID) ?? optionByID.get(catalogID)?.catalog
+    if (!source) return
+    catalogMutations.create.mutate(
+      {
+        type: source.type,
+        name: source.name,
+        provider: CATALOG_PROVIDER,
+        params: source.params,
+        is_public: false,
+        collection_id: collectionID,
+      },
+      {
+        onSuccess: (copy) => {
+          rememberCatalog(copy)
+          patchFolders((folders) =>
+            folders.map((f) =>
+              f.key === folderKey
+                ? { ...f, catalogIDs: f.catalogIDs.map((id) => (id === catalogID ? copy.id : id)) }
+                : f,
+            ),
+          )
+        },
+      },
+    )
+  }
+
+  function startNewInCollection(folderKey: string) {
+    catalogMutations.create.reset()
+    setNewCatalogType('movie')
+    setNamingNewFolderKey(folderKey)
+  }
+
+  function createNewInCollection(name: string) {
+    if (namingNewFolderKey === null || collectionID === undefined) return
+    const folderKey = namingNewFolderKey
+    catalogMutations.create.mutate(
+      toCatalogPayload({ ...emptyForm(newCatalogType, collectionID), name }),
+      {
+        onSuccess: (catalog) => {
+          rememberCatalog(catalog)
+          addRef(folderKey, catalog.id)
+          setNamingNewFolderKey(null)
+          setNestedCatalogID(catalog.id)
+        },
+      },
+    )
+  }
 
   function patch(update: Partial<CollectionFormState>) {
     setState((previous) => ({ ...previous, ...update }))
@@ -215,23 +428,24 @@ export function CollectionEditor({
         {willDelete.length > 0 && (
           <span className="text-dim"> · {pluralCount(willDelete.length, 'folder')} will be deleted</span>
         )}
+        {catalogsWillDelete.length > 0 && (
+          <span className="text-dim"> · {pluralCount(catalogsWillDelete.length, 'catalog')} will be deleted</span>
+        )}
       </span>
     ) : (
       <span className="ed-status is-muted">No changes yet</span>
     )
 
-  const eyebrow = mode === 'edit' ? 'Edit collection' : 'Duplicate collection'
-
   return (
     <EditorShell
-      eyebrow={eyebrow}
+      eyebrow="Edit collection"
       title={state.title.trim() || 'Untitled collection'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
       footer={
         <EditorFooter
-          mode={mode}
+          mode="edit"
           noun="collection"
           saving={saving}
           showErrors={showErrors}
@@ -244,13 +458,6 @@ export function CollectionEditor({
         />
       }
     >
-      {droppedRefs.length > 0 && (
-        <p className="type-data text-dim border-line-hi mb-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
-          {droppedRefs.length === 1 ? 'One catalog was' : `${droppedRefs.length} catalogs were`}{' '}
-          left out of this copy — no longer shared with you.
-        </p>
-      )}
-
       <div className="ed-container">
         <div className="ed">
           <div className="ed-form">
@@ -283,7 +490,7 @@ export function CollectionEditor({
                   onChange={(isPublic) => patch({ isPublic })}
                   label={
                     state.isPublic
-                      ? 'Shared, so anyone can import it'
+                      ? 'Shared, so anyone can import it — along with every catalog inside it'
                       : 'Not shared, only you can use it'
                   }
                 />
@@ -366,7 +573,7 @@ export function CollectionEditor({
             </div>
 
             {willDelete.length > 0 && (
-              <RemovalWarning names={willDelete.map((f) => f.title.trim() || 'an untitled folder')} shared={baseline.isPublic} onUndo={undoRemoving} />
+              <RemovalWarning names={willDelete.map((f) => f.title.trim() || 'an untitled folder')} onUndo={undoRemoving} />
             )}
 
             <div className="border-line mt-6 flex items-center gap-3 border-b pb-3">
@@ -412,7 +619,9 @@ export function CollectionEditor({
                       }
                       errors={showErrors ? errors.folders[folder.key] : undefined}
                       options={options}
-                      optionByID={optionByID}
+                      optionByID={mergedOptionByID}
+                      collectionID={collectionID}
+                      usedInPlaces={usedInPlaces}
                       onChange={(update) => patchFolder(folder.key, update)}
                       onMove={(direction) => moveFolder(folder.key, direction)}
                       onRemove={() => {
@@ -420,8 +629,15 @@ export function CollectionEditor({
                         setOpenFolderKey((current) => (current === folder.key ? null : current))
                       }}
                       onAddRef={(catalogID) => addRef(folder.key, catalogID)}
+                      onCopyRefIntoCollection={(catalogID) => {
+                        const source = localOptionByID.get(catalogID)?.catalog ?? optionByID.get(catalogID)?.catalog
+                        if (source) copyIntoCollection(folder.key, source)
+                      }}
                       onRemoveRef={(catalogID) => removeRef(folder.key, catalogID)}
                       onMoveRef={(catalogID, direction) => moveRef(folder.key, catalogID, direction)}
+                      onEditRef={editRef}
+                      onCopyRef={(catalogID) => copyRefIntoCollection(folder.key, catalogID)}
+                      onAddNewInCollection={() => startNewInCollection(folder.key)}
                     />
                   ))}
                 </ul>
@@ -429,11 +645,87 @@ export function CollectionEditor({
             )}
           </div>
 
-          <CollectionPreview state={state} optionByID={optionByID} />
+          <CollectionPreview state={state} optionByID={mergedOptionByID} />
         </div>
       </div>
 
       <SaveError noun="collection" message={serverError} />
+
+      {nestedCatalogID !== null &&
+        (() => {
+          // `localCatalogs` only ever holds scoped catalogs (seeded from
+          // `initialCatalogs`, grown by copy/new-in-collection) — a listed
+          // catalog opened via a plain link only ever lives in the library
+          // map, never here, so Edit on one has to fall back to it.
+          const catalog = localCatalogs.get(nestedCatalogID) ?? mergedOptionByID.get(nestedCatalogID)?.catalog
+          if (!catalog) return null
+          return (
+            <Modal
+              open
+              onClose={closeNestedCatalog}
+              labelledBy="nested-catalog-title"
+              width="min(860px, 100%)"
+            >
+              {/* Resets the sticky offset `EditorShell` computes for the
+                  outer app header — inside this modal there is no such
+                  header to clear, and inheriting the real one would leave a
+                  stray gap once the form scrolls on a narrow screen. `flex`
+                  plus `overflow-hidden` gives `EditorShell`'s own
+                  `lg:h-full` a bounded parent, the same shape the real app
+                  shell gives it, so its internal header/footer stay put and
+                  only the form between them scrolls. */}
+              <div
+                style={{ '--app-h': '0px' } as CSSProperties}
+                className="flex max-h-[85vh] flex-col overflow-hidden"
+              >
+                <h2 id="nested-catalog-title" className="sr-only">
+                  Edit {catalog.name}
+                </h2>
+                <CatalogEditor
+                  key={catalog.id}
+                  mode="edit"
+                  initial={formFromCatalog(catalog, 'edit')}
+                  genres={genres}
+                  certifications={certifications}
+                  countryNames={countryNames}
+                  languages={languages}
+                  saving={catalogMutations.update.isPending}
+                  serverError={(catalogMutations.update.error as Error | null)?.message ?? null}
+                  onSave={saveNestedCatalog}
+                  onRequestClose={closeNestedCatalog}
+                  onDirtyChange={() => {}}
+                />
+              </div>
+            </Modal>
+          )
+        })()}
+
+      <NewItemDialog
+        open={namingNewFolderKey !== null}
+        noun="catalog"
+        label="Name"
+        placeholder="Trending Sci-Fi"
+        saving={catalogMutations.create.isPending}
+        serverError={(catalogMutations.create.error as Error | null)?.message ?? null}
+        extra={
+          <Field label="Type" hint="Can't be changed later.">
+            <Segmented
+              ariaLabel="Catalog type"
+              value={newCatalogType}
+              onChange={setNewCatalogType}
+              options={[
+                { value: 'movie', label: 'Movie' },
+                { value: 'series', label: 'Series' },
+              ]}
+            />
+          </Field>
+        }
+        onCreate={createNewInCollection}
+        onClose={() => {
+          setNamingNewFolderKey(null)
+          catalogMutations.create.reset()
+        }}
+      />
     </EditorShell>
   )
 }
@@ -446,13 +738,9 @@ export function CollectionEditor({
  */
 function RemovalWarning({
   names,
-  shared,
   onUndo,
 }: {
   names: string[]
-  /** The collection's own sharing state — a removed folder isn't shared or
-   *  unshared on its own, the collection around it is. */
-  shared: boolean
   onUndo: () => void
 }) {
   const noun = names.length === 1 ? 'the folder' : 'the folders'
@@ -463,11 +751,8 @@ function RemovalWarning({
       <Icon icon={TriangleAlert} size={16} className="text-danger mt-0.5" />
       <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1.5">
         <span className="text-[14px] leading-[20px]">
-          The next Save will delete {noun} {joinQuoted(names)}.{' '}
-          {shared
-            ? `It goes for you and everyone who imported this collection.`
-            : `It isn’t shared, so only you lose ${pronoun}.`}{' '}
-          Nothing is gone yet.
+          The next Save will delete {noun} {joinQuoted(names)}. Only you lose {pronoun} — a taker's
+          own copy of this collection is unaffected. Nothing is gone yet.
         </span>
         <button
           type="button"

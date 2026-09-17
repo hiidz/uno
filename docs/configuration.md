@@ -21,13 +21,12 @@ error naming both rather than two runs.
 ### The `SITE_BASE_URL` hazard
 
 `selectProfile` and `pushAddons` both build the absolute manifest URL pushed into Nuvio from
-`SiteBaseURL`, so a deploy that left it unset — or, previously, that inherited a silent
-`http://localhost:8123` default — would push an unreachable URL into the user's real Nuvio
-profile with no warning at any point. `config.Load` (`internal/config/config.go`) now has no
-default for `SITE_BASE_URL` and includes it in the required-var check alongside `TMDB_API_KEY`
-and `NUVIO_PUBLISHABLE_KEY`, so an unset value fails startup immediately instead of silently
-defaulting. `.env.example` still ships `SITE_BASE_URL=http://localhost:8123` as the correct local
-dev value — that's fine for local dev, since the value is explicit there, not defaulted.
+`SiteBaseURL`. `config.Load` (`internal/config/config.go`) has no default for `SITE_BASE_URL`
+and includes it in the required-var check alongside `TMDB_API_KEY` and `NUVIO_PUBLISHABLE_KEY`,
+so a deploy that leaves it unset fails startup immediately rather than pushing an unreachable
+URL into the user's real Nuvio profile with no warning. `.env.example` ships
+`SITE_BASE_URL=http://localhost:8123` as the correct local dev value — that's fine for local dev,
+since the value is explicit there, not defaulted.
 
 **This does not catch a value that's wrong but non-empty** — e.g. `.env.example`'s
 `http://localhost:8123` placeholder copied verbatim into a production `.env`. Startup still
@@ -69,8 +68,8 @@ What the bypass reaches, and what it does not:
 - **Reaches**: every path that ends in Uno's own vault or in TMDB — catalog and collection CRUD,
   selection, preview, the pickers.
 - **Reaches partially**: push. The handler's ordering, the access validation, the
-  `owned ∪ old ∪ new` merge union, and the compensating revert all run; what they run *against*
-  is the in-memory fake, not Nuvio.
+  owned-collection-ids-only merge and its addon-id heuristic for forgotten collections, and the
+  compensating revert all run; what they run *against* is the in-memory fake, not Nuvio.
 - **Does not reach**: anything depending on Nuvio's own behaviour — the addon URL round-trip
   through a real account, and every push failure branch whose failure originates upstream.
 - The fake's fixed `sub = "dev-user"` alongside a real account is two subjects over one vault,

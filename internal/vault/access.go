@@ -75,7 +75,7 @@ func requireFolderRefsWithinCollection(ctx context.Context, q queryRower, catalo
 }
 
 // validateFolderRefs confirms every catalog ID may be referenced by a
-// folder in a collection this profile owns, under §3.1's closed-graph rule:
+// folder in a collection this profile owns, under the closed-graph rule:
 // owned by profileID, and either listed (collection_id IS NULL) or already
 // scoped to this same collection. A nil collectionID means the collection
 // doesn't exist yet (CreateUserCollection has no id to compare against), so
@@ -181,7 +181,7 @@ func validateAccess(ctx context.Context, tx *sql.Tx, label, extraWhere string, p
 }
 
 // validateCatalogAccess confirms every catalog ID is owned by profileID and
-// listed — §3.1's rule for a home selection. A scoped catalog is never
+// listed — the rule for a home selection. A scoped catalog is never
 // home-selectable (the schema's own CHECK forbids collection_id and
 // home_sort_order both being set), so this pre-check has to reject one
 // before it ever reaches SaveSelectionsForPush's write, not just before a
@@ -199,9 +199,9 @@ func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UU
 
 // takenSourceIDs returns the set of taken_from ids that a row owned by
 // profileID in the given table (catalogs or collections) already points at
-// — the community list's "taken" flag (§3.5 of the sharing model plan), one
-// query shared by GetCommunityCatalogs and GetCommunityCollections. table is
-// always an internal literal, never client input.
+// — the community list's "taken" flag, one query shared by
+// GetCommunityCatalogs and GetCommunityCollections. table is always an
+// internal literal, never client input.
 func (db *DB) takenSourceIDs(ctx context.Context, table string, profileID uuid.UUID) (map[uuid.UUID]bool, error) {
 	rows, err := db.conn.QueryContext(ctx, fmt.Sprintf(`
 		SELECT taken_from FROM %s WHERE owner_id = ? AND taken_from IS NOT NULL

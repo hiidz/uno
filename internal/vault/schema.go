@@ -22,8 +22,9 @@ CREATE TABLE IF NOT EXISTS collections (
     show_all_tab       INTEGER NOT NULL DEFAULT 0,
     backdrop_image_url TEXT    NOT NULL DEFAULT '',
     focus_glow_enabled INTEGER NOT NULL DEFAULT 0,
-    home_sort_order    INTEGER,                 -- NULL = not on the TV; replaces profile_collections
-    pushed_at          TEXT,                    -- RFC3339 UTC, set by push; NULL = never pushed
+    home_sort_order    INTEGER,                 -- NULL = not on the TV
+    version            INTEGER NOT NULL DEFAULT 1, -- +1 on every content write
+    pushed_version     INTEGER,                 -- version push read and sent; NULL = never pushed
     taken_from         TEXT    REFERENCES collections(id) ON DELETE SET NULL,
     created_at         TEXT    NOT NULL,        -- RFC3339 UTC
     updated_at         TEXT    NOT NULL         -- RFC3339 UTC
@@ -39,8 +40,8 @@ CREATE TABLE IF NOT EXISTS catalogs (
     is_public       INTEGER NOT NULL DEFAULT 0,
     is_default      INTEGER NOT NULL DEFAULT 0,
     collection_id   TEXT    REFERENCES collections(id) ON DELETE CASCADE, -- NULL = listed
-    home_sort_order INTEGER,                    -- NULL = not on the TV; replaces profile_catalogs
-    show_in_home    INTEGER NOT NULL DEFAULT 1, -- moved from profile_catalogs
+    home_sort_order INTEGER,                    -- NULL = not on the TV
+    show_in_home    INTEGER NOT NULL DEFAULT 1, -- whether the home row appears when on the TV
     taken_from      TEXT    REFERENCES catalogs(id) ON DELETE SET NULL,
     fingerprint     TEXT    NOT NULL,             -- sha256 hex, see internal/provider.Fingerprint
     created_at      TEXT    NOT NULL,             -- RFC3339 UTC

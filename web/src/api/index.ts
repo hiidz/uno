@@ -6,6 +6,7 @@ export {
   createCollection,
   deleteCatalog,
   deleteCollection,
+  duplicateCollection,
   takeCatalog,
   takeCollection,
   updateCatalog,

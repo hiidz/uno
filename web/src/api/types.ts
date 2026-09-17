@@ -59,8 +59,14 @@ export interface Collection {
   view_mode: string
   show_all_tab: boolean
   backdrop_image_url: string
-  /** RFC3339, set by push; `null` means never pushed. */
-  pushed_at: string | null
+  created_at: string
+  updated_at: string
+  /** Bumped by every content write (never touched by push); starts at 1. */
+  version: number
+  /** The `version` push last read and sent for this collection; `null` means
+   *  never pushed. A collection is pending re-push when `version !==
+   *  pushed_version`. */
+  pushed_version: number | null
   folders: Folder[] | null
   /** Every catalog this collection's folders reference, listed or scoped —
    *  so the editor never needs the library to render a folder. */

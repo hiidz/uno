@@ -67,10 +67,12 @@ type Collection struct {
 	BackdropImageURL string    `json:"backdrop_image_url"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
-	// PushedAt is set by push (SaveSelectionsForPush) for every collection in
-	// the pushed selection; nil means never pushed. Compared against
-	// UpdatedAt by the frontend to flag a pending change (WP7).
-	PushedAt *time.Time `json:"pushed_at"`
+	// Version increments on every content write (UpdateUserCollection) and
+	// starts at 1 on insert — never touched by push. PushedVersion is the
+	// Version push read and sent to Nuvio for this collection; nil means
+	// never pushed. The frontend flags a pending change when the two differ.
+	Version       int  `json:"version"`
+	PushedVersion *int `json:"pushed_version"`
 	// HomeSortOrder is this collection's position in its owner's home-screen
 	// selection; nil means it isn't on the TV. Never on the wire — the
 	// selection endpoint (GetCurrentCollectionSelection) returns collections
@@ -195,8 +197,8 @@ type SelectedCatalog struct {
 }
 
 // CommunityCatalog is a Catalog as it appears in the community list: public,
-// owned by someone else, collapsed to one row per fingerprint (§3.3 of the
-// sharing model plan), plus whether the caller has already taken a copy.
+// owned by someone else, collapsed to one row per fingerprint, plus whether
+// the caller has already taken a copy.
 type CommunityCatalog struct {
 	Catalog
 	Taken bool `json:"taken"`

@@ -75,6 +75,7 @@ func (s *Server) routes() {
 
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireNuvioAuth(s.requireProfile(s.listUserCollections)))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireNuvioAuth(s.requireProfile(s.createUserCollection)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/duplicate", s.requireNuvioAuth(s.requireProfile(s.duplicateUserCollection)))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireNuvioAuth(s.requireProfile(s.updateUserCollection)))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireNuvioAuth(s.requireProfile(s.deleteUserCollection)))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community/collections", s.requireNuvioAuth(s.requireProfile(s.listCommunityCollections)))

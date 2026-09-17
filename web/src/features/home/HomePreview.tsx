@@ -281,7 +281,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
             {home.isDetached(row.id) && (
               <span
                 className="type-data text-series text-[10.5px]"
-                title="Its owner deleted it or made it private. It still works on your home screen, but removing it here can't be undone."
+                title="Deleted. It still works on your home screen, but removing it here can't be undone."
               >
                 · not in library
               </span>

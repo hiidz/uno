@@ -53,7 +53,8 @@ erDiagram
     string backdrop_image_url
     bool focus_glow_enabled
     int home_sort_order "nullable — NULL means not on the TV"
-    string pushed_at "nullable — NULL means never pushed"
+    int version "starts at 1, +1 on every content write; never touched by push"
+    int pushed_version "nullable — NULL means never pushed; the version push last read and sent"
     uuid taken_from FK "nullable — bookkeeping only, never rendered"
     string created_at
     string updated_at
@@ -154,6 +155,13 @@ write credential.
   `TMDBCommonParams` + `BaseParams`), with `Validate()` covering cross-field rules, dispatched by
   `validateCatalogParams` from the create/update handlers. It crosses the wire as a JSON-encoded
   **string**, not a nested object.
+- **`catalogs.type` is immutable once the row exists.** `UpdateUserCatalog` reads the stored
+  `type` in its own opening `SELECT` and rejects the write with `ErrInvalidInput` if the incoming
+  form's `type` differs — a catalog's type is baked into the pushed collections blob (each folder
+  source names its catalog's type), so changing it would alter what Nuvio should have without
+  bumping any collection's `version`. The catalog editor already locks the field once a row
+  exists; this is the write path enforcing the same rule server-side. Duplicate is the supported
+  way to get a different-typed copy.
 - **Two distinct removal mechanisms — don't conflate them.**
   - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped single `DELETE`,
     all downstream cleanup via `ON DELETE CASCADE`. Removes the row for *everyone*, not just the
@@ -167,7 +175,7 @@ write credential.
     access-check query — the `UPDATE`'s own `WHERE` clause is the validation.
 - **`catalogs.show_in_home` drives the manifest's per-catalog genre extra, but the addon server
   reads it through `vault.GetPublishedCatalogs`, not the raw column.** `GetPublishedCatalogs` is
-  the union §3.4 of the sharing model plan defines: every owned catalog with `home_sort_order`
+  the union of every owned catalog with `home_sort_order`
   non-`NULL` (its own `show_in_home`), plus every catalog referenced by a folder of a collection
   that is itself on the home screen (`collections.home_sort_order` non-`NULL`), with a forced
   `ShowInHome = false` — a catalog reachable only through a folder never gets an automatic home
@@ -178,10 +186,14 @@ write credential.
   in Discover. `GetCurrentCatalogSelection` (the narrower `home_sort_order IS NOT NULL` query)
   remains the pre-push validation/selection-editor view; only the addon server needs the wider
   published set.
-- **`collections.pushed_at` is stamped by `SaveSelectionsForPush` for every collection in the
-  pushed selection**, and only there — a collection's own create/update never touches it. `NULL`
-  means never pushed. Intended (WP7) to pair with `updated_at` to flag a pending change: both are
-  `TEXT` RFC3339 at second precision, so a save and a push inside the same second compare equal.
+- **`collections.version` bumps on every content write (`UpdateUserCollection`), starting at 1 on
+  insert (`CreateUserCollection`, `TakeCollection`, `DuplicateCollection`) — push never touches it.**
+  `collections.pushed_version` is stamped by `SaveSelectionsForPush` with the version
+  `pushCollections` read for that collection *before* calling Nuvio, for every collection in the
+  pushed selection, and only there. `NULL` means never pushed. The frontend flags a pending change
+  when `version !== pushed_version` (`web/src/features/home/changes.ts`) — an integer compare, not
+  a clock, so a Save landing between push's read and its local write (even inside the same second)
+  is never mistaken for pushed.
 - **No cascade on `owner_id`** (`catalogs`/`collections`). Irrelevant until profile deletion
   exists; revisit then.
 - **`folder_catalogs` has no column for a per-reference selector** (e.g. a genre override),
@@ -301,13 +313,14 @@ from Uno's own Builder API. Push therefore has dedicated types in `internal/nuvi
 `json.Marshal` a `vault.CollectionWithFolders` into this payload.** A dangling catalog ref (an id
 missing from the resolved map) is skipped rather than failing the whole push.
 
-**Field name:** the code sends `catalogSources`, as the public doc documents. Pulled real data
-uses `sources` for the containing array name; the entry shape itself is identical. If a push ever
-errors on the primary name, `sources` is the key to try — `internal/nuvio/types.go` carries a
-comment marking the spot. Push's own merge (`pushCollections`, `internal/api/push.go`) parses
-**both** keys when deciding whether a pulled collection is Uno-managed (`isUnoManaged`), since
-which key a previously-Uno-pushed collection round-trips under isn't confirmed against a real
-Nuvio profile.
+**Field name:** the code sends `catalogSources`, as the public doc documents. **Confirmed against
+a real Nuvio profile:** a collection Uno has pushed round-trips its folder sources
+under that same key, `catalogSources` — pulling it back after a push shows `catalogSources`
+populated and `sources` empty. A Nuvio-native collection (built in Nuvio's own UI, never pushed
+by Uno) may still use `sources` — the two sample files below, which predate any Uno push, use it
+— so push's own merge (`pushCollections`, `internal/api/push.go`) still parses **both** keys when
+deciding whether a pulled collection is Uno-managed (`isUnoManaged`); the Uno-pushed case is
+confirmed to use `catalogSources` only.
 
 **The real `sources[]` entry is wider than what Uno emits.** The entries in
 `docs/api/samples/collections-basic.json` carry five keys — `addonId`, `catalogId`, `type`,

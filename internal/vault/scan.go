@@ -32,20 +32,6 @@ func parseNullableUUID(s sql.NullString, field string) (*uuid.UUID, error) {
 	return &id, nil
 }
 
-// parseNullableTimestamp parses a nullable RFC3339 TEXT column into a
-// *time.Time, nil when the column is NULL, wrapping any parse error with the
-// given field name.
-func parseNullableTimestamp(s sql.NullString, field string) (*time.Time, error) {
-	if !s.Valid {
-		return nil, nil
-	}
-	t, err := parseTimestamp(s.String, field)
-	if err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
 // nullableInt converts a nullable INTEGER column into a *int, nil when the
 // column is NULL — used for catalogs.home_sort_order/collections.home_sort_order.
 func nullableInt(n sql.NullInt64) *int {
@@ -119,14 +105,14 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 	for rows.Next() {
 		var c Collection
 		var idStr, ownerIDStr string
-		var isPublic, isDefault, pinToTop, showAllTab int
-		var takenFromStr, pushedAtStr sql.NullString
-		var homeSortOrder sql.NullInt64
+		var isPublic, isDefault, pinToTop, showAllTab, version int
+		var takenFromStr sql.NullString
+		var homeSortOrder, pushedVersion sql.NullInt64
 		var createdAtStr, updatedAtStr string
 
 		if err := rows.Scan(&idStr, &c.Title, &ownerIDStr, &isPublic, &isDefault,
 			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL,
-			&homeSortOrder, &pushedAtStr, &takenFromStr, &createdAtStr, &updatedAtStr); err != nil {
+			&homeSortOrder, &version, &pushedVersion, &takenFromStr, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, fmt.Errorf("scanning collection row: %w", err)
 		}
 
@@ -150,10 +136,8 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 			return nil, err
 		}
 		c.HomeSortOrder = nullableInt(homeSortOrder)
-		c.PushedAt, err = parseNullableTimestamp(pushedAtStr, "collection pushed_at")
-		if err != nil {
-			return nil, err
-		}
+		c.Version = version
+		c.PushedVersion = nullableInt(pushedVersion)
 
 		c.CreatedAt, err = parseTimestamp(createdAtStr, "collection created_at")
 		if err != nil {
