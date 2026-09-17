@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
 import { tmdbKind } from '@/api'
+import { InfoTip } from '@/components/fields'
 import { RecipePreview } from '@/features/catalogs/RecipePreview'
 import { CollectionPreview } from '@/features/collections/CollectionPreview'
 import { formFromCollection } from '@/features/collections/collectionForm'
@@ -38,6 +39,8 @@ export function CommunityRow({
   onTake: () => void
   preview: ReactNode
 }) {
+  const previewPanelID = useId()
+
   return (
     <div className="border-line border-b py-2.5">
       <div className="flex items-center gap-3">
@@ -46,27 +49,41 @@ export function CommunityRow({
           <span className="type-data text-dimmer truncate text-[10.5px]">{summary}</span>
         </div>
 
-        <button type="button" onClick={onTogglePreview} className="btn-ghost shrink-0">
+        <button
+          type="button"
+          onClick={onTogglePreview}
+          aria-expanded={previewOpen}
+          aria-controls={previewPanelID}
+          className="btn-ghost shrink-0"
+        >
           {previewOpen ? 'Hide preview' : 'Preview'}
         </button>
 
         {taken && (
-          <span className="type-data text-dimmer shrink-0 text-[10.5px]" title="Already taken">
-            ✓ Taken
-          </span>
+          <span className="type-data text-dimmer shrink-0 text-[10.5px]">✓ Taken</span>
         )}
 
-        <button
-          type="button"
-          onClick={onTake}
-          disabled={taking}
-          className="btn-secondary btn-sm shrink-0"
-        >
-          {taking ? 'Taking…' : 'Take'}
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onTake}
+            disabled={taking}
+            className="btn-secondary btn-sm"
+          >
+            {taking ? 'Taking…' : 'Take'}
+          </button>
+          <InfoTip
+            label="Take"
+            text="Taking makes an independent copy. Nothing you do to it reaches this original, and you can take it again anytime."
+          />
+        </div>
       </div>
 
-      {previewOpen && <div className="mt-3">{preview}</div>}
+      {previewOpen && (
+        <div id={previewPanelID} className="mt-3">
+          {preview}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
-import { Segmented, Select } from '@/components/fields'
+import { Segmented } from '@/components/fields'
 import { ListState } from '@/components/ListState'
 import { useLibrary } from '@/features/library/useLibrary'
 import {
@@ -41,7 +41,9 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>('name')
   const [previewID, setPreviewID] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ text: string; tone: 'success' | 'danger' } | null>(null)
+  const [pendingCatalogIDs, setPendingCatalogIDs] = useState<ReadonlySet<string>>(new Set())
+  const [pendingCollectionIDs, setPendingCollectionIDs] = useState<ReadonlySet<string>>(new Set())
 
   // Auto-dismissing, unlike the push outcome strip: nothing here needs a
   // decision, so there is nothing worth keeping on screen once it's been read.
@@ -67,14 +69,42 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
   }
 
   function take(catalog: CommunityCatalog) {
+    setPendingCatalogIDs((ids) => new Set(ids).add(catalog.id))
     mutations.takeCatalog.mutate(catalog.id, {
-      onSuccess: () => setToast('Added to your catalogs'),
+      onSuccess: () =>
+        setToast({
+          text: catalog.taken ? 'Added another copy to your catalogs' : 'Added to your catalogs',
+          tone: 'success',
+        }),
+      onError: (error) =>
+        setToast({ text: `Couldn't take this catalog: ${error.message}`, tone: 'danger' }),
+      onSettled: () =>
+        setPendingCatalogIDs((ids) => {
+          const next = new Set(ids)
+          next.delete(catalog.id)
+          return next
+        }),
     })
   }
 
   function takeCollection(collection: CommunityCollection) {
+    setPendingCollectionIDs((ids) => new Set(ids).add(collection.id))
     mutations.takeCollection.mutate(collection.id, {
-      onSuccess: () => setToast('Added to your collections'),
+      onSuccess: () =>
+        setToast({
+          text: collection.taken
+            ? 'Added another copy to your collections'
+            : 'Added to your collections',
+          tone: 'success',
+        }),
+      onError: (error) =>
+        setToast({ text: `Couldn't take this collection: ${error.message}`, tone: 'danger' }),
+      onSettled: () =>
+        setPendingCollectionIDs((ids) => {
+          const next = new Set(ids)
+          next.delete(collection.id)
+          return next
+        }),
     })
   }
 
@@ -94,9 +124,11 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
       {toast && (
         <div
           role="status"
-          className="bg-raised border-line type-data text-ink border px-3 py-2 text-[11px]"
+          className={`bg-raised type-data border px-3 py-2 text-[11px] ${
+            toast.tone === 'danger' ? 'border-danger text-danger' : 'border-line text-ink'
+          }`}
         >
-          {toast}
+          {toast.text}
         </div>
       )}
 
@@ -120,17 +152,23 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
         />
         <div className="flex items-center gap-2">
           <span className="type-eyebrow">Sort</span>
-          <Select
+          <Segmented
+            ariaLabel="Sort community results"
             value={sort}
-            onChange={(value) => setSort(value as Sort)}
+            onChange={setSort}
             options={[
               { value: 'name', label: 'Name' },
               { value: 'newest', label: 'Newest' },
             ]}
-            width="140px"
           />
         </div>
       </div>
+
+      {query && (activeQuery.data?.length ?? 0) > 0 && (
+        <p className="type-data text-dimmer m-0 text-[11px]">
+          {activeCount} of {activeQuery.data?.length} {kind}
+        </p>
+      )}
 
       <ListState
         isLoading={activeQuery.isPending}
@@ -154,7 +192,7 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
                 name={catalog.name}
                 summary={catalogSummary(catalog)}
                 taken={catalog.taken}
-                taking={mutations.takeCatalog.isPending}
+                taking={pendingCatalogIDs.has(catalog.id)}
                 previewOpen={previewID === catalog.id}
                 onTogglePreview={() => togglePreview(catalog.id)}
                 onTake={() => take(catalog)}
@@ -167,7 +205,7 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
                 name={collection.title}
                 summary={collectionSummary(collection)}
                 taken={collection.taken}
-                taking={mutations.takeCollection.isPending}
+                taking={pendingCollectionIDs.has(collection.id)}
                 previewOpen={previewID === collection.id}
                 onTogglePreview={() => togglePreview(collection.id)}
                 onTake={() => takeCollection(collection)}

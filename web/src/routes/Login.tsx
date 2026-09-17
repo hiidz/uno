@@ -76,11 +76,11 @@ export function Login() {
         </header>
 
         <form onSubmit={handleSubmit} noValidate>
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-8 gap-y-2 py-2 max-sm:grid-cols-[minmax(0,1fr)] max-sm:items-start">
-            <label htmlFor="login-email" className="type-eyebrow pt-3.5 text-right max-sm:pt-0 max-sm:text-left">
+          <div className="cr is-field">
+            <label htmlFor="login-email" className="cr-role type-eyebrow">
               Email
             </label>
-            <div>
+            <div className="cr-val">
               <input
                 id="login-email"
                 type="email"
@@ -96,19 +96,19 @@ export function Login() {
                 className={`field w-full ${fieldErrors.email ? 'border-danger' : ''}`}
               />
               {fieldErrors.email && (
-                <p id="login-email-error" className="mt-2 grid grid-cols-[16px_minmax(0,1fr)] gap-x-2 text-[13px] leading-[18px]">
-                  <Icon icon={TriangleAlert} className="text-danger mt-0.5" />
+                <p id="login-email-error" className="field-error">
+                  <Icon icon={TriangleAlert} className="text-danger" />
                   <span>{fieldErrors.email}</span>
                 </p>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-8 gap-y-2 py-2 max-sm:grid-cols-[minmax(0,1fr)] max-sm:items-start">
-            <label htmlFor="login-password" className="type-eyebrow pt-3.5 text-right max-sm:pt-0 max-sm:text-left">
+          <div className="cr is-field">
+            <label htmlFor="login-password" className="cr-role type-eyebrow">
               Password
             </label>
-            <div>
+            <div className="cr-val">
               <input
                 id="login-password"
                 type="password"
@@ -124,31 +124,29 @@ export function Login() {
                 className={`field w-full ${fieldErrors.password ? 'border-danger' : ''}`}
               />
               {fieldErrors.password && (
-                <p id="login-password-error" className="mt-2 grid grid-cols-[16px_minmax(0,1fr)] gap-x-2 text-[13px] leading-[18px]">
-                  <Icon icon={TriangleAlert} className="text-danger mt-0.5" />
+                <p id="login-password-error" className="field-error">
+                  <Icon icon={TriangleAlert} className="text-danger" />
                   <span>{fieldErrors.password}</span>
                 </p>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-8 pt-4 max-sm:grid-cols-[minmax(0,1fr)]">
-            <div className="col-start-2 grid justify-items-start gap-3 max-sm:col-start-1 max-sm:justify-items-stretch">
-              <button
-                type="submit"
-                disabled={submitting}
-                aria-busy={submitting || undefined}
-                className="btn-primary h-11 px-8 max-sm:h-12 max-sm:w-full"
-              >
-                {submitting ? 'Signing in…' : 'Sign in'}
-              </button>
-              {networkError && (
-                <p role="alert" className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-2 text-[14px] leading-[20px]">
-                  <Icon icon={TriangleAlert} className="text-danger mt-0.5" />
-                  <span>{networkError}</span>
-                </p>
-              )}
-            </div>
+          <div className="grid justify-items-start gap-3 pt-4 pl-[200px] max-sm:justify-items-stretch max-sm:pl-0">
+            <button
+              type="submit"
+              disabled={submitting}
+              aria-busy={submitting || undefined}
+              className="btn-primary max-sm:w-full"
+            >
+              {submitting ? 'Signing in…' : 'Sign in'}
+            </button>
+            {networkError && (
+              <p role="alert" className="field-error">
+                <Icon icon={TriangleAlert} className="text-danger" />
+                <span>{networkError}</span>
+              </p>
+            )}
           </div>
         </form>
 

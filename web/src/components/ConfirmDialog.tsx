@@ -66,7 +66,10 @@ export function ConfirmDialog({
               <div className="text-dim text-[13px] leading-relaxed">{body}</div>
             </Dialog.Description>
             {error && (
-              <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]">
+              <p
+                role="alert"
+                className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]"
+              >
                 {error}
               </p>
             )}
@@ -79,6 +82,7 @@ export function ConfirmDialog({
                 type="button"
                 onClick={onConfirm}
                 disabled={pending}
+                aria-live="polite"
                 className={destructive ? 'btn-danger' : 'btn-primary'}
               >
                 {confirmLabel}
