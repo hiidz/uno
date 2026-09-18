@@ -105,13 +105,13 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 	for rows.Next() {
 		var c Collection
 		var idStr, ownerIDStr string
-		var isPublic, isDefault, pinToTop, showAllTab, version int
+		var isPublic, isDefault, pinToTop, showAllTab, focusGlowEnabled, version int
 		var takenFromStr sql.NullString
 		var homeSortOrder, pushedVersion sql.NullInt64
 		var createdAtStr, updatedAtStr string
 
 		if err := rows.Scan(&idStr, &c.Title, &ownerIDStr, &isPublic, &isDefault,
-			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL,
+			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
 			&homeSortOrder, &version, &pushedVersion, &takenFromStr, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, fmt.Errorf("scanning collection row: %w", err)
 		}
@@ -130,6 +130,7 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 		c.IsDefault = isDefault != 0
 		c.PinToTop = pinToTop != 0
 		c.ShowAllTab = showAllTab != 0
+		c.FocusGlowEnabled = focusGlowEnabled != 0
 
 		c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
 		if err != nil {
@@ -161,10 +162,11 @@ func parseFolders(rows *sql.Rows) ([]Folder, error) {
 	for rows.Next() {
 		var f Folder
 		var idStr, collectionIDStr string
-		var hideTitle int
+		var hideTitle, focusGIFEnabled int
 
 		if err := rows.Scan(&idStr, &collectionIDStr, &f.Title, &f.SortOrder,
-			&f.TileShape, &hideTitle, &f.CoverEmoji, &f.CoverImageURL); err != nil {
+			&f.TileShape, &hideTitle, &f.CoverEmoji, &f.CoverImageURL,
+			&f.FocusGIFURL, &focusGIFEnabled, &f.HeroBackdropURL, &f.HeroVideoURL, &f.TitleLogoURL); err != nil {
 			return nil, fmt.Errorf("scanning folder row: %w", err)
 		}
 
@@ -179,6 +181,7 @@ func parseFolders(rows *sql.Rows) ([]Folder, error) {
 			return nil, err
 		}
 		f.HideTitle = hideTitle != 0
+		f.FocusGIFEnabled = focusGIFEnabled != 0
 
 		folders = append(folders, f)
 	}
@@ -194,7 +197,7 @@ func parseFolderCatalogs(rows *sql.Rows) ([]FolderCatalog, error) {
 		var fc FolderCatalog
 		var folderIDStr, catalogIDStr string
 
-		if err := rows.Scan(&folderIDStr, &catalogIDStr, &fc.SortOrder); err != nil {
+		if err := rows.Scan(&folderIDStr, &catalogIDStr, &fc.SortOrder, &fc.Genre); err != nil {
 			return nil, fmt.Errorf("scanning folder_catalog row: %w", err)
 		}
 

@@ -28,6 +28,9 @@ export interface TileRecipe {
   id: string
   type: CatalogType
   params: string
+  /** A folder reference's genre, narrowing the recipe; absent or `''` is
+   *  unfiltered. */
+  genre?: string
 }
 
 export function useRecipesTiles(
@@ -39,8 +42,9 @@ export function useRecipesTiles(
       // resolve to one entry and one fetch. TanStack also dedupes duplicate
       // keys within a single useQueries call, which is what makes a folder
       // holding the same catalog twice free rather than doubled.
-      queryKey: queryKeys.catalogPreview(recipe.type, recipe.params),
-      queryFn: () => fetchCatalogPreview({ type: recipe.type, params: recipe.params }),
+      queryKey: queryKeys.catalogPreview(recipe.type, recipe.params, recipe.genre),
+      queryFn: () =>
+        fetchCatalogPreview({ type: recipe.type, params: recipe.params, genre: recipe.genre || undefined }),
       staleTime: 5 * 60_000,
       // No retry: a 400 means the recipe is invalid and a 502 means TMDB won't
       // recover inside a retry window. Either way placeholders stay, and

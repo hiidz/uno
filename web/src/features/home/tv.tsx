@@ -1,28 +1,31 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Tabs } from 'radix-ui'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { tmdbKind } from '@/api'
-import type { PreviewItem, TMDBKind } from '@/api'
+import type { PreviewItem } from '@/api'
 import { Icon } from '@/components/Icon'
 import {
   ALL_TAB,
   ALL_TAB_TILE_CAP,
   folderTabs,
+  sourceLabel,
+  interleavedKinds,
   interleaveTiles,
   type PreviewCollection,
   type PreviewFolder,
+  type PreviewSource,
 } from '@/features/preview/model'
-import { TILES_PER_PAGE, noTiles, type CatalogTiles } from '@/features/preview/tiles'
+import { TILES_PER_PAGE, noTiles, type CatalogTiles, type TileKind } from '@/features/preview/tiles'
 import type { FolderPageTarget, PreviewRow } from './preview'
 
 /**
  * The Home pane's TV preview: a framed 16:9 picture in Roboto, DESIGN.md's
  * "TV preview (signature)". Deliberately its own component tree, not a
  * restyle of `features/preview/tiles.tsx`/`FolderPage.tsx` — those stay on
- * Jost for the collection editor's own preview panel (Phase 5), and `cqw`
- * sizing only means anything against `.tv-bezel`'s own `container-type`, so
- * sharing the classes across a non-framed consumer would silently fall back
- * to viewport units there.
+ * Jost for their unframed consumers, and `cqw` sizing only means anything
+ * against `.tv-bezel`'s own `container-type`, so sharing the classes across a
+ * non-framed consumer would silently fall back to viewport units there. The
+ * collection editor's docked row is framed, so it draws with these.
  *
  * **Uno pins nothing onto the screen — the Clean Preview amendment.** No
  * shuffled-row note, no stopped-sharing note (that warning stays in the
@@ -53,9 +56,10 @@ function TVPosterTile({
   toneIndex,
 }: {
   item: PreviewItem
-  kind?: TMDBKind
+  kind?: TileKind
   toneIndex: number
 }) {
+  const resolvedKind = typeof kind === 'function' ? kind(item) : kind
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>
@@ -63,10 +67,11 @@ function TVPosterTile({
         {item.poster && <img src={item.poster} alt="" loading="lazy" />}
       </span>
       <span className="cap">{item.title}</span>
+      {item.year && <span className="cap cap-year">{item.year}</span>}
     </>
   )
 
-  if (!kind) {
+  if (!resolvedKind) {
     return (
       <span title={name} className="tv-tile tv-poster">
         {face}
@@ -76,7 +81,7 @@ function TVPosterTile({
 
   return (
     <a
-      href={`https://www.themoviedb.org/${kind}/${item.tmdb_id}`}
+      href={`https://www.themoviedb.org/${resolvedKind}/${item.tmdb_id}`}
       target="_blank"
       rel="noopener noreferrer"
       title={`${name} — open on TMDB`}
@@ -98,6 +103,100 @@ function TVPlaceholderTile({ toneIndex }: { toneIndex: number }) {
 }
 
 /**
+ * A row's own scroll container and the two buttons that drive it — the "see
+ * more" affordance a real row carries, not a Uno addition. A whole TMDB page
+ * is fetched either way (`useCatalogTiles`); this is what makes every one of
+ * those tiles reachable instead of the row silently clipping whatever didn't
+ * fit the frame.
+ *
+ * **Swiping is touch-only, and native.** `overflow-x` on `.tv-strip` is the
+ * whole of it: a finger swipes the row like any native scroller. A mouse gets
+ * no drag gesture — pressing on a poster link or cover image starts the
+ * browser's own drag of that link or image — so a mouse scrolls a row with
+ * the chevrons, a horizontal wheel or trackpad, or Shift+wheel.
+ *
+ * `canPrev`/`canNext` come from the scroll container's own position
+ * (`scrollLeft` against `scrollWidth`/`clientWidth`), tracked via a `scroll`
+ * listener and a `ResizeObserver` — the latter because tiles arrive after
+ * the row first mounts and widen `scrollWidth` with no `scroll` event of
+ * their own.
+ */
+function useRowScroll() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [bounds, setBounds] = useState({ canPrev: false, canNext: false })
+
+  const measure = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    setBounds({
+      canPrev: el.scrollLeft > 1,
+      canNext: el.scrollLeft < el.scrollWidth - el.clientWidth - 1,
+    })
+  }, [])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    measure()
+    el.addEventListener('scroll', measure, { passive: true })
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', measure)
+      ro.disconnect()
+    }
+  }, [measure])
+
+  const scrollBy = useCallback((direction: -1 | 1) => {
+    const el = ref.current
+    if (!el) return
+    // Past either end this is a no-op — `scrollBy` clamps rather than wraps.
+    el.scrollBy({ left: direction * el.clientWidth * 0.85, behavior: 'smooth' })
+  }, [])
+
+  return { stripRef: ref, ...bounds, scrollBy }
+}
+
+function RowButton({
+  direction,
+  onClick,
+  label,
+}: {
+  direction: -1 | 1
+  onClick: () => void
+  label: string
+}) {
+  return (
+    <button type="button" onClick={onClick} aria-label={label} className="tv-row-btn">
+      <Icon icon={direction === 1 ? ChevronRight : ChevronLeft} />
+    </button>
+  )
+}
+
+/** The pair of scroll buttons beside a row's title, each rendered only while
+ *  it would do something — a row at its start shows no dead "back" button,
+ *  matching the chevron a real row's title carries. */
+function RowNav({
+  canPrev,
+  canNext,
+  onScroll,
+  name,
+}: {
+  canPrev: boolean
+  canNext: boolean
+  onScroll: (direction: -1 | 1) => void
+  name: string
+}) {
+  if (!canPrev && !canNext) return null
+  return (
+    <div className="tv-row-nav">
+      {canPrev && <RowButton direction={-1} onClick={() => onScroll(-1)} label={`Scroll ${name} back`} />}
+      {canNext && <RowButton direction={1} onClick={() => onScroll(1)} label={`See more of ${name}`} />}
+    </div>
+  )
+}
+
+/**
  * The shared body of a strip or grid: real tiles once they land, toned
  * placeholders until then. A settled, empty result draws nothing at all — on
  * the real TV an empty catalog is an empty row, not an explanation.
@@ -106,11 +205,15 @@ function TVTiles({
   tiles,
   kind,
   gridClassName,
+  scroll,
 }: {
   tiles: CatalogTiles
-  kind?: TMDBKind
+  kind?: TileKind
   /** `fp-grid` inside a folder page's tabbed view; omitted draws a strip. */
   gridClassName?: string
+  /** The strip's own scroll container. Only ever passed
+   *  alongside a strip — a grid doesn't scroll sideways. */
+  scroll?: ReturnType<typeof useRowScroll>
 }) {
   const className = gridClassName ?? 'tv-strip'
 
@@ -118,7 +221,7 @@ function TVTiles({
 
   if (tiles.items.length === 0) {
     return (
-      <div aria-hidden="true" className={className}>
+      <div ref={scroll?.stripRef} aria-hidden="true" className={className}>
         {Array.from({ length: TILES_PER_PAGE }, (_, i) => (
           <TVPlaceholderTile key={i} toneIndex={i} />
         ))}
@@ -127,7 +230,7 @@ function TVTiles({
   }
 
   return (
-    <div className={className}>
+    <div ref={scroll?.stripRef} className={className}>
       {tiles.items.map((item, i) => (
         <TVPosterTile key={item.tmdb_id} item={item} kind={kind} toneIndex={i} />
       ))}
@@ -146,13 +249,8 @@ function TVFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () =>
     folder.tileShape === 'LANDSCAPE' ? 'landscape' : folder.tileShape === 'SQUARE' ? 'square' : 'poster'
   const name = folder.title || 'Untitled folder'
 
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`Open ${name}`}
-      className={`tv-tile tv-folder ${shapeClass}`}
-    >
+  const face = (
+    <>
       <span className="art">
         {folder.coverEmoji && <span aria-hidden="true">{folder.coverEmoji}</span>}
         {folder.coverImageUrl && <img src={folder.coverImageUrl} alt="" loading="lazy" />}
@@ -167,6 +265,17 @@ function TVFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () =>
       ) : (
         <span className="cap">{name}</span>
       )}
+    </>
+  )
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open ${name}`}
+      className={`tv-tile tv-folder ${shapeClass}`}
+    >
+      {face}
     </button>
   )
 }
@@ -182,10 +291,19 @@ export function TVCollectionRow({
   collection: PreviewCollection
   onOpenFolder: (target: FolderPageTarget) => void
 }) {
+  const scroll = useRowScroll()
   return (
     <div className="tv-band">
-      <p className="tv-row-title">{collection.title}</p>
-      <div className="tv-strip">
+      <div className="tv-row-head">
+        <p className="tv-row-title">{collection.title}</p>
+        <RowNav
+          canPrev={scroll.canPrev}
+          canNext={scroll.canNext}
+          onScroll={scroll.scrollBy}
+          name={collection.title}
+        />
+      </div>
+      <div ref={scroll?.stripRef} className="tv-strip">
         {collection.folders.map((folder) => (
           <TVFolderTile
             key={folder.id}
@@ -199,10 +317,14 @@ export function TVCollectionRow({
 }
 
 export function TVCatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTiles }) {
+  const scroll = useRowScroll()
   return (
     <div className="tv-band">
-      <p className="tv-row-title">{row.name}</p>
-      <TVTiles tiles={tiles} kind={tmdbKind(row.type)} />
+      <div className="tv-row-head">
+        <p className="tv-row-title">{row.name}</p>
+        <RowNav canPrev={scroll.canPrev} canNext={scroll.canNext} onScroll={scroll.scrollBy} name={row.name} />
+      </div>
+      <TVTiles tiles={tiles} kind={tmdbKind(row.type)} scroll={scroll} />
     </div>
   )
 }
@@ -224,11 +346,14 @@ export function TVFolderPage({
   folder,
   tiles,
   onBack,
+  backLabel = 'Back to the home screen',
 }: {
   collection: PreviewCollection
   folder: PreviewFolder
   tiles: ReadonlyMap<string, CatalogTiles>
   onBack: () => void
+  /** The back arrow's accessible name — where `onBack` actually lands. */
+  backLabel?: string
 }) {
   const name = folder.title || 'Untitled folder'
   const tabbed = collection.viewMode === 'TABBED_GRID' || collection.viewMode === 'FOLLOW_LAYOUT'
@@ -240,7 +365,7 @@ export function TVFolderPage({
           type="button"
           className="fp-back"
           onClick={onBack}
-          aria-label="Back to the home screen"
+          aria-label={backLabel}
         >
           <Icon icon={ArrowLeft} />
         </button>
@@ -276,11 +401,11 @@ function TVTabbedCatalogs({
   // this pointing at a tab that no longer exists.
   const open = tabs.some((t) => t.key === openKey) ? openKey : (tabs[0]?.key ?? ALL_TAB)
 
-  const source = folder.sources.find((s) => s.id === open)
+  const source = folder.sources.find((s) => s.key === open)
 
   const allTiles: CatalogTiles = useMemo(() => {
-    const perSource = folder.sources.map((s) => tiles.get(s.id)?.items ?? [])
-    const loaded = folder.sources.map((s) => tiles.get(s.id)).filter((t) => t !== undefined)
+    const perSource = folder.sources.map((s) => tiles.get(s.key)?.items ?? [])
+    const loaded = folder.sources.map((s) => tiles.get(s.key)).filter((t) => t !== undefined)
     return {
       items: interleaveTiles(perSource, ALL_TAB_TILE_CAP),
       randomized: loaded.some((t) => t.randomized),
@@ -288,6 +413,8 @@ function TVTabbedCatalogs({
       isError: loaded.length > 0 && loaded.every((t) => t.isError),
     }
   }, [folder.sources, tiles])
+
+  const allKinds = useMemo(() => interleavedKinds(folder, tiles), [folder, tiles])
 
   return (
     <Tabs.Root value={open} onValueChange={setOpenKey}>
@@ -302,12 +429,16 @@ function TVTabbedCatalogs({
       )}
       {source ? (
         <TVTiles
-          tiles={tiles.get(source.id) ?? noTiles()}
+          tiles={tiles.get(source.key) ?? noTiles()}
           kind={source.type ? tmdbKind(source.type) : undefined}
           gridClassName="fp-grid"
         />
       ) : (
-        <TVTiles tiles={allTiles} gridClassName="fp-grid" />
+        <TVTiles
+          tiles={allTiles}
+          kind={(item) => allKinds.get(item.tmdb_id)}
+          gridClassName="fp-grid"
+        />
       )}
     </Tabs.Root>
   )
@@ -323,15 +454,29 @@ function TVRowsInFolder({
   return (
     <>
       {folder.sources.map((source) => (
-        <div key={source.id} className="tv-band">
-          <p className="tv-row-title">{source.name ?? 'Unavailable catalog'}</p>
-          <TVTiles
-            tiles={tiles.get(source.id) ?? noTiles()}
-            kind={source.type ? tmdbKind(source.type) : undefined}
-          />
-        </div>
+        <TVFolderSourceRow key={source.key} source={source} tiles={tiles.get(source.key) ?? noTiles()} />
       ))}
     </>
+  )
+}
+
+function TVFolderSourceRow({
+  source,
+  tiles,
+}: {
+  source: PreviewSource
+  tiles: CatalogTiles
+}) {
+  const scroll = useRowScroll()
+  const name = sourceLabel(source)
+  return (
+    <div className="tv-band">
+      <div className="tv-row-head">
+        <p className="tv-row-title">{name}</p>
+        <RowNav canPrev={scroll.canPrev} canNext={scroll.canNext} onScroll={scroll.scrollBy} name={name} />
+      </div>
+      <TVTiles tiles={tiles} kind={source.type ? tmdbKind(source.type) : undefined} scroll={scroll} />
+    </div>
   )
 }
 

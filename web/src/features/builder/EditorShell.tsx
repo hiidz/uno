@@ -36,6 +36,7 @@ export function EditorShell({
   onDuplicate,
   onDelete,
   footer,
+  docked,
   children,
 }: {
   /** What kind of edit this is — "Edit catalog", "New collection". The title
@@ -54,6 +55,11 @@ export function EditorShell({
   onDuplicate?: () => void
   onDelete?: () => void
   footer: ReactNode
+  /** What docks beside the form, which decides the content cap: the form
+   *  keeps its own `--w-form` column and the extra width goes to that column —
+   *  the catalog editor's results (`--w-editor-results`) or the collection
+   *  editor's TV (`--w-editor-tv`). */
+  docked: 'results' | 'tv'
   children: ReactNode
 }) {
   const stacked = useStackedLayout()
@@ -158,7 +164,11 @@ export function EditorShell({
           past about 860px a row stops being something you read across, and
           every field in it starts looking stretched. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
-        <div className="w-full max-w-[var(--w-form)]">{children}</div>
+        <div
+          className={`w-full ${docked === 'tv' ? 'max-w-[var(--w-editor-tv)]' : 'max-w-[var(--w-editor-results)]'}`}
+        >
+          {children}
+        </div>
       </div>
 
       {/* Sticky below `lg`, where the page scrolls as one document and Save

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useIsFetching, useQueryClient } from '@tanstack/react-query'
+import { RefreshCw } from 'lucide-react'
+import { queryKeys } from '@/api'
+import { Icon } from '@/components/Icon'
 import { plural } from '@/lib/plural'
+import { folderRecipes } from '@/features/preview/model'
 import { noTiles } from '@/features/preview/tiles'
+import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
 import { useHomeSelection } from './useHomeSelection'
 import { useCatalogTiles } from './useCatalogTiles'
 import { buildHomePreview, findFolderPage } from './preview'
@@ -146,15 +152,24 @@ function FolderPageView({
   folder: NonNullable<ReturnType<typeof findFolderPage>>['folder']
   onBack: () => void
 }) {
-  const tiles = useCatalogTiles(folder.sources.map((source) => source.id))
+  // From the sources' own recipes rather than `useCatalogTiles`' id lookup: a
+  // folder reference can be narrowed to a genre, which the catalog id alone
+  // doesn't carry.
+  const recipes = useMemo(() => folderRecipes(folder), [folder])
+  const tiles = useRecipesTiles(recipes)
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <p className="type-data text-dim m-0 text-[11px]">
-          {collection.title || 'Untitled collection'} · <b className="text-ink">{folder.title || 'Untitled folder'}</b>
-        </p>
-        <span className="type-data text-dimmer text-[10.5px]">{FOLDER_LAYOUT_LABEL[collection.viewMode]}</span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <p className="text-dim m-0 text-[13px] leading-[18px]">
+            {collection.title || 'Untitled collection'}
+            <span aria-hidden="true" className="text-dimmer px-1.5">/</span>
+            <b className="text-ink font-medium">{folder.title || 'Untitled folder'}</b>
+          </p>
+          <span className="text-dim text-[12px] leading-[18px]">{FOLDER_LAYOUT_LABEL[collection.viewMode]}</span>
+        </div>
+        <RefreshPreviewButton />
       </div>
 
       <div className="tv-bezel">
@@ -168,11 +183,11 @@ function FolderPageView({
         </div>
       </div>
 
-      <p className="type-data text-dimmer m-0 text-[10px] pointer-coarse:hidden">
+      <p className="text-dim m-0 max-w-[72ch] text-[12px] leading-[17px] pointer-coarse:hidden">
         The arrow beside the folder name goes back to the home screen, like Back on the remote. So
         do Esc and your browser's Back.
       </p>
-      <p className="type-data text-dimmer m-0 hidden text-[10px] pointer-coarse:block">
+      <p className="text-dim m-0 hidden max-w-[72ch] text-[12px] leading-[17px] pointer-coarse:block">
         The arrow beside the folder name goes back to the home screen, like Back on the remote. So
         does your phone's Back.
       </p>
@@ -201,21 +216,25 @@ function HomeScreenView({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <p className="type-data text-dim m-0 max-w-[60ch] text-[11px]">
-          Your TV shows pinned collections first, then catalog rows, then your other collections.
-          Nothing here can be changed; open a folder to look inside it.
-        </p>
-        {pendingCount > 0 && (
-          <span className="text-pending type-data text-[10.5px]">
-            Includes the {pendingCount} {plural(pendingCount, 'change')} not on your TV yet.
-          </span>
-        )}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <p className="text-dim m-0 max-w-[72ch] text-[13px] leading-[18px]">
+            Your TV shows pinned collections first, then catalog rows, then your other collections.
+            Nothing here can be changed; open a folder to look inside it.
+          </p>
+          {pendingCount > 0 && (
+            <p className="text-pending m-0 flex items-center gap-2 text-[13px] leading-[18px]">
+              <span aria-hidden="true" className="bg-pending size-1.5 shrink-0" />
+              Includes the {pendingCount} {plural(pendingCount, 'change')} not on your TV yet.
+            </p>
+          )}
+        </div>
+        {preview.rows.length > 0 && <RefreshPreviewButton />}
       </div>
 
       {nothingOnHome ? (
         <>
-          <p className="type-data text-dimmer m-0 text-[11px]">
+          <p className="text-dim m-0 text-[13px] leading-[18px]">
             Nothing on home — every selected catalog is set to Discover only.
           </p>
           <div className="tv-bezel">
@@ -247,13 +266,35 @@ function HomeScreenView({
         </div>
       )}
 
-      <p className="type-data text-dimmer m-0 text-[10px]">
-        The screen scrolls, like your TV. Poster tiles are placeholders with the real titles under
-        them.
+      <p className="text-dim m-0 max-w-[72ch] text-[12px] leading-[17px]">
+        The screen scrolls, like your TV — sideways within a row, up and down between them. A flat
+        tone shows behind a tile until its poster loads, or in place of one it doesn't have.
       </p>
 
       {preview.discoverOnly.length > 0 && <DiscoverOnly rows={preview.discoverOnly} />}
     </div>
+  )
+}
+
+/**
+ * Fetches every row on screen again. Tiles are cached for five minutes, so
+ * without this a shuffling catalog keeps showing the page it drew first.
+ * Only active queries refetch — the rows of whichever view is mounted.
+ */
+function RefreshPreviewButton() {
+  const queryClient = useQueryClient()
+  const fetching = useIsFetching({ queryKey: queryKeys.catalogPreviews() }) > 0
+
+  return (
+    <button
+      type="button"
+      onClick={() => void queryClient.refetchQueries({ queryKey: queryKeys.catalogPreviews(), type: 'active' })}
+      disabled={fetching}
+      className="btn-secondary btn-sm shrink-0"
+    >
+      <Icon icon={RefreshCw} size={14} className={fetching ? 'motion-safe:animate-spin' : undefined} />
+      {fetching ? 'Refreshing…' : 'Refresh preview'}
+    </button>
   )
 }
 
@@ -274,13 +315,13 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
       <div className="flex flex-col gap-1">
         {rows.map((row) => (
           <div key={row.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-dim truncate text-[12px]">{row.name}</span>
-            <span className="type-data text-dimmer text-[10.5px]">
+            <span className="text-ink truncate text-[13px]">{row.name}</span>
+            <span className="text-dim text-[12px]">
               · in Discover only, so not a row on the home screen
             </span>
             {home.isDetached(row.id) && (
               <span
-                className="type-data text-series text-[10.5px]"
+                className="text-series text-[12px]"
                 title="Deleted. It still works on your home screen, but removing it here can't be undone."
               >
                 · not in library
@@ -315,7 +356,7 @@ function EmptyHomeScreen() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="type-data text-dim m-0 max-w-[60ch] text-[11px]">
+      <p className="text-dim m-0 max-w-[72ch] text-[13px] leading-[18px]">
         Nothing is on your home screen yet, so there's nothing to show. Add rows and they appear
         here the way your TV shows them.
       </p>
@@ -335,7 +376,7 @@ function EmptyHomeScreen() {
           </p>
         </div>
       </div>
-      <p className="type-data text-dimmer m-0 text-[10px]">
+      <p className="text-dim m-0 text-[12px] leading-[17px]">
         Add catalogs and collections from the sidebar, then push.
       </p>
     </div>

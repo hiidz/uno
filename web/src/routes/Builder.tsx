@@ -259,7 +259,7 @@ function PendingIndicator({ open, onToggle }: { open: boolean; onToggle: () => v
     <>
       <span
         aria-hidden="true"
-        className={`h-[6px] w-[6px] rounded-full ${home.isDirty ? 'bg-series' : 'bg-dimmer'}`}
+        className={`h-[6px] w-[6px] ${home.isDirty ? 'bg-pending' : 'bg-dimmer'}`}
       />
 
       {/* The words, for a screen reader, on the screens where they aren't

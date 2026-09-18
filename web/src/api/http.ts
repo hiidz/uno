@@ -95,7 +95,7 @@ export async function sendJSON<T>(
  * Coerces a non-array response to `[]` so no call site has to null-check a list.
  * A guard, not a live case: `parseCatalogs`/`parseCollections`/`parseFolders`
  * all initialise their slice, so `json.Marshal` never writes `null` for one.
- * Only the top-level response — nested arrays (`folders`, `catalog_ids`) are
+ * Only the top-level response — nested arrays (`folders`, `refs`) are
  * coerced where they're read.
  */
 export async function getList<T>(path: string): Promise<T[]> {

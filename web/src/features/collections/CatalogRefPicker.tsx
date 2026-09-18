@@ -49,7 +49,7 @@ export function CatalogRefPicker({
   )
 
   return (
-    <div className="border-line-hi bg-raised mt-1 flex flex-col gap-3 border p-3">
+    <div className="border-line-hi bg-raised flex flex-col gap-3 border p-3">
       <div className="flex items-center gap-2">
         <input
           type="search"
@@ -58,7 +58,7 @@ export function CatalogRefPicker({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search catalogs…"
           aria-label="Search catalogs to add to this folder"
-          className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px] pointer-coarse:text-[16px]"
+          className="field w-full min-w-0"
         />
         <button type="button" onClick={onClose} className="btn-quiet shrink-0">
           Done
@@ -66,7 +66,7 @@ export function CatalogRefPicker({
       </div>
 
       {matches.length === 0 ? (
-        <p className="type-data text-dimmer m-0 px-1 py-1.5 text-[11px]">
+        <p className="ed-note m-0">
           {options.length === 0
             ? 'No catalogs yet. Create one in the sidebar first.'
             : query.trim()

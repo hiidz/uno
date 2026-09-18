@@ -66,6 +66,7 @@ func (s *Server) routes() {
 	// there is no profile to resolve. Every other catalog route, including the
 	// community list and take, lives under /api/p/{profileIndex}/.
 	s.router.HandleFunc("POST /api/catalogs/preview", s.requireNuvioAuth(s.previewCatalog))
+	s.router.HandleFunc("POST /api/catalogs/genre-options", s.requireNuvioAuth(s.catalogGenreOptions))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs", s.requireNuvioAuth(s.requireProfile(s.listUserCatalogs)))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs", s.requireNuvioAuth(s.requireProfile(s.createUserCatalog)))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireNuvioAuth(s.requireProfile(s.updateUserCatalog)))

@@ -134,6 +134,12 @@ export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
  * twenty are drawn, and `loading="lazy"` on each poster means the ones past the
  * edge never fetch their image.
  */
+/** A fixed kind for every tile in the run, or a per-item lookup for a run
+ *  merged from sources that don't all share one — the "All" tab's case.
+ *  Either way, a tile whose kind can't be resolved stays inert rather than
+ *  linking to a guessed URL. */
+export type TileKind = TMDBKind | ((item: PreviewItem) => TMDBKind | undefined)
+
 export function TileStrip({
   shape,
   tiles,
@@ -141,9 +147,7 @@ export function TileStrip({
 }: {
   shape: TileShape
   tiles: CatalogTiles
-  /** Set only where every tile in the run is the same kind, which is what
-   *  makes a TMDB link constructible. Omitted, the tiles stay inert. */
-  kind?: TMDBKind
+  kind?: TileKind
 }) {
   const height = 92
   return (
@@ -164,9 +168,7 @@ export function TileGrid({
 }: {
   shape: TileShape
   tiles: CatalogTiles
-  /** Set only where every tile in the run is the same kind, which is what
-   *  makes a TMDB link constructible. Omitted, the tiles stay inert. */
-  kind?: TMDBKind
+  kind?: TileKind
 }) {
   const width = 88
   return (
@@ -192,7 +194,7 @@ export function TileRun({
   width: number
   height: number
   wrap: boolean
-  kind?: TMDBKind
+  kind?: TileKind
 }) {
   const className = `flex gap-2 overflow-hidden ${wrap ? 'flex-wrap' : ''}`
 
@@ -224,11 +226,12 @@ export function TileRun({
  * One real title. The title sits behind the poster rather than beside it, so a
  * title TMDB has no poster for degrades to a readable tile, not an empty box.
  *
- * **A link when the caller knows the kind, a plain tile otherwise.** `tmdb_id`
- * plus movie-or-tv is the whole of a themoviedb.org URL, and checking a title
- * the recipe returned is the obvious next question once the tiles are on
- * screen. It opens in a new tab: the builder holds unsaved form state, and
- * navigating away from it to read a synopsis would discard the work.
+ * **A link when the caller can resolve this item's kind, a plain tile
+ * otherwise.** `tmdb_id` plus movie-or-tv is the whole of a themoviedb.org
+ * URL, and checking a title the recipe returned is the obvious next question
+ * once the tiles are on screen. It opens in a new tab: the builder holds
+ * unsaved form state, and navigating away from it to read a synopsis would
+ * discard the work.
  */
 export function ContentTile({
   item,
@@ -239,8 +242,9 @@ export function ContentTile({
   item: PreviewItem
   width: number
   height: number
-  kind?: TMDBKind
+  kind?: TileKind
 }) {
+  const resolvedKind = typeof kind === 'function' ? kind(item) : kind
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>
@@ -260,7 +264,7 @@ export function ContentTile({
   const box = 'bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border'
   const style = { width: `${width}px`, height: `${height}px` }
 
-  if (!kind) {
+  if (!resolvedKind) {
     return (
       <span title={name} style={style} className={box}>
         {face}
@@ -270,7 +274,7 @@ export function ContentTile({
 
   return (
     <a
-      href={`https://www.themoviedb.org/${kind}/${item.tmdb_id}`}
+      href={`https://www.themoviedb.org/${resolvedKind}/${item.tmdb_id}`}
       target="_blank"
       rel="noopener noreferrer"
       title={`${name} — open on TMDB`}
@@ -330,8 +334,8 @@ export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
   }
 
   if (tiles.randomized) {
-    // The addon path takes a random TMDB page per call while preview always
-    // takes page 1, so these specific titles are not what the TV will show.
+    // Preview and the addon path each take their own random TMDB page, so
+    // these specific titles are not what the TV will show.
     return (
       <span
         className="type-data text-dimmer shrink-0 text-[10px]"

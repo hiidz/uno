@@ -50,9 +50,10 @@ fixed bearer token authenticate as `sub = "dev-user"` with no JWKS fetch and no 
 When the variable is set, `main.go` wraps both the `TokenVerifier` and the `NuvioClient` in the
 decorators from `devauth.go` before building `api.Deps` — `internal/api` itself is unchanged and
 still sees one verifier and one client. Every Nuvio call carrying the bypass token is served from
-an in-memory fake account: one profile at slot 1, plus in-memory addon and collections stores
-that start empty and hold whatever pushes write into them. Any other token verifies and routes
-normally.
+an in-memory fake account: two profiles, "Dev" at slot 1 and "Dev 2" at slot 2, each with its own
+in-memory addon and collections store that starts empty and holds whatever pushes write into it —
+enough to exercise switching profiles in the builder without a real Nuvio account. Any other token
+verifies and routes normally.
 
 Driving the SPA with it takes a second entry: Vite reads env files from `web/` only and exposes
 only `VITE_`-prefixed vars, so the root `.env` is invisible to the frontend. Set

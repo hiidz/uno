@@ -50,7 +50,16 @@ export const queryKeys = {
    *
    * Account-wide, so it sits outside the `['p', i, …]` prefix — a recipe's
    * results don't depend on which profile asked.
+   *
+   * `genre` is part of the key: a folder reference narrowed to one genre is a
+   * different result from the same recipe unfiltered. `''` is unfiltered.
    */
-  catalogPreview: (type: CatalogType, params: string) =>
-    ['catalogs', 'preview', type, params] as const,
+  catalogPreview: (type: CatalogType, params: string, genre = '') =>
+    ['catalogs', 'preview', type, params, genre] as const,
+  /** The prefix of every `catalogPreview` key. */
+  catalogPreviews: () => ['catalogs', 'preview'] as const,
+  /** The genres a pick can narrow this recipe by — keyed on the recipe for the
+   *  same reason `catalogPreview` is. */
+  catalogGenreOptions: (type: CatalogType, params: string) =>
+    ['catalogs', 'genre-options', type, params] as const,
 } as const

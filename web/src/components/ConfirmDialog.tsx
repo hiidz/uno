@@ -6,7 +6,7 @@ import { Dialog } from 'radix-ui'
  * A confirmation the user has to answer before something irreversible happens.
  *
  * Not `window.confirm`: this app has to say *what* is at stake ("3 unpushed
- * changes", "removes it for everyone using it"), and a native dialog gives no
+ * changes", "removes it from Community"), and a native dialog gives no
  * room for that and no way to name the action on its button.
  *
  * Copy rule: the confirm button repeats the verb the user is about to commit
@@ -66,7 +66,10 @@ export function ConfirmDialog({
               <div className="text-dim text-[13px] leading-relaxed">{body}</div>
             </Dialog.Description>
             {error && (
-              <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]">
+              <p
+                role="alert"
+                className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]"
+              >
                 {error}
               </p>
             )}
@@ -79,6 +82,7 @@ export function ConfirmDialog({
                 type="button"
                 onClick={onConfirm}
                 disabled={pending}
+                aria-live="polite"
                 className={destructive ? 'btn-danger' : 'btn-primary'}
               >
                 {confirmLabel}

@@ -18,7 +18,6 @@ import {
   serializeGenreList,
   serializeSortBy,
   validateForm,
-  type BuilderMode,
   type CatalogFormState,
   type DateMode,
 } from './catalogForm'
@@ -50,11 +49,11 @@ import {
 } from './fields'
 
 /**
- * Create / edit / duplicate a catalog, filling the builder's right pane.
- *
- * One component with a mode rather than separate create and edit shells: the
- * two differ only in whether `type` is editable, and `type` is what the params
- * sub-form branches on. Duplicate is create seeded from an existing row.
+ * Edit a catalog, filling the builder's right pane. Always a real row: a
+ * catalog is named into existence by its own dialog and saved before this
+ * editor ever opens, and Duplicate is now its own atomic server call
+ * (`Workspace.tsx`'s `confirmDuplicateCatalog`) that opens straight into this
+ * same editor on the finished copy — there is no unsaved/create state here.
  *
  * **Dirtiness is reported, not handled.** Every way out of this editor
  * originates outside it — the × in the shell, Escape, selecting another row in
@@ -63,14 +62,15 @@ import {
  *
  * **There is no read-only "imported" view.** The closed-graph sharing model
  * has no such state: a taken catalog is a private copy you fully own from
- * the moment it's created, not a live pointer
- * that could ever need a read-only screen. Every row this editor opens is
- * yours, so `BuilderMode` is `'edit' | 'duplicate'` with no third "viewing"
- * mode — `'duplicate'` is reached only through the explicit Duplicate action
- * on one of your own rows, never by opening one.
+ * the moment it's created, not a live pointer that could ever need a
+ * read-only screen. Every row this editor opens is yours.
+ *
+ * **`type` is always locked.** Duplicate is the only thing that ever creates
+ * a catalog of a different type, and it does so by copying the source's type
+ * verbatim at the moment it fires — there is no path, here or anywhere else,
+ * that changes an existing row's type.
  */
 export function CatalogEditor({
-  mode,
   initial,
   genres,
   certifications,
@@ -84,7 +84,6 @@ export function CatalogEditor({
   onDelete,
   onDirtyChange,
 }: {
-  mode: BuilderMode
   initial: CatalogFormState | null
   genres: { movie: Genre[]; tv: Genre[] }
   certifications: { movie: CertificationsByCountry; tv: CertificationsByCountry }
@@ -117,7 +116,6 @@ export function CatalogEditor({
   // region/search state locally and losing it every time the section closes
   // would mean re-picking a region on every reopen.
   const [openSection, setOpenSection] = useState<SectionKey | null>(null)
-  const [genresExpanded, setGenresExpanded] = useState(false)
 
   // Sorted by the name shown, not TMDB's response order, so the dropdown
   // reads alphabetically like the country and certification pickers.
@@ -188,27 +186,6 @@ export function CatalogEditor({
     setState((previous) => ({ ...previous, params: { ...previous.params, ...update } }))
   }
 
-  function changeType(type: CatalogFormState['type']) {
-    setState((previous) => ({
-      ...previous,
-      type,
-      dateMode: 'any',
-      params: {
-        ...previous.params,
-        with_genres: undefined,
-        without_genres: undefined,
-        sort_by: undefined,
-        // Movie and tv certifications are different scales per country, even
-        // under the same certification_country — a rating picked for one
-        // means nothing (or something else) in the other.
-        certification: undefined,
-        certification_gte: undefined,
-        certification_lte: undefined,
-        certification_country: undefined,
-      },
-    }))
-  }
-
   /** Same shape as `submit`: reveal what's wrong, or go. Errors stay hidden
    *  until something is submitted, so pressing Preview has to be one of the
    *  things that reveals them — otherwise the note explaining why it won't run
@@ -253,8 +230,6 @@ export function CatalogEditor({
     activeGenres,
     withGenres,
     withoutGenres,
-    genresExpanded,
-    setGenresExpanded,
     languageOptions,
     languages,
     isMovie,
@@ -289,18 +264,17 @@ export function CatalogEditor({
       <span className="ed-status is-muted">No changes yet</span>
     )
 
-  const isBare = paramsString(state) === '{}'
-
   return (
     <EditorShell
-      eyebrow={mode === 'edit' ? 'Edit catalog' : 'Duplicate catalog'}
+      eyebrow="Edit catalog"
       title={state.name.trim() || 'Untitled catalog'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
+      docked="results"
       footer={
         <EditorFooter
-          mode={mode}
+          mode="edit"
           noun="catalog"
           saving={saving}
           showErrors={showErrors}
@@ -313,7 +287,7 @@ export function CatalogEditor({
       }
     >
       <div className="ed-container">
-        <div className="ed">
+        <div className="ed ed-results">
           <div className="ed-form">
             <div className="cr is-field">
               <label htmlFor="cat-name" className="cr-role type-eyebrow">
@@ -339,25 +313,10 @@ export function CatalogEditor({
             <div className="cr">
               <span className="cr-role type-eyebrow">Movies or series</span>
               <div className="cr-val">
-                {mode === 'edit' ? (
-                  <span className="type-data text-[15px]">
-                    {state.type === 'movie' ? 'Movie' : 'Series'}{' '}
-                    <span className="aside">
-                      · locked. Duplicate it to make a {state.type === 'movie' ? 'series' : 'movie'}{' '}
-                      version.
-                    </span>
-                  </span>
-                ) : (
-                  <Segmented
-                    ariaLabel="Catalog type"
-                    value={state.type}
-                    onChange={changeType}
-                    options={[
-                      { value: 'movie', label: 'Movie' },
-                      { value: 'series', label: 'Series' },
-                    ]}
-                  />
-                )}
+                <span className="type-data text-[15px]">
+                  {state.type === 'movie' ? 'Movie' : 'Series'}{' '}
+                  <span className="aside">· locked, can't be changed once created.</span>
+                </span>
               </div>
             </div>
 
@@ -394,13 +353,6 @@ export function CatalogEditor({
                   />
                 </div>
               </div>
-            )}
-
-            {isBare && (
-              <p className="ed-fresh">
-                Nothing set yet, so this row would show the most popular{' '}
-                {state.type === 'movie' ? 'movies' : 'series'} overall. Narrow it down below.
-              </p>
             )}
 
             {sections.map((section) => (
@@ -444,15 +396,6 @@ export function CatalogEditor({
                 <span className="ed-note">{sumShuffle(Boolean(state.params.randomized))}</span>
               </div>
             </div>
-
-            {onDelete && (
-              <div className="ed-delete">
-                <button type="button" className="btn-danger-text" onClick={onDelete}>
-                  Delete this catalog
-                </button>
-                <p>{baseline.isPublic ? 'It goes for everyone who imported it.' : "It isn't shared, so only you lose it."}</p>
-              </div>
-            )}
           </div>
 
           <RecipePreview preview={preview} type={state.type} invalid={recipeInvalid} onRun={runPreview} />
@@ -521,8 +464,6 @@ function buildSections(args: {
   activeGenres: Genre[]
   withGenres: { ids: number[]; join: 'and' | 'or' }
   withoutGenres: { ids: number[]; join: 'and' | 'or' }
-  genresExpanded: boolean
-  setGenresExpanded: (expanded: boolean) => void
   languageOptions: { value: string; label: string }[]
   languages: Language[]
   isMovie: boolean
@@ -544,8 +485,6 @@ function buildSections(args: {
     activeGenres,
     withGenres,
     withoutGenres,
-    genresExpanded,
-    setGenresExpanded,
     languageOptions,
     languages,
     isMovie,
@@ -594,10 +533,7 @@ function buildSections(args: {
               { value: 'asc', label: 'Low to high' },
             ]}
           />
-          <p className="ed-note">
-            This is the order of titles inside the row, not where the row sits on your home
-            screen.
-          </p>
+          <p className="ed-note">Orders titles inside the row, not the row on your home screen.</p>
           {errorFor('sort_by') && <FieldNote tone="danger">{errorFor('sort_by')}</FieldNote>}
         </>
       ),
@@ -612,8 +548,6 @@ function buildSections(args: {
           withIds={withGenres.ids}
           withJoin={withGenres.join}
           withoutIds={withoutGenres.ids}
-          expanded={genresExpanded}
-          onExpandedChange={setGenresExpanded}
           onChange={(withIds, withJoin, withoutIds) =>
             patchParams({
               with_genres: withIds.length ? serializeGenreList(withIds, withJoin) : undefined,
@@ -682,6 +616,7 @@ function buildSections(args: {
       body: (
         <>
           <Select
+            ariaLabel="Original language"
             value={state.params.with_original_language ?? ''}
             onChange={(value) => patchParams({ with_original_language: value || undefined })}
             placeholder="Any language"
@@ -716,8 +651,6 @@ function buildSections(args: {
       ),
       body: (
         <CertificationPicker
-          label="Age rating"
-          tip="Ratings differ by country, so pick one first. The slider then sets the lowest and highest rating allowed."
           countries={activeCertifications}
           countryNames={countryNames}
           country={state.params.certification_country}
@@ -777,15 +710,8 @@ function DateWindow({
         ]}
       />
 
-      {state.dateMode === 'any' && (
-        <p className="ed-note">
-          No date limit. Choose Recent for a window that moves with today, like "the last 90
-          days".
-        </p>
-      )}
-
       {state.dateMode === 'fixed' && (
-        <div className="ed-line">
+        <div className="ed-dates">
           <label className="cr-role type-eyebrow" htmlFor="ed-from">
             From
           </label>

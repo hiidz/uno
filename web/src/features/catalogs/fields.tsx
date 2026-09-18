@@ -1,6 +1,6 @@
 import { Check, X } from 'lucide-react'
 import type { Certification, CertificationsByCountry, Genre } from '@/api'
-import { DualRangeSlider, FieldNote, InfoTip, Segmented, Select } from '@/components/fields'
+import { DualRangeSlider, FieldNote, Segmented, Select } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import type { GenreJoin } from './catalogForm'
 import { countryName, type CountryLookup } from './countries'
@@ -14,22 +14,13 @@ import { countryName, type CountryLookup } from './countries'
  * (its 400s are plain text), so the form encodes them structurally: an invalid
  * combination is unrepresentable rather than merely caught.
  *
- * The generic primitives (`Field`, `FieldNote`, `TextInput`, `Select`,
- * `Segmented`, `Checkbox`) live in `components/fields.tsx`, shared with the
- * collection builder, and are re-exported here so this stays the catalog
+ * The generic primitives the catalog builder uses (`FieldNote`, `TextInput`,
+ * `Select`, `Segmented`, `Switch`) live in `components/fields.tsx`, shared with
+ * the collection builder, and are re-exported here so this stays the catalog
  * builder's one import site.
  */
 
-export {
-  Checkbox,
-  Field,
-  FieldNote,
-  InfoTip,
-  Segmented,
-  Select,
-  Switch,
-  TextInput,
-} from '@/components/fields'
+export { FieldNote, Segmented, Select, Switch, TextInput } from '@/components/fields'
 
 /** A number field that models "unset" as undefined rather than 0 — Go's
  *  `omitempty` drops zeros, so 0 and absent are the same on the wire, and
@@ -64,7 +55,7 @@ export function NumberInput({
         const raw = event.target.value
         onChange(raw === '' ? undefined : Number(raw))
       }}
-      className="field type-data w-full max-w-[var(--w-code)] min-w-0 px-2 py-1.5 text-center text-[12px] pointer-coarse:text-[16px]"
+      className="field type-data h-8 w-full max-w-[var(--w-code)] min-w-0 px-2 text-center text-[12px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
     />
   )
 }
@@ -77,7 +68,6 @@ export function NumberInput({
  */
 export function RangeField({
   label,
-  hint,
   error,
   unit,
   low,
@@ -90,7 +80,6 @@ export function RangeField({
   formatValue,
 }: {
   label: string
-  hint?: string
   error?: string
   unit?: string
   low: number | undefined
@@ -103,13 +92,15 @@ export function RangeField({
   formatValue?: (value: number) => string
 }) {
   return (
-    <div className="flex max-w-[var(--w-track)] flex-col gap-2">
+    // `w-full`: sized to the track rather than to its label, so every range in
+    // a section draws the same track length and its boxes end on one edge.
+    <div className="flex w-full max-w-[var(--w-track)] flex-col gap-2">
       {/* Label and bounds on one line, track underneath spanning the full
           width. The boxes are the exact values the track can only approximate,
           so they belong beside the name of the thing they bound rather than
           stacked below it as a second, wider control. */}
-      <div className="flex items-center gap-3">
-        <label className="type-eyebrow flex-1">
+      <div className="flex items-center gap-2">
+        <label className="type-eyebrow mr-1 min-w-0 flex-1 leading-[1.3]">
           {label}
           {unit && <span className="text-dimmer normal-case"> ({unit})</span>}
         </label>
@@ -150,7 +141,6 @@ export function RangeField({
         showValues={false}
       />
 
-      {hint && !error && <FieldNote>{hint}</FieldNote>}
       {error && <FieldNote tone="danger">{error}</FieldNote>}
     </div>
   )
@@ -162,30 +152,22 @@ export function RangeField({
  * both "genres" and "exclude genres" would be representable and make no sense
  * (TMDB would just cancel it out), so the cycle makes that state unreachable
  * instead of merely confusing.
+ *
+ * Every genre shows at once: TMDB's list for either type is about twenty
+ * short names, a few rows of chips. The all/any join only appears once two
+ * genres are included, because with fewer there is nothing for it to combine.
  */
-/** The first ten genres show, plus any already chosen past them — a chip
- *  someone picked never disappears out from under their finger just because
- *  the list is showing its default slice again. */
-const GENRE_SHOWN_COUNT = 10
-
 export function GenreCycler({
   genres,
   withIds,
   withJoin,
   withoutIds,
-  expanded,
-  onExpandedChange,
   onChange,
 }: {
   genres: Genre[]
   withIds: number[]
   withJoin: GenreJoin
   withoutIds: number[]
-  /** "Show all N genres" / "Show fewer genres" — lifted to the editor's own
-   *  state rather than owned here, so it survives the section body being
-   *  hidden and re-shown without a remount. */
-  expanded: boolean
-  onExpandedChange: (expanded: boolean) => void
   onChange: (withIds: number[], withJoin: GenreJoin, withoutIds: number[]) => void
 }) {
   function cycle(id: number) {
@@ -207,17 +189,11 @@ export function GenreCycler({
 
   if (genres.length === 0) return <FieldNote>Couldn't load genres.</FieldNote>
 
-  const shown = expanded
-    ? genres
-    : genres.filter((genre, index) => index < GENRE_SHOWN_COUNT || withIds.includes(genre.id) || withoutIds.includes(genre.id))
-
   return (
     <>
-      <p className="ed-note">
-        Press once to include a genre, twice to leave it out, and again to ignore it.
-      </p>
+      <p className="ed-note">Press once to include, twice to leave out, again to ignore.</p>
       <div className="choices" role="group" aria-label="Genres">
-        {shown.map((genre) => {
+        {genres.map((genre) => {
           const state = withIds.includes(genre.id)
             ? 'inc'
             : withoutIds.includes(genre.id)
@@ -242,27 +218,20 @@ export function GenreCycler({
           )
         })}
       </div>
-      {genres.length > GENRE_SHOWN_COUNT && (
-        <button
-          type="button"
-          className="btn-quiet px-0"
-          onClick={() => onExpandedChange(!expanded)}
-        >
-          {expanded ? 'Show fewer genres' : `Show all ${genres.length} genres`}
-        </button>
+      {withIds.length >= 2 && (
+        <div className="ed-line">
+          <span className="cr-role type-eyebrow">Included genres</span>
+          <Segmented
+            ariaLabel="How to combine included genres"
+            value={withJoin}
+            onChange={(next) => onChange(withIds, next, withoutIds)}
+            options={[
+              { value: 'and', label: 'All of them' },
+              { value: 'or', label: 'Any of them' },
+            ]}
+          />
+        </div>
       )}
-      <div className="ed-line">
-        <span className="cr-role type-eyebrow">Included genres</span>
-        <Segmented
-          ariaLabel="How to combine included genres"
-          value={withJoin}
-          onChange={(next) => onChange(withIds, next, withoutIds)}
-          options={[
-            { value: 'and', label: 'All of them' },
-            { value: 'or', label: 'Any of them' },
-          ]}
-        />
-      </div>
     </>
   )
 }
@@ -286,8 +255,6 @@ export function GenreCycler({
  * value is the select's placeholder, reached back through its X.
  */
 export function CertificationPicker({
-  label,
-  tip,
   countries,
   countryNames,
   country,
@@ -296,9 +263,6 @@ export function CertificationPicker({
   error,
   onChange,
 }: {
-  label: string
-  /** Secondary explanation, behind an icon beside the label. */
-  tip?: string
   countries: CertificationsByCountry
   /** TMDB's certification response is keyed by code with no name attached —
    *  this is what resolves each key to something a person reads. */
@@ -343,16 +307,15 @@ export function CertificationPicker({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
-        <label className="type-eyebrow">{label}</label>
-        {tip && <InfoTip label={label} text={tip} />}
-      </div>
-      {/* `items-start`, not `items-center`: the slider carries a value caption
-          under it and the select doesn't, so centring the two hangs the select
-          half a line low. */}
-      <div className="flex items-start gap-3">
+    // No label of its own: the section head above already says "Age rating".
+    <div className="flex w-full flex-col gap-2">
+      {/* Stacked, not side by side: the select takes `--w-pick`, and on a
+          narrow value column a slider beside it is left a few dozen pixels —
+          thumbs on top of each other and captions overlapping. Under the
+          select it gets the same `--w-track` as every other range. */}
+      <div className="flex flex-col gap-3">
         <Select
+          ariaLabel="Age rating country"
           value={country ?? ''}
           onChange={(next) =>
             onChange({
@@ -367,7 +330,7 @@ export function CertificationPicker({
           options={codes.map((code) => ({ value: code, label: countryName(code, countryNames) }))}
         />
         {country && scale.length > 0 && (
-          <div className="min-w-0 flex-1 pt-1.5">
+          <div className="w-full max-w-[var(--w-track)]">
             {/* One `onChange`, both bounds: two separate calls would each
                 carry only one bound from a stale closure, and whichever ran
                 last would overwrite the other with it. */}
@@ -383,6 +346,7 @@ export function CertificationPicker({
           </div>
         )}
       </div>
+      {!country && <FieldNote>Ratings differ by country. Pick one to set a range.</FieldNote>}
       {country && scale.length === 0 && (
         <FieldNote>Couldn't load ratings for {countryName(country, countryNames)}.</FieldNote>
       )}

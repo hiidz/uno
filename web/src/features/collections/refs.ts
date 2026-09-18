@@ -52,11 +52,11 @@ export function accessibleIDs(options: RefOption[]): ReadonlySet<string> {
   return new Set(options.map((option) => option.id))
 }
 
-/** Filters the picker. `exclude` is the ids already in *this* folder: a repeat
- *  inside one folder violates `PRIMARY KEY (folder_id, catalog_id)` and fails
- *  as a 500, so the picker omits them rather than catching it after the click.
- *  The same catalog in a *different* folder stays offered — the schema allows
- *  it. */
+/** Filters the picker. `exclude` is the catalogs *this* folder already holds
+ *  unfiltered: the picker adds an unfiltered ref, and a second one repeats the
+ *  (catalog, genre) pair `PRIMARY KEY (folder_id, catalog_id, genre)` forbids.
+ *  A catalog whose refs here are all narrowed to a genre stays offered, as does
+ *  the same catalog in a *different* folder. */
 export function filterRefOptions(
   options: RefOption[],
   query: string,

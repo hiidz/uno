@@ -17,9 +17,14 @@ import (
 // surface). Params travels as a JSON-encoded string, matching
 // vault.CatalogForm.Params and Catalog.params, so the client can hand over the
 // exact string it already holds for a saved catalog with no re-serialisation.
+//
+// Genre is optional: a name from the recipe's genre options, narrowing the
+// preview the way a collection folder's per-reference genre narrows that row
+// on the TV.
 type previewRequest struct {
 	Type   string `json:"type"`
 	Params string `json:"params"`
+	Genre  string `json:"genre"`
 }
 
 type previewResponse struct {
@@ -48,7 +53,7 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, totalResults, randomized, err := s.provider.PreviewCatalog(r.Context(), input.Type, input.Params)
+	items, totalResults, randomized, err := s.provider.PreviewCatalog(r.Context(), input.Type, input.Params, input.Genre)
 	if err != nil {
 		if errors.Is(err, provider.ErrInvalidCatalogType) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -66,4 +71,39 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 		Items:        items,
 		TotalResults: totalResults,
 	})
+}
+
+// genreOptionsRequest is a catalog recipe, the same shape as previewRequest
+// minus the genre, so a draft catalog with no id yet has options too.
+type genreOptionsRequest struct {
+	Type   string `json:"type"`
+	Params string `json:"params"`
+}
+
+// catalogGenreOptions returns the genres a pick can narrow this recipe by —
+// the same provider.GenreExtraOptions list the manifest advertises for the
+// catalog, so the collection editor's per-reference genre picker offers
+// exactly what the addon path will honour.
+func (s *Server) catalogGenreOptions(w http.ResponseWriter, r *http.Request) {
+	var input genreOptionsRequest
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+
+	if err := s.validateCatalogParams(input.Type, "tmdb", input.Params); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	genres, err := s.provider.GenreExtraOptions(r.Context(), input.Type, input.Params)
+	if err != nil {
+		if errors.Is(err, provider.ErrInvalidCatalogType) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		log.Printf("catalogGenreOptions: %v", err)
+		http.Error(w, "failed to fetch genres", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, http.StatusOK, genres)
 }

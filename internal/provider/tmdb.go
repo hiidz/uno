@@ -28,6 +28,11 @@ type TMDBClient struct {
 	// it just saves repeat external_ids round trips across catalog requests.
 	imdbMu    sync.RWMutex
 	imdbCache map[string]string
+
+	// genresCache holds TMDB's genre list per TMDB kind ("movie"/"tv"); see
+	// Genres.
+	genresMu    sync.RWMutex
+	genresCache map[string][]Genre
 }
 
 // NewTMDBClient builds a TMDBClient that authenticates requests with
@@ -39,7 +44,8 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		},
 		apiKey:    apiKey,
 		baseURL:   tmdbBaseURL,
-		imdbCache: make(map[string]string),
+		imdbCache:   make(map[string]string),
+		genresCache: make(map[string][]Genre),
 	}
 }
 
@@ -72,12 +78,12 @@ func (c *TMDBClient) get(ctx context.Context, path string, query url.Values, out
 	return nil
 }
 
-func (c *TMDBClient) discover(ctx context.Context, endpoint string, query url.Values) ([]tmdbDiscoverItem, int, error) {
+func (c *TMDBClient) discover(ctx context.Context, endpoint string, query url.Values) (tmdbDiscoverResponse, error) {
 	var out tmdbDiscoverResponse
 	if err := c.get(ctx, endpoint, query, &out); err != nil {
-		return nil, 0, err
+		return tmdbDiscoverResponse{}, err
 	}
-	return out.Results, out.TotalResults, nil
+	return out, nil
 }
 
 // imdbID resolves one TMDB id to an IMDB id, consulting the client's cache

@@ -155,7 +155,8 @@ Three route-semantics facts the client has to honour:
 ### Addon server — public, unauthenticated, CORS-open, cacheable
 
 Two routes: `GET /u/{token}/manifest.json` and `GET /u/{token}/catalog/{type}/{rest...}`, where
-`rest` is `{id}.json` or `{id}/{extra}.json` (skip pagination). An unknown/invalid token, or a
+`rest` is `{id}.json` or `{id}/{extra}.json`, where `{extra}` is a query string of `skip`
+(pagination) and `genre` (a pick from the catalog's genre extra). An unknown/invalid token, or a
 catalog id that is not in this profile's *published set*, both return **404** rather than an
 empty or error response — `findSelectedCatalog` doubles as the access check, so a leaked or
 guessed catalog UUID can't pull data through a profile it was never shared with.
@@ -169,6 +170,15 @@ is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
 `docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
 per-item `external_ids` resolution exists at all.
 
+Every other `Meta` field comes from the discover response itself, with no further per-item call:
+`poster` (w500), `background` (w1280, from `backdrop_path`), `description`, `releaseInfo`,
+`released` (the full date as a midnight-UTC ISO 8601 timestamp, the form Stremio-protocol clients
+parse), and `genres` (`genre_ids` named through the cached `Genres` list). Nuvio's own TMDB
+enrichment is off by default, so these tile fields are what its home hero and landscape tiles show.
+A failed genre-list fetch serves the page without `genres` instead of failing it. `imdbRating` is
+deliberately absent: TMDB only has its own `vote_average`, and Nuvio labels the field IMDb.
+`logo` and `runtime` are absent because discover doesn't carry them.
+
 Both routes read `vault.GetPublishedCatalogs`, not `GetCurrentCatalogSelection` — the derived
 union of listed catalogs on the home screen and every catalog referenced by a folder of a
 collection on the home screen, deduped by id with the home row's
@@ -176,10 +186,59 @@ collection on the home screen, deduped by id with the home row's
 pre-push validation/selection-editor view; the addon server needs the wider set so a catalog used
 only inside an on-TV collection's folder is still published, not a dangling reference.
 
-Every catalog declares `extra: [{name: "skip"}]`; a catalog whose *published* `ShowInHome` is
-false — off the home screen entirely, or on the TV only through a folder — also declares a
-required `genre` extra, which keeps it out of the home screen's automatic rows while leaving it
-reachable from Discover.
+Every catalog declares `extra: [{name: "skip"}]` and an explicit `showInHome` (its *published*
+`ShowInHome`), plus one `genre` extra (`genreExtra`). Its options aren't chosen by the user.
+They are TMDB's genre list for the catalog's type, narrowed to the genres a pick can actually
+narrow the recipe by (`provider.GenreExtraOptions` → `genreChoices`):
+
+- With an "any of" (pipe) `with_genres`, only that list's genres. A pick replaces the list,
+  because TMDB can't express "(A or B) and C".
+- Otherwise every genre except those the recipe already requires or excludes.
+
+The genre filter and the off-home flag share that single entry, because `genre` is the only
+required extra the Nuvio mobile/desktop clients tolerate: their Discover and collection-source
+pickers drop a catalog with any other required extra (`skip` and `search` aside), so a separate
+required marker would take the catalog out of Discover too.
+
+- **Off home** (`ShowInHome` false: off the home screen entirely, or on the TV only through a
+  folder): `isRequired: true`, options `["All", …genre names]`, `optionsLimit: 1`.
+- **On home**: optional, options are the genre names. There's no genre extra if none apply.
+
+The manifest reads TMDB's genre list through `TMDBClient.Genres`, which caches each type's list
+in memory for the process's lifetime after the first successful fetch. A cold fetch that fails
+degrades that catalog to no genre names (just `["All"]` when off home) rather than failing the
+manifest.
+
+Two separate mechanisms keep an off-home catalog off home, because the clients disagree. Nuvio
+mobile, Nuvio desktop (the same codebase as mobile) and Stremio leave a catalog with any required
+extra out of home's automatic rows, and mobile/desktop never read `showInHome`. Nuvio TV reads
+only the per-catalog `showInHome` field, treating an absent one as "show" — which is why
+`showInHome` is always on the wire; the only required extra it checks for home is `search`.
+
+The `"All"` first option is required, not cosmetic. Nuvio mobile/desktop and Stremio open a
+required genre on its first option, and both drop a catalog whose required genre has no options
+at all. Nuvio TV's Discover ignores `isRequired`: it starts on its own "Default" entry, which
+sends no genre, so an off-home catalog there lists "Default" and then `"All"`, two entries that
+both mean unfiltered.
+
+A home row arrives unfiltered: no client sends a genre for an automatic home row. A collection
+folder's row arrives filtered when its source carries a `genre`, which Uno pushes for every folder
+reference that has one (`folder_catalogs.genre`, `docs/data-model.md`); Nuvio sends it back as this
+same extra. Confirmed on Nuvio desktop and mobile with a hand-edited collection (the folder's rows
+came back filtered), and in Nuvio TV's source, whose folder view sends a source's genre unless it
+is blank or `"None"`. Otherwise the pick is made in Discover.
+
+These client behaviours were read from the clients' source at NuvioTV `62e1d8b`, NuvioMobile
+`cbc921d`, NuvioDesktop `b5c5481` and stremio-core `43427b9` (2026-09-18); installed builds can
+lag them.
+
+`CatalogHandler` reads the extra props with `parseCatalogPath`, from the still-escaped path.
+`PathValue` is already percent-decoded, so a genre like `Sci-Fi %26 Fantasy`, which Nuvio sends
+encoded, would otherwise split at its `&`. It passes the `genre` value to `FetchCatalogPage`,
+whose `applyGenrePick` (shared with `PreviewCatalog`) resolves the name through the same
+`GenreExtraOptions` list and narrows the discover query with `applyGenreExtra`
+(`internal/provider/query.go`): ANDed onto an AND `with_genres`, or replacing an OR one. `All`, an empty value, or a name not in that list leaves the recipe
+unfiltered.
 
 Cache headers: `cacheMaxAge` 10800s / `staleRevalidate` 3600s — the same values the Cinemeta
 sample carries. With no server-side response cache, these are the only thing keeping Stremio from
@@ -215,9 +274,9 @@ The authenticated "run this recipe, show me tiles, save nothing" endpoint
 | | |
 | --- | --- |
 | Auth | `requireNuvioAuth` only — **not profile-scoped**. No vault read, so nothing to scope. |
-| Request | `{type, params}` — no `endpoint`, no `provider`, no `page` |
+| Request | `{type, params, genre?}` — no `endpoint`, no `provider`, no `page`. `genre` narrows the recipe exactly as a client's genre pick does on the addon path (`applyGenrePick`), which is how a collection folder's per-reference genre is previewed |
 | Response | `{randomized, items: [{tmdb_id, title, year, poster}], total_results}` — `total_results` is TMDB's count across every page these filters match, not the page `items` carries, so the builder can say "20 of N" rather than implying the page in hand is the whole answer |
-| Cost | **1 TMDB call** per recipe |
+| Cost | **1 TMDB call** per recipe; **2** for a `randomized` recipe whose random page isn't page 1. A `genre` adds one `/genre/{kind}/list` fetch the first time a process needs that type's list (`TMDBClient.Genres` caches it for the process's lifetime) |
 | Errors | `400` invalid recipe, `502` TMDB unreachable |
 
 Four properties, each load-bearing:
@@ -239,16 +298,27 @@ Four properties, each load-bearing:
   concatenated onto an upstream base URL.** This is a security property, not a style choice —
   and it is the same reason the TMDB key stays server-side while preview is a backend endpoint
   rather than a browser-to-TMDB call.
-- **It is always page 1, even for a `randomized` recipe**, with the flag returned in the
-  response. Honouring the random page would make preview show different titles on every remount,
-  which reads as a bug rather than as shuffling; returning the flag lets the client say plainly
-  that this catalog will differ on the TV.
+- **A `randomized` recipe shuffles in preview too**, with the flag returned in the response. Page
+  1 is fetched first for TMDB's `total_pages`; the random pick is bounded by
+  `min(total_pages, maxRandomPage)`, and a pick other than page 1 costs a second call. Bounding by
+  `total_pages` keeps a small recipe from landing on an empty page past its last one. The builder's
+  "Run again" re-fetches an unchanged recipe when the flag is set, so each press is a new page.
 
 **It is not routed through the selection**, which is what makes it usable at all:
 `CatalogHandler` resolves via `findSelectedCatalog` over `GetPublishedCatalogs`, so the
 public addon route can only ever serve the *persisted, published* set — useless for previewing
 pending, unpushed edits. That is a disqualification for reusing it from the browser, not a
 tradeoff.
+
+### `POST /api/catalogs/genre-options`
+
+`{type, params}` → `[{id, name}]`: the genres a pick can narrow this recipe by
+(`provider.GenreExtraOptions`), the same list the manifest advertises in the catalog's `genre`
+extra and the addon path resolves a pick against. The collection editor's per-reference genre
+picker reads it, so every genre it offers actually narrows the row. Not `GET /api/genres/{type}`,
+which is TMDB's whole list. Same auth and recipe validation as preview, and it takes a recipe
+rather than a catalog id for the same reason: a draft catalog has no id yet. `502` when TMDB's
+genre list can't be fetched.
 
 ### Error responses
 

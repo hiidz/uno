@@ -119,19 +119,17 @@ export function WatchProviderPicker({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="type-eyebrow">Streaming on</label>
-        <Select
-          value={region}
-          onChange={changeRegion}
-          options={regionOptions}
-          placeholder="Select a country"
-          clearable
-          clearLabel="streaming country"
-          width="var(--w-pick)"
-        />
-      </div>
+    // No label of its own: the section head above already says "Where to watch".
+    <div className="flex w-full flex-col gap-2">
+      <Select
+        ariaLabel="Streaming country"
+        value={region}
+        onChange={changeRegion}
+        options={regionOptions}
+        placeholder="Select a country"
+        clearable
+        clearLabel="streaming country"
+      />
 
       {!region ? (
         <FieldNote>Pick a country to see the services it carries.</FieldNote>
@@ -168,7 +166,7 @@ export function WatchProviderPicker({
                   type="button"
                   onClick={() => toggle(service.id)}
                   aria-pressed={selected}
-                  className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors pointer-coarse:py-2 ${
+                  className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors pointer-coarse:py-3 ${
                     selected
                       ? 'bg-raised-hi border-dim text-ink'
                       : 'border-line text-dim hover:border-dim hover:text-ink'

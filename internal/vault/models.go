@@ -65,6 +65,9 @@ type Collection struct {
 	ViewMode         string    `json:"view_mode"`
 	ShowAllTab       bool      `json:"show_all_tab"`
 	BackdropImageURL string    `json:"backdrop_image_url"`
+	// FocusGlowEnabled turns on Nuvio's TV focus glow on this collection's
+	// home-screen folder cards.
+	FocusGlowEnabled bool      `json:"focus_glow_enabled"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 	// Version increments on every content write (UpdateUserCollection) and
@@ -85,9 +88,6 @@ type Collection struct {
 	// not exposed on the wire, so the API doesn't assert a value it isn't
 	// actually tracking. See UpdateUserCatalog/UpdateUserCollection.
 	IsDefault bool `json:"-"`
-	// focus_glow_enabled exists on this table (cosmetic Nuvio field, seen in
-	// real collections_json pulls) and isn't modeled yet — stored/pushed
-	// as-is, no editor. Same treatment as Folder's cosmetic fields below.
 }
 
 // Folder is one tile row within a Collection.
@@ -100,9 +100,15 @@ type Folder struct {
 	HideTitle     bool      `json:"hide_title"`
 	CoverEmoji    string    `json:"cover_emoji"`
 	CoverImageURL string    `json:"cover_image_url"`
-	// Additional cosmetic Nuvio fields exist on this table
-	// (focus_gif_url, hero_video_url, title_logo_url, etc.)
-	// and aren't modeled yet — stored/pushed as-is, no editor.
+	// FocusGIFURL is an animated GIF Nuvio plays over the folder's tile while
+	// it's focused, when FocusGIFEnabled is set.
+	FocusGIFURL     string `json:"focus_gif_url"`
+	FocusGIFEnabled bool   `json:"focus_gif_enabled"`
+	// HeroBackdropURL, HeroVideoURL and TitleLogoURL are the folder's hero
+	// media for Nuvio's Modern Home layout.
+	HeroBackdropURL string `json:"hero_backdrop_url"`
+	HeroVideoURL    string `json:"hero_video_url"`
+	TitleLogoURL    string `json:"title_logo_url"`
 }
 
 // FolderCatalog joins a Folder to one of its member Catalogs, in order.
@@ -110,6 +116,7 @@ type FolderCatalog struct {
 	FolderID  uuid.UUID `json:"folder_id"`
 	CatalogID uuid.UUID `json:"catalog_id"`
 	SortOrder int       `json:"sort_order"`
+	Genre     string    `json:"genre"`
 }
 
 // HTTP Inbound Model-------------------------
@@ -139,18 +146,74 @@ type CollectionForm struct {
 	ViewMode         string       `json:"view_mode"`
 	ShowAllTab       bool         `json:"show_all_tab"`
 	BackdropImageURL string       `json:"backdrop_image_url"`
+	FocusGlowEnabled bool         `json:"focus_glow_enabled"`
 	Folders          []FolderData `json:"folders"`
 }
 
 // FolderData is one folder within a CollectionForm.
 type FolderData struct {
-	ID            *uuid.UUID  `json:"id,omitempty"` // nil = new folder, present = existing
-	Title         string      `json:"title"`
-	TileShape     string      `json:"tile_shape"`
-	HideTitle     bool        `json:"hide_title"`
-	CoverEmoji    string      `json:"cover_emoji"`
-	CoverImageURL string      `json:"cover_image_url"`
-	CatalogIDs    []uuid.UUID `json:"catalog_ids"` // ordered — index gives folder_catalogs.sort_order
+	ID              *uuid.UUID         `json:"id,omitempty"` // nil = new folder, present = existing
+	Title           string             `json:"title"`
+	TileShape       string             `json:"tile_shape"`
+	HideTitle       bool               `json:"hide_title"`
+	CoverEmoji      string             `json:"cover_emoji"`
+	CoverImageURL   string             `json:"cover_image_url"`
+	FocusGIFURL     string             `json:"focus_gif_url"`
+	FocusGIFEnabled bool               `json:"focus_gif_enabled"`
+	HeroBackdropURL string             `json:"hero_backdrop_url"`
+	HeroVideoURL    string             `json:"hero_video_url"`
+	TitleLogoURL    string             `json:"title_logo_url"`
+	Catalogs        []FolderCatalogRef `json:"catalogs"` // ordered — index gives folder_catalogs.sort_order
+}
+
+// FolderCatalogRef is one ordered entry in a folder's catalog list: either a
+// reference to an existing catalog (CatalogID set) or an inline spec for a
+// new catalog, created scoped to the enclosing collection in the same
+// transaction as the folder write that references it (New set). Exactly one
+// of the two is set — see CollectionForm.Validate.
+//
+// This is what makes "copy into this collection" and "new inside this
+// collection" atomic with the collection's own save: the builder stages
+// either kind of entry client-side with no request of its own, and the
+// catalog row (for a New entry) is only ever written here, inside
+// CreateUserCollection/UpdateUserCollection's transaction — so discarding
+// the edit instead of saving leaves nothing behind. See docs/frontend.md's
+// "Three sources for a folder's catalog".
+//
+// Genre narrows this one reference to a genre, by name: pushed as the folder
+// source's "genre", which Nuvio sends back as the catalog's genre extra.
+// Empty means unfiltered. It belongs to the reference, not the catalog, so
+// the same catalog can be filtered differently in two folders, or appear
+// twice in one folder under two genres.
+type FolderCatalogRef struct {
+	CatalogID *uuid.UUID        `json:"catalog_id,omitempty"`
+	New       *NewScopedCatalog `json:"new,omitempty"`
+	Genre     string            `json:"genre,omitempty"`
+}
+
+// CatalogRefs builds an ordered list of existing-catalog refs from ids —
+// convenience for a caller assembling a FolderData programmatically without
+// spelling out {CatalogID: &id} for each one.
+func CatalogRefs(ids ...uuid.UUID) []FolderCatalogRef {
+	refs := make([]FolderCatalogRef, len(ids))
+	for i, id := range ids {
+		refs[i] = FolderCatalogRef{CatalogID: &id}
+	}
+	return refs
+}
+
+// NewScopedCatalog is an inline catalog spec for FolderCatalogRef.New. Not
+// public and not home-eligible by construction — a scoped catalog can be
+// neither (schema.go's CHECK on catalogs) — so those fields aren't accepted
+// here at all.
+type NewScopedCatalog struct {
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Params   string `json:"params"`
+	// Fingerprint is computed server-side after validation, never accepted
+	// from the client — same rule as CatalogForm.Fingerprint.
+	Fingerprint string `json:"-"`
 }
 
 // SelectedCatalogInput is one entry in a CatalogSelectionForm.
@@ -173,11 +236,29 @@ type CollectionSelectionForm struct {
 
 // HTTP Outbound Model-------------------------
 
-// FolderWithCatalogs is a Folder plus the ordered IDs of its member
-// catalogs.
+// FolderRef is one resolved entry in a folder's ordered catalog list: the
+// catalog it references and the genre that reference is narrowed to ("" for
+// unfiltered). The same catalog can appear more than once in one folder, each
+// time with a different genre.
+type FolderRef struct {
+	CatalogID uuid.UUID `json:"catalog_id"`
+	Genre     string    `json:"genre"`
+}
+
+// FolderWithCatalogs is a Folder plus its ordered catalog references.
 type FolderWithCatalogs struct {
 	Folder
-	CatalogIDs []uuid.UUID `json:"catalog_ids"`
+	Refs []FolderRef `json:"refs"`
+}
+
+// CatalogIDs returns the catalog id of every ref in f, in order — repeats
+// included when one catalog is referenced under more than one genre.
+func (f FolderWithCatalogs) CatalogIDs() []uuid.UUID {
+	ids := make([]uuid.UUID, len(f.Refs))
+	for i, ref := range f.Refs {
+		ids[i] = ref.CatalogID
+	}
+	return ids
 }
 
 // CollectionWithFolders is a Collection plus its folders, each with their

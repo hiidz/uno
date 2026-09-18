@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"math/rand"
+	"strconv"
 )
 
 // PreviewItem is one tile in the builder's preview of a catalog recipe.
@@ -30,11 +32,16 @@ type PreviewItem struct {
 // and the type->path mapping each have to live in exactly one place — but it
 // deliberately skips resolveMetas.
 //
-// Always page 1, even for a randomized recipe. Honouring the random page would
-// make the preview show different titles on every remount, which reads as a bug
-// rather than as shuffling. The randomized flag comes back instead so the
-// caller can say plainly that this catalog will differ on the TV.
-func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON string) (items []PreviewItem, totalResults int, randomized bool, err error) {
+// A plain recipe is page 1. A randomized recipe shuffles the way the addon path
+// does, picking a random page within the first maxRandomPage, but bounded by
+// the pages TMDB actually has: page 1 is fetched first for its total_pages, and
+// a second call fetches the random page when that is not page 1. A pick past
+// the last page would come back empty and read as "nothing matches".
+//
+// genre narrows the recipe the same way a client's genre pick does on the
+// addon path — a collection folder's per-reference genre is previewed through
+// it.
+func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON, genre string) (items []PreviewItem, totalResults int, randomized bool, err error) {
 	endpoint, err := catalogEndpoint(catalogType)
 	if err != nil {
 		return nil, 0, false, err
@@ -44,18 +51,30 @@ func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON
 	if err != nil {
 		return nil, 0, false, err
 	}
+	if err := c.applyGenrePick(ctx, query, catalogType, paramsJSON, genre); err != nil {
+		return nil, 0, randomized, err
+	}
 	query.Set("page", "1")
 
-	results, totalResults, err := c.discover(ctx, endpoint, query)
+	resp, err := c.discover(ctx, endpoint, query)
 	if err != nil {
 		return nil, 0, randomized, err
 	}
 
-	items = make([]PreviewItem, 0, len(results))
-	for _, item := range results {
+	if randomized && resp.TotalPages > 1 {
+		if page := rand.Intn(min(resp.TotalPages, maxRandomPage)) + 1; page > 1 {
+			query.Set("page", strconv.Itoa(page))
+			if resp, err = c.discover(ctx, endpoint, query); err != nil {
+				return nil, 0, randomized, err
+			}
+		}
+	}
+
+	items = make([]PreviewItem, 0, len(resp.Results))
+	for _, item := range resp.Results {
 		items = append(items, tmdbItemToPreview(catalogType, item))
 	}
-	return items, totalResults, randomized, nil
+	return items, resp.TotalResults, randomized, nil
 }
 
 func tmdbItemToPreview(catalogType string, item tmdbDiscoverItem) PreviewItem {

@@ -6,6 +6,8 @@ import {
   ALL_TAB,
   ALL_TAB_TILE_CAP,
   folderTabs,
+  sourceLabel,
+  interleavedKinds,
   interleaveTiles,
   type PreviewCollection,
   type PreviewFolder,
@@ -45,7 +47,7 @@ export function FolderPage({
 }: {
   collection: PreviewCollection
   folder: PreviewFolder
-  /** Tiles for every catalog in the folder, keyed by catalog id. Both layouts
+  /** Tiles for every source in the folder, keyed by `PreviewSource.key`. Both layouts
    *  need the same set — `ROWS` draws them all at once, `TABBED_GRID` shows one
    *  at a time but its "All" tab spans the lot — so the caller fetches once and
    *  switching tabs never triggers a new call. */
@@ -117,15 +119,15 @@ function TabbedCatalogs({
   // pointing at a tab that no longer exists.
   const open = tabs.some((t) => t.key === openKey) ? openKey : (tabs[0]?.key ?? ALL_TAB)
 
-  const source = folder.sources.find((s) => s.id === open)
+  const source = folder.sources.find((s) => s.key === open)
   const allUnresolved = folder.sources.length > 0 && folder.unresolved === folder.sources.length
 
   // The All tab's own tiles: every source's page, merged round-robin and
   // capped. Nothing specifies how Nuvio itself merges a folder's sources, so
   // this order is a guess and is labelled as such below.
   const allTiles: CatalogTiles = useMemo(() => {
-    const perSource = folder.sources.map((s) => tiles.get(s.id)?.items ?? [])
-    const loaded = folder.sources.map((s) => tiles.get(s.id)).filter((t) => t !== undefined)
+    const perSource = folder.sources.map((s) => tiles.get(s.key)?.items ?? [])
+    const loaded = folder.sources.map((s) => tiles.get(s.key)).filter((t) => t !== undefined)
     return {
       items: interleaveTiles(perSource, ALL_TAB_TILE_CAP),
       // A shuffling source anywhere in the folder makes the merged view a
@@ -137,6 +139,8 @@ function TabbedCatalogs({
       isError: loaded.length > 0 && loaded.every((t) => t.isError),
     }
   }, [folder.sources, tiles])
+
+  const allKinds = useMemo(() => interleavedKinds(folder, tiles), [folder, tiles])
 
   return (
     <div className="flex flex-col gap-3">
@@ -155,13 +159,13 @@ function TabbedCatalogs({
 
       {source ? (
         <>
-          <SourceHeading source={source} tiles={tiles.get(source.id)} chrome={chrome} />
+          <SourceHeading source={source} tiles={tiles.get(source.key)} chrome={chrome} />
           {source.name === null ? (
             <UnresolvedSource />
           ) : (
             <TileGrid
               shape={CONTENT_TILE_SHAPE}
-              tiles={tiles.get(source.id) ?? noTiles()}
+              tiles={tiles.get(source.key) ?? noTiles()}
               kind={source.type ? tmdbKind(source.type) : undefined}
             />
           )}
@@ -179,10 +183,14 @@ function TabbedCatalogs({
             <span className="type-eyebrow">Everything in this folder</span>
             <TilesNote tiles={allTiles} />
           </div>
-          {/* No `kind`: the merge interleaves sources that can be a mix of
-              movies and series, and one kind applied to all of them would
-              build a wrong TMDB URL for whichever half it doesn't match. */}
-          <TileGrid shape={CONTENT_TILE_SHAPE} tiles={allTiles} />
+          {/* The merge interleaves sources that can be a mix of movies and
+              series, so `kind` is a per-item lookup rather than one value
+              applied to every tile in the grid. */}
+          <TileGrid
+            shape={CONTENT_TILE_SHAPE}
+            tiles={allTiles}
+            kind={(item) => allKinds.get(item.tmdb_id)}
+          />
           {/* The one place in the preview that merges more than one catalog,
               and Nuvio's merge order for a folder is unspecified (folders
               aren't an addon concept), so the caveat is stated outright. */}
@@ -212,14 +220,14 @@ function CatalogRowsInFolder({
   return (
     <div className="flex flex-col gap-6">
       {folder.sources.map((source) => (
-        <section key={source.id} className="flex flex-col gap-2">
-          <SourceHeading source={source} tiles={tiles.get(source.id)} chrome={chrome} />
+        <section key={source.key} className="flex flex-col gap-2">
+          <SourceHeading source={source} tiles={tiles.get(source.key)} chrome={chrome} />
           {source.name === null ? (
             <UnresolvedSource />
           ) : (
             <TileStrip
               shape={CONTENT_TILE_SHAPE}
-              tiles={tiles.get(source.id) ?? noTiles()}
+              tiles={tiles.get(source.key) ?? noTiles()}
               kind={source.type ? tmdbKind(source.type) : undefined}
             />
           )}
@@ -241,7 +249,7 @@ function SourceHeading({
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
       <h3 className="m-0 min-w-0 truncate text-[13px] font-medium">
-        {source.name ?? 'Unavailable catalog'}
+        {sourceLabel(source)}
       </h3>
       {chrome.note?.(source.id)}
       {/* An unresolvable source has no recipe to run, so it has no tile state

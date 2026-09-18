@@ -16,15 +16,6 @@ import { parseParams } from '@/features/library/recipe'
  * rolling" is unrepresentable rather than merely invalid.
  */
 
-/**
- * What an open editor is doing to an existing row.
- *
- * There is no `create`: a catalog is named into existence by its own dialog and
- * saved before the editor ever opens, so the editor always has a row behind it
- * — either this one, or the one a duplicate was taken from.
- */
-export type BuilderMode = 'edit' | 'duplicate'
-
 /** Fixed range and rolling window are mutually exclusive server-side. Modelled
  *  as a mode so the form can't express both at once. */
 export type DateMode = 'any' | 'fixed' | 'rolling'
@@ -115,20 +106,37 @@ function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
   return 'any'
 }
 
-export function formFromCatalog(catalog: Catalog, mode: BuilderMode): CatalogFormState {
+export function formFromCatalog(catalog: Catalog): CatalogFormState {
   const params = parseParams(catalog.params)
   return {
-    // A duplicate is a new catalog, so it gets a distinguishable name and is
-    // never born public — publishing is a deliberate act, not something
-    // inherited from whoever you forked.
-    name: mode === 'duplicate' ? `${catalog.name} (copy)` : catalog.name,
+    name: catalog.name,
     type: catalog.type,
-    isPublic: mode === 'duplicate' ? false : catalog.is_public,
+    isPublic: catalog.is_public,
     dateMode: dateModeOf(params, catalog.type),
     params,
-    // A duplicate is never born scoped, same as never born public — it's
-    // only ever reachable from the library, which is listed catalogs only.
-    collectionID: mode === 'duplicate' ? null : catalog.collection_id,
+    collectionID: catalog.collection_id,
+  }
+}
+
+/**
+ * The create payload for an atomic catalog duplicate — `Workspace.tsx`'s
+ * `confirmDuplicateCatalog`, which posts this directly rather than opening an
+ * editor first. A duplicate gets a distinguishable name and is never born
+ * public or scoped — publishing and scoping are deliberate acts, not
+ * something inherited from whoever it was forked from; only reachable from
+ * the library, which is listed catalogs only. `type`/`params` are copied
+ * verbatim: duplicate is a straight copy, not a way to change a catalog's
+ * type any more (that capability was dropped along with unsaved duplicate
+ * state — see `CatalogEditor`'s doc comment).
+ */
+export function duplicatePayload(catalog: Catalog): CatalogPayload {
+  return {
+    type: catalog.type,
+    name: `${catalog.name} (copy)`,
+    provider: CATALOG_PROVIDER,
+    params: catalog.params,
+    is_public: false,
+    collection_id: null,
   }
 }
 

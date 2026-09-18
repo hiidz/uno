@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS collections (
     view_mode          TEXT    NOT NULL DEFAULT 'TABBED_GRID',
     show_all_tab       INTEGER NOT NULL DEFAULT 0,
     backdrop_image_url TEXT    NOT NULL DEFAULT '',
-    focus_glow_enabled INTEGER NOT NULL DEFAULT 0,
+    focus_glow_enabled INTEGER NOT NULL DEFAULT 1,
     home_sort_order    INTEGER,                 -- NULL = not on the TV
     version            INTEGER NOT NULL DEFAULT 1, -- +1 on every content write
     pushed_version     INTEGER,                 -- version push read and sent; NULL = never pushed
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS folders (
     cover_emoji       TEXT    NOT NULL DEFAULT '',
     cover_image_url   TEXT    NOT NULL DEFAULT '',
     focus_gif_url     TEXT    NOT NULL DEFAULT '',
-    focus_gif_enabled INTEGER NOT NULL DEFAULT 0,
+    focus_gif_enabled INTEGER NOT NULL DEFAULT 1,
     hero_video_url    TEXT    NOT NULL DEFAULT '',
     hero_backdrop_url TEXT    NOT NULL DEFAULT '',
     title_logo_url    TEXT    NOT NULL DEFAULT ''
@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS folder_catalogs (
     folder_id  TEXT    NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
     catalog_id TEXT    NOT NULL REFERENCES catalogs(id) ON DELETE CASCADE,
     sort_order INTEGER NOT NULL,
-    PRIMARY KEY (folder_id, catalog_id)
+    genre      TEXT    NOT NULL DEFAULT '',
+    PRIMARY KEY (folder_id, catalog_id, genre)
 );
 CREATE INDEX IF NOT EXISTS folder_catalogs_by_order ON folder_catalogs (folder_id, sort_order);
 `

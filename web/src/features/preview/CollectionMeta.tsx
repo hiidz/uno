@@ -25,9 +25,10 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
   if (collection.folders.length > 0) {
     if (collection.viewModeAssumed) {
       // Covers both `FOLLOW_LAYOUT` and an empty/unrecognised `view_mode`:
-      // either way the collection names no layout Uno can honour, so rows is a
-      // guess and the note says so without claiming which case it hit.
-      notes.push('folders open as rows — the app decides the real layout')
+      // either way the collection names no layout Uno can honour, so the TV
+      // preview draws the app's own default — tabs, All first — and the note
+      // says that's a stand-in without claiming which case it hit.
+      notes.push("folders follow the app's layout — shown as tabs with an All tab")
     } else if (collection.viewMode === 'TABBED_GRID') {
       notes.push(
         collection.showAllTab
@@ -54,5 +55,5 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
   }
 
   if (notes.length === 0) return null
-  return <p className="type-data text-dimmer m-0 text-[10px]">{notes.join(' · ')}</p>
+  return <p className="type-data text-dim m-0 text-[12px] leading-[17px]">{notes.join(' · ')}</p>
 }

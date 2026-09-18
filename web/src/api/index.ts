@@ -12,7 +12,7 @@ export {
   updateCatalog,
   updateCollection,
 } from './mutations'
-export type { CatalogPayload, CollectionPayload, FolderPayload } from './mutations'
+export type { CatalogPayload, CollectionPayload, FolderCatalogRef, FolderPayload } from './mutations'
 export { pushSelection } from './push'
 export type { PushRequest, PushResult } from './push'
 export { queryKeys } from './keys'
@@ -30,6 +30,7 @@ export {
   fetchWatchProviders,
   fetchWatchRegions,
   fetchCatalogPreview,
+  fetchCatalogGenreOptions,
   fetchProfiles,
   selectProfile,
 } from './resources'
@@ -45,7 +46,9 @@ export type {
   CommunityCollection,
   Country,
   Folder,
+  FolderRef,
   Genre,
+  GenreOptionsRequest,
   Language,
   NuvioProfile,
   PreviewItem,

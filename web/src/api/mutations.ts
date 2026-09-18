@@ -70,6 +70,23 @@ export function deleteCatalog(profileIndex: number, catalogID: string): Promise<
 }
 
 /**
+ * One entry in a folder payload's ordered catalog list — `vault.
+ * FolderCatalogRef`. Either a reference to an existing catalog, or an inline
+ * spec for a new one, created scoped to the enclosing collection in the same
+ * transaction as the folder write that references it. This is what makes
+ * "copy into this collection"/"new inside this collection" atomic with the
+ * collection's own save — see `collectionForm.ts`'s `toCollectionPayload`
+ * and `CollectionEditor.tsx`'s draft catalogs.
+ *
+ * `genre` narrows this one reference to a genre by name; omitted means
+ * unfiltered.
+ */
+export type FolderCatalogRef = (
+  | { catalog_id: string }
+  | { new: { type: CatalogType; name: string; provider: string; params: string } }
+) & { genre?: string }
+
+/**
  * One folder inside a collection payload — `vault.FolderData`.
  *
  * `id` is the whole upsert protocol in one field: absent means "insert a new
@@ -78,11 +95,12 @@ export function deleteCatalog(profileIndex: number, catalogID: string): Promise<
  * catalog refs. There is no soft-delete and no per-folder endpoint; the array
  * is the truth.
  *
- * `catalog_ids` is ordered — its index becomes `folder_catalogs.sort_order`.
- * It must not repeat an id *within one folder*: `folder_catalogs` is
- * `PRIMARY KEY (folder_id, catalog_id)`, so a repeat is a constraint violation
- * (a 500, not a 400). The same catalog in two *different* folders is fine and
- * is a supported thing to want.
+ * `catalogs` is ordered — its index becomes `folder_catalogs.sort_order`. An
+ * existing catalog may repeat within one folder under different genres, never
+ * under the same one: `folder_catalogs` is
+ * `PRIMARY KEY (folder_id, catalog_id, genre)`, and `CollectionForm.Validate`
+ * rejects the repeat as a 400. The same catalog in two *different* folders is
+ * fine and is a supported thing to want.
  */
 export interface FolderPayload {
   id?: string
@@ -91,7 +109,12 @@ export interface FolderPayload {
   hide_title: boolean
   cover_emoji: string
   cover_image_url: string
-  catalog_ids: string[]
+  focus_gif_url: string
+  focus_gif_enabled: boolean
+  hero_backdrop_url: string
+  hero_video_url: string
+  title_logo_url: string
+  catalogs: FolderCatalogRef[]
 }
 
 /**
@@ -100,11 +123,6 @@ export interface FolderPayload {
  * The whole tree in one request: `POST`/`PUT` replace the collection, its
  * folders, and every folder's catalog refs in a single transaction, so there is
  * one dirty state and one save button rather than a save per folder.
- *
- * Cosmetic Nuvio fields (`focus_glow_enabled` on the collection;
- * `focus_gif_url`, `hero_video_url`, `title_logo_url` and friends on folders)
- * are unmodelled — there is no editor for them. They survive an update anyway,
- * because the `UPDATE` statements name only the modelled columns.
  */
 export interface CollectionPayload {
   title: string
@@ -113,6 +131,7 @@ export interface CollectionPayload {
   view_mode: string
   show_all_tab: boolean
   backdrop_image_url: string
+  focus_glow_enabled: boolean
   folders: FolderPayload[]
 }
 
@@ -140,7 +159,7 @@ export function duplicateCollection(
  *
  * Two ways this 400s that the form has to prevent rather than report, since
  * the body is plain text with no field name in it: a folder `id` that doesn't
- * belong to this collection, and a `catalog_ids` entry the profile can't
+ * belong to this collection, and a folder ref the profile can't
  * reference (`owner_id = ? OR is_public = 1`). See `collectionForm.ts`.
  */
 export function updateCollection(

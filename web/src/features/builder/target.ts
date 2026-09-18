@@ -1,5 +1,5 @@
 import type { Catalog } from '@/api'
-import type { BuilderMode, CatalogFormState } from '@/features/catalogs/catalogForm'
+import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CollectionFormState } from '@/features/collections/collectionForm'
 
 /**
@@ -10,20 +10,21 @@ import type { CollectionFormState } from '@/features/collections/collectionForm'
  * adding to it. That's why there is no tab strip — there is nothing to tab
  * between.
  *
- * A collection has no `mode`/`duplicate` variant any more: duplicating one
- * is now a single atomic server call (`useCollectionMutations`'s
- * `duplicate`), not a pre-filled form the editor saves to create the copy,
- * so every collection this pane opens is always editing a real row.
+ * Neither variant has a `mode`/`duplicate` any more: duplicating either a
+ * catalog (`useCatalogMutations`'s `create`, called directly with a
+ * duplicate payload) or a collection (`useCollectionMutations`'s
+ * `duplicate`) is a single atomic server call, not a pre-filled form the
+ * editor saves to create the copy, so every row this pane opens is always
+ * editing a real one.
  */
 export type EditorTarget =
   | {
       kind: 'catalog'
-      mode: BuilderMode
       initial: CatalogFormState
-      /** Present only when editing; a create or duplicate has no row yet. */
-      catalogID?: string
+      catalogID: string
       /** The library row this was opened from, so the rail can mark it
-       *  selected. Absent for a brand-new item, which has no row. */
+       *  selected. Always equal to `catalogID` today — kept as a separate
+       *  field for symmetry with the collection variant below. */
       sourceID?: string
     }
   | {

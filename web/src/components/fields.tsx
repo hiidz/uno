@@ -177,6 +177,7 @@ export function Select({
   /** How wide the widest option needs the closed control to be. Defaults to
    *  the pick width; a select over country codes asks for less. */
   width = 'var(--w-pick)',
+  ariaLabel,
 }: {
   value: string
   onChange: (value: string) => void
@@ -188,9 +189,13 @@ export function Select({
   /** Names what the X clears, for anyone who can't see which field it sits in. */
   clearLabel?: string
   width?: string
+  /** For a select whose name is a heading elsewhere — a catalog section's
+   *  head — rather than a label of its own. */
+  ariaLabel?: string
 }) {
   const select = (
     <select
+      aria-label={ariaLabel}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       style={clearable ? undefined : { maxWidth: width }}

@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -72,6 +74,95 @@ func tvQuery(p TMDBTVParams) url.Values {
 		q.Set("air_date.gte", daysAgo(p.AiredWithinDays))
 	}
 	return q
+}
+
+// GenreExtraAll is the first option of a required genre extra: the value a
+// client sends by default, meaning "no genre filter".
+const GenreExtraAll = "All"
+
+// GenreExtraOptions returns the genres a client may pick to narrow a stored
+// catalog: TMDB's genre list for its type, minus those a pick can't narrow
+// by (see genreChoices). The manifest advertises their names, and
+// FetchCatalogPage resolves a picked name back to its id through the same
+// list.
+func (c *TMDBClient) GenreExtraOptions(ctx context.Context, catalogType, paramsJSON string) ([]Genre, error) {
+	var p struct {
+		WithGenres    string `json:"with_genres"`
+		WithoutGenres string `json:"without_genres"`
+	}
+	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
+		return nil, fmt.Errorf("provider: decode genre filters: %w", err)
+	}
+	genres, err := c.Genres(ctx, catalogType)
+	if err != nil {
+		return nil, err
+	}
+	return genreChoices(genres, p.WithGenres, p.WithoutGenres), nil
+}
+
+// genreChoices filters genres down to the ones a pick narrows the recipe by.
+// With an OR (pipe) with_genres, only that list's genres: a pick replaces
+// the list (see applyGenreExtra), and TMDB can't express "(A or B) and C".
+// Otherwise every genre except those the recipe already requires or
+// excludes — picking one of those changes nothing or empties the row.
+func genreChoices(genres []Genre, withGenres, withoutGenres string) []Genre {
+	isOr := strings.Contains(withGenres, "|")
+	with := genreIDSet(withGenres)
+	without := genreIDSet(withoutGenres)
+	out := make([]Genre, 0, len(genres))
+	for _, g := range genres {
+		if isOr && !with[g.ID] {
+			continue
+		}
+		if !isOr && (with[g.ID] || without[g.ID]) {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+func genreIDSet(list string) map[int]bool {
+	set := map[int]bool{}
+	for _, part := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == '|' }) {
+		if id, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+			set[id] = true
+		}
+	}
+	return set
+}
+
+// applyGenrePick narrows q to genre, a name picked from the recipe's
+// GenreExtraOptions. "", GenreExtraAll, or a name not in that list leaves q
+// unfiltered.
+func (c *TMDBClient) applyGenrePick(ctx context.Context, q url.Values, catalogType, paramsJSON, genre string) error {
+	if genre == "" || genre == GenreExtraAll {
+		return nil
+	}
+	options, err := c.GenreExtraOptions(ctx, catalogType, paramsJSON)
+	if err != nil {
+		return err
+	}
+	for _, g := range options {
+		if g.Name == genre {
+			applyGenreExtra(q, g.ID)
+			break
+		}
+	}
+	return nil
+}
+
+// applyGenreExtra narrows a discover query to one picked genre id: ANDed onto
+// an AND (comma) with_genres, and replacing an OR (pipe) one — genreChoices
+// only offers an OR list's own genres, so the replacement narrows it.
+func applyGenreExtra(q url.Values, genreID int) {
+	id := strconv.Itoa(genreID)
+	existing := q.Get("with_genres")
+	if existing == "" || strings.Contains(existing, "|") {
+		q.Set("with_genres", id)
+		return
+	}
+	q.Set("with_genres", existing+","+id)
 }
 
 func daysAgo(days int) string {

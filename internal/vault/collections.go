@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,7 +17,7 @@ import (
 func (db *DB) queryCollections(ctx context.Context, where string, args ...any) ([]Collection, error) {
 	rows, err := db.conn.QueryContext(ctx, `
 		SELECT id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
-		       home_sort_order, version, pushed_version, taken_from, created_at, updated_at
+		       focus_glow_enabled, home_sort_order, version, pushed_version, taken_from, created_at, updated_at
 		FROM collections
 		WHERE `+where, args...)
 	if err != nil {
@@ -84,9 +85,9 @@ func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) 
 // sourceFolder is one folder of a collection tree being copied — loaded by
 // loadSourceCollectionTree, shared by TakeCollection and DuplicateCollection.
 type sourceFolder struct {
-	id         uuid.UUID
-	data       FolderData
-	catalogIDs []uuid.UUID
+	id   uuid.UUID
+	data FolderData
+	refs []FolderRef // source catalog ids, in order
 }
 
 // loadSourceCollectionTree loads sourceID's cosmetics (subject to
@@ -94,12 +95,12 @@ type sourceFolder struct {
 // Duplicate's "mine") plus its folders and each folder's ordered catalog
 // refs, all inside tx so the read is part of the same transaction the copy
 // commits in. Returns ErrCollectionNotFound if whereExtra excludes sourceID.
-func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUID, whereExtra string, whereArgs ...any) (title, viewMode, backdropImageURL string, pinToTop, showAllTab int, folders []sourceFolder, err error) {
+func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUID, whereExtra string, whereArgs ...any) (title, viewMode, backdropImageURL string, pinToTop, showAllTab, focusGlowEnabled int, folders []sourceFolder, err error) {
 	args := append([]any{sourceID.String()}, whereArgs...)
 	err = tx.QueryRowContext(ctx, `
-		SELECT title, pin_to_top, view_mode, show_all_tab, backdrop_image_url
+		SELECT title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled
 		FROM collections WHERE id = ?`+whereExtra, args...,
-	).Scan(&title, &pinToTop, &viewMode, &showAllTab, &backdropImageURL)
+	).Scan(&title, &pinToTop, &viewMode, &showAllTab, &backdropImageURL, &focusGlowEnabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrCollectionNotFound
 		return
@@ -110,7 +111,8 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 	}
 
 	folderRows, ferr := tx.QueryContext(ctx, `
-		SELECT id, title, tile_shape, hide_title, cover_emoji, cover_image_url
+		SELECT id, title, tile_shape, hide_title, cover_emoji, cover_image_url,
+		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url
 		FROM folders WHERE collection_id = ? ORDER BY sort_order
 	`, sourceID.String())
 	if ferr != nil {
@@ -120,8 +122,9 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 	for folderRows.Next() {
 		var idStr string
 		var fd FolderData
-		var hideTitleInt int
-		if serr := folderRows.Scan(&idStr, &fd.Title, &fd.TileShape, &hideTitleInt, &fd.CoverEmoji, &fd.CoverImageURL); serr != nil {
+		var hideTitleInt, focusGIFEnabledInt int
+		if serr := folderRows.Scan(&idStr, &fd.Title, &fd.TileShape, &hideTitleInt, &fd.CoverEmoji, &fd.CoverImageURL,
+			&fd.FocusGIFURL, &focusGIFEnabledInt, &fd.HeroBackdropURL, &fd.HeroVideoURL, &fd.TitleLogoURL); serr != nil {
 			folderRows.Close()
 			err = fmt.Errorf("scanning source folder: %w", serr)
 			return
@@ -133,6 +136,7 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 			return
 		}
 		fd.HideTitle = hideTitleInt != 0
+		fd.FocusGIFEnabled = focusGIFEnabledInt != 0
 		folders = append(folders, sourceFolder{id: id, data: fd})
 	}
 	if ferr := folderRows.Err(); ferr != nil {
@@ -144,15 +148,15 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 
 	for i := range folders {
 		catRows, cerr := tx.QueryContext(ctx, `
-			SELECT catalog_id FROM folder_catalogs WHERE folder_id = ? ORDER BY sort_order
+			SELECT catalog_id, genre FROM folder_catalogs WHERE folder_id = ? ORDER BY sort_order
 		`, folders[i].id.String())
 		if cerr != nil {
 			err = fmt.Errorf("querying source folder catalogs: %w", cerr)
 			return
 		}
 		for catRows.Next() {
-			var catIDStr string
-			if serr := catRows.Scan(&catIDStr); serr != nil {
+			var catIDStr, genre string
+			if serr := catRows.Scan(&catIDStr, &genre); serr != nil {
 				catRows.Close()
 				err = fmt.Errorf("scanning source folder catalog: %w", serr)
 				return
@@ -163,7 +167,7 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 				err = perr
 				return
 			}
-			folders[i].catalogIDs = append(folders[i].catalogIDs, catID)
+			folders[i].refs = append(folders[i].refs, FolderRef{CatalogID: catID, Genre: genre})
 		}
 		if cerr := catRows.Err(); cerr != nil {
 			catRows.Close()
@@ -178,7 +182,7 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 
 // copyCollectionTree inserts a new collection owned by profileID — titled
 // title, cosmetics from the loadSourceCollectionTree call that produced
-// pinToTop/viewMode/showAllTab/backdropImageURL and folders — plus the
+// pinToTop/viewMode/showAllTab/backdropImageURL/focusGlowEnabled and folders — plus the
 // folders themselves, refs remapped through an old-id→new-id map built as
 // follows for each distinct catalog id folders reference (first-seen
 // order, so a catalog referenced by two folders collapses into one copy
@@ -200,14 +204,14 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 // source id for both; DuplicateCollection passes nil for both — a
 // duplicate is a fresh fact, not a copy taken from someone else. Must run
 // inside tx; the caller commits.
-func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, title, viewMode, backdropImageURL string, pinToTop, showAllTab int, folders []sourceFolder, takenFrom *uuid.UUID, copyListedRefs bool) (uuid.UUID, error) {
+func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, title, viewMode, backdropImageURL string, pinToTop, showAllTab, focusGlowEnabled int, folders []sourceFolder, takenFrom *uuid.UUID, copyListedRefs bool) (uuid.UUID, error) {
 	var distinctCatalogIDs []uuid.UUID
 	seenCatalog := map[uuid.UUID]bool{}
 	for _, f := range folders {
-		for _, id := range f.catalogIDs {
-			if !seenCatalog[id] {
-				seenCatalog[id] = true
-				distinctCatalogIDs = append(distinctCatalogIDs, id)
+		for _, ref := range f.refs {
+			if !seenCatalog[ref.CatalogID] {
+				seenCatalog[ref.CatalogID] = true
+				distinctCatalogIDs = append(distinctCatalogIDs, ref.CatalogID)
 			}
 		}
 	}
@@ -218,10 +222,10 @@ func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, ti
 	newCollectionID := uuid.New()
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab,
-		                          backdrop_image_url, taken_from, created_at, updated_at)
-		VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)
+		                          backdrop_image_url, focus_glow_enabled, taken_from, created_at, updated_at)
+		VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, newCollectionID.String(), title, profileID.String(), pinToTop, viewMode, showAllTab, backdropImageURL,
-		nullableUUIDString(takenFrom), nowStr, nowStr)
+		focusGlowEnabled, nullableUUIDString(takenFrom), nowStr, nowStr)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("inserting copied collection: %w", err)
 	}
@@ -295,11 +299,11 @@ func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, ti
 		if err != nil {
 			return uuid.Nil, err
 		}
-		newCatalogIDs := make([]uuid.UUID, len(f.catalogIDs))
-		for j, oldID := range f.catalogIDs {
-			newCatalogIDs[j] = idMap[oldID]
+		newRefs := make([]FolderRef, len(f.refs))
+		for j, ref := range f.refs {
+			newRefs[j] = FolderRef{CatalogID: idMap[ref.CatalogID], Genre: ref.Genre}
 		}
-		if err := replaceFolderCatalogRefs(ctx, tx, newFolder.ID, newCatalogIDs); err != nil {
+		if err := replaceFolderCatalogRefs(ctx, tx, newFolder.ID, newRefs); err != nil {
 			return uuid.Nil, err
 		}
 	}
@@ -322,13 +326,13 @@ func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID 
 	}
 	defer tx.Rollback() // no-op once Commit succeeds
 
-	title, viewMode, backdropImageURL, pinToTop, showAllTab, folders, err :=
+	title, viewMode, backdropImageURL, pinToTop, showAllTab, focusGlowEnabled, folders, err :=
 		loadSourceCollectionTree(ctx, tx, sourceID, " AND is_public = TRUE AND owner_id != ?", profileID.String())
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
 
-	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, title, viewMode, backdropImageURL, pinToTop, showAllTab, folders, &sourceID, true)
+	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, title, viewMode, backdropImageURL, pinToTop, showAllTab, focusGlowEnabled, folders, &sourceID, true)
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
@@ -370,13 +374,13 @@ func (db *DB) DuplicateCollection(ctx context.Context, profileID uuid.UUID, sour
 
 	// copyCollectionTree always inserts is_public = 0, so "born never public"
 	// falls out of reusing it rather than needing its own line here.
-	title, viewMode, backdropImageURL, pinToTop, showAllTab, folders, err :=
+	title, viewMode, backdropImageURL, pinToTop, showAllTab, focusGlowEnabled, folders, err :=
 		loadSourceCollectionTree(ctx, tx, sourceID, " AND owner_id = ?", profileID.String())
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
 
-	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, title+" (copy)", viewMode, backdropImageURL, pinToTop, showAllTab, folders, nil, false)
+	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, title+" (copy)", viewMode, backdropImageURL, pinToTop, showAllTab, focusGlowEnabled, folders, nil, false)
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
@@ -447,20 +451,27 @@ func (db *DB) GetOwnedCollectionIDs(ctx context.Context, profileID uuid.UUID) ([
 // and returns the resulting row (with a freshly generated ID).
 func insertFolder(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, sortOrder int, fd FolderData) (Folder, error) {
 	f := Folder{
-		ID:            uuid.New(),
-		CollectionID:  collectionID,
-		Title:         fd.Title,
-		SortOrder:     sortOrder,
-		TileShape:     fd.TileShape,
-		HideTitle:     fd.HideTitle,
-		CoverEmoji:    fd.CoverEmoji,
-		CoverImageURL: fd.CoverImageURL,
+		ID:              uuid.New(),
+		CollectionID:    collectionID,
+		Title:           fd.Title,
+		SortOrder:       sortOrder,
+		TileShape:       fd.TileShape,
+		HideTitle:       fd.HideTitle,
+		CoverEmoji:      fd.CoverEmoji,
+		CoverImageURL:   fd.CoverImageURL,
+		FocusGIFURL:     fd.FocusGIFURL,
+		FocusGIFEnabled: fd.FocusGIFEnabled,
+		HeroBackdropURL: fd.HeroBackdropURL,
+		HeroVideoURL:    fd.HeroVideoURL,
+		TitleLogoURL:    fd.TitleLogoURL,
 	}
 
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO folders (id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, f.ID.String(), f.CollectionID.String(), f.Title, f.SortOrder, f.TileShape, f.HideTitle, f.CoverEmoji, f.CoverImageURL)
+		INSERT INTO folders (id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
+		                     focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, f.ID.String(), f.CollectionID.String(), f.Title, f.SortOrder, f.TileShape, f.HideTitle, f.CoverEmoji, f.CoverImageURL,
+		f.FocusGIFURL, f.FocusGIFEnabled, f.HeroBackdropURL, f.HeroVideoURL, f.TitleLogoURL)
 	if err != nil {
 		return Folder{}, fmt.Errorf("inserting folder: %w", err)
 	}
@@ -468,22 +479,90 @@ func insertFolder(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, sortO
 }
 
 // replaceFolderCatalogRefs wipes and rewrites folder_catalogs for folderID,
-// in order. Safe to call for a brand-new folder too — the delete is then a
-// no-op. Refs are cheap and small compared to folders, so delete-and-reinsert
-// beats diffing them.
-func replaceFolderCatalogRefs(ctx context.Context, tx *sql.Tx, folderID uuid.UUID, catalogIDs []uuid.UUID) error {
+// in order, from already-resolved refs. Used by the tree-copy path
+// (copyCollectionTree, for Take/Duplicate), which has already minted or
+// mapped every id it needs before calling this — unlike
+// writeFolderCatalogRefs below, there is no inline-create case here.
+func replaceFolderCatalogRefs(ctx context.Context, tx *sql.Tx, folderID uuid.UUID, refs []FolderRef) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM folder_catalogs WHERE folder_id = ?`, folderID.String()); err != nil {
 		return fmt.Errorf("clearing folder catalog refs: %w", err)
 	}
-	for j, catalogID := range catalogIDs {
+	for j, ref := range refs {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO folder_catalogs (folder_id, catalog_id, sort_order)
-			VALUES (?, ?, ?)
-		`, folderID.String(), catalogID.String(), j); err != nil {
+			INSERT INTO folder_catalogs (folder_id, catalog_id, sort_order, genre)
+			VALUES (?, ?, ?, ?)
+		`, folderID.String(), ref.CatalogID.String(), j, ref.Genre); err != nil {
 			return fmt.Errorf("inserting folder catalog ref: %w", err)
 		}
 	}
 	return nil
+}
+
+// existingRefIDs returns the CatalogID of every ref in refs that references
+// an existing catalog, skipping New entries — they aren't rows yet, so
+// there's nothing for validateFolderRefs to check.
+func existingRefIDs(refs []FolderCatalogRef) []uuid.UUID {
+	var ids []uuid.UUID
+	for _, ref := range refs {
+		if ref.CatalogID != nil {
+			ids = append(ids, *ref.CatalogID)
+		}
+	}
+	return ids
+}
+
+// resolveFolderCatalogRef returns ref's catalog id, inserting a fresh
+// catalog scoped to collectionID first when ref.New is set — owned by
+// profileID, never public, never home-eligible, in the caller's own
+// transaction. This is the one place a "copy into this collection"/"new
+// inside this collection" catalog is ever written: atomic with the folder
+// write that references it, so an edit discarded instead of saved never
+// created one at all.
+func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, ref FolderCatalogRef) (uuid.UUID, error) {
+	if ref.CatalogID != nil {
+		return *ref.CatalogID, nil
+	}
+
+	spec := ref.New
+	now := time.Now().UTC().Format(time.RFC3339)
+	id := uuid.New()
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
+		                       collection_id, fingerprint, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, id.String(), spec.Type, spec.Name, spec.Provider, spec.Params, profileID.String(), false, false,
+		collectionID.String(), spec.Fingerprint, now, now)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("inserting scoped catalog: %w", err)
+	}
+	return id, nil
+}
+
+// writeFolderCatalogRefs wipes and rewrites folder_catalogs for folderID, in
+// order, resolving each ref via resolveFolderCatalogRef first. Safe to call
+// for a brand-new folder too — the delete is then a no-op. Refs are cheap
+// and small compared to folders, so delete-and-reinsert beats diffing them.
+// Returns the resolved refs in order, for the caller's response shape and
+// final catalog fetch.
+func writeFolderCatalogRefs(ctx context.Context, tx *sql.Tx, profileID, collectionID, folderID uuid.UUID, refs []FolderCatalogRef) ([]FolderRef, error) {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM folder_catalogs WHERE folder_id = ?`, folderID.String()); err != nil {
+		return nil, fmt.Errorf("clearing folder catalog refs: %w", err)
+	}
+	resolved := make([]FolderRef, len(refs))
+	for j, ref := range refs {
+		catalogID, err := resolveFolderCatalogRef(ctx, tx, profileID, collectionID, ref)
+		if err != nil {
+			return nil, err
+		}
+		resolved[j] = FolderRef{CatalogID: catalogID, Genre: strings.TrimSpace(ref.Genre)}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO folder_catalogs (folder_id, catalog_id, sort_order, genre)
+			VALUES (?, ?, ?, ?)
+		`, folderID.String(), catalogID.String(), j, resolved[j].Genre); err != nil {
+			return nil, fmt.Errorf("inserting folder catalog ref: %w", err)
+		}
+	}
+	return resolved, nil
 }
 
 // CreateUserCollection validates input, checks profileID has access to
@@ -500,11 +579,11 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 	}
 	defer tx.Rollback() // no-op once Commit succeeds
 
-	var allCatalogIDs []uuid.UUID
+	var existingCatalogIDs []uuid.UUID
 	for _, fd := range input.Folders {
-		allCatalogIDs = append(allCatalogIDs, fd.CatalogIDs...)
+		existingCatalogIDs = append(existingCatalogIDs, existingRefIDs(fd.Catalogs)...)
 	}
-	if err := validateFolderRefs(ctx, tx, profileID, nil, allCatalogIDs); err != nil {
+	if err := validateFolderRefs(ctx, tx, profileID, nil, existingCatalogIDs); err != nil {
 		return CollectionWithFolders{}, err
 	}
 
@@ -520,6 +599,7 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 		ViewMode:         input.ViewMode,
 		ShowAllTab:       input.ShowAllTab,
 		BackdropImageURL: input.BackdropImageURL,
+		FocusGlowEnabled: input.FocusGlowEnabled,
 		Version:          1,
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -527,25 +607,28 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
-		                          created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                          focus_glow_enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, c.ID.String(), c.Title, c.OwnerID.String(), c.IsPublic, c.IsDefault, c.PinToTop, c.ViewMode, c.ShowAllTab, c.BackdropImageURL,
-		nowStr, nowStr)
+		c.FocusGlowEnabled, nowStr, nowStr)
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("inserting collection: %w", err)
 	}
 
 	folders := make([]FolderWithCatalogs, len(input.Folders))
+	var allCatalogIDs []uuid.UUID
 	for i, fd := range input.Folders {
 		f, err := insertFolder(ctx, tx, c.ID, i, fd)
 		if err != nil {
 			return CollectionWithFolders{}, err
 		}
-		if err := replaceFolderCatalogRefs(ctx, tx, f.ID, fd.CatalogIDs); err != nil {
+		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, c.ID, f.ID, fd.Catalogs)
+		if err != nil {
 			return CollectionWithFolders{}, err
 		}
 
-		folders[i] = FolderWithCatalogs{Folder: f, CatalogIDs: orEmpty(fd.CatalogIDs)}
+		folders[i] = FolderWithCatalogs{Folder: f, Refs: refs}
+		allCatalogIDs = append(allCatalogIDs, folders[i].CatalogIDs()...)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -592,9 +675,10 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 
 	result, err := tx.ExecContext(ctx, `
 		UPDATE collections
-		SET title = ?, is_public = ?, pin_to_top = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, updated_at = ?, version = version + 1
+		SET title = ?, is_public = ?, pin_to_top = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, focus_glow_enabled = ?,
+		    updated_at = ?, version = version + 1
 		WHERE id = ? AND owner_id = ?
-	`, input.Title, input.IsPublic, input.PinToTop, input.ViewMode, input.ShowAllTab, input.BackdropImageURL, nowStr,
+	`, input.Title, input.IsPublic, input.PinToTop, input.ViewMode, input.ShowAllTab, input.BackdropImageURL, input.FocusGlowEnabled, nowStr,
 		collectionID.String(), profileID.String())
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("updating collection: %w", err)
@@ -658,16 +742,18 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 		}
 	}
 
-	// One validation query for every catalog ID across every folder, up front.
-	var allCatalogIDs []uuid.UUID
+	// One validation query for every catalog ID across every folder, up
+	// front — New entries are skipped, they aren't rows yet (existingRefIDs).
+	var existingCatalogIDs []uuid.UUID
 	for _, fd := range input.Folders {
-		allCatalogIDs = append(allCatalogIDs, fd.CatalogIDs...)
+		existingCatalogIDs = append(existingCatalogIDs, existingRefIDs(fd.Catalogs)...)
 	}
-	if err := validateFolderRefs(ctx, tx, profileID, &collectionID, allCatalogIDs); err != nil {
+	if err := validateFolderRefs(ctx, tx, profileID, &collectionID, existingCatalogIDs); err != nil {
 		return CollectionWithFolders{}, err
 	}
 
 	folders := make([]FolderWithCatalogs, len(input.Folders))
+	var allCatalogIDs []uuid.UUID
 	for i, fd := range input.Folders {
 		var f Folder
 		if fd.ID != nil {
@@ -675,12 +761,16 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 				ID: *fd.ID, CollectionID: collectionID, Title: fd.Title, SortOrder: i,
 				TileShape: fd.TileShape, HideTitle: fd.HideTitle,
 				CoverEmoji: fd.CoverEmoji, CoverImageURL: fd.CoverImageURL,
+				FocusGIFURL: fd.FocusGIFURL, FocusGIFEnabled: fd.FocusGIFEnabled,
+				HeroBackdropURL: fd.HeroBackdropURL, HeroVideoURL: fd.HeroVideoURL, TitleLogoURL: fd.TitleLogoURL,
 			}
 			_, err = tx.ExecContext(ctx, `
 				UPDATE folders
-				SET title = ?, sort_order = ?, tile_shape = ?, hide_title = ?, cover_emoji = ?, cover_image_url = ?
+				SET title = ?, sort_order = ?, tile_shape = ?, hide_title = ?, cover_emoji = ?, cover_image_url = ?,
+				    focus_gif_url = ?, focus_gif_enabled = ?, hero_backdrop_url = ?, hero_video_url = ?, title_logo_url = ?
 				WHERE id = ?
-			`, f.Title, f.SortOrder, f.TileShape, f.HideTitle, f.CoverEmoji, f.CoverImageURL, f.ID.String())
+			`, f.Title, f.SortOrder, f.TileShape, f.HideTitle, f.CoverEmoji, f.CoverImageURL,
+				f.FocusGIFURL, f.FocusGIFEnabled, f.HeroBackdropURL, f.HeroVideoURL, f.TitleLogoURL, f.ID.String())
 			if err != nil {
 				return CollectionWithFolders{}, fmt.Errorf("updating folder: %w", err)
 			}
@@ -691,11 +781,13 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 			}
 		}
 
-		if err := replaceFolderCatalogRefs(ctx, tx, f.ID, fd.CatalogIDs); err != nil {
+		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, collectionID, f.ID, fd.Catalogs)
+		if err != nil {
 			return CollectionWithFolders{}, err
 		}
 
-		folders[i] = FolderWithCatalogs{Folder: f, CatalogIDs: orEmpty(fd.CatalogIDs)}
+		folders[i] = FolderWithCatalogs{Folder: f, Refs: refs}
+		allCatalogIDs = append(allCatalogIDs, folders[i].CatalogIDs()...)
 	}
 
 	// A scoped catalog with no remaining folder reference in this
@@ -845,7 +937,8 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 
 	placeholders, args := buildInClause(collectionIDs)
 	rows, err := db.conn.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url
+		SELECT id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
+		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url
 		FROM folders
 		WHERE collection_id IN (%s)
 		ORDER BY collection_id, sort_order
@@ -868,7 +961,7 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 	if len(folderIDs) > 0 {
 		placeholders, args = buildInClause(folderIDs)
 		rows, err = db.conn.QueryContext(ctx, fmt.Sprintf(`
-			SELECT folder_id, catalog_id, sort_order
+			SELECT folder_id, catalog_id, sort_order, genre
 			FROM folder_catalogs
 			WHERE folder_id IN (%s)
 			ORDER BY folder_id, sort_order
@@ -883,19 +976,17 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 		}
 	}
 
-	catalogIDsByFolder := make(map[uuid.UUID][]uuid.UUID)
+	refsByFolder := make(map[uuid.UUID][]FolderRef)
 	for _, fc := range folderCatalogs {
-		catalogIDsByFolder[fc.FolderID] = append(catalogIDsByFolder[fc.FolderID], fc.CatalogID)
+		refsByFolder[fc.FolderID] = append(refsByFolder[fc.FolderID], FolderRef{CatalogID: fc.CatalogID, Genre: fc.Genre})
 	}
 
 	foldersByCollection := make(map[uuid.UUID][]FolderWithCatalogs)
 	catalogIDsByCollection := make(map[uuid.UUID][]uuid.UUID)
 	for _, f := range folders {
-		foldersByCollection[f.CollectionID] = append(foldersByCollection[f.CollectionID], FolderWithCatalogs{
-			Folder:     f,
-			CatalogIDs: orEmpty(catalogIDsByFolder[f.ID]),
-		})
-		catalogIDsByCollection[f.CollectionID] = append(catalogIDsByCollection[f.CollectionID], catalogIDsByFolder[f.ID]...)
+		folder := FolderWithCatalogs{Folder: f, Refs: orEmpty(refsByFolder[f.ID])}
+		foldersByCollection[f.CollectionID] = append(foldersByCollection[f.CollectionID], folder)
+		catalogIDsByCollection[f.CollectionID] = append(catalogIDsByCollection[f.CollectionID], folder.CatalogIDs()...)
 	}
 
 	var allCatalogIDs []uuid.UUID

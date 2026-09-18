@@ -1,4 +1,6 @@
-import type { CatalogType, PreviewItem, TileShape } from '@/api'
+import type { CatalogType, PreviewItem, TileShape, TMDBKind } from '@/api'
+import { tmdbKind } from '@/api'
+import type { CatalogTiles } from './tiles'
 
 /**
  * The shape of a collection, its folders, and the catalogs they reference —
@@ -34,11 +36,18 @@ export type PreviewViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
  *  each source is a row (`ROWS`) or a tab (`TABBED_GRID`). `name === null`
  *  means the reference couldn't be resolved — see `unresolved` below. */
 export interface PreviewSource {
+  /** Unique within its folder — the tab value and the key its tiles are filed
+   *  under. Not the catalog id: one catalog can be two sources in a folder,
+   *  under two genres. */
+  key: string
+  /** The referenced catalog's id. */
   id: string
   name: string | null
   type: CatalogType | null
   /** The recipe to run for this source's tiles, or `''` when unresolved. */
   params: string
+  /** The genre this reference is narrowed to, or `''` when unfiltered. */
+  genre: string
 }
 
 export interface PreviewFolder {
@@ -119,23 +128,33 @@ export function normalizeViewMode(mode: string): {
   return { mode: 'FOLLOW_LAYOUT', assumed: true }
 }
 
+const KIND_LABEL: Record<CatalogType, string> = { movie: 'Movie', series: 'Series' }
+
 /**
- * The tabs a `TABBED_GRID` folder page shows: **one per catalog in the folder**,
+ * A folder source's name as Nuvio shows it on a folder page, as a tab and as a
+ * row title alike: `<Catalog name> (<Kind>)`, then ` • <Genre>` when the
+ * reference is narrowed to one. The genre is what tells two sources of the
+ * same catalog apart.
+ */
+export function sourceLabel(source: PreviewSource): string {
+  if (source.name === null || source.type === null) return 'Unavailable catalog'
+  const base = `${source.name} (${KIND_LABEL[source.type]})`
+  return source.genre ? `${base} • ${source.genre}` : base
+}
+
+/**
+ * The tabs a `TABBED_GRID` folder page shows: **one per source in the folder**,
  * with the synthetic "All" tab in front when the collection sets
- * `show_all_tab`. The tabs are per catalog, not per folder — `view_mode`
+ * `show_all_tab`. The tabs are per source, not per folder — `view_mode`
  * describes how a folder's catalogs are presented once you're inside it.
- *
- * Duplicate keys aren't possible — `folder_catalogs` is
- * `PRIMARY KEY (folder_id, catalog_id)`, so one catalog can appear in a folder
- * at most once.
  */
 export function folderTabs(
   folder: PreviewFolder,
   showAllTab: boolean,
 ): { key: string; label: string }[] {
   const tabs = folder.sources.map((source) => ({
-    key: source.id,
-    label: source.name ?? 'Unavailable catalog',
+    key: source.key,
+    label: sourceLabel(source),
   }))
   return showAllTab ? [{ key: ALL_TAB, label: 'All' }, ...tabs] : tabs
 }
@@ -188,12 +207,36 @@ export function interleaveTiles(
   return merged
 }
 
-/** The recipes a folder's sources need tiles for. Unresolved sources have no
- *  recipe to run, so they're dropped rather than queried. */
+/**
+ * Which `TMDBKind` each item in a folder's merged "All" tab came from, keyed
+ * by `tmdb_id`. The merge can span sources of different `CatalogType`, so
+ * `interleaveTiles`'s output has no single kind to hand `TileGrid` — this
+ * looks each tile's kind up per item instead, in the same source order
+ * `interleaveTiles` merges, so a title carried by two sources resolves to
+ * whichever source's tab lists it first.
+ */
+export function interleavedKinds(
+  folder: PreviewFolder,
+  tiles: ReadonlyMap<string, CatalogTiles>,
+): Map<number, TMDBKind> {
+  const kinds = new Map<number, TMDBKind>()
+  for (const source of folder.sources) {
+    if (!source.type) continue
+    const kind = tmdbKind(source.type)
+    for (const item of tiles.get(source.key)?.items ?? []) {
+      if (!kinds.has(item.tmdb_id)) kinds.set(item.tmdb_id, kind)
+    }
+  }
+  return kinds
+}
+
+/** The recipes a folder's sources need tiles for, filed under each source's
+ *  `key`. Unresolved sources have no recipe to run, so they're dropped rather
+ *  than queried. */
 export function folderRecipes(
   folder: PreviewFolder,
-): { id: string; type: CatalogType; params: string }[] {
+): { id: string; type: CatalogType; params: string; genre: string }[] {
   return folder.sources
     .filter((source) => source.type !== null)
-    .map((source) => ({ id: source.id, type: source.type!, params: source.params }))
+    .map((source) => ({ id: source.key, type: source.type!, params: source.params, genre: source.genre }))
 }

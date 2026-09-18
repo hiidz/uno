@@ -125,21 +125,27 @@ export function HomeSelectionProvider({
     setCurrent(hydrated)
   }, [current, selectionLoaded, catalogSelectionData, collectionSelectionData])
 
-  const catalogById = useMemo(() => {
-    // Library first — it's the canonical row — then anything only the
-    // selection knows about, so a detached selection still renders.
-    const map = new Map<string, Catalog>()
-    for (const c of catalogSelectionData ?? []) map.set(c.id, c)
-    for (const c of library.catalogs) map.set(c.id, c)
-    return map
-  }, [catalogSelectionData, library.catalogs])
-
   const collectionById = useMemo(() => {
     const map = new Map<string, Collection>()
     for (const c of collectionSelectionData ?? []) map.set(c.id, c)
     for (const c of library.collections) map.set(c.id, c)
     return map
   }, [collectionSelectionData, library.collections])
+
+  const catalogById = useMemo(() => {
+    // Library first — it's the canonical row — then anything only the
+    // selection knows about, so a detached selection still renders. Last,
+    // every catalog a known collection's own folders reference: those are
+    // always scoped (never listed, so never in `library.catalogs`) —
+    // `Collection.catalogs` is the only place they're carried.
+    const map = new Map<string, Catalog>()
+    for (const c of catalogSelectionData ?? []) map.set(c.id, c)
+    for (const c of library.catalogs) map.set(c.id, c)
+    for (const collection of collectionById.values()) {
+      for (const c of collection.catalogs ?? []) map.set(c.id, c)
+    }
+    return map
+  }, [catalogSelectionData, library.catalogs, collectionById])
 
   const libraryIds = useMemo(
     () =>

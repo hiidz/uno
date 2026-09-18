@@ -2,11 +2,12 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ComponentProps } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
-import type { CatalogType } from '@/api'
+import type { CatalogType, CollectionPayload } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Field, Segmented } from '@/components/fields'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
 import {
+  duplicatePayload,
   emptyForm,
   formFromCatalog,
   toPayload,
@@ -18,7 +19,6 @@ import {
   emptyCollectionForm,
   formFromCollection,
   toCollectionPayload,
-  type CollectionFormState,
 } from '@/features/collections/collectionForm'
 import { accessibleIDs, buildRefOptions, indexRefOptions } from '@/features/collections/refs'
 import { useCollectionMutations } from '@/features/collections/useCollectionMutations'
@@ -266,20 +266,22 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
+  // A catalog target always has a real row behind it now — creation (bare or
+  // via duplicate) is its own atomic call before the editor ever opens
+  // (`createBareCatalog`, `confirmDuplicateCatalog`) — so this is always an
+  // update.
   function saveCatalog(state: CatalogFormState) {
-    const payload = toPayload(state)
-    if (target?.kind === 'catalog' && target.mode === 'edit' && target.catalogID) {
-      catalogMutations.update.mutate(
-        { id: target.catalogID, payload },
-        { onSuccess: closeAfterSave },
-      )
-    } else {
-      catalogMutations.create.mutate(payload, { onSuccess: closeAfterSave })
-    }
+    if (target?.kind !== 'catalog') return
+    catalogMutations.update.mutate(
+      { id: target.catalogID, payload: toPayload(state) },
+      { onSuccess: closeAfterSave },
+    )
   }
 
-  function saveCollection(state: CollectionFormState) {
-    const payload = toCollectionPayload(state)
+  // `payload` already resolved every draft catalog into an inline `new`
+  // spec inside `CollectionEditor` itself, which is the one place that has
+  // `localCatalogs` to resolve them against — see its own `trySubmit`.
+  function saveCollection(payload: CollectionPayload) {
     if (target?.kind === 'collection' && target.collectionID) {
       collectionMutations.update.mutate(
         { id: target.collectionID, payload },
@@ -331,7 +333,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       let count = home.hasCatalog(catalogID) ? 1 : 0
       for (const collection of library.collections) {
         for (const folder of collection.folders) {
-          if (folder.catalog_ids?.includes(catalogID)) count += 1
+          if (folder.refs?.some((ref) => ref.catalog_id === catalogID)) count += 1
         }
       }
       return count
@@ -396,6 +398,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   }
 
   function duplicateCatalog(catalog: LibraryCatalog) {
+    catalogMutations.create.reset()
     setConfirming({ kind: 'duplicate-catalog', catalog })
   }
 
@@ -404,13 +407,18 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     setConfirming({ kind: 'duplicate-collection', collection })
   }
 
+  // Duplicating a catalog is one atomic server call — the same `create`
+  // mutation `createBareCatalog` uses, just seeded from an existing row
+  // (`duplicatePayload`) instead of a bare name — rather than a pre-filled
+  // form the editor saves to create the copy. The finished duplicate opens
+  // straight into its own editor for review, same as collection duplicate
+  // below.
   function confirmDuplicateCatalog(catalog: LibraryCatalog) {
-    setConfirming(null)
-    open({
-      kind: 'catalog',
-      mode: 'duplicate',
-      initial: formFromCatalog(catalog, 'duplicate'),
-      sourceID: catalog.id,
+    catalogMutations.create.mutate(duplicatePayload(catalog), {
+      onSuccess: (newCatalog) => {
+        setConfirming(null)
+        open(catalogTarget(newCatalog))
+      },
     })
   }
 
@@ -516,10 +524,15 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               <strong className="text-ink">{catalog.name}</strong>. The original is left untouched.
             </>
           ),
-          confirmLabel: 'Duplicate catalog',
+          confirmLabel: catalogMutations.create.isPending ? 'Duplicating…' : 'Duplicate catalog',
           cancelLabel: 'Cancel',
+          pending: catalogMutations.create.isPending,
+          error: (catalogMutations.create.error as Error | null)?.message ?? null,
           onConfirm: () => confirmDuplicateCatalog(catalog),
-          onCancel: () => setConfirming(null),
+          onCancel: () => {
+            catalogMutations.create.reset()
+            setConfirming(null)
+          },
         }
       }
 
@@ -673,8 +686,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               // the form, its validation and its preview are all per-catalog,
               // and a key is the honest way to say "this is a different
               // subject".
-              key={target.sourceID ?? `new-${target.mode}`}
-              mode={target.mode}
+              key={target.catalogID}
               initial={target.initial}
               genres={genres}
               certifications={library.certifications}
@@ -782,16 +794,13 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
 
 /**
  * Selecting a library row always opens it for editing — everything in the
- * library is yours. A catalog's `'duplicate'` mode still exists on
- * `EditorTarget`, but only the explicit Duplicate action reaches it now
- * (`confirmDuplicateCatalog` below); opening a row never does. A collection
- * has no such mode any more — see `EditorTarget`'s own doc comment.
+ * library is yours, and every row this pane opens (catalog or collection) is
+ * always a real one now — see `EditorTarget`'s own doc comment.
  */
 function catalogTarget(catalog: LibraryCatalog): EditorTarget {
   return {
     kind: 'catalog',
-    mode: 'edit',
-    initial: formFromCatalog(catalog, 'edit'),
+    initial: formFromCatalog(catalog),
     catalogID: catalog.id,
     sourceID: catalog.id,
   }
@@ -807,13 +816,10 @@ function collectionTarget(collection: LibraryCollection): EditorTarget {
 }
 
 /** Whether two targets are "the same row" for `open`'s re-selection guard.
- *  A collection has no `mode` any more — see `EditorTarget` — so same `kind`
- *  is enough for it; a catalog still distinguishes 'edit' from 'duplicate'
- *  on the same source row. */
+ *  Neither variant has a `mode` any more — see `EditorTarget` — so same
+ *  `kind` is enough for both. */
 function sameEditorKind(a: EditorTarget | null, b: EditorTarget): boolean {
-  if (a === null || a.kind !== b.kind) return false
-  if (a.kind === 'catalog' && b.kind === 'catalog') return a.mode === b.mode
-  return true
+  return a !== null && a.kind === b.kind
 }
 
 /** What the discard prompt is about. Named from the form's own title so it

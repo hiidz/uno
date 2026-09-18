@@ -112,7 +112,7 @@ export function LibraryItem({
             onHome ? `Remove ${name} from your home screen` : `Add ${name} to your home screen`
           }
           title={onHome ? 'On your home screen — click to remove' : 'Add to your home screen'}
-          className={`tap type-data grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border text-[11px] leading-none transition-colors ${
+          className={`tap type-data grid h-6 w-6 shrink-0 place-items-center rounded-[2px] border text-[11px] leading-none transition-colors pointer-coarse:h-9 pointer-coarse:w-9 ${
             onHome
               ? 'bg-dim border-dim text-ground hover:bg-danger hover:border-danger hover:text-white'
               : 'border-line-hi text-dim hover:text-ink hover:border-dim'
@@ -123,7 +123,7 @@ export function LibraryItem({
       </div>
 
       {hasActions && selected && (
-        <div className="hidden items-center gap-1.5 px-2 pb-2.5 pl-[23px] lg:flex">
+        <div className="hidden items-center gap-1.5 px-2 pb-2.5 pl-2 lg:flex">
           {onDuplicate && (
             <GlyphButton
               label={`Duplicate ${name}`}

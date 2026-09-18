@@ -78,9 +78,10 @@ export function useRecipeTiles(type: CatalogType, params: string): RecipePreview
   function run() {
     if (isSameRecipe) {
       // Same key, so setting state would change nothing and the cached result
-      // would stand. That's right for a result, and wrong for a failure — a
-      // second press has to be a real retry.
-      if (query.isError) void query.refetch()
+      // would stand. That's right for a fixed result, and wrong for a failure —
+      // a second press has to be a real retry — or for a shuffled recipe, whose
+      // next run is a different page.
+      if (query.isError || query.data?.randomized) void query.refetch()
       return
     }
     setRequested({ type, params })

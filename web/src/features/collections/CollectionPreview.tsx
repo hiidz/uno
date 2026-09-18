@@ -1,4 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { pluralCount } from '@/lib/plural'
+import { FOLDER_LAYOUT_LABEL, TVCollectionRow, TVFolderPage } from '@/features/home/tv'
 import { CollectionMeta } from '@/features/preview/CollectionMeta'
 import {
   normalizeTileShape,
@@ -7,23 +10,27 @@ import {
   type PreviewFolder,
   type PreviewSource,
 } from '@/features/preview/model'
-import { TILE_ASPECT } from '@/features/preview/tiles'
+import { useRecipesTiles, type TileRecipe } from '@/features/preview/useRecipesTiles'
 import type { CollectionFormState } from './collectionForm'
 import type { RefOption } from './refs'
 
 /**
- * "On your TV" — DESIGN.md's docked panel, in the catalog editor's results
- * panel's place: a 16:9 frame holding the collection's row from the live
- * draft, **not interactive**. Opening a folder to see its content lives in
- * Preview on TV once the collection is saved, not here — this only has to
- * answer "what will the row itself look like", which is layout, not content,
- * so nothing is fetched to draw it.
+ * "On your TV" — DESIGN.md's docked panel beside the collection form: the
+ * collection's row from the live draft, drawn with the Home preview's own TV
+ * components, and the folder pages it opens.
  *
- * **Layout, not content.** A collection has no recipe of its own — it's
- * folders of catalog references — so there is nothing to run against TMDB at
- * this level. What it does have is a shape: folders as tiles at their own
- * `tile_shape`. That shape comes entirely from form state, so the row below
- * costs no request and is drawn without asking.
+ * **A crop of a real-scale TV** (`.tv-crop`): tiles are the Home preview's
+ * size however narrow the column, rows run off the frame's edge and scroll,
+ * and a folder page's grid reflows to the frame.
+ *
+ * **Folders open, exactly as on Home.** A folder tile opens `TVFolderPage` —
+ * tabs or rows per the draft's `view_mode`, real titles per catalog. Tiles
+ * are fetched from each catalog's recipe (`useRecipesTiles`), not its id, so
+ * an unsaved draft and a Community collection both preview, and only the
+ * open folder's catalogs are fetched. The in-screen back arrow and Escape
+ * return to the row; Escape is taken here, while focus is inside the screen,
+ * so it never reaches the editor's own Escape-to-close. There is no history
+ * entry — the browser's Back belongs to the editor, not to this panel.
  */
 export function CollectionPreview({
   state,
@@ -33,6 +40,49 @@ export function CollectionPreview({
   optionByID: ReadonlyMap<string, RefOption>
 }) {
   const collection = useMemo(() => previewFromForm(state, optionByID), [state, optionByID])
+  const title = collection.title.trim() || 'Untitled collection'
+  const empty = collection.folders.length === 0
+
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  // A folder removed from the form while its page is open falls back to the row.
+  const folder = openKey === null ? null : (collection.folders.find((f) => f.id === openKey) ?? null)
+
+  const recipes = useMemo<TileRecipe[]>(
+    () =>
+      (folder?.sources ?? []).flatMap((source) =>
+        source.type === null
+          ? []
+          : [{ id: source.key, type: source.type, params: source.params, genre: source.genre }],
+      ),
+    [folder],
+  )
+  const tiles = useRecipesTiles(recipes)
+
+  const screenRef = useRef<HTMLDivElement>(null)
+  // The tile a folder page was opened from, so leaving it hands focus back
+  // there instead of dropping it on the page when the page unmounts.
+  const openedFrom = useRef<number | null>(null)
+  const isOpen = folder !== null
+
+  useEffect(() => {
+    const screen = screenRef.current
+    if (!screen) return
+    screen.scrollTop = 0
+    if (isOpen) {
+      screen.querySelector<HTMLElement>('.fp-back')?.focus({ preventScroll: true })
+    } else if (openedFrom.current !== null) {
+      screen.querySelectorAll<HTMLElement>('.tv-folder')[openedFrom.current]?.focus({ preventScroll: true })
+      openedFrom.current = null
+    }
+  }, [isOpen])
+
+  function onScreenKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Escape' || !isOpen) return
+    e.stopPropagation()
+    setOpenKey(null)
+  }
+
+  const shown = { ...collection, title }
 
   return (
     <div className="ed-pv">
@@ -40,64 +90,55 @@ export function CollectionPreview({
         <span className="type-eyebrow">On your TV</span>
       </div>
 
-      <div className="bg-tv-bezel border-line-hi border p-2.5">
-        <div className="bg-tv-screen relative flex aspect-video items-end overflow-hidden p-3">
-          {collection.folders.length === 0 ? (
-            <p className="type-data text-dimmer m-0 text-[10.5px] leading-[1.45]">
-              No folders yet, so this row is empty.
-            </p>
-          ) : (
-            <div className="flex items-end gap-2 overflow-hidden">
-              {collection.folders.map((folder) => (
-                <TVFolderTile key={folder.id} folder={folder} />
-              ))}
+      <div className="tv-bezel tv-crop">
+        <div
+          ref={screenRef}
+          className="tv-screen"
+          tabIndex={0}
+          role="region"
+          onKeyDown={onScreenKeyDown}
+          aria-label={
+            folder
+              ? `${folder.title || 'Untitled folder'}, a folder in ${title}, as your TV shows it`
+              : empty
+                ? `${title}, an empty row on your TV`
+                : `${title}, a row of ${pluralCount(collection.folders.length, 'folder')} on your TV`
+          }
+        >
+          <div className="tv-crop-stage">
+            <div className="tv-crop-view">
+              {folder ? (
+                <TVFolderPage
+                  collection={shown}
+                  folder={folder}
+                  tiles={tiles}
+                  onBack={() => setOpenKey(null)}
+                  backLabel={`Back to the ${title} row`}
+                />
+              ) : (
+                <TVCollectionRow
+                  collection={shown}
+                  onOpenFolder={({ folderId }) => {
+                    openedFrom.current = collection.folders.findIndex((f) => f.id === folderId)
+                    setOpenKey(folderId)
+                  }}
+                />
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
-      <p>Folders open in Preview on TV once saved.</p>
+      <p>
+        {folder
+          ? `${FOLDER_LAYOUT_LABEL[collection.viewMode]}. The arrow beside the folder name goes back to the row, and so does Esc.`
+          : empty
+            ? 'No folders yet, so this row is empty.'
+            : 'Open a folder to see its catalogs the way your TV shows them.'}
+      </p>
 
       <CollectionMeta collection={collection} />
     </div>
-  )
-}
-
-/** A folder, drawn the way its tile would sit on the real TV row — cover
- *  image, then emoji, then title, at the folder's own shape — but as a plain
- *  `<span>`, never a button: this panel draws no folder page, so nothing here
- *  is a target to open. */
-function TVFolderTile({ folder }: { folder: PreviewFolder }) {
-  const height = 76
-  const width = height * TILE_ASPECT[folder.tileShape]
-  const name = folder.title || 'Untitled folder'
-
-  return (
-    <span
-      style={{ width: `${width}px`, height: `${height}px` }}
-      title={name}
-      className="bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border px-1"
-    >
-      {folder.coverEmoji ? (
-        <span aria-hidden="true" className="text-[16px] leading-none">
-          {folder.coverEmoji}
-        </span>
-      ) : (
-        !folder.hideTitle && (
-          <span aria-hidden="true" className="type-data text-dimmer text-center text-[8px] leading-tight">
-            {name}
-          </span>
-        )
-      )}
-      {folder.coverImageUrl && (
-        <img
-          src={folder.coverImageUrl}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
-    </span>
   )
 }
 
@@ -122,13 +163,18 @@ function previewFromForm(
   const folders: PreviewFolder[] = state.folders.map((folder) => {
     const tile = normalizeTileShape(folder.tileShape)
 
-    const sources: PreviewSource[] = folder.catalogIDs.map((id) => {
-      const option = optionByID.get(id)
+    const sources: PreviewSource[] = folder.refs.map((ref) => {
+      const option = optionByID.get(ref.catalogID)
       return {
-        id,
+        // The ref's own key, not the catalog/genre pair: the form can briefly
+        // hold a repeated pair, which is a validation error rather than a
+        // state the preview may collide on.
+        key: ref.key,
+        id: ref.catalogID,
         name: option?.name ?? null,
         type: option?.catalog.type ?? null,
         params: option?.catalog.params ?? '',
+        genre: ref.genre,
       }
     })
 

@@ -47,7 +47,24 @@ export interface Folder {
   hide_title: boolean
   cover_emoji: string
   cover_image_url: string
-  catalog_ids: string[] | null
+  /** An animated GIF Nuvio plays over the tile while it's focused, when
+   *  `focus_gif_enabled` is set. */
+  focus_gif_url: string
+  focus_gif_enabled: boolean
+  /** Hero media for Nuvio's Modern Home layout. */
+  hero_backdrop_url: string
+  hero_video_url: string
+  title_logo_url: string
+  /** Ordered. One catalog can appear more than once, under different genres. */
+  refs: FolderRef[] | null
+}
+
+/** One entry in a folder's catalog list — `vault.FolderRef`. */
+export interface FolderRef {
+  catalog_id: string
+  /** The genre this reference is narrowed to, pushed as the folder source's
+   *  `genre`; `''` for unfiltered. */
+  genre: string
 }
 
 export interface Collection {
@@ -59,6 +76,8 @@ export interface Collection {
   view_mode: string
   show_all_tab: boolean
   backdrop_image_url: string
+  /** Nuvio's TV focus glow on this collection's home-screen folder cards. */
+  focus_glow_enabled: boolean
   created_at: string
   updated_at: string
   /** Bumped by every content write (never touched by push); starts at 1. */
@@ -186,6 +205,16 @@ export interface CatalogPreview {
 export interface PreviewRequest {
   type: CatalogType
   /** The JSON-encoded params string, exactly as `Catalog.params` carries it. */
+  params: string
+  /** A genre name from the recipe's genre options, narrowing the result the way
+   *  a folder reference's genre narrows that row on the TV. */
+  genre?: string
+}
+
+/** The body `POST /api/catalogs/genre-options` takes — a recipe, like
+ *  `PreviewRequest`, so a draft catalog with no id has options too. */
+export interface GenreOptionsRequest {
+  type: CatalogType
   params: string
 }
 

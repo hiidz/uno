@@ -9,6 +9,7 @@ import type {
   CommunityCollection,
   Country,
   Genre,
+  GenreOptionsRequest,
   Language,
   NuvioProfile,
   PreviewRequest,
@@ -111,6 +112,16 @@ export function fetchWatchRegions(): Promise<WatchRegion[]> {
  */
 export function fetchCatalogPreview(body: PreviewRequest): Promise<CatalogPreview> {
   return sendJSON<CatalogPreview>('POST', '/api/catalogs/preview', body)
+}
+
+/**
+ * The genres a pick can narrow this recipe by — `provider.GenreExtraOptions`,
+ * the same list the addon manifest advertises for the catalog. Not
+ * `fetchGenres`: that is TMDB's whole list, and a genre the recipe already
+ * requires, excludes, or (with an "any of" list) leaves out narrows nothing.
+ */
+export function fetchCatalogGenreOptions(body: GenreOptionsRequest): Promise<Genre[]> {
+  return sendJSON<Genre[]>('POST', '/api/catalogs/genre-options', body)
 }
 
 /**

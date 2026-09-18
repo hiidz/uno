@@ -1,4 +1,17 @@
-import type { Collection, CollectionPayload, Folder, TileShape } from '@/api'
+import type { Catalog, Collection, CollectionPayload, Folder, FolderCatalogRef, TileShape } from '@/api'
+
+/** Prefix marking a `FolderRefState.catalogID` as a client-only
+ *  draft — staged locally by "copy into this collection"/"new inside this
+ *  collection" (`CollectionEditor.tsx`), not yet written to the DB.
+ *  `toCollectionPayload` resolves one into an inline `new` spec, which is
+ *  what makes those actions atomic with this collection's own save: nothing
+ *  is written until then, so discarding instead of saving leaves no row
+ *  behind. See docs/frontend.md's "Three sources for a folder's catalog". */
+export const DRAFT_ID_PREFIX = 'draft:'
+
+export function isDraftCatalogID(id: string): boolean {
+  return id.startsWith(DRAFT_ID_PREFIX)
+}
 
 /**
  * The collection builder's form model, and the client-side mirror of what the
@@ -57,8 +70,29 @@ export interface FolderFormState {
   hideTitle: boolean
   coverEmoji: string
   coverImageURL: string
+  focusGIFURL: string
+  focusGIFEnabled: boolean
+  heroBackdropURL: string
+  heroVideoURL: string
+  titleLogoURL: string
   /** Ordered — index becomes `folder_catalogs.sort_order`. */
-  catalogIDs: string[]
+  refs: FolderRefState[]
+}
+
+/**
+ * One catalog reference in a folder. A catalog can appear more than once in
+ * one folder, each time under a different genre (`folder_catalogs` is
+ * `PRIMARY KEY (folder_id, catalog_id, genre)`), so neither the catalog id nor
+ * the pair is a stable handle while editing — the genre changes under the
+ * user. `key` is that handle: React keys, dnd-kit ids and every per-ref
+ * action. Never sent, like a folder's `key`.
+ */
+export interface FolderRefState {
+  key: string
+  /** A real catalog id, or a `draft:` one — see `DRAFT_ID_PREFIX`. */
+  catalogID: string
+  /** A genre name from the catalog's genre options, or `''` for unfiltered. */
+  genre: string
 }
 
 export interface CollectionFormState {
@@ -68,6 +102,7 @@ export interface CollectionFormState {
   viewMode: CollectionViewMode
   showAllTab: boolean
   backdropImageURL: string
+  focusGlowEnabled: boolean
   folders: FolderFormState[]
 }
 
@@ -80,6 +115,27 @@ export function nextFolderKey(): string {
   return `f${folderKeySeq}`
 }
 
+let refKeySeq = 0
+
+export function newRef(catalogID: string, genre = ''): FolderRefState {
+  refKeySeq += 1
+  return { key: `r${refKeySeq}`, catalogID, genre }
+}
+
+/** True when `folder` already holds `catalogID` under `genre` — the pair the
+ *  primary key forbids repeating. */
+export function hasRef(folder: FolderFormState, catalogID: string, genre: string): boolean {
+  return folder.refs.some((ref) => ref.catalogID === catalogID && ref.genre === genre)
+}
+
+/** `refs` in the order of `orderedKeys`, dropping any key not among them. */
+export function reorderRefs(refs: FolderRefState[], orderedKeys: string[]): FolderRefState[] {
+  const byKey = new Map(refs.map((ref) => [ref.key, ref]))
+  return orderedKeys.map((key) => byKey.get(key)).filter((ref) => ref !== undefined)
+}
+
+/** The two focus flags start on: Nuvio reads an absent flag as on, and the
+ *  schema defaults them to 1 to match. */
 export function newFolder(): FolderFormState {
   return {
     key: nextFolderKey(),
@@ -88,7 +144,12 @@ export function newFolder(): FolderFormState {
     hideTitle: false,
     coverEmoji: '',
     coverImageURL: '',
-    catalogIDs: [],
+    focusGIFURL: '',
+    focusGIFEnabled: true,
+    heroBackdropURL: '',
+    heroVideoURL: '',
+    titleLogoURL: '',
+    refs: [],
   }
 }
 
@@ -100,6 +161,7 @@ export function emptyCollectionForm(): CollectionFormState {
     viewMode: 'FOLLOW_LAYOUT',
     showAllTab: false,
     backdropImageURL: '',
+    focusGlowEnabled: true,
     folders: [],
   }
 }
@@ -125,10 +187,15 @@ function folderFromWire(folder: Folder): FolderFormState {
     hideTitle: folder.hide_title,
     coverEmoji: folder.cover_emoji,
     coverImageURL: folder.cover_image_url,
-    // `?? []` is a guard, not a live case: the Go side runs `catalog_ids`
-    // through `orEmpty`. It stays because `getList` coerces only the top-level
+    focusGIFURL: folder.focus_gif_url,
+    focusGIFEnabled: folder.focus_gif_enabled,
+    heroBackdropURL: folder.hero_backdrop_url,
+    heroVideoURL: folder.hero_video_url,
+    titleLogoURL: folder.title_logo_url,
+    // `?? []` is a guard, not a live case: the Go side runs `refs` through
+    // `orEmpty`. It stays because `getList` coerces only the top-level
     // response, never nested arrays like this one.
-    catalogIDs: folder.catalog_ids ?? [],
+    refs: (folder.refs ?? []).map((ref) => newRef(ref.catalog_id, ref.genre)),
   }
 }
 
@@ -152,6 +219,7 @@ export function formFromCollection(collection: Collection): CollectionFormState 
     viewMode: toViewMode(collection.view_mode),
     showAllTab: collection.show_all_tab,
     backdropImageURL: collection.backdrop_image_url,
+    focusGlowEnabled: collection.focus_glow_enabled,
     folders: (collection.folders ?? []).map(folderFromWire),
   }
 }
@@ -206,11 +274,18 @@ export function validateCollectionForm(
 
     if (!folder.title.trim()) folderErrors.title = 'Every folder needs a title.'
 
-    const unavailable = folder.catalogIDs.filter((id) => !accessibleCatalogIDs.has(id))
-    // A repeat inside one folder violates `PRIMARY KEY (folder_id, catalog_id)`
-    // — a 500, not a 400. The picker makes it unrepresentable by omitting ids
-    // already in the folder; this is the backstop.
-    const repeated = folder.catalogIDs.filter((id, i) => folder.catalogIDs.indexOf(id) !== i)
+    // A draft (staged locally, not yet a row) is always "accessible" — it
+    // doesn't exist yet for the library to have excluded.
+    const unavailable = folder.refs.filter(
+      (ref) => !isDraftCatalogID(ref.catalogID) && !accessibleCatalogIDs.has(ref.catalogID),
+    )
+    // The same catalog under the same genre twice breaks
+    // `PRIMARY KEY (folder_id, catalog_id, genre)`; `CollectionForm.Validate`
+    // rejects it as a 400. The picker and "Add another genre" never produce
+    // one, but switching a ref's genre to one its twin already has does.
+    const repeated = folder.refs.filter((ref, i) =>
+      folder.refs.some((other, j) => j < i && other.catalogID === ref.catalogID && other.genre === ref.genre),
+    )
 
     if (unavailable.length > 0) {
       folderErrors.catalogIDs =
@@ -218,7 +293,7 @@ export function validateCollectionForm(
           ? 'One catalog here is no longer available. Remove it to save.'
           : `${unavailable.length} catalogs here are no longer available. Remove them to save.`
     } else if (repeated.length > 0) {
-      folderErrors.catalogIDs = 'This folder lists the same catalog twice.'
+      folderErrors.catalogIDs = 'This folder lists the same catalog with the same genre twice.'
     }
 
     if (folderErrors.title || folderErrors.catalogIDs) {
@@ -244,7 +319,17 @@ export function removedFolders(
   return initial.folders.filter((f) => f.id && !keptIDs.has(f.id))
 }
 
-export function toCollectionPayload(state: CollectionFormState): CollectionPayload {
+/**
+ * `localCatalogs` resolves a draft id into its inline `new` spec — omitted
+ * (defaulting to an empty map) by `isSameCollection`'s dirty-check below,
+ * which only needs structural presence to differ, not a draft's exact
+ * content: a draft is never in `baseline`, so adding one already changes
+ * `refs`' membership regardless of how it's serialized.
+ */
+export function toCollectionPayload(
+  state: CollectionFormState,
+  localCatalogs: ReadonlyMap<string, Catalog> = new Map(),
+): CollectionPayload {
   return {
     title: state.title.trim(),
     is_public: state.isPublic,
@@ -252,6 +337,7 @@ export function toCollectionPayload(state: CollectionFormState): CollectionPaylo
     view_mode: state.viewMode,
     show_all_tab: state.showAllTab,
     backdrop_image_url: state.backdropImageURL.trim(),
+    focus_glow_enabled: state.focusGlowEnabled,
     folders: state.folders.map((folder) => ({
       // Omitted rather than sent as null: `FolderData.ID` is `*uuid.UUID` with
       // `omitempty`, so an absent key is what marks a folder as new.
@@ -261,7 +347,20 @@ export function toCollectionPayload(state: CollectionFormState): CollectionPaylo
       hide_title: folder.hideTitle,
       cover_emoji: folder.coverEmoji.trim(),
       cover_image_url: folder.coverImageURL.trim(),
-      catalog_ids: folder.catalogIDs,
+      focus_gif_url: folder.focusGIFURL.trim(),
+      focus_gif_enabled: folder.focusGIFEnabled,
+      hero_backdrop_url: folder.heroBackdropURL.trim(),
+      hero_video_url: folder.heroVideoURL.trim(),
+      title_logo_url: folder.titleLogoURL.trim(),
+      catalogs: folder.refs.map(({ catalogID, genre }): FolderCatalogRef => {
+        const draft = isDraftCatalogID(catalogID) ? localCatalogs.get(catalogID) : undefined
+        const ref: FolderCatalogRef = draft
+          ? { new: { type: draft.type, name: draft.name, provider: draft.provider, params: draft.params } }
+          : { catalog_id: catalogID }
+        // Omitted rather than sent empty, so an unfiltered ref serializes the
+        // same way whether or not it ever had a genre.
+        return genre ? { ...ref, genre } : ref
+      }),
     })),
   }
 }

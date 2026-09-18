@@ -51,7 +51,7 @@ erDiagram
     string view_mode
     bool show_all_tab
     string backdrop_image_url
-    bool focus_glow_enabled
+    bool focus_glow_enabled "defaults to 1, matching Nuvio"
     int home_sort_order "nullable — NULL means not on the TV"
     int version "starts at 1, +1 on every content write; never touched by push"
     int pushed_version "nullable — NULL means never pushed; the version push last read and sent"
@@ -68,11 +68,17 @@ erDiagram
     bool hide_title
     string cover_emoji
     string cover_image_url
+    string focus_gif_url
+    bool focus_gif_enabled "defaults to 1, matching Nuvio"
+    string hero_backdrop_url
+    string hero_video_url
+    string title_logo_url
   }
   FOLDER_CATALOGS {
     uuid folder_id PK_FK
     uuid catalog_id PK_FK
     int sort_order
+    string genre "'' means unfiltered"
   }
 ```
 
@@ -164,8 +170,9 @@ write credential.
   way to get a different-typed copy.
 - **Two distinct removal mechanisms — don't conflate them.**
   - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped single `DELETE`,
-    all downstream cleanup via `ON DELETE CASCADE`. Removes the row for *everyone*, not just the
-    caller. The frontend warns the owner; the backend gives no signal to affected profiles.
+    all downstream cleanup via `ON DELETE CASCADE`. A public row leaves Community, but every copy
+    another profile already took survives: those copies are independent rows whose `taken_from`
+    is `ON DELETE SET NULL`, so the delete only clears that bookkeeping link.
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
     into `catalogs.home_sort_order`/`show_in_home` and `collections.home_sort_order`
     (`saveCatalogSelectionTx`/`saveCollectionSelectionTx`, `internal/vault`). Every owned row's
@@ -180,10 +187,12 @@ write credential.
   that is itself on the home screen (`collections.home_sort_order` non-`NULL`), with a forced
   `ShowInHome = false` — a catalog reachable only through a folder never gets an automatic home
   row. Deduped by id: a catalog on both the home screen and in an on-TV folder appears once,
-  keeping its own `show_in_home`. A `ShowInHome = false` result gets a
-  `{name: "genre", isRequired: true}` extra in `buildManifest` (`internal/addon/addon.go`), the
-  Stremio mechanism for keeping a catalog out of home's automatic rows while leaving it reachable
-  in Discover. `GetCurrentCatalogSelection` (the narrower `home_sort_order IS NOT NULL` query)
+  keeping its own `show_in_home`. `buildManifest` (`internal/addon/addon.go`) emits the result as
+  an explicit per-catalog `showInHome`, and a `ShowInHome = false` result also gets a required
+  `genre` extra whose first option is `"All"`. Nuvio TV reads the field, while Nuvio mobile,
+  Nuvio desktop and Stremio read the required extra. `docs/architecture.md`'s addon-server
+  section covers both.
+  `GetCurrentCatalogSelection` (the narrower `home_sort_order IS NOT NULL` query)
   remains the pre-push validation/selection-editor view; only the addon server needs the wider
   published set.
 - **`collections.version` bumps on every content write (`UpdateUserCollection`), starting at 1 on
@@ -196,22 +205,35 @@ write credential.
   is never mistaken for pushed.
 - **No cascade on `owner_id`** (`catalogs`/`collections`). Irrelevant until profile deletion
   exists; revisit then.
-- **`folder_catalogs` has no column for a per-reference selector** (e.g. a genre override),
-  unlike real Nuvio `sources[]` entries, which can carry one. Not a gap:
-  `folder_catalogs.catalog_id` only ever references Uno's own catalogs, and those bake their
-  filter into `catalogs.params` at creation time, so there is no runtime-selectable extra to
-  override per-reference. It becomes real work only if Uno's own manifest grows a
-  runtime-selectable extra.
-- **`folder_catalogs` is `PRIMARY KEY (folder_id, catalog_id)`.** The same catalog twice in one
-  folder is a constraint violation, which surfaces as a **500**, not a 400 — the plain-text error
-  channel cannot explain it. The UI makes it unrepresentable rather than validated. The same
-  catalog in two *different* folders is allowed and supported.
+- **`folder_catalogs.genre` narrows one folder reference, not the catalog.** It is a genre
+  *name* from the catalog's manifest `genre` extra (`provider.GenreExtraOptions`), `''` for
+  unfiltered. Push sends it as the folder source's `genre`, and Nuvio sends that back as the
+  `genre` extra when it loads the folder's row, so the same catalog can show Westerns in one
+  folder and war films in another, or both in one folder, with no second catalog. It is stored as a name rather than a
+  TMDB id because the name is what goes over the wire both ways. It is not validated against the
+  recipe on save: a later recipe edit can leave a stored genre outside the options (now required
+  or excluded), and the addon path then serves that row unfiltered, the same as any unknown
+  extra. The collection editor flags that case rather than clearing it. Take and Duplicate carry
+  it onto the copy (`copyCollectionTree`). On the wire each folder carries an ordered
+  `refs: [{catalog_id, genre}]` (`vault.FolderRef`), not a list of catalog ids, because one
+  catalog can be two refs. A genre picked in Nuvio's own editor doesn't survive a push, because
+  push rebuilds every Uno-managed collection from Uno's data.
+- **`folder_catalogs` is `PRIMARY KEY (folder_id, catalog_id, genre)`.** One catalog can appear
+  in a folder more than once under different genres, and push sends each as its own source with
+  the same `catalogId`. Confirmed on Nuvio desktop and mobile with a hand-edited collection: both
+  sources show, each filtered. The same catalog under the *same* genre twice is pointless, so
+  `CollectionForm.Validate` rejects it as a 400 (comparing trimmed genres, as they're stored)
+  before it can reach the primary key as a 500. The same catalog in two *different* folders is
+  allowed and supported. `GetPublishedCatalogs` still lists a catalog once however many refs
+  point at it.
 - **`folders.tile_shape` defaults to `'LANDSCAPE'` at the schema level, and Preview reads `''`
-  as an assumed `POSTER`.** The two point different directions and neither is wrong: the schema
+  as `POSTER`.** The two point different directions and neither is wrong: the schema
   default only applies to a row inserted without the column, and the collection editor always
   sends a value — including `''`, which it keeps as its own "Default" option rather than
   normalising. Nothing inserts a folder without `tile_shape`, so the schema default is
-  unreachable in practice.
+  unreachable in practice. Preview's `POSTER` is what the TV does: push always sends `tileShape`,
+  and Nuvio maps `''` or any unrecognised value to `POSTER`. Nuvio's `SQUARE` default applies
+  only when the key is absent, which a Uno push never produces (see "Push wire shape" below).
 - **`catalogs.created_at`/`updated_at` and `collections.created_at`/`updated_at` are `TEXT`
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
@@ -219,15 +241,14 @@ write credential.
 - **Dead-by-design columns.** `is_default` on `catalogs`/`collections` is never read and never
   set true by any code path, and is tagged `json:"-"` on both structs so it doesn't reach the
   wire; the column stays because a real "default catalog" feature is buildable later and
-  dropping it would force a delete-and-recreate. The cosmetic Nuvio fields
-  (`folders.focus_gif_url`, `focus_gif_enabled`, `hero_video_url`, `hero_backdrop_url`,
-  `title_logo_url`, and `collections.focus_glow_enabled`) exist as columns with defaults, and no
-  SQL anywhere reads, writes, or selects any of them — every `SELECT` in `internal/vault` uses an
-  explicit column list. They are absent from `vault.Folder`/`vault.Collection`, and
-  `buildPushCollection` does not carry them into the push payload, so an Uno-owned collection
-  pushed to Nuvio has these fields dropped. Harmless while Uno never pulls a collection *into*
-  its own database — collections Uno doesn't own pass through push as untouched
-  `json.RawMessage` and keep their cosmetic fields intact.
+  dropping it would force a delete-and-recreate.
+- **Nuvio appearance fields.** `collections.focus_glow_enabled` (the TV's focus glow on the
+  collection's home-screen folder cards), `folders.focus_gif_url`/`focus_gif_enabled` (an
+  animated GIF played over a folder tile while it's focused), and
+  `folders.hero_backdrop_url`/`hero_video_url`/`title_logo_url` (hero media that Nuvio's own
+  editor labels "(Modern Home)") are stored, edited in the collection editor, copied by
+  Take/Duplicate, and pushed. Uno's Preview renders none of them. The two flags default to `1`
+  because Nuvio reads an absent flag as on.
 - **`collections.backdrop_image_url` is stored, editable in the collection editor, pushed to
   Nuvio, and never rendered by Uno.** It is a collection-level field, and a collection renders on
   home as a row of folder tiles rather than as its own page, so no current surface wants it.
@@ -288,6 +309,11 @@ describing what a TMDB-backed catalog may ask for.
   `web/src/api/types.ts`, because **the two genre id spaces are genuinely separate** (`878`
   Science Fiction is movie-only; tv has `10765` Sci-Fi & Fantasy). That's a real TMDB fact, not a
   wire leak, and nothing persists it.
+- **The manifest's genre extra is derived, never stored.** Nothing in `params` configures it.
+  Every catalog offers TMDB's genre list for its type, minus the genres that can't narrow its
+  recipe (`provider.GenreExtraOptions`; the rule is in `docs/architecture.md`'s addon-server
+  section). A client's pick is ANDed onto an AND (comma) `with_genres`, and replaces an OR
+  (pipe) one.
 - **`randomized` is "shuffle by page":** `FetchCatalogPage` picks a random TMDB page in
   `[1, 20]` (`maxRandomPage`) instead of the requested page. Deep discover pages thin out fast,
   so the range is capped rather than sampled from `total_pages`. Label it honestly in UI
@@ -305,13 +331,22 @@ describing what a TMDB-backed catalog may ask for.
 ## Push wire shape (Nuvio collections)
 
 **The wire shape is camelCase, and it is not Uno's own.** Real `collections_json` uses
-`backdropImageUrl`, `pinToTop`, `viewMode`, `showAllTab`, `coverImageUrl`, `coverEmoji`,
-`tileShape`, `hideTitle`, plus `addonId`/`type`/`catalogId` inside each source — a different
+`backdropImageUrl`, `pinToTop`, `focusGlowEnabled`, `viewMode`, `showAllTab`, `coverImageUrl`,
+`coverEmoji`, `focusGifUrl`, `focusGifEnabled`, `heroBackdropUrl`, `heroVideoUrl`,
+`titleLogoUrl`, `tileShape`, `hideTitle`, plus `addonId`/`type`/`catalogId` inside each source — a different
 convention from every other Nuvio surface (RPC params and REST table rows are snake_case) *and*
 from Uno's own Builder API. Push therefore has dedicated types in `internal/nuvio/types.go`
 (`PushCollection`, `PushFolder`, `CatalogSource`) built by `buildPushCollection`; **never
 `json.Marshal` a `vault.CollectionWithFolders` into this payload.** A dangling catalog ref (an id
 missing from the resolved map) is skipped rather than failing the whole push.
+
+**Nuvio fills absent keys with its own defaults**, and they don't all match Uno's (from
+NuvioTV's `CollectionsDataStore` and `domain/model/Collection.kt`): `focusGlowEnabled`,
+`focusGifEnabled` and `showAllTab` default to `true`, and `tileShape` defaults to `SQUARE`.
+So every boolean and `tileShape` goes out on every push, never `omitempty`: an omitted `false`
+would read as `true` on the TV. The appearance URLs, `coverImageUrl`, `coverEmoji` and
+`backdropImageUrl` are `omitempty`, since an absent URL and an empty one mean the same thing
+there. A present but empty or unrecognised `tileShape` is `POSTER` (`PosterShape.fromString`).
 
 **Field name:** the code sends `catalogSources`, as the public doc documents. **Confirmed against
 a real Nuvio profile:** a collection Uno has pushed round-trips its folder sources
@@ -328,7 +363,7 @@ confirmed to use `catalogSources` only.
 plus `filters`, `mediaType`, `sortBy`, `sortHow`, `title`, `tmdbId`, `tmdbSourceType`,
 `traktListId`. So a Nuvio folder can source content from TMDB directly and from Trakt lists, not
 only from an installed addon's catalog, and can sort and filter per reference. Uno emits only the
-addon-catalog form (`buildPushCollection` → `nuvio.CatalogSource`), which is correct for what Uno
-owns; collections Uno doesn't own pass through push as raw `json.RawMessage`, which is what keeps
+addon-catalog form (`buildPushCollection` → `nuvio.CatalogSource`: `addonId`, `type`,
+`catalogId`, plus `genre` when the reference has one), which is correct for what Uno owns; collections Uno doesn't own pass through push as raw `json.RawMessage`, which is what keeps
 their wider entries intact, and that protection holds only while Uno never imports one into its
 own database.

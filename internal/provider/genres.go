@@ -3,11 +3,13 @@ package provider
 import (
 	"context"
 	"fmt"
+	"slices"
 )
 
-// TODO: add an in-memory cache — genre lists barely change, and every call
-// is a free round trip against TMDB's rate limit for something effectively
-// static.
+// Genres returns TMDB's genre list for one catalog type, cached in memory
+// for the process's lifetime once fetched: the list is effectively static,
+// and the addon manifest reads it on every request. A failed fetch is not
+// cached, so the next call retries.
 //
 // catalogType is Uno/Stremio's vocabulary ("movie"/"series"), matching
 // every other route — not TMDB's ("movie"/"tv"). Translated via
@@ -17,6 +19,13 @@ func (c *TMDBClient) Genres(ctx context.Context, catalogType string) ([]Genre, e
 	kind, ok := externalIDsMediaType[catalogType]
 	if !ok {
 		return nil, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
+	}
+
+	c.genresMu.RLock()
+	cached, ok := c.genresCache[kind]
+	c.genresMu.RUnlock()
+	if ok {
+		return slices.Clone(cached), nil
 	}
 
 	var out genreListResponse
@@ -29,5 +38,9 @@ func (c *TMDBClient) Genres(ctx context.Context, catalogType string) ([]Genre, e
 	if out.Genres == nil {
 		out.Genres = []Genre{}
 	}
-	return out.Genres, nil
+
+	c.genresMu.Lock()
+	c.genresCache[kind] = out.Genres
+	c.genresMu.Unlock()
+	return slices.Clone(out.Genres), nil
 }

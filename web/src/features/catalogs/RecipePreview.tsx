@@ -1,7 +1,5 @@
-import { EqualNot } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import type { CatalogType } from '@/api'
-import { Icon } from '@/components/Icon'
 import { CONTENT_TILE_SHAPE, TileGrid } from '@/features/preview/tiles'
 import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles'
 
@@ -15,8 +13,8 @@ import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles
  * change re-runs it.
  *
  * The whole block is one TMDB page — the same page the row itself is, so this
- * is the row, not a sample of it. The exception is a shuffling recipe, which
- * takes a random page per call on the addon path and is labelled as such.
+ * is the row, not a sample of it. A shuffling recipe takes a random page per
+ * run, as the row does on the TV.
  *
  * Every tile links to its TMDB page, which is where the question a preview
  * raises — "what *is* that one?" — gets answered.
@@ -98,12 +96,6 @@ function Body({
         <p className="pv-stale">Your filters changed since this ran. Run it again to see the new results.</p>
       )}
       <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
-      {preview.tiles.randomized && (
-        <p className="neqline">
-          <Icon icon={EqualNot} size={16} />
-          <span>Shuffle is on. Your TV will show a different set.</span>
-        </p>
-      )}
       <p>Open a poster to see its details.</p>
     </>
   )

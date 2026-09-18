@@ -7,6 +7,7 @@
 package addon
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -101,8 +102,10 @@ func (s *Server) Public(next http.HandlerFunc) http.HandlerFunc {
 }
 
 type manifestExtra struct {
-	Name       string `json:"name"`
-	IsRequired bool   `json:"isRequired,omitempty"`
+	Name         string   `json:"name"`
+	IsRequired   bool     `json:"isRequired,omitempty"`
+	Options      []string `json:"options,omitempty"`
+	OptionsLimit int      `json:"optionsLimit,omitempty"`
 }
 
 type manifestCatalog struct {
@@ -111,6 +114,9 @@ type manifestCatalog struct {
 	Name     string          `json:"name"`
 	PageSize int             `json:"pageSize,omitempty"`
 	Extra    []manifestExtra `json:"extra,omitempty"`
+	// ShowInHome is always explicit: Nuvio TV decides home-row eligibility
+	// from this field alone and reads an absent one as "show".
+	ShowInHome bool `json:"showInHome"`
 }
 
 type manifest struct {
@@ -134,23 +140,22 @@ func ManifestID(c vault.Catalog) string {
 }
 
 // buildManifest builds Stremio's manifest catalog list. Every catalog
-// declares "skip" (pagination) as an extra; a catalog with
-// ShowInHome == false also declares a required "genre" extra, which is the
-// Stremio mechanism for keeping a catalog out of the home screen's automatic
-// rows while leaving it reachable from Discover.
-func buildManifest(selection []vault.SelectedCatalog) manifest {
+// declares "skip" (pagination) as an extra and an explicit showInHome, plus
+// a "genre" extra over genreNames(catalog) — see genreExtra.
+func buildManifest(selection []vault.SelectedCatalog, genreNames func(vault.SelectedCatalog) []string) manifest {
 	catalogs := make([]manifestCatalog, len(selection))
 	for i, sc := range selection {
 		extra := []manifestExtra{{Name: "skip"}}
-		if !sc.ShowInHome {
-			extra = append(extra, manifestExtra{Name: "genre", IsRequired: true})
+		if genre, ok := genreExtra(sc.ShowInHome, genreNames(sc)); ok {
+			extra = append(extra, genre)
 		}
 		catalogs[i] = manifestCatalog{
-			Type:     sc.Type,
-			ID:       ManifestID(sc.Catalog),
-			Name:     sc.Name,
-			PageSize: catalogPageSize,
-			Extra:    extra,
+			Type:       sc.Type,
+			ID:         ManifestID(sc.Catalog),
+			Name:       sc.Name,
+			PageSize:   catalogPageSize,
+			Extra:      extra,
+			ShowInHome: sc.ShowInHome,
 		}
 	}
 
@@ -164,6 +169,32 @@ func buildManifest(selection []vault.SelectedCatalog) manifest {
 		IDPrefixes:  []string{"tt"},
 		Catalogs:    catalogs,
 	}
+}
+
+// genreExtra builds one catalog's genre extra from the genre names it can be
+// narrowed by (provider.GenreExtraOptions) and its published ShowInHome. The
+// two share the one extra: genre is the only required extra Nuvio
+// mobile/desktop still list in Discover and collection pickers.
+//
+// A catalog with showInHome false gets it required — Nuvio mobile/desktop and
+// Stremio keep a catalog with a required extra out of home's automatic rows —
+// with provider.GenreExtraAll as its first option. Those clients default a
+// required genre to its first option, so the default view stays unfiltered,
+// and drop a required genre that has no options at all. A catalog on home
+// gets the names as an optional extra, or no genre extra when there are none.
+func genreExtra(showInHome bool, names []string) (manifestExtra, bool) {
+	if showInHome {
+		if len(names) == 0 {
+			return manifestExtra{}, false
+		}
+		return manifestExtra{Name: "genre", Options: names, OptionsLimit: 1}, true
+	}
+	return manifestExtra{
+		Name:         "genre",
+		IsRequired:   true,
+		Options:      append([]string{provider.GenreExtraAll}, names...),
+		OptionsLimit: 1,
+	}, true
 }
 
 // ManifestHandler serves GET /u/{token}/manifest.json. An unknown token is a
@@ -188,7 +219,25 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, buildManifest(selection))
+	writeJSON(w, http.StatusOK, buildManifest(selection, func(sc vault.SelectedCatalog) []string {
+		return s.genreNames(r.Context(), sc)
+	}))
+}
+
+// genreNames is a catalog's genre-extra option names. A TMDB failure (the
+// genre list is cached after its first fetch, so only a cold one can fail)
+// degrades to no names rather than failing the whole manifest.
+func (s *Server) genreNames(ctx context.Context, sc vault.SelectedCatalog) []string {
+	genres, err := s.provider.GenreExtraOptions(ctx, sc.Type, sc.Params)
+	if err != nil {
+		log.Printf("addon: genre options for catalog %s: %v", ManifestID(sc.Catalog), err)
+		return nil
+	}
+	names := make([]string, len(genres))
+	for i, g := range genres {
+		names[i] = g.Name
+	}
+	return names
 }
 
 type catalogResponse struct {
@@ -213,9 +262,36 @@ func findSelectedCatalog(selection []vault.SelectedCatalog, catalogType, manifes
 	return vault.Catalog{}, false
 }
 
+// parseCatalogPath splits the catalog route's {rest...} tail into the
+// manifest id and the extra props it carries: the TMDB page (from skip) and
+// the picked genre ("" when none). The extra props are parsed from the
+// still-escaped path, because PathValue is already percent-decoded — a genre
+// sent as "Sci-Fi%20%26%20Fantasy" would otherwise reach url.ParseQuery with
+// a bare "&" and split in two.
+func parseCatalogPath(r *http.Request) (manifestID string, page int, genre string) {
+	rest := strings.TrimSuffix(r.PathValue("rest"), ".json")
+	manifestID, _, hasExtra := strings.Cut(rest, "/")
+	page = 1
+	if !hasExtra {
+		return manifestID, page, ""
+	}
+
+	escaped := r.URL.EscapedPath()
+	extra := strings.TrimSuffix(escaped[strings.LastIndex(escaped, "/")+1:], ".json")
+	vals, err := url.ParseQuery(extra)
+	if err != nil {
+		return manifestID, page, ""
+	}
+	if skip, err := strconv.Atoi(vals.Get("skip")); err == nil && skip > 0 {
+		page = skip/catalogPageSize + 1
+	}
+	return manifestID, page, vals.Get("genre")
+}
+
 // CatalogHandler serves GET /u/{token}/catalog/{type}/{rest...}, where rest
-// is "{id}.json" or "{id}/{extraProps}.json" (e.g. Stremio's "skip=20" for
-// pagination) — Stremio appends extra props as an additional path segment
+// is "{id}.json" or "{id}/{extraProps}.json" (e.g. "skip=20" for pagination,
+// "genre=Action&skip=20" for a genre pick; see provider's applyGenreExtra) —
+// Stremio appends extra props as an additional path segment
 // rather than a query string, so a wildcard tail is the only way to capture
 // both forms with one route.
 func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
@@ -232,8 +308,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rest := strings.TrimSuffix(r.PathValue("rest"), ".json")
-	manifestID, extra, _ := strings.Cut(rest, "/")
+	manifestID, page, genre := parseCatalogPath(r)
 
 	selection, err := s.vault.GetPublishedCatalogs(r.Context(), profileID)
 	if err != nil {
@@ -247,16 +322,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page := 1
-	if extra != "" {
-		if vals, err := url.ParseQuery(extra); err == nil {
-			if skip, err := strconv.Atoi(vals.Get("skip")); err == nil && skip > 0 {
-				page = skip/catalogPageSize + 1
-			}
-		}
-	}
-
-	metas, err := s.provider.FetchCatalogPage(r.Context(), catalog.Type, catalog.Params, page)
+	metas, err := s.provider.FetchCatalogPage(r.Context(), catalog.Type, catalog.Params, genre, page)
 	if err != nil {
 		log.Printf("addon: catalog %s: %v", manifestID, err)
 		http.Error(w, "upstream error", http.StatusBadGateway)

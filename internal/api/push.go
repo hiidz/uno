@@ -252,7 +252,7 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 	var allCatalogIDs []uuid.UUID
 	for _, c := range selected {
 		for _, f := range c.Folders {
-			allCatalogIDs = append(allCatalogIDs, f.CatalogIDs...)
+			allCatalogIDs = append(allCatalogIDs, f.CatalogIDs()...)
 		}
 	}
 	catalogs, err := s.vault.GetCatalogsByIDs(ctx, allCatalogIDs)
@@ -310,16 +310,18 @@ func reorderCollections(collections []vault.CollectionWithFolders, orderedIDs []
 
 // buildPushCollection converts one of Uno's own collections from its
 // snake_case DB shape into push/pull's camelCase wire shape, resolving each
-// folder's catalog_ids into addonId/type/catalogId triples via catalogsByID.
+// folder's refs into addonId/type/catalogId triples via catalogsByID, each
+// carrying its reference's genre when one is set — so a catalog referenced
+// under two genres becomes two sources.
 // A catalog id missing from that map (a dangling ref) is skipped rather than
 // failing the whole push — see addon.ManifestID for the id scheme shared
 // with the addon manifest.
 func buildPushCollection(c vault.CollectionWithFolders, catalogsByID map[uuid.UUID]vault.Catalog) nuvio.PushCollection {
 	folders := make([]nuvio.PushFolder, len(c.Folders))
 	for i, f := range c.Folders {
-		sources := make([]nuvio.CatalogSource, 0, len(f.CatalogIDs))
-		for _, catalogID := range f.CatalogIDs {
-			catalog, ok := catalogsByID[catalogID]
+		sources := make([]nuvio.CatalogSource, 0, len(f.Refs))
+		for _, ref := range f.Refs {
+			catalog, ok := catalogsByID[ref.CatalogID]
 			if !ok {
 				continue
 			}
@@ -327,16 +329,22 @@ func buildPushCollection(c vault.CollectionWithFolders, catalogsByID map[uuid.UU
 				AddonID:   addon.ID,
 				Type:      catalog.Type,
 				CatalogID: addon.ManifestID(catalog),
+				Genre:     ref.Genre,
 			})
 		}
 		folders[i] = nuvio.PushFolder{
-			ID:             f.ID.String(),
-			Title:          f.Title,
-			CoverImageURL:  f.CoverImageURL,
-			CoverEmoji:     f.CoverEmoji,
-			TileShape:      f.TileShape,
-			HideTitle:      f.HideTitle,
-			CatalogSources: sources,
+			ID:              f.ID.String(),
+			Title:           f.Title,
+			CoverImageURL:   f.CoverImageURL,
+			CoverEmoji:      f.CoverEmoji,
+			FocusGIFURL:     f.FocusGIFURL,
+			FocusGIFEnabled: f.FocusGIFEnabled,
+			HeroBackdropURL: f.HeroBackdropURL,
+			HeroVideoURL:    f.HeroVideoURL,
+			TitleLogoURL:    f.TitleLogoURL,
+			TileShape:       f.TileShape,
+			HideTitle:       f.HideTitle,
+			CatalogSources:  sources,
 		}
 	}
 
@@ -345,6 +353,7 @@ func buildPushCollection(c vault.CollectionWithFolders, catalogsByID map[uuid.UU
 		Title:            c.Title,
 		BackdropImageURL: c.BackdropImageURL,
 		PinToTop:         c.PinToTop,
+		FocusGlowEnabled: c.FocusGlowEnabled,
 		ViewMode:         c.ViewMode,
 		ShowAllTab:       c.ShowAllTab,
 		Folders:          folders,

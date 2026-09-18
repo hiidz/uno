@@ -39,10 +39,11 @@ collection editor's panel states layout only; the TV picture never pins a note o
 "Home pane — Preview view" below). Nothing under `features/` is a separate URL; `Builder`
 composes all of it.
 
-`BuilderMode = 'edit' | 'duplicate'` is declared twice — once in
-`web/src/features/catalogs/catalogForm.ts`, once in
-`web/src/features/collections/collectionForm.ts`. Feature-local and duplicated on purpose, so
-neither feature depends on the other for a two-value alias.
+Neither editor has a `mode` concept any more. Duplicating a catalog (`useCatalogMutations`'
+`create`, called directly with a duplicate payload) and duplicating a collection
+(`useCollectionMutations`'s `duplicate`) are both single atomic server calls that hand back a
+finished copy, not a pre-filled form the editor saves to create one — see "Catalog authoring" and
+"Collection authoring" below. Every row either editor opens is always a real one.
 
 ## Auth / session
 
@@ -163,20 +164,26 @@ to raw ids rather than failing the list, so the rail never blocks on TMDB being 
 
 Create is a three-field form — name, `type`, `is_public` — plus the TMDB params sub-form.
 `provider` is derived (`"tmdb"`) and never rendered; `is_default` is excluded (and is `json:"-"`
-server-side, so it can't even appear in a fetched row). `type` renders read-only on edit, and
-that's backed server-side too: `UpdateUserCatalog` reads the stored `type` and rejects a
-`PUT` that changes it with `ErrInvalidInput` — a catalog's type is part of the pushed collections
-blob, so changing it would alter what Nuvio should have without bumping any collection's
-`version`. `provider` is enforced server-side the same way, in both validation places.
+server-side, so it can't even appear in a fetched row). `type` renders read-only unconditionally —
+there is no path, here or anywhere else, that changes an existing row's type — and that's backed
+server-side too: `UpdateUserCatalog` reads the stored `type` and rejects a `PUT` that changes it
+with `ErrInvalidInput` — a catalog's type is part of the pushed collections blob, so changing it
+would alter what Nuvio should have without bumping any collection's `version`. `provider` is
+enforced server-side the same way, in both validation places.
 
-**Duplicate is a first-class action on your own rows, not a hidden overflow item** — every row in
-the library is yours, so opening one always edits it; `'duplicate'` mode is reached only through
-the explicit Duplicate button (`LibraryItem`'s row actions, or the editor header below `lg`). It
-reuses the create flow verbatim: read source → prefill builder → unsaved → `POST`. Nothing
-appears in the list until the user commits, and duplicates default to `is_public: false`
-regardless of source, because publishing is a deliberate act rather than something inherited from
-what was duplicated. Duplicate is also the only way to "change a catalog's type", which is what
-makes locking `type` acceptable. (Taking someone else's public catalog is a different action,
+**Duplicate is a first-class action on your own rows, not a hidden overflow item, and it's
+atomic** — every row in the library is yours, so opening one always edits it; the Duplicate button
+(`LibraryItem`'s row actions, or the editor header below `lg`) is the only way to reach it.
+`Workspace.tsx`'s `confirmDuplicateCatalog` `POST`s a straight copy of the source's exact type and
+params the instant the confirm dialog is accepted (`catalogForm.ts`'s `duplicatePayload` — no form
+to fill in first, unlike a bare "New catalog"), then opens the finished copy in this same editor
+like any other real row — the same atomic-then-open shape `confirmDuplicateCollection` already
+used for collections. Duplicates default to `is_public: false` regardless of source, because
+publishing is a deliberate act rather than something inherited from what was duplicated. There is
+no longer any way to change a catalog's type: duplicate used to be that path (picking a different
+type before the row existed), traded away when duplicate became atomic — a type choice would have
+needed its own step ahead of the create firing, and the tradeoff was to drop the capability rather
+than add one. (Taking someone else's public catalog is a different action,
 `POST /api/p/{i}/community/catalogs/{id}/take` — a server-side deep copy with fresh ids, not this
 duplicate flow; its UI is the Community tab, below.)
 
@@ -206,6 +213,9 @@ Other decisions worth keeping:
 - **Genre picker is a chip grid, not a combobox** — TMDB's per-type genre list is short enough
   to fit on screen at one click each, and the AND/OR join lives inside the same control because
   ids and join are one value on the wire (`28,878` vs `28|878`).
+- **There is no control for the genre filter clients show in Discover.** The manifest derives
+  it server-side from TMDB's genre list and the recipe's own genre filters. See the addon-server
+  section of `docs/architecture.md`.
 - **Watch providers are a named, region-scoped picker** (`WatchProviderPicker`) over
   `GET /api/watch-providers/{type}`, not a box for TMDB's numeric ids. Region and services are
   one grouped control because they are required together on the wire: `watch_region` is written
@@ -342,9 +352,10 @@ applied to every folder in it, and it governs this page only:
 | `FOLLOW_LAYOUT` / unknown | Falls back to `ROWS`, labelled on screen as a guess |
 
 Corroborating details from Nuvio's own field descriptions: `hideTitle` is "Hide the **tile**
-title text" (singular tile — it hides the title under the folder's own tile on home), and the
-schema carries per-folder `focus_gif_url`/`focus_gif_enabled`, which only make sense on a
-focusable tile. `pin_to_top` is "pin to top of **home screen**", which is why it partitions home
+title text" (singular tile — it hides the title under the folder's own tile on home). Nuvio's
+per-folder focus GIF (`focusGifUrl`/`focusGifEnabled`, seen in pulled collections and in NuvioTV's
+own source rather than the public doc) plays over the folder's tile while it's focused, which
+only makes sense on a focusable tile. `pin_to_top` is "pin to top of **home screen**", which is why it partitions home
 into bands rather than merely sorting collections to the front.
 
 Decisions that shape the code:
@@ -356,7 +367,7 @@ Decisions that shape the code:
   home instead of silently rendering a different folder that happens to occupy the same slot.
 - **Discover-only rows render as a dimmed, labelled group**, separate from the home rows above —
   a genuine omission from home, since `buildManifest` marks their genre filter `isRequired`.
-- **A folder's `catalog_ids` are *sources*, never tiles.** Each is a standing query contributing
+- **A folder's `refs` are *sources*, never tiles.** Each is a standing query contributing
   an unknown number of items, so no view draws one tile per ref — that would misstate how much
   the folder holds. They are the folder page's spine: one row or one tab each.
 - **"Not in library" and "nothing resolves" are two different conditions here**, and conflating
@@ -369,7 +380,8 @@ Decisions that shape the code:
   Uno's own words about the picture, not the picture itself. Unresolvability still degrades a row
   inside the frame to an empty strip, no explanation, matching how the TV would show it.
 - **Slack wire values are handled, not cast away.** `tile_shape` can be `''` (falls back to
-  `POSTER`, and says so on screen); `view_mode` is a bare `string`, so `FOLLOW_LAYOUT` and
+  `POSTER`, and says so on screen; Nuvio does the same with a pushed `''` — see
+  `docs/data-model.md`); `view_mode` is a bare `string`, so `FOLLOW_LAYOUT` and
   anything unrecognised land in one branch that admits it's guessing.
 - **Selection order is preserved within each band**, so pinning moves a row between bands
   without discarding the order the user just dragged.
@@ -378,7 +390,9 @@ Decisions that shape the code:
   the design section below.
 
 **Real tiles.** `web/src/features/home/useCatalogTiles.ts` issues **one query per catalog, never
-a batch**. A batched endpoint carrying N recipes would flatten round trips but needs a per-item
+a batch** for the catalog rows; a folder page goes straight to `useRecipesTiles` with
+`folderRecipes(folder)`, because a folder reference's genre isn't something a catalog id can
+look up. A batched endpoint carrying N recipes would flatten round trips but needs a per-item
 error shape, and one slow TMDB call would hold up every row; per-catalog queries fail, retry,
 and cache independently, and same-origin HTTP/2 multiplexes them anyway. Placeholder tiles are
 the loading state (count 20, so the row doesn't reflow when content arrives); if TMDB is
@@ -401,8 +415,8 @@ Clean Preview spec and the owner's instruction that Uno pin nothing onto the TV 
   keeps its own caveat text — Clean Preview's no-pinned-notes rule applies only inside the TV
   frame). The TV's own "All" tab just shows the merged tiles, with no caption saying the order is
   a guess.
-- **`randomized` catalogs** take a random TMDB page per call on the addon path while the TV
-  preview always asks page 1, so it genuinely won't match the TV. Not flagged inline; the
+- **`randomized` catalogs** take a random TMDB page per call on both the addon path and the
+  preview, independently, so the TV preview genuinely won't match the TV. Not flagged inline; the
   placeholder-tone tile behind a poster is the only visual difference, and it isn't specific to
   this case.
 
@@ -430,8 +444,8 @@ button.
   so a ref dragged out of its folder is a no-op rather than a mis-drop.
 - **`collisionDetection` filters the droppables to the dragged item's own list before ranking**
   (`web/src/features/collections/FolderCard.tsx`). This is not optional. `closestCenter` ranks
-  *every* droppable in the context, and a folder card is tall — so dragging a folder past its
-  neighbour usually finds a **ref row inside** that neighbour to be the nearest center;
+  *every* droppable in the context, and the selected folder's catalogs sit right under the tile
+  strip — so a folder tile dragged downward finds a **ref row** to be the nearest center;
   `onDragEnd` then correctly refuses to guess and drops the folder back where it started. The
   dispatch check is doing its job; the candidate set is what has to be right. Worth remembering
   as a class: **a mis-drop guard turns a wrong reorder into a dead drag, which is not the same
@@ -463,18 +477,24 @@ button.
   variant carries an `initialCatalogs` override for this, since the fresh copy's scoped rows may
   not have reached a `library.collections` refetch yet. `CollectionEditor` itself has no
   `'duplicate'` mode any more — every collection it opens is editing a real row.
-- **A repeat inside one folder is unrepresentable, not merely validated.** It would be a
-  `PRIMARY KEY (folder_id, catalog_id)` violation surfacing as a 500 the plain-text error
-  channel can't explain — so the picker omits ids already in the folder, the add handler guards,
-  and the validator backstops.
+- **A catalog can be in one folder more than once, never twice under the same genre.** The
+  (catalog, genre) pair is `folder_catalogs`' primary key. Form refs are
+  `FolderRefState {key, catalogID, genre}`, and every per-ref action, drag id and React key uses
+  the session-local `key`, because neither the catalog id nor the pair stays put while the genre
+  is being edited. The picker adds an unfiltered ref, so it omits a catalog that already has one
+  here (`addRef` guards too). A row's ⋯ "Add another genre" inserts a second ref to the same
+  catalog directly below it, under the first genre option not already taken. The row's genre
+  select leaves out genres its siblings on the same catalog already use. The validator's
+  "same catalog with the same genre twice" backstops all of that, mirroring
+  `CollectionForm.Validate`.
 - **Removing a folder is a standing warning, not a confirm.** Omitting a folder from the payload
   deletes it server-side and cascades its refs — but nothing commits until Save, so
   `removedFolders(initial, current)` names exactly which folders the next save would destroy,
   shown above the folder list as soon as any exist. A confirm would ask the user to approve
   something that hasn't happened. Dropping a folder that was never saved is correctly silent.
-  "Undo removing it" reinserts the removed rows verbatim — they still carry their original form
+  "Undo" reinserts the removed rows verbatim — they still carry their original form
   `key`, which is what makes putting them straight back into `state.folders` safe. Its body text
-  is unconditional ("Only you lose it — a taker's own copy of this collection is unaffected"),
+  is unconditional ("Copies others have taken keep theirs"),
   matching the closed-graph Take model: a taker holds an independent copy, so removing a folder
   from your own collection never reaches theirs regardless of sharing. `Workspace.tsx`'s delete
   confirms state the same fact.
@@ -492,13 +512,30 @@ button.
   codepoints), not a picker — a bundled emoji picker is a large dependency for a field every
   keyboard already has an input method for.
 - **Ordering is array position.** No `sort_order` field in the form; drag order *is* the value.
-  Folders and folder-catalogs both restyled onto DESIGN.md's running-order row (grip, ↑/↓, an
-  ordinal against the name, ⋯) — the same shared pieces the Home pane's rows use
-  (`components/dnd.tsx`'s `Grip`, `RowIconButton`/`MoveUpButton`/`MoveDownButton`, `moveByOne`), so
-  a folder numbers "1st, 2nd…" like a home row, and a folder's own catalogs number in plain
-  figures ("1", "2"). One folder is open at a time, the same shape the
-  catalog editor's collapsible sections use.
-- **The catalog-ref picker is inline under the folder**, not a dialog — a scrim would hide the
+  Folders are reordered by dragging a tile's corner grip (`rectSortingStrategy`, since the strip
+  wraps) or with the selected folder's ←/→ (`RowIconButton`, `moveByOne` — the same shared pieces
+  in `components/dnd.tsx` the Home pane's rows use). A folder's own catalogs are running-order
+  rows (`.run-row`) that number in plain figures ("1", "2") and carry only the grip inline — see
+  the "⋯" note below.
+- **Folders are a tile strip, the way the TV draws them.** Under the "Folders" `.cr.is-head` row
+  (holding "Add folder"), `FolderTiles` draws each folder at its own `tile_shape` with its cover,
+  name and catalog count — the editor's list and the "On your TV" row are the same picture. One
+  folder is always selected (the one picked, else the first), and `FolderDetail` shows it below
+  the strip as one raised panel: a heading with its name, "1st of 2" and an appearance summary,
+  ←/→ and Remove; then its title, then its catalogs (a `.cr.is-head` row with "New catalog" and
+  "Add catalogs"), then an "Appearance" `.sec-head` that folds away hide-title, tile shape,
+  cover, the focus GIF (URL plus an on/off) and the three Modern Home hero URLs (backdrop, video,
+  title logo). Preview renders none of the focus or hero fields; they only reach the TV through
+  push. Catalogs come before appearance because they're what a folder is opened for. Inside the
+  panel the credit grid narrows to a 128px role column, so the folder's settings read as inside
+  the folder rather than as more of the collection's; fields drop to `ground` so they don't
+  vanish into the `raised` panel. A failed Save selects the first folder with errors, and every
+  other folder with errors shows a danger triangle on its tile. Anything without a role of its
+  own — the empty state, the picker, errors — takes `.cr-indent`. Below 640px the panel's grid
+  collapses the same way `.cr` does; on touch the tile grip is always visible (there's no hover
+  to reveal it) and the heading's ←/→/Remove spread apart so their 44px `.tap` boxes don't
+  overlap.
+- **The catalog-ref picker is inline under the Catalogs head**, not a dialog — a scrim would hide the
   folder being filled. It stays open across picks and drops each chosen row out of the list, so
   what remains is always exactly what can still be added.
 - **Three sources for a folder's catalog:** the picker's plus icon **links** a listed catalog — a live pointer,
@@ -509,28 +546,62 @@ button.
   own "New catalog" uses), then opened in the nested editor below to fill its filters. The last
   two are hidden with a hint to save first when the collection doesn't have a server id yet — a
   scoped catalog needs a real collection row to scope to.
-- **A folder-catalog row carries a quiet Edit**, DESIGN.md's own spec for it. It opens the
-  referenced catalog one level down: for a scoped catalog that's unambiguous, since
-  nothing else can reference it. For a *listed* one it's still the real catalog editor — a live
-  pointer, so editing it here still reaches every other folder and the library — so the row also
-  says how many places it's used (home screen plus every folder across every owned collection,
-  `Workspace`'s `usedInPlaces`) and offers its own "Copy into this collection", which replaces
-  just this ref with a fresh scoped copy in place rather than adding a second reference.
-  "One level down" is a `Modal` layered over this editor, not a second pane — the builder's pane
-  holds one occupant (see Library rail, above), so a second real editor has to be a modal rather
-  than a stack. `CollectionEditor` stays mounted underneath it, so this editor's own unsaved
-  folder edits survive the round trip; the modal resets `--app-h` to `0` locally so the nested
-  `CatalogEditor`'s sticky header doesn't try to clear the outer app header's height a second
-  time. The modal's own catalog lookup checks `localCatalogs` (scoped catalogs this editor
-  created or copied) **and** falls back to `mergedOptionByID`'s library entry — a listed catalog
-  linked via the plain picker never enters `localCatalogs` at all, so without the fallback, Edit
-  on one silently did nothing (found in a mobile check; the modal's own guard,
-  `if (!catalog) return null`, made the failure invisible rather than an error).
-- **Edit and "Copy into this collection" sit behind a "⋯" menu on the row**, not inline — the
-  same fix `FolderMenu` already applies at the folder level, for the same reason: this row also
-  carries Move up/down and Remove, and five always-visible text buttons overflow the name/recipe
-  text into unreadable truncation at phone width (also found in a mobile check,
-  before the fix above). Move up/down and Remove stay inline, unchanged.
+  **Copy and new-inside-this-collection are staged locally, not written until Save.** Both used
+  to `POST /api/catalogs` immediately on click, independent of the collection's own Save — which
+  meant discarding the edit instead of saving it left the row behind forever (nothing in the
+  discard path, or anywhere outside `UpdateUserCollection`'s own next Save, ever cleaned it up).
+  Now the click stages a synthetic `Catalog` client-side, keyed by a `draft:` id sentinel
+  (`CollectionEditor.tsx`'s `draftCatalog`), in the same `localCatalogs` registry a real scoped
+  catalog lives in — nothing downstream of that registry needs to tell a draft apart from a real
+  row to render it. `collectionForm.ts`'s `toCollectionPayload` resolves every `draft:` id into an
+  inline `FolderCatalogRef.New` spec right before the collection's own Save reaches the wire;
+  `internal/vault/collections.go`'s `resolveFolderCatalogRef` is the one place a `New` entry is
+  ever written — inside `CreateUserCollection`/`UpdateUserCollection`'s own transaction, atomic
+  with the folder write that references it. So Save creates the catalog and the ref together in
+  one commit, and discarding instead of saving never wrote anything in the first place, closing
+  the leak structurally rather than by adding a cleanup step. The nested editor for a draft (below)
+  edits this local object directly — no network call — until the collection's own Save resolves it.
+- **A folder-catalog row's quiet Edit is scoped-catalog only**, DESIGN.md's own spec for the
+  affordance. It opens the referenced catalog one level down: for a scoped catalog (real or a
+  session's own draft) that's unambiguous, since nothing else can reference it. A *listed* catalog
+  has no inline Edit here at all — it's a live pointer, and editing it from inside a collection
+  used to silently reach every other folder and the library too, which read as a surprise rather
+  than a feature. The row instead says how many places it's used (home screen plus every folder
+  across every owned collection, `Workspace`'s `usedInPlaces`) and offers "Copy into this
+  collection", which replaces just this ref with a fresh scoped copy (itself now staged, per
+  above) in place rather than adding a second reference. Editing a listed catalog directly is the
+  library rail's job. "One level down" is a `Modal` layered over this editor, not a second pane —
+  the builder's pane holds one occupant (see Library rail, above), so a second real editor has to
+  be a modal rather than a stack. `CollectionEditor` stays mounted underneath it, so this editor's
+  own unsaved folder edits survive the round trip; the modal resets `--app-h` to `0` locally so the
+  nested `CatalogEditor`'s sticky header doesn't try to clear the outer app header's height a
+  second time. The modal's own catalog lookup reads `localCatalogs` only — every scoped catalog
+  (real or draft) this editor can open here is already in it by construction, so there is no
+  library fallback to reach for.
+- **A catalog row shows one inline action — Edit for a scoped catalog, Remove for an unavailable
+  one, nothing for a listed one — everything else is behind "⋯"**: "Add another genre" (disabled
+  until the genre options land, or once every one is taken), "Copy into this collection" (listed
+  catalogs only), Move up/down, and "Remove from folder". The grip reorders by pointer,
+  touch and keyboard (`useDragSensors`' `KeyboardSensor`), so the menu's moves are the fallback,
+  and the name keeps the row's width at phone size.
+- **Each catalog row has a genre select under its recipe line** (`RefGenrePicker`), narrowing that
+  one reference: "All genres", or "Only Western" and so on. Its options come from
+  `POST /api/catalogs/genre-options` for the catalog's own recipe, not the whole TMDB list, so
+  every choice actually narrows the row. It is keyed on the recipe, so editing a scoped catalog's
+  filters in the nested editor refreshes them. A stored genre that the recipe no longer allows is
+  kept, labelled "(no longer applies)", with a danger note saying the TV shows that row
+  unfiltered. The genre lives on the ref, so removing a ref takes its genre with it, and
+  "Copy into this collection" swaps only that ref's catalog for the copy, keeping its genre.
+  The options query lives in `RefRow` (`useGenreOptions`), so the picker and "Add another
+  genre" share one list. The "On your TV" panel and Home's folder pages fetch each source's
+  tiles with its genre (`queryKeys.catalogPreview` includes it), so they show the filtered row
+  the TV will.
+- **A folder page names each source the way Nuvio does**, as a tab and as a row title alike:
+  `<Catalog name> (<Kind>)`, plus ` • <Genre>` when the ref is narrowed, e.g.
+  "Popular (Movie) • Western" (`sourceLabel`, `features/preview/model.ts`). The genre suffix is
+  also what tells two refs to one catalog apart. Tabs and tiles are keyed by
+  `PreviewSource.key`, not the catalog id: the form's ref key in the collection editor, and
+  `<catalog id>::<genre>` on Home, which the primary key makes unique within a saved folder.
 - **The save bar's "N catalogs will be deleted"** joins "N folders will be deleted" when a
   scoped catalog this editor knows about would lose its last folder reference on Save — the exact
   condition `UpdateUserCollection`'s GC delete checks server-side, mirrored client-side the
@@ -547,11 +618,18 @@ button.
   to say so. Show first and the "All" tab are `Segmented`, the latter greyed (DESIGN.md's
   "Greyed" segmented state, `Segmented`'s `disabled` prop) rather than hidden while the view mode
   isn't Tabbed Grids, keeping its value for when it switches back.
-- **The "On your TV" panel, docked right in the results panel's place, is not interactive** —
-  DESIGN.md's own spec for it. It draws the collection's row from the live form state at the
-  folder's own tile shapes, framed in the `--uno-tv-bezel`/`--uno-tv-screen` tokens, but opening a
-  folder to see its content is Preview on TV's job once the collection is saved, not this panel's;
-  nothing here fetches, and nothing here is a button.
+- **The "On your TV" panel is a working TV, docked beside the form.** The collection editor has
+  its own layout (`.ed.ed-tv`, `EditorShell`'s `docked="tv"`, capped at `--w-editor-tv`): the form keeps
+  its `--w-form` column and the TV takes `clamp(380px, 42cqw, 620px)` beside it, undocking under
+  the form below 960px of pane. It draws the live draft with the Home Preview's own components
+  (`TVCollectionRow`, `TVFolderPage` from `features/home/tv.tsx`), so a folder tile opens the same
+  folder page Home does — tabs or rows per `view_mode`, real titles per catalog. `.tv-crop` sizes
+  every `cqw` against a stage at least 800px wide, so tiles match the Home Preview's size in any
+  column width and the frame shows a crop: rows bleed off its edge and scroll, a folder grid
+  reflows to it. Tiles come from each source's recipe (`useRecipesTiles`), not its id, so an
+  unsaved draft and a Community collection both preview, and only the open folder's catalogs are
+  fetched. The back arrow and Escape return to the row — Escape is stopped inside the screen so it
+  never reaches the editor's own Escape-to-close — and there is no history entry.
 
 ## Community tab
 

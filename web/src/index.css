@@ -151,6 +151,12 @@
        window allows, and a row of controls spread across 1100px stops being a
        row you can read across. */
     --w-form: 54rem;
+    /* The catalog editor: the form's column, the 40px gutter, and a docked
+       results column up to 360px beside it. */
+    --w-editor-results: calc(var(--w-form) + 40px + 360px);
+    /* The collection editor: the form's column, the 40px gutter, and a docked
+       TV preview up to 620px beside it. */
+    --w-editor-tv: calc(var(--w-form) + 40px + 620px);
 
     /* The sticky app header's height, below `lg`, where the builder is one
        scrolling document and every offset is measured from under it. Overwritten
@@ -531,6 +537,11 @@
        frame stays Jost. */
     .tv-bezel {
         container-type: inline-size;
+        /* Capped at the same width the List view's rows read at
+           (`--w-form`) — without this the picture keeps growing with the
+           pane on a wide screen, and every `cqw` measurement inside it
+           (tiles included) scales up past the point of reading as a TV. */
+        max-width: var(--w-form);
         background: var(--uno-tv-bezel);
         border: 1px solid var(--uno-line-hi);
         padding: 10px;
@@ -548,11 +559,16 @@
         color: var(--uno-tv-text);
         font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
         padding: 3.4cqw 0 3cqw 4.5cqw;
+        scrollbar-width: thin;
         scrollbar-color: var(--uno-tile-c) var(--uno-tv-screen);
     }
     @media (pointer: coarse) {
+        /* On a phone the frame is most of the viewport's width, so a
+           vertical swipe that reaches the screen's end hands off to the page
+           instead of leaving the finger stuck on the picture. */
         .tv-screen {
             padding: 4.5cqw 0 3cqw 5cqw;
+            overscroll-behavior-y: auto;
         }
     }
 
@@ -564,23 +580,97 @@
             margin-bottom: 5cqw;
         }
     }
+    /* The row's title and its "see more" chevron — the header a real Nuvio
+       row carries, not just a caption. `margin-bottom` lives here rather than
+       on `.tv-row-title` now that the chevron shares the line. */
+    .tv-row-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.8cqw;
+        margin-bottom: 1.1cqw;
+        /* The screen has no right padding so strips bleed off its edge; the
+           header doesn't bleed, so its chevrons keep clear of the bezel. */
+        padding-right: 3cqw;
+    }
+    @media (pointer: coarse) {
+        .tv-row-head {
+            margin-bottom: 2.2cqw;
+            padding-right: 4cqw;
+        }
+    }
     .tv-row-title {
         font-size: 1.95cqw;
         font-weight: 500;
         line-height: 1.2;
-        margin-bottom: 1.1cqw;
     }
     @media (pointer: coarse) {
         .tv-row-title {
             font-size: 4.3cqw;
-            margin-bottom: 2.2cqw;
         }
     }
+    /* The pair of scroll buttons beside a row's title — only the ones that
+       currently do something render (`canPrev`/`canNext` in `tv.tsx`), so a
+       row at its start never shows a dead "back" button. */
+    .tv-row-nav {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 0.5cqw;
+    }
+    .tv-row-btn {
+        flex: none;
+        display: grid;
+        place-items: center;
+        color: var(--uno-tv-text-2);
+        background: none;
+        border: none;
+        /* A hit area wider than the drawn chevron, without moving it. */
+        padding: 0.5cqw;
+        margin: -0.5cqw;
+        cursor: pointer;
+        transition: color 120ms ease;
+    }
+    .tv-row-btn:hover,
+    .tv-row-btn:focus-visible {
+        color: var(--uno-tv-text);
+    }
+    .tv-row-btn:focus-visible {
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 0;
+    }
+    .tv-row-btn svg {
+        width: 1.7cqw;
+        height: 1.7cqw;
+    }
+    @media (pointer: coarse) {
+        .tv-row-btn svg {
+            width: 3.6cqw;
+            height: 3.6cqw;
+        }
+    }
+    /* Rows scroll sideways, like the real app's — a full TMDB page (up to
+       `TILES_PER_PAGE`) is reachable by a finger swipe, the row's own
+       chevrons, or a horizontal wheel. There is no mouse drag (`tv.tsx`'s
+       `useRowScroll`). `touch-action` stays at its default so the browser
+       locks each swipe to one axis: sideways scrolls the row, up and down
+       scrolls the screen or the page, wherever the finger starts.
+       `overscroll-behavior-x: contain` keeps a swipe past a row's end from
+       turning into the browser's back/forward gesture. The native scrollbar
+       is hidden because neither reference client shows one on a content
+       row; the row is still keyboard- and wheel-scrollable without it. */
     .tv-strip {
         display: flex;
         gap: 1.1cqw;
         align-items: flex-end;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+    }
+    .tv-strip::-webkit-scrollbar {
+        display: none;
     }
     @media (pointer: coarse) {
         .tv-strip {
@@ -597,8 +687,28 @@
         background: none;
         border: none;
         padding: 0;
+        scroll-snap-align: start;
+    }
+    .tv-tile .cap-year {
+        font-size: max(1.05cqw, 9.5px);
+        opacity: 0.7;
+    }
+    @media (pointer: coarse) {
+        .tv-tile .cap-year {
+            font-size: max(2.7cqw, 9.5px);
+        }
     }
     .tv-tile .cap {
+        /* `width: 0; min-width: 100%` — not plain `min-width: 0` — because a
+           `nowrap` caption's own max-content size (its full, un-truncated
+           text) is what an `auto` grid track sizes itself to, and `min-width`
+           only affects the track's minimum, not that. Zero width keeps the
+           caption out of that sizing pass; percentage `min-width` then fills
+           whatever width `.art` already gave the column. Without this a long
+           title widens its own tile — and the gap to the next one — instead
+           of ever reaching the ellipsis. */
+        width: 0;
+        min-width: 100%;
         font-size: max(1.28cqw, 10.5px);
         line-height: 1.25;
         color: var(--uno-tv-text-2);
@@ -613,12 +723,16 @@
     }
 
     /* A poster tile: the flat tone underneath (cycled a/b/c along the strip)
-       shows while the real poster loads, or in its place if there is none. */
+       shows while the real poster loads, or in its place if there is none.
+       `clamp` keeps the corner reading as "rounded poster", not "rounded
+       rectangle", at both the shrunk desktop scale and the larger touch one
+       — a bare `cqw` value gets too sharp small and too round large. */
     .tv-poster .art {
         width: 9.4cqw;
         aspect-ratio: 2 / 3;
         position: relative;
         overflow: hidden;
+        border-radius: clamp(3px, 0.55cqw, 8px);
     }
     @media (pointer: coarse) {
         .tv-poster .art {
@@ -641,6 +755,7 @@
         position: relative;
         overflow: hidden;
         background: var(--uno-tile-c);
+        border-radius: clamp(3px, 0.55cqw, 8px);
     }
     .tv-folder .art span {
         font-size: 3.4cqw;
@@ -691,13 +806,29 @@
             width: 22cqw;
         }
     }
-    .tv-folder:hover .art {
-        outline: 0.25cqw solid var(--uno-tv-text);
-        outline-offset: 0.2cqw;
+    /* Hover and focus rings as an inset `box-shadow` on an overlay, not an
+       `outline`: an outline sits *outside* the box, so in the row's tight
+       `gap` it either got clipped by the strip's own scroll port or drawn
+       over the next tile. The overlay stays inside the tile's own edge,
+       follows `.art`'s `border-radius`, and paints above the poster or cover
+       image — an inset shadow on `.art` itself would sit under the `<img>`. */
+    .tv-tile .art::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        transition: box-shadow 120ms ease;
     }
-    .tv-folder:focus-visible .art {
-        outline: 2px solid var(--uno-ink);
-        outline-offset: 2px;
+    .tv-tile:focus-visible {
+        outline: none;
+    }
+    a.tv-tile:hover .art::after,
+    button.tv-tile:hover .art::after {
+        box-shadow: inset 0 0 0 clamp(1.5px, 0.25cqw, 3px) var(--uno-tv-text);
+    }
+    .tv-tile:focus-visible .art::after {
+        box-shadow: inset 0 0 0 2px var(--uno-ink);
     }
 
     /* A folder page's own heading, back arrow and tabs — inside the screen,
@@ -787,6 +918,13 @@
         cursor: pointer;
         transition: color 120ms ease;
     }
+    .fp-tab:hover {
+        color: var(--uno-tv-text);
+    }
+    .fp-tab:focus-visible {
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 2px;
+    }
     .fp-tab[data-state='active'] {
         color: var(--uno-tv-text);
         border-bottom-color: var(--uno-tv-text);
@@ -796,24 +934,68 @@
             font-size: 3.4cqw;
         }
     }
+    /* Columns at least a strip poster's width, stretched to share the row so
+       the grid meets the screen's right padding instead of leaving a ragged
+       gap there. */
     .fp-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, 9.4cqw);
+        grid-template-columns: repeat(auto-fill, minmax(9.4cqw, 1fr));
         gap: 1.6cqw 1.1cqw;
         padding-right: 4.5cqw;
     }
     @media (pointer: coarse) {
         .fp-grid {
-            grid-template-columns: repeat(auto-fill, 20cqw);
+            grid-template-columns: repeat(auto-fill, minmax(20cqw, 1fr));
             gap: 3cqw 2.5cqw;
         }
     }
     .fp-grid .tv-poster .art {
-        width: 9.4cqw;
+        width: 100%;
+    }
+
+    /* A crop of a real-scale TV — the collection editor's docked preview. The
+       stage is its own inline-size container at least 800px wide, so every
+       `cqw` inside resolves against a screen about the Home preview's size
+       and tiles read the same in both places, however narrow the frame. The
+       frame shows the stage's left part: `.tv-crop-view` is held to the
+       frame's own width (`--tv-crop-w`, registered as a `<length>` so
+       `100cqw` resolves against the bezel where it's declared, not against
+       the stage where it's used), so rows bleed off the frame's edge and
+       scroll, and a folder page's grid reflows to the frame. The screen
+       scrolls vertically at a height that fits a sticky column beside the
+       form. Under `pointer: coarse` the TV sizes already scale up for a
+       phone, so the stage matches the frame and the screen stays 16:9. */
+    @property --tv-crop-w {
+        syntax: '<length>';
+        inherits: true;
+        initial-value: 0px;
+    }
+    .tv-crop .tv-screen {
+        --tv-crop-w: 100cqw;
+        aspect-ratio: auto;
+        height: max(56.25cqw, clamp(280px, calc(100dvh - 390px), 450px));
+        padding: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+    .tv-crop-stage {
+        container-type: inline-size;
+        width: max(100%, 800px);
+    }
+    .tv-crop-view {
+        width: var(--tv-crop-w);
+        padding: 3.4cqw 0 3cqw 4.5cqw;
     }
     @media (pointer: coarse) {
-        .fp-grid .tv-poster .art {
-            width: 20cqw;
+        .tv-crop .tv-screen {
+            aspect-ratio: 16 / 9;
+            height: auto;
+        }
+        .tv-crop-stage {
+            width: 100%;
+        }
+        .tv-crop-view {
+            padding: 4.5cqw 0 3cqw 5cqw;
         }
     }
 
@@ -840,6 +1022,23 @@
         min-width: 0;
     }
 
+    /* The catalog editor's layout: the form takes whatever the pane gives it up
+       to `--w-form` (the shell caps the whole at `--w-editor-results`), and the
+       results column takes a share, 290–360px, beside it. The results span both
+       rows so the delete link sits under the form, not under the tiles; the
+       `1fr` row soaks up the height when the results run longer than the form,
+       rather than opening a gap between the last setting and the link. */
+    .ed.ed-results {
+        grid-template-columns: minmax(0, 1fr) clamp(290px, 30cqw, 360px);
+        grid-template-rows: auto 1fr;
+    }
+    .ed-results > .ed-form {
+        max-width: var(--w-form);
+    }
+    .ed-results > .ed-pv {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+    }
     /* Every setting is a credit: role right-aligned, value left-aligned across
        the gutter. */
     .cr {
@@ -1003,6 +1202,14 @@
     .gchip:active {
         background: var(--uno-line);
     }
+    /* On a phone the genre cycler and the date presets are nothing but chips,
+       so they grow to the same 44px as every other touch target. */
+    @media (pointer: coarse) {
+        .choice,
+        .gchip {
+            height: 44px;
+        }
+    }
 
     /* The app's one switch, scoped to sharing. */
     .switch {
@@ -1051,31 +1258,19 @@
         min-width: 240px;
         font-size: 15px;
     }
-    .ed input[type='date'],
+    .ed input[type='date'] {
+        width: var(--w-date);
+    }
     .ed input[type='number'] {
-        width: 180px;
+        width: var(--w-num);
     }
-
-    .ed-delete {
-        padding: 32px 0 8px;
-        display: flex;
-        align-items: baseline;
-        gap: 12px;
-        flex-wrap: wrap;
-    }
-    .ed-delete p {
-        font-size: 13px;
-        color: var(--uno-dim);
-    }
-
-    /* A new catalog says what "nothing set" shows, so empty never reads as
-       broken. */
-    .ed-fresh {
-        padding: 14px 0 14px calc(168px + 32px);
-        border-bottom: 1px solid var(--uno-line);
-        font-size: 14px;
-        line-height: 20px;
-        color: var(--uno-dim);
+    /* From/To as a two-column grid: a label never ends one line while its
+       date starts the next, and both dates start on the same edge. */
+    .ed-dates {
+        display: grid;
+        grid-template-columns: max-content max-content;
+        align-items: center;
+        gap: 8px 12px;
     }
 
     /* Results, docked right, run on request. */
@@ -1092,18 +1287,12 @@
         align-items: center;
         gap: 12px;
     }
-    .ed-pv p {
+    /* Uno's own words in the panel — never the TV's type inside a framed
+       preview, which keeps its own sizes and Roboto. */
+    .ed-pv p:not(.tv-screen p) {
         font-size: 13px;
         line-height: 18px;
         color: var(--uno-dim);
-    }
-    .ed-pv .neqline {
-        display: grid;
-        grid-template-columns: 16px minmax(0, 1fr);
-        column-gap: 8px;
-        color: var(--uno-ink);
-        font-size: 13px;
-        line-height: 18px;
     }
     .ed-pv .pv-stale {
         color: var(--uno-ink);
@@ -1129,13 +1318,211 @@
         color: var(--uno-dim);
     }
 
-    @container (max-width: 860px) {
-        .ed {
+    /* The collection editor's layout: its docked column is a TV, not a
+       results list, so it takes a share of the pane (380–620px) instead of a
+       fixed 290px, and the form keeps its own `--w-form` cap beside it. The
+       TV undocks earlier than the catalog editor's panel, under 960px of
+       pane, where a 380px frame would squeeze the form's credit rows. */
+    .ed.ed-tv {
+        grid-template-columns: minmax(0, 1fr) clamp(380px, 42cqw, 620px);
+    }
+    .ed-tv .ed-form {
+        max-width: var(--w-form);
+    }
+
+    /* A section inside the form (Folders, a folder's Catalogs): a credit row
+       whose role is set in ink, so it ranks above the settings around it. */
+    .cr.is-head {
+        align-items: center;
+        padding: 12px 0;
+        margin-top: 32px;
+        border-bottom-color: var(--uno-line-hi);
+    }
+    .cr.is-head > .cr-role {
+        color: var(--uno-ink);
+    }
+    /* Anything that belongs to the value column without a role of its own. */
+    .cr-indent {
+        padding-left: calc(168px + 32px);
+    }
+
+    /* A running-order row on the credit grid: the order controls fill the
+       role column, right-aligned, so what's being ordered starts on the same
+       edge as every value above it. A folder's catalogs are drawn this way. */
+    .run-row {
+        display: grid;
+        grid-template-columns: 168px minmax(0, 1fr);
+        column-gap: 32px;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--uno-line);
+    }
+    .run-ctl {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px;
+    }
+
+    /* The folder strip: every folder drawn at its own tile shape, the way the
+       TV draws the collection's row, with the selected one outlined in ink. */
+    .fold-tiles {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 20px 16px;
+        margin: 0;
+        padding: 20px 0;
+        list-style: none;
+    }
+    .fold-tile {
+        position: relative;
+        flex: none;
+    }
+    .fold-tile-btn {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+        text-align: left;
+    }
+    .fold-tile-face {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 100%;
+        margin-bottom: 4px;
+        overflow: hidden;
+        background: var(--uno-tile-c);
+        border: 1px solid var(--uno-line);
+        outline: 1px solid transparent;
+        transition: border-color 120ms ease, outline-color 120ms ease;
+    }
+    .fold-tile-btn:hover .fold-tile-face {
+        border-color: var(--uno-dim);
+    }
+    .fold-tile.is-selected .fold-tile-face {
+        border-color: var(--uno-ink);
+        outline-color: var(--uno-ink);
+    }
+    .fold-tile-name {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 18px;
+        color: var(--uno-dim);
+    }
+    .fold-tile.is-selected .fold-tile-name {
+        color: var(--uno-ink);
+    }
+    /* The drag grip sits on the tile's corner, shown on hover or focus with
+       a pointer and always on touch, where there is no hover to reveal it. */
+    .fold-tile-grip {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        background: color-mix(in srgb, var(--uno-ground) 80%, transparent);
+        opacity: 0;
+        transition: opacity 120ms ease;
+    }
+    .fold-tile:hover .fold-tile-grip,
+    .fold-tile:focus-within .fold-tile-grip {
+        opacity: 1;
+    }
+    @media (pointer: coarse) {
+        .fold-tile-grip {
+            opacity: 1;
+        }
+    }
+
+    /* The selected folder, one raised panel under the strip. Its settings and
+       catalogs sit on a narrower credit grid of their own, so they read as
+       inside the folder rather than as more of the collection's settings. */
+    .fold-detail {
+        padding: 16px 20px 20px;
+        background: var(--uno-raised);
+        outline: 1px solid var(--uno-line-hi);
+        outline-offset: -1px;
+    }
+    .fold-detail-head {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--uno-line-hi);
+    }
+    .fold-detail-actions {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        gap: 4px;
+        margin-left: auto;
+    }
+    /* On touch each button's `.tap` box grows to 44px, so they spread apart
+       rather than let one swallow the other's taps. */
+    @media (pointer: coarse) {
+        .fold-detail-actions {
+            gap: 12px;
+        }
+        .fold-detail-actions .btn-danger-text {
+            height: 44px;
+        }
+    }
+    /* Fields step back down to ground so they don't vanish into the raised
+       panel they sit on. */
+    .fold-detail .field {
+        background: var(--uno-ground);
+    }
+    .fold-detail .cr,
+    .fold-detail .run-row {
+        grid-template-columns: 128px minmax(0, 1fr);
+        column-gap: 24px;
+    }
+    .fold-detail .sec-head {
+        grid-template-columns: 128px minmax(0, 1fr) 16px;
+        column-gap: 24px;
+    }
+    .fold-detail .sec-head:hover {
+        background: var(--uno-line);
+    }
+    .fold-detail .cr.is-head {
+        margin-top: 16px;
+    }
+    .fold-detail .fold-appearance {
+        margin-top: 16px;
+        border-top: 1px solid var(--uno-line-hi);
+    }
+    .fold-detail .cr-indent {
+        padding-left: calc(128px + 24px);
+    }
+    @container (max-width: 960px) {
+        .ed.ed-tv {
             grid-template-columns: minmax(0, 1fr);
         }
-        .ed-pv {
+        .ed-tv .ed-pv {
             position: static;
             order: 2;
+            border-top: 1px solid var(--uno-line);
+            margin-top: 24px;
+        }
+    }
+    /* Undocked once the form beside a 290px column would drop under 570px —
+       a value column under ~370px, where section summaries start wrapping and
+       a `--w-track` slider no longer fits. Source order is already form,
+       results, delete, so nothing is reordered. */
+    @container (max-width: 900px) {
+        .ed.ed-results {
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-rows: none;
+        }
+        .ed-results > .ed-pv {
+            grid-column: auto;
+            grid-row: auto;
+            position: static;
             border-top: 1px solid var(--uno-line);
             margin-top: 24px;
         }
@@ -1164,7 +1551,29 @@
             padding-top: 0;
         }
         .sec-body,
-        .ed-fresh {
+        .cr-indent {
+            padding-left: 0;
+        }
+        .run-row,
+        .cr.is-head {
+            grid-template-columns: auto minmax(0, 1fr);
+            column-gap: 12px;
+        }
+        .fold-detail {
+            padding: 12px;
+        }
+        .fold-detail .cr {
+            grid-template-columns: minmax(0, 1fr);
+        }
+        .fold-detail .cr.is-head,
+        .fold-detail .run-row {
+            grid-template-columns: auto minmax(0, 1fr);
+            column-gap: 12px;
+        }
+        .fold-detail .sec-head {
+            grid-template-columns: minmax(0, 1fr) 16px;
+        }
+        .fold-detail .cr-indent {
             padding-left: 0;
         }
     }

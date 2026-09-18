@@ -60,16 +60,20 @@ function toFolder(
 ): PreviewFolder {
   const { shape, assumed } = normalizeTileShape(folder.tile_shape)
 
-  // `?? []` is a guard, not a live case: the Go side runs `catalog_ids` through
+  // `?? []` is a guard, not a live case: the Go side runs `refs` through
   // `orEmpty`. It stays because `getList` coerces only the top-level response,
   // never nested arrays like this one.
-  const sources: PreviewSource[] = (folder.catalog_ids ?? []).map((id) => {
+  const sources: PreviewSource[] = (folder.refs ?? []).map(({ catalog_id: id, genre }) => {
     const catalog = catalogById.get(id)
     return {
+      // Unique within a saved folder: `folder_catalogs` is
+      // `PRIMARY KEY (folder_id, catalog_id, genre)`.
+      key: `${id}::${genre}`,
       id,
       name: catalog?.name ?? null,
       type: catalog?.type ?? null,
       params: catalog?.params ?? '',
+      genre,
     }
   })
 
