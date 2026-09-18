@@ -207,6 +207,11 @@ func CatalogRefs(ids ...uuid.UUID) []FolderCatalogRef {
 // neither (schema.go's CHECK on catalogs) — so those fields aren't accepted
 // here at all.
 type NewScopedCatalog struct {
+	// Key is the client's handle for one staged catalog, unique within a
+	// single save: every New entry carrying the same Key, in any folder and
+	// under any genre, resolves to the one catalog the save creates for it.
+	// It is never stored.
+	Key      string `json:"key"`
 	Type     string `json:"type"`
 	Name     string `json:"name"`
 	Provider string `json:"provider"`

@@ -223,7 +223,10 @@ write credential.
   the same `catalogId`. Confirmed on Nuvio desktop and mobile with a hand-edited collection: both
   sources show, each filtered. The same catalog under the *same* genre twice is pointless, so
   `CollectionForm.Validate` rejects it as a 400 (comparing trimmed genres, as they're stored)
-  before it can reach the primary key as a 500. The same catalog in two *different* folders is
+  before it can reach the primary key as a 500. An inline `new` entry in a save payload carries
+  a client `key` (the editor's draft id), and every entry sharing a key resolves to the one
+  catalog that save creates, so Validate treats a repeated `(key, genre)` the same way and
+  rejects entries that share a key but not a spec. The same catalog in two *different* folders is
   allowed and supported. `GetPublishedCatalogs` still lists a catalog once however many refs
   point at it.
 - **`folders.tile_shape` defaults to `'LANDSCAPE'` at the schema level, and Preview reads `''`

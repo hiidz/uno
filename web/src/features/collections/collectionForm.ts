@@ -354,8 +354,18 @@ export function toCollectionPayload(
       title_logo_url: folder.titleLogoURL.trim(),
       catalogs: folder.refs.map(({ catalogID, genre }): FolderCatalogRef => {
         const draft = isDraftCatalogID(catalogID) ? localCatalogs.get(catalogID) : undefined
+        // The draft id is the `new` spec's key: every ref to one draft, in any
+        // folder and under any genre, resolves to the one catalog Save creates.
         const ref: FolderCatalogRef = draft
-          ? { new: { type: draft.type, name: draft.name, provider: draft.provider, params: draft.params } }
+          ? {
+              new: {
+                key: catalogID,
+                type: draft.type,
+                name: draft.name,
+                provider: draft.provider,
+                params: draft.params,
+              },
+            }
           : { catalog_id: catalogID }
         // Omitted rather than sent empty, so an unfiltered ref serializes the
         // same way whether or not it ever had a genre.

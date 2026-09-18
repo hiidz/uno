@@ -166,7 +166,7 @@ func TestUpdateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 		Title: "My Collection",
 		Folders: []FolderData{
 			{Title: "Folder", Catalogs: []FolderCatalogRef{
-				{New: &NewScopedCatalog{Type: "movie", Name: "New Scoped", Provider: "tmdb", Params: `{"a":1}`}},
+				{New: &NewScopedCatalog{Key: "draft:a", Type: "movie", Name: "New Scoped", Provider: "tmdb", Params: `{"a":1}`}},
 			}},
 		},
 	})
@@ -202,7 +202,7 @@ func TestCreateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 		Title: "New Collection",
 		Folders: []FolderData{
 			{Title: "Folder", Catalogs: []FolderCatalogRef{
-				{New: &NewScopedCatalog{Type: "series", Name: "New Scoped", Provider: "tmdb", Params: "{}"}},
+				{New: &NewScopedCatalog{Key: "draft:a", Type: "series", Name: "New Scoped", Provider: "tmdb", Params: "{}"}},
 			}},
 		},
 	})
@@ -238,7 +238,7 @@ func TestUpdateUserCollectionRollsBackNewCatalogOnLaterFolderFailure(t *testing.
 		Title: "My Collection",
 		Folders: []FolderData{
 			{Title: "Folder 1", Catalogs: []FolderCatalogRef{
-				{New: &NewScopedCatalog{Type: "movie", Name: "New Scoped", Provider: "tmdb", Params: "{}"}},
+				{New: &NewScopedCatalog{Key: "draft:a", Type: "movie", Name: "New Scoped", Provider: "tmdb", Params: "{}"}},
 			}},
 			{Title: "Folder 2", Catalogs: CatalogRefs(listed.ID, listed.ID)},
 		},
@@ -308,5 +308,56 @@ func TestUpdateUserCollectionResponseIncludesScopedCatalogs(t *testing.T) {
 	}
 	if !gotIDs[listed.ID] || !gotIDs[scoped.ID] {
 		t.Fatalf("GetUserCollections catalogs = %+v, want both %s and %s", all[0].Catalogs, listed.ID, scoped.ID)
+	}
+}
+
+// New entries sharing a Key are one staged catalog: two genre refs to it in
+// one folder, and a ref to it from a second folder, all resolve to the single
+// catalog the save creates. Distinct Keys with identical specs stay distinct
+// catalogs, since two copies of one catalog are a deliberate choice.
+func TestUpdateUserCollectionResolvesSharedNewKeyToOneCatalog(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	owner := newTestProfile(t, db, "owner")
+	collectionID := newTestCollection(t, db, owner, "My Collection")
+
+	shared := NewScopedCatalog{Key: "draft:shared", Type: "movie", Name: "Shared", Provider: "tmdb", Params: "{}"}
+	twinA := NewScopedCatalog{Key: "draft:twin-a", Type: "movie", Name: "Twin", Provider: "tmdb", Params: "{}"}
+	twinB := twinA
+	twinB.Key = "draft:twin-b"
+	ref := func(spec NewScopedCatalog, genre string) FolderCatalogRef {
+		return FolderCatalogRef{New: &spec, Genre: genre}
+	}
+
+	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+		Title: "My Collection",
+		Folders: []FolderData{
+			{Title: "Folder 1", Catalogs: []FolderCatalogRef{
+				ref(shared, "Action"), ref(shared, "Comedy"), ref(twinA, ""), ref(twinB, ""),
+			}},
+			{Title: "Folder 2", Catalogs: []FolderCatalogRef{ref(shared, "")}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("saving collection with shared New keys: %v", err)
+	}
+
+	first, second := saved.Folders[0].CatalogIDs(), saved.Folders[1].CatalogIDs()
+	if first[0] != first[1] || first[0] != second[0] {
+		t.Fatalf("refs to key %q resolved to %s, %s, %s; want one catalog", shared.Key, first[0], first[1], second[0])
+	}
+	if first[2] == first[3] {
+		t.Fatalf("distinct keys %q and %q resolved to one catalog %s", twinA.Key, twinB.Key, first[2])
+	}
+
+	for name, want := range map[string]int{"Shared": 1, "Twin": 2} {
+		got, err := db.queryCatalogs(ctx, "name = ?", name)
+		if err != nil {
+			t.Fatalf("querying catalogs named %q: %v", name, err)
+		}
+		if len(got) != want {
+			t.Fatalf("%d catalogs named %q, want %d", len(got), name, want)
+		}
 	}
 }

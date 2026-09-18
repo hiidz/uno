@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Catalog } from '@/api'
 import {
   emptyCollectionForm,
   newFolder,
@@ -34,6 +35,27 @@ describe('toCollectionPayload', () => {
     expect(toCollectionPayload(form).folders[0].catalogs).toEqual([
       { catalog_id: 'c1', genre: 'Western' },
       { catalog_id: 'c1' },
+    ])
+  })
+
+  it('keys every ref to one draft with its draft id', () => {
+    const draft: Catalog = {
+      id: 'draft:d1',
+      type: 'movie',
+      name: 'Staged',
+      provider: 'tmdb',
+      params: '{}',
+      owner_id: '',
+      is_public: false,
+      collection_id: 'col1',
+      created_at: '',
+      updated_at: '',
+    }
+    const form = formWith([newRef(draft.id, 'Action'), newRef(draft.id, 'Comedy')])
+    const spec = { key: 'draft:d1', type: 'movie', name: 'Staged', provider: 'tmdb', params: '{}' }
+    expect(toCollectionPayload(form, new Map([[draft.id, draft]])).folders[0].catalogs).toEqual([
+      { new: spec, genre: 'Action' },
+      { new: spec, genre: 'Comedy' },
     ])
   })
 })

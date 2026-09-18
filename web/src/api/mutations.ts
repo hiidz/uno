@@ -83,7 +83,7 @@ export function deleteCatalog(profileIndex: number, catalogID: string): Promise<
  */
 export type FolderCatalogRef = (
   | { catalog_id: string }
-  | { new: { type: CatalogType; name: string; provider: string; params: string } }
+  | { new: { key: string; type: CatalogType; name: string; provider: string; params: string } }
 ) & { genre?: string }
 
 /**

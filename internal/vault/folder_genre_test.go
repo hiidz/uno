@@ -185,3 +185,32 @@ func TestFolderRefGenreTooLongIsInvalid(t *testing.T) {
 		t.Fatalf("create with an overlong genre: got %v, want ErrInvalidInput", err)
 	}
 }
+
+// A New entry needs a Key; entries sharing one must carry the same spec, and
+// may not repeat a genre within a folder, since they become one catalog.
+func TestFolderNewRefKeyIsValidated(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+
+	spec := NewScopedCatalog{Key: "draft:a", Type: "movie", Name: "Staged", Provider: "tmdb", Params: "{}"}
+	renamed := spec
+	renamed.Name = "Renamed"
+	unkeyed := spec
+	unkeyed.Key = ""
+
+	cases := map[string][]FolderCatalogRef{
+		"missing key":       {{New: &unkeyed}},
+		"shared key, spec":  {{New: &spec, Genre: "Action"}, {New: &renamed, Genre: "Comedy"}},
+		"shared key, genre": {{New: &spec, Genre: "War"}, {New: &spec, Genre: " War"}},
+	}
+	for name, refs := range cases {
+		_, err := db.CreateUserCollection(ctx, owner, CollectionForm{
+			Title:   "Staged",
+			Folders: []FolderData{{Title: "F", Catalogs: refs}},
+		})
+		if !errors.Is(err, ErrInvalidInput) {
+			t.Errorf("%s: got %v, want ErrInvalidInput", name, err)
+		}
+	}
+}

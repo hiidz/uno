@@ -517,13 +517,17 @@ func existingRefIDs(refs []FolderCatalogRef) []uuid.UUID {
 // transaction. This is the one place a "copy into this collection"/"new
 // inside this collection" catalog is ever written: atomic with the folder
 // write that references it, so an edit discarded instead of saved never
-// created one at all.
-func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, ref FolderCatalogRef) (uuid.UUID, error) {
+// created one at all. created maps each New.Key already resolved in this
+// save to its catalog id, so a Key's later entries reuse that catalog.
+func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, ref FolderCatalogRef, created map[string]uuid.UUID) (uuid.UUID, error) {
 	if ref.CatalogID != nil {
 		return *ref.CatalogID, nil
 	}
 
 	spec := ref.New
+	if id, ok := created[spec.Key]; ok {
+		return id, nil
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	id := uuid.New()
 	_, err := tx.ExecContext(ctx, `
@@ -535,6 +539,7 @@ func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collect
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("inserting scoped catalog: %w", err)
 	}
+	created[spec.Key] = id
 	return id, nil
 }
 
@@ -543,14 +548,15 @@ func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collect
 // for a brand-new folder too — the delete is then a no-op. Refs are cheap
 // and small compared to folders, so delete-and-reinsert beats diffing them.
 // Returns the resolved refs in order, for the caller's response shape and
-// final catalog fetch.
-func writeFolderCatalogRefs(ctx context.Context, tx *sql.Tx, profileID, collectionID, folderID uuid.UUID, refs []FolderCatalogRef) ([]FolderRef, error) {
+// final catalog fetch. created is shared across every folder of one save;
+// see resolveFolderCatalogRef.
+func writeFolderCatalogRefs(ctx context.Context, tx *sql.Tx, profileID, collectionID, folderID uuid.UUID, refs []FolderCatalogRef, created map[string]uuid.UUID) ([]FolderRef, error) {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM folder_catalogs WHERE folder_id = ?`, folderID.String()); err != nil {
 		return nil, fmt.Errorf("clearing folder catalog refs: %w", err)
 	}
 	resolved := make([]FolderRef, len(refs))
 	for j, ref := range refs {
-		catalogID, err := resolveFolderCatalogRef(ctx, tx, profileID, collectionID, ref)
+		catalogID, err := resolveFolderCatalogRef(ctx, tx, profileID, collectionID, ref, created)
 		if err != nil {
 			return nil, err
 		}
@@ -617,12 +623,13 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 
 	folders := make([]FolderWithCatalogs, len(input.Folders))
 	var allCatalogIDs []uuid.UUID
+	created := map[string]uuid.UUID{}
 	for i, fd := range input.Folders {
 		f, err := insertFolder(ctx, tx, c.ID, i, fd)
 		if err != nil {
 			return CollectionWithFolders{}, err
 		}
-		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, c.ID, f.ID, fd.Catalogs)
+		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, c.ID, f.ID, fd.Catalogs, created)
 		if err != nil {
 			return CollectionWithFolders{}, err
 		}
@@ -754,6 +761,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 
 	folders := make([]FolderWithCatalogs, len(input.Folders))
 	var allCatalogIDs []uuid.UUID
+	created := map[string]uuid.UUID{}
 	for i, fd := range input.Folders {
 		var f Folder
 		if fd.ID != nil {
@@ -781,7 +789,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 			}
 		}
 
-		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, collectionID, f.ID, fd.Catalogs)
+		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, collectionID, f.ID, fd.Catalogs, created)
 		if err != nil {
 			return CollectionWithFolders{}, err
 		}
