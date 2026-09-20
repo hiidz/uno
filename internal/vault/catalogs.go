@@ -1,11 +1,12 @@
 package vault
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,12 +78,19 @@ func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 	for _, g := range byFingerprint {
 		collapsed = append(collapsed, g)
 	}
-	sort.Slice(collapsed, func(i, j int) bool {
-		a, b := collapsed[i].survivor, collapsed[j].survivor
-		if a.Name != b.Name {
-			return a.Name < b.Name
+	slices.SortFunc(collapsed, func(x, y fingerprintGroup) int {
+		a, b := x.survivor, y.survivor
+		if c := cmp.Compare(a.Name, b.Name); c != 0 {
+			return c
 		}
-		return isOlderCatalog(a, b)
+		switch {
+		case isOlderCatalog(a, b):
+			return -1
+		case isOlderCatalog(b, a):
+			return 1
+		default:
+			return 0
+		}
 	})
 
 	out := make([]CommunityCatalog, len(collapsed))
@@ -90,6 +98,23 @@ func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 		out[i] = CommunityCatalog{Catalog: g.survivor, Taken: g.taken}
 	}
 	return out, nil
+}
+
+// compareByHomeSortOrder orders catalogs by HomeSortOrder, nil-safe: a nil
+// order (not currently selected) sorts after every non-nil one rather than
+// panicking, so this doesn't depend on the caller's WHERE clause having
+// filtered them out.
+func compareByHomeSortOrder(a, b Catalog) int {
+	switch {
+	case a.HomeSortOrder == nil && b.HomeSortOrder == nil:
+		return 0
+	case a.HomeSortOrder == nil:
+		return 1
+	case b.HomeSortOrder == nil:
+		return -1
+	default:
+		return cmp.Compare(*a.HomeSortOrder, *b.HomeSortOrder)
+	}
 }
 
 // isOlderCatalog orders two catalogs by created_at, then by id — the
@@ -356,9 +381,7 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 		return nil, err
 	}
 
-	sort.Slice(catalogs, func(i, j int) bool {
-		return *catalogs[i].HomeSortOrder < *catalogs[j].HomeSortOrder
-	})
+	slices.SortFunc(catalogs, compareByHomeSortOrder)
 
 	out := make([]SelectedCatalog, len(catalogs))
 	for i, c := range catalogs {

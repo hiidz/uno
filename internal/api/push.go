@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -190,7 +191,7 @@ type pulledSource struct {
 func isUnoManaged(c pulledCollection) bool {
 	found := false
 	for _, f := range c.Folders {
-		for _, src := range append(f.Sources, f.CatalogSources...) {
+		for _, src := range slices.Concat(f.Sources, f.CatalogSources) {
 			found = true
 			if src.AddonID != addon.ID {
 				return false

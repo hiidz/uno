@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 )
 
@@ -62,7 +62,7 @@ func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON
 	}
 
 	if randomized && resp.TotalPages > 1 {
-		if page := rand.Intn(min(resp.TotalPages, maxRandomPage)) + 1; page > 1 {
+		if page := rand.IntN(min(resp.TotalPages, maxRandomPage)) + 1; page > 1 {
 			query.Set("page", strconv.Itoa(page))
 			if resp, err = c.discover(ctx, endpoint, query); err != nil {
 				return nil, 0, randomized, err

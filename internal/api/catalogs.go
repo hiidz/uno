@@ -77,12 +77,12 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.validateCatalogParams(r.Context(), input.Type, input.Provider, input.Params); err != nil {
-		writeVaultError(w, "updateUserCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to update catalog")
+		writeVaultError(w, "updateUserCatalog", err, nil, "", "failed to update catalog")
 		return
 	}
 	fingerprint, err := provider.Fingerprint(input.Type, input.Provider, input.Params)
 	if err != nil {
-		writeVaultError(w, "updateUserCatalog", fmt.Errorf("%w: %w", vault.ErrInvalidInput, err), vault.ErrCatalogNotFound, "catalog not found", "failed to update catalog")
+		writeVaultError(w, "updateUserCatalog", fmt.Errorf("%w: %w", vault.ErrInvalidInput, err), nil, "", "failed to update catalog")
 		return
 	}
 	input.Fingerprint = fingerprint

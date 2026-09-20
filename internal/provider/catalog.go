@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"sync"
 	"time"
@@ -130,7 +130,7 @@ func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJS
 		return nil, err
 	}
 	if randomized {
-		page = rand.Intn(maxRandomPage) + 1
+		page = rand.IntN(maxRandomPage) + 1
 	}
 	query.Set("page", strconv.Itoa(page))
 
@@ -176,7 +176,7 @@ func (c *TMDBClient) resolveMetas(ctx context.Context, catalogType string, items
 	var wg sync.WaitGroup
 	for i, item := range items {
 		wg.Add(1)
-		go func(i int, item tmdbDiscoverItem) {
+		go func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -186,7 +186,7 @@ func (c *TMDBClient) resolveMetas(ctx context.Context, catalogType string, items
 				return // leaves metas[i] zero-valued; filtered out below
 			}
 			metas[i] = tmdbItemToMeta(catalogType, imdbID, item, genreNames)
-		}(i, item)
+		}()
 	}
 	wg.Wait()
 

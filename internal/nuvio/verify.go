@@ -56,7 +56,7 @@ func (v *Verifier) Verify(ctx context.Context, tokenString string) (Claims, erro
 	}
 
 	claims := jwt.MapClaims{}
-	_, err = jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+	_, err = jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
 		return key, nil
 	}, jwt.WithValidMethods([]string{"ES256"}))
 	if err != nil {

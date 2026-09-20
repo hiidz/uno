@@ -1,11 +1,12 @@
 package vault
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,15 +51,14 @@ func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) 
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(collections, func(i, j int) bool {
-		a, b := collections[i], collections[j]
-		if a.Title != b.Title {
-			return a.Title < b.Title
+	slices.SortFunc(collections, func(a, b Collection) int {
+		if c := cmp.Compare(a.Title, b.Title); c != 0 {
+			return c
 		}
 		if !a.CreatedAt.Equal(b.CreatedAt) {
-			return a.CreatedAt.Before(b.CreatedAt)
+			return cmp.Compare(a.CreatedAt.UnixNano(), b.CreatedAt.UnixNano())
 		}
-		return a.ID.String() < b.ID.String()
+		return cmp.Compare(a.ID.String(), b.ID.String())
 	})
 
 	trees, err := db.assembleCollectionTree(ctx, collections)
@@ -356,6 +356,23 @@ func (db *DB) DeleteUserCollection(ctx context.Context, profileID uuid.UUID, col
 	return nil
 }
 
+// compareCollectionsByHomeSortOrder orders collections by HomeSortOrder,
+// nil-safe: a nil order (not currently selected) sorts after every non-nil
+// one rather than panicking, so this doesn't depend on the caller's WHERE
+// clause having filtered them out.
+func compareCollectionsByHomeSortOrder(a, b Collection) int {
+	switch {
+	case a.HomeSortOrder == nil && b.HomeSortOrder == nil:
+		return 0
+	case a.HomeSortOrder == nil:
+		return 1
+	case b.HomeSortOrder == nil:
+		return -1
+	default:
+		return cmp.Compare(*a.HomeSortOrder, *b.HomeSortOrder)
+	}
+}
+
 // GetCurrentCollectionSelection returns profileID's active collection
 // selection — every owned collection with a non-nil home_sort_order —
 // ordered by it, each with its folders assembled.
@@ -365,9 +382,7 @@ func (db *DB) GetCurrentCollectionSelection(ctx context.Context, profileID uuid.
 		return nil, err
 	}
 
-	sort.Slice(collections, func(i, j int) bool {
-		return *collections[i].HomeSortOrder < *collections[j].HomeSortOrder
-	})
+	slices.SortFunc(collections, compareCollectionsByHomeSortOrder)
 
 	return db.assembleCollectionTree(ctx, collections)
 }
