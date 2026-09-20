@@ -163,13 +163,14 @@ to raw ids rather than failing the list, so the rail never blocks on TMDB being 
 ## Catalog authoring
 
 Create is a three-field form — name, `type`, `is_public` — plus the TMDB params sub-form.
-`provider` is derived (`"tmdb"`) and never rendered; `is_default` is excluded (and is `json:"-"`
-server-side, so it can't even appear in a fetched row). `type` renders read-only unconditionally —
-there is no path, here or anywhere else, that changes an existing row's type — and that's backed
-server-side too: `UpdateUserCatalog` reads the stored `type` and rejects a `PUT` that changes it
-with `ErrInvalidInput` — a catalog's type is part of the pushed collections blob, so changing it
-would alter what Nuvio should have without bumping any collection's `version`. `provider` is
-enforced server-side the same way, in both validation places.
+`provider` is derived (`"tmdb"`) and never rendered; `is_default` is excluded (a schema-only
+column with no server-side field at all, so it can't appear in a fetched row). `type` renders
+read-only unconditionally — there is no path, here or anywhere else, that changes an existing
+row's type — and that's backed server-side too: `UpdateUserCatalog` reads the stored `type` and
+rejects a `PUT` that changes it with `ErrInvalidInput` — a catalog's type is part of the pushed
+collections blob, so changing it would alter what Nuvio should have without bumping any
+collection's `version`. `provider` is enforced server-side the same way, in both validation
+places.
 
 **Duplicate is a first-class action on your own rows, not a hidden overflow item, and it's
 atomic** — every row in the library is yours, so opening one always edits it; the Duplicate button

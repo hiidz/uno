@@ -241,9 +241,10 @@ write credential.
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
   the wire. Every insert sets both to the same instant; every update rewrites only `updated_at`.
-- **Dead-by-design columns.** `is_default` on `catalogs`/`collections` is never read and never
-  set true by any code path, and is tagged `json:"-"` on both structs so it doesn't reach the
-  wire; the column stays because a real "default catalog" feature is buildable later and
+- **Dead-by-design columns.** `is_default` on `catalogs`/`collections` exists only in the
+  schema: no Go code names it, so it is absent from every `SELECT` and `INSERT` column list and
+  has no struct field. It is `INTEGER NOT NULL DEFAULT 0`, so every insert writes 0 without
+  naming it. The column stays because a real "default catalog" feature is buildable later and
   dropping it would force a delete-and-recreate.
 - **Nuvio appearance fields.** `collections.focus_glow_enabled` (the TV's focus glow on the
   collection's home-screen folder cards), `folders.focus_gif_url`/`focus_gif_enabled` (an
@@ -336,7 +337,10 @@ describing what a TMDB-backed catalog may ask for.
   owner boundary either way, and a listed catalog reachable directly is equally reachable
   through a public collection that references it, so both doors check the same row. One
   rejected recipe fails the whole collection take — a half-copied collection is not a
-  collection. The collection copy path re-checks the rest of the source tree the same way, in
+  collection. `TakeCatalog` re-checks the source row's `name` and `params` length too
+  (`validateSourceCatalog`), so a stored public catalog past `maxNameLen`/`maxParamsLen` is not
+  takeable at all and fails with `ErrInvalidInput` → 400, the single-catalog half of the same
+  rule. The collection copy path re-checks the rest of the source tree the same way, in
   `validateSourceCollection` (called from `loadSourceCollectionTree`): the collection's and every
   folder's enum values and media URLs, their titles, a folder's cover emoji, each folder's ref
   count and ref genres, and each referenced catalog's `name` and `params` length. A stored

@@ -140,6 +140,84 @@ func TestFolderRefGenreSurvivesDuplicateAndTake(t *testing.T) {
 	}
 }
 
+// Every folder of a copied collection keeps its own refs, in its own order:
+// the refs of a whole tree are loaded in one query grouped by folder, so a
+// tree whose folders would interleave if the grouping were wrong comes back
+// unmixed on a reload, a Duplicate and a Take alike.
+func TestCopiedFolderRefsStayGroupedPerFolder(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	taker := newTestProfile(t, db, "taker")
+
+	names := []string{"Alpha", "Beta", "Gamma"}
+	ids := make([]uuid.UUID, len(names))
+	for i, name := range names {
+		c, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm(name))
+		if err != nil {
+			t.Fatalf("create catalog %s: %v", name, err)
+		}
+		ids[i] = c.ID
+	}
+
+	// Each folder names the same three catalogs in a different order, so a
+	// lookup that dropped folder_id would hand every folder the same refs.
+	wantOrder := [][]int{{0, 1, 2}, {2, 0, 1}, {1, 2, 0}}
+	folders := make([]FolderData, len(wantOrder))
+	for i, order := range wantOrder {
+		refs := make([]FolderCatalogRef, len(order))
+		for j, k := range order {
+			refs[j] = FolderCatalogRef{CatalogID: &ids[k], Genre: names[k]}
+		}
+		folders[i] = FolderData{Title: "Folder " + names[i], Catalogs: refs}
+	}
+
+	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
+		Title:    "Interleaved",
+		IsPublic: true,
+		Folders:  folders,
+	})
+	if err != nil {
+		t.Fatalf("create source collection: %v", err)
+	}
+
+	reloaded, err := db.GetCollectionsByIDs(ctx, []uuid.UUID{source.ID})
+	if err != nil || len(reloaded) != 1 {
+		t.Fatalf("reload collection: %v (%d rows)", err, len(reloaded))
+	}
+	dup, err := db.DuplicateCollection(ctx, owner, source.ID)
+	if err != nil {
+		t.Fatalf("DuplicateCollection: %v", err)
+	}
+	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
+	if err != nil {
+		t.Fatalf("TakeCollection: %v", err)
+	}
+
+	// A copy re-keys refs to its own catalog ids, so the genre — carried
+	// verbatim and unique per catalog here — is what identifies each ref.
+	for name, c := range map[string]CollectionWithFolders{
+		"reload": reloaded[0], "duplicate": dup, "take": taken,
+	} {
+		if len(c.Folders) != len(wantOrder) {
+			t.Fatalf("%s: %d folders, want %d", name, len(c.Folders), len(wantOrder))
+		}
+		for i, order := range wantOrder {
+			want := make([]string, len(order))
+			for j, k := range order {
+				want[j] = names[k]
+			}
+			got := make([]string, 0, len(c.Folders[i].Refs))
+			for _, ref := range c.Folders[i].Refs {
+				got = append(got, ref.Genre)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("%s: folder %d refs = %v, want %v", name, i, got, want)
+			}
+		}
+	}
+}
+
 // The same catalog under the same genre twice in one folder is rejected as
 // invalid input rather than reaching the primary key; after trimming, "War"
 // and " War" are the same genre.

@@ -25,7 +25,7 @@ func queryUUIDs(ctx context.Context, q querier, label, query string, args ...any
 	if err != nil {
 		return nil, fmt.Errorf("querying %s list: %w", label, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []uuid.UUID
 	for rows.Next() {
@@ -79,21 +79,21 @@ func nullableInt(n sql.NullInt64) *int {
 	return &v
 }
 
-// scanCatalog reads one catalog row: the fifteen catalog columns, in the
+// scanCatalog reads one catalog row: the fourteen catalog columns, in the
 // order every catalog SELECT in this package lists them, followed by
 // extraDests — destinations for any further columns the caller's own query
 // appended (see GetPublishedCatalogs' ordering columns).
 func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	var c Catalog
 	var idStr, ownerIDStr string
-	var isPublic, isDefault, showInHome int
+	var isPublic, showInHome int
 	var collectionIDStr, takenFromStr sql.NullString
 	var homeSortOrder sql.NullInt64
 	var createdAtStr, updatedAtStr string
 
 	dests := append([]any{
 		&idStr, &c.Type, &c.Name, &c.Provider,
-		&c.Params, &ownerIDStr, &isPublic, &isDefault,
+		&c.Params, &ownerIDStr, &isPublic,
 		&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &c.Fingerprint,
 		&createdAtStr, &updatedAtStr,
 	}, extraDests...)
@@ -112,7 +112,6 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 		return Catalog{}, err
 	}
 	c.IsPublic = isPublic != 0
-	c.IsDefault = isDefault != 0
 
 	c.CollectionID, err = parseNullableUUID(collectionIDStr, "collection id")
 	if err != nil {
@@ -157,12 +156,12 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 	for rows.Next() {
 		var c Collection
 		var idStr, ownerIDStr string
-		var isPublic, isDefault, pinToTop, showAllTab, focusGlowEnabled, version int
+		var isPublic, pinToTop, showAllTab, focusGlowEnabled, version int
 		var takenFromStr sql.NullString
 		var homeSortOrder, pushedVersion sql.NullInt64
 		var createdAtStr, updatedAtStr string
 
-		if err := rows.Scan(&idStr, &c.Title, &ownerIDStr, &isPublic, &isDefault,
+		if err := rows.Scan(&idStr, &c.Title, &ownerIDStr, &isPublic,
 			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
 			&homeSortOrder, &version, &pushedVersion, &takenFromStr, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, fmt.Errorf("scanning collection row: %w", err)
@@ -179,7 +178,6 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 			return nil, err
 		}
 		c.IsPublic = isPublic != 0
-		c.IsDefault = isDefault != 0
 		c.PinToTop = pinToTop != 0
 		c.ShowAllTab = showAllTab != 0
 		c.FocusGlowEnabled = focusGlowEnabled != 0

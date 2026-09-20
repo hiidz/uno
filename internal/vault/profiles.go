@@ -174,5 +174,8 @@ func (db *DB) updateProfileUUID(ctx context.Context, id uuid.UUID, nuvioProfileU
 		`UPDATE profiles SET nuvio_profile_uuid = ? WHERE id = ?`,
 		nuvioProfileUUID, id.String(),
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("updating profile uuid: %w", err)
+	}
+	return nil
 }

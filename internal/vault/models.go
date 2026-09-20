@@ -48,10 +48,6 @@ type Catalog struct {
 	// Fingerprint collapses duplicate community catalogs by recipe; never on
 	// the wire.
 	Fingerprint string `json:"-"`
-	// IsDefault is never set true by any code path today — kept internal,
-	// not exposed on the wire, so the API doesn't assert a value it isn't
-	// actually tracking. See UpdateUserCatalog/UpdateUserCollection.
-	IsDefault bool `json:"-"`
 }
 
 // Collection is a Nuvio home-screen collection: a titled group of Folders,
@@ -84,10 +80,6 @@ type Collection struct {
 	// TakenFrom is the source collection a Take copied this row from, kept
 	// only to answer "you already took this" — never rendered as attribution.
 	TakenFrom *uuid.UUID `json:"-"`
-	// IsDefault is never set true by any code path today — kept internal,
-	// not exposed on the wire, so the API doesn't assert a value it isn't
-	// actually tracking. See UpdateUserCatalog/UpdateUserCollection.
-	IsDefault bool `json:"-"`
 }
 
 // Folder is one tile row within a Collection.

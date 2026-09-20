@@ -1,8 +1,10 @@
 package vault
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -28,6 +30,17 @@ func buildInClause(ids []uuid.UUID) (string, []any) {
 		args[i] = id.String()
 	}
 	return strings.Join(placeholders, ", "), args
+}
+
+// compareCreatedThenID orders two rows by created_at, then by id — the
+// deterministic tie-break both community lists use, for the catalog
+// fingerprint-collapse survivor and for either list's final ordering, so
+// rows with equal names or titles don't swap between requests.
+func compareCreatedThenID(aCreatedAt, bCreatedAt time.Time, aID, bID uuid.UUID) int {
+	if c := aCreatedAt.Compare(bCreatedAt); c != 0 {
+		return c
+	}
+	return cmp.Compare(aID.String(), bID.String())
 }
 
 // dedupeUUIDs returns ids with duplicates removed, preserving first-seen

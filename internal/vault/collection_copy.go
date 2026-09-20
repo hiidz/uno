@@ -88,12 +88,16 @@ func loadSourceCollectionTree(ctx context.Context, q sourceQuerier, sourceID uui
 	if err != nil {
 		return sourceCollection{}, err
 	}
+	folderIDs := make([]uuid.UUID, len(src.folders))
+	for i, f := range src.folders {
+		folderIDs[i] = f.id
+	}
+	refsByFolder, err := loadFolderRefs(ctx, q, folderIDs)
+	if err != nil {
+		return sourceCollection{}, err
+	}
 	for i := range src.folders {
-		refs, err := loadSourceFolderRefs(ctx, q, src.folders[i].id)
-		if err != nil {
-			return sourceCollection{}, err
-		}
-		src.folders[i].refs = refs
+		src.folders[i].refs = refsByFolder[src.folders[i].id]
 	}
 
 	src.catalogs, err = loadSourceCatalogs(ctx, q, distinctRefCatalogIDs(src.folders))
@@ -214,8 +218,8 @@ func validateSourceCollection(src sourceCollection) error {
 }
 
 // loadSourceFolders reads collectionID's folders in sort order, without
-// their catalog refs — loadSourceFolderRefs fills those in per folder, which
-// is also what keeps each query's rows closed by its own defer.
+// their catalog refs — loadSourceCollectionTree fills those in for every
+// folder at once, through loadFolderRefs.
 func loadSourceFolders(ctx context.Context, q querier, collectionID uuid.UUID) ([]sourceFolder, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, title, tile_shape, hide_title, cover_emoji, cover_image_url,
@@ -250,34 +254,6 @@ func loadSourceFolders(ctx context.Context, q querier, collectionID uuid.UUID) (
 	return folders, nil
 }
 
-// loadSourceFolderRefs reads one source folder's catalog refs, in order.
-func loadSourceFolderRefs(ctx context.Context, q querier, folderID uuid.UUID) ([]FolderRef, error) {
-	rows, err := q.QueryContext(ctx, `
-		SELECT catalog_id, genre FROM folder_catalogs WHERE folder_id = ? ORDER BY sort_order
-	`, folderID.String())
-	if err != nil {
-		return nil, fmt.Errorf("querying source folder catalogs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var refs []FolderRef
-	for rows.Next() {
-		var catIDStr, genre string
-		if err := rows.Scan(&catIDStr, &genre); err != nil {
-			return nil, fmt.Errorf("scanning source folder catalog: %w", err)
-		}
-		catID, err := parseUUID(catIDStr, "catalog id")
-		if err != nil {
-			return nil, err
-		}
-		refs = append(refs, FolderRef{CatalogID: catID, Genre: genre})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating source folder catalogs: %w", err)
-	}
-	return refs, nil
-}
-
 // copyCollectionTree inserts a new collection owned by profileID — src's
 // title and cosmetics — plus src's folders, refs remapped through an old-id→new-id map built as
 // follows for each distinct catalog id folders reference (first-seen
@@ -308,9 +284,9 @@ func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sr
 
 	newCollectionID := uuid.New()
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab,
+		INSERT INTO collections (id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab,
 		                          backdrop_image_url, focus_glow_enabled, taken_from, created_at, updated_at)
-		VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, newCollectionID.String(), src.title, profileID.String(), src.pinToTop, src.viewMode, src.showAllTab,
 		src.backdropImageURL, src.focusGlowEnabled, nullableUUIDString(takenFrom), nowStr, nowStr)
 	if err != nil {
@@ -338,9 +314,9 @@ func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sr
 			catalogTakenFrom = &sc.id
 		}
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
+			INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
 			                       collection_id, taken_from, fingerprint, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
 		`, newID.String(), sc.typ, sc.name, sc.provider, sc.params, profileID.String(),
 			newCollectionID.String(), nullableUUIDString(catalogTakenFrom), sc.fingerprint, nowStr, nowStr)
 		if err != nil {

@@ -155,6 +155,53 @@ func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 	}
 }
 
+// A stored public catalog past today's length bounds is not takeable on its
+// own either: TakeCatalog re-checks the source row the same way the
+// collection copy path re-checks every catalog in a tree, so the one listed
+// row is bounded whichever door it is taken through.
+func TestTakeCatalogRejectsStaleSourceRows(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	taker := newTestProfile(t, db, "taker")
+
+	source, err := db.CreateUserCatalog(ctx, owner, publicCatalogForm("Source"))
+	if err != nil {
+		t.Fatalf("create source catalog: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name  string
+		query string
+		arg   string
+	}{
+		{"overlong name", `UPDATE catalogs SET name = ? WHERE id = ?`, strings.Repeat("n", maxNameLen+1)},
+		{"overlong params", `UPDATE catalogs SET params = ? WHERE id = ?`, strings.Repeat("p", maxParamsLen+1)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := db.conn.ExecContext(ctx, tt.query, tt.arg, source.ID.String()); err != nil {
+				t.Fatalf("writing the stale row: %v", err)
+			}
+			// Restored before the next case runs, so each one tests its field alone.
+			t.Cleanup(func() {
+				if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = 'Source', params = '{}' WHERE id = ?`,
+					source.ID.String()); err != nil {
+					t.Errorf("restoring the catalog row: %v", err)
+				}
+			})
+
+			if _, err := db.TakeCatalog(ctx, taker, source.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+				t.Errorf("TakeCatalog = %v, want ErrInvalidInput", err)
+			}
+		})
+	}
+
+	// The restored row is takeable, so the bound is what refused it.
+	if _, err := db.TakeCatalog(ctx, taker, source.ID, allowAnyCatalogParams); err != nil {
+		t.Errorf("TakeCatalog on the restored row: %v", err)
+	}
+}
+
 // DuplicateCollection's "(copy)" suffix is part of the title it writes, so a
 // title with room for it duplicates and the result saves again, while one
 // already at maxNameLen is refused rather than stored past the bound.

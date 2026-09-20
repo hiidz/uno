@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS collections (
     title              TEXT    NOT NULL,
     owner_id           TEXT    NOT NULL REFERENCES profiles(id),
     is_public          INTEGER NOT NULL DEFAULT 0,
-    is_default         INTEGER NOT NULL DEFAULT 0,
     pin_to_top         INTEGER NOT NULL DEFAULT 0,
     view_mode          TEXT    NOT NULL DEFAULT 'TABBED_GRID',
     show_all_tab       INTEGER NOT NULL DEFAULT 0,
@@ -38,7 +37,6 @@ CREATE TABLE IF NOT EXISTS catalogs (
     params          TEXT    NOT NULL DEFAULT '',
     owner_id        TEXT    NOT NULL REFERENCES profiles(id),
     is_public       INTEGER NOT NULL DEFAULT 0,
-    is_default      INTEGER NOT NULL DEFAULT 0,
     collection_id   TEXT    REFERENCES collections(id) ON DELETE CASCADE, -- NULL = listed
     home_sort_order INTEGER,                    -- NULL = not on the TV
     show_in_home    INTEGER NOT NULL DEFAULT 1, -- whether the home row appears when on the TV

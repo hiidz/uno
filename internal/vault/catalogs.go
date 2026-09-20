@@ -7,16 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 // queryCatalogs runs a SELECT over catalogs with the given WHERE clause and
-// args, parsing the result rows.
+// args, parsing the result rows. where is built from this package's own
+// literals and buildInClause placeholders — never from client input, which
+// reaches the query only as a bound arg.
+//
+//nolint:gosec // G202: see above — the concatenated where is an internal literal.
 func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]Catalog, error) {
 	rows, err := db.conn.QueryContext(ctx, `
-		SELECT id, type, name, provider, params, owner_id, is_public, is_default,
+		SELECT id, type, name, provider, params, owner_id, is_public,
 		       collection_id, home_sort_order, show_in_home, taken_from, fingerprint,
 		       created_at, updated_at
 		FROM catalogs
@@ -24,7 +29,7 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 	if err != nil {
 		return nil, fmt.Errorf("querying catalogs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return parseCatalogs(rows)
 }
@@ -83,14 +88,7 @@ func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 		if c := cmp.Compare(a.Name, b.Name); c != 0 {
 			return c
 		}
-		switch {
-		case isOlderCatalog(a, b):
-			return -1
-		case isOlderCatalog(b, a):
-			return 1
-		default:
-			return 0
-		}
+		return compareCreatedThenID(a.CreatedAt, b.CreatedAt, a.ID, b.ID)
 	})
 
 	out := make([]CommunityCatalog, len(collapsed))
@@ -117,14 +115,10 @@ func compareByHomeSortOrder(a, b Catalog) int {
 	}
 }
 
-// isOlderCatalog orders two catalogs by created_at, then by id — the
-// deterministic tie-break GetCommunityCatalogs uses both for the
-// fingerprint-collapse survivor and for the final list's stable ordering.
+// isOlderCatalog reads compareCreatedThenID as the "a comes first" test
+// GetCommunityCatalogs' fingerprint collapse asks of a candidate survivor.
 func isOlderCatalog(a, b Catalog) bool {
-	if !a.CreatedAt.Equal(b.CreatedAt) {
-		return a.CreatedAt.Before(b.CreatedAt)
-	}
-	return a.ID.String() < b.ID.String()
+	return compareCreatedThenID(a.CreatedAt, b.CreatedAt, a.ID, b.ID) < 0
 }
 
 // CatalogParamsValidator re-checks a catalog recipe that is about to be
@@ -133,11 +127,27 @@ func isOlderCatalog(a, b Catalog) bool {
 // passed in by the caller that can (api.validateCatalogParams).
 type CatalogParamsValidator func(catalogType, catalogProvider, params string) error
 
+// validateSourceCatalog re-checks a catalog row about to be copied against
+// the length bounds CatalogForm.Validate applies to a save — the
+// single-catalog half of what validateSourceCollection does for a whole
+// tree, so the same listed row is bounded whichever door it is taken
+// through. Its type and provider are left to the caller's params validator,
+// which owns the recipe.
+func validateSourceCatalog(source Catalog) error {
+	problems := appendProblem(nil, lengthProblem("name", source.Name, maxNameLen))
+	problems = appendProblem(problems, lengthProblem("params", source.Params, maxParamsLen))
+	if len(problems) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: source catalog: %s", ErrInvalidInput, strings.Join(problems, "; "))
+}
+
 // TakeCatalog deep-copies a public catalog owned by someone else into a new
 // listed catalog owned by profileID, with fresh ids and taken_from set to
 // the source so the copy is unaffected by later changes to the source.
 // Returns ErrCatalogNotFound if sourceID isn't public or is already owned by
-// profileID.
+// profileID, and ErrInvalidInput if the source row's name or params are
+// past the bounds a save enforces.
 //
 // validateParams re-runs the create/update params check against the source
 // row before anything is copied: the recipe is someone else's input, and it
@@ -154,6 +164,9 @@ func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uui
 	}
 	if len(source) == 0 {
 		return Catalog{}, ErrCatalogNotFound
+	}
+	if err := validateSourceCatalog(source[0]); err != nil {
+		return Catalog{}, err
 	}
 	if err := validateParams(source[0].Type, source[0].Provider, source[0].Params); err != nil {
 		return Catalog{}, err
@@ -175,10 +188,10 @@ func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uui
 	}
 
 	_, err = db.conn.ExecContext(ctx, `
-		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
+		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
 		                       taken_from, fingerprint, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic, c.IsDefault,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic,
 		c.TakenFrom.String(), c.Fingerprint, nowStr, nowStr)
 	if err != nil {
 		return Catalog{}, fmt.Errorf("inserting taken catalog: %w", err)
@@ -225,7 +238,6 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 		Params:       input.Params,
 		OwnerID:      profileID,
 		IsPublic:     input.IsPublic,
-		IsDefault:    false,
 		CollectionID: input.CollectionID,
 		Fingerprint:  input.Fingerprint,
 		CreatedAt:    now,
@@ -233,10 +245,10 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	}
 
 	_, err := db.conn.ExecContext(ctx, `
-		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
+		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
 		                       collection_id, fingerprint, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic, c.IsDefault,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic,
 		nullableUUIDString(c.CollectionID), c.Fingerprint, nowStr, nowStr)
 	if err != nil {
 		return Catalog{}, fmt.Errorf("inserting catalog: %w", err)
@@ -342,7 +354,6 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 		Params:        input.Params,
 		OwnerID:       profileID,
 		IsPublic:      input.IsPublic,
-		IsDefault:     false, // not returned by UPDATE; not on the wire anyway, see models.go
 		CollectionID:  input.CollectionID,
 		HomeSortOrder: nullableInt(homeSortOrder), // unchanged by this update, read back for an accurate response
 		ShowInHome:    showInHome != 0,
@@ -400,14 +411,14 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 // sitting in more than one folder would otherwise appear once per folder.
 func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
 	rows, err := db.conn.QueryContext(ctx, `
-		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public, c.is_default,
+		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public,
 		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.fingerprint,
 		       c.created_at, c.updated_at,
 		       c.show_in_home AS derived_show_in_home, 0 AS rank, c.home_sort_order AS o1, 0 AS o2, 0 AS o3
 		FROM catalogs c
 		WHERE c.owner_id = ? AND c.home_sort_order IS NOT NULL
 		UNION
-		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public, c.is_default,
+		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public,
 		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.fingerprint,
 		       c.created_at, c.updated_at,
 		       0 AS derived_show_in_home, 1 AS rank, col.home_sort_order AS o1, f.sort_order AS o2, fc.sort_order AS o3
@@ -421,7 +432,7 @@ func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 	if err != nil {
 		return nil, fmt.Errorf("querying published catalogs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := []SelectedCatalog{}
 	seen := map[uuid.UUID]bool{}

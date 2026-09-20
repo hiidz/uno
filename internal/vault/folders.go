@@ -136,10 +136,10 @@ func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collect
 	now := time.Now().UTC().Format(time.RFC3339)
 	id := uuid.New()
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
+		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
 		                       collection_id, fingerprint, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, id.String(), spec.Type, spec.Name, spec.Provider, spec.Params, profileID.String(), false, false,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, id.String(), spec.Type, spec.Name, spec.Provider, spec.Params, profileID.String(), false,
 		collectionID.String(), spec.Fingerprint, now, now)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("inserting scoped catalog: %w", err)

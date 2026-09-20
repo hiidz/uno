@@ -1,5 +1,6 @@
-// Assembling flat collection, folder and folder_catalogs rows into the
-// nested shape the API returns.
+// Reading a collection's folders and folder_catalogs rows in bulk, and
+// assembling them into the nested shape the API returns. The two queries
+// serve both the read path here and the copy path in collection_copy.go.
 
 package vault
 
@@ -25,21 +26,9 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 		collectionIDs[i] = c.ID
 	}
 
-	placeholders, args := buildInClause(collectionIDs)
-	rows, err := db.conn.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
-		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url
-		FROM folders
-		WHERE collection_id IN (%s)
-		ORDER BY collection_id, sort_order
-	`, placeholders), args...)
+	folders, err := loadFoldersByCollections(ctx, db.conn, collectionIDs)
 	if err != nil {
-		return nil, fmt.Errorf("querying folders: %w", err)
-	}
-	folders, err := parseFolders(rows)
-	rows.Close()
-	if err != nil {
-		return nil, fmt.Errorf("parsing folder rows: %w", err)
+		return nil, err
 	}
 
 	folderIDs := make([]uuid.UUID, len(folders))
@@ -47,28 +36,9 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 		folderIDs[i] = f.ID
 	}
 
-	var folderCatalogs []FolderCatalog
-	if len(folderIDs) > 0 {
-		placeholders, args = buildInClause(folderIDs)
-		rows, err = db.conn.QueryContext(ctx, fmt.Sprintf(`
-			SELECT folder_id, catalog_id, sort_order, genre
-			FROM folder_catalogs
-			WHERE folder_id IN (%s)
-			ORDER BY folder_id, sort_order
-		`, placeholders), args...)
-		if err != nil {
-			return nil, fmt.Errorf("querying folder catalogs: %w", err)
-		}
-		folderCatalogs, err = parseFolderCatalogs(rows)
-		rows.Close()
-		if err != nil {
-			return nil, fmt.Errorf("parsing folder catalog rows: %w", err)
-		}
-	}
-
-	refsByFolder := make(map[uuid.UUID][]FolderRef)
-	for _, fc := range folderCatalogs {
-		refsByFolder[fc.FolderID] = append(refsByFolder[fc.FolderID], FolderRef{CatalogID: fc.CatalogID, Genre: fc.Genre})
+	refsByFolder, err := loadFolderRefs(ctx, db.conn, folderIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	foldersByCollection := make(map[uuid.UUID][]FolderWithCatalogs)
@@ -111,4 +81,62 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 	}
 
 	return result, nil
+}
+
+// loadFoldersByCollections reads the folders of the given collections in one
+// query, ordered by collection and then by sort_order within each — the order
+// assembleCollectionTree's grouping relies on.
+func loadFoldersByCollections(ctx context.Context, q querier, collectionIDs []uuid.UUID) ([]Folder, error) {
+	placeholders, args := buildInClause(collectionIDs)
+	rows, err := q.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
+		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url
+		FROM folders
+		WHERE collection_id IN (%s)
+		ORDER BY collection_id, sort_order
+	`, placeholders), args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying folders: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	folders, err := parseFolders(rows)
+	if err != nil {
+		return nil, fmt.Errorf("parsing folder rows: %w", err)
+	}
+	return folders, nil
+}
+
+// loadFolderRefs reads the catalog refs of the given folders in one query,
+// grouped by folder and, within each folder, in sort_order — the order
+// rewriteFolderCatalogRefs writes as the ref's position in its folder. A
+// folder with no refs has no entry, which reads back from the map as a nil
+// slice. Both the read path (assembleCollectionTree) and the copy path
+// (loadSourceCollectionTree) take a tree's refs from here.
+func loadFolderRefs(ctx context.Context, q querier, folderIDs []uuid.UUID) (map[uuid.UUID][]FolderRef, error) {
+	refsByFolder := make(map[uuid.UUID][]FolderRef, len(folderIDs))
+	if len(folderIDs) == 0 {
+		return refsByFolder, nil
+	}
+
+	placeholders, args := buildInClause(folderIDs)
+	rows, err := q.QueryContext(ctx, fmt.Sprintf(`
+		SELECT folder_id, catalog_id, sort_order, genre
+		FROM folder_catalogs
+		WHERE folder_id IN (%s)
+		ORDER BY folder_id, sort_order
+	`, placeholders), args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying folder catalogs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	folderCatalogs, err := parseFolderCatalogs(rows)
+	if err != nil {
+		return nil, fmt.Errorf("parsing folder catalog rows: %w", err)
+	}
+	for _, fc := range folderCatalogs {
+		refsByFolder[fc.FolderID] = append(refsByFolder[fc.FolderID], FolderRef{CatalogID: fc.CatalogID, Genre: fc.Genre})
+	}
+	return refsByFolder, nil
 }

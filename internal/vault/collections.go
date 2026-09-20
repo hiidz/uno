@@ -15,17 +15,21 @@ import (
 )
 
 // queryCollections runs a SELECT over collections with the given WHERE
-// clause and args, parsing the result rows.
+// clause and args, parsing the result rows. where is built from this
+// package's own literals and buildInClause placeholders — never from client
+// input, which reaches the query only as a bound arg.
+//
+//nolint:gosec // G202: see above — the concatenated where is an internal literal.
 func (db *DB) queryCollections(ctx context.Context, where string, args ...any) ([]Collection, error) {
 	rows, err := db.conn.QueryContext(ctx, `
-		SELECT id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
+		SELECT id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
 		       focus_glow_enabled, home_sort_order, version, pushed_version, taken_from, created_at, updated_at
 		FROM collections
 		WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying collections: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return parseCollections(rows)
 }
@@ -55,10 +59,7 @@ func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) 
 		if c := cmp.Compare(a.Title, b.Title); c != 0 {
 			return c
 		}
-		if !a.CreatedAt.Equal(b.CreatedAt) {
-			return cmp.Compare(a.CreatedAt.UnixNano(), b.CreatedAt.UnixNano())
-		}
-		return cmp.Compare(a.ID.String(), b.ID.String())
+		return compareCreatedThenID(a.CreatedAt, b.CreatedAt, a.ID, b.ID)
 	})
 
 	trees, err := db.assembleCollectionTree(ctx, collections)
@@ -135,7 +136,6 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 		Title:            input.Title,
 		OwnerID:          profileID,
 		IsPublic:         input.IsPublic,
-		IsDefault:        false,
 		PinToTop:         input.PinToTop,
 		ViewMode:         input.ViewMode,
 		ShowAllTab:       input.ShowAllTab,
@@ -147,10 +147,10 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 	}
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO collections (id, title, owner_id, is_public, is_default, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
+		INSERT INTO collections (id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
 		                          focus_glow_enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Title, c.OwnerID.String(), c.IsPublic, c.IsDefault, c.PinToTop, c.ViewMode, c.ShowAllTab, c.BackdropImageURL,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Title, c.OwnerID.String(), c.IsPublic, c.PinToTop, c.ViewMode, c.ShowAllTab, c.BackdropImageURL,
 		c.FocusGlowEnabled, nowStr, nowStr)
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("inserting collection: %w", err)
@@ -316,7 +316,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 
 	c := Collection{
 		ID: collectionID, Title: input.Title, OwnerID: profileID,
-		IsPublic: input.IsPublic, IsDefault: false, // not returned by UPDATE
+		IsPublic: input.IsPublic,
 		PinToTop: input.PinToTop, ViewMode: input.ViewMode,
 		ShowAllTab: input.ShowAllTab, BackdropImageURL: input.BackdropImageURL,
 		// HomeSortOrder/PushedVersion are unchanged by this update, read back
