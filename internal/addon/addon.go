@@ -68,11 +68,11 @@ type Server struct {
 // New builds a Server. Both arguments are required — the caller (api.New)
 // already guarantees non-nil, but New is exported, so it checks again
 // rather than relying on that guarantee holding for every future caller.
-func New(v *vault.DB, p *provider.TMDBClient) *Server {
+func New(v *vault.DB, p *provider.TMDBClient) (*Server, error) {
 	if v == nil || p == nil {
-		log.Fatal("addon.New: vault and provider must not be nil")
+		return nil, errors.New("addon: vault and provider must not be nil")
 	}
-	return &Server{vault: v, provider: p}
+	return &Server{vault: v, provider: p}, nil
 }
 
 // Public wraps a handler on the public, unauthenticated addon surface:

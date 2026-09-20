@@ -1,7 +1,7 @@
 package static
 
 import (
-	"log"
+	"fmt"
 	"net/http"
 
 	"github.com/klauspost/compress/gzhttp"
@@ -41,7 +41,10 @@ var compressible = []string{
 //
 // Range requests are passed through uncompressed: the file server's
 // byte-range math is over the uncompressed file, which gzip would break.
-func Gzip(next http.Handler) http.Handler {
+//
+// The error is the wrapper's own configuration check; it is returned rather
+// than fatal so the decision to abort startup stays in cmd/server.
+func Gzip(next http.Handler) (http.Handler, error) {
 	// MinSize is gzhttp's default; below it the gzip envelope costs more
 	// than it saves.
 	wrapper, err := gzhttp.NewWrapper(
@@ -49,7 +52,7 @@ func Gzip(next http.Handler) http.Handler {
 		gzhttp.MinSize(gzhttp.DefaultMinSize),
 	)
 	if err != nil {
-		log.Fatalf("failed to build gzip wrapper: %v", err)
+		return nil, fmt.Errorf("static: building gzip wrapper: %w", err)
 	}
 	gzipped := wrapper(next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,5 +66,5 @@ func Gzip(next http.Handler) http.Handler {
 			return
 		}
 		gzipped.ServeHTTP(w, r)
-	})
+	}), nil
 }

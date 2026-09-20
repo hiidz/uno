@@ -37,16 +37,19 @@ func main() {
 		nuvioAPI = api.NewDevBypassNuvio(nuvioClient, cfg.DevAuthBypassToken)
 	}
 
-	log.Printf("Server starting on port %s", cfg.Port)
-	apiServer := api.New(api.Deps{
+	apiServer, err := api.New(api.Deps{
 		Vault:       db,
 		Provider:    tmdb,
 		Verifier:    verifier,
 		Nuvio:       nuvioAPI,
 		SiteBaseURL: cfg.SiteBaseURL,
 	})
-	err = http.ListenAndServe(":"+cfg.Port, apiServer)
 	if err != nil {
-		log.Fatalf("Failed to start server on port: %s", cfg.Port)
+		log.Fatalf("Failed to build server: %v", err)
+	}
+
+	log.Printf("Server starting on port %s", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, apiServer); err != nil {
+		log.Fatalf("Server failed on port %s: %v", cfg.Port, err)
 	}
 }

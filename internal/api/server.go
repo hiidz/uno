@@ -4,8 +4,9 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 
 	"github.com/hiidz/uno/internal/addon"
@@ -33,19 +34,25 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // New builds a Server from d. Deps has no required-field enforcement at the
 // type level — a struct literal with a field omitted still compiles — so
-// this checks for it explicitly and fails at startup rather than as a nil-
-// pointer panic on the first request that happens to reach the missing
-// dependency.
-func New(d Deps) *Server {
+// this checks for it explicitly and reports the missing dependency rather
+// than leaving a nil-pointer panic for the first request that happens to
+// reach it. Every error here is a startup misconfiguration; cmd/server is
+// where that becomes a fatal.
+func New(d Deps) (*Server, error) {
 	switch {
 	case d.Vault == nil:
-		log.Fatal("api.New: Deps.Vault is nil")
+		return nil, errors.New("api: Deps.Vault is nil")
 	case d.Provider == nil:
-		log.Fatal("api.New: Deps.Provider is nil")
+		return nil, errors.New("api: Deps.Provider is nil")
 	case d.Verifier == nil:
-		log.Fatal("api.New: Deps.Verifier is nil")
+		return nil, errors.New("api: Deps.Verifier is nil")
 	case d.Nuvio == nil:
-		log.Fatal("api.New: Deps.Nuvio is nil")
+		return nil, errors.New("api: Deps.Nuvio is nil")
+	}
+
+	addonServer, err := addon.New(d.Vault, d.Provider)
+	if err != nil {
+		return nil, fmt.Errorf("api: building addon server: %w", err)
 	}
 
 	s := &Server{
@@ -54,14 +61,16 @@ func New(d Deps) *Server {
 		provider:    d.Provider,
 		verifier:    d.Verifier,
 		nuvio:       d.Nuvio,
-		addon:       addon.New(d.Vault, d.Provider),
+		addon:       addonServer,
 		siteBaseURL: d.SiteBaseURL,
 	}
-	s.routes()
-	return s
+	if err := s.routes(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
-func (s *Server) routes() {
+func (s *Server) routes() error {
 	// Not profile-scoped: previewing a recipe reads nothing from the vault, so
 	// there is no profile to resolve. Every other catalog route, including the
 	// community list and take, lives under /api/p/{profileIndex}/.
@@ -110,9 +119,14 @@ func (s *Server) routes() {
 	// most specific registered pattern first.
 	distFS, err := fs.Sub(unoweb.DistFS, "dist")
 	if err != nil {
-		log.Fatalf("failed to open embedded web/dist: %v", err)
+		return fmt.Errorf("api: opening embedded web/dist: %w", err)
 	}
-	s.router.Handle("/", static.Gzip(static.Handler(distFS)))
+	gzipped, err := static.Gzip(static.Handler(distFS))
+	if err != nil {
+		return fmt.Errorf("api: building static handler: %w", err)
+	}
+	s.router.Handle("/", gzipped)
+	return nil
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

@@ -55,7 +55,7 @@ and it has to stay that way.
 
 ## Server construction
 
-`api.Server` is built from a `Deps` struct — `New(d Deps) *Server`, with `Deps{Vault, Provider,
+`api.Server` is built from a `Deps` struct — `New(d Deps) (*Server, error)`, with `Deps{Vault, Provider,
 Verifier, Nuvio, SiteBaseURL}` (`internal/api/deps.go`). `Verifier` (`TokenVerifier`, one method)
 and `Nuvio` (`NuvioClient`, five methods) are narrow *consumer-side* interfaces over
 `*nuvio.Client`'s method set, not the concrete type — the seam that makes `requireNuvioAuth` and
@@ -63,8 +63,10 @@ and `Nuvio` (`NuvioClient`, five methods) are narrow *consumer-side* interfaces 
 drift in `internal/nuvio` into a build error in `internal/api` rather than a surprise at the call
 site. `cmd/server/main.go` passes the same `*nuvio.Client` value for both fields; a second,
 independently constructed `Verifier` would mean a second, out-of-sync JWKS key cache. Because a
-struct literal can silently omit a field, `New` checks each required field and `log.Fatal`s at
-startup rather than nil-panicking on the first request that reaches it.
+struct literal can silently omit a field, `New` checks each required field and returns an error
+rather than nil-panicking on the first request that reaches it. It returns rather than exiting so
+the decision to abort startup lives in `cmd/server/main.go`, the only place that calls
+`log.Fatal` — the same reason `addon.New` and `static.Gzip` return their errors.
 
 ## Auth model
 
