@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,9 +23,9 @@ type sourceFolder struct {
 }
 
 // sourceCollection is a collection tree loaded for copying: the cosmetics a
-// copy carries over, plus its folders in sort order, each with its own
-// ordered catalog refs. Produced by loadSourceCollectionTree, consumed by
-// copyCollectionTree.
+// copy carries over, its folders in sort order, each with its own ordered
+// catalog refs, and every distinct catalog those refs name. Produced by
+// loadSourceCollectionTree, consumed by copyCollectionTree.
 type sourceCollection struct {
 	title            string
 	viewMode         string
@@ -33,19 +34,43 @@ type sourceCollection struct {
 	showAllTab       bool
 	focusGlowEnabled bool
 	folders          []sourceFolder
+	catalogs         []sourceCatalog // first-seen order across folders
+}
+
+// sourceCatalog is one catalog row a collection tree's folders reference,
+// loaded whole so the copy can re-insert it. scoped records whether the
+// source row was scoped to its own collection rather than listed — the
+// distinction copyCollectionTree's copyListedRefs turns on.
+type sourceCatalog struct {
+	id                                       uuid.UUID
+	typ, name, provider, params, fingerprint string
+	scoped                                   bool
+}
+
+// sourceQuerier is the read side loadSourceCollectionTree needs: the
+// collection row through QueryRowContext, its folders and catalogs through
+// QueryContext. Both *sql.DB and *sql.Tx satisfy it, and copyCollection
+// reads through the pool so the params check can run before the write
+// transaction opens.
+type sourceQuerier interface {
+	queryRower
+	querier
 }
 
 // loadSourceCollectionTree loads sourceID's cosmetics (subject to
 // whereExtra, which distinguishes a Take's "public and not mine" from a
-// Duplicate's "mine") plus its folders and each folder's ordered catalog
-// refs, all inside tx so the read is part of the same transaction the copy
-// commits in. Returns ErrCollectionNotFound if whereExtra excludes sourceID.
-func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUID, whereExtra string, whereArgs ...any) (sourceCollection, error) {
+// Duplicate's "mine") plus its folders, each folder's ordered catalog refs,
+// and the catalog rows those refs name. It reads through q rather than the
+// copy's own transaction: everything a copy writes is derived here, so the
+// whole read — and the validation copyCollection runs on its result — can
+// finish before a write transaction opens. Returns ErrCollectionNotFound if
+// whereExtra excludes sourceID.
+func loadSourceCollectionTree(ctx context.Context, q sourceQuerier, sourceID uuid.UUID, whereExtra string, whereArgs ...any) (sourceCollection, error) {
 	var src sourceCollection
 	var pinToTop, showAllTab, focusGlowEnabled int
 
 	args := append([]any{sourceID.String()}, whereArgs...)
-	err := tx.QueryRowContext(ctx, `
+	err := q.QueryRowContext(ctx, `
 		SELECT title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled
 		FROM collections WHERE id = ?`+whereExtra, args...,
 	).Scan(&src.title, &pinToTop, &src.viewMode, &showAllTab, &src.backdropImageURL, &focusGlowEnabled)
@@ -59,26 +84,119 @@ func loadSourceCollectionTree(ctx context.Context, tx *sql.Tx, sourceID uuid.UUI
 	src.showAllTab = showAllTab != 0
 	src.focusGlowEnabled = focusGlowEnabled != 0
 
-	src.folders, err = loadSourceFolders(ctx, tx, sourceID)
+	src.folders, err = loadSourceFolders(ctx, q, sourceID)
 	if err != nil {
 		return sourceCollection{}, err
 	}
 	for i := range src.folders {
-		refs, err := loadSourceFolderRefs(ctx, tx, src.folders[i].id)
+		refs, err := loadSourceFolderRefs(ctx, q, src.folders[i].id)
 		if err != nil {
 			return sourceCollection{}, err
 		}
 		src.folders[i].refs = refs
 	}
 
+	src.catalogs, err = loadSourceCatalogs(ctx, q, distinctRefCatalogIDs(src.folders))
+	if err != nil {
+		return sourceCollection{}, err
+	}
+
+	if err := validateSourceMediaURLs(src); err != nil {
+		return sourceCollection{}, err
+	}
+
 	return src, nil
+}
+
+// distinctRefCatalogIDs collects the catalog ids folders reference, deduped
+// in first-seen order — the order that decides which single copy a catalog
+// referenced by two folders collapses into.
+func distinctRefCatalogIDs(folders []sourceFolder) []uuid.UUID {
+	var ids []uuid.UUID
+	seen := map[uuid.UUID]bool{}
+	for _, f := range folders {
+		for _, ref := range f.refs {
+			if !seen[ref.CatalogID] {
+				seen[ref.CatalogID] = true
+				ids = append(ids, ref.CatalogID)
+			}
+		}
+	}
+	return ids
+}
+
+// loadSourceCatalogs reads the catalog rows a collection tree references,
+// returned in ids order. An id with no row is skipped rather than being an
+// error, so a ref left dangling by a concurrent delete drops out of the
+// copy instead of failing it.
+func loadSourceCatalogs(ctx context.Context, q querier, ids []uuid.UUID) ([]sourceCatalog, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	placeholders, args := buildInClause(ids)
+	rows, err := q.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, type, name, provider, params, fingerprint, collection_id FROM catalogs WHERE id IN (%s)
+	`, placeholders), args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying source catalogs: %w", err)
+	}
+	defer rows.Close()
+
+	byID := make(map[uuid.UUID]sourceCatalog, len(ids))
+	for rows.Next() {
+		var sc sourceCatalog
+		var idStr string
+		var collectionID sql.NullString
+		if err := rows.Scan(&idStr, &sc.typ, &sc.name, &sc.provider, &sc.params, &sc.fingerprint, &collectionID); err != nil {
+			return nil, fmt.Errorf("scanning source catalog: %w", err)
+		}
+		sc.id, err = parseUUID(idStr, "catalog id")
+		if err != nil {
+			return nil, err
+		}
+		sc.scoped = collectionID.Valid
+		byID[sc.id] = sc
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating source catalogs: %w", err)
+	}
+
+	catalogs := make([]sourceCatalog, 0, len(byID))
+	for _, id := range ids {
+		if sc, ok := byID[id]; ok {
+			catalogs = append(catalogs, sc)
+		}
+	}
+	return catalogs, nil
+}
+
+// validateSourceMediaURLs re-checks the media URLs of a collection tree
+// about to be copied, using the same rules CollectionForm.Validate applies
+// to a save. A Take copies a row this profile never authored, and those
+// URLs go straight into the taker's own push to Nuvio, so being already
+// stored is not evidence they were ever checked — rows written before that
+// check existed reach here too.
+func validateSourceMediaURLs(src sourceCollection) error {
+	var problems []string
+	if p := mediaURLProblem("backdrop image url", src.backdropImageURL); p != "" {
+		problems = append(problems, p)
+	}
+	for i, f := range src.folders {
+		problems = append(problems, folderMediaURLProblems(i, f.data)...)
+	}
+
+	if len(problems) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: source collection: %s", ErrInvalidInput, strings.Join(problems, "; "))
 }
 
 // loadSourceFolders reads collectionID's folders in sort order, without
 // their catalog refs — loadSourceFolderRefs fills those in per folder, which
 // is also what keeps each query's rows closed by its own defer.
-func loadSourceFolders(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID) ([]sourceFolder, error) {
-	rows, err := tx.QueryContext(ctx, `
+func loadSourceFolders(ctx context.Context, q querier, collectionID uuid.UUID) ([]sourceFolder, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT id, title, tile_shape, hide_title, cover_emoji, cover_image_url,
 		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url
 		FROM folders WHERE collection_id = ? ORDER BY sort_order
@@ -112,8 +230,8 @@ func loadSourceFolders(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID) 
 }
 
 // loadSourceFolderRefs reads one source folder's catalog refs, in order.
-func loadSourceFolderRefs(ctx context.Context, tx *sql.Tx, folderID uuid.UUID) ([]FolderRef, error) {
-	rows, err := tx.QueryContext(ctx, `
+func loadSourceFolderRefs(ctx context.Context, q querier, folderID uuid.UUID) ([]FolderRef, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT catalog_id, genre FROM folder_catalogs WHERE folder_id = ? ORDER BY sort_order
 	`, folderID.String())
 	if err != nil {
@@ -160,19 +278,10 @@ func loadSourceFolderRefs(ctx context.Context, tx *sql.Tx, folderID uuid.UUID) (
 // also true, on every copied catalog row too: TakeCollection passes the
 // source id for both; DuplicateCollection passes nil for both — a
 // duplicate is a fresh fact, not a copy taken from someone else. Must run
-// inside tx; the caller commits.
+// inside tx; the caller commits. Every row it writes comes from src, which
+// loadSourceCollectionTree already read, so the transaction holds a write
+// lock for inserts alone.
 func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, src sourceCollection, takenFrom *uuid.UUID, copyListedRefs bool) (uuid.UUID, error) {
-	var distinctCatalogIDs []uuid.UUID
-	seenCatalog := map[uuid.UUID]bool{}
-	for _, f := range src.folders {
-		for _, ref := range f.refs {
-			if !seenCatalog[ref.CatalogID] {
-				seenCatalog[ref.CatalogID] = true
-				distinctCatalogIDs = append(distinctCatalogIDs, ref.CatalogID)
-			}
-		}
-	}
-
 	now := time.Now().UTC()
 	nowStr := now.Format(time.RFC3339)
 
@@ -187,67 +296,34 @@ func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sr
 		return uuid.Nil, fmt.Errorf("inserting copied collection: %w", err)
 	}
 
-	idMap := make(map[uuid.UUID]uuid.UUID, len(distinctCatalogIDs))
-	if len(distinctCatalogIDs) > 0 {
-		placeholders, args := buildInClause(distinctCatalogIDs)
-		catRows, err := tx.QueryContext(ctx, fmt.Sprintf(`
-			SELECT id, type, name, provider, params, fingerprint, collection_id FROM catalogs WHERE id IN (%s)
-		`, placeholders), args...)
+	idMap := make(map[uuid.UUID]uuid.UUID, len(src.catalogs))
+	for _, sc := range src.catalogs {
+		// A listed source catalog, when copyListedRefs is false, stays a
+		// reference — no new row, the new collection's folders point at
+		// the same id the caller already owns.
+		if !copyListedRefs && !sc.scoped {
+			idMap[sc.id] = sc.id
+			continue
+		}
+
+		newID := uuid.New()
+		idMap[sc.id] = newID
+		// Each catalog copy's own taken_from points at the catalog it was
+		// copied from — but only when this is a Take (takenFrom != nil).
+		// A Duplicate copies your own data, so its scoped catalog copies
+		// get no taken_from either, matching the new collection row.
+		var catalogTakenFrom *uuid.UUID
+		if takenFrom != nil {
+			catalogTakenFrom = &sc.id
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
+			                       collection_id, taken_from, fingerprint, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
+		`, newID.String(), sc.typ, sc.name, sc.provider, sc.params, profileID.String(),
+			newCollectionID.String(), nullableUUIDString(catalogTakenFrom), sc.fingerprint, nowStr, nowStr)
 		if err != nil {
-			return uuid.Nil, fmt.Errorf("querying source catalogs: %w", err)
-		}
-		type sourceCatalog struct {
-			id, typ, name, provider, params, fingerprint string
-			collectionID                                 sql.NullString
-		}
-		var sourceCatalogs []sourceCatalog
-		for catRows.Next() {
-			var sc sourceCatalog
-			if err := catRows.Scan(&sc.id, &sc.typ, &sc.name, &sc.provider, &sc.params, &sc.fingerprint, &sc.collectionID); err != nil {
-				catRows.Close()
-				return uuid.Nil, fmt.Errorf("scanning source catalog: %w", err)
-			}
-			sourceCatalogs = append(sourceCatalogs, sc)
-		}
-		if err := catRows.Err(); err != nil {
-			catRows.Close()
-			return uuid.Nil, fmt.Errorf("iterating source catalogs: %w", err)
-		}
-		catRows.Close()
-
-		for _, sc := range sourceCatalogs {
-			oldID, err := parseUUID(sc.id, "catalog id")
-			if err != nil {
-				return uuid.Nil, err
-			}
-
-			// A listed source catalog, when copyListedRefs is false, stays a
-			// reference — no new row, the new collection's folders point at
-			// the same id the caller already owns.
-			if !copyListedRefs && !sc.collectionID.Valid {
-				idMap[oldID] = oldID
-				continue
-			}
-
-			newID := uuid.New()
-			idMap[oldID] = newID
-			// Each catalog copy's own taken_from points at the catalog it was
-			// copied from — but only when this is a Take (takenFrom != nil).
-			// A Duplicate copies your own data, so its scoped catalog copies
-			// get no taken_from either, matching the new collection row.
-			var catalogTakenFrom *uuid.UUID
-			if takenFrom != nil {
-				catalogTakenFrom = &oldID
-			}
-			_, err = tx.ExecContext(ctx, `
-				INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public, is_default,
-				                       collection_id, taken_from, fingerprint, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?)
-			`, newID.String(), sc.typ, sc.name, sc.provider, sc.params, profileID.String(),
-				newCollectionID.String(), nullableUUIDString(catalogTakenFrom), sc.fingerprint, nowStr, nowStr)
-			if err != nil {
-				return uuid.Nil, fmt.Errorf("inserting copied scoped catalog: %w", err)
-			}
+			return uuid.Nil, fmt.Errorf("inserting copied scoped catalog: %w", err)
 		}
 	}
 
@@ -256,9 +332,16 @@ func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sr
 		if err != nil {
 			return uuid.Nil, err
 		}
-		newRefs := make([]FolderRef, len(f.refs))
-		for j, ref := range f.refs {
-			newRefs[j] = FolderRef{CatalogID: idMap[ref.CatalogID], Genre: ref.Genre}
+		// A ref whose catalog loadSourceCatalogs didn't find is dropped
+		// rather than remapped: the refs and the catalog rows are read in
+		// two queries, so a delete landing between them leaves a ref with
+		// nothing to point at, and folder_catalogs.catalog_id is a live
+		// foreign key — carrying it through would fail the whole copy.
+		newRefs := make([]FolderRef, 0, len(f.refs))
+		for _, ref := range f.refs {
+			if newID, ok := idMap[ref.CatalogID]; ok {
+				newRefs = append(newRefs, FolderRef{CatalogID: newID, Genre: ref.Genre})
+			}
 		}
 		if err := rewriteFolderCatalogRefs(ctx, tx, newFolder.ID, newRefs); err != nil {
 			return uuid.Nil, err
@@ -276,12 +359,27 @@ func copyCollectionTree(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sr
 // catalog was listed; a source catalog referenced by two folders becomes one
 // scoped copy referenced twice. Returns ErrCollectionNotFound if sourceID
 // isn't public or is already owned by profileID.
-func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (CollectionWithFolders, error) {
+//
+// validateParams re-checks every catalog recipe the copy would carry over,
+// for the same reason [DB.TakeCatalog] re-checks the one it copies: the
+// recipe is someone else's input, validated when they wrote it rather than
+// when this profile takes it, and a collection take is the other way the
+// very same listed row crosses the owner boundary. One rejected recipe
+// fails the whole take — a half-copied collection is not a collection. It
+// is required; a nil validator is a programming error, not "skip the
+// check". [DB.DuplicateCollection] passes none because it copies rows this
+// profile already owns.
+func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID, validateParams CatalogParamsValidator) (CollectionWithFolders, error) {
+	if validateParams == nil {
+		return CollectionWithFolders{}, errors.New("vault: TakeCollection requires a params validator")
+	}
+
 	return db.copyCollection(ctx, profileID, sourceID, copyCollectionSpec{
 		sourceWhere:    " AND is_public = TRUE AND owner_id != ?",
 		sourceArgs:     []any{profileID.String()},
 		takenFrom:      &sourceID,
 		copyListedRefs: true,
+		validateParams: validateParams,
 		verb:           "taken",
 	})
 }
@@ -320,31 +418,51 @@ func (db *DB) DuplicateCollection(ctx context.Context, profileID uuid.UUID, sour
 // sourceWhere is ANDed onto the source lookup's "id = ?" and sourceArgs fill
 // its placeholders; both are internal literals, never client input. verb
 // names the operation in the post-insert reload's error message.
+//
+// validateParams re-checks the source recipes before anything is written,
+// and is nil for a copy that stays within one profile — see
+// [DB.TakeCollection] for why only a take needs it.
 type copyCollectionSpec struct {
 	sourceWhere    string
 	sourceArgs     []any
 	titleSuffix    string
 	takenFrom      *uuid.UUID
 	copyListedRefs bool
+	validateParams CatalogParamsValidator
 	verb           string
 }
 
 // copyCollection runs one collection copy end to end: load the source tree,
-// write the copy, commit, and read the result back in the nested shape the
-// handler returns. Returns ErrCollectionNotFound if spec.sourceWhere excludes
-// sourceID.
+// check it, write the copy, commit, and read the result back in the nested
+// shape the handler returns. Returns ErrCollectionNotFound if
+// spec.sourceWhere excludes sourceID.
+//
+// The load and the checks run against the pool, before the transaction
+// opens. spec.validateParams reaches TMDB, and holding SQLite's write lock
+// across a network call would stall every other writer for the length of
+// it — the same read-then-validate-then-insert order [DB.TakeCatalog] uses.
+// The copy is a snapshot either way, so a source edit landing in the gap
+// only means copying the slightly older tree.
 func (db *DB) copyCollection(ctx context.Context, profileID, sourceID uuid.UUID, spec copyCollectionSpec) (CollectionWithFolders, error) {
+	source, err := loadSourceCollectionTree(ctx, db.conn, sourceID, spec.sourceWhere, spec.sourceArgs...)
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+	source.title += spec.titleSuffix
+
+	if spec.validateParams != nil {
+		for _, sc := range source.catalogs {
+			if err := spec.validateParams(sc.typ, sc.provider, sc.params); err != nil {
+				return CollectionWithFolders{}, err
+			}
+		}
+	}
+
 	tx, err := db.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
 	}
 	defer tx.Rollback() // no-op once Commit succeeds
-
-	source, err := loadSourceCollectionTree(ctx, tx, sourceID, spec.sourceWhere, spec.sourceArgs...)
-	if err != nil {
-		return CollectionWithFolders{}, err
-	}
-	source.title += spec.titleSuffix
 
 	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, source, spec.takenFrom, spec.copyListedRefs)
 	if err != nil {

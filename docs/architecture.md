@@ -138,7 +138,10 @@ Three route-semantics facts the client has to honour:
   `POST /api/p/{i}/community/catalogs/{id}/take` and `.../community/collections/{id}/take`
   (`TakeCatalog`/`TakeCollection`) deep-copy a public, not-own source into a new row the caller
   fully owns; both 404 via `ErrCatalogNotFound`/`ErrCollectionNotFound` if the source isn't
-  public or is already the caller's own. `GET /api/catalogs` and `GET /api/collections` (the old
+  public or is already the caller's own. Both re-validate the recipes they copy against TMDB
+  before writing anything, so either take can also 400 on a source recipe that no longer
+  validates or 502 when TMDB can't be reached to judge it — see "Take re-validates what it
+  copies" in `docs/data-model.md`. `GET /api/catalogs` and `GET /api/collections` (the old
   unscoped, unauthenticated-by-profile community routes) are removed.
 - **Duplicating a collection you own is one atomic server call, not a client-built copy.**
   `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) reuses `TakeCollection`'s
@@ -165,9 +168,12 @@ empty or error response — `findSelectedCatalog` doubles as the access check, s
 guessed catalog UUID can't pull data through a profile it was never shared with.
 
 The tile flow is `CatalogHandler` → `TMDBClient.FetchCatalogPage` → TMDB `/discover/{movie|tv}` →
-per-item `/external_ids` → `Meta`. Direct per-request TMDB call; there is **no response cache**,
-only an in-memory, never-expiring TMDB-id→IMDB-id cache on `TMDBClient` (a pairing never changes
-once resolved, so it is correct to cache permanently; a discover ranking is not, so it isn't).
+per-item `/external_ids` → `Meta`. Direct per-request TMDB call; there is **no response cache**
+for discover results (a ranking goes stale), only the never-expiring TMDB-id→IMDB-id cache on
+`TMDBClient` (a pairing never changes once resolved) and the lookup-list memos beside it
+(`internal/provider/cache.go`: genres, languages, countries, watch regions and certifications for
+the process's lifetime, watch providers for 24h since services move between markets). Every memo
+clones on read, so a caller that sorts what it got back cannot reach the cached copy.
 `resolveMetas` bounds the per-page `/external_ids` fan-out at 8 concurrent lookups. `releaseInfo`
 is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
 `docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
@@ -207,9 +213,9 @@ required marker would take the catalog out of Discover too.
   folder): `isRequired: true`, options `["All", …genre names]`, `optionsLimit: 1`.
 - **On home**: optional, options are the genre names. There's no genre extra if none apply.
 
-The manifest reads TMDB's genre list through `TMDBClient.Genres`, which caches each type's list
+The manifest reads TMDB's genre list through `TMDBClient.Genres`, which memoizes each type's list
 in memory for the process's lifetime after the first successful fetch. A cold fetch that fails
-degrades that catalog to no genre names (just `["All"]` when off home) rather than failing the
+is not cached, and degrades that catalog to no genre names (just `["All"]` when off home) rather than failing the
 manifest.
 
 Two separate mechanisms keep an off-home catalog off home, because the clients disagree. Nuvio
@@ -331,9 +337,12 @@ client-side by mirroring `provider`'s `Validate()`; a server 400 firing in norma
 mirror has drifted, and that is its only job in the UI (an unexpected-case banner, not the
 primary error channel).
 
-Classification is unified: `writeVaultError` (`internal/api/respond.go`) handles
-create/update/delete for both resources identically, and `validateCatalogParams` wraps its errors
-in `vault.ErrInvalidInput` so there is one path to a 400 rather than two. `writeNuvioError`
+Classification is unified: `writeVaultError` (`internal/api/respond.go`) is the single classifier
+for create/update/delete on both resources *and* for the two preview routes, so a recipe fails the
+same way wherever it is judged. `validateCatalogParams` wraps a rejected recipe in
+`vault.ErrInvalidInput` (one path to a 400 rather than two) and a recipe it could not check in
+`errUpstreamValidation` (a 502 carrying a fixed "failed to reach TMDB", not the caller's own
+`defaultMsg`, which would blame Uno for a TMDB outage). `writeNuvioError`
 delegates to `nuvioErrorStatus` so push's JSON responses and the plain-text ones classify Nuvio
 failures identically — `nuvio.ErrNuvioRequestFailed` → `502`, anything else → `500`.
 

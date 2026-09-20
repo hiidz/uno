@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/hiidz/uno/internal/addon"
@@ -34,6 +35,15 @@ func (s *Server) resolveSelectedProfile(ctx context.Context, sub, token string, 
 	}
 	if matched == nil {
 		return vault.Profile{}, errProfileIndexNotOnAccount
+	}
+	// The vault row is keyed on sub (the verified JWT subject) but carries
+	// matched.ID from Nuvio's response. The RPC is called with this caller's
+	// own token and Nuvio scopes it, so the two agree — this refuses to bind
+	// them if that ever stops being true, rather than filing another
+	// account's profile under this one. Answered the same way a missing
+	// index is, so the response says nothing about the other account.
+	if matched.UserID != sub {
+		return vault.Profile{}, fmt.Errorf("%w: profile index %d does not belong to the authenticated account", errProfileIndexNotOnAccount, profileIndex)
 	}
 
 	return s.vault.ResolveOrCreateProfile(ctx, sub, matched.ProfileIndex, matched.ID)

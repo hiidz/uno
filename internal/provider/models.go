@@ -166,6 +166,11 @@ type TMDBTVParams struct {
 	AiredWithinDays int `json:"aired_within_days,omitempty"`
 }
 
+// tmdbMaxVoteAverage is the top of TMDB's rating scale; vote_average.gte
+// and .lte are compared against it, so a value past it can only ever return
+// nothing.
+const tmdbMaxVoteAverage = 10.0
+
 // validMovieSortValues is TMDB's complete sort_by enum for /discover/movie.
 var validMovieSortValues = map[string]bool{
 	"popularity.asc": true, "popularity.desc": true,
@@ -200,6 +205,35 @@ func (p TMDBCommonParams) validate() error {
 		return errors.New("watch_region is required when with_watch_providers is set")
 	}
 
+	// Zero means "unset" for every numeric field below (see setIntIf and
+	// setFloatIf in query.go), so these bound the values that do get sent
+	// rather than requiring one.
+	for _, f := range []struct {
+		name  string
+		value float64
+	}{
+		{"vote_average_gte", p.VoteAverageGte},
+		{"vote_average_lte", p.VoteAverageLte},
+	} {
+		if f.value < 0 || f.value > tmdbMaxVoteAverage {
+			return fmt.Errorf("%s must be between 0 and %g", f.name, tmdbMaxVoteAverage)
+		}
+	}
+
+	for _, f := range []struct {
+		name  string
+		value int
+	}{
+		{"vote_count_gte", p.VoteCountGte},
+		{"vote_count_lte", p.VoteCountLte},
+		{"with_runtime_gte", p.WithRuntimeGte},
+		{"with_runtime_lte", p.WithRuntimeLte},
+	} {
+		if f.value < 0 {
+			return fmt.Errorf("%s cannot be negative", f.name)
+		}
+	}
+
 	return nil
 }
 
@@ -217,6 +251,11 @@ func (p TMDBMovieParams) Validate() error {
 	if hasFixedRange && p.ReleasedWithinDays != 0 {
 		return errors.New("cannot set both a fixed release date range and released_within_days")
 	}
+	// DiscoverQuery's `> 0` guard would otherwise drop a negative silently,
+	// leaving the recipe saved with a filter that never applies.
+	if p.ReleasedWithinDays < 0 {
+		return errors.New("released_within_days cannot be negative")
+	}
 
 	return p.TMDBCommonParams.validate()
 }
@@ -231,6 +270,10 @@ func (p TMDBTVParams) Validate() error {
 	hasFixedRange := p.FirstAirDateGte != "" || p.FirstAirDateLte != ""
 	if hasFixedRange && p.AiredWithinDays != 0 {
 		return errors.New("cannot set both a fixed first_air_date range and aired_within_days")
+	}
+	// Same reason as TMDBMovieParams.Validate's released_within_days check.
+	if p.AiredWithinDays < 0 {
+		return errors.New("aired_within_days cannot be negative")
 	}
 
 	return p.TMDBCommonParams.validate()

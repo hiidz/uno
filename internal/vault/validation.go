@@ -3,6 +3,7 @@ package vault
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
@@ -73,6 +74,58 @@ var validTileShapes = map[string]bool{
 // longest of which is well under this; anything longer can't be one.
 const maxGenreLen = 64
 
+// maxMediaURLLen bounds every collection and folder media URL. These are
+// image, GIF and video addresses; anything past this isn't one.
+const maxMediaURLLen = 2048
+
+// mediaURLProblem reports what is wrong with one of a collection's or
+// folder's media URLs, or "" when nothing is. Empty is always allowed —
+// these fields are optional and omitempty on the way out to Nuvio.
+//
+// The scheme allowlist is the point: every one of these strings is pushed
+// into Nuvio's collections blob and rendered by its clients, and a
+// collection can reach a profile that never authored it (community take),
+// so a javascript: or data: URL must not survive the trip.
+func mediaURLProblem(field, raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if len(raw) > maxMediaURLLen {
+		return fmt.Sprintf("%s is longer than %d characters", field, maxMediaURLLen)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Sprintf("%s is not a valid URL", field)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Sprintf("%s must be an http or https URL", field)
+	}
+	if u.Host == "" {
+		return fmt.Sprintf("%s must be an absolute URL", field)
+	}
+	return ""
+}
+
+// folderMediaURLProblems collects every media-URL problem on one folder,
+// prefixed with its index. Shared by CollectionForm.Validate and the
+// take/duplicate copy path, which checks rows it is about to copy out of
+// another profile rather than a form.
+func folderMediaURLProblems(index int, fd FolderData) []string {
+	var problems []string
+	for _, f := range []struct{ name, value string }{
+		{"cover image url", fd.CoverImageURL},
+		{"focus gif url", fd.FocusGIFURL},
+		{"hero backdrop url", fd.HeroBackdropURL},
+		{"hero video url", fd.HeroVideoURL},
+		{"title logo url", fd.TitleLogoURL},
+	} {
+		if p := mediaURLProblem(fmt.Sprintf("folder %d: %s", index, f.name), f.value); p != "" {
+			problems = append(problems, p)
+		}
+	}
+	return problems
+}
+
 // maxNewKeyLen bounds a New entry's Key. It is a client-minted handle (a
 // "draft:" prefix and a UUID); anything much longer isn't one.
 const maxNewKeyLen = 128
@@ -105,6 +158,9 @@ func (in CollectionForm) Validate() error {
 	if in.ViewMode != "" && !validViewModes[in.ViewMode] {
 		problems = append(problems, `view mode must be "TABBED_GRID", "ROWS", or "FOLLOW_LAYOUT"`)
 	}
+	if p := mediaURLProblem("backdrop image url", in.BackdropImageURL); p != "" {
+		problems = append(problems, p)
+	}
 
 	for i, f := range in.Folders {
 		if strings.TrimSpace(f.Title) == "" {
@@ -113,6 +169,7 @@ func (in CollectionForm) Validate() error {
 		if f.TileShape != "" && !validTileShapes[f.TileShape] {
 			problems = append(problems, fmt.Sprintf(`folder %d: tile shape must be "POSTER", "LANDSCAPE", or "SQUARE"`, i))
 		}
+		problems = append(problems, folderMediaURLProblems(i, f)...)
 		seen := map[folderRefKey]bool{}
 		seenNew := map[folderNewRefKey]bool{}
 		for j, ref := range f.Catalogs {

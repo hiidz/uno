@@ -20,6 +20,13 @@ import (
 // other error causes with errors.Is.
 var ErrNuvioRequestFailed = errors.New("nuvio: request failed")
 
+// maxResponseBytes caps how much of a Nuvio response this package will read
+// before giving up. A profile list or a collections blob is orders of
+// magnitude under it; the cap is there so a malfunctioning or hostile
+// upstream can't make Uno buffer without limit. A truncated body fails the
+// decode, which is already an ErrNuvioRequestFailed.
+const maxResponseBytes = 8 << 20 // 8 MiB
+
 // Client wraps a Verifier with the publishable key and HTTP client needed
 // to call Nuvio's authenticated REST/RPC surface on a caller's behalf,
 // forwarding whatever bearer token that caller already presented. It never
@@ -57,7 +64,7 @@ func (c *Client) ListProfiles(ctx context.Context, accessToken string) ([]NuvioP
 	}
 
 	var profiles []NuvioProfile
-	if err := json.NewDecoder(resp.Body).Decode(&profiles); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&profiles); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
 	}
 	// Defense in depth: sync_pull_profiles is documented as always returning
@@ -122,7 +129,7 @@ func (c *Client) ListAddons(ctx context.Context, accessToken string, profileID i
 	}
 
 	var addons []NuvioAddon
-	if err := json.NewDecoder(resp.Body).Decode(&addons); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&addons); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
 	}
 	return addons, nil
@@ -176,7 +183,7 @@ func (c *Client) PullCollections(ctx context.Context, accessToken string, profil
 	var envelope []struct {
 		CollectionsJSON []json.RawMessage `json:"collections_json"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&envelope); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
 	}
 	if len(envelope) == 0 {

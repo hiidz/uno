@@ -251,7 +251,11 @@ write credential.
   `folders.hero_backdrop_url`/`hero_video_url`/`title_logo_url` (hero media that Nuvio's own
   editor labels "(Modern Home)") are stored, edited in the collection editor, copied by
   Take/Duplicate, and pushed. Uno's Preview renders none of them. The two flags default to `1`
-  because Nuvio reads an absent flag as on.
+  because Nuvio reads an absent flag as on. Every URL among them, plus
+  `collections.backdrop_image_url`, must be an absolute `http`/`https` URL under 2048 characters
+  — `CollectionForm.Validate` enforces it on save and `loadSourceCollectionTree` re-checks it on
+  Take/Duplicate. Uno never renders these, but Nuvio's clients do, and a Take carries them into
+  a profile that didn't author them, so a `javascript:` or `data:` value must not reach the push.
 - **`collections.backdrop_image_url` is stored, editable in the collection editor, pushed to
   Nuvio, and never rendered by Uno.** It is a collection-level field, and a collection renders on
   home as a row of folder tiles rather than as its own page, so no current surface wants it.
@@ -292,10 +296,45 @@ describing what a TMDB-backed catalog may ask for.
   (type-specific only: the date window). Movie has `primary_release_date_*` and
   `released_within_days`; series has `first_air_date_*` and `aired_within_days` — a different
   axis, since a 2015 show still matches "aired in the last 30 days".
-- **Validation split.** `Validate()` on each leaf type checks the `sort_by` enum (per type —
-  movie and tv have different sort vocabularies) and fixed-vs-rolling date exclusivity, then
-  delegates to `TMDBCommonParams`'s shared check for the two required-together pairs:
-  certification needs a country, watch providers need a region.
+- **Validation split, part one: the rules that need no network.** `Validate()` on each leaf type
+  checks the `sort_by` enum (per type — movie and tv have different sort vocabularies),
+  fixed-vs-rolling date exclusivity, and that the rolling window isn't negative, then delegates
+  to `TMDBCommonParams`'s shared check for the two required-together pairs (certification needs
+  a country, watch providers need a region) plus the numeric bounds: `vote_average_*` within
+  0–10, and no negative `vote_count_*` or `with_runtime_*`. Zero means "unset" for every numeric
+  field (`setIntIf`/`setFloatIf` in `query.go`), so these bound what is sent rather than
+  requiring a value. A negative rolling window is rejected rather than ignored — `DiscoverQuery`'s
+  `> 0` guard would otherwise drop it silently and save a filter that never applies.
+- **Validation split, part two: the vocabulary TMDB owns.** Genre ids, `with_original_language`,
+  `watch_region`, `with_watch_providers` and the certification country and scale can only be
+  checked against TMDB's own published lists, so they can't live on the params structs —
+  `TMDBClient.ValidateParams` (`internal/provider/validate.go`) does it, and
+  `api.validateCatalogParams` runs it after `Validate()`. Each list is fetched only when the
+  field needing it is set, and every one of them is memoized on the client, so a warm process
+  validates a recipe without touching the network at all. A rejected value wraps
+  `provider.ErrInvalidParams` (a 400); TMDB being unreachable wraps `errUpstreamValidation`,
+  which `writeVaultError` answers with a 502 — a recipe that could not be checked has not been
+  found at fault, so it is never reported as the caller's.
+- **Take re-validates what it copies.** `TakeCatalog` and `TakeCollection` both run the same
+  params check against the source rows before copying them (the recipe is another profile's
+  input, validated when they wrote it, not when it is taken), via a validator passed in by
+  `api` — `internal/vault` is the leaf package and cannot reach `internal/provider`. Both
+  require the validator: nil is a programming error, not "skip the check". A take crosses the
+  owner boundary either way, and a listed catalog reachable directly is equally reachable
+  through a public collection that references it, so both doors check the same row. One
+  rejected recipe fails the whole collection take — a half-copied collection is not a
+  collection. The collection copy path re-checks folder and collection media URLs the same
+  way, in `loadSourceCollectionTree`.
+  `DuplicateCollection` passes no validator: it copies rows the caller already owns, so a
+  recipe TMDB has since outgrown must not block you from duplicating your own collection.
+- **A collection copy reads and checks before it opens a transaction.**
+  `loadSourceCollectionTree` reads the whole source tree — cosmetics, folders, refs, and the
+  catalog rows those refs name — through the pool, `copyCollection` validates that result, and
+  only then does the write transaction open, holding SQLite's write lock for inserts alone.
+  The params check reaches TMDB, and stalling every other writer for the length of a cold-cache
+  network call is the cost this ordering avoids; it is the same read-then-validate-then-insert
+  order `TakeCatalog` already used. A copy is a snapshot either way, so a source edit landing
+  between the read and the write only means copying the slightly older tree.
 - **Certification applies to both types.** `certification`, `certification.gte`,
   `certification.lte`, and `certification_country` sit on `TMDBCommonParams` and map in
   `commonQuery` (`internal/provider/query.go`), so `/discover/tv` gets them too. The **value

@@ -8,14 +8,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
 )
 
 const tmdbBaseURL = "https://api.themoviedb.org/3"
+
+// maxResponseBytes caps how much of a TMDB response this package will read.
+// The largest of them is the watch-provider list at a few hundred entries,
+// far under this; the cap keeps a malfunctioning upstream from making Uno
+// buffer without limit.
+const maxResponseBytes = 8 << 20 // 8 MiB
 
 // TMDBClient executes catalog and preview requests against the TMDB API.
 type TMDBClient struct {
@@ -29,11 +37,23 @@ type TMDBClient struct {
 	imdbMu    sync.RWMutex
 	imdbCache map[string]string
 
-	// genresCache holds TMDB's genre list per TMDB kind ("movie"/"tv"); see
-	// Genres.
-	genresMu    sync.RWMutex
-	genresCache map[string][]Genre
+	// The lookup lists TMDB publishes, each cached by its own method: see
+	// Genres, Languages, Countries, WatchRegions, WatchProviders and
+	// Certifications. Built in NewTMDBClient because a memo needs the clone
+	// function for its value type.
+	genres         *memo[[]Genre]
+	languages      *memo[[]Language]
+	countries      *memo[[]Country]
+	watchRegions   *memo[[]WatchRegion]
+	watchProviders *memo[[]WatchProvider]
+	certifications *memo[map[string][]Certification]
 }
+
+// watchProviderTTL bounds how long a cached watch-provider list is served.
+// Unlike the ISO tables beside it, this one moves: services launch in and
+// leave markets, and without an expiry a long-running process would reject
+// a newly-added provider id for as long as it stayed up.
+const watchProviderTTL = 24 * time.Hour
 
 // NewTMDBClient builds a TMDBClient that authenticates requests with
 // apiKey.
@@ -44,8 +64,14 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		},
 		apiKey:    apiKey,
 		baseURL:   tmdbBaseURL,
-		imdbCache:   make(map[string]string),
-		genresCache: make(map[string][]Genre),
+		imdbCache: make(map[string]string),
+
+		genres:         newMemo(0, slices.Clone[[]Genre]),
+		languages:      newMemo(0, slices.Clone[[]Language]),
+		countries:      newMemo(0, slices.Clone[[]Country]),
+		watchRegions:   newMemo(0, slices.Clone[[]WatchRegion]),
+		watchProviders: newMemo(watchProviderTTL, slices.Clone[[]WatchProvider]),
+		certifications: newMemo(0, cloneCertifications),
 	}
 }
 
@@ -72,7 +98,7 @@ func (c *TMDBClient) get(ctx context.Context, path string, query url.Values, out
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("provider: TMDB returned status %d for %s", resp.StatusCode, path)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out); err != nil {
 		return fmt.Errorf("provider: decode response for %s: %w", path, err)
 	}
 	return nil

@@ -121,7 +121,7 @@ func TestFolderRefGenreSurvivesDuplicateAndTake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DuplicateCollection: %v", err)
 	}
-	taken, err := db.TakeCollection(ctx, taker, source.ID)
+	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCollection: %v", err)
 	}

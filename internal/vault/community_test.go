@@ -3,8 +3,21 @@ package vault
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+
+	"github.com/google/uuid"
 )
+
+// staleCatalogParams is a recipe naming a TMDB genre id that no longer
+// resolves — the shape of a stored row that passed validation when it was
+// written and would fail it now.
+const staleCatalogParams = `{"with_genres":"999"}`
+
+// allowAnyCatalogParams satisfies TakeCatalog's required validator for tests
+// that are exercising the copy itself, not the recipe check. The real
+// validator lives in internal/api, which this package cannot import.
+func allowAnyCatalogParams(_, _, _ string) error { return nil }
 
 func publicCatalogForm(name string) CatalogForm {
 	form := listedCatalogForm(name)
@@ -173,7 +186,7 @@ func TestGetCommunityCatalogsTakenAppliesToWholeFingerprintGroup(t *testing.T) {
 	}
 
 	// The taker takes the *newer* duplicate specifically, not the survivor.
-	if _, err := db.TakeCatalog(ctx, taker, newer.ID); err != nil {
+	if _, err := db.TakeCatalog(ctx, taker, newer.ID, allowAnyCatalogParams); err != nil {
 		t.Fatalf("TakeCatalog: %v", err)
 	}
 
@@ -209,7 +222,7 @@ func TestGetCommunityCatalogsTakenFlag(t *testing.T) {
 		t.Fatalf("GetCommunityCatalogs before take = %+v, want Taken=false", before)
 	}
 
-	takenCopy, err := db.TakeCatalog(ctx, owner, source.ID)
+	takenCopy, err := db.TakeCatalog(ctx, owner, source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCatalog: %v", err)
 	}
@@ -249,7 +262,7 @@ func TestTakeCatalog(t *testing.T) {
 		t.Fatalf("create source catalog: %v", err)
 	}
 
-	takenCopy, err := db.TakeCatalog(ctx, taker, source.ID)
+	takenCopy, err := db.TakeCatalog(ctx, taker, source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCatalog: %v", err)
 	}
@@ -288,7 +301,7 @@ func TestTakeCatalogNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create private catalog: %v", err)
 	}
-	if _, err := db.TakeCatalog(ctx, taker, private.ID); !errors.Is(err, ErrCatalogNotFound) {
+	if _, err := db.TakeCatalog(ctx, taker, private.ID, allowAnyCatalogParams); !errors.Is(err, ErrCatalogNotFound) {
 		t.Fatalf("take private catalog: got %v, want ErrCatalogNotFound", err)
 	}
 
@@ -296,7 +309,7 @@ func TestTakeCatalogNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create taker's own public catalog: %v", err)
 	}
-	if _, err := db.TakeCatalog(ctx, taker, own.ID); !errors.Is(err, ErrCatalogNotFound) {
+	if _, err := db.TakeCatalog(ctx, taker, own.ID, allowAnyCatalogParams); !errors.Is(err, ErrCatalogNotFound) {
 		t.Fatalf("take own catalog: got %v, want ErrCatalogNotFound", err)
 	}
 }
@@ -315,7 +328,7 @@ func TestTakeCatalogSurvivesSourceDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create source catalog: %v", err)
 	}
-	takenCopy, err := db.TakeCatalog(ctx, taker, source.ID)
+	takenCopy, err := db.TakeCatalog(ctx, taker, source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCatalog: %v", err)
 	}
@@ -393,7 +406,7 @@ func TestTakeCollection(t *testing.T) {
 		t.Fatalf("create source collection: %v", err)
 	}
 
-	taken, err := db.TakeCollection(ctx, taker, source.ID)
+	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCollection: %v", err)
 	}
@@ -455,7 +468,7 @@ func TestTakeCollectionNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create private collection: %v", err)
 	}
-	if _, err := db.TakeCollection(ctx, taker, private.ID); !errors.Is(err, ErrCollectionNotFound) {
+	if _, err := db.TakeCollection(ctx, taker, private.ID, allowAnyCatalogParams); !errors.Is(err, ErrCollectionNotFound) {
 		t.Fatalf("take private collection: got %v, want ErrCollectionNotFound", err)
 	}
 
@@ -463,7 +476,7 @@ func TestTakeCollectionNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create taker's own public collection: %v", err)
 	}
-	if _, err := db.TakeCollection(ctx, taker, own.ID); !errors.Is(err, ErrCollectionNotFound) {
+	if _, err := db.TakeCollection(ctx, taker, own.ID, allowAnyCatalogParams); !errors.Is(err, ErrCollectionNotFound) {
 		t.Fatalf("take own collection: got %v, want ErrCollectionNotFound", err)
 	}
 }
@@ -491,7 +504,7 @@ func TestTakeCollectionSurvivesSourceDeletion(t *testing.T) {
 		t.Fatalf("create source collection: %v", err)
 	}
 
-	taken, err := db.TakeCollection(ctx, taker, source.ID)
+	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCollection: %v", err)
 	}
@@ -509,5 +522,129 @@ func TestTakeCollectionSurvivesSourceDeletion(t *testing.T) {
 	}
 	if len(all[0].Catalogs) != 1 {
 		t.Fatalf("taken collection's scoped catalog did not survive: %+v", all[0].Catalogs)
+	}
+}
+
+// TakeCollection re-validates every catalog recipe it would copy, the way
+// TakeCatalog re-validates the single recipe it copies. One rejected recipe
+// fails the whole take and writes nothing.
+func TestTakeCollectionValidatesSourceCatalogParams(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	owner := newTestProfile(t, db, "owner")
+	taker := newTestProfile(t, db, "taker")
+
+	good, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Good"))
+	if err != nil {
+		t.Fatalf("create good catalog: %v", err)
+	}
+	staleForm := listedCatalogForm("Stale")
+	staleForm.Params = staleCatalogParams
+	stale, err := db.CreateUserCatalog(ctx, owner, staleForm)
+	if err != nil {
+		t.Fatalf("create stale catalog: %v", err)
+	}
+
+	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
+		Title:    "Source",
+		IsPublic: true,
+		Folders: []FolderData{
+			{Title: "Folder 1", Catalogs: CatalogRefs(good.ID, stale.ID)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create source collection: %v", err)
+	}
+
+	// Stands in for api.validateCatalogParams rejecting a recipe whose TMDB
+	// vocabulary no longer resolves — the case a stored row can reach
+	// without ever having been re-checked.
+	rejectStale := func(_, _, params string) error {
+		if params == staleCatalogParams {
+			return fmt.Errorf("%w: with_genres 999 is not a genre", ErrInvalidInput)
+		}
+		return nil
+	}
+
+	if _, err := db.TakeCollection(ctx, taker, source.ID, rejectStale); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("TakeCollection with a rejected recipe = %v, want ErrInvalidInput", err)
+	}
+
+	collections, err := db.GetUserCollections(ctx, taker)
+	if err != nil {
+		t.Fatalf("GetUserCollections: %v", err)
+	}
+	if len(collections) != 0 {
+		t.Fatalf("taker has %d collections after a failed take, want 0", len(collections))
+	}
+}
+
+// A nil validator is a programming error, not a way to skip the check.
+func TestTakeCollectionRequiresValidator(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	taker := newTestProfile(t, db, "taker")
+
+	if _, err := db.TakeCollection(ctx, taker, uuid.New(), nil); err == nil {
+		t.Fatal("TakeCollection with a nil validator succeeded, want an error")
+	}
+}
+
+// A folder ref whose catalog vanished between the two reads a copy makes is
+// dropped, not carried through as a dangling foreign key that would fail the
+// whole copy.
+func TestCopyCollectionDropsDanglingFolderRefs(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	owner := newTestProfile(t, db, "owner")
+	taker := newTestProfile(t, db, "taker")
+
+	kept, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Kept"))
+	if err != nil {
+		t.Fatalf("create kept catalog: %v", err)
+	}
+	doomed, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Doomed"))
+	if err != nil {
+		t.Fatalf("create doomed catalog: %v", err)
+	}
+
+	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
+		Title:    "Source",
+		IsPublic: true,
+		Folders: []FolderData{
+			{Title: "Folder 1", Catalogs: CatalogRefs(kept.ID, doomed.ID)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create source collection: %v", err)
+	}
+
+	// Stand in for a concurrent delete: drop the catalog row but leave the
+	// folder ref behind, which is the disagreement the two reads can see.
+	if _, err := db.conn.ExecContext(ctx, `PRAGMA foreign_keys = off`); err != nil {
+		t.Fatalf("disabling foreign keys: %v", err)
+	}
+	if _, err := db.conn.ExecContext(ctx, `DELETE FROM catalogs WHERE id = ?`, doomed.ID.String()); err != nil {
+		t.Fatalf("deleting doomed catalog: %v", err)
+	}
+	if _, err := db.conn.ExecContext(ctx, `PRAGMA foreign_keys = on`); err != nil {
+		t.Fatalf("re-enabling foreign keys: %v", err)
+	}
+
+	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
+	if err != nil {
+		t.Fatalf("TakeCollection with a dangling ref: %v", err)
+	}
+	if len(taken.Folders) != 1 {
+		t.Fatalf("taken collection has %d folders, want 1", len(taken.Folders))
+	}
+	if got := taken.Folders[0].CatalogIDs(); len(got) != 1 {
+		t.Fatalf("taken folder has %d catalog refs, want 1 (the dangling one dropped)", len(got))
+	}
+	if len(taken.Catalogs) != 1 || taken.Catalogs[0].Name != "Kept" {
+		t.Fatalf("taken collection catalogs = %+v, want just the surviving %q", taken.Catalogs, "Kept")
 	}
 }

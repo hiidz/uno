@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -15,14 +16,14 @@ import (
 // this collection"/"new inside this collection" create 400s the same way a
 // standalone create would, instead of failing deep inside the vault
 // transaction with a less specific error.
-func (s *Server) validateInlineCatalogs(input *vault.CollectionForm) error {
+func (s *Server) validateInlineCatalogs(ctx context.Context, input *vault.CollectionForm) error {
 	for i := range input.Folders {
 		for j := range input.Folders[i].Catalogs {
 			ref := &input.Folders[i].Catalogs[j]
 			if ref.New == nil {
 				continue
 			}
-			if err := s.validateCatalogParams(ref.New.Type, ref.New.Provider, ref.New.Params); err != nil {
+			if err := s.validateCatalogParams(ctx, ref.New.Type, ref.New.Provider, ref.New.Params); err != nil {
 				return err
 			}
 			fingerprint, err := provider.Fingerprint(ref.New.Type, ref.New.Provider, ref.New.Params)
@@ -51,7 +52,10 @@ func (s *Server) takeCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	collection, err := s.vault.TakeCollection(r.Context(), profileID, collectionID)
+	collection, err := s.vault.TakeCollection(r.Context(), profileID, collectionID,
+		func(catalogType, catalogProvider, params string) error {
+			return s.validateCatalogParams(r.Context(), catalogType, catalogProvider, params)
+		})
 	if err != nil {
 		writeVaultError(w, "takeCollection", err, vault.ErrCollectionNotFound, "collection not found", "failed to take collection")
 		return
@@ -85,7 +89,7 @@ func (s *Server) createUserCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateInlineCatalogs(&input); err != nil {
+	if err := s.validateInlineCatalogs(r.Context(), &input); err != nil {
 		writeVaultError(w, "createUserCollection", err, nil, "", "failed to create collection")
 		return
 	}
@@ -111,7 +115,7 @@ func (s *Server) updateUserCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateInlineCatalogs(&input); err != nil {
+	if err := s.validateInlineCatalogs(r.Context(), &input); err != nil {
 		writeVaultError(w, "updateUserCollection", err, nil, "", "failed to update collection")
 		return
 	}

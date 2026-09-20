@@ -29,8 +29,24 @@ func listByProfile[T any](w http.ResponseWriter, r *http.Request, op, failMsg st
 	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
+// maxRequestBodyBytes caps every JSON request body the builder API accepts.
+// The largest legitimate body is a collection save or a push carrying a
+// whole selection, both orders of magnitude under this; anything larger is
+// a client bug or an attempt to make the server buffer for free.
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
+
+// decodeJSON decodes the request body into v, refusing a body over
+// maxRequestBodyBytes. An oversized body is its own status (413) rather than
+// a generic 400, so a client can tell "too big" from "malformed".
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return false
+		}
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return false
 	}
@@ -42,18 +58,27 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // is a 400 using the error's own message (safe — every ErrInvalidInput
 // message is built from validation text, never a lower-level detail),
 // notFound is the resource's own not-found sentinel (pass nil to skip that
-// case, e.g. create has none), and anything else is logged under op and
-// answered with defaultMsg as a 500. Shared by every catalog/collection
-// create/update/delete handler so both resources fail the same way — before
-// this, catalogs answered a bad recipe with a bare http.Error(err.Error(),
-// 400) from validateCatalogParams while a bad vault.CatalogForm went through
-// this same errors.Is switch; collections only ever had the latter.
+// case, e.g. create has none), errUpstreamValidation is a 502 because a
+// recipe that couldn't be checked against TMDB has not been found at fault,
+// and anything else is logged under op and answered with defaultMsg as a
+// 500. The upstream case carries a fixed message rather than defaultMsg:
+// every caller would otherwise phrase the same TMDB outage as its own
+// failure ("failed to create catalog"), which is the one thing it isn't.
+//
+// Shared by every catalog/collection create/update/delete handler and by
+// the two preview routes, so a recipe fails the same way wherever it is
+// judged — before this, catalogs answered a bad recipe with a bare
+// http.Error(err.Error(), 400) from validateCatalogParams while a bad
+// vault.CatalogForm went through this same errors.Is switch.
 func writeVaultError(w http.ResponseWriter, op string, err error, notFound error, notFoundMsg, defaultMsg string) {
 	switch {
 	case errors.Is(err, vault.ErrInvalidInput):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case notFound != nil && errors.Is(err, notFound):
 		http.Error(w, notFoundMsg, http.StatusNotFound)
+	case errors.Is(err, errUpstreamValidation):
+		log.Printf("%s: %v", op, err)
+		http.Error(w, "failed to reach TMDB", http.StatusBadGateway)
 	default:
 		log.Printf("%s: %v", op, err)
 		http.Error(w, defaultMsg, http.StatusInternalServerError)

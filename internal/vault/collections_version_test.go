@@ -134,7 +134,7 @@ func TestTakeAndDuplicateCollectionStartAtVersionOne(t *testing.T) {
 		t.Fatalf("CreateUserCollection: %v", err)
 	}
 
-	taken, err := db.TakeCollection(ctx, taker, source.ID)
+	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCollection: %v", err)
 	}

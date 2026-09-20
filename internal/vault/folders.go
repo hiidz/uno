@@ -57,13 +57,18 @@ func insertFolder(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, sortO
 func updateFolder(ctx context.Context, tx *sql.Tx, id, collectionID uuid.UUID, sortOrder int, fd FolderData) (Folder, error) {
 	f := folderFrom(id, collectionID, sortOrder, fd)
 
+	// collection_id is in the WHERE as well as the id: removedFolderIDs has
+	// already rejected any incoming folder that belongs elsewhere, but that
+	// guard is a separate call, and this statement should not be able to
+	// reach across collections on its own if it ever runs without it.
 	_, err := tx.ExecContext(ctx, `
 		UPDATE folders
 		SET title = ?, sort_order = ?, tile_shape = ?, hide_title = ?, cover_emoji = ?, cover_image_url = ?,
 		    focus_gif_url = ?, focus_gif_enabled = ?, hero_backdrop_url = ?, hero_video_url = ?, title_logo_url = ?
-		WHERE id = ?
+		WHERE id = ? AND collection_id = ?
 	`, f.Title, f.SortOrder, f.TileShape, f.HideTitle, f.CoverEmoji, f.CoverImageURL,
-		f.FocusGIFURL, f.FocusGIFEnabled, f.HeroBackdropURL, f.HeroVideoURL, f.TitleLogoURL, f.ID.String())
+		f.FocusGIFURL, f.FocusGIFEnabled, f.HeroBackdropURL, f.HeroVideoURL, f.TitleLogoURL,
+		f.ID.String(), f.CollectionID.String())
 	if err != nil {
 		return Folder{}, fmt.Errorf("updating folder: %w", err)
 	}

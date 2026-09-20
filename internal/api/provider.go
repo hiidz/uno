@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -67,6 +68,14 @@ func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// errUpstreamValidation marks a validateCatalogParams failure that is
+// TMDB's fault rather than the recipe's: the lists the recipe is checked
+// against couldn't be fetched, so the recipe is unjudged, not rejected.
+// It is what lets writeVaultError answer 502 instead of inventing a 400 for
+// a recipe nobody has actually found fault with. Its counterpart is
+// vault.ErrInvalidInput, which every rejected-recipe path wraps.
+var errUpstreamValidation = errors.New("cannot validate params against TMDB")
+
 // validateCatalogParams checks the TMDB-specific recipe rules for a
 // catalog's params. provider is constrained to "tmdb" here as well as in
 // vault.CatalogForm.Validate() — this is the path that actually parses
@@ -76,7 +85,7 @@ func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
 // that mapping lives. Every error returned is wrapped in
 // vault.ErrInvalidInput so callers can route it through the same errors.Is
 // switch as a vault-layer failure.
-func (s *Server) validateCatalogParams(catalogType, catalogProvider, params string) error {
+func (s *Server) validateCatalogParams(ctx context.Context, catalogType, catalogProvider, params string) error {
 	if catalogProvider != "tmdb" {
 		return fmt.Errorf("%w: provider must be %q", vault.ErrInvalidInput, "tmdb")
 	}
@@ -92,6 +101,19 @@ func (s *Server) validateCatalogParams(catalogType, catalogProvider, params stri
 	}
 	if err := p.Validate(); err != nil {
 		return fmt.Errorf("%w: %v", vault.ErrInvalidInput, err)
+	}
+
+	// The rest of the recipe's vocabulary — genre ids, language code, watch
+	// region and providers, certification country and scale — can only be
+	// checked against TMDB's own published lists, so it lives behind the
+	// client rather than in p.Validate(). A rejected value is the caller's
+	// fault and becomes a 400; TMDB being unreachable is not, and carries
+	// errUpstreamValidation so it becomes a 502.
+	if err := s.provider.ValidateParams(ctx, catalogType, params); err != nil {
+		if errors.Is(err, provider.ErrInvalidParams) {
+			return fmt.Errorf("%w: %v", vault.ErrInvalidInput, err)
+		}
+		return fmt.Errorf("%w: %w", errUpstreamValidation, err)
 	}
 	return nil
 }

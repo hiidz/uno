@@ -25,7 +25,10 @@ func (s *Server) takeCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	catalog, err := s.vault.TakeCatalog(r.Context(), profileID, catalogID)
+	catalog, err := s.vault.TakeCatalog(r.Context(), profileID, catalogID,
+		func(catalogType, catalogProvider, params string) error {
+			return s.validateCatalogParams(r.Context(), catalogType, catalogProvider, params)
+		})
 	if err != nil {
 		writeVaultError(w, "takeCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to take catalog")
 		return
@@ -41,7 +44,7 @@ func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateCatalogParams(input.Type, input.Provider, input.Params); err != nil {
+	if err := s.validateCatalogParams(r.Context(), input.Type, input.Provider, input.Params); err != nil {
 		writeVaultError(w, "createUserCatalog", err, nil, "", "failed to create catalog")
 		return
 	}
@@ -73,7 +76,7 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateCatalogParams(input.Type, input.Provider, input.Params); err != nil {
+	if err := s.validateCatalogParams(r.Context(), input.Type, input.Provider, input.Params); err != nil {
 		writeVaultError(w, "updateUserCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to update catalog")
 		return
 	}

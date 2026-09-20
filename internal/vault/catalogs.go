@@ -107,18 +107,36 @@ func isOlderCatalog(a, b Catalog) bool {
 	return a.ID.String() < b.ID.String()
 }
 
+// CatalogParamsValidator re-checks a catalog recipe that is about to be
+// copied out of another profile's row. This package is the leaf of the
+// dependency graph and cannot reach internal/provider, so the check is
+// passed in by the caller that can (api.validateCatalogParams).
+type CatalogParamsValidator func(catalogType, catalogProvider, params string) error
+
 // TakeCatalog deep-copies a public catalog owned by someone else into a new
 // listed catalog owned by profileID, with fresh ids and taken_from set to
 // the source so the copy is unaffected by later changes to the source.
 // Returns ErrCatalogNotFound if sourceID isn't public or is already owned by
 // profileID.
-func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (Catalog, error) {
+//
+// validateParams re-runs the create/update params check against the source
+// row before anything is copied: the recipe is someone else's input, and it
+// was validated when they wrote it, not when this profile takes it. It is
+// required — a nil validator is a programming error, not "skip the check".
+func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID, validateParams CatalogParamsValidator) (Catalog, error) {
+	if validateParams == nil {
+		return Catalog{}, errors.New("vault: TakeCatalog requires a params validator")
+	}
+
 	source, err := db.queryCatalogs(ctx, "id = ? AND is_public = TRUE AND owner_id != ?", sourceID.String(), profileID.String())
 	if err != nil {
 		return Catalog{}, err
 	}
 	if len(source) == 0 {
 		return Catalog{}, ErrCatalogNotFound
+	}
+	if err := validateParams(source[0].Type, source[0].Provider, source[0].Params); err != nil {
+		return Catalog{}, err
 	}
 
 	now := time.Now().UTC()
