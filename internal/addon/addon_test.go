@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -289,5 +291,63 @@ func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) 
 	}
 	if _, ok := findSelectedCatalog(selection, catalog.Type, ManifestID(catalog)); ok {
 		t.Fatalf("findSelectedCatalog found a catalog whose collection is not on the TV")
+	}
+}
+
+// A skip past TMDB's pagination ceiling is answered with an empty page and no
+// TMDB call: the provider here is built with a throwaway key, so any call at
+// all would surface as a 502.
+func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
+	ctx := context.Background()
+	db := newTestVault(t)
+
+	owner, err := db.ResolveOrCreateProfile(ctx, "owner", 1, "nuvio-profile-owner")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+
+	catalog, err := db.CreateUserCatalog(ctx, owner.ID, listedCatalogForm("On home"))
+	if err != nil {
+		t.Fatalf("create catalog: %v", err)
+	}
+
+	if err := db.SaveSelectionsForPush(ctx, owner.ID,
+		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
+			{CatalogID: catalog.ID, ShowInHome: true},
+		}},
+		vault.CollectionSelectionForm{},
+		nil,
+	); err != nil {
+		t.Fatalf("SaveSelectionsForPush: %v", err)
+	}
+
+	s, err := New(db, provider.NewTMDBClient("test-key"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", s.CatalogHandler)
+
+	// 10000/20 + 1 = page 501, the first page TMDB itself refuses. Spelled
+	// out rather than derived from maxCatalogPage, so raising that constant
+	// past TMDB's limit fails here.
+	const skipPastLastPage = 10000
+	path := "/u/" + owner.Token + "/catalog/movie/" + ManifestID(catalog) +
+		"/skip=" + strconv.Itoa(skipPastLastPage) + ".json"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body %q", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var got catalogResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding response %q: %v", rec.Body.String(), err)
+	}
+	if len(got.Metas) != 0 {
+		t.Errorf("metas = %+v, want empty", got.Metas)
+	}
+	if !strings.Contains(rec.Body.String(), `"metas":[]`) {
+		t.Errorf("body = %s, want an empty metas array rather than null", rec.Body.String())
 	}
 }

@@ -37,6 +37,11 @@ const (
 	// conversion.
 	catalogPageSize = 20
 
+	// maxCatalogPage is TMDB's own ceiling on discover pagination: it rejects
+	// any page above this one. A skip that lands past it is answered with an
+	// empty page instead of a request TMDB refuses.
+	maxCatalogPage = 500
+
 	// catalogCacheMaxAge/catalogStaleRevalidate tell Stremio how long it may
 	// serve a catalog response before refetching — the same values (3h / 1h)
 	// as the real sample in docs/api/samples/catalog-response.json.
@@ -318,14 +323,19 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metas, err := s.provider.FetchCatalogPage(r.Context(), catalog.Type, catalog.Params, genre, page)
-	if err != nil {
-		log.Printf("addon: catalog %s: %v", manifestID, err)
-		http.Error(w, "upstream error", http.StatusBadGateway)
-		return
-	}
-	if metas == nil {
-		metas = []provider.Meta{} // {"metas":null} is not a valid empty catalog
+	metas := []provider.Meta{} // {"metas":null} is not a valid empty catalog
+	if page <= maxCatalogPage {
+		metas, err = s.provider.FetchCatalogPage(r.Context(), catalog.Type, catalog.Params, genre, page)
+		if err != nil {
+			// manifestID comes from the request path, so it is quoted: an
+			// unescaped newline in it would otherwise forge a log line.
+			log.Printf("addon: catalog %s: %v", strconv.Quote(manifestID), err)
+			http.Error(w, "upstream error", http.StatusBadGateway)
+			return
+		}
+		if metas == nil {
+			metas = []provider.Meta{}
+		}
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, catalogResponse{

@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -24,6 +27,19 @@ const devBypassProfileIndex = 1
 // Nuvio account.
 const devBypassSecondProfileIndex = 2
 
+// errDevBypassUnknownProfile is what the fake account answers for a profile
+// index it holds no row for. Falling back to the first profile instead would
+// let a push against an unseeded index overwrite that profile's stored addons
+// and collections.
+var errDevBypassUnknownProfile = errors.New("api: dev bypass: no fake profile at that index")
+
+// isBypassToken reports whether presented is the configured bypass token,
+// compared in constant time so the token can't be recovered a byte at a time
+// from response timing.
+func isBypassToken(presented, bypass string) bool {
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(bypass)) == 1
+}
+
 // devBypassVerifier wraps a real TokenVerifier so that presenting
 // bypassToken as a bearer token authenticates as DevBypassSub without a
 // real Nuvio-issued JWT — no JWKS fetch, no live Nuvio account needed. Any
@@ -41,7 +57,7 @@ func NewDevBypassVerifier(next TokenVerifier, bypassToken string) TokenVerifier 
 }
 
 func (v *devBypassVerifier) Verify(ctx context.Context, token string) (nuvio.Claims, error) {
-	if token == v.token {
+	if isBypassToken(token, v.token) {
 		return nuvio.Claims{Sub: DevBypassSub, Exp: time.Now().Add(24 * time.Hour)}, nil
 	}
 	return v.next.Verify(ctx, token)
@@ -81,61 +97,77 @@ func NewDevBypassNuvio(next NuvioClient, bypassToken string) NuvioClient {
 	}
 }
 
-// profileKey maps a profileID (the {profileIndex}-th caller passes
-// nuvio profile "id" strings; here just the path param converted upstream)
-// back to one of the two fake profiles' IDs. Both PullCollections and
-// PushCollections/PushAddons receive it as an int elsewhere in the real
-// Nuvio API, but the bypass only ever has these two rows, keyed by index.
-func (v *devBypassNuvio) profileKey(profileID int) string {
+// profileKey maps a Nuvio profile index — what every method below receives as
+// profileID, and what the real Nuvio API keys a profile by — to the key the
+// fake account files that profile's addons and collections under. Only the
+// indexes NewDevBypassNuvio seeds exist; any other one is
+// errDevBypassUnknownProfile rather than a silent alias of the first.
+func (v *devBypassNuvio) profileKey(profileID int) (string, error) {
 	for _, p := range v.profiles {
 		if p.ProfileIndex == profileID {
-			return p.ID
+			return p.ID, nil
 		}
 	}
-	return v.profiles[0].ID
+	return "", errDevBypassUnknownProfile
 }
 
 func (v *devBypassNuvio) ListProfiles(ctx context.Context, accessToken string) ([]nuvio.NuvioProfile, error) {
-	if accessToken == v.token {
-		return append([]nuvio.NuvioProfile(nil), v.profiles...), nil
+	if isBypassToken(accessToken, v.token) {
+		return slices.Clone(v.profiles), nil
 	}
 	return v.next.ListProfiles(ctx, accessToken)
 }
 
 func (v *devBypassNuvio) ListAddons(ctx context.Context, accessToken string, profileID int) ([]nuvio.NuvioAddon, error) {
-	if accessToken == v.token {
+	if isBypassToken(accessToken, v.token) {
+		key, err := v.profileKey(profileID)
+		if err != nil {
+			return nil, err
+		}
 		v.mu.Lock()
 		defer v.mu.Unlock()
-		return append([]nuvio.NuvioAddon(nil), v.addons[v.profileKey(profileID)]...), nil
+		return slices.Clone(v.addons[key]), nil
 	}
 	return v.next.ListAddons(ctx, accessToken, profileID)
 }
 
 func (v *devBypassNuvio) PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.NuvioAddon) error {
-	if accessToken == v.token {
+	if isBypassToken(accessToken, v.token) {
+		key, err := v.profileKey(profileID)
+		if err != nil {
+			return err
+		}
 		v.mu.Lock()
 		defer v.mu.Unlock()
 		// Copied, not aliased: the caller still owns addons.
-		v.addons[v.profileKey(profileID)] = append([]nuvio.NuvioAddon(nil), addons...)
+		v.addons[key] = slices.Clone(addons)
 		return nil
 	}
 	return v.next.PushAddons(ctx, accessToken, profileID, addons)
 }
 
 func (v *devBypassNuvio) PullCollections(ctx context.Context, accessToken string, profileID int) ([]json.RawMessage, error) {
-	if accessToken == v.token {
+	if isBypassToken(accessToken, v.token) {
+		key, err := v.profileKey(profileID)
+		if err != nil {
+			return nil, err
+		}
 		v.mu.Lock()
 		defer v.mu.Unlock()
-		return append([]json.RawMessage(nil), v.collections[v.profileKey(profileID)]...), nil
+		return slices.Clone(v.collections[key]), nil
 	}
 	return v.next.PullCollections(ctx, accessToken, profileID)
 }
 
 func (v *devBypassNuvio) PushCollections(ctx context.Context, accessToken string, profileID int, collections []json.RawMessage) error {
-	if accessToken == v.token {
+	if isBypassToken(accessToken, v.token) {
+		key, err := v.profileKey(profileID)
+		if err != nil {
+			return err
+		}
 		v.mu.Lock()
 		defer v.mu.Unlock()
-		v.collections[v.profileKey(profileID)] = append([]json.RawMessage(nil), collections...)
+		v.collections[key] = slices.Clone(collections)
 		return nil
 	}
 	return v.next.PushCollections(ctx, accessToken, profileID, collections)

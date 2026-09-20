@@ -8,7 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
+	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -25,6 +26,10 @@ var (
 // again for a kid it doesn't recognize, so a burst of tokens carrying a
 // bogus kid can't trigger a fetch per request.
 const minRefetchInterval = 5 * time.Second
+
+// p256CoordBytes is the fixed width of a P-256 coordinate, and so half of an
+// uncompressed point's payload.
+const p256CoordBytes = 32
 
 // Verifier turns a Nuvio-issued bearer token into trusted claims by
 // checking its signature against Nuvio's published JWKS. It holds no
@@ -144,7 +149,7 @@ func (v *Verifier) fetchKeys(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrJWKSUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: status %s", ErrJWKSUnavailable, resp.Status)
@@ -159,7 +164,7 @@ func (v *Verifier) fetchKeys(ctx context.Context) error {
 			Y   string `json:"y"`
 		} `json:"keys"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&body); err != nil {
 		return fmt.Errorf("%w: %w", ErrJWKSUnavailable, err)
 	}
 
@@ -168,16 +173,14 @@ func (v *Verifier) fetchKeys(ctx context.Context) error {
 		if k.Kty != "EC" || k.Crv != "P-256" {
 			continue // not a key shape we know how to handle
 		}
-		xBytes, err1 := base64.RawURLEncoding.DecodeString(k.X)
-		yBytes, err2 := base64.RawURLEncoding.DecodeString(k.Y)
-		if err1 != nil || err2 != nil {
+		key, err := parseP256JWK(k.X, k.Y)
+		if err != nil {
+			// One unusable key doesn't sink the whole JWKS: the rest of the
+			// set still verifies the tokens signed with it.
+			log.Printf("nuvio: skipping JWKS key %q: %v", k.Kid, err)
 			continue
 		}
-		keys[k.Kid] = &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-			X:     new(big.Int).SetBytes(xBytes),
-			Y:     new(big.Int).SetBytes(yBytes),
-		}
+		keys[k.Kid] = key
 	}
 
 	v.mu.Lock()
@@ -186,4 +189,33 @@ func (v *Verifier) fetchKeys(ctx context.Context) error {
 	v.mu.Unlock()
 
 	return nil
+}
+
+// parseP256JWK builds a P-256 public key from a JWK's base64url-encoded "x"
+// and "y" coordinates, rejecting a point that isn't on the curve.
+//
+// Each coordinate is left-padded to p256CoordBytes: a conforming issuer sends
+// exactly that many bytes, but a leading zero byte can legitimately be
+// dropped, and one wider than that is not a P-256 coordinate at all.
+func parseP256JWK(x, y string) (*ecdsa.PublicKey, error) {
+	xBytes, err := base64.RawURLEncoding.DecodeString(x)
+	if err != nil {
+		return nil, fmt.Errorf("decoding x: %w", err)
+	}
+	yBytes, err := base64.RawURLEncoding.DecodeString(y)
+	if err != nil {
+		return nil, fmt.Errorf("decoding y: %w", err)
+	}
+	if len(xBytes) > p256CoordBytes || len(yBytes) > p256CoordBytes {
+		return nil, fmt.Errorf("coordinate wider than %d bytes (x=%d, y=%d)", p256CoordBytes, len(xBytes), len(yBytes))
+	}
+
+	// 0x04 ‖ X ‖ Y: the uncompressed point encoding ParseUncompressedPublicKey
+	// expects, with each coordinate right-aligned in its own 32-byte half.
+	point := make([]byte, 1+2*p256CoordBytes)
+	point[0] = 4
+	copy(point[1+p256CoordBytes-len(xBytes):], xBytes)
+	copy(point[1+2*p256CoordBytes-len(yBytes):], yBytes)
+
+	return ecdsa.ParseUncompressedPublicKey(elliptic.P256(), point)
 }

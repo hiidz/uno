@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 
 	"github.com/hiidz/uno/internal/addon"
@@ -48,6 +49,10 @@ func New(d Deps) (*Server, error) {
 		return nil, errors.New("api: Deps.Verifier is nil")
 	case d.Nuvio == nil:
 		return nil, errors.New("api: Deps.Nuvio is nil")
+	case d.SiteBaseURL == "":
+		// The one dep whose absence never panics: it would instead push a
+		// relative manifest URL into the user's Nuvio account.
+		return nil, errors.New("api: Deps.SiteBaseURL is empty")
 	}
 
 	addonServer, err := addon.New(d.Vault, d.Provider)
@@ -129,7 +134,14 @@ func (s *Server) routes() error {
 	return nil
 }
 
-func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+// health is the liveness probe: a plain-text 200 that reads nothing, so it
+// answers even while the vault or Nuvio is unreachable. The write failure is
+// logged rather than reported — the status line is already on the wire, so
+// there is nothing left to tell the client.
+func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	if _, err := w.Write([]byte("ok")); err != nil {
+		log.Printf("api: health: writing response: %v", err)
+	}
 }

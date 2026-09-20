@@ -165,7 +165,10 @@ Two routes: `GET /u/{token}/manifest.json` and `GET /u/{token}/catalog/{type}/{r
 (pagination) and `genre` (a pick from the catalog's genre extra). An unknown/invalid token, or a
 catalog id that is not in this profile's *published set*, both return **404** rather than an
 empty or error response — `findSelectedCatalog` doubles as the access check, so a leaked or
-guessed catalog UUID can't pull data through a profile it was never shared with.
+guessed catalog UUID can't pull data through a profile it was never shared with. A `skip` landing
+past TMDB's own pagination ceiling (`maxCatalogPage`, page 500) answers **200 with an empty
+`metas`** and makes no TMDB call: an empty page past the end is the honest answer, and TMDB would
+refuse the request anyway.
 
 The tile flow is `CatalogHandler` → `TMDBClient.FetchCatalogPage` → TMDB `/discover/{movie|tv}` →
 per-item `/external_ids` → `Meta`. Direct per-request TMDB call; there is **no response cache**

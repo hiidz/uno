@@ -52,8 +52,10 @@ decorators from `devauth.go` before building `api.Deps` — `internal/api` itsel
 still sees one verifier and one client. Every Nuvio call carrying the bypass token is served from
 an in-memory fake account: two profiles, "Dev" at slot 1 and "Dev 2" at slot 2, each with its own
 in-memory addon and collections store that starts empty and holds whatever pushes write into it —
-enough to exercise switching profiles in the builder without a real Nuvio account. Any other token
-verifies and routes normally.
+enough to exercise switching profiles in the builder without a real Nuvio account. A request for
+any other slot — `requireProfile` accepts 1–6 — fails instead of falling back to slot 1, so a
+hand-made call can't read or overwrite the wrong profile's store. Any other token verifies and
+routes normally.
 
 Driving the SPA with it takes a second entry: Vite reads env files from `web/` only and exposes
 only `VITE_`-prefixed vars, so the root `.env` is invisible to the frontend. Set

@@ -54,7 +54,7 @@ func (c *Client) ListProfiles(ctx context.Context, accessToken string) ([]NuvioP
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// sync_pull_profiles always returns data (a pull, not a push), so 200
 	// is the only success case — unlike a push RPC, which can legitimately
@@ -122,7 +122,7 @@ func (c *Client) ListAddons(ctx context.Context, accessToken string, profileID i
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
@@ -152,7 +152,7 @@ func (c *Client) PushAddons(ctx context.Context, accessToken string, profileID i
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
@@ -174,7 +174,7 @@ func (c *Client) PullCollections(ctx context.Context, accessToken string, profil
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
@@ -209,7 +209,7 @@ func (c *Client) PushCollections(ctx context.Context, accessToken string, profil
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)

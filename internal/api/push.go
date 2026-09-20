@@ -140,8 +140,7 @@ func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfil
 		return err
 	}
 
-	merged := make([]nuvio.NuvioAddon, len(current))
-	copy(merged, current)
+	merged := slices.Clone(current)
 	found := false
 	for i := range merged {
 		if merged[i].URL == manifestURL {
