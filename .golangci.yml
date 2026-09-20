@@ -1,0 +1,12 @@
+version: "2"
+
+linters:
+  default: standard        # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - gosec                # the HTTP trust-boundary review, made re-runnable
+    - errorlint            # %w wrapping and errors.As
+    - bodyclose            # Nuvio and TMDB response bodies
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec]
