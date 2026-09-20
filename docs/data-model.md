@@ -324,8 +324,10 @@ describing what a TMDB-backed catalog may ask for.
   ("shuffle"), not "true random". Preview always asks page 1 and returns the flag instead.
 - **A second provider needs two places updated, not one.** `validProviders` in
   `vault.CatalogForm.Validate()` (`internal/vault/validation.go`) *and* the provider check at the
-  top of `validateCatalogParams` (`internal/api/provider.go`), plus its own recipe type and
-  branch in the latter. Miss either and its rows are silently rejected everywhere. The `api`
+  top of `validateCatalogParams` (`internal/api/provider.go`), plus its own recipe type and a
+  case in `provider.DecodeParams`' dispatch (`internal/provider/models.go`), which is where a
+  catalog type becomes a concrete params struct for validation, query building and
+  fingerprinting alike. Miss either and its rows are silently rejected everywhere. The `api`
   check is the one that actually parses `params`, so it must reject early rather than rely on
   the vault check alone. `catalogs.provider` is free text at the schema level (`TEXT`, no
   `CHECK`); the constraint is app-level only. There is no `Provider` interface, deliberately —

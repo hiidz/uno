@@ -27,18 +27,9 @@ func Fingerprint(catalogType, catalogProvider, params string) (string, error) {
 // key order, whitespace, or omitted-but-zero fields) produce identical
 // output.
 func canonicalParams(catalogType, params string) (string, error) {
-	var v any
-	switch catalogType {
-	case "movie":
-		v = &TMDBMovieParams{}
-	case "series":
-		v = &TMDBTVParams{}
-	default:
-		return "", fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
-	}
-
-	if err := json.Unmarshal([]byte(params), v); err != nil {
-		return "", fmt.Errorf("unmarshaling %s params: %w", catalogType, err)
+	v, err := DecodeParams(catalogType, params)
+	if err != nil {
+		return "", err
 	}
 	canonical, err := json.Marshal(v)
 	if err != nil {

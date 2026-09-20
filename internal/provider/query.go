@@ -11,28 +11,18 @@ import (
 )
 
 // buildDiscoverQuery decodes the stored recipe and translates it into TMDB's
-// literal query params. Done field-by-field rather than a generic
-// json-roundtrip dump: our own storage tags are underscore-only
-// (vote_average_gte) but TMDB's real range params use a dot
-// (vote_average.gte) — dumping the struct directly would silently produce
-// query keys TMDB doesn't recognize and the filter would just never apply.
+// literal query params. The translation is done field-by-field (see each
+// type's DiscoverQuery) rather than as a generic json-roundtrip dump: our own
+// storage tags are underscore-only (vote_average_gte) but TMDB's real range
+// params use a dot (vote_average.gte) — dumping the struct directly would
+// silently produce query keys TMDB doesn't recognize and the filter would
+// just never apply.
 func buildDiscoverQuery(catalogType, paramsJSON string) (query url.Values, randomized bool, err error) {
-	switch catalogType {
-	case "movie":
-		var p TMDBMovieParams
-		if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
-			return nil, false, fmt.Errorf("provider: decode movie params: %w", err)
-		}
-		return movieQuery(p), p.Randomized, nil
-	case "series":
-		var p TMDBTVParams
-		if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
-			return nil, false, fmt.Errorf("provider: decode tv params: %w", err)
-		}
-		return tvQuery(p), p.Randomized, nil
-	default:
-		return nil, false, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
+	p, err := DecodeParams(catalogType, paramsJSON)
+	if err != nil {
+		return nil, false, err
 	}
+	return p.DiscoverQuery(), p.IsRandomized(), nil
 }
 
 func commonQuery(p TMDBCommonParams) url.Values {
@@ -56,7 +46,8 @@ func commonQuery(p TMDBCommonParams) url.Values {
 	return q
 }
 
-func movieQuery(p TMDBMovieParams) url.Values {
+// DiscoverQuery satisfies CatalogParams for a /discover/movie recipe.
+func (p TMDBMovieParams) DiscoverQuery() url.Values {
 	q := commonQuery(p.TMDBCommonParams)
 	setIf(q, "primary_release_date.gte", p.PrimaryReleaseDateGte)
 	setIf(q, "primary_release_date.lte", p.PrimaryReleaseDateLte)
@@ -66,7 +57,8 @@ func movieQuery(p TMDBMovieParams) url.Values {
 	return q
 }
 
-func tvQuery(p TMDBTVParams) url.Values {
+// DiscoverQuery satisfies CatalogParams for a /discover/tv recipe.
+func (p TMDBTVParams) DiscoverQuery() url.Values {
 	q := commonQuery(p.TMDBCommonParams)
 	setIf(q, "first_air_date.gte", p.FirstAirDateGte)
 	setIf(q, "first_air_date.lte", p.FirstAirDateLte)

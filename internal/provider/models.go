@@ -1,9 +1,60 @@
 package provider
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 )
+
+// CatalogParams is a decoded catalog recipe: everything the rest of the
+// package needs from one, whichever catalog type it came from.
+// TMDBMovieParams and TMDBTVParams are the implementations.
+//
+// This interface plus paramsFor is what keeps the movie/series split in one
+// place. Validation, query building and fingerprinting each used to switch on
+// catalogType and spell out both arms, so a third catalog type meant three
+// parallel edits; now it means one case in paramsFor.
+type CatalogParams interface {
+	// Validate checks the cross-field rules a single JSON field can't express.
+	Validate() error
+	// DiscoverQuery translates the recipe into TMDB's literal query params.
+	DiscoverQuery() url.Values
+	// IsRandomized reports whether the recipe shuffles rather than serving
+	// page 1 — see FetchCatalogPage.
+	IsRandomized() bool
+}
+
+// paramsFor returns an empty params struct for catalogType. The pointer
+// matters: it is what DecodeParams unmarshals into, and the value-receiver
+// methods above are in a pointer's method set too.
+func paramsFor(catalogType string) (CatalogParams, error) {
+	switch catalogType {
+	case "movie":
+		return &TMDBMovieParams{}, nil
+	case "series":
+		return &TMDBTVParams{}, nil
+	default:
+		return nil, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
+	}
+}
+
+// DecodeParams decodes a stored recipe's params JSON as catalogType's own
+// shape. The one place a catalog type becomes a concrete params struct.
+func DecodeParams(catalogType, paramsJSON string) (CatalogParams, error) {
+	p, err := paramsFor(catalogType)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(paramsJSON), p); err != nil {
+		return nil, fmt.Errorf("provider: decode %s params: %w", catalogType, err)
+	}
+	return p, nil
+}
+
+// IsRandomized satisfies CatalogParams for every recipe type, since they all
+// embed BaseParams.
+func (p BaseParams) IsRandomized() bool { return p.Randomized }
 
 // Genre is a single TMDB genre id/name pair.
 type Genre struct {
