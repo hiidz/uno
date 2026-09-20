@@ -557,7 +557,7 @@ button.
   inline `FolderCatalogRef.New` spec right before the collection's own Save reaches the wire,
   keyed by that draft id, so every ref to one draft (two genre rows, or two folders) resolves to
   the one catalog Save creates rather than one catalog each;
-  `internal/vault/collections.go`'s `resolveFolderCatalogRef` is the one place a `New` entry is
+  `internal/vault/folders.go`'s `resolveFolderCatalogRef` is the one place a `New` entry is
   ever written — inside `CreateUserCollection`/`UpdateUserCollection`'s own transaction, atomic
   with the folder write that references it. So Save creates the catalog and the ref together in
   one commit, and discarding instead of saving never wrote anything in the first place, closing

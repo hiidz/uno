@@ -1,6 +1,10 @@
 package provider
 
-import "context"
+import (
+	"context"
+
+	"github.com/hiidz/uno/internal/jsonwire"
+)
 
 // Languages returns TMDB's full ISO 639-1 language table. Unlike Genres and
 // Certifications, it isn't split by catalogType — TMDB's language list is
@@ -11,8 +15,5 @@ func (c *TMDBClient) Languages(ctx context.Context) ([]Language, error) {
 	if err := c.get(ctx, "/configuration/languages", nil, &out); err != nil {
 		return nil, err
 	}
-	if out == nil {
-		out = []Language{}
-	}
-	return out, nil
+	return jsonwire.OrEmpty(out), nil
 }

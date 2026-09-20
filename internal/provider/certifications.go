@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"fmt"
+
+	"github.com/hiidz/uno/internal/jsonwire"
 )
 
 // Certifications returns TMDB's age-rating systems, grouped by country. Each
@@ -23,8 +25,5 @@ func (c *TMDBClient) Certifications(ctx context.Context, catalogType string) (ma
 	if err := c.get(ctx, fmt.Sprintf("/certification/%s/list", kind), nil, &out); err != nil {
 		return nil, err
 	}
-	if out.Certifications == nil {
-		out.Certifications = map[string][]Certification{}
-	}
-	return out.Certifications, nil
+	return jsonwire.OrEmptyMap(out.Certifications), nil
 }

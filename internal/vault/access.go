@@ -74,13 +74,31 @@ func requireFolderRefsWithinCollection(ctx context.Context, q queryRower, catalo
 	return nil
 }
 
-// validateFolderRefs confirms every catalog ID may be referenced by a
-// folder in a collection this profile owns, under the closed-graph rule:
-// owned by profileID, and either listed (collection_id IS NULL) or already
-// scoped to this same collection. A nil collectionID means the collection
-// doesn't exist yet (CreateUserCollection has no id to compare against), so
-// only listed catalogs qualify. Must run inside the caller's transaction.
-func validateFolderRefs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionID *uuid.UUID, ids []uuid.UUID) error {
+// ownedIDsQuery describes one closed-graph ownership check for
+// requireOwnedIDs: which table the ids must exist in, how to name them in
+// errors, and an optional fragment ANDed onto the ownership test. The closed
+// graph has no cross-owner reference, so there is never an "or public"
+// branch.
+//
+// table and extraWhere are always internal literals, never client input.
+type ownedIDsQuery struct {
+	table string
+	// label names one row in the singular, e.g. "catalog".
+	label string
+	// extraWhere is ANDed onto "owner_id = ?" (e.g. " AND collection_id IS
+	// NULL" to also require "listed"); extraArgs fill its placeholders and
+	// are appended after profileID.
+	extraWhere string
+	extraArgs  []any
+	// rejection completes the message for an id that didn't come back, after
+	// "<label> <id> ".
+	rejection string
+}
+
+// requireOwnedIDs confirms every id in ids satisfies q, returning an
+// ErrInvalidInput naming the first that doesn't. Must run inside the
+// caller's transaction.
+func requireOwnedIDs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, ids []uuid.UUID, q ownedIDsQuery) error {
 	unique := dedupeUUIDs(ids)
 	if len(unique) == 0 {
 		return nil
@@ -88,96 +106,47 @@ func validateFolderRefs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, co
 
 	placeholders, args := buildInClause(unique)
 	args = append(args, profileID.String())
+	args = append(args, q.extraArgs...)
 
-	query := fmt.Sprintf(`
-		SELECT id FROM catalogs
-		WHERE id IN (%s) AND owner_id = ?
-	`, placeholders)
-	if collectionID != nil {
-		query += ` AND (collection_id IS NULL OR collection_id = ?)`
-		args = append(args, collectionID.String())
-	} else {
-		query += ` AND collection_id IS NULL`
-	}
-
-	rows, err := tx.QueryContext(ctx, query, args...)
+	got, err := queryUUIDs(ctx, tx, q.label+" id", fmt.Sprintf(`
+		SELECT id FROM %s
+		WHERE id IN (%s) AND owner_id = ?%s
+	`, q.table, placeholders, q.extraWhere), args...)
 	if err != nil {
-		return fmt.Errorf("validating folder catalog refs: %w", err)
+		return err
 	}
-	defer rows.Close()
 
-	found := make(map[uuid.UUID]bool, len(unique))
-	for rows.Next() {
-		var idStr string
-		if err := rows.Scan(&idStr); err != nil {
-			return fmt.Errorf("scanning catalog id: %w", err)
-		}
-		id, err := parseUUID(idStr, "catalog id")
-		if err != nil {
-			return err
-		}
+	found := make(map[uuid.UUID]bool, len(got))
+	for _, id := range got {
 		found[id] = true
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating catalog ids: %w", err)
 	}
 
 	for _, id := range unique {
 		if !found[id] {
-			return fmt.Errorf("%w: catalog %s is not usable in this collection's folders", ErrInvalidInput, id)
+			return fmt.Errorf("%w: %s %s %s", ErrInvalidInput, q.label, id, q.rejection)
 		}
 	}
 	return nil
 }
 
-// validateAccess confirms every id in the given table is owned by
-// profileID — the closed graph has no cross-owner reference, so there is no
-// "or public" branch. label names the table in the singular (e.g.
-// "catalog") and is pluralized to get the table name. extraWhere, if
-// non-empty, is ANDed onto the ownership check (e.g. " AND collection_id IS
-// NULL" to also require "listed"). Must run inside the caller's transaction.
-func validateAccess(ctx context.Context, tx *sql.Tx, label, extraWhere string, profileID uuid.UUID, ids []uuid.UUID) error {
-	if len(ids) == 0 {
-		return nil
+// validateFolderRefs confirms every catalog ID may be referenced by a
+// folder in a collection this profile owns, under the closed-graph rule:
+// owned by profileID, and either listed (collection_id IS NULL) or already
+// scoped to this same collection. A nil collectionID means the collection
+// doesn't exist yet (CreateUserCollection has no id to compare against), so
+// only listed catalogs qualify. Must run inside the caller's transaction.
+func validateFolderRefs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionID *uuid.UUID, ids []uuid.UUID) error {
+	q := ownedIDsQuery{
+		table:      "catalogs",
+		label:      "catalog",
+		extraWhere: ` AND collection_id IS NULL`,
+		rejection:  "is not usable in this collection's folders",
 	}
-	table := label + "s"
-
-	unique := dedupeUUIDs(ids)
-
-	placeholders, args := buildInClause(unique)
-	args = append(args, profileID.String())
-
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id FROM %s
-		WHERE id IN (%s) AND owner_id = ?%s
-	`, table, placeholders, extraWhere), args...)
-	if err != nil {
-		return fmt.Errorf("validating %s access: %w", label, err)
+	if collectionID != nil {
+		q.extraWhere = ` AND (collection_id IS NULL OR collection_id = ?)`
+		q.extraArgs = []any{collectionID.String()}
 	}
-	defer rows.Close()
-
-	found := make(map[uuid.UUID]bool, len(unique))
-	for rows.Next() {
-		var idStr string
-		if err := rows.Scan(&idStr); err != nil {
-			return fmt.Errorf("scanning %s id: %w", label, err)
-		}
-		id, err := parseUUID(idStr, label+" id")
-		if err != nil {
-			return err
-		}
-		found[id] = true
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating %s ids: %w", label, err)
-	}
-
-	for _, id := range unique {
-		if !found[id] {
-			return fmt.Errorf("%w: %s %s is not accessible to this profile", ErrInvalidInput, label, id)
-		}
-	}
-	return nil
+	return requireOwnedIDs(ctx, tx, profileID, ids, q)
 }
 
 // validateCatalogAccess confirms every catalog ID is owned by profileID and
@@ -190,11 +159,20 @@ func validateAccess(ctx context.Context, tx *sql.Tx, label, extraWhere string, p
 // write's `AND collection_id IS NULL`, forcing a compensating revert after
 // Nuvio already succeeded. Must run inside the caller's transaction.
 func validateCatalogAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, catalogIDs []uuid.UUID) error {
-	return validateAccess(ctx, tx, "catalog", " AND collection_id IS NULL", profileID, catalogIDs)
+	return requireOwnedIDs(ctx, tx, profileID, catalogIDs, ownedIDsQuery{
+		table:      "catalogs",
+		label:      "catalog",
+		extraWhere: " AND collection_id IS NULL",
+		rejection:  "is not accessible to this profile",
+	})
 }
 
 func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionIDs []uuid.UUID) error {
-	return validateAccess(ctx, tx, "collection", "", profileID, collectionIDs)
+	return requireOwnedIDs(ctx, tx, profileID, collectionIDs, ownedIDsQuery{
+		table:     "collections",
+		label:     "collection",
+		rejection: "is not accessible to this profile",
+	})
 }
 
 // takenSourceIDs returns the set of taken_from ids that a row owned by
@@ -203,28 +181,16 @@ func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UU
 // GetCommunityCatalogs and GetCommunityCollections. table is always an
 // internal literal, never client input.
 func (db *DB) takenSourceIDs(ctx context.Context, table string, profileID uuid.UUID) (map[uuid.UUID]bool, error) {
-	rows, err := db.conn.QueryContext(ctx, fmt.Sprintf(`
+	ids, err := queryUUIDs(ctx, db.conn, "taken_from id", fmt.Sprintf(`
 		SELECT taken_from FROM %s WHERE owner_id = ? AND taken_from IS NOT NULL
 	`, table), profileID.String())
 	if err != nil {
-		return nil, fmt.Errorf("querying taken %s: %w", table, err)
+		return nil, err
 	}
-	defer rows.Close()
 
-	taken := map[uuid.UUID]bool{}
-	for rows.Next() {
-		var idStr string
-		if err := rows.Scan(&idStr); err != nil {
-			return nil, fmt.Errorf("scanning taken_from id: %w", err)
-		}
-		id, err := parseUUID(idStr, "taken_from id")
-		if err != nil {
-			return nil, err
-		}
+	taken := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
 		taken[id] = true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating taken %s: %w", table, err)
 	}
 	return taken, nil
 }

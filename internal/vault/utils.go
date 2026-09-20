@@ -52,17 +52,3 @@ func nullableUUIDString(id *uuid.UUID) any {
 	}
 	return id.String()
 }
-
-// orEmpty returns s unchanged unless it's nil, in which case it returns a
-// non-nil empty slice. A nil slice and a zero-length slice are the same
-// slice to Go, but not to encoding/json: nil marshals as "null", not "[]".
-// Used at the few spots that produce a slice by map lookup or early return
-// rather than by appending — a range/append naturally ends up non-nil even
-// at zero length, so callers that already build a slice that way don't need
-// this.
-func orEmpty[T any](s []T) []T {
-	if s == nil {
-		return []T{}
-	}
-	return s
-}

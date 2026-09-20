@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+
+	"github.com/hiidz/uno/internal/jsonwire"
 )
 
 // WatchProviders returns the streaming services TMDB can filter on in one
@@ -33,9 +35,7 @@ func (c *TMDBClient) WatchProviders(ctx context.Context, catalogType, region str
 	if err := c.get(ctx, fmt.Sprintf("/watch/providers/%s", kind), query, &out); err != nil {
 		return nil, err
 	}
-	if out.Results == nil {
-		out.Results = []WatchProvider{}
-	}
+	out.Results = jsonwire.OrEmpty(out.Results)
 
 	sort.SliceStable(out.Results, func(i, j int) bool {
 		a, b := out.Results[i], out.Results[j]
@@ -55,8 +55,5 @@ func (c *TMDBClient) WatchRegions(ctx context.Context) ([]WatchRegion, error) {
 	if err := c.get(ctx, "/watch/providers/regions", nil, &out); err != nil {
 		return nil, err
 	}
-	if out.Results == nil {
-		out.Results = []WatchRegion{}
-	}
-	return out.Results, nil
+	return jsonwire.OrEmpty(out.Results), nil
 }

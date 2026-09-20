@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/hiidz/uno/internal/jsonwire"
 )
 
 // ErrNuvioRequestFailed wraps any non-2xx response or transport error from
@@ -69,10 +71,7 @@ func (c *Client) ListProfiles(ctx context.Context, accessToken string) ([]NuvioP
 	// an array, but a nil slice here would marshal as `null` on the wire, and
 	// the client's ProfilePicker treats `null` as "not loaded yet" rather than
 	// "loaded, empty".
-	if profiles == nil {
-		profiles = []NuvioProfile{}
-	}
-	return profiles, nil
+	return jsonwire.OrEmpty(profiles), nil
 }
 
 // doRPC POSTs body (marshaled to JSON) to {baseURL}/rest/v1/rpc/{rpc} with

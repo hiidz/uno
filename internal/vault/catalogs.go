@@ -390,59 +390,21 @@ func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 	out := []SelectedCatalog{}
 	seen := map[uuid.UUID]bool{}
 	for rows.Next() {
-		var c Catalog
-		var idStr, ownerIDStr string
-		var isPublic, isDefault, showInHome, derivedShowInHome, rank, o2, o3 int
-		var collectionIDStr, takenFromStr sql.NullString
-		var homeSortOrder, o1 sql.NullInt64
-		var createdAtStr, updatedAtStr string
+		var derivedShowInHome, rank, o2, o3 int
+		var o1 sql.NullInt64
 
-		if err := rows.Scan(&idStr, &c.Type, &c.Name, &c.Provider, &c.Params, &ownerIDStr,
-			&isPublic, &isDefault, &collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr,
-			&c.Fingerprint, &createdAtStr, &updatedAtStr,
-			&derivedShowInHome, &rank, &o1, &o2, &o3); err != nil {
-			return nil, fmt.Errorf("scanning published catalog row: %w", err)
-		}
-
-		id, err := parseUUID(idStr, "catalog id")
+		c, err := scanCatalog(rows, &derivedShowInHome, &rank, &o1, &o2, &o3)
 		if err != nil {
 			return nil, err
 		}
+
 		// First row wins: SQL orders home rows (rank 0) before folder-derived
 		// ones (rank 1), so a catalog on both home and in a folder keeps its
 		// home ShowInHome rather than the folder-derived false.
-		if seen[id] {
+		if seen[c.ID] {
 			continue
 		}
-		seen[id] = true
-		c.ID = id
-
-		c.OwnerID, err = parseUUID(ownerIDStr, "owner id")
-		if err != nil {
-			return nil, err
-		}
-		c.IsPublic = isPublic != 0
-		c.IsDefault = isDefault != 0
-
-		c.CollectionID, err = parseNullableUUID(collectionIDStr, "collection id")
-		if err != nil {
-			return nil, err
-		}
-		c.HomeSortOrder = nullableInt(homeSortOrder)
-		c.ShowInHome = showInHome != 0
-		c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
-		if err != nil {
-			return nil, err
-		}
-
-		c.CreatedAt, err = parseTimestamp(createdAtStr, "catalog created_at")
-		if err != nil {
-			return nil, err
-		}
-		c.UpdatedAt, err = parseTimestamp(updatedAtStr, "catalog updated_at")
-		if err != nil {
-			return nil, err
-		}
+		seen[c.ID] = true
 
 		out = append(out, SelectedCatalog{Catalog: c, ShowInHome: derivedShowInHome != 0})
 	}

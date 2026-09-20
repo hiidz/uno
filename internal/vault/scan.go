@@ -1,12 +1,49 @@
 package vault
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// querier is the common subset of *sql.DB and *sql.Tx the multi-row query
+// helpers below need, so callers can run them either inside a transaction or
+// straight against the pool — the QueryContext counterpart to access.go's
+// queryRower.
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// queryUUIDs runs a query whose rows are a single TEXT column holding a UUID
+// and returns them in row order. label names one such value (e.g. "folder
+// id") and appears in every error this can return.
+func queryUUIDs(ctx context.Context, q querier, label, query string, args ...any) ([]uuid.UUID, error) {
+	rows, err := q.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying %s list: %w", label, err)
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var idStr string
+		if err := rows.Scan(&idStr); err != nil {
+			return nil, fmt.Errorf("scanning %s: %w", label, err)
+		}
+		id, err := parseUUID(idStr, label)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating %s list: %w", label, err)
+	}
+	return ids, nil
+}
 
 // parseTimestamp parses an RFC3339 TEXT column into a time.Time, wrapping
 // any error with the given field name.
@@ -42,56 +79,71 @@ func nullableInt(n sql.NullInt64) *int {
 	return &v
 }
 
+// scanCatalog reads one catalog row: the fifteen catalog columns, in the
+// order every catalog SELECT in this package lists them, followed by
+// extraDests — destinations for any further columns the caller's own query
+// appended (see GetPublishedCatalogs' ordering columns).
+func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
+	var c Catalog
+	var idStr, ownerIDStr string
+	var isPublic, isDefault, showInHome int
+	var collectionIDStr, takenFromStr sql.NullString
+	var homeSortOrder sql.NullInt64
+	var createdAtStr, updatedAtStr string
+
+	dests := append([]any{
+		&idStr, &c.Type, &c.Name, &c.Provider,
+		&c.Params, &ownerIDStr, &isPublic, &isDefault,
+		&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &c.Fingerprint,
+		&createdAtStr, &updatedAtStr,
+	}, extraDests...)
+	if err := rows.Scan(dests...); err != nil {
+		return Catalog{}, fmt.Errorf("scanning catalog row: %w", err)
+	}
+
+	id, err := parseUUID(idStr, "catalog id")
+	if err != nil {
+		return Catalog{}, err
+	}
+	c.ID = id
+
+	c.OwnerID, err = parseUUID(ownerIDStr, "owner id")
+	if err != nil {
+		return Catalog{}, err
+	}
+	c.IsPublic = isPublic != 0
+	c.IsDefault = isDefault != 0
+
+	c.CollectionID, err = parseNullableUUID(collectionIDStr, "collection id")
+	if err != nil {
+		return Catalog{}, err
+	}
+	c.HomeSortOrder = nullableInt(homeSortOrder)
+	c.ShowInHome = showInHome != 0
+	c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
+	if err != nil {
+		return Catalog{}, err
+	}
+
+	c.CreatedAt, err = parseTimestamp(createdAtStr, "catalog created_at")
+	if err != nil {
+		return Catalog{}, err
+	}
+	c.UpdatedAt, err = parseTimestamp(updatedAtStr, "catalog updated_at")
+	if err != nil {
+		return Catalog{}, err
+	}
+
+	return c, nil
+}
+
 func parseCatalogs(rows *sql.Rows) ([]Catalog, error) {
 	catalogs := []Catalog{}
 	for rows.Next() {
-		var c Catalog
-		var idStr, ownerIDStr string
-		var isPublic, isDefault, showInHome int
-		var collectionIDStr, takenFromStr sql.NullString
-		var homeSortOrder sql.NullInt64
-		var createdAtStr, updatedAtStr string
-
-		if err := rows.Scan(&idStr, &c.Type, &c.Name, &c.Provider,
-			&c.Params, &ownerIDStr, &isPublic, &isDefault,
-			&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &c.Fingerprint,
-			&createdAtStr, &updatedAtStr); err != nil {
-			return nil, fmt.Errorf("scanning catalog row: %w", err)
-		}
-
-		id, err := parseUUID(idStr, "catalog id")
+		c, err := scanCatalog(rows)
 		if err != nil {
 			return nil, err
 		}
-		c.ID = id
-
-		c.OwnerID, err = parseUUID(ownerIDStr, "owner id")
-		if err != nil {
-			return nil, err
-		}
-		c.IsPublic = isPublic != 0
-		c.IsDefault = isDefault != 0
-
-		c.CollectionID, err = parseNullableUUID(collectionIDStr, "collection id")
-		if err != nil {
-			return nil, err
-		}
-		c.HomeSortOrder = nullableInt(homeSortOrder)
-		c.ShowInHome = showInHome != 0
-		c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
-		if err != nil {
-			return nil, err
-		}
-
-		c.CreatedAt, err = parseTimestamp(createdAtStr, "catalog created_at")
-		if err != nil {
-			return nil, err
-		}
-		c.UpdatedAt, err = parseTimestamp(updatedAtStr, "catalog updated_at")
-		if err != nil {
-			return nil, err
-		}
-
 		catalogs = append(catalogs, c)
 	}
 	if err := rows.Err(); err != nil {

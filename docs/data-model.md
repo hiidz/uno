@@ -141,7 +141,7 @@ write credential.
   listed or scoped, so the editor never needs the library to render a folder.
 - **A scoped catalog with no remaining folder reference in its collection is deleted on that
   collection's next whole-tree Save.** `UpdateUserCollection` runs this cleanup in the same
-  transaction as the folder rewrite, right after `replaceFolderCatalogRefs` for every folder:
+  transaction as the folder rewrite, right after `rewriteFolderCatalogRefs` for every folder:
   `DELETE FROM catalogs WHERE collection_id = ? AND id NOT IN (` the catalog ids still referenced
   by that collection's folders `)`. This is also what catches a scoped catalog created via
   `POST .../catalogs` and abandoned before Save — it has no folder ref yet, so the next Save (or
@@ -270,12 +270,13 @@ write credential.
   rather than resumption of a deferred plan. This shape is what forces the collection editor's
   one dirty state and one Save button.
 - **Empty lists serialize as `[]`, never `null`.** The row parsers in `internal/vault/scan.go`
-  initialize their slices, and `orEmpty[T]` (`internal/vault/utils.go`) covers the map-lookup and
-  client-input spots that produce nested `Folders`/`CatalogIDs` slices. The push-internal batch
+  initialize their slices, and `jsonwire.OrEmpty[T]` (`internal/jsonwire`) covers the
+  map-lookup, decoded-response and client-input spots that produce nested
+  `Folders`/`CatalogIDs` slices. The push-internal batch
   loaders still `return nil, nil` on empty input, deliberately — nothing serializes their output.
   The frontend's `?? []` coercion (`getList`, and the `| null` on nested array types in
   `web/src/api/types.ts`) is retained as defensive handling. Any new list endpoint must
-  initialize or `orEmpty` its slice: four client-side comments (`web/src/api/http.ts`,
+  initialize or `jsonwire.OrEmpty` its slice: four client-side comments (`web/src/api/http.ts`,
   `web/src/features/library/useLibrary.ts`, `web/src/features/home/preview.ts`,
   `web/src/features/collections/collectionForm.ts`) assert the no-`null` rule unconditionally,
   and one nil slice on the wire makes all four wrong.

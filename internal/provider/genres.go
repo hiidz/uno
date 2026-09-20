@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"slices"
+
+	"github.com/hiidz/uno/internal/jsonwire"
 )
 
 // Genres returns TMDB's genre list for one catalog type, cached in memory
@@ -32,12 +34,9 @@ func (c *TMDBClient) Genres(ctx context.Context, catalogType string) ([]Genre, e
 	if err := c.get(ctx, fmt.Sprintf("/genre/%s/list", kind), nil, &out); err != nil {
 		return nil, err
 	}
-	// Defensive, like the vault package's orEmpty: TMDB is expected to
-	// always return a genres array, but a nil slice here would round-trip
-	// as `null` over the wire.
-	if out.Genres == nil {
-		out.Genres = []Genre{}
-	}
+	// Defensive: TMDB is expected to always return a genres array, but a nil
+	// slice here would round-trip as `null` over the wire.
+	out.Genres = jsonwire.OrEmpty(out.Genres)
 
 	c.genresMu.Lock()
 	c.genresCache[kind] = out.Genres
