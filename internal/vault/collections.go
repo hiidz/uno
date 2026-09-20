@@ -26,12 +26,7 @@ func (db *DB) queryCollections(ctx context.Context, where string, args ...any) (
 	}
 	defer rows.Close()
 
-	collections, err := parseCollections(rows)
-	if err != nil {
-		return nil, fmt.Errorf("parsing collection rows: %w", err)
-	}
-
-	return collections, nil
+	return parseCollections(rows)
 }
 
 // GetUserCollections returns the collections owned by profileID, each with
@@ -123,7 +118,7 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback() // no-op once Commit succeeds
+	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
 	var existingCatalogIDs []uuid.UUID
 	for _, fd := range input.Folders {
@@ -270,7 +265,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback() // no-op once Commit succeeds
+	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
 	before, err := loadCollectionForUpdate(ctx, tx, profileID, collectionID)
 	if err != nil {

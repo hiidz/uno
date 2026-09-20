@@ -17,7 +17,7 @@ func (db *DB) ValidateSelectionAccess(ctx context.Context, profileID uuid.UUID, 
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback() // read-only; never committed
+	defer func() { _ = tx.Rollback() }() // read-only; never committed
 
 	if err := validateCatalogAccess(ctx, tx, profileID, catalogIDs); err != nil {
 		return err
@@ -36,7 +36,7 @@ func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, ca
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback() // no-op once Commit succeeds
+	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
 	if err := saveCatalogSelectionTx(ctx, tx, profileID, catalogs); err != nil {
 		return err

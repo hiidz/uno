@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,6 +113,7 @@ func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 				http.Error(w, "profile not found", http.StatusNotFound)
 				return
 			}
+			log.Printf("requireProfile: %v", err)
 			http.Error(w, "failed to resolve profile", http.StatusInternalServerError)
 			return
 		}

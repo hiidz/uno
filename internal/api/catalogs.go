@@ -50,7 +50,7 @@ func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	fingerprint, err := provider.Fingerprint(input.Type, input.Provider, input.Params)
 	if err != nil {
-		writeVaultError(w, "createUserCatalog", fmt.Errorf("%w: %v", vault.ErrInvalidInput, err), nil, "", "failed to create catalog")
+		writeVaultError(w, "createUserCatalog", fmt.Errorf("%w: %w", vault.ErrInvalidInput, err), nil, "", "failed to create catalog")
 		return
 	}
 	input.Fingerprint = fingerprint
@@ -82,7 +82,7 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	fingerprint, err := provider.Fingerprint(input.Type, input.Provider, input.Params)
 	if err != nil {
-		writeVaultError(w, "updateUserCatalog", fmt.Errorf("%w: %v", vault.ErrInvalidInput, err), vault.ErrCatalogNotFound, "catalog not found", "failed to update catalog")
+		writeVaultError(w, "updateUserCatalog", fmt.Errorf("%w: %w", vault.ErrInvalidInput, err), vault.ErrCatalogNotFound, "catalog not found", "failed to update catalog")
 		return
 	}
 	input.Fingerprint = fingerprint

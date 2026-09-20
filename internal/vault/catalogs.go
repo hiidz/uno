@@ -25,12 +25,7 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 	}
 	defer rows.Close()
 
-	catalogs, err := parseCatalogs(rows)
-	if err != nil {
-		return nil, fmt.Errorf("parsing catalog rows: %w", err)
-	}
-
-	return catalogs, nil
+	return parseCatalogs(rows)
 }
 
 // GetUserCatalogs returns the listed catalogs owned by profileID — catalogs
@@ -243,7 +238,7 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 	if err != nil {
 		return Catalog{}, fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback() // no-op once Commit succeeds
+	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
 	var createdAtStr, existingType string
 	var homeSortOrder sql.NullInt64

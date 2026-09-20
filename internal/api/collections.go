@@ -28,7 +28,7 @@ func (s *Server) validateInlineCatalogs(ctx context.Context, input *vault.Collec
 			}
 			fingerprint, err := provider.Fingerprint(ref.New.Type, ref.New.Provider, ref.New.Params)
 			if err != nil {
-				return fmt.Errorf("%w: %v", vault.ErrInvalidInput, err)
+				return fmt.Errorf("%w: %w", vault.ErrInvalidInput, err)
 			}
 			ref.New.Fingerprint = fingerprint
 		}

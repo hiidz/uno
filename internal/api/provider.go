@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/hiidz/uno/internal/httpx"
@@ -22,6 +23,7 @@ func lookupList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, e
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		log.Printf("lookupList: %s: %v", failMsg, err)
 		http.Error(w, failMsg, http.StatusBadGateway)
 		return
 	}
@@ -97,10 +99,10 @@ func (s *Server) validateCatalogParams(ctx context.Context, catalogType, catalog
 			// but this is defensive in case that check changes independently.
 			return fmt.Errorf("%w: cannot validate params: unknown catalog type %q", vault.ErrInvalidInput, catalogType)
 		}
-		return fmt.Errorf("%w: invalid params: %v", vault.ErrInvalidInput, err)
+		return fmt.Errorf("%w: invalid params: %w", vault.ErrInvalidInput, err)
 	}
 	if err := p.Validate(); err != nil {
-		return fmt.Errorf("%w: %v", vault.ErrInvalidInput, err)
+		return fmt.Errorf("%w: %w", vault.ErrInvalidInput, err)
 	}
 
 	// The rest of the recipe's vocabulary — genre ids, language code, watch
@@ -111,7 +113,7 @@ func (s *Server) validateCatalogParams(ctx context.Context, catalogType, catalog
 	// errUpstreamValidation so it becomes a 502.
 	if err := s.provider.ValidateParams(ctx, catalogType, params); err != nil {
 		if errors.Is(err, provider.ErrInvalidParams) {
-			return fmt.Errorf("%w: %v", vault.ErrInvalidInput, err)
+			return fmt.Errorf("%w: %w", vault.ErrInvalidInput, err)
 		}
 		return fmt.Errorf("%w: %w", errUpstreamValidation, err)
 	}

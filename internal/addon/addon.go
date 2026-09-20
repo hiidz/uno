@@ -201,12 +201,14 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+		log.Printf("addon: manifest: resolving profile: %v", err)
 		http.Error(w, "failed to resolve profile", http.StatusInternalServerError)
 		return
 	}
 
 	selection, err := s.vault.GetPublishedCatalogs(r.Context(), profileID)
 	if err != nil {
+		log.Printf("addon: manifest: loading catalogs: %v", err)
 		http.Error(w, "failed to load catalogs", http.StatusInternalServerError)
 		return
 	}
@@ -296,6 +298,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+		log.Printf("addon: catalog: resolving profile: %v", err)
 		http.Error(w, "failed to resolve profile", http.StatusInternalServerError)
 		return
 	}
@@ -304,6 +307,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 
 	selection, err := s.vault.GetPublishedCatalogs(r.Context(), profileID)
 	if err != nil {
+		log.Printf("addon: catalog: loading catalogs: %v", err)
 		http.Error(w, "failed to load catalogs", http.StatusInternalServerError)
 		return
 	}

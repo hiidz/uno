@@ -69,6 +69,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 
 	profile, err := s.vault.GetProfileByID(ctx, profileID)
 	if err != nil {
+		log.Printf("push: %v", err)
 		http.Error(w, "failed to resolve profile", http.StatusInternalServerError)
 		return
 	}

@@ -462,7 +462,7 @@ func (db *DB) copyCollection(ctx context.Context, profileID, sourceID uuid.UUID,
 	if err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
 	}
-	defer tx.Rollback() // no-op once Commit succeeds
+	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
 	newCollectionID, err := copyCollectionTree(ctx, tx, profileID, source, spec.takenFrom, spec.copyListedRefs)
 	if err != nil {
