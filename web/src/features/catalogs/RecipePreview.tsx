@@ -2,6 +2,7 @@ import { tmdbKind } from '@/api'
 import type { CatalogType } from '@/api'
 import { CONTENT_TILE_SHAPE, TileGrid } from '@/features/preview/tiles'
 import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles'
+import { plural } from '@/lib/plural'
 
 /**
  * What the filters above actually return, on request — DESIGN.md's "Results
@@ -94,6 +95,12 @@ function Body({
        *  here is waiting for the TV the way an unpushed change is. */}
       {preview.isStale && (
         <p className="pv-stale">Your filters changed since this ran. Run it again to see the new results.</p>
+      )}
+      {preview.totalResults !== null && (
+        <p>
+          <span className="type-data">{preview.totalResults.toLocaleString()}</span>{' '}
+          {plural(preview.totalResults, 'result')} for these filters.
+        </p>
       )}
       <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
       <p>Open a poster to see its details.</p>
