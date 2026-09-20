@@ -267,10 +267,10 @@ func TestClientListsAreMemoized(t *testing.T) {
 	}
 }
 
-// TestWatchProvidersSkipsCacheForOddRegion covers the bound on the one memo
-// whose key carries client input: a region that isn't shaped like an ISO
-// code must not become a cache entry.
-func TestWatchProvidersSkipsCacheForOddRegion(t *testing.T) {
+// TestWatchProvidersRejectsOddRegion covers the bound on the one memo whose
+// key carries client input: a region that isn't shaped like an ISO code
+// becomes neither a cache entry nor a TMDB request.
+func TestWatchProvidersRejectsOddRegion(t *testing.T) {
 	var hits int
 	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -284,16 +284,15 @@ func TestWatchProvidersSkipsCacheForOddRegion(t *testing.T) {
 	c := NewTMDBClient("key")
 	c.baseURL = srv.URL
 
-	for range 2 {
-		if _, err := c.WatchProviders(t.Context(), "movie", "not-a-region"); err != nil {
-			t.Fatalf("WatchProviders: %v", err)
-		}
+	_, err := c.WatchProviders(t.Context(), "movie", "not-a-region")
+	if !errors.Is(err, ErrInvalidParams) {
+		t.Fatalf("WatchProviders error = %v, want ErrInvalidParams", err)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
-	if hits != 2 {
-		t.Fatalf("TMDB hit %d times, want 2 (an unshaped region must not be cached)", hits)
+	if hits != 0 {
+		t.Fatalf("TMDB hit %d times, want 0 (an unshaped region must not be fetched)", hits)
 	}
 	if n := len(c.watchProviders.entries); n != 0 {
 		t.Fatalf("cache holds %d entries, want 0", n)

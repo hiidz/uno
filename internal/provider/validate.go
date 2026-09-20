@@ -25,9 +25,9 @@ var ErrInvalidParams = errors.New("invalid params")
 // first.
 //
 // Each list is fetched only when the field that needs it is set, so a
-// recipe using none of them costs nothing. Genres are cached for the
-// process's lifetime (see [TMDBClient.Genres]); the others are not, so a
-// recipe that sets them pays one TMDB round trip per list per call.
+// recipe using none of them costs nothing. Every list is memoized on the
+// client (see internal/provider/cache.go), so a set field costs one TMDB
+// round trip on a cold cache and none after that.
 //
 // A rejected value is wrapped in ErrInvalidParams. A failure to reach TMDB
 // is returned as-is.

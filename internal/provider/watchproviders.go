@@ -25,13 +25,16 @@ import (
 //
 // Cached under the catalog type and region, and unlike the lists beside it
 // only for watchProviderTTL — see there. A region that isn't shaped like an
-// ISO 3166-1 code is fetched without touching the cache, so the free-form
-// region query param on the picker route can't grow the key space one entry
-// per request.
+// ISO 3166-1 code is rejected with ErrInvalidParams before TMDB is
+// contacted, so the free-form region query param on the picker route
+// neither grows the cache key space nor spends a TMDB request per value.
 func (c *TMDBClient) WatchProviders(ctx context.Context, catalogType, region string) ([]WatchProvider, error) {
 	kind, ok := tmdbMediaType[catalogType]
 	if !ok {
 		return nil, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
+	}
+	if !isoRegion(region) {
+		return nil, fmt.Errorf("%w: region %q is not an ISO 3166-1 code", ErrInvalidParams, region)
 	}
 
 	fetch := func() ([]WatchProvider, error) {
@@ -55,19 +58,16 @@ func (c *TMDBClient) WatchProviders(ctx context.Context, catalogType, region str
 		return results, nil
 	}
 
-	if !cacheableRegion(region) {
-		return fetch()
-	}
 	return c.watchProviders.load(kind+"/"+region, fetch)
 }
 
-// cacheableRegion reports whether region is shaped like the ISO 3166-1
-// codes WatchRegions returns — empty, or two uppercase letters. Recipe
-// validation checks a recipe's watch_region against that list before it
-// ever asks for providers, so the save path always qualifies; only the
-// picker route, which takes the region straight off the query string, can
-// reach here with something else.
-func cacheableRegion(region string) bool {
+// isoRegion reports whether region is shaped like the ISO 3166-1 codes
+// WatchRegions returns — empty, meaning every region, or two uppercase
+// letters. Recipe validation checks a recipe's watch_region against that
+// list before it ever asks for providers, so the save path always
+// qualifies; only the picker route, which takes the region straight off the
+// query string, can reach here with something else.
+func isoRegion(region string) bool {
 	if region == "" {
 		return true
 	}

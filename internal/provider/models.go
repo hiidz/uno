@@ -257,7 +257,7 @@ func (p TMDBMovieParams) Validate() error {
 		return errors.New("released_within_days cannot be negative")
 	}
 
-	return p.TMDBCommonParams.validate()
+	return p.validate()
 }
 
 // Validate checks cross-field rules that a single JSON field can't express
@@ -276,7 +276,7 @@ func (p TMDBTVParams) Validate() error {
 		return errors.New("aired_within_days cannot be negative")
 	}
 
-	return p.TMDBCommonParams.validate()
+	return p.validate()
 }
 
 // WatchProvider is one streaming service TMDB can filter on —

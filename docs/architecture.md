@@ -169,12 +169,16 @@ guessed catalog UUID can't pull data through a profile it was never shared with.
 
 The tile flow is `CatalogHandler` → `TMDBClient.FetchCatalogPage` → TMDB `/discover/{movie|tv}` →
 per-item `/external_ids` → `Meta`. Direct per-request TMDB call; there is **no response cache**
-for discover results (a ranking goes stale), only the never-expiring TMDB-id→IMDB-id cache on
-`TMDBClient` (a pairing never changes once resolved) and the lookup-list memos beside it
+for discover results (a ranking goes stale), only the TMDB-id→IMDB-id cache on `TMDBClient`
+(a pairing never changes once resolved, so an entry never expires; the map is capped at
+`maxIMDBCacheEntries` and emptied whole once it fills, because the public addon route can add one
+entry per title TMDB has) and the lookup-list memos beside it
 (`internal/provider/cache.go`: genres, languages, countries, watch regions and certifications for
 the process's lifetime, watch providers for 24h since services move between markets). Every memo
 clones on read, so a caller that sorts what it got back cannot reach the cached copy.
-`resolveMetas` bounds the per-page `/external_ids` fan-out at 8 concurrent lookups. `releaseInfo`
+`resolveMetas` bounds the per-page `/external_ids` fan-out at 8 concurrent lookups. A title TMDB
+has no IMDB id for is dropped from the page; a lookup that *fails* fails the whole page, so the
+502 goes to Stremio instead of a short row under a three-hour cache header. `releaseInfo`
 is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
 `docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
 per-item `external_ids` resolution exists at all.

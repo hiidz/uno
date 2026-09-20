@@ -1,0 +1,11 @@
+# Go sources are written by gofmt, which always emits LF. Without this, a clone on a
+# machine with core.autocrlf=true checks them out as CRLF and `gofmt -l .` then flags
+# every file it converted — indistinguishable from a real formatting defect.
+*.go    text eol=lf
+go.mod  text eol=lf
+go.sum  text eol=lf
+
+# The committed docs are edited alongside the Go changes they describe, so they
+# get the same treatment — otherwise every docs diff carries a line-ending warning.
+*.md    text eol=lf
+

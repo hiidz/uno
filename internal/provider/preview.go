@@ -62,7 +62,9 @@ func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON
 	}
 
 	if randomized && resp.TotalPages > 1 {
-		if page := rand.IntN(min(resp.TotalPages, maxRandomPage)) + 1; page > 1 {
+		// Shuffling a preview is cosmetic, so a non-cryptographic source is
+		// what this wants.
+		if page := rand.IntN(min(resp.TotalPages, maxRandomPage)) + 1; page > 1 { //nolint:gosec // G404
 			query.Set("page", strconv.Itoa(page))
 			if resp, err = c.discover(ctx, endpoint, query); err != nil {
 				return nil, 0, randomized, err

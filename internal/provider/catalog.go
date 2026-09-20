@@ -39,10 +39,10 @@ const (
 	// TV hero; w500 is sized for poster tiles.
 	tmdbBackdropBaseURL = "https://image.tmdb.org/t/p/w1280"
 
-	// externalIDsConcurrency bounds how many external_ids lookups run at
-	// once per catalog page — unbounded would fire one goroutine per item
-	// with no ceiling if a future caller ever asks for more than one
-	// TMDB page at a time.
+	// externalIDsConcurrency bounds how many external_ids lookups are in
+	// flight at once per catalog page. resolveMetas starts one goroutine
+	// per item either way; this is the ceiling on the TMDB requests they
+	// make, which is what the rate that matters is measured in.
 	externalIDsConcurrency = 8
 
 	// maxRandomPage bounds "randomized" catalogs to TMDB's first 20 pages.
@@ -114,8 +114,14 @@ func catalogEndpoint(catalogType string) (string, error) {
 // both the TMDB discover path (via catalogEndpoint) and which params shape
 // to decode. genre is the client's pick from the catalog's genre extra, by
 // name; "", GenreExtraAll, or a name not in GenreExtraOptions leaves the
-// recipe unfiltered. page is ignored in favor of a random pick when the
-// recipe's Randomized flag is set.
+// recipe unfiltered.
+//
+// page is ignored in favor of a random pick within the first maxRandomPage
+// when the recipe's Randomized flag is set. A narrow recipe can have fewer
+// pages than that, and a pick past its last one comes back empty, so an
+// empty randomized page falls back to page 1 — a second discover call only
+// when the pick overshoots, unlike [TMDBClient.PreviewCatalog], which pays
+// for TMDB's total_pages up front.
 func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJSON, genre string, page int) ([]Meta, error) {
 	endpoint, err := catalogEndpoint(catalogType)
 	if err != nil {
@@ -130,7 +136,9 @@ func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJS
 		return nil, err
 	}
 	if randomized {
-		page = rand.IntN(maxRandomPage) + 1
+		// Shuffling a catalog row is cosmetic, so a non-cryptographic
+		// source is what this wants.
+		page = rand.IntN(maxRandomPage) + 1 //nolint:gosec // G404
 	}
 	query.Set("page", strconv.Itoa(page))
 
@@ -140,6 +148,13 @@ func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJS
 	resp, err := c.discover(ctx, endpoint, query)
 	if err != nil {
 		return nil, err
+	}
+
+	if randomized && page != 1 && len(resp.Results) == 0 {
+		query.Set("page", "1")
+		if resp, err = c.discover(ctx, endpoint, query); err != nil {
+			return nil, err
+		}
 	}
 
 	return c.resolveMetas(ctx, catalogType, resp.Results, c.genreNames(ctx, catalogType))
@@ -163,32 +178,57 @@ func (c *TMDBClient) genreNames(ctx context.Context, catalogType string) map[int
 // resolveMetas resolves each discover item's TMDB id to an IMDB id
 // concurrently (bounded by externalIDsConcurrency) — sequential per-item
 // calls would turn one page (~20 items) into twenty round trips end to end.
-// Items TMDB has no IMDB id for are dropped: this addon's meta ids are IMDB
-// ids, so an item without one can't be represented.
+//
+// An item TMDB has no IMDB id for is dropped, and so is one whose
+// external_ids TMDB answers 404 for: this addon's meta ids are IMDB ids, so
+// an item without one can't be represented, and neither fact changes
+// between requests. Any other failed lookup fails the whole page, because
+// the caller serves a successful page with a three-hour cache header — a
+// short page from a TMDB blip would stick on the client for that long. The
+// first such error wins and cancels the lookups still in flight.
 func (c *TMDBClient) resolveMetas(ctx context.Context, catalogType string, items []tmdbDiscoverItem, genreNames map[int]string) ([]Meta, error) {
 	mediaType, ok := tmdbMediaType[catalogType]
 	if !ok {
 		return nil, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	metas := make([]Meta, len(items))
 	sem := make(chan struct{}, externalIDsConcurrency)
-	var wg sync.WaitGroup
+	var (
+		wg       sync.WaitGroup
+		once     sync.Once
+		firstErr error
+	)
 	for i, item := range items {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
 			imdbID, err := c.imdbID(ctx, mediaType, item.ID)
-			if err != nil || imdbID == "" {
+			if err != nil {
+				if errors.Is(err, errTMDBNotFound) {
+					return // as permanent as an empty imdb_id; drop the item
+				}
+				once.Do(func() {
+					firstErr = err
+					cancel()
+				})
+				return
+			}
+			if imdbID == "" {
 				return // leaves metas[i] zero-valued; filtered out below
 			}
 			metas[i] = tmdbItemToMeta(catalogType, imdbID, item, genreNames)
-		}()
+		})
 	}
 	wg.Wait()
+
+	if firstErr != nil {
+		return nil, fmt.Errorf("provider: resolve IMDB ids for %s page: %w", catalogType, firstErr)
+	}
 
 	out := metas[:0]
 	for _, m := range metas {

@@ -7,6 +7,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,8 +33,10 @@ type TMDBClient struct {
 	baseURL    string
 
 	// imdbCache holds tmdbID->IMDB-id lookups, keyed "movie:123"/"tv:456".
-	// An id pairing never changes once TMDB has it, so this never expires —
-	// it just saves repeat external_ids round trips across catalog requests.
+	// An id pairing never changes once TMDB has it, so an entry never
+	// expires — the cache just saves repeat external_ids round trips across
+	// catalog requests. It is filled from the public addon route, so it is
+	// capped at maxIMDBCacheEntries and emptied whole once it fills.
 	imdbMu    sync.RWMutex
 	imdbCache map[string]string
 
@@ -48,6 +51,13 @@ type TMDBClient struct {
 	watchProviders *memo[[]WatchProvider]
 	certifications *memo[map[string][]Certification]
 }
+
+// maxIMDBCacheEntries bounds the tmdbID->IMDB-id cache. Its key space is
+// every title TMDB has, reachable one entry per item through the
+// unauthenticated addon route, so it needs a ceiling. Reaching it empties
+// the map rather than evicting a victim: an entry costs one external_ids
+// call to re-derive, which is not worth an eviction policy.
+const maxIMDBCacheEntries = 100_000
 
 // watchProviderTTL bounds how long a cached watch-provider list is served.
 // Unlike the ISO tables beside it, this one moves: services launch in and
@@ -75,6 +85,12 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 	}
 }
 
+// errTMDBNotFound marks a TMDB 404 — the resource is absent rather than
+// momentarily unreachable, so a retry returns the same answer. Separated
+// from the other statuses because resolveMetas drops the one item whose
+// external_ids TMDB doesn't have instead of failing the page over it.
+var errTMDBNotFound = errors.New("provider: TMDB has no such resource")
+
 // get is the shared low-level TMDB call: attach the API key, require a 200,
 // decode the body. discover and external_ids both go through this.
 func (c *TMDBClient) get(ctx context.Context, path string, query url.Values, out any) error {
@@ -93,8 +109,11 @@ func (c *TMDBClient) get(ctx context.Context, path string, query url.Values, out
 	if err != nil {
 		return fmt.Errorf("provider: fetch %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("%w: %s", errTMDBNotFound, path)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("provider: TMDB returned status %d for %s", resp.StatusCode, path)
 	}
@@ -133,6 +152,9 @@ func (c *TMDBClient) imdbID(ctx context.Context, mediaType string, tmdbID int) (
 	}
 
 	c.imdbMu.Lock()
+	if len(c.imdbCache) >= maxIMDBCacheEntries {
+		c.imdbCache = make(map[string]string)
+	}
 	c.imdbCache[key] = out.IMDBID
 	c.imdbMu.Unlock()
 	return out.IMDBID, nil

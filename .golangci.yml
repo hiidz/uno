@@ -8,5 +8,8 @@ linters:
     - bodyclose            # Nuvio and TMDB response bodies
   exclusions:
     rules:
+      # A test's own setup is not a trust boundary, and a fake TMDB handler's
+      # fmt.Fprint or a t.Cleanup's db.Close has nothing to do on a failure but
+      # fail the test that is already running.
       - path: _test\.go
-        linters: [gosec]
+        linters: [gosec, errcheck]

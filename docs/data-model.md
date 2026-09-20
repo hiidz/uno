@@ -359,8 +359,11 @@ describing what a TMDB-backed catalog may ask for.
   (pipe) one.
 - **`randomized` is "shuffle by page":** `FetchCatalogPage` picks a random TMDB page in
   `[1, 20]` (`maxRandomPage`) instead of the requested page. Deep discover pages thin out fast,
-  so the range is capped rather than sampled from `total_pages`. Label it honestly in UI
-  ("shuffle"), not "true random". Preview always asks page 1 and returns the flag instead.
+  so the range is capped rather than sampled from `total_pages`. A recipe with fewer pages than
+  that answers an overshooting pick with an empty page, so an empty randomized page is refetched
+  as page 1 — one discover call for a pick that lands, two for one that overshoots. Label it
+  honestly in UI ("shuffle"), not "true random". Preview always asks page 1 and returns the flag
+  instead.
 - **A second provider needs two places updated, not one.** `validProviders` in
   `vault.CatalogForm.Validate()` (`internal/vault/validation.go`) *and* the provider check at the
   top of `validateCatalogParams` (`internal/api/provider.go`), plus its own recipe type and a

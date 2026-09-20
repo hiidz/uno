@@ -13,13 +13,14 @@ import (
 )
 
 // lookupList answers with fetch's result, classifying a failure the way every
-// TMDB lookup route does: an unusable catalog type is the caller's fault
-// (400, and TMDB was never contacted), anything else is upstream's (502).
-// fetch is a closure so each route can pass its own path and query params.
+// TMDB lookup route does: an unusable catalog type or an unusable query param
+// is the caller's fault (400, and TMDB was never contacted), anything else is
+// upstream's (502). fetch is a closure so each route can pass its own path and
+// query params.
 func lookupList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, error)) {
 	result, err := fetch()
 	if err != nil {
-		if errors.Is(err, provider.ErrInvalidCatalogType) {
+		if errors.Is(err, provider.ErrInvalidCatalogType) || errors.Is(err, provider.ErrInvalidParams) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
