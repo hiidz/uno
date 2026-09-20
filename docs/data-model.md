@@ -273,6 +273,19 @@ write credential.
   `listFolders`/`addFolder`/`reorder` operations, and adding them would be a fresh decision
   rather than resumption of a deferred plan. This shape is what forces the collection editor's
   one dirty state and one Save button.
+- **Every stored string and list has a size ceiling, and all of them live in
+  `internal/vault/validation.go`.** `maxNameLen` (200) bounds a catalog's `name` and a
+  collection's and a folder's `title`; `maxParamsLen` (8192) a catalog's `params` JSON;
+  `maxCoverEmojiLen` (32) a folder's `cover_emoji`; `maxGenreLen` (64) a folder ref's genre;
+  `maxMediaURLLen` (2048) every media URL; `maxNewKeyLen` (128) an inline-`new` entry's client
+  key; and `maxFoldersPerCollection`/`maxRefsPerFolder` (100 each) how many folders a collection
+  holds and how many catalog refs a folder holds. These are bounds against absurdity, not product
+  limits — each one sits well past anything the builder can produce — and they exist because
+  `api.maxRequestBodyBytes` (1 MiB) is no substitute: 1 MiB is thousands of folders, and every one
+  of these strings is stored, served from the public addon route, and pushed into Nuvio's
+  collections blob as a full replace. `CatalogForm.Validate` and `CollectionForm.Validate` enforce
+  them on save, a folder's inline `new` entries included, since such an entry becomes a catalog
+  row in the same transaction.
 - **Empty lists serialize as `[]`, never `null`.** The row parsers in `internal/vault/scan.go`
   initialize their slices, and `jsonwire.OrEmpty[T]` (`internal/jsonwire`) covers the
   map-lookup, decoded-response and client-input spots that produce nested
@@ -323,10 +336,19 @@ describing what a TMDB-backed catalog may ask for.
   owner boundary either way, and a listed catalog reachable directly is equally reachable
   through a public collection that references it, so both doors check the same row. One
   rejected recipe fails the whole collection take — a half-copied collection is not a
-  collection. The collection copy path re-checks folder and collection media URLs the same
-  way, in `loadSourceCollectionTree`.
-  `DuplicateCollection` passes no validator: it copies rows the caller already owns, so a
-  recipe TMDB has since outgrown must not block you from duplicating your own collection.
+  collection. The collection copy path re-checks the rest of the source tree the same way, in
+  `validateSourceCollection` (called from `loadSourceCollectionTree`): the collection's and every
+  folder's enum values and media URLs, their titles, a folder's cover emoji, each folder's ref
+  count and ref genres, and each referenced catalog's `name` and `params` length. A stored
+  collection that never passed one of those checks — an unrecognized `view_mode`, a title past
+  `maxNameLen` — is therefore not copyable at all, by Take or by Duplicate, and fails with
+  `ErrInvalidInput` → 400.
+  `DuplicateCollection` passes no params validator: it copies rows the caller already owns, so a
+  recipe TMDB has since outgrown must not block you from duplicating your own collection. It is
+  still subject to `validateSourceCollection` — a stale enum or an overlong title is stale
+  whoever owns it — and to `maxNameLen` on the `" (copy)"`-suffixed title it writes, so a
+  collection whose title already fills the bound cannot be duplicated rather than being copied
+  into a row the collection editor's own save would then refuse.
 - **A collection copy reads and checks before it opens a transaction.**
   `loadSourceCollectionTree` reads the whole source tree — cosmetics, folders, refs, and the
   catalog rows those refs name — through the pool, `copyCollection` validates that result, and

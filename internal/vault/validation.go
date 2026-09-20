@@ -36,21 +36,55 @@ var validProviders = map[string]bool{
 	"tmdb": true,
 }
 
-// Validate checks that in has a name, a supported provider, and a
-// supported content type, returning an ErrInvalidInput-wrapped error
-// listing every problem found.
+// maxNameLen bounds every name a person types for a row: a catalog's name, a
+// collection's title, a folder's title. All three are stored, served from the
+// public addon route and pushed into Nuvio's collections blob, where they are
+// read off a TV screen; a few hundred characters is far past anything that
+// renders.
+const maxNameLen = 200
+
+// maxParamsLen bounds a catalog's params JSON. The widest recipe the builder
+// can produce names every watch provider of a region alongside every genre,
+// which runs to a couple of kilobytes; anything past this is not a recipe.
+const maxParamsLen = 8192
+
+// lengthProblem reports that field is longer than limit, or "" when it isn't.
+// The message counts bytes and says "characters", the same way the other
+// length messages in this file do.
+func lengthProblem(field, value string, limit int) string {
+	if len(value) > limit {
+		return fmt.Sprintf("%s is longer than %d characters", field, limit)
+	}
+	return ""
+}
+
+// appendProblem adds problem to problems unless it is "", the empty value
+// every *Problem function in this file returns for "nothing wrong".
+func appendProblem(problems []string, problem string) []string {
+	if problem == "" {
+		return problems
+	}
+	return append(problems, problem)
+}
+
+// Validate checks that in has a name no longer than maxNameLen, a supported
+// provider, a supported content type, and params no longer than
+// maxParamsLen, returning an ErrInvalidInput-wrapped error listing every
+// problem found.
 func (in CatalogForm) Validate() error {
 	var problems []string
 
 	if strings.TrimSpace(in.Name) == "" {
 		problems = append(problems, "name is required")
 	}
+	problems = appendProblem(problems, lengthProblem("name", in.Name, maxNameLen))
 	if !validProviders[in.Provider] {
 		problems = append(problems, `provider must be "tmdb"`)
 	}
 	if !validCatalogTypes[in.Type] {
 		problems = append(problems, `type must be "movie" or "series"`)
 	}
+	problems = appendProblem(problems, lengthProblem("params", in.Params, maxParamsLen))
 
 	if len(problems) == 0 {
 		return nil
@@ -73,6 +107,19 @@ var validTileShapes = map[string]bool{
 // maxGenreLen bounds a folder ref's genre. It is a TMDB genre name, the
 // longest of which is well under this; anything longer can't be one.
 const maxGenreLen = 64
+
+// maxCoverEmojiLen bounds a folder's cover emoji. The editor's input for it
+// caps at eight UTF-16 code units, whose UTF-8 encoding never reaches this.
+const maxCoverEmojiLen = 32
+
+// maxFoldersPerCollection bounds how many folders one collection holds and
+// maxRefsPerFolder how many catalog refs one folder holds. A collection is
+// browsed with a remote, a folder tab at a time; both bounds sit well past a
+// home screen anyone can navigate.
+const (
+	maxFoldersPerCollection = 100
+	maxRefsPerFolder        = 100
+)
 
 // maxMediaURLLen bounds every collection and folder media URL. These are
 // image, GIF and video addresses; anything past this isn't one.
@@ -106,12 +153,49 @@ func mediaURLProblem(field, raw string) string {
 	return ""
 }
 
-// folderMediaURLProblems collects every media-URL problem on one folder,
-// prefixed with its index. Shared by CollectionForm.Validate and the
+// collectionProblems collects every problem on a collection's own fields —
+// its title, its view mode, its backdrop, and how many folders it holds, but
+// not the folders themselves. Shared by CollectionForm.Validate and the
 // take/duplicate copy path, which checks rows it is about to copy out of
 // another profile rather than a form.
-func folderMediaURLProblems(index int, fd FolderData) []string {
+func collectionProblems(title, viewMode, backdropImageURL string, folders int) []string {
 	var problems []string
+	if strings.TrimSpace(title) == "" {
+		problems = append(problems, "title is required")
+	}
+	problems = appendProblem(problems, lengthProblem("title", title, maxNameLen))
+	if viewMode != "" && !validViewModes[viewMode] {
+		problems = append(problems, `view mode must be "TABBED_GRID", "ROWS", or "FOLLOW_LAYOUT"`)
+	}
+	problems = appendProblem(problems, mediaURLProblem("backdrop image url", backdropImageURL))
+	if folders > maxFoldersPerCollection {
+		problems = append(problems, fmt.Sprintf("a collection holds at most %d folders", maxFoldersPerCollection))
+	}
+	return problems
+}
+
+// folderProblems collects every problem on one folder's own fields — its
+// title, its tile shape, its cover emoji and its media URLs, but not its
+// catalog refs — prefixed with the folder's index. Shared by
+// CollectionForm.Validate and the take/duplicate copy path.
+func folderProblems(index int, fd FolderData) []string {
+	var problems []string
+	if strings.TrimSpace(fd.Title) == "" {
+		problems = append(problems, fmt.Sprintf("folder %d: title is required", index))
+	}
+	for _, f := range []struct {
+		name  string
+		value string
+		limit int
+	}{
+		{"title", fd.Title, maxNameLen},
+		{"cover emoji", fd.CoverEmoji, maxCoverEmojiLen},
+	} {
+		problems = appendProblem(problems, lengthProblem(fmt.Sprintf("folder %d: %s", index, f.name), f.value, f.limit))
+	}
+	if fd.TileShape != "" && !validTileShapes[fd.TileShape] {
+		problems = append(problems, fmt.Sprintf(`folder %d: tile shape must be "POSTER", "LANDSCAPE", or "SQUARE"`, index))
+	}
 	for _, f := range []struct{ name, value string }{
 		{"cover image url", fd.CoverImageURL},
 		{"focus gif url", fd.FocusGIFURL},
@@ -119,11 +203,20 @@ func folderMediaURLProblems(index int, fd FolderData) []string {
 		{"hero video url", fd.HeroVideoURL},
 		{"title logo url", fd.TitleLogoURL},
 	} {
-		if p := mediaURLProblem(fmt.Sprintf("folder %d: %s", index, f.name), f.value); p != "" {
-			problems = append(problems, p)
-		}
+		problems = appendProblem(problems, mediaURLProblem(fmt.Sprintf("folder %d: %s", index, f.name), f.value))
 	}
 	return problems
+}
+
+// refCountProblem reports that folder index holds more catalog refs than
+// maxRefsPerFolder allows, or "" when it doesn't. Shared by
+// CollectionForm.Validate, which counts a form's entries, and the
+// take/duplicate copy path, which counts stored refs.
+func refCountProblem(index, count int) string {
+	if count > maxRefsPerFolder {
+		return fmt.Sprintf("folder %d: holds more than %d catalogs", index, maxRefsPerFolder)
+	}
+	return ""
 }
 
 // maxNewKeyLen bounds a New entry's Key. It is a client-minted handle (a
@@ -144,32 +237,18 @@ type folderNewRefKey struct {
 }
 
 // Validate checks that in has a title and, for it and every folder, only
-// recognized enum values, ref genres no longer than maxGenreLen, no catalog
-// repeated under the same genre within a folder, and New entries that share a
-// Key sharing one spec, returning an ErrInvalidInput-wrapped error listing
-// every problem found.
+// recognized enum values, names and ref genres within their length bounds,
+// folder and ref counts within theirs, no catalog repeated under the same
+// genre within a folder, and New entries that share a Key sharing one spec,
+// returning an ErrInvalidInput-wrapped error listing every problem found.
 func (in CollectionForm) Validate() error {
-	var problems []string
 	specByKey := map[string]NewScopedCatalog{}
 
-	if strings.TrimSpace(in.Title) == "" {
-		problems = append(problems, "title is required")
-	}
-	if in.ViewMode != "" && !validViewModes[in.ViewMode] {
-		problems = append(problems, `view mode must be "TABBED_GRID", "ROWS", or "FOLLOW_LAYOUT"`)
-	}
-	if p := mediaURLProblem("backdrop image url", in.BackdropImageURL); p != "" {
-		problems = append(problems, p)
-	}
+	problems := collectionProblems(in.Title, in.ViewMode, in.BackdropImageURL, len(in.Folders))
 
 	for i, f := range in.Folders {
-		if strings.TrimSpace(f.Title) == "" {
-			problems = append(problems, fmt.Sprintf("folder %d: title is required", i))
-		}
-		if f.TileShape != "" && !validTileShapes[f.TileShape] {
-			problems = append(problems, fmt.Sprintf(`folder %d: tile shape must be "POSTER", "LANDSCAPE", or "SQUARE"`, i))
-		}
-		problems = append(problems, folderMediaURLProblems(i, f)...)
+		problems = append(problems, folderProblems(i, f)...)
+		problems = appendProblem(problems, refCountProblem(i, len(f.Catalogs)))
 		seen := map[folderRefKey]bool{}
 		seenNew := map[folderNewRefKey]bool{}
 		for j, ref := range f.Catalogs {
@@ -177,9 +256,7 @@ func (in CollectionForm) Validate() error {
 				problems = append(problems, fmt.Sprintf("folder %d: catalog ref %d must set exactly one of catalog_id or new", i, j))
 				continue
 			}
-			if len(ref.Genre) > maxGenreLen {
-				problems = append(problems, fmt.Sprintf("folder %d: catalog ref %d: genre is longer than %d characters", i, j, maxGenreLen))
-			}
+			problems = appendProblem(problems, lengthProblem(fmt.Sprintf("folder %d: catalog ref %d: genre", i, j), ref.Genre, maxGenreLen))
 			// folder_catalogs is PRIMARY KEY (folder_id, catalog_id, genre): a
 			// catalog may repeat in a folder under different genres, never under
 			// the same one. New entries sharing a Key become one catalog, so
@@ -215,6 +292,16 @@ func (in CollectionForm) Validate() error {
 			// exactly such a row, in the same transaction as this save.
 			if strings.TrimSpace(ref.New.Name) == "" {
 				problems = append(problems, fmt.Sprintf("folder %d: new catalog %d: name is required", i, j))
+			}
+			for _, f := range []struct {
+				name  string
+				value string
+				limit int
+			}{
+				{"name", ref.New.Name, maxNameLen},
+				{"params", ref.New.Params, maxParamsLen},
+			} {
+				problems = appendProblem(problems, lengthProblem(fmt.Sprintf("folder %d: new catalog %d: %s", i, j, f.name), f.value, f.limit))
 			}
 			if !validProviders[ref.New.Provider] {
 				problems = append(problems, fmt.Sprintf(`folder %d: new catalog %d: provider must be "tmdb"`, i, j))

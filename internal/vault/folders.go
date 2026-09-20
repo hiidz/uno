@@ -59,9 +59,10 @@ func updateFolder(ctx context.Context, tx *sql.Tx, id, collectionID uuid.UUID, s
 
 	// collection_id is in the WHERE as well as the id: removedFolderIDs has
 	// already rejected any incoming folder that belongs elsewhere, but that
-	// guard is a separate call, and this statement should not be able to
-	// reach across collections on its own if it ever runs without it.
-	_, err := tx.ExecContext(ctx, `
+	// guard is a separate call, and the zero-rows check below makes this
+	// statement reject a folder from another collection on its own if it ever
+	// runs without it.
+	result, err := tx.ExecContext(ctx, `
 		UPDATE folders
 		SET title = ?, sort_order = ?, tile_shape = ?, hide_title = ?, cover_emoji = ?, cover_image_url = ?,
 		    focus_gif_url = ?, focus_gif_enabled = ?, hero_backdrop_url = ?, hero_video_url = ?, title_logo_url = ?
@@ -71,6 +72,13 @@ func updateFolder(ctx context.Context, tx *sql.Tx, id, collectionID uuid.UUID, s
 		f.ID.String(), f.CollectionID.String())
 	if err != nil {
 		return Folder{}, fmt.Errorf("updating folder: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Folder{}, fmt.Errorf("checking rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return Folder{}, fmt.Errorf("%w: folder %s does not belong to this collection", ErrInvalidInput, f.ID)
 	}
 	return f, nil
 }

@@ -101,7 +101,7 @@ func loadSourceCollectionTree(ctx context.Context, q sourceQuerier, sourceID uui
 		return sourceCollection{}, err
 	}
 
-	if err := validateSourceMediaURLs(src); err != nil {
+	if err := validateSourceCollection(src); err != nil {
 		return sourceCollection{}, err
 	}
 
@@ -141,7 +141,7 @@ func loadSourceCatalogs(ctx context.Context, q querier, ids []uuid.UUID) ([]sour
 	if err != nil {
 		return nil, fmt.Errorf("querying source catalogs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	byID := make(map[uuid.UUID]sourceCatalog, len(ids))
 	for rows.Next() {
@@ -171,19 +171,40 @@ func loadSourceCatalogs(ctx context.Context, q querier, ids []uuid.UUID) ([]sour
 	return catalogs, nil
 }
 
-// validateSourceMediaURLs re-checks the media URLs of a collection tree
-// about to be copied, using the same rules CollectionForm.Validate applies
-// to a save. A Take copies a row this profile never authored, and those
-// URLs go straight into the taker's own push to Nuvio, so being already
-// stored is not evidence they were ever checked — rows written before that
-// check existed reach here too.
-func validateSourceMediaURLs(src sourceCollection) error {
-	var problems []string
-	if p := mediaURLProblem("backdrop image url", src.backdropImageURL); p != "" {
-		problems = append(problems, p)
-	}
+// validateSourceCollection re-checks a collection tree about to be copied
+// against the same enum, length and count rules CollectionForm.Validate
+// applies to a save: the collection's own fields, each folder's, each
+// folder's ref count and ref genres, and each referenced catalog's name and
+// params. A Take copies a row this profile never authored, and all of it goes
+// straight into the taker's own push to Nuvio, so being already stored is not
+// evidence it was ever checked — rows written before a given check existed
+// reach here too.
+//
+// The catalog recipes themselves are checked separately, by the validator
+// copyCollection is given, because that check reaches TMDB — see
+// [DB.TakeCollection].
+func validateSourceCollection(src sourceCollection) error {
+	problems := collectionProblems(src.title, src.viewMode, src.backdropImageURL, len(src.folders))
 	for i, f := range src.folders {
-		problems = append(problems, folderMediaURLProblems(i, f.data)...)
+		problems = append(problems, folderProblems(i, f.data)...)
+		problems = appendProblem(problems, refCountProblem(i, len(f.refs)))
+		for j, ref := range f.refs {
+			problems = appendProblem(problems,
+				lengthProblem(fmt.Sprintf("folder %d: catalog ref %d: genre", i, j), ref.Genre, maxGenreLen))
+		}
+	}
+	for _, sc := range src.catalogs {
+		for _, f := range []struct {
+			name  string
+			value string
+			limit int
+		}{
+			{"name", sc.name, maxNameLen},
+			{"params", sc.params, maxParamsLen},
+		} {
+			problems = appendProblem(problems,
+				lengthProblem(fmt.Sprintf("catalog %s: %s", sc.id, f.name), f.value, f.limit))
+		}
 	}
 
 	if len(problems) == 0 {
@@ -204,7 +225,7 @@ func loadSourceFolders(ctx context.Context, q querier, collectionID uuid.UUID) (
 	if err != nil {
 		return nil, fmt.Errorf("querying source folders: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var folders []sourceFolder
 	for rows.Next() {
@@ -237,7 +258,7 @@ func loadSourceFolderRefs(ctx context.Context, q querier, folderID uuid.UUID) ([
 	if err != nil {
 		return nil, fmt.Errorf("querying source folder catalogs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var refs []FolderRef
 	for rows.Next() {
@@ -449,6 +470,13 @@ func (db *DB) copyCollection(ctx context.Context, profileID, sourceID uuid.UUID,
 		return CollectionWithFolders{}, err
 	}
 	source.title += spec.titleSuffix
+	// The suffix is part of the title this copy stores, so maxNameLen applies
+	// to the result rather than to the source alone: a title already at the
+	// ceiling has no room to grow one, and a copy made past it would be a row
+	// the collection editor's own save then refuses.
+	if p := lengthProblem("title", source.title, maxNameLen); p != "" {
+		return CollectionWithFolders{}, fmt.Errorf("%w: copied collection: %s", ErrInvalidInput, p)
+	}
 
 	if spec.validateParams != nil {
 		for _, sc := range source.catalogs {
