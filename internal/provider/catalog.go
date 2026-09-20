@@ -52,13 +52,13 @@ const (
 	maxRandomPage = 20
 )
 
-// externalIDsMediaType maps Uno/Stremio's catalog vocabulary ("movie",
-// "series") to TMDB's own path segment for the external_ids lookup
-// ("movie", "tv"). The discover call itself doesn't need this — catalogs.endpoint
-// already carries TMDB's literal word for itself — but external_ids is a
-// fixed sub-resource this package calls directly, so it needs its own
-// translation.
-var externalIDsMediaType = map[string]string{
+// tmdbMediaType maps Uno/Stremio's catalog vocabulary ("movie", "series") to
+// TMDB's own path segment ("movie", "tv"), used wherever this package calls
+// a TMDB sub-resource directly — external_ids, Genres, Certifications,
+// WatchProviders, and resolveMetas. The discover call itself doesn't need
+// this since catalogs.endpoint already carries TMDB's literal word for
+// itself.
+var tmdbMediaType = map[string]string{
 	"movie":  "movie",
 	"series": "tv",
 }
@@ -166,7 +166,7 @@ func (c *TMDBClient) genreNames(ctx context.Context, catalogType string) map[int
 // Items TMDB has no IMDB id for are dropped: this addon's meta ids are IMDB
 // ids, so an item without one can't be represented.
 func (c *TMDBClient) resolveMetas(ctx context.Context, catalogType string, items []tmdbDiscoverItem, genreNames map[int]string) ([]Meta, error) {
-	mediaType, ok := externalIDsMediaType[catalogType]
+	mediaType, ok := tmdbMediaType[catalogType]
 	if !ok {
 		return nil, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
 	}

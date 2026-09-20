@@ -81,7 +81,7 @@ func NewDevBypassNuvio(next NuvioClient, bypassToken string) NuvioClient {
 	}
 }
 
-// devBypassProfileID maps a profileID (the {profileIndex}-th caller passes
+// profileKey maps a profileID (the {profileIndex}-th caller passes
 // nuvio profile "id" strings; here just the path param converted upstream)
 // back to one of the two fake profiles' IDs. Both PullCollections and
 // PushCollections/PushAddons receive it as an int elsewhere in the real

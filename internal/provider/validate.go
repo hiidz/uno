@@ -40,7 +40,7 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 	// lives on it, so decoding straight into it covers movie and tv alike.
 	var p TMDBCommonParams
 	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
-		return fmt.Errorf("%w: decode %s params: %v", ErrInvalidParams, catalogType, err)
+		return fmt.Errorf("%w: decode %s params: %w", ErrInvalidParams, catalogType, err)
 	}
 
 	if p.WithGenres != "" || p.WithoutGenres != "" {

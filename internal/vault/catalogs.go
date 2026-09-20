@@ -373,8 +373,8 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 // the addon server publishes; unlike
 // GetCurrentCatalogSelection (the pre-push validation/selection-editor
 // view), it also surfaces folder-only catalogs so nothing a folder tile
-// shows on the TV is missing from the manifest. Deduped by id: a catalog on
-// both home and in a folder appears once, keeping its home ShowInHome.
+// shows on the TV is missing from the manifest. Deduped by id: a catalog
+// sitting in more than one folder would otherwise appear once per folder.
 func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
 	rows, err := db.conn.QueryContext(ctx, `
 		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public, c.is_default,
@@ -411,9 +411,10 @@ func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 			return nil, err
 		}
 
-		// First row wins: SQL orders home rows (rank 0) before folder-derived
-		// ones (rank 1), so a catalog on both home and in a folder keeps its
-		// home ShowInHome rather than the folder-derived false.
+		// The two SELECTs' WHERE clauses are mutually exclusive on
+		// home_sort_order, so a catalog can't match both; seen instead
+		// collapses duplicate folder-derived rows for a catalog sitting in
+		// more than one folder.
 		if seen[c.ID] {
 			continue
 		}

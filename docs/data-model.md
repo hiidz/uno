@@ -347,7 +347,7 @@ describing what a TMDB-backed catalog may ask for.
   `PreviewCatalog` go through them.
 - **Vocabulary.** Uno and Stremio say `movie`/`series`; TMDB says `movie`/`tv`. Every route the
   UI calls is on Uno's vocabulary, `GET /api/genres/{type}` included, and the translation is
-  entirely server-side via `externalIDsMediaType` — the same map `resolveMetas` uses. The one
+  entirely server-side via `tmdbMediaType` — the same map `resolveMetas` uses. The one
   place `movie`/`tv` legitimately survives on the client is the genre-lookup keying in
   `web/src/api/types.ts`, because **the two genre id spaces are genuinely separate** (`878`
   Science Fiction is movie-only; tv has `10765` Sci-Fi & Fantasy). That's a real TMDB fact, not a

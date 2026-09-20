@@ -29,7 +29,7 @@ import (
 // region query param on the picker route can't grow the key space one entry
 // per request.
 func (c *TMDBClient) WatchProviders(ctx context.Context, catalogType, region string) ([]WatchProvider, error) {
-	kind, ok := externalIDsMediaType[catalogType]
+	kind, ok := tmdbMediaType[catalogType]
 	if !ok {
 		return nil, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
 	}

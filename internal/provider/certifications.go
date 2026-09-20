@@ -15,10 +15,10 @@ import (
 // country and then see that country's ratings.
 //
 // catalogType is Uno/Stremio's vocabulary ("movie"/"series"), matching
-// Genres; translated via externalIDsMediaType, and the translated kind is
+// Genres; translated via tmdbMediaType, and the translated kind is
 // the cache key.
 func (c *TMDBClient) Certifications(ctx context.Context, catalogType string) (map[string][]Certification, error) {
-	kind, ok := externalIDsMediaType[catalogType]
+	kind, ok := tmdbMediaType[catalogType]
 	if !ok {
 		return nil, fmt.Errorf("%w: got %q", ErrInvalidCatalogType, catalogType)
 	}

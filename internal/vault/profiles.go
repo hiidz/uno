@@ -86,7 +86,7 @@ func (db *DB) GetProfileByID(ctx context.Context, id uuid.UUID) (Profile, error)
 	return p, nil
 }
 
-// resolveProfileID looks up a profile by token, wrapping sql.ErrNoRows as ErrProfileNotFound.
+// ResolveProfileID looks up a profile by token, wrapping sql.ErrNoRows as ErrProfileNotFound.
 func (db *DB) ResolveProfileID(ctx context.Context, token string) (uuid.UUID, error) {
 	var profileIDStr string
 	err := db.conn.QueryRowContext(ctx,
