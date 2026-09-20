@@ -36,7 +36,7 @@ type fakeNuvio struct {
 	listAddonsErr error
 
 	pushAddonsErr   error
-	pushAddonsCalls [][]nuvio.PushAddonInput
+	pushAddonsCalls [][]nuvio.NuvioAddon
 
 	pullCollections    []json.RawMessage
 	pullCollectionsErr error
@@ -65,7 +65,7 @@ func (f *fakeNuvio) ListAddons(ctx context.Context, accessToken string, profileI
 	return nil, nil
 }
 
-func (f *fakeNuvio) PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.PushAddonInput) error {
+func (f *fakeNuvio) PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.NuvioAddon) error {
 	f.pushAddonsCalls = append(f.pushAddonsCalls, addons)
 	return f.pushAddonsErr
 }

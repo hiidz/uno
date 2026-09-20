@@ -24,7 +24,7 @@ type TokenVerifier interface {
 type NuvioClient interface {
 	ListProfiles(ctx context.Context, accessToken string) ([]nuvio.NuvioProfile, error)
 	ListAddons(ctx context.Context, accessToken string, profileID int) ([]nuvio.NuvioAddon, error)
-	PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.PushAddonInput) error
+	PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.NuvioAddon) error
 	PullCollections(ctx context.Context, accessToken string, profileID int) ([]json.RawMessage, error)
 	PushCollections(ctx context.Context, accessToken string, profileID int, collections []json.RawMessage) error
 }

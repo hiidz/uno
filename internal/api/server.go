@@ -67,29 +67,29 @@ func (s *Server) routes() {
 	// community list and take, lives under /api/p/{profileIndex}/.
 	s.router.HandleFunc("POST /api/catalogs/preview", s.requireNuvioAuth(s.previewCatalog))
 	s.router.HandleFunc("POST /api/catalogs/genre-options", s.requireNuvioAuth(s.catalogGenreOptions))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs", s.requireNuvioAuth(s.requireProfile(s.listUserCatalogs)))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs", s.requireNuvioAuth(s.requireProfile(s.createUserCatalog)))
-	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireNuvioAuth(s.requireProfile(s.updateUserCatalog)))
-	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireNuvioAuth(s.requireProfile(s.deleteUserCatalog)))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community/catalogs", s.requireNuvioAuth(s.requireProfile(s.listCommunityCatalogs)))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/take", s.requireNuvioAuth(s.requireProfile(s.takeCatalog)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.listUserCatalogs))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.createUserCatalog))
+	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.updateUserCatalog))
+	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community/catalogs", s.requireProfileAuth(s.listCommunityCatalogs))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/take", s.requireProfileAuth(s.takeCatalog))
 
-	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireNuvioAuth(s.requireProfile(s.listUserCollections)))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireNuvioAuth(s.requireProfile(s.createUserCollection)))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/duplicate", s.requireNuvioAuth(s.requireProfile(s.duplicateUserCollection)))
-	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireNuvioAuth(s.requireProfile(s.updateUserCollection)))
-	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireNuvioAuth(s.requireProfile(s.deleteUserCollection)))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community/collections", s.requireNuvioAuth(s.requireProfile(s.listCommunityCollections)))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/take", s.requireNuvioAuth(s.requireProfile(s.takeCollection)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireProfileAuth(s.listUserCollections))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/duplicate", s.requireProfileAuth(s.duplicateUserCollection))
+	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.updateUserCollection))
+	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.deleteUserCollection))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community/collections", s.requireProfileAuth(s.listCommunityCollections))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/take", s.requireProfileAuth(s.takeCollection))
 
 	// Selection is read here but never written here: the whole selection
 	// travels in POST .../push's body and is written by that handler, in one
 	// transaction, only after Nuvio has accepted the push.
-	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/selection", s.requireNuvioAuth(s.requireProfile(s.listCurrentCatalogSelection)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/selection", s.requireProfileAuth(s.listCurrentCatalogSelection))
 
-	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/selection", s.requireNuvioAuth(s.requireProfile(s.listCurrentCollectionSelection)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/selection", s.requireProfileAuth(s.listCurrentCollectionSelection))
 
-	s.router.HandleFunc("POST /api/p/{profileIndex}/push", s.requireNuvioAuth(s.requireProfile(s.push)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/push", s.requireProfileAuth(s.push))
 
 	s.router.HandleFunc("GET /api/genres/{type}", s.requireNuvioAuth(s.listGenres))
 	s.router.HandleFunc("GET /api/certifications/{type}", s.requireNuvioAuth(s.listCertifications))

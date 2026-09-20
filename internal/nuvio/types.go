@@ -19,17 +19,10 @@ type NuvioProfile struct {
 
 // NuvioAddon is one row from GET /rest/v1/addons — the subset Uno needs to
 // merge its own manifest URL into a profile's existing addon list without
-// disturbing the rest.
+// disturbing the rest. The same shape is one entry of sync_push_addons'
+// p_addons array, so the read and the write use this one type: the addon
+// list Uno pushes is the list it pulled, with its own entry upserted.
 type NuvioAddon struct {
-	URL       string `json:"url"`
-	Name      string `json:"name"`
-	Enabled   bool   `json:"enabled"`
-	SortOrder int    `json:"sort_order"`
-}
-
-// PushAddonInput is the request-side shape for one entry of
-// sync_push_addons' p_addons array.
-type PushAddonInput struct {
 	URL       string `json:"url"`
 	Name      string `json:"name"`
 	Enabled   bool   `json:"enabled"`

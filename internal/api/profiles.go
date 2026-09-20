@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/hiidz/uno/internal/addon"
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/nuvio"
 	"github.com/hiidz/uno/internal/vault"
 )
@@ -51,7 +52,7 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, profiles)
+	httpx.WriteJSON(w, http.StatusOK, profiles)
 }
 
 func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +87,7 @@ func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {
 	// manifest_url is computable at selection time — it's just the site's
 	// base URL plus this profile's token — so it's returned here rather
 	// than waiting on a first push.
-	writeJSON(w, http.StatusOK, struct {
+	httpx.WriteJSON(w, http.StatusOK, struct {
 		vault.Profile
 		ManifestURL string `json:"manifest_url"`
 	}{profile, s.siteBaseURL + addon.ManifestPath(profile.Token)})

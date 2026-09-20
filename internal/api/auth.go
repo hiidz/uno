@@ -79,6 +79,14 @@ func (s *Server) requireNuvioAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// requireProfileAuth is requireNuvioAuth followed by requireProfile — the
+// chain every profile-scoped route uses, named once so the route table
+// doesn't spell the nesting out per line. requireProfile depends on what
+// requireNuvioAuth stashes, so the order is not interchangeable.
+func (s *Server) requireProfileAuth(next http.HandlerFunc) http.HandlerFunc {
+	return s.requireNuvioAuth(s.requireProfile(next))
+}
+
 // requireProfile resolves {profileIndex} in the URL, combined with the sub
 // already stashed by requireNuvioAuth, into a profile ID — then attaches it
 // to the request context. Must be chained after requireNuvioAuth. Lookup

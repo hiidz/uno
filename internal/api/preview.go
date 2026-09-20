@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 )
 
@@ -66,7 +67,7 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, previewResponse{
+	httpx.WriteJSON(w, http.StatusOK, previewResponse{
 		Randomized:   randomized,
 		Items:        items,
 		TotalResults: totalResults,
@@ -105,5 +106,5 @@ func (s *Server) catalogGenreOptions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch genres", http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, genres)
+	httpx.WriteJSON(w, http.StatusOK, genres)
 }

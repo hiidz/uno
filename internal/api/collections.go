@@ -2,11 +2,9 @@ package api
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
-	"github.com/google/uuid"
-
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
@@ -38,36 +36,18 @@ func (s *Server) validateInlineCatalogs(input *vault.CollectionForm) error {
 }
 
 func (s *Server) listUserCollections(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	collections, err := s.vault.GetUserCollections(r.Context(), profileID)
-	if err != nil {
-		log.Printf("listUserCollections: %v", err)
-		http.Error(w, "failed to load collections", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, collections)
+	listByProfile(w, r, "listUserCollections", "failed to load collections", s.vault.GetUserCollections)
 }
 
 func (s *Server) listCommunityCollections(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	collections, err := s.vault.GetCommunityCollections(r.Context(), profileID)
-	if err != nil {
-		log.Printf("listCommunityCollections: %v", err)
-		http.Error(w, "failed to load collections", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, collections)
+	listByProfile(w, r, "listCommunityCollections", "failed to load collections", s.vault.GetCommunityCollections)
 }
 
 func (s *Server) takeCollection(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
-	collectionID, err := uuid.Parse(r.PathValue("collectionID"))
-	if err != nil {
-		http.Error(w, "invalid collection id", http.StatusBadRequest)
+	collectionID, ok := httpx.PathUUID(w, r, "collectionID", "collection id")
+	if !ok {
 		return
 	}
 
@@ -77,15 +57,14 @@ func (s *Server) takeCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, collection)
+	httpx.WriteJSON(w, http.StatusCreated, collection)
 }
 
 func (s *Server) duplicateUserCollection(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
-	collectionID, err := uuid.Parse(r.PathValue("collectionID"))
-	if err != nil {
-		http.Error(w, "invalid collection id", http.StatusBadRequest)
+	collectionID, ok := httpx.PathUUID(w, r, "collectionID", "collection id")
+	if !ok {
 		return
 	}
 
@@ -95,7 +74,7 @@ func (s *Server) duplicateUserCollection(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, collection)
+	httpx.WriteJSON(w, http.StatusCreated, collection)
 }
 
 func (s *Server) createUserCollection(w http.ResponseWriter, r *http.Request) {
@@ -116,15 +95,14 @@ func (s *Server) createUserCollection(w http.ResponseWriter, r *http.Request) {
 		writeVaultError(w, "createUserCollection", err, nil, "", "failed to create collection")
 		return
 	}
-	writeJSON(w, http.StatusCreated, collection)
+	httpx.WriteJSON(w, http.StatusCreated, collection)
 }
 
 func (s *Server) updateUserCollection(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
-	collectionID, err := uuid.Parse(r.PathValue("collectionID"))
-	if err != nil {
-		http.Error(w, "invalid collection id", http.StatusBadRequest)
+	collectionID, ok := httpx.PathUUID(w, r, "collectionID", "collection id")
+	if !ok {
 		return
 	}
 
@@ -144,15 +122,14 @@ func (s *Server) updateUserCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, collection)
+	httpx.WriteJSON(w, http.StatusOK, collection)
 }
 
 func (s *Server) deleteUserCollection(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
-	collectionID, err := uuid.Parse(r.PathValue("collectionID"))
-	if err != nil {
-		http.Error(w, "invalid collection id", http.StatusBadRequest)
+	collectionID, ok := httpx.PathUUID(w, r, "collectionID", "collection id")
+	if !ok {
 		return
 	}
 
@@ -165,13 +142,5 @@ func (s *Server) deleteUserCollection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listCurrentCollectionSelection(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	collections, err := s.vault.GetCurrentCollectionSelection(r.Context(), profileID)
-	if err != nil {
-		log.Printf("listCurrentCollectionSelection: %v", err)
-		http.Error(w, "failed to load collection selection", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, collections)
+	listByProfile(w, r, "listCurrentCollectionSelection", "failed to load collection selection", s.vault.GetCurrentCollectionSelection)
 }

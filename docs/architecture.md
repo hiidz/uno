@@ -106,7 +106,8 @@ both the verified `sub` and the raw token in the request context under an unexpo
 type. Handlers read them via `nuvioUserIDFrom(ctx)` / `nuvioTokenFrom(ctx)`. The raw token is
 stashed so exactly one place in the codebase understands the `Authorization` header format.
 
-`requireProfile` chains *after* it on every profile-scoped route: reads `sub` from context, reads
+`requireProfile` chains *after* it on every profile-scoped route — the route table applies the
+pair as `requireProfileAuth` — and reads `sub` from context, reads
 `{profileIndex}` from the path, validates it's an integer 1–6 (`400` otherwise, before touching
 the DB), calls `vault.GetProfileBySlot`, maps `ErrProfileNotFound` → `404`, then stashes the
 resolved profile ID. It is a **lookup-only** resolver — no create, no drift-overwrite. A client

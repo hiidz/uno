@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
@@ -22,7 +23,7 @@ func (s *Server) listGenres(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch genres", http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, genres)
+	httpx.WriteJSON(w, http.StatusOK, genres)
 }
 
 func (s *Server) listLanguages(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +32,7 @@ func (s *Server) listLanguages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch languages", http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, languages)
+	httpx.WriteJSON(w, http.StatusOK, languages)
 }
 
 func (s *Server) listCountries(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +41,7 @@ func (s *Server) listCountries(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch countries", http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, countries)
+	httpx.WriteJSON(w, http.StatusOK, countries)
 }
 
 // listWatchProviders backs the builder's streaming-service picker. The
@@ -59,7 +60,7 @@ func (s *Server) listWatchProviders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch watch providers", http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, providers)
+	httpx.WriteJSON(w, http.StatusOK, providers)
 }
 
 func (s *Server) listWatchRegions(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +69,7 @@ func (s *Server) listWatchRegions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch watch regions", http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, regions)
+	httpx.WriteJSON(w, http.StatusOK, regions)
 }
 
 func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +84,7 @@ func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch certifications", http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, certifications)
+	httpx.WriteJSON(w, http.StatusOK, certifications)
 }
 
 // validateCatalogParams checks the TMDB-specific recipe rules for a

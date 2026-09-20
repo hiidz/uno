@@ -1,20 +1,32 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 
+	"github.com/google/uuid"
+
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/vault"
 )
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("failed to encode response: %v", err)
+// listByProfile answers with everything load returns for the request's
+// profile. op names the handler in the 500's log line, failMsg is what the
+// client sees instead of the error. Must run behind requireProfile, which is
+// what makes the profile id in the context a given.
+func listByProfile[T any](w http.ResponseWriter, r *http.Request, op, failMsg string, load func(context.Context, uuid.UUID) ([]T, error)) {
+	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
+
+	items, err := load(r.Context(), profileID)
+	if err != nil {
+		log.Printf("%s: %v", op, err)
+		http.Error(w, failMsg, http.StatusInternalServerError)
+		return
 	}
+	httpx.WriteJSON(w, http.StatusOK, items)
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {

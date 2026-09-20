@@ -111,15 +111,12 @@ func (v *devBypassNuvio) ListAddons(ctx context.Context, accessToken string, pro
 	return v.next.ListAddons(ctx, accessToken, profileID)
 }
 
-func (v *devBypassNuvio) PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.PushAddonInput) error {
+func (v *devBypassNuvio) PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.NuvioAddon) error {
 	if accessToken == v.token {
 		v.mu.Lock()
 		defer v.mu.Unlock()
-		converted := make([]nuvio.NuvioAddon, len(addons))
-		for i, a := range addons {
-			converted[i] = nuvio.NuvioAddon{URL: a.URL, Name: a.Name, Enabled: a.Enabled, SortOrder: a.SortOrder}
-		}
-		v.addons[v.profileKey(profileID)] = converted
+		// Copied, not aliased: the caller still owns addons.
+		v.addons[v.profileKey(profileID)] = append([]nuvio.NuvioAddon(nil), addons...)
 		return nil
 	}
 	return v.next.PushAddons(ctx, accessToken, profileID, addons)

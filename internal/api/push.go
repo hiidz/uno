@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hiidz/uno/internal/addon"
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/nuvio"
 	"github.com/hiidz/uno/internal/vault"
 )
@@ -93,20 +94,20 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, vault.ErrInvalidInput) {
 			status = http.StatusBadRequest
 		}
-		writeJSON(w, status, pushResult{Error: "push failed"})
+		httpx.WriteJSON(w, status, pushResult{Error: "push failed"})
 		return
 	}
 
 	if err := s.pushAddons(ctx, accessToken, profile.NuvioProfileIndex, manifestURL); err != nil {
 		log.Printf("push: addons push failed: %v", err)
-		writeJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
+		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
 		return
 	}
 
 	pulled, collectionVersions, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, body.Collections.CollectionIDs)
 	if err != nil {
 		log.Printf("push: collections push failed: %v", err)
-		writeJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
+		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
 		return
 	}
 
@@ -114,14 +115,14 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		log.Printf("push: local commit failed after nuvio succeeded, reverting collections: %v", err)
 		if revertErr := s.nuvio.PushCollections(ctx, accessToken, profile.NuvioProfileIndex, pulled); revertErr != nil {
 			log.Printf("push: compensating revert also failed: %v", revertErr)
-			writeJSON(w, http.StatusInternalServerError, pushResult{Error: "push failed", UndoFailed: true})
+			httpx.WriteJSON(w, http.StatusInternalServerError, pushResult{Error: "push failed", UndoFailed: true})
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, pushResult{Error: "push failed"})
+		httpx.WriteJSON(w, http.StatusInternalServerError, pushResult{Error: "push failed"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, pushResult{Success: true, ManifestURL: manifestURL})
+	httpx.WriteJSON(w, http.StatusOK, pushResult{Success: true, ManifestURL: manifestURL})
 }
 
 // pushAddons runs the addons read-modify-write cycle: pull the profile's
@@ -137,18 +138,18 @@ func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfil
 		return err
 	}
 
-	merged := make([]nuvio.PushAddonInput, len(current))
+	merged := make([]nuvio.NuvioAddon, len(current))
+	copy(merged, current)
 	found := false
-	for i, a := range current {
-		merged[i] = nuvio.PushAddonInput{URL: a.URL, Name: a.Name, Enabled: a.Enabled, SortOrder: a.SortOrder}
-		if a.URL == manifestURL {
+	for i := range merged {
+		if merged[i].URL == manifestURL {
 			merged[i].Name = addon.Name
 			merged[i].Enabled = true
 			found = true
 		}
 	}
 	if !found {
-		merged = append(merged, nuvio.PushAddonInput{
+		merged = append(merged, nuvio.NuvioAddon{
 			URL: manifestURL, Name: addon.Name, Enabled: true, SortOrder: len(current),
 		})
 	}

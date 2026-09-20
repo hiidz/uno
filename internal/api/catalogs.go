@@ -2,45 +2,26 @@ package api
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
-	"github.com/google/uuid"
-
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
 func (s *Server) listUserCatalogs(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	catalogs, err := s.vault.GetUserCatalogs(r.Context(), profileID)
-	if err != nil {
-		log.Printf("listUserCatalogs: %v", err)
-		http.Error(w, "failed to load catalogs", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, catalogs)
+	listByProfile(w, r, "listUserCatalogs", "failed to load catalogs", s.vault.GetUserCatalogs)
 }
 
 func (s *Server) listCommunityCatalogs(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	catalogs, err := s.vault.GetCommunityCatalogs(r.Context(), profileID)
-	if err != nil {
-		log.Printf("listCommunityCatalogs: %v", err)
-		http.Error(w, "failed to load catalogs", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, catalogs)
+	listByProfile(w, r, "listCommunityCatalogs", "failed to load catalogs", s.vault.GetCommunityCatalogs)
 }
 
 func (s *Server) takeCatalog(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
-	catalogID, err := uuid.Parse(r.PathValue("catalogID"))
-	if err != nil {
-		http.Error(w, "invalid catalog id", http.StatusBadRequest)
+	catalogID, ok := httpx.PathUUID(w, r, "catalogID", "catalog id")
+	if !ok {
 		return
 	}
 
@@ -49,7 +30,7 @@ func (s *Server) takeCatalog(w http.ResponseWriter, r *http.Request) {
 		writeVaultError(w, "takeCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to take catalog")
 		return
 	}
-	writeJSON(w, http.StatusCreated, catalog)
+	httpx.WriteJSON(w, http.StatusCreated, catalog)
 }
 
 func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
@@ -76,15 +57,14 @@ func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 		writeVaultError(w, "createUserCatalog", err, nil, "", "failed to create catalog")
 		return
 	}
-	writeJSON(w, http.StatusCreated, catalog)
+	httpx.WriteJSON(w, http.StatusCreated, catalog)
 }
 
 func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
-	catalogID, err := uuid.Parse(r.PathValue("catalogID"))
-	if err != nil {
-		http.Error(w, "invalid catalog id", http.StatusBadRequest)
+	catalogID, ok := httpx.PathUUID(w, r, "catalogID", "catalog id")
+	if !ok {
 		return
 	}
 
@@ -109,15 +89,14 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 		writeVaultError(w, "updateUserCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to update catalog")
 		return
 	}
-	writeJSON(w, http.StatusOK, catalog)
+	httpx.WriteJSON(w, http.StatusOK, catalog)
 }
 
 func (s *Server) deleteUserCatalog(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
-	catalogID, err := uuid.Parse(r.PathValue("catalogID"))
-	if err != nil {
-		http.Error(w, "invalid catalog id", http.StatusBadRequest)
+	catalogID, ok := httpx.PathUUID(w, r, "catalogID", "catalog id")
+	if !ok {
 		return
 	}
 
@@ -129,13 +108,5 @@ func (s *Server) deleteUserCatalog(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listCurrentCatalogSelection(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	catalogs, err := s.vault.GetCurrentCatalogSelection(r.Context(), profileID)
-	if err != nil {
-		log.Printf("listCurrentCatalogSelection: %v", err)
-		http.Error(w, "failed to load catalog selection", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, catalogs)
+	listByProfile(w, r, "listCurrentCatalogSelection", "failed to load catalog selection", s.vault.GetCurrentCatalogSelection)
 }

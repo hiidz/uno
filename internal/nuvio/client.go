@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -42,17 +43,9 @@ func NewClient(baseURL, publishableKey string) *Client {
 // ListProfiles calls POST /rest/v1/rpc/sync_pull_profiles with accessToken
 // forwarded as-is. No request body — this RPC takes none.
 func (c *Client) ListProfiles(ctx context.Context, accessToken string) ([]NuvioProfile, error) {
-	url := c.baseURL + "/rest/v1/rpc/sync_pull_profiles"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	resp, err := c.doRPC(ctx, accessToken, "sync_pull_profiles", nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("apikey", c.publishableKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -74,22 +67,30 @@ func (c *Client) ListProfiles(ctx context.Context, accessToken string) ([]NuvioP
 	return jsonwire.OrEmpty(profiles), nil
 }
 
-// doRPC POSTs body (marshaled to JSON) to {baseURL}/rest/v1/rpc/{rpc} with
-// the caller's bearer token and the publishable key, and returns the raw
-// response for the caller to inspect (status + body) — shared by every push/
-// pull RPC below so the header/marshal boilerplate exists in one place.
-func (c *Client) doRPC(ctx context.Context, accessToken, rpc string, body any) (*http.Response, error) {
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
+// do issues one authenticated request against Nuvio: method and path as
+// given, the caller's bearer token and the publishable key attached, and
+// body marshaled to JSON when it is non-nil — a nil body sends none and no
+// Content-Type, which is what the GET and the body-less RPC need. Returns
+// the raw response for the caller to inspect (status + body); every call in
+// this file goes through here so the header and marshal boilerplate exists
+// in one place.
+func (c *Client) do(ctx context.Context, method, accessToken, path string, body any) (*http.Response, error) {
+	var payload io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
+		}
+		payload = bytes.NewReader(encoded)
 	}
 
-	url := c.baseURL + "/rest/v1/rpc/" + rpc
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, payload)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("apikey", c.publishableKey)
 
@@ -100,20 +101,19 @@ func (c *Client) doRPC(ctx context.Context, accessToken, rpc string, body any) (
 	return resp, nil
 }
 
+// doRPC POSTs body to {baseURL}/rest/v1/rpc/{rpc}. A nil body posts nothing,
+// which is what sync_pull_profiles takes.
+func (c *Client) doRPC(ctx context.Context, accessToken, rpc string, body any) (*http.Response, error) {
+	return c.do(ctx, http.MethodPost, accessToken, "/rest/v1/rpc/"+rpc, body)
+}
+
 // ListAddons reads a profile's current addons via a direct table query (not
 // an RPC) — the read half of the addons read-modify-write push cycle.
 func (c *Client) ListAddons(ctx context.Context, accessToken string, profileID int) ([]NuvioAddon, error) {
-	url := fmt.Sprintf("%s/rest/v1/addons?select=url,name,enabled,sort_order&profile_id=eq.%d&order=sort_order", c.baseURL, profileID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	path := fmt.Sprintf("/rest/v1/addons?select=url,name,enabled,sort_order&profile_id=eq.%d&order=sort_order", profileID)
+	resp, err := c.do(ctx, http.MethodGet, accessToken, path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("apikey", c.publishableKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -132,13 +132,13 @@ func (c *Client) ListAddons(ctx context.Context, accessToken string, profileID i
 // addons is deleted server-side, so callers must pass the complete merged
 // list, not just Uno's own entry. Success is 204, not 200 — unlike
 // ListProfiles, which pulls data and expects 200.
-func (c *Client) PushAddons(ctx context.Context, accessToken string, profileID int, addons []PushAddonInput) error {
+func (c *Client) PushAddons(ctx context.Context, accessToken string, profileID int, addons []NuvioAddon) error {
 	if addons == nil {
-		addons = []PushAddonInput{}
+		addons = []NuvioAddon{}
 	}
 	body := struct {
-		ProfileID int              `json:"p_profile_id"`
-		Addons    []PushAddonInput `json:"p_addons"`
+		ProfileID int          `json:"p_profile_id"`
+		Addons    []NuvioAddon `json:"p_addons"`
 	}{profileID, addons}
 
 	resp, err := c.doRPC(ctx, accessToken, "sync_push_addons", body)

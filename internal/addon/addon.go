@@ -8,7 +8,6 @@ package addon
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
@@ -73,14 +73,6 @@ func New(v *vault.DB, p *provider.TMDBClient) *Server {
 		log.Fatal("addon.New: vault and provider must not be nil")
 	}
 	return &Server{vault: v, provider: p}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("failed to encode response: %v", err)
-	}
 }
 
 // Public wraps a handler on the public, unauthenticated addon surface:
@@ -219,7 +211,7 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, buildManifest(selection, func(sc vault.SelectedCatalog) []string {
+	httpx.WriteJSON(w, http.StatusOK, buildManifest(selection, func(sc vault.SelectedCatalog) []string {
 		return s.genreNames(r.Context(), sc)
 	}))
 }
@@ -332,7 +324,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 		metas = []provider.Meta{} // {"metas":null} is not a valid empty catalog
 	}
 
-	writeJSON(w, http.StatusOK, catalogResponse{
+	httpx.WriteJSON(w, http.StatusOK, catalogResponse{
 		Metas:           metas,
 		CacheMaxAge:     catalogCacheMaxAge,
 		StaleRevalidate: catalogStaleRevalidate,
