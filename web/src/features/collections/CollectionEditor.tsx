@@ -285,6 +285,11 @@ export function CollectionEditor({
   // The nested catalog editor — a modal layered over this pane, not a second
   // occupant of it. `null` means closed.
   const [nestedCatalogID, setNestedCatalogID] = useState<string | null>(null)
+  const nestedCatalog = nestedCatalogID === null ? undefined : localCatalogs.get(nestedCatalogID)
+  // Keyed on the catalog object, which only changes when `rememberCatalog`
+  // replaces it: a fresh form on every render of this editor would re-seed the
+  // nested one (see `useEditorForm`) and drop its edits when a save fails.
+  const nestedInitial = useMemo(() => nestedCatalog && formFromCatalog(nestedCatalog), [nestedCatalog])
   // "New inside this collection" is named first, same two-step as the main
   // library's own "New catalog" — see Workspace's `createBareCatalog`.
   const [namingNewFolderKey, setNamingNewFolderKey] = useState<string | null>(null)
@@ -796,8 +801,8 @@ export function CollectionEditor({
           // more — and every scoped catalog this editor knows about is
           // already in `localCatalogs` (seeded from `initialCatalogs`, grown
           // by copy/new-in-collection), so there is no library fallback here.
-          const catalog = localCatalogs.get(nestedCatalogID)
-          if (!catalog) return null
+          const catalog = nestedCatalog
+          if (!catalog || !nestedInitial) return null
           return (
             <Modal
               open
@@ -822,7 +827,7 @@ export function CollectionEditor({
                 </h2>
                 <CatalogEditor
                   key={catalog.id}
-                  initial={formFromCatalog(catalog)}
+                  initial={nestedInitial}
                   genres={genres}
                   certifications={certifications}
                   countryNames={countryNames}
