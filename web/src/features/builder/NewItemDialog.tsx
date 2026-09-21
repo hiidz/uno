@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Field, TextInput } from '@/components/fields'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
@@ -43,14 +43,56 @@ export function NewItemDialog({
   onCreate: (value: string) => void
   onClose: () => void
 }) {
+  return (
+    <Modal open={open} onClose={onClose} labelledBy={`new-${noun}-title`} width="440px">
+      <ModalHeader>
+        <h2 id={`new-${noun}-title`} className="type-display m-0 text-[15px]">
+          New {noun}
+        </h2>
+      </ModalHeader>
+
+      {open && (
+        <NewItemForm
+          noun={noun}
+          label={label}
+          placeholder={placeholder}
+          saving={saving}
+          serverError={serverError}
+          extra={extra}
+          onCreate={onCreate}
+          onClose={onClose}
+        />
+      )}
+    </Modal>
+  )
+}
+
+/**
+ * The fields and the two buttons, holding the draft for one opening of the
+ * dialog. It is mounted only while the dialog is open, so every opening starts
+ * on an empty field with the error unrevealed, however the last one ended.
+ */
+function NewItemForm({
+  noun,
+  label,
+  placeholder,
+  saving,
+  serverError,
+  extra,
+  onCreate,
+  onClose,
+}: {
+  noun: string
+  label: string
+  placeholder: string
+  saving: boolean
+  serverError: string | null
+  extra?: ReactNode
+  onCreate: (value: string) => void
+  onClose: () => void
+}) {
   const [value, setValue] = useState('')
   const [showError, setShowError] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    setValue('')
-    setShowError(false)
-  }, [open])
 
   const invalid = value.trim() === ''
 
@@ -61,13 +103,7 @@ export function NewItemDialog({
   }
 
   return (
-    <Modal open={open} onClose={onClose} labelledBy={`new-${noun}-title`} width="440px">
-      <ModalHeader>
-        <h2 id={`new-${noun}-title`} className="type-display m-0 text-[15px]">
-          New {noun}
-        </h2>
-      </ModalHeader>
-
+    <>
       <ModalBody>
         <div className="flex flex-col gap-5">
           <Field
@@ -100,6 +136,6 @@ export function NewItemDialog({
           {saving ? 'Creating…' : `Create ${noun}`}
         </button>
       </ModalFooter>
-    </Modal>
+    </>
   )
 }
