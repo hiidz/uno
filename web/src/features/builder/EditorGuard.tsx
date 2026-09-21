@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { createContext, use, useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
 /**
@@ -79,7 +79,7 @@ export function EditorGuardProvider({ children }: { children: ReactNode }) {
 }
 
 export function useEditorGuard(): EditorGuardValue {
-  const value = useContext(EditorGuardContext)
+  const value = use(EditorGuardContext)
   if (!value) throw new Error('useEditorGuard must be used inside an EditorGuardProvider')
   return value
 }
