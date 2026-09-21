@@ -14,7 +14,6 @@ import { describeCollection } from '@/features/library/collection'
 import { describeRecipe } from '@/features/library/recipe'
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
 import { noTiles, TileRun, TILE_ASPECT } from '@/features/preview/tiles'
-import type { CatalogTiles } from '@/features/preview/tiles'
 import { ordinal } from '@/lib/ordinal'
 import { HomePreview } from './HomePreview'
 import { buildHomePreview } from './preview'
@@ -213,9 +212,10 @@ function HomeList({ compact }: { compact: boolean }) {
                   first={i === 0}
                   last={i === group.length - 1}
                   groupWord="the pinned collections"
-                  compact={compact}
                   onMove={(direction) => home.moveCollection(collection.id, direction)}
-                />
+                >
+                  {!compact && <FolderStrip folders={collection.folders} />}
+                </CollectionRow>
               ))}
             </ol>
           </SortableList>
@@ -232,14 +232,21 @@ function HomeList({ compact }: { compact: boolean }) {
                 <CatalogRow
                   key={row.id}
                   row={row}
-                  tiles={tiles.get(row.id) ?? noTiles()}
                   position={positionOf('catalog', row.id)}
                   first={i === 0}
                   last={i === group.length - 1}
                   groupWord="the catalogs"
-                  compact={compact}
                   onMove={(direction) => home.moveCatalog(row.id, direction)}
-                />
+                >
+                  {!compact && (
+                    <TileRun
+                      tiles={tiles.get(row.id) ?? noTiles()}
+                      width={64}
+                      height={96}
+                      wrap={false}
+                    />
+                  )}
+                </CatalogRow>
               ))}
             </ol>
           </SortableList>
@@ -264,9 +271,10 @@ function HomeList({ compact }: { compact: boolean }) {
                   first={i === 0}
                   last={i === group.length - 1}
                   groupWord="the other collections"
-                  compact={compact}
                   onMove={(direction) => home.moveCollection(collection.id, direction)}
-                />
+                >
+                  {!compact && <FolderStrip folders={collection.folders} />}
+                </CollectionRow>
               ))}
             </ol>
           </SortableList>
@@ -296,8 +304,9 @@ function Group({ label, note, children }: { label: string; note: string; childre
 
 /**
  * Grip, ↑, ↓, the position against the name, a credit line, a strip of whole
- * tiles, then ⋯ — DESIGN.md's "Running-order row (signature)". Shared by
- * catalog and collection rows; only the body and the strip differ.
+ * tiles, then ⋯ — DESIGN.md's "Running-order row (signature)". The frame draws
+ * the grip, the ↑/↓ pair and the position; a catalog or collection row composes
+ * the rest into its four-column grid as a `RowBody` and a `RowMenu`.
  */
 function HomeRow({
   id,
@@ -306,12 +315,9 @@ function HomeRow({
   first,
   last,
   groupWord,
-  compact,
   onMoveUp,
   onMoveDown,
-  body,
-  strip,
-  menu,
+  children,
 }: {
   id: string
   name: string
@@ -321,12 +327,9 @@ function HomeRow({
   /** Named in a disabled ↑/↓'s accessible name — "already first of the
    *  catalogs" — since a row moves only within its own group. */
   groupWord: string
-  compact: boolean
   onMoveUp: () => void
   onMoveDown: () => void
-  body: ReactNode
-  strip: ReactNode
-  menu: ReactNode
+  children: ReactNode
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
@@ -360,14 +363,15 @@ function HomeRow({
         {ordinal(position)}
       </span>
 
-      <div className="flex min-w-0 flex-col gap-1">
-        {body}
-        {!compact && strip}
-      </div>
-
-      {menu}
+      {children}
     </li>
   )
+}
+
+/** The row's third grid column: the name, the credit line, and the strip when
+ *  one is composed in. */
+function RowBody({ children }: { children: ReactNode }) {
+  return <div className="flex min-w-0 flex-col gap-1">{children}</div>
 }
 
 function RowIconButton({
@@ -399,25 +403,9 @@ function RowIconButton({
   )
 }
 
-/**
- * The row's ⋯ menu: "Move to Discover" for a catalog row only, then "Take off
- * TV" — one name for the action everywhere, matching the add button's own
- * "Take off TV" (see DESIGN.md's add button spec). Danger-styled when the item
- * is detached, since removing it there can't be undone.
- */
-function RowMenu({
-  name,
-  showMoveToDiscover,
-  onMoveToDiscover,
-  onTakeOffTV,
-  detached,
-}: {
-  name: string
-  showMoveToDiscover: boolean
-  onMoveToDiscover?: () => void
-  onTakeOffTV: () => void
-  detached: boolean
-}) {
+/** The row's ⋯ menu: the trigger and the popover, holding whichever items the
+ *  row composes into it. */
+function RowMenu({ name, children }: { name: string; children: ReactNode }) {
   return (
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger
@@ -432,18 +420,24 @@ function RowMenu({
           sideOffset={4}
           className="bg-raised-hi border-line-hi z-40 flex w-60 flex-col gap-0.5 rounded-[2px] border p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
         >
-          {showMoveToDiscover && onMoveToDiscover && (
-            <RowMenuItem label="Move to Discover" onSelect={onMoveToDiscover} />
-          )}
-          <RowMenuItem
-            label="Take off TV"
-            danger={detached}
-            reason={detached ? "can't be undone" : undefined}
-            onSelect={onTakeOffTV}
-          />
+          {children}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
+  )
+}
+
+/** One name for the action everywhere, matching the add button's own "Take off
+ *  TV" (see DESIGN.md's add button spec). Danger-styled when the item is
+ *  detached, since removing it there can't be undone. */
+function TakeOffTVItem({ detached, onSelect }: { detached: boolean; onSelect: () => void }) {
+  return (
+    <RowMenuItem
+      label="Take off TV"
+      danger={detached}
+      reason={detached ? "can't be undone" : undefined}
+      onSelect={onSelect}
+    />
   )
 }
 
@@ -488,22 +482,21 @@ function DetachedTag() {
 
 function CatalogRow({
   row,
-  tiles,
   position,
   first,
   last,
   groupWord,
-  compact,
   onMove,
+  children,
 }: {
   row: PreviewRow
-  tiles: CatalogTiles
   position: number
   first: boolean
   last: boolean
   groupWord: string
-  compact: boolean
   onMove: (direction: -1 | 1) => void
+  /** The row's strip of poster tiles, in Strips mode. */
+  children: ReactNode
 }) {
   const home = useHomeSelection()
   const catalog = home.catalogById.get(row.id)
@@ -520,29 +513,23 @@ function CatalogRow({
       first={first}
       last={last}
       groupWord={groupWord}
-      compact={compact}
       onMoveUp={() => onMove(-1)}
       onMoveDown={() => onMove(1)}
-      body={
-        <>
-          <span className="truncate text-[13px] font-medium">{row.name}</span>
-          <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
-            <span className="truncate">{detail || 'no filters'}</span>
-            {detached && <DetachedTag />}
-          </span>
-        </>
-      }
-      strip={<TileRun tiles={tiles} width={64} height={96} wrap={false} />}
-      menu={
-        <RowMenu
-          name={row.name}
-          showMoveToDiscover
-          onMoveToDiscover={() => home.toggleShowInHome(row.id)}
-          onTakeOffTV={() => home.removeCatalog(row.id)}
-          detached={detached}
-        />
-      }
-    />
+    >
+      <RowBody>
+        <span className="truncate text-[13px] font-medium">{row.name}</span>
+        <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
+          <span className="truncate">{detail || 'no filters'}</span>
+          {detached && <DetachedTag />}
+        </span>
+        {children}
+      </RowBody>
+
+      <RowMenu name={row.name}>
+        <RowMenuItem label="Move to Discover" onSelect={() => home.toggleShowInHome(row.id)} />
+        <TakeOffTVItem detached={detached} onSelect={() => home.removeCatalog(row.id)} />
+      </RowMenu>
+    </HomeRow>
   )
 }
 
@@ -552,16 +539,17 @@ function CollectionRow({
   first,
   last,
   groupWord,
-  compact,
   onMove,
+  children,
 }: {
   collection: PreviewCollection
   position: number
   first: boolean
   last: boolean
   groupWord: string
-  compact: boolean
   onMove: (direction: -1 | 1) => void
+  /** The collection's strip of folder tiles, in Strips mode. */
+  children: ReactNode
 }) {
   const home = useHomeSelection()
   const detached = home.isDetached(collection.id)
@@ -575,28 +563,22 @@ function CollectionRow({
       first={first}
       last={last}
       groupWord={groupWord}
-      compact={compact}
       onMoveUp={() => onMove(-1)}
       onMoveDown={() => onMove(1)}
-      body={
-        <>
-          <span className="truncate text-[13px] font-medium">{collection.title}</span>
-          <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
-            <span className="truncate">{detail}</span>
-            {detached && <DetachedTag />}
-          </span>
-        </>
-      }
-      strip={<FolderStrip folders={collection.folders} />}
-      menu={
-        <RowMenu
-          name={collection.title}
-          showMoveToDiscover={false}
-          onTakeOffTV={() => home.removeCollection(collection.id)}
-          detached={detached}
-        />
-      }
-    />
+    >
+      <RowBody>
+        <span className="truncate text-[13px] font-medium">{collection.title}</span>
+        <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
+          <span className="truncate">{detail}</span>
+          {detached && <DetachedTag />}
+        </span>
+        {children}
+      </RowBody>
+
+      <RowMenu name={collection.title}>
+        <TakeOffTVItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
+      </RowMenu>
+    </HomeRow>
   )
 }
 
