@@ -75,7 +75,9 @@ function useFolderPage(preview: HomeScreenPreview) {
 
   const openFolder = useCallback((next: FolderPageTarget) => {
     try {
-      window.history.pushState({ unoFolder: true }, '')
+      // Carries React Router's own state along, so a browser Forward onto this
+      // entry still hands Builder its profile.
+      window.history.pushState({ ...window.history.state, unoFolder: true }, '')
       pushed.current = true
     } catch {
       pushed.current = false
