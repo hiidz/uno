@@ -66,6 +66,10 @@ Entirely frontend code. Uno's Go side never mints, refreshes, or stores a Nuvio 
   catches `401`, refreshes once, retries the original request, and only then clears session
   state and navigates to `/login` via the `router` singleton exported from
   `web/src/routes/router.tsx`.
+- **The query cache is per account.** No query key carries the user, so
+  `web/src/lib/query-client.ts` subscribes to auth state and calls `queryClient.clear()`
+  whenever the signed-in user id changes — sign-out, "Switch account", or another tab's
+  session for a different user.
 - **Dev bypass** — in a dev build only, `/login` renders a "Dev bypass login" button when
   `VITE_DEV_AUTH_BYPASS_TOKEN` is set in `web/.env`. `loginWithBypassToken` (`session.ts`) builds
   a synthetic session holding that token as its access token and applies it directly, with no

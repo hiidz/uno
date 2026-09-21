@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 import { ApiError } from '@/api'
+import { getAuthState, subscribeAuth } from '@/auth'
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,4 +19,16 @@ export const queryClient = new QueryClient({
       staleTime: 30_000,
     },
   },
+})
+
+// No query key carries the account, so everything cached belongs to whoever
+// was signed in. Dropping the cache whenever the signed-in user changes —
+// sign-out, or another tab's session for a different user — keeps one
+// account's profiles and rows from rendering for the next.
+let cachedUserId = getAuthState().user?.id ?? null
+subscribeAuth(() => {
+  const userId = getAuthState().user?.id ?? null
+  if (userId === cachedUserId) return
+  cachedUserId = userId
+  queryClient.clear()
 })
