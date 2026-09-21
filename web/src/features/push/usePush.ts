@@ -25,6 +25,9 @@ export type PushOutcome =
 
 export interface Push {
   push: () => void
+  /** False until the home selection has loaded. Push is full-replace, so
+   *  pushing before then would send an empty home screen. */
+  ready: boolean
   pushing: boolean
   outcome: PushOutcome | null
   dismiss: () => void
@@ -44,7 +47,7 @@ export function usePush(profileIndex: number): Push {
   const inFlight = useRef(false)
 
   const push = useCallback(() => {
-    if (inFlight.current) return
+    if (inFlight.current || !home.ready) return
     inFlight.current = true
 
     // Snapshotted before the await, and handed back to `markPushed` on
@@ -99,5 +102,5 @@ export function usePush(profileIndex: number): Push {
 
   const dismiss = useCallback(() => setOutcome(null), [])
 
-  return { push, pushing, outcome, dismiss }
+  return { push, ready: home.ready, pushing, outcome, dismiss }
 }

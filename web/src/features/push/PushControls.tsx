@@ -11,13 +11,17 @@ import { useCopy } from './useCopy'
  * It *is* disabled while a push is in flight. Two overlapping pushes mean two
  * interleaved pull-then-push cycles against Nuvio's collections blob, and the
  * later pull can miss the earlier push and clobber it.
+ *
+ * It is also disabled until the home selection has loaded: before then the
+ * pending state is empty, and a full-replace push of it would remove every Uno
+ * row from the profile.
  */
-export function PushButton({ push, pushing }: Push) {
+export function PushButton({ push, ready, pushing }: Push) {
   return (
     <button
       type="button"
       onClick={push}
-      disabled={pushing}
+      disabled={!ready || pushing}
       // A floor on the width below `lg`. The label swaps to "Pushing…" while a
       // push is in flight, and in a header that no longer wraps the extra width
       // comes out of the profile chip beside it, which re-truncates as it goes.

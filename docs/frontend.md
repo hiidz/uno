@@ -701,6 +701,9 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **The Push button stays enabled with zero pending edits.** It is the only recovery path from
   that compound-failure case, and nothing else marks that state — graying it out on
   `isDirty === false` is an obvious-looking cleanup that quietly removes the recovery path.
+- **Push is blocked until the home selection has loaded** (`home.ready`), both on the button
+  and inside `push()`. Before then `snapshot()` returns `EMPTY_HOME`, and a full-replace push
+  of it would remove every Uno catalog row and collection from the profile.
 - **A second push is blocked while one is in flight**, via a **ref**, not render-captured
   state — the guard has to reject a second call raised before a re-render. Two overlapping
   `PullCollections`→`PushCollections` cycles can clobber each other.
