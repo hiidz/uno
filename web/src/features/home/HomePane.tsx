@@ -2,11 +2,10 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, ChevronUp, MoreHorizontal } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { tmdbKind } from '@/api'
-import { Grip } from '@/components/dnd'
+import { Grip, MoveDownButton, MoveUpButton } from '@/components/dnd'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
@@ -345,14 +344,12 @@ function HomeRow({
     >
       <div className="flex flex-col gap-0.5">
         <Grip label={`Reorder ${name}, ${ordinal(position)} on your TV`} sortable={{ attributes, listeners }} />
-        <RowIconButton
-          icon={ChevronUp}
+        <MoveUpButton
           label={`Move ${name} up${first ? `, already first of ${groupWord}` : ''}`}
           disabled={first}
           onClick={onMoveUp}
         />
-        <RowIconButton
-          icon={ChevronDown}
+        <MoveDownButton
           label={`Move ${name} down${last ? `, already last of ${groupWord}` : ''}`}
           disabled={last}
           onClick={onMoveDown}
@@ -372,35 +369,6 @@ function HomeRow({
  *  one is composed in. */
 function RowBody({ children }: { children: ReactNode }) {
   return <div className="flex min-w-0 flex-col gap-1">{children}</div>
-}
-
-function RowIconButton({
-  icon,
-  label,
-  disabled,
-  onClick,
-}: {
-  icon: LucideIcon
-  label: string
-  disabled: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className={`tap grid h-8 w-8 place-items-center rounded-[2px] transition-colors ${
-        disabled
-          ? 'text-dimmer cursor-not-allowed'
-          : 'text-dim hover:bg-line hover:text-ink active:bg-line-hi'
-      }`}
-    >
-      <Icon icon={icon} size={14} />
-    </button>
-  )
 }
 
 /** The row's ⋯ menu: the trigger and the popover, holding whichever items the

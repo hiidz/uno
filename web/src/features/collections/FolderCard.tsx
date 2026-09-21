@@ -712,8 +712,7 @@ function FolderCatalogs({
                   .filter((other) => other.key !== ref.key && other.catalogID === ref.catalogID)
                   .map((other) => other.genre)}
                 position={index}
-                first={index === 0}
-                last={index === folder.refs.length - 1}
+                total={folder.refs.length}
                 option={optionByID.get(ref.catalogID)}
                 usedInPlaces={usedInPlaces}
                 onGenreChange={(genre) => onSetRefGenre(ref.key, genre)}
@@ -757,8 +756,7 @@ function RefRow({
   refKeys,
   siblingGenres,
   position,
-  first,
-  last,
+  total,
   option,
   usedInPlaces,
   onGenreChange,
@@ -777,8 +775,7 @@ function RefRow({
    *  the pairs this ref may not take, and "Add another genre" may not add. */
   siblingGenres: string[]
   position: number
-  first: boolean
-  last: boolean
+  total: number
   option: RefOption | undefined
   usedInPlaces: (catalogID: string) => number
   onGenreChange: (genre: string) => void
@@ -855,12 +852,12 @@ function RefRow({
           ) : null}
           <RefMenu
             label={option?.name ?? 'this catalog'}
-            first={first}
-            last={last}
+            first={position === 0}
+            last={position === total - 1}
             onMove={onMove}
             onRemove={onRemove}
-            onAddGenre={option ? () => nextGenre && onAddGenre(nextGenre) : undefined}
-            canAddGenre={nextGenre !== undefined}
+            nextGenre={nextGenre}
+            onAddGenre={option ? onAddGenre : undefined}
             onCopyIntoCollection={option && !isScoped ? onCopyIntoCollection : undefined}
           />
         </div>
@@ -974,8 +971,8 @@ function RefMenu({
   last,
   onMove,
   onRemove,
+  nextGenre,
   onAddGenre,
-  canAddGenre,
   onCopyIntoCollection,
 }: {
   label: string
@@ -983,11 +980,12 @@ function RefMenu({
   last: boolean
   onMove: (direction: -1 | 1) => void
   onRemove: () => void
+  /** The next genre this ref's catalog can be narrowed by. Absent before the
+   *  genre options land, and once every one of them is taken by a ref to this
+   *  catalog in this folder. */
+  nextGenre?: string
   /** Absent for an unavailable catalog, which has no genres to offer. */
-  onAddGenre?: () => void
-  /** False until the genre options land, and once every one of them is taken
-   *  by a ref to this catalog in this folder. */
-  canAddGenre: boolean
+  onAddGenre?: (genre: string) => void
   /** Absent for a scoped or unavailable catalog — nothing else can reference
    *  it, so there's nothing to copy it away from. */
   onCopyIntoCollection?: () => void
@@ -1007,7 +1005,13 @@ function RefMenu({
           className="bg-raised-hi border-line-hi z-40 flex w-56 flex-col gap-0.5 rounded-[2px] border p-1.5"
         >
           {onAddGenre && (
-            <DropdownMenu.Item disabled={!canAddGenre} onSelect={onAddGenre} className={`${MENU_ITEM} text-ink`}>
+            <DropdownMenu.Item
+              disabled={nextGenre === undefined}
+              onSelect={() => {
+                if (nextGenre !== undefined) onAddGenre(nextGenre)
+              }}
+              className={`${MENU_ITEM} text-ink`}
+            >
               Add another genre
             </DropdownMenu.Item>
           )}
