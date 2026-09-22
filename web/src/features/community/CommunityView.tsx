@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Navigate } from 'react-router-dom'
+import { ProfileNotSelectedError } from '@/api'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
 import { Segmented } from '@/components/fields'
 import { ListState } from '@/components/ListState'
@@ -119,6 +121,12 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
 
   const activeQuery = kind === 'catalogs' ? catalogsQuery : collectionsQuery
   const activeCount = kind === 'catalogs' ? catalogs.length : collections.length
+
+  // A 404 on a profile-scoped route means this slot was never selected —
+  // there's nothing to retry, so send the user back to pick one.
+  if (activeQuery.error instanceof ProfileNotSelectedError) {
+    return <Navigate to="/profiles" replace />
+  }
 
   return (
     <section className="mx-auto flex w-full max-w-[900px] flex-col gap-4 p-4 lg:p-6">
