@@ -68,44 +68,53 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
     setPreviewID((current) => (current === id ? null : id))
   }
 
+  // Takes on different rows can overlap, so each take settles through its own
+  // mutateAsync promise: callbacks passed to mutate() run only for the latest
+  // call, which would leave an earlier row stuck on "Taking…".
   function take(catalog: CommunityCatalog) {
     setPendingCatalogIDs((ids) => new Set(ids).add(catalog.id))
-    mutations.takeCatalog.mutate(catalog.id, {
-      onSuccess: () =>
-        setToast({
-          text: catalog.taken ? 'Added another copy to your catalogs' : 'Added to your catalogs',
-          tone: 'success',
-        }),
-      onError: (error) =>
-        setToast({ text: `Couldn't take this catalog: ${error.message}`, tone: 'danger' }),
-      onSettled: () =>
+    mutations.takeCatalog
+      .mutateAsync(catalog.id)
+      .then(
+        () =>
+          setToast({
+            text: catalog.taken ? 'Added another copy to your catalogs' : 'Added to your catalogs',
+            tone: 'success',
+          }),
+        (error: Error) =>
+          setToast({ text: `Couldn't take this catalog: ${error.message}`, tone: 'danger' }),
+      )
+      .finally(() =>
         setPendingCatalogIDs((ids) => {
           const next = new Set(ids)
           next.delete(catalog.id)
           return next
         }),
-    })
+      )
   }
 
   function takeCollection(collection: CommunityCollection) {
     setPendingCollectionIDs((ids) => new Set(ids).add(collection.id))
-    mutations.takeCollection.mutate(collection.id, {
-      onSuccess: () =>
-        setToast({
-          text: collection.taken
-            ? 'Added another copy to your collections'
-            : 'Added to your collections',
-          tone: 'success',
-        }),
-      onError: (error) =>
-        setToast({ text: `Couldn't take this collection: ${error.message}`, tone: 'danger' }),
-      onSettled: () =>
+    mutations.takeCollection
+      .mutateAsync(collection.id)
+      .then(
+        () =>
+          setToast({
+            text: collection.taken
+              ? 'Added another copy to your collections'
+              : 'Added to your collections',
+            tone: 'success',
+          }),
+        (error: Error) =>
+          setToast({ text: `Couldn't take this collection: ${error.message}`, tone: 'danger' }),
+      )
+      .finally(() =>
         setPendingCollectionIDs((ids) => {
           const next = new Set(ids)
           next.delete(collection.id)
           return next
         }),
-    })
+      )
   }
 
   const activeQuery = kind === 'catalogs' ? catalogsQuery : collectionsQuery
