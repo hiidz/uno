@@ -70,6 +70,11 @@ export interface Library {
   refetch: () => void
 }
 
+/** Stable fallbacks for a list that hasn't loaded, so memos keyed on it don't
+ *  recompute on every render while it's pending or failed. */
+const NO_CATALOGS: LibraryCatalog[] = []
+const NO_LANGUAGES: Language[] = []
+
 export function useLibrary(profileIndex: number): Library {
   const results = useQueries({
     queries: [
@@ -133,7 +138,7 @@ export function useLibrary(profileIndex: number): Library {
     queryFn: fetchLanguages,
     staleTime: Infinity,
   })
-  const languages = languagesResult.data ?? []
+  const languages = languagesResult.data ?? NO_LANGUAGES
 
   const countriesResult = useQuery({
     queryKey: queryKeys.countries(),
@@ -142,7 +147,7 @@ export function useLibrary(profileIndex: number): Library {
   })
   const countryNames = useMemo(() => buildCountryLookup(countriesResult.data ?? []), [countriesResult.data])
 
-  const catalogs = ownedCatalogs.data ?? []
+  const catalogs = ownedCatalogs.data ?? NO_CATALOGS
 
   const collections = useMemo(
     () => (ownedCollections.data ?? []).map((c) => ({ ...c, folders: c.folders ?? [] })),
