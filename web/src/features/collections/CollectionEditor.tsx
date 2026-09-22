@@ -148,7 +148,7 @@ export function CollectionEditor({
   certifications,
   countryNames,
   languages,
-  usedInPlaces,
+  usedInFolders,
 }: {
   initial: CollectionFormState | null
   options: RefOption[]
@@ -192,10 +192,10 @@ export function CollectionEditor({
   certifications: { movie: CertificationsByCountry; tv: CertificationsByCountry }
   countryNames: CountryLookup
   languages: Language[]
-  /** Home screen plus every folder across every owned collection — computed
-   *  in `Workspace`, which is the level that has the whole library and the
-   *  home selection. Meaningful only for a listed catalog. */
-  usedInPlaces: (catalogID: string) => number
+  /** How many folders across every owned collection reference a catalog —
+   *  computed in `Workspace`, which is the level that has the whole library.
+   *  Meaningful only for a listed catalog. */
+  usedInFolders: (catalogID: string) => number
 }) {
   const catalogMutations = useCatalogMutations(profileIndex)
 
@@ -787,7 +787,7 @@ export function CollectionEditor({
                   options={options}
                   optionByID={mergedOptionByID}
                   collectionID={collectionID}
-                  usedInPlaces={usedInPlaces}
+                  usedInFolders={usedInFolders}
                   onChange={(update) => patchFolder(selectedFolder.key, update)}
                   onMove={(direction) => moveFolder(selectedFolder.key, direction)}
                   onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}

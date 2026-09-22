@@ -29,6 +29,7 @@ import { Grip, RowIconButton, reorder, useDragSensors } from '@/components/dnd'
 import { fetchCatalogGenreOptions, queryKeys, type Catalog } from '@/api'
 import { Segmented, Select, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
+import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { TILE_ASPECT } from '@/features/preview/tiles'
 import { ordinal } from '@/lib/ordinal'
 import { pluralCount } from '@/lib/plural'
@@ -581,9 +582,9 @@ interface FolderCatalogsProps {
   /** This collection's own server id. Absent until the first Save — "copy"
    *  and "new" both need a real collection row to scope a catalog to. */
   collectionID?: string
-  /** Home screen plus every folder across every owned collection — only
-   *  meaningful for a listed catalog, so the row asks with its own id. */
-  usedInPlaces: (catalogID: string) => number
+  /** How many folders across every owned collection reference a catalog —
+   *  only meaningful for a listed catalog, so the row asks with its own id. */
+  usedInFolders: (catalogID: string) => number
   onAddRef: (catalogID: string) => void
   /** "Copy" from the picker: adds a fresh scoped copy as a new ref, rather
    *  than linking the listed catalog picked. */
@@ -610,7 +611,7 @@ function FolderCatalogs({
   options,
   optionByID,
   collectionID,
-  usedInPlaces,
+  usedInFolders,
   onAddRef,
   onCopyRefIntoCollection,
   onRemoveRef,
@@ -714,7 +715,7 @@ function FolderCatalogs({
                 position={index}
                 total={folder.refs.length}
                 option={optionByID.get(ref.catalogID)}
-                usedInPlaces={usedInPlaces}
+                usedInFolders={usedInFolders}
                 onGenreChange={(genre) => onSetRefGenre(ref.key, genre)}
                 onAddGenre={(genre) => onAddGenreRef(ref.key, genre)}
                 onRemove={() => onRemoveRef(ref.key)}
@@ -758,7 +759,7 @@ function RefRow({
   position,
   total,
   option,
-  usedInPlaces,
+  usedInFolders,
   onGenreChange,
   onAddGenre,
   onRemove,
@@ -777,7 +778,7 @@ function RefRow({
   position: number
   total: number
   option: RefOption | undefined
-  usedInPlaces: (catalogID: string) => number
+  usedInFolders: (catalogID: string) => number
   onGenreChange: (genre: string) => void
   onAddGenre: (genre: string) => void
   onRemove: () => void
@@ -798,7 +799,13 @@ function RefRow({
 
   const kind = option ? (option.catalog.type === 'movie' ? 'movie' : 'series') : "can't be saved"
   const isScoped = option ? option.catalog.collection_id !== null : false
-  const places = option && !isScoped ? usedInPlaces(refState.catalogID) : 0
+  // The home screen is counted here, not in `usedInFolders`, so a change to
+  // the selection re-renders the rows that state it and not the workspace.
+  const home = useHomeSelection()
+  const places =
+    option && !isScoped
+      ? usedInFolders(refState.catalogID) + (home.hasCatalog(refState.catalogID) ? 1 : 0)
+      : 0
 
   return (
     <li

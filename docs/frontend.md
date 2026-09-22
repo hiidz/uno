@@ -314,6 +314,12 @@ write; it just can't move `baseline` or `current`. Removing the guard, or making
 on fresh data, silently clobbers the user's pending home-screen edits on the next catalog or
 collection write.
 
+**The provider publishes two contexts.** `useHomeSelection` returns everything, and its value
+changes on every edit; `useHomeEdits` returns only the edit functions, which change only with
+`isPinned`. `Workspace` reads `useHomeEdits`, so an edit to the home screen re-renders the
+components that show the selection — the rail, the Home pane, the header, a collection editor's
+"used in N places" rows — and not the workspace and the open editor under it.
+
 **`HomeSelectionContext`'s `genres` passthrough is load-bearing, not a redundant re-export.**
 `HomePane` is rendered as `<HomePane />` with no props, so it has no `profileIndex` to call
 `useLibrary` with itself.
@@ -585,7 +591,8 @@ button.
   has no inline Edit here at all — it's a live pointer, and editing it from inside a collection
   used to silently reach every other folder and the library too, which read as a surprise rather
   than a feature. The row instead says how many places it's used (home screen plus every folder
-  across every owned collection, `Workspace`'s `usedInPlaces`) and offers "Copy into this
+  across every owned collection — the folders from `Workspace`'s `usedInFolders`, the home screen
+  read by the row itself) and offers "Copy into this
   collection", which replaces just this ref with a fresh scoped copy (itself now staged, per
   above) in place rather than adding a second reference. Editing a listed catalog directly is the
   library rail's job. "One level down" is a `Modal` layered over this editor, not a second pane —

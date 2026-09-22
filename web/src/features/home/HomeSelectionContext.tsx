@@ -9,7 +9,7 @@ import type { HomeChange } from './changes'
 import { EMPTY_HOME, moveWithinBand, reorderWithinBand } from './pending'
 import type { HomeCatalogEntry, HomeState } from './pending'
 
-export interface HomeSelection {
+export interface HomeSelection extends HomeEdits {
   /** False until the server's current selection has loaded. Edits are blocked
    *  until then — hydrating over a user's changes would silently discard them. */
   ready: boolean
@@ -66,6 +66,15 @@ export interface HomeSelection {
 
   hasCatalog: (id: string) => boolean
   hasCollection: (id: string) => boolean
+}
+
+/**
+ * The edits to the pending selection, also on a context of their own: they
+ * change only with `isPinned`, never with the selection they edit, so a
+ * component that makes edits without reading the selection uses
+ * `useHomeEdits` and doesn't re-render on every change to it.
+ */
+export interface HomeEdits {
   addCatalog: (id: string) => void
   removeCatalog: (id: string) => void
   toggleShowInHome: (id: string) => void
@@ -85,6 +94,7 @@ export interface HomeSelection {
 }
 
 export const HomeSelectionContext = createContext<HomeSelection | null>(null)
+export const HomeEditsContext = createContext<HomeEdits | null>(null)
 
 export function HomeSelectionProvider({
   profileIndex,
@@ -205,7 +215,7 @@ export function HomeSelectionProvider({
   // `isPinned`) — stable for the life of the provider — so this whole cluster
   // needs recomputing only when `isPinned` itself changes, not on every render
   // that changes `state`.
-  const editFns = useMemo(
+  const editFns = useMemo<HomeEdits>(
     () => ({
       addCatalog: (id: string) =>
         edit((previous) =>
@@ -329,5 +339,9 @@ export function HomeSelectionProvider({
     ],
   )
 
-  return <HomeSelectionContext.Provider value={value}>{children}</HomeSelectionContext.Provider>
+  return (
+    <HomeEditsContext.Provider value={editFns}>
+      <HomeSelectionContext.Provider value={value}>{children}</HomeSelectionContext.Provider>
+    </HomeEditsContext.Provider>
+  )
 }

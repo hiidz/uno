@@ -23,7 +23,7 @@ import {
 import { accessibleIDs, buildRefOptions, indexRefOptions } from '@/features/collections/refs'
 import { useCollectionMutations } from '@/features/collections/useCollectionMutations'
 import { HomePane, type HomeView } from '@/features/home/HomePane'
-import { useHomeSelection } from '@/features/home/useHomeSelection'
+import { useHomeEdits } from '@/features/home/useHomeSelection'
 import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
@@ -88,7 +88,9 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  */
 export function Workspace({ profileIndex }: { profileIndex: number }) {
   const library = useLibrary(profileIndex)
-  const home = useHomeSelection()
+  // Edits only: reading the selection here would re-render the whole
+  // workspace, open editor included, on every change to the home screen.
+  const home = useHomeEdits()
 
   const catalogMutations = useCatalogMutations(profileIndex)
   const collectionMutations = useCollectionMutations(profileIndex)
@@ -322,15 +324,15 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
-  // Home screen plus every folder across every owned collection — what the
-  // collection editor's "Used in N places" line asks for a listed catalog.
-  // Lives here because this is the level with both the whole library and the
-  // home selection; the collection editor only ever sees one collection.
-  // Hoisted above the early return below: every Hook in this component has
-  // to run on every render, guard or not.
-  const usedInPlaces = useCallback(
+  // Every folder across every owned collection that references a listed
+  // catalog — the folder half of the collection editor's "used in N places"
+  // line, which adds the home screen itself. Lives here because this is the
+  // level with the whole library; the collection editor only ever sees one
+  // collection. Hoisted above the early return below: every Hook in this
+  // component has to run on every render, guard or not.
+  const usedInFolders = useCallback(
     (catalogID: string) => {
-      let count = home.hasCatalog(catalogID) ? 1 : 0
+      let count = 0
       for (const collection of library.collections) {
         for (const folder of collection.folders) {
           if (folder.refs?.some((ref) => ref.catalog_id === catalogID)) count += 1
@@ -338,7 +340,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       }
       return count
     },
-    [home, library.collections],
+    [library.collections],
   )
 
   // A 404 on a profile-scoped route means this slot was never selected —
@@ -730,7 +732,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               certifications={library.certifications}
               countryNames={library.countryNames}
               languages={library.languages}
-              usedInPlaces={usedInPlaces}
+              usedInFolders={usedInFolders}
             />
           )}
         </div>
