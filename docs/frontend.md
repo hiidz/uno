@@ -226,7 +226,9 @@ Other decisions worth keeping:
   one grouped control because they are required together on the wire: `watch_region` is written
   only alongside a non-empty id list and cleared with the last chip. A selected service the
   newly chosen region doesn't list renders as a `Service {id}` chip rather than vanishing while
-  still in the payload.
+  still in the payload. Services are stored pipe-joined (`8|337`), which TMDB reads as "on any of
+  these"; a comma would mean "on every one of these at once", which is almost never what picking
+  several services means.
 - **Age rating is the same shape**, over `GET /api/certifications/{type}` — options come from
   TMDB per type because the scales differ, and picking a rating defaults its country.
 - **The editor previews on request, not as you type** (`RecipePreview` → `useRecipeTiles` →
@@ -256,7 +258,8 @@ Other decisions worth keeping:
   the next Save like any other field. This editor never offers the other direction (demote):
   it's only ever opened on a scoped row from inside `CollectionEditor`, which is where "copy into
   this collection" and "new inside this collection" already cover getting one scoped in the first
-  place.
+  place. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
+  promote, so its nested editor leaves the button out and says to save the collection first.
 
 ## Home pane — List view
 
@@ -392,7 +395,13 @@ Decisions that shape the code:
   without discarding the order the user just dragged.
 - **`ListState` owns loading and error for both views; each view owns its own empty case.**
   List's empty is an instruction to go add something; Preview's is the colour-bars moment from
-  the design section below.
+  the design section below. The error is only one that leaves nothing to draw — a selection that
+  never hydrated — and carries a Retry. A library list that failed is the rail's to report, not
+  Home's: the rail shows one error and one Retry for both lists, and leaves out the group whose list
+  failed while the one that loaded keeps its rows. While it has, `isDetached` marks nothing, since every row would
+  otherwise read as missing from a library that simply hasn't arrived. A background refetch that
+  fails after the page has loaded keeps what it had rather than replacing the pane, since the only
+  other way out of a replaced pane is a reload, which discards pending edits.
 
 **Real tiles.** `web/src/features/home/useCatalogTiles.ts` issues **one query per catalog, never
 a batch** for the catalog rows; a folder page goes straight to `useRecipesTiles` with
@@ -434,7 +443,9 @@ Back doesn't); a `popstate` listener closes the folder when that entry is popped
 other way — the arrow, Escape, the target becoming unresolvable, or this view unmounting entirely
 (the List | Preview switch, or an editor opening) — consumes the pushed entry with one more
 `history.back()` rather than leaving it to `popstate`, so a later physical Back press never lands
-on a dead entry nobody is listening for.
+on a dead entry nobody is listening for. It does so only while that entry is still the current
+one: an in-app navigation away (Switch profile) has already pushed past it, and stepping back
+from there would land on it again and re-render the builder that was just left.
 
 ## Collection authoring
 

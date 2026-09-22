@@ -1,4 +1,4 @@
-import { useEffect, useId, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, type ReactNode } from 'react'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
 import { tmdbKind } from '@/api'
 import { InfoTip } from '@/components/fields'
@@ -116,9 +116,14 @@ export function CommunityCollectionPreview({
   collection: CommunityCollection
   genres: GenreLookups
 }) {
-  const options = buildRefOptions(collection.catalogs ?? [], genres)
-  const optionByID = indexRefOptions(options)
-  const state = formFromCollection(collection)
+  const optionByID = useMemo(
+    () => indexRefOptions(buildRefOptions(collection.catalogs ?? [], genres)),
+    [collection, genres],
+  )
+  // Memoised on the row: `formFromCollection` mints fresh folder keys on every
+  // call, and the preview holds its open folder page by key, so a fresh form on
+  // each render of the list would close that page.
+  const state = useMemo(() => formFromCollection(collection), [collection])
   return <CollectionPreview state={state} optionByID={optionByID} />
 }
 

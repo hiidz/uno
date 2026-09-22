@@ -97,7 +97,10 @@ export function WatchProviderPicker({
       : [...selectedIDs, id]
 
     onParams({
-      with_watch_providers: next.length ? next.join(',') : undefined,
+      // Pipe-joined: TMDB reads `|` as "on any of these" and `,` as "on every
+      // one of these", and a title streaming on all of several services at
+      // once is almost never what picking them means.
+      with_watch_providers: next.length ? next.join('|') : undefined,
       // The pair is required together server-side, so the region rides along
       // with the ids rather than being a field of its own to forget.
       watch_region: next.length ? region : undefined,

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, TriangleAlert } from 'lucide-react'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
 import { Icon } from '@/components/Icon'
-import { EditorFooter, SaveError } from '@/features/builder/EditorFooter'
+import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { useEditorForm } from '@/features/builder/useEditorForm'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
@@ -83,6 +83,7 @@ export function CatalogEditor({
   onDuplicate,
   onDelete,
   onDirtyChange,
+  canMoveToLibrary = true,
 }: {
   initial: CatalogFormState | null
   genres: { movie: Genre[]; tv: Genre[] }
@@ -101,6 +102,10 @@ export function CatalogEditor({
   onDuplicate?: () => void
   onDelete?: () => void
   onDirtyChange: (dirty: boolean) => void
+  /** False for a catalog staged inside a collection that isn't a row yet: it
+   *  is created scoped when the collection saves, so there is nothing to move
+   *  until then. */
+  canMoveToLibrary?: boolean
 }) {
   const baseline = useMemo(() => initial ?? emptyForm(), [initial])
   const { state, setState, showErrors, revealErrors, submit } = useEditorForm(
@@ -283,6 +288,7 @@ export function CatalogEditor({
           onSubmit={trySubmit}
           status={status}
           saveLabel="Save"
+          saveError={serverError}
         />
       }
     >
@@ -325,17 +331,20 @@ export function CatalogEditor({
                 <span className="cr-role type-eyebrow">Scope</span>
                 <div className="cr-val ed-line">
                   <span className="type-data text-[13px]">Only inside this collection</span>
-                  <button
-                    type="button"
-                    className="btn-secondary btn-sm"
-                    onClick={() => patch({ collectionID: null, isPublic: false })}
-                  >
-                    Move to library
-                  </button>
+                  {canMoveToLibrary && (
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      onClick={() => patch({ collectionID: null, isPublic: false })}
+                    >
+                      Move to library
+                    </button>
+                  )}
                 </div>
                 <p className="type-data text-dimmer m-0 pt-1 text-[11px] leading-[1.45]">
-                  Scoped catalogs can't be shared. Moving it to your library makes it usable from
-                  any of your folders and lets it join the community list — takes effect on Save.
+                  {canMoveToLibrary
+                    ? "Scoped catalogs can't be shared. Moving it to your library makes it usable from any of your folders and lets it join the community list — takes effect on Save."
+                    : "Scoped catalogs can't be shared. Save the collection first, then this catalog can be moved to your library."}
                 </p>
               </div>
             ) : (
@@ -401,8 +410,6 @@ export function CatalogEditor({
           <RecipePreview preview={preview} type={state.type} invalid={recipeInvalid} onRun={runPreview} />
         </div>
       </div>
-
-      <SaveError noun="catalog" message={serverError} />
     </EditorShell>
   )
 }
@@ -803,6 +810,16 @@ function RollingWindow({
   const oddDays =
     days !== undefined && !isPreset && !isUpcoming && customYears === undefined ? days : undefined
 
+  // What was typed, kept while it still describes `days`. Derived from `days`
+  // alone, the box could never hold "1" (a year is the chip's), so typing "10"
+  // would clear itself at the first keystroke.
+  const [yearsText, setYearsText] = useState('')
+  const typedYears = Number(yearsText)
+  const yearsValue =
+    yearsText !== '' && typedYears >= 1 && typedYears * DAYS_PER_YEAR === days
+      ? yearsText
+      : (customYears ?? '')
+
   return (
     <>
       <div className="choices" role="group" aria-label="How recent">
@@ -836,9 +853,10 @@ function RollingWindow({
           type="number"
           min={1}
           max={50}
-          value={customYears ?? ''}
+          value={yearsValue}
           placeholder="#"
           onChange={(event) => {
+            setYearsText(event.target.value)
             const years = Number(event.target.value)
             onDays(event.target.value === '' || years < 1 ? undefined : years * DAYS_PER_YEAR)
           }}

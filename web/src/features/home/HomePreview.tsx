@@ -121,7 +121,10 @@ function useFolderPage(preview: HomeScreenPreview) {
   // view), or this view unmounts entirely (the List | Preview switch, or an
   // editor opens) — still has to consume a pushed entry, or a later physical
   // Back press does nothing: the history stack would hold a dead entry this
-  // component is no longer listening for.
+  // component is no longer listening for. Only while that entry is still the
+  // current one: an in-app navigation away (Switch profile) has already pushed
+  // past it, and going back from there would land on it again and re-render
+  // the builder the user just left.
   useEffect(() => {
     if (target !== null && page === null) setTarget(null)
   }, [target, page])
@@ -129,7 +132,7 @@ function useFolderPage(preview: HomeScreenPreview) {
   useEffect(() => {
     if (target === null && pushed.current) {
       pushed.current = false
-      window.history.back()
+      consumeFolderEntry()
     }
   }, [target])
 
@@ -137,12 +140,17 @@ function useFolderPage(preview: HomeScreenPreview) {
     return () => {
       if (pushed.current) {
         pushed.current = false
-        window.history.back()
+        consumeFolderEntry()
       }
     }
   }, [])
 
   return { target, page, openFolder, closeFolder }
+}
+
+/** Steps back off the folder's history entry, if it is the current one. */
+function consumeFolderEntry() {
+  if ((window.history.state as { unoFolder?: boolean } | null)?.unoFolder) window.history.back()
 }
 
 function FolderPageView({

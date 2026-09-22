@@ -94,6 +94,21 @@ export function LibrarySection({
         className="field type-data w-full text-[12px] pointer-coarse:text-[16px]"
       />
 
+      {/* One error and one Retry for the whole library: both lists come from
+          the same kind of request, and a single refetch reloads whichever
+          failed. A group whose own list failed isn't drawn at all; the one
+          that loaded keeps its rows. */}
+      <ListState
+        isLoading={false}
+        error={library.error}
+        isEmpty={false}
+        errorLabel="Couldn't load your library."
+        emptyLabel={null}
+        onRetry={library.refetch}
+      >
+        {null}
+      </ListState>
+
       <LibraryGroup
         label="Catalogs"
         action={
@@ -105,9 +120,7 @@ export function LibrarySection({
         }
         count={catalogs.length}
         isLoading={library.isLoading}
-        error={library.error}
-        onRetry={library.refetch}
-        errorLabel="Couldn't load catalogs."
+        failed={library.failed.catalogs}
         emptyLabel={
           query
             ? 'No catalogs match this filter.'
@@ -146,9 +159,7 @@ export function LibrarySection({
         }
         count={collections.length}
         isLoading={library.isLoading}
-        error={library.error}
-        onRetry={library.refetch}
-        errorLabel="Couldn't load collections."
+        failed={library.failed.collections}
         emptyLabel={
           query
             ? 'No collections match this filter.'
@@ -184,9 +195,7 @@ function LibraryGroup({
   action,
   count,
   isLoading,
-  error,
-  onRetry,
-  errorLabel,
+  failed,
   emptyLabel,
   children,
 }: {
@@ -194,29 +203,30 @@ function LibraryGroup({
   action?: React.ReactNode
   count: number
   isLoading: boolean
-  error: Error | null
-  onRetry: () => void
-  errorLabel: string
+  /** This list has no rows because its request failed. The group is left out
+   *  entirely — the rail's own error above carries the message and the Retry. */
+  failed: boolean
   emptyLabel: string
   children: React.ReactNode
 }) {
+  if (failed) return null
+
   return (
     <div className="flex flex-col gap-1">
       <div className="border-line mb-1 flex items-center gap-2 border-b pb-2">
         <span className="type-eyebrow flex-1">{label}</span>
-        {!isLoading && !error && (
+        {!isLoading && (
           <span className="type-data text-dimmer text-[10px]">{count}</span>
         )}
         {action}
       </div>
       <ListState
         isLoading={isLoading}
-        error={error}
+        error={null}
         isEmpty={count === 0}
         loadingLabel={`Loading ${label.toLowerCase()}…`}
-        errorLabel={errorLabel}
+        errorLabel=""
         emptyLabel={emptyLabel}
-        onRetry={onRetry}
       >
         {children}
       </ListState>

@@ -7,6 +7,7 @@ import {
   fetchLanguages,
   fetchOwnedCatalogs,
   fetchOwnedCollections,
+  ProfileNotSelectedError,
   queryKeys,
 } from '@/api'
 import type { Catalog, CertificationsByCountry, Collection, Folder, Language } from '@/api'
@@ -62,7 +63,10 @@ export interface Library {
    *  until the query lands — same degrade-gracefully treatment as genres. */
   countryNames: CountryLookup
   isLoading: boolean
+  /** Only set while a list has no rows to show — see `error` below. */
   error: Error | null
+  /** Which of the two lists that is, so the one that did load keeps its rows. */
+  failed: { catalogs: boolean; collections: boolean }
   refetch: () => void
 }
 
@@ -153,7 +157,17 @@ export function useLibrary(profileIndex: number): Library {
     languages,
     countryNames,
     isLoading: results.some((r) => r.isPending),
-    error: (results.find((r) => r.error)?.error as Error | undefined) ?? null,
+    // A failed background refetch keeps the rows it already had, so only a
+    // query with nothing to show counts as failed. A profile-not-selected 404
+    // always counts: it is what sends the builder back to the picker.
+    error:
+      (results.find(
+        (r) => r.error && (r.data === undefined || r.error instanceof ProfileNotSelectedError),
+      )?.error as Error | undefined) ?? null,
+    failed: {
+      catalogs: ownedCatalogs.isError && ownedCatalogs.data === undefined,
+      collections: ownedCollections.isError && ownedCollections.data === undefined,
+    },
     refetch: () => {
       for (const r of results) void r.refetch()
     },

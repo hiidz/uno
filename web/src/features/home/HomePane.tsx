@@ -118,6 +118,7 @@ export function HomePane({
         <ListState
           isLoading={home.isLoading || !home.ready}
           error={home.error}
+          onRetry={home.retry}
           isEmpty={false}
           loadingLabel="Loading your home screen…"
           errorLabel="Couldn't load your home screen."

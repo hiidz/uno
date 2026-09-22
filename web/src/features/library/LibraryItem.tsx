@@ -66,6 +66,8 @@ export function LibraryItem({
         tabIndex={0}
         onClick={onSelect}
         onKeyDown={(event) => {
+          // A key on the home toggle inside the row is the toggle's own press.
+          if (event.target !== event.currentTarget) return
           if (event.key !== 'Enter' && event.key !== ' ') return
           event.preventDefault()
           onSelect()

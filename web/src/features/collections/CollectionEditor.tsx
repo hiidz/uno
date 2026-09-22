@@ -15,7 +15,7 @@ import { moveByOne } from '@/components/dnd'
 import { Field, Segmented, Switch, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Modal } from '@/components/Modal'
-import { EditorFooter, SaveError } from '@/features/builder/EditorFooter'
+import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { NewItemDialog } from '@/features/builder/NewItemDialog'
 import { useEditorForm } from '@/features/builder/useEditorForm'
@@ -577,6 +577,7 @@ export function CollectionEditor({
           status={status}
           saveLabel="Save collection"
           cancelLabel="Discard changes"
+          saveError={serverError}
         />
       }
       docked="tv"
@@ -808,8 +809,6 @@ export function CollectionEditor({
         </div>
       </div>
 
-      <SaveError noun="collection" message={serverError} />
-
       {nestedCatalogID !== null &&
         (() => {
           // This modal only ever opens on a scoped catalog, real or draft —
@@ -857,6 +856,7 @@ export function CollectionEditor({
                   onSave={saveNestedCatalog}
                   onRequestClose={closeNestedCatalog}
                   onDirtyChange={setNestedDirty}
+                  canMoveToLibrary={!isDraftCatalogID(catalog.id)}
                 />
               </div>
               <ConfirmDialog

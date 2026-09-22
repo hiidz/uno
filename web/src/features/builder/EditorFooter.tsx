@@ -22,6 +22,7 @@ export function EditorFooter({
   status,
   saveLabel,
   cancelLabel,
+  saveError,
 }: {
   mode: 'edit' | 'duplicate'
   /** What is being saved, for the create button's default label. */
@@ -46,9 +47,26 @@ export function EditorFooter({
    *  `onRequestClose` and the shared `EditorGuard`'s leave-with-unsaved-changes
    *  prompt behind it — a second, editor-specific confirm isn't added here. */
   cancelLabel?: string
+  /**
+   * Plain-text body of a server rejection of the last save. Both builders
+   * mirror every server rule, so this should be unreachable, and a 400 that
+   * arrives anyway has no field to hang it on. It sits here, on its own line
+   * above the buttons, because this band is the one part of the editor that
+   * stays on screen: under the form it scrolled out of sight, and a save that
+   * failed looked like a press that did nothing.
+   */
+  saveError?: string | null
 }) {
   return (
     <>
+      {saveError && (
+        <p
+          role="alert"
+          className="type-data text-danger border-danger m-0 basis-full border-l-2 pl-3 text-[11px] leading-[1.45]"
+        >
+          Couldn't save this {noun}: {saveError}
+        </p>
+      )}
       {status ??
         (showErrors && errorCount > 0 && (
           <span className="type-data text-danger mr-auto text-[10.5px]">
@@ -68,21 +86,5 @@ export function EditorFooter({
         {saving ? 'Saving…' : (saveLabel ?? (mode === 'edit' ? 'Save changes' : `Create ${noun}`))}
       </button>
     </>
-  )
-}
-
-/**
- * A server 400 on save, under the form.
- *
- * Both builders mirror every server rule, so this should be unreachable — and
- * a 400 that arrives anyway is plain text with no field to hang it on, which
- * is why it renders as a banner rather than against an input.
- */
-export function SaveError({ noun, message }: { noun: string; message: string | null }) {
-  if (!message) return null
-  return (
-    <p className="type-data text-danger border-danger mt-6 border-l-2 pl-3 text-[11px] leading-[1.45]">
-      Couldn't save this {noun}: {message}
-    </p>
   )
 }

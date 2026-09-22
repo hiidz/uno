@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { fetchCatalogSelection, fetchCollectionSelection, queryKeys } from '@/api'
 import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
@@ -14,7 +14,13 @@ export interface HomeSelection {
    *  until then — hydrating over a user's changes would silently discard them. */
   ready: boolean
   isLoading: boolean
+  /** What stops the Home pane rendering: a selection that never loaded. A
+   *  selection refetch that fails after hydration doesn't count — pending edits
+   *  never read it again, and the lookup maps keep the rows they already had —
+   *  and neither does the library, whose failures the rail reports itself. */
   error: Error | null
+  /** Re-runs whatever failed. */
+  retry: () => void
 
   catalogs: HomeCatalogEntry[]
   collections: string[]
@@ -147,6 +153,8 @@ export function HomeSelectionProvider({
     return map
   }, [catalogSelectionData, library.catalogs, collectionById])
 
+  const libraryLoaded = !library.isLoading && !library.failed.catalogs && !library.failed.collections
+
   const libraryIds = useMemo(
     () =>
       new Set([
@@ -181,16 +189,16 @@ export function HomeSelectionProvider({
       catalogById,
       collectionById,
 
-      // Only meaningful once the library has actually loaded; before that
-      // everything would look detached.
-      isDetached: (id: string) => !library.isLoading && !libraryIds.has(id),
+      // Only meaningful once the library has actually loaded; before that, or
+      // when it failed to, everything would look detached.
+      isDetached: (id: string) => libraryLoaded && !libraryIds.has(id),
       isPinned,
       genres: library.genres,
 
       changes,
       pendingCount,
     }),
-    [catalogById, collectionById, library.isLoading, libraryIds, isPinned, library.genres, changes, pendingCount],
+    [catalogById, collectionById, libraryLoaded, libraryIds, isPinned, library.genres, changes, pendingCount],
   )
 
   // Every one of these only closes over `edit` (plus, for the band-aware ones,
@@ -272,12 +280,25 @@ export function HomeSelectionProvider({
     [edit, isPinned],
   )
 
+  // Every failed query in this profile's subtree — the two selections, and the
+  // library's own lists if they failed too.
+  const queryClient = useQueryClient()
+  const retry = useCallback(() => {
+    void queryClient.refetchQueries({
+      queryKey: queryKeys.profile(profileIndex),
+      predicate: (query) => query.state.status === 'error',
+    })
+  }, [queryClient, profileIndex])
+
   const value = useMemo<HomeSelection>(
     () => ({
       ready: current !== null,
       isLoading: catalogSelection.isPending || collectionSelection.isPending || library.isLoading,
       error:
-        ((catalogSelection.error ?? collectionSelection.error) as Error | null) ?? library.error,
+        current === null
+          ? ((catalogSelection.error ?? collectionSelection.error) as Error | null)
+          : null,
+      retry,
 
       catalogs: state.catalogs,
       collections: state.collections,
@@ -298,11 +319,11 @@ export function HomeSelectionProvider({
       state,
       pendingCount,
       library.isLoading,
-      library.error,
       catalogSelection.isPending,
       catalogSelection.error,
       collectionSelection.isPending,
       collectionSelection.error,
+      retry,
       readData,
       editFns,
     ],
