@@ -319,6 +319,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 		IsPublic: input.IsPublic,
 		PinToTop: input.PinToTop, ViewMode: input.ViewMode,
 		ShowAllTab: input.ShowAllTab, BackdropImageURL: input.BackdropImageURL,
+		FocusGlowEnabled: input.FocusGlowEnabled,
 		// HomeSortOrder/PushedVersion are unchanged by this update, read back
 		// before it for an accurate response. Version is the freshly bumped
 		// value updateCollectionRow just wrote.
