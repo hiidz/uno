@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowRight, TriangleAlert } from 'lucide-react'
@@ -10,6 +10,13 @@ import { Icon } from '@/components/Icon'
 export function ProfilePicker() {
   const navigate = useNavigate()
   const [selecting, setSelecting] = useState<number | null>(null)
+
+  // The builder is a separate chunk that /configure loads lazily. Fetching it
+  // while the picker is on screen means choosing a profile waits only on
+  // `POST /api/profiles/select`, not on that and then the download.
+  useEffect(() => {
+    void import('./Builder')
+  }, [])
 
   const profiles = useQuery({
     queryKey: queryKeys.profiles(),
