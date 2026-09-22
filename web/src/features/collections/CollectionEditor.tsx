@@ -237,16 +237,17 @@ export function CollectionEditor({
     [accessibleIDs, localCatalogs],
   )
 
-  // A catalog this editor knows about, currently scoped to *this* collection.
-  // These are exactly the rows `UpdateUserCollection`'s GC delete would drop
-  // on Save if the last folder ref to one of them is gone — the save
+  // A saved catalog this editor knows about, currently scoped to *this*
+  // collection. These are exactly the rows `UpdateUserCollection`'s GC delete
+  // would drop on Save if the last folder ref to one of them is gone — the save
   // bar's "N catalogs will be deleted" line below is this set filtered to
-  // "not referenced by any folder in `state`".
+  // "not referenced by any folder in `state`". A draft is not a row, and an
+  // unreferenced one is never sent, so drafts are left out.
   const scopedHere = useMemo(
     () =>
       collectionID === undefined
         ? []
-        : [...localCatalogs.values()].filter((c) => c.collection_id === collectionID),
+        : [...localCatalogs.values()].filter((c) => c.collection_id === collectionID && !isDraftCatalogID(c.id)),
     [localCatalogs, collectionID],
   )
   const catalogsWillDelete = useMemo(
