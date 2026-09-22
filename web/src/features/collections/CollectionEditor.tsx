@@ -10,6 +10,7 @@ import type {
   Language,
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { moveByOne } from '@/components/dnd'
 import { Field, Segmented, Switch, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
@@ -285,6 +286,10 @@ export function CollectionEditor({
   // The nested catalog editor — a modal layered over this pane, not a second
   // occupant of it. `null` means closed.
   const [nestedCatalogID, setNestedCatalogID] = useState<string | null>(null)
+  // The nested form's unsaved edits aren't this pane's, so they don't reach
+  // the pane's `EditorGuard`; closing the modal asks about them here instead.
+  const [nestedDirty, setNestedDirty] = useState(false)
+  const [confirmingNestedDiscard, setConfirmingNestedDiscard] = useState(false)
   const nestedCatalog = nestedCatalogID === null ? undefined : localCatalogs.get(nestedCatalogID)
   // Keyed on the catalog object, which only changes when `rememberCatalog`
   // replaces it: a fresh form on every render of this editor would re-seed the
@@ -299,7 +304,17 @@ export function CollectionEditor({
     setNestedCatalogID(catalogID)
   }
 
+  /** Every way out of the nested modal — ×, Cancel, Escape, the scrim. */
   function closeNestedCatalog() {
+    if (nestedDirty) {
+      setConfirmingNestedDiscard(true)
+      return
+    }
+    setNestedCatalogID(null)
+  }
+
+  function discardNestedCatalog() {
+    setConfirmingNestedDiscard(false)
     setNestedCatalogID(null)
   }
 
@@ -840,9 +855,24 @@ export function CollectionEditor({
                   }
                   onSave={saveNestedCatalog}
                   onRequestClose={closeNestedCatalog}
-                  onDirtyChange={() => {}}
+                  onDirtyChange={setNestedDirty}
                 />
               </div>
+              <ConfirmDialog
+                open={confirmingNestedDiscard}
+                title="Discard unsaved changes?"
+                body={
+                  <>
+                    Your changes to <strong className="text-ink">{catalog.name}</strong> haven't
+                    been saved. Leaving discards them.
+                  </>
+                }
+                confirmLabel="Discard"
+                cancelLabel="Keep editing"
+                destructive
+                onConfirm={discardNestedCatalog}
+                onCancel={() => setConfirmingNestedDiscard(false)}
+              />
             </Modal>
           )
         })()}
