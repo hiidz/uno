@@ -111,7 +111,11 @@ function useFolderPage(preview: HomeScreenPreview) {
   useEffect(() => {
     if (target === null) return
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeFolder()
+      // A Radix layer over the folder page (a dialog, a menu) handles Escape
+      // first, in the capture phase, and marks it handled. It has usually
+      // already unmounted by now, so it can't be looked up in the DOM.
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      closeFolder()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)

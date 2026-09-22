@@ -302,6 +302,9 @@ export function CollectionEditor({
   const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
 
   function editRef(catalogID: string) {
+    // The nested editor reads `update`'s error as its own, so a failed save
+    // left over from the last catalog opened here must not carry into this one.
+    catalogMutations.update.reset()
     setNestedCatalogID(catalogID)
   }
 

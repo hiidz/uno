@@ -140,6 +140,10 @@ export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
  *  linking to a guessed URL. */
 export type TileKind = TMDBKind | ((item: PreviewItem) => TMDBKind | undefined)
 
+export function resolveTileKind(kind: TileKind | undefined, item: PreviewItem): TMDBKind | undefined {
+  return typeof kind === 'function' ? kind(item) : kind
+}
+
 export function TileStrip({
   shape,
   tiles,
@@ -216,7 +220,15 @@ export function TileRun({
   return (
     <div className={className}>
       {tiles.items.map((item) => (
-        <ContentTile key={item.tmdb_id} item={item} width={width} height={height} kind={kind} />
+        // TMDB numbers movies and TV separately, so the "All" tab can hold
+        // two tiles with one id.
+        <ContentTile
+          key={`${resolveTileKind(kind, item)}:${item.tmdb_id}`}
+          item={item}
+          width={width}
+          height={height}
+          kind={kind}
+        />
       ))}
     </div>
   )
@@ -244,7 +256,7 @@ export function ContentTile({
   height: number
   kind?: TileKind
 }) {
-  const resolvedKind = typeof kind === 'function' ? kind(item) : kind
+  const resolvedKind = resolveTileKind(kind, item)
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>

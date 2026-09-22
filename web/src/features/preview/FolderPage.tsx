@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { tmdbKind } from '@/api'
+import type { PreviewItem, TMDBKind } from '@/api'
 import { plural } from '@/lib/plural'
 import {
   ALL_TAB,
   ALL_TAB_TILE_CAP,
   folderTabs,
   sourceLabel,
-  interleavedKinds,
   interleaveTiles,
   type PreviewCollection,
   type PreviewFolder,
@@ -125,11 +125,15 @@ function TabbedCatalogs({
   // The All tab's own tiles: every source's page, merged round-robin and
   // capped. Nothing specifies how Nuvio itself merges a folder's sources, so
   // this order is a guess and is labelled as such below.
-  const allTiles: CatalogTiles = useMemo(() => {
-    const perSource = folder.sources.map((s) => tiles.get(s.key)?.items ?? [])
+  const [allTiles, allKinds] = useMemo((): [CatalogTiles, Map<PreviewItem, TMDBKind>] => {
+    const perSource = folder.sources.map((s) => ({
+      kind: s.type ? tmdbKind(s.type) : undefined,
+      items: tiles.get(s.key)?.items ?? [],
+    }))
     const loaded = folder.sources.map((s) => tiles.get(s.key)).filter((t) => t !== undefined)
-    return {
-      items: interleaveTiles(perSource, ALL_TAB_TILE_CAP),
+    const merged = interleaveTiles(perSource, ALL_TAB_TILE_CAP)
+    const all: CatalogTiles = {
+      items: merged.items,
       // A shuffling source anywhere in the folder makes the merged view a
       // sample too, so the caveat has to propagate rather than be per-tab.
       randomized: loaded.some((t) => t.randomized),
@@ -138,9 +142,8 @@ function TabbedCatalogs({
       // still has content, and "couldn't load" over a full grid is wrong.
       isError: loaded.length > 0 && loaded.every((t) => t.isError),
     }
+    return [all, merged.kinds]
   }, [folder.sources, tiles])
-
-  const allKinds = useMemo(() => interleavedKinds(folder, tiles), [folder, tiles])
 
   return (
     <div className="flex flex-col gap-3">
@@ -189,7 +192,7 @@ function TabbedCatalogs({
           <TileGrid
             shape={CONTENT_TILE_SHAPE}
             tiles={allTiles}
-            kind={(item) => allKinds.get(item.tmdb_id)}
+            kind={(item) => allKinds.get(item)}
           />
           {/* The one place in the preview that merges more than one catalog,
               and Nuvio's merge order for a folder is unspecified (folders

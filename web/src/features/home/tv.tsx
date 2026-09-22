@@ -2,20 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Tabs } from 'radix-ui'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { tmdbKind } from '@/api'
-import type { PreviewItem } from '@/api'
+import type { PreviewItem, TMDBKind } from '@/api'
 import { Icon } from '@/components/Icon'
 import {
   ALL_TAB,
   ALL_TAB_TILE_CAP,
   folderTabs,
   sourceLabel,
-  interleavedKinds,
   interleaveTiles,
   type PreviewCollection,
   type PreviewFolder,
   type PreviewSource,
 } from '@/features/preview/model'
-import { TILES_PER_PAGE, noTiles, type CatalogTiles, type TileKind } from '@/features/preview/tiles'
+import {
+  TILES_PER_PAGE,
+  noTiles,
+  resolveTileKind,
+  type CatalogTiles,
+  type TileKind,
+} from '@/features/preview/tiles'
 import type { FolderPageTarget, PreviewRow } from './preview'
 
 /**
@@ -59,7 +64,7 @@ function TVPosterTile({
   kind?: TileKind
   toneIndex: number
 }) {
-  const resolvedKind = typeof kind === 'function' ? kind(item) : kind
+  const resolvedKind = resolveTileKind(kind, item)
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>
@@ -234,7 +239,12 @@ function TVTiles({
   return (
     <div ref={scroll?.stripRef} className={className}>
       {tiles.items.map((item, i) => (
-        <TVPosterTile key={item.tmdb_id} item={item} kind={kind} toneIndex={i} />
+        <TVPosterTile
+          key={`${resolveTileKind(kind, item)}:${item.tmdb_id}`}
+          item={item}
+          kind={kind}
+          toneIndex={i}
+        />
       ))}
     </div>
   )
@@ -405,18 +415,21 @@ function TVTabbedCatalogs({
 
   const source = folder.sources.find((s) => s.key === open)
 
-  const allTiles: CatalogTiles = useMemo(() => {
-    const perSource = folder.sources.map((s) => tiles.get(s.key)?.items ?? [])
+  const [allTiles, allKinds] = useMemo((): [CatalogTiles, Map<PreviewItem, TMDBKind>] => {
+    const perSource = folder.sources.map((s) => ({
+      kind: s.type ? tmdbKind(s.type) : undefined,
+      items: tiles.get(s.key)?.items ?? [],
+    }))
     const loaded = folder.sources.map((s) => tiles.get(s.key)).filter((t) => t !== undefined)
-    return {
-      items: interleaveTiles(perSource, ALL_TAB_TILE_CAP),
+    const merged = interleaveTiles(perSource, ALL_TAB_TILE_CAP)
+    const all: CatalogTiles = {
+      items: merged.items,
       randomized: loaded.some((t) => t.randomized),
       isLoading: loaded.some((t) => t.isLoading),
       isError: loaded.length > 0 && loaded.every((t) => t.isError),
     }
+    return [all, merged.kinds]
   }, [folder.sources, tiles])
-
-  const allKinds = useMemo(() => interleavedKinds(folder, tiles), [folder, tiles])
 
   return (
     <Tabs.Root value={open} onValueChange={setOpenKey}>
@@ -438,7 +451,7 @@ function TVTabbedCatalogs({
       ) : (
         <TVTiles
           tiles={allTiles}
-          kind={(item) => allKinds.get(item.tmdb_id)}
+          kind={(item) => allKinds.get(item)}
           gridClassName="fp-grid"
         />
       )}
