@@ -1,5 +1,5 @@
 import type { Catalog, Genre, TMDBParams } from '@/api'
-import { plural } from '@/lib/plural'
+import { plural, pluralCount } from '@/lib/plural'
 
 /**
  * Renders a catalog's stored params as a plain-English summary — what the
@@ -171,6 +171,16 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
   const p = parseParams(catalog.params)
   const out: string[] = []
 
+  // A collection row lists one TMDB collection's films and applies no other
+  // filter, so the collection is the whole recipe. Unnamed, since naming it
+  // needs a TMDB lookup, and called a movie collection so it can't read as
+  // one of Uno's own collections; movie params only.
+  if (catalog.type === 'movie' && countIDs(p.with_collection)) {
+    out.push('from a movie collection')
+    if (p.randomized) out.push('shuffled')
+    return out
+  }
+
   if (p.sort_by) out.push(SORT_PHRASE[p.sort_by] ?? p.sort_by)
 
   const genres = joinGenres(p.with_genres, lookup)
@@ -224,11 +234,22 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
     out.push(p.watch_region ? `on ${services} in ${countryLabel(p.watch_region)}` : `on ${services}`)
   }
 
+  // Counted for the same reason: naming a company or keyword needs a TMDB
+  // lookup per id.
+  const companies = countIDs(p.with_companies)
+  if (companies) out.push(`from ${pluralCount(companies, 'studio')}`)
+  const keywords = countIDs(p.with_keywords)
+  if (keywords) out.push(`tagged with ${pluralCount(keywords, 'keyword')}`)
+
   // "shuffled", not "random": the backend picks a random TMDB page in [1,20],
   // not a random sample of the whole result set.
   if (p.randomized) out.push('shuffled')
 
   return out
+}
+
+function countIDs(raw: string | undefined): number {
+  return raw ? raw.split(/[,|]/).filter((part) => part.trim()).length : 0
 }
 
 /** Everything the rail's search should match on for a catalog: its name and

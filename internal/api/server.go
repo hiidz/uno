@@ -111,6 +111,12 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /api/countries", s.requireNuvioAuth(s.listCountries))
 	s.router.HandleFunc("GET /api/watch-providers/{type}", s.requireNuvioAuth(s.listWatchProviders))
 	s.router.HandleFunc("GET /api/watch-regions", s.requireNuvioAuth(s.listWatchRegions))
+	s.router.HandleFunc("GET /api/companies/search", s.requireNuvioAuth(s.searchCompanies))
+	s.router.HandleFunc("GET /api/companies/{id}", s.requireNuvioAuth(s.getCompany))
+	s.router.HandleFunc("GET /api/keywords/search", s.requireNuvioAuth(s.searchKeywords))
+	s.router.HandleFunc("GET /api/keywords/{id}", s.requireNuvioAuth(s.getKeyword))
+	s.router.HandleFunc("GET /api/collections/search", s.requireNuvioAuth(s.searchCollections))
+	s.router.HandleFunc("GET /api/collections/{id}", s.requireNuvioAuth(s.getCollection))
 
 	s.router.HandleFunc("GET /api/profiles", s.requireNuvioAuth(s.listProfiles))
 	s.router.HandleFunc("POST /api/profiles/select", s.requireNuvioAuth(s.selectProfile))

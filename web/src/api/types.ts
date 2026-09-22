@@ -172,6 +172,38 @@ export interface WatchRegion {
   native_name: string
 }
 
+/** `GET /api/companies/{id}` — a production company `with_companies`
+ *  accepts. */
+export interface Company {
+  id: number
+  name: string
+}
+
+/** One result from `GET /api/companies/search?type=`. The server keeps only
+ *  companies with at least 5 titles of that type, sorted by `title_count`
+ *  descending, top 10. `origin_country` is an ISO 3166-1 code, or `""` when
+ *  TMDB has none. */
+export interface CompanySearchResult extends Company {
+  origin_country: string
+  /** How many titles of the searched type TMDB credits to the company. */
+  title_count: number
+}
+
+/** One result from `GET /api/keywords/search` or `GET /api/keywords/{id}` —
+ *  a TMDB keyword `with_keywords` accepts. */
+export interface Keyword {
+  id: number
+  name: string
+}
+
+/** One result from `GET /api/collections/search` or `GET /api/collections/{id}`
+ *  — a TMDB movie collection `with_collection` accepts, e.g. "Star Wars Collection".
+ *  Not Uno's own `Collection`. */
+export interface TMDBCollection {
+  id: number
+  name: string
+}
+
 /**
  * One tile from `POST /api/catalogs/preview`.
  *
@@ -271,6 +303,10 @@ export interface TMDBParams {
   with_watch_providers?: string
   watch_region?: string
 
+  /** TMDB id lists: comma-joined means all of them, pipe-joined any of them. */
+  with_companies?: string
+  with_keywords?: string
+
   certification?: string
   certification_gte?: string
   certification_lte?: string
@@ -280,6 +316,8 @@ export interface TMDBParams {
   primary_release_date_gte?: string
   primary_release_date_lte?: string
   released_within_days?: number
+  /** One TMDB collection id; TMDB takes no list here. */
+  with_collection?: string
 
   // series only
   first_air_date_gte?: string

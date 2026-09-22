@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -75,6 +76,48 @@ func TestFetchCatalogPageServesWithoutGenresWhenGenreListFails(t *testing.T) {
 	}
 	if len(metas) != 1 || metas[0].Genres != nil || metas[0].Background != "" || metas[0].Released != "" {
 		t.Fatalf("got %+v, want one meta with no genres, background, or released", metas)
+	}
+}
+
+// TestFetchCatalogPageSendsEntityFilters proves with_companies and
+// with_keywords reach the discover request TMDB sees, on both discover
+// endpoints, with their AND/OR separators intact.
+func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
+	for _, tc := range []struct{ catalogType, path string }{
+		{"movie", "/discover/movie"},
+		{"series", "/discover/tv"},
+	} {
+		t.Run(tc.catalogType, func(t *testing.T) {
+			var mu sync.Mutex
+			var seen url.Values
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != tc.path {
+					http.NotFound(w, r)
+					return
+				}
+				mu.Lock()
+				seen = r.URL.Query()
+				mu.Unlock()
+				fmt.Fprint(w, `{"results":[],"total_results":0,"total_pages":1}`)
+			}))
+			t.Cleanup(srv.Close)
+			c := NewTMDBClient("key")
+			c.baseURL = srv.URL
+
+			params := `{"with_companies":"420|2","with_keywords":"9715,180547"}`
+			if _, err := c.FetchCatalogPage(t.Context(), tc.catalogType, params, "", 1); err != nil {
+				t.Fatal(err)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			if got := seen.Get("with_companies"); got != "420|2" {
+				t.Fatalf("with_companies = %q, want %q", got, "420|2")
+			}
+			if got := seen.Get("with_keywords"); got != "9715,180547" {
+				t.Fatalf("with_keywords = %q, want %q", got, "9715,180547")
+			}
+		})
 	}
 }
 

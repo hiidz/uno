@@ -267,6 +267,78 @@ func TestClientListsAreMemoized(t *testing.T) {
 	}
 }
 
+// TestEntityLookupsAreMemoizedPerID covers the per-id memos behind Company,
+// Keyword and Collection: a known id reaches TMDB once across repeated calls, and a 404
+// comes back as ErrNotFound without becoming a cache entry, so a later call
+// asks TMDB again.
+func TestEntityLookupsAreMemoizedPerID(t *testing.T) {
+	c, hits := fakeEntityTMDB(t)
+	ctx := t.Context()
+
+	for range 2 {
+		company, err := c.Company(ctx, 1)
+		if err != nil {
+			t.Fatalf("Company(1): %v", err)
+		}
+		if company != (Company{ID: 1, Name: "Lucasfilm Ltd."}) {
+			t.Fatalf("Company(1) = %+v", company)
+		}
+		keyword, err := c.Keyword(ctx, 1)
+		if err != nil {
+			t.Fatalf("Keyword(1): %v", err)
+		}
+		if keyword != (Keyword{ID: 1, Name: "superhero"}) {
+			t.Fatalf("Keyword(1) = %+v", keyword)
+		}
+		collection, err := c.Collection(ctx, 1)
+		if err != nil {
+			t.Fatalf("Collection(1): %v", err)
+		}
+		if collection != (Collection{ID: 1, Name: "Star Wars Collection"}) {
+			t.Fatalf("Collection(1) = %+v", collection)
+		}
+	}
+	if got := hits("/company/1"); got != 1 {
+		t.Fatalf("/company/1 hit %d times, want 1", got)
+	}
+	if got := hits("/keyword/1"); got != 1 {
+		t.Fatalf("/keyword/1 hit %d times, want 1", got)
+	}
+	if got := hits("/collection/1"); got != 1 {
+		t.Fatalf("/collection/1 hit %d times, want 1", got)
+	}
+
+	for range 2 {
+		if _, err := c.Company(ctx, 999); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("Company(999) error = %v, want ErrNotFound", err)
+		}
+		if _, err := c.Keyword(ctx, 999); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("Keyword(999) error = %v, want ErrNotFound", err)
+		}
+		if _, err := c.Collection(ctx, 999); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("Collection(999) error = %v, want ErrNotFound", err)
+		}
+	}
+	if got := hits("/company/999"); got != 2 {
+		t.Fatalf("/company/999 hit %d times, want 2 (a 404 must not be cached)", got)
+	}
+	if got := hits("/keyword/999"); got != 2 {
+		t.Fatalf("/keyword/999 hit %d times, want 2 (a 404 must not be cached)", got)
+	}
+	if got := hits("/collection/999"); got != 2 {
+		t.Fatalf("/collection/999 hit %d times, want 2 (a 404 must not be cached)", got)
+	}
+	if n := len(c.companies.entries); n != 1 {
+		t.Fatalf("company cache holds %d entries, want 1", n)
+	}
+	if n := len(c.keywords.entries); n != 1 {
+		t.Fatalf("keyword cache holds %d entries, want 1", n)
+	}
+	if n := len(c.collections.entries); n != 1 {
+		t.Fatalf("collection cache holds %d entries, want 1", n)
+	}
+}
+
 // TestWatchProvidersRejectsOddRegion covers the bound on the one memo whose
 // key carries client input: a region that isn't shaped like an ISO code
 // becomes neither a cache entry nor a TMDB request.
@@ -296,5 +368,88 @@ func TestWatchProvidersRejectsOddRegion(t *testing.T) {
 	}
 	if n := len(c.watchProviders.entries); n != 0 {
 		t.Fatalf("cache holds %d entries, want 0", n)
+	}
+}
+
+// TestBoundedMemoHoldsItsCap covers a bounded memo's ceiling: a new key at
+// capacity, with nothing expired, empties the memo before it is stored, while
+// refreshing a key already held never does.
+func TestBoundedMemoHoldsItsCap(t *testing.T) {
+	m := newBoundedMemo(0, 3, func(v int) int { return v })
+	load := func(key string) {
+		t.Helper()
+		if _, err := m.load(key, func() (int, error) { return 1, nil }); err != nil {
+			t.Fatalf("load(%q): %v", key, err)
+		}
+	}
+
+	for _, key := range []string{"a", "b", "c"} {
+		load(key)
+	}
+	m.entries["c"] = memoEntry[int]{value: 1, expires: time.Now().Add(-time.Second)}
+	load("c")
+	if n := len(m.entries); n != 3 {
+		t.Fatalf("refreshing a held key left %d entries, want 3", n)
+	}
+
+	load("d")
+	if n := len(m.entries); n != 1 {
+		t.Fatalf("a new key at capacity left %d entries, want 1", n)
+	}
+	if _, ok := m.entries["d"]; !ok {
+		t.Fatal("the new key was not stored")
+	}
+}
+
+// TestBoundedMemoDropsExpiredFirst covers the cheaper half of making room:
+// when entries have expired, only they go, and the live ones stay cached.
+func TestBoundedMemoDropsExpiredFirst(t *testing.T) {
+	m := newBoundedMemo(time.Hour, 3, func(v int) int { return v })
+	for _, key := range []string{"a", "b", "c"} {
+		if _, err := m.load(key, func() (int, error) { return 1, nil }); err != nil {
+			t.Fatalf("load(%q): %v", key, err)
+		}
+	}
+	m.entries["b"] = memoEntry[int]{value: 1, expires: time.Now().Add(-time.Second)}
+
+	if _, err := m.load("d", func() (int, error) { return 1, nil }); err != nil {
+		t.Fatalf("load(d): %v", err)
+	}
+	for _, key := range []string{"a", "c", "d"} {
+		if _, ok := m.entries[key]; !ok {
+			t.Fatalf("entry %q was dropped; only the expired one should be", key)
+		}
+	}
+	if _, ok := m.entries["b"]; ok {
+		t.Fatal("expired entry b survived")
+	}
+}
+
+// TestIDKeyedMemosAreBounded pins which memos NewTMDBClient bounds: every
+// one keyed by a caller-supplied id, and none of the whole-list memos.
+func TestIDKeyedMemosAreBounded(t *testing.T) {
+	c := NewTMDBClient("key")
+	for name, got := range map[string]int{
+		"companies":       c.companies.maxEntries,
+		"keywords":        c.keywords.maxEntries,
+		"collections":     c.collections.maxEntries,
+		"collectionFilms": c.collectionFilms.maxEntries,
+		"companyTitles":   c.companyTitles.maxEntries,
+	} {
+		if got <= 0 {
+			t.Fatalf("%s is unbounded", name)
+		}
+	}
+	for name, got := range map[string]int{
+		"genres":         c.genres.maxEntries,
+		"languages":      c.languages.maxEntries,
+		"countries":      c.countries.maxEntries,
+		"watchRegions":   c.watchRegions.maxEntries,
+		"watchProviders": c.watchProviders.maxEntries,
+		"certifications": c.certifications.maxEntries,
+	} {
+		if got != 0 {
+			t.Fatalf("%s is bounded at %d, want unbounded", name, got)
+		}
 	}
 }

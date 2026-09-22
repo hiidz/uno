@@ -41,6 +41,17 @@ export const queryKeys = {
     ['watch-providers', type, region] as const,
   watchRegions: () => ['watch-regions'] as const,
 
+  /** Search results vary by query and over time, so these keep the default
+   *  staleTime. The by-id keys name one id, which never changes, and are read
+   *  with `staleTime: Infinity`. */
+  companySearch: (type: CatalogType, query: string) => ['companies', 'search', type, query] as const,
+  company: (id: number) => ['companies', 'id', id] as const,
+  keywordSearch: (query: string) => ['keywords', 'search', query] as const,
+  keyword: (id: number) => ['keywords', 'id', id] as const,
+  /** TMDB movie collections, prefixed apart from Uno's own collections. */
+  collectionSearch: (query: string) => ['tmdb-collections', 'search', query] as const,
+  collection: (id: number) => ['tmdb-collections', 'id', id] as const,
+
   /**
    * Keyed on the **recipe**, not on a catalog id. Two catalogs with identical
    * filters share one cache entry, as does an unsaved catalog in the builder

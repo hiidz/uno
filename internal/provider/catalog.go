@@ -17,7 +17,7 @@ var ErrInvalidCatalogType = errors.New("invalid catalog type: must be movie or s
 // Meta is one Stremio catalog tile. ID must be an IMDB id (tt...) — Stremio
 // resolves meta/stream lookups by that id, not TMDB's own numeric id.
 //
-// Every field is filled from the discover response alone, with no per-item
+// Every field is filled from the discover item (or collection part) alone, with no per-item
 // call beyond the IMDB id lookup. Background drives Nuvio's hero backdrop
 // and landscape tiles; Genres and Released feed its hero metadata line.
 type Meta struct {
@@ -122,16 +122,27 @@ func catalogEndpoint(catalogType string) (string, error) {
 // empty randomized page falls back to page 1 — a second discover call only
 // when the pick overshoots, unlike [TMDBClient.PreviewCatalog], which pays
 // for TMDB's total_pages up front.
+//
+// A collection recipe skips discover (see collectionItems): page 1 is the
+// whole collection and every later page is empty.
 func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJSON, genre string, page int) ([]Meta, error) {
 	endpoint, err := catalogEndpoint(catalogType)
 	if err != nil {
 		return nil, err
 	}
 
-	query, randomized, err := buildDiscoverQuery(catalogType, paramsJSON)
+	p, err := DecodeParams(catalogType, paramsJSON)
 	if err != nil {
 		return nil, err
 	}
+	if items, ok, err := c.collectionItems(ctx, p, catalogType, paramsJSON, genre); ok {
+		if err != nil || page > 1 {
+			return nil, err
+		}
+		return c.resolveMetas(ctx, catalogType, items, c.genreNames(ctx, catalogType))
+	}
+
+	query, randomized := p.DiscoverQuery(), p.IsRandomized()
 	if err := c.applyGenrePick(ctx, query, catalogType, paramsJSON, genre); err != nil {
 		return nil, err
 	}
@@ -209,7 +220,7 @@ func (c *TMDBClient) resolveMetas(ctx context.Context, catalogType string, items
 
 			imdbID, err := c.imdbID(ctx, mediaType, item.ID)
 			if err != nil {
-				if errors.Is(err, errTMDBNotFound) {
+				if errors.Is(err, ErrNotFound) {
 					return // as permanent as an empty imdb_id; drop the item
 				}
 				once.Do(func() {

@@ -20,8 +20,9 @@ type memo[V any] struct {
 	mu      sync.RWMutex
 	entries map[string]memoEntry[V]
 
-	ttl   time.Duration // zero never expires
-	clone func(V) V
+	ttl        time.Duration // zero never expires
+	maxEntries int           // zero is unbounded
+	clone      func(V) V
 }
 
 // memoEntry is one cached value and the instant it stops being usable. A
@@ -39,6 +40,18 @@ func newMemo[V any](ttl time.Duration, clone func(V) V) *memo[V] {
 		ttl:     ttl,
 		clone:   clone,
 	}
+}
+
+// newBoundedMemo is newMemo for a memo keyed by ids a caller supplies, whose
+// key space is as large as TMDB's catalogue: it holds at most maxEntries.
+// Inserting a new key at capacity first drops the expired entries and, if
+// that leaves the memo still full, empties it whole — the same policy as the
+// tmdbID->IMDB-id cache (see maxIMDBCacheEntries): an entry costs one TMDB
+// call to re-derive, which is not worth an eviction policy.
+func newBoundedMemo[V any](ttl time.Duration, maxEntries int, clone func(V) V) *memo[V] {
+	m := newMemo(ttl, clone)
+	m.maxEntries = maxEntries
+	return m
 }
 
 // load returns key's cached value, calling fetch to fill the entry on a
@@ -66,10 +79,27 @@ func (m *memo[V]) load(key string, fetch func() (V, error)) (V, error) {
 	}
 
 	m.mu.Lock()
+	if _, present := m.entries[key]; !present && m.maxEntries > 0 && len(m.entries) >= m.maxEntries {
+		m.makeRoom()
+	}
 	m.entries[key] = memoEntry[V]{value: v, expires: expires}
 	m.mu.Unlock()
 
 	return m.clone(v), nil
+}
+
+// makeRoom deletes every expired entry, then every entry if the memo is
+// still full. The caller holds m.mu for writing.
+func (m *memo[V]) makeRoom() {
+	now := time.Now()
+	for key, entry := range m.entries {
+		if !entry.expires.IsZero() && now.After(entry.expires) {
+			delete(m.entries, key)
+		}
+	}
+	if len(m.entries) >= m.maxEntries {
+		clear(m.entries)
+	}
 }
 
 // lookup returns a clone of key's value when the entry is present and

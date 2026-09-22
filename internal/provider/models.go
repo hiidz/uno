@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"reflect"
+	"strings"
 )
 
 // CatalogParams is a decoded catalog recipe: everything the rest of the
@@ -130,6 +132,9 @@ type TMDBCommonParams struct {
 	WithWatchProviders string `json:"with_watch_providers,omitempty"` // comma/pipe separated provider ids
 	WatchRegion        string `json:"watch_region,omitempty"`         // required alongside WithWatchProviders
 
+	WithCompanies string `json:"with_companies,omitempty"` // comma (AND) or pipe (OR) separated TMDB company ids
+	WithKeywords  string `json:"with_keywords,omitempty"`  // comma (AND) or pipe (OR) separated TMDB keyword ids
+
 	Certification        string `json:"certification,omitempty"`
 	CertificationGte     string `json:"certification_gte,omitempty"`
 	CertificationLte     string `json:"certification_lte,omitempty"`
@@ -148,6 +153,12 @@ type TMDBMovieParams struct {
 	// primary_release_date_gte = today-N at query time, every render.
 	// Mutually exclusive with the fixed fields above — enforced in Validate.
 	ReleasedWithinDays int `json:"released_within_days,omitempty"`
+
+	// One TMDB collection id (e.g. 10, Star Wars). Set, it makes the recipe
+	// a collection recipe: its titles are the collection's films rather than
+	// a discover result (see collectionItems), and every other field but
+	// Randomized must be unset — enforced in Validate.
+	WithCollection string `json:"with_collection,omitempty"`
 }
 
 // TMDBTVParams is the recipe for a /discover/tv-backed catalog.
@@ -175,6 +186,11 @@ const tmdbMaxVoteAverage = 10.0
 // years the builder's "Last N years" box allows, so a hand-crafted request
 // can't exceed what the UI itself permits.
 const maxWithinDays = 50 * 365
+
+// maxEntityIDs caps how many ids with_companies and with_keywords each hold.
+// ValidateParams looks every id up on TMDB one at a time, so the cap bounds
+// the round trips one save can cost on a cold cache.
+const maxEntityIDs = 20
 
 // validMovieSortValues is TMDB's complete sort_by enum for /discover/movie.
 var validMovieSortValues = map[string]bool{
@@ -208,6 +224,19 @@ func (p TMDBCommonParams) validate() error {
 
 	if p.WithWatchProviders != "" && p.WatchRegion == "" {
 		return errors.New("watch_region is required when with_watch_providers is set")
+	}
+
+	for _, f := range []struct{ name, list string }{
+		{"with_companies", p.WithCompanies},
+		{"with_keywords", p.WithKeywords},
+	} {
+		ids, err := parseIDList(f.name, f.list)
+		if err != nil {
+			return err
+		}
+		if len(ids) > maxEntityIDs {
+			return fmt.Errorf("%s cannot hold more than %d ids", f.name, maxEntityIDs)
+		}
 	}
 
 	// Zero means "unset" for every numeric field below (see setIntIf and
@@ -264,8 +293,40 @@ func (p TMDBMovieParams) Validate() error {
 	if p.ReleasedWithinDays > maxWithinDays {
 		return fmt.Errorf("released_within_days cannot exceed %d (50 years)", maxWithinDays)
 	}
+	if strings.ContainsAny(p.WithCollection, ",|") {
+		return errors.New("with_collection takes a single collection id")
+	}
+	if p.WithCollection != "" {
+		rest := p
+		rest.WithCollection, rest.Randomized = "", false
+		if field := firstSetField(reflect.ValueOf(rest)); field != "" {
+			return fmt.Errorf("%s cannot be combined with with_collection", field)
+		}
+	}
 
 	return p.validate()
+}
+
+// firstSetField returns the JSON name of the first non-zero field of struct
+// v, descending into embedded structs, or "" when every field is zero.
+func firstSetField(v reflect.Value) string {
+	t := v.Type()
+	for i := range t.NumField() {
+		field := t.Field(i)
+		if field.Anonymous {
+			if name := firstSetField(v.Field(i)); name != "" {
+				return name
+			}
+			continue
+		}
+		if !v.Field(i).IsZero() {
+			if name, _, _ := strings.Cut(field.Tag.Get("json"), ","); name != "" && name != "-" {
+				return name
+			}
+			return field.Name
+		}
+	}
+	return ""
 }
 
 // Validate checks cross-field rules that a single JSON field can't express

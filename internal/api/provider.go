@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
@@ -14,14 +15,18 @@ import (
 
 // lookupList answers with fetch's result, classifying a failure the way every
 // TMDB lookup route does: an unusable catalog type or an unusable query param
-// is the caller's fault (400, and TMDB was never contacted), anything else is
-// upstream's (502). fetch is a closure so each route can pass its own path and
-// query params.
+// is the caller's fault (400, and TMDB was never contacted), a resource TMDB
+// doesn't have is a 404, anything else is upstream's (502). fetch is a
+// closure so each route can pass its own path and query params.
 func lookupList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, error)) {
 	result, err := fetch()
 	if err != nil {
 		if errors.Is(err, provider.ErrInvalidCatalogType) || errors.Is(err, provider.ErrInvalidParams) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, provider.ErrNotFound) {
+			http.Error(w, "not found on TMDB", http.StatusNotFound)
 			return
 		}
 		log.Printf("lookupList: %s: %v", failMsg, err)
@@ -69,6 +74,70 @@ func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
 	lookupList(w, "failed to fetch certifications", func() (map[string][]provider.Certification, error) {
 		return s.provider.Certifications(r.Context(), r.PathValue("type"))
 	})
+}
+
+// searchCompanies takes the catalog type as a query param because each
+// result's title count is for that type.
+func (s *Server) searchCompanies(w http.ResponseWriter, r *http.Request) {
+	lookupList(w, "failed to search companies", func() ([]provider.CompanyMatch, error) {
+		return s.provider.SearchCompanies(r.Context(), r.URL.Query().Get("type"), r.URL.Query().Get("q"))
+	})
+}
+
+func (s *Server) searchKeywords(w http.ResponseWriter, r *http.Request) {
+	lookupList(w, "failed to search keywords", func() ([]provider.Keyword, error) {
+		return s.provider.SearchKeywords(r.Context(), r.URL.Query().Get("q"))
+	})
+}
+
+func (s *Server) searchCollections(w http.ResponseWriter, r *http.Request) {
+	lookupList(w, "failed to search collections", func() ([]provider.Collection, error) {
+		return s.provider.SearchCollections(r.Context(), r.URL.Query().Get("q"))
+	})
+}
+
+// getCompany, getKeyword and getCollection resolve one saved id back to its
+// name for the picker. A TMDB 404 answers 404, so the picker can tell a stale id from an
+// outage.
+func (s *Server) getCompany(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathTMDBID(w, r)
+	if !ok {
+		return
+	}
+	lookupList(w, "failed to fetch company", func() (provider.Company, error) {
+		return s.provider.Company(r.Context(), id)
+	})
+}
+
+func (s *Server) getKeyword(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathTMDBID(w, r)
+	if !ok {
+		return
+	}
+	lookupList(w, "failed to fetch keyword", func() (provider.Keyword, error) {
+		return s.provider.Keyword(r.Context(), id)
+	})
+}
+
+func (s *Server) getCollection(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathTMDBID(w, r)
+	if !ok {
+		return
+	}
+	lookupList(w, "failed to fetch collection", func() (provider.Collection, error) {
+		return s.provider.Collection(r.Context(), id)
+	})
+}
+
+// pathTMDBID parses the {id} path segment, answering 400 itself when it
+// isn't an integer.
+func pathTMDBID(w http.ResponseWriter, r *http.Request) (int, bool) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return 0, false
+	}
+	return id, true
 }
 
 // errUpstreamValidation marks a validateCatalogParams failure that is

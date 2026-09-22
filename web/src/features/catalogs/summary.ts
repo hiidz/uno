@@ -2,7 +2,7 @@ import type { CatalogType, Certification, Genre, Language } from '@/api'
 import type { CountryLookup } from './countries'
 import { countryName } from './countries'
 import type { GenreJoin } from './catalogForm'
-import { SORT_FIELDS } from './catalogForm'
+import { SORT_FIELDS, parseGenreList } from './catalogForm'
 import { plural, pluralCount } from '@/lib/plural'
 
 /**
@@ -196,5 +196,42 @@ export function sumWatch(
   return `${name} · ${selectedCount} streaming ${plural(selectedCount, 'service')}`
 }
 
-export const sumShuffle = (randomized: boolean): string =>
-  randomized ? 'On, a different set each time the row opens' : 'Off, the same set every time'
+/** Counted, not named: the names live in the picker's by-id lookups, and a
+ *  closed head is read at a glance. */
+export function sumEntities(raw: string | undefined, noun: string, anyLabel: string): string {
+  const { ids, join } = parseGenreList(raw)
+  if (ids.length === 0) return anyLabel
+  if (ids.length === 1) return pluralCount(1, noun)
+  return `${pluralCount(ids.length, noun)}, ${join === 'or' ? 'any' : 'all'} of them`
+}
+
+/** Named, unlike `sumEntities`: there is only ever one, and the editor reads
+ *  its name from the same by-id lookup the picker's chip uses. Until that
+ *  lookup answers, the id stands in. */
+export function sumCollection(raw: string | undefined, name: string | undefined): string {
+  const id = parseGenreList(raw).ids[0]
+  if (id === undefined) return 'No collection picked'
+  return name ?? `Collection ${id}`
+}
+
+/** A collection row always holds the same films, so shuffling it only
+ *  changes their order. */
+export const sumShuffle = (randomized: boolean, collectionRow = false): string =>
+  collectionRow
+    ? randomized
+      ? 'On, a new order each time the row opens'
+      : 'Off, in release order'
+    : randomized
+      ? 'On, a different set each time the row opens'
+      : 'Off, the same set every time'
+
+/** The detail a company search result shows after its name — "US · 176
+ *  films" — counted for the catalog's type. */
+export function companyDetail(
+  company: { origin_country: string; title_count: number },
+  type: CatalogType,
+): string {
+  const n = company.title_count
+  const count = type === 'movie' ? pluralCount(n, 'film') : `${n} series`
+  return company.origin_country ? `${company.origin_country} · ${count}` : count
+}

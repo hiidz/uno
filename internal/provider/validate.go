@@ -20,14 +20,15 @@ var ErrInvalidParams = errors.New("invalid params")
 // ValidateParams checks the recipe fields that carry TMDB's own vocabulary
 // — genre ids, a language code, a watch region and its provider ids, a
 // certification country and its scale — against the lists TMDB publishes
-// for them. It complements [CatalogParams.Validate], which covers the rules
-// that need no network (enums, bounds, required-together pairs) and runs
-// first.
+// for them, and company, keyword and collection ids against TMDB one id at
+// a time, since TMDB publishes no whole list of any of them. It complements
+// [CatalogParams.Validate], which covers the rules that need no network
+// (enums, bounds, required-together pairs) and runs first.
 //
 // Each list is fetched only when the field that needs it is set, so a
-// recipe using none of them costs nothing. Every list is memoized on the
-// client (see internal/provider/cache.go), so a set field costs one TMDB
-// round trip on a cold cache and none after that.
+// recipe using none of them costs nothing. Every list and every looked-up
+// id is memoized on the client (see internal/provider/cache.go), so a set
+// field costs TMDB round trips on a cold cache and none after that.
 //
 // A rejected value is wrapped in ErrInvalidParams. A failure to reach TMDB
 // is returned as-is.
@@ -37,8 +38,13 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 	}
 
 	// Both recipe types embed TMDBCommonParams, and every field checked here
-	// lives on it, so decoding straight into it covers movie and tv alike.
-	var p TMDBCommonParams
+	// but with_collection lives on it, so decoding into it covers movie and
+	// tv alike. with_collection is decoded alongside for either type, so a
+	// series recipe carrying it is rejected rather than silently ignored.
+	var p struct {
+		TMDBCommonParams
+		WithCollection string `json:"with_collection"`
+	}
 	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
 		return fmt.Errorf("%w: decode %s params: %w", ErrInvalidParams, catalogType, err)
 	}
@@ -97,7 +103,22 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 		}
 	}
 
-	return c.validateCertifications(ctx, catalogType, p)
+	if err := checkEntityIDs(ctx, "with_companies", p.WithCompanies, "company", c.Company); err != nil {
+		return err
+	}
+	if err := checkEntityIDs(ctx, "with_keywords", p.WithKeywords, "keyword", c.Keyword); err != nil {
+		return err
+	}
+	if p.WithCollection != "" {
+		if catalogType != "movie" {
+			return fmt.Errorf("%w: with_collection applies to movie catalogs only", ErrInvalidParams)
+		}
+		if err := checkEntityIDs(ctx, "with_collection", p.WithCollection, "collection", c.Collection); err != nil {
+			return err
+		}
+	}
+
+	return c.validateCertifications(ctx, catalogType, p.TMDBCommonParams)
 }
 
 // validateCertifications checks the certification country against TMDB's
@@ -134,10 +155,46 @@ func (c *TMDBClient) validateCertifications(ctx context.Context, catalogType str
 	return nil
 }
 
-// checkIDList walks a comma (AND) or pipe (OR) separated TMDB id list and
-// reports the first entry that isn't an integer or isn't in allowed. label
-// names what the ids are, for the error text.
+// checkIDList reports the first entry of a TMDB id list that isn't an
+// integer or isn't in allowed. label names what the ids are, for the error
+// text.
 func checkIDList(field, list string, allowed map[int]bool, label string) error {
+	ids, err := parseIDList(field, list)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if !allowed[id] {
+			return fmt.Errorf("%w: %s entry \"%d\" is not a TMDB %s id", ErrInvalidParams, field, id, label)
+		}
+	}
+	return nil
+}
+
+// checkEntityIDs is checkIDList for the vocabularies TMDB publishes no whole
+// list of: each id is looked up on its own, and one TMDB doesn't have
+// (ErrNotFound) is rejected with ErrInvalidParams. Any other lookup failure
+// is returned as-is.
+func checkEntityIDs[T any](ctx context.Context, field, list, label string, lookup func(context.Context, int) (T, error)) error {
+	ids, err := parseIDList(field, list)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if _, err := lookup(ctx, id); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return fmt.Errorf("%w: %s entry \"%d\" is not a TMDB %s id", ErrInvalidParams, field, id, label)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// parseIDList splits a comma (AND) or pipe (OR) separated TMDB id list into
+// its ids, rejecting the first entry that isn't an integer.
+func parseIDList(field, list string) ([]int, error) {
+	var ids []int
 	for _, part := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == '|' }) {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -145,11 +202,9 @@ func checkIDList(field, list string, allowed map[int]bool, label string) error {
 		}
 		id, err := strconv.Atoi(part)
 		if err != nil {
-			return fmt.Errorf("%w: %s entry %q is not a numeric id", ErrInvalidParams, field, part)
+			return nil, fmt.Errorf("%w: %s entry %q is not a numeric id", ErrInvalidParams, field, part)
 		}
-		if !allowed[id] {
-			return fmt.Errorf("%w: %s entry %q is not a TMDB %s id", ErrInvalidParams, field, part, label)
-		}
+		ids = append(ids, id)
 	}
-	return nil
+	return ids, nil
 }

@@ -229,6 +229,50 @@ Other decisions worth keeping:
   still in the payload. Services are stored pipe-joined (`8|337`), which TMDB reads as "on any of
   these"; a comma would mean "on every one of these at once", which is almost never what picking
   several services means.
+- **Production companies and keywords are one server-search picker** (`TMDBEntityPicker`,
+  `kind="company"` / `kind="keyword"`), the only picker in the editor that searches the server
+  rather than filtering a list it already holds: TMDB has no "list them all" endpoint for either.
+  The query settles for 300ms (`lib/useDebounce.ts`) and runs against
+  `GET /api/{companies,keywords}/search` only once it is two or more characters, since the route
+  rejects a blank one. Picks are chips; ids and join are one value on the wire, like genres
+  (`420,2` all, `420|2` any, through `parseGenreList`/`serializeGenreList`), and the all/any
+  `Segmented` appears once two are picked. Companies default to "any" — a title rarely has two
+  named studios. Each holds at most 20 ids (`MAX_ENTITY_IDS`, mirroring the server's cap): at 20
+  the picker stops offering results and its status line says to remove one first, and
+  `validateForm` flags a stored value over the cap. Company search takes the catalog's type
+  (`?type=movie|series`, part of the query key) and the server returns at most 10 companies with
+  5 or more titles of that type, most titles first; each row reads "A24 · US · 176 films" (or
+  "series"), the country omitted when TMDB has none. The per-kind table's optional `rowDetail`
+  carries that suffix (`companyDetail` in `summary.ts`); keyword and collection rows are the
+  name alone. A saved recipe's chips are named through `GET /api/{companies,keywords}/{id}`
+  (`staleTime: Infinity`, seeded on pick so a fresh chip needs no lookup); an id TMDB answers 404
+  for stays a chip marked "not found", so a stale recipe can be cleaned up rather than silently
+  keeping a filter nobody can see. Results are focusable buttons (Down from the search box, then
+  Up/Down; Escape clears the search without closing the editor), and the searching / no-match /
+  count line is a `role="status"` live region. Section heads and the library summary count these
+  rather than name them, for the same reason as streaming services.
+- **A movie catalog's Mode is either Filters or Collection**, a `Segmented` right under the
+  Movie/Series row. The mode is form state (`sourceMode` in `catalogForm.ts`), not a stored field:
+  `formFromCatalog` reads a saved `with_collection` as Collection, anything else as Filters.
+  Filters shows every filter section and no collection picker; Collection shows only the
+  collection picker and Shuffle, every other section — sort order included — hidden rather than
+  disabled. A collection row lists one TMDB collection's films in release order, and the server
+  rejects any other filter beside `with_collection` (`randomized` excepted), so what a save or
+  Preview sends follows the mode (both go through `paramsString` → `recipeParams`): Collection
+  keeps only the `COLLECTION_KEYS` allow-list, so a field added later is dropped by default, and
+  Filters drops `with_collection`. Form state keeps both sides' values, so switching mode back
+  and forth loses nothing until Save. `validateForm` checks the sent params, so a dropped field
+  raises no error, and Collection mode with nothing picked is an error ("Pick a collection."),
+  which also stops Preview from running. Series catalogs have no switch and no collection
+  picker, since TMDB has no collections for series.
+- **The collection picker is the same server-search picker, single-pick** (`kind="collection"`,
+  over `GET /api/collections/{search,{id}}`, stored as `with_collection`). TMDB takes one
+  collection id, so the kind's table entry marks it `single`: a pick replaces the chip rather
+  than adding one, and there is no all/any toggle. Its section head names the pick rather than
+  counting it: the editor reads the same `staleTime: Infinity` by-id key the chip does, so the
+  name costs no extra request. "Collection" is also Uno's word for a group of catalogs, so the
+  TMDB kind is `TMDBCollection` in code, and the library summary describes a collection row as
+  "from a movie collection" (plus "shuffled"), with none of the other filters.
 - **Age rating is the same shape**, over `GET /api/certifications/{type}` — options come from
   TMDB per type because the scales differ, and picking a rating defaults its country.
 - **The editor previews on request, not as you type** (`RecipePreview` → `useRecipeTiles` →
@@ -436,7 +480,8 @@ Clean Preview spec and the owner's instruction that Uno pin nothing onto the TV 
   frame). The TV's own "All" tab just shows the merged tiles, with no caption saying the order is
   a guess.
 - **`randomized` catalogs** take a random TMDB page per call on both the addon path and the
-  preview, independently, so the TV preview genuinely won't match the TV. Not flagged inline; the
+  preview, independently, so the TV preview genuinely won't match the TV. A collection row shuffles
+  its film list instead, with the same independent-per-call mismatch. Not flagged inline; the
   placeholder-tone tile behind a poster is the only visual difference, and it isn't specific to
   this case.
 

@@ -20,11 +20,22 @@ import { parseParams } from '@/features/library/recipe'
  *  as a mode so the form can't express both at once. */
 export type DateMode = 'any' | 'fixed' | 'rolling'
 
+/** What a movie catalog lists: the result of its discover filters, or one TMDB
+ *  collection's films. Form state only — the stored shape is the params, and a
+ *  saved `with_collection` reads back as `'collection'`. Series are always
+ *  `'filters'`: TMDB has no collections for series. */
+export type SourceMode = 'filters' | 'collection'
+
+/** The most ids `with_companies` or `with_keywords` may hold. Mirrors
+ *  the server's cap in `provider.Validate()`. */
+export const MAX_ENTITY_IDS = 20
+
 export interface CatalogFormState {
   name: string
   type: CatalogType
   isPublic: boolean
   dateMode: DateMode
+  sourceMode: SourceMode
   params: TMDBParams
   /** Scopes this catalog to one collection; `null` means listed. Always sent
    *  on save (see `toPayload`) — `PUT` writes `collection_id` unconditionally,
@@ -92,7 +103,7 @@ export function serializeSortBy(field: string, direction: 'asc' | 'desc'): strin
 }
 
 export function emptyForm(type: CatalogType = 'movie', collectionID: string | null = null): CatalogFormState {
-  return { name: '', type, isPublic: false, dateMode: 'any', params: {}, collectionID }
+  return { name: '', type, isPublic: false, dateMode: 'any', sourceMode: 'filters', params: {}, collectionID }
 }
 
 function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
@@ -113,6 +124,7 @@ export function formFromCatalog(catalog: Catalog): CatalogFormState {
     type: catalog.type,
     isPublic: catalog.is_public,
     dateMode: dateModeOf(params, catalog.type),
+    sourceMode: catalog.type === 'movie' && params.with_collection ? 'collection' : 'filters',
     params,
     collectionID: catalog.collection_id,
   }
@@ -184,6 +196,34 @@ function applyDateMode(state: CatalogFormState): TMDBParams {
   return p
 }
 
+/** The only fields a collection row sends. The server reads a collection's
+ *  films straight from TMDB and rejects any other filter beside it, so every
+ *  field not listed here — including any added later — is dropped. */
+const COLLECTION_KEYS = ['with_collection', 'randomized'] as const satisfies readonly (keyof TMDBParams)[]
+
+/** A movie catalog in collection mode lists one TMDB collection's films
+ *  rather than running a discover query. */
+export function isCollectionRow(state: Pick<CatalogFormState, 'type' | 'sourceMode'>): boolean {
+  return state.type === 'movie' && state.sourceMode === 'collection'
+}
+
+/** The params a save or preview sends: the date mode applied, then only the
+ *  current source mode's fields — `COLLECTION_KEYS` on a collection row, and
+ *  everything but `with_collection` otherwise. Form state keeps both sides'
+ *  values, so switching mode back brings them back. */
+function recipeParams(state: CatalogFormState): TMDBParams {
+  const p = applyDateMode(state)
+  if (!isCollectionRow(state)) {
+    delete p.with_collection
+    return p
+  }
+  const kept: TMDBParams = {}
+  for (const key of COLLECTION_KEYS) {
+    if (p[key] !== undefined) Object.assign(kept, { [key]: p[key] })
+  }
+  return kept
+}
+
 export type FieldErrors = Partial<Record<string, string>>
 
 /**
@@ -193,9 +233,16 @@ export type FieldErrors = Partial<Record<string, string>>
  */
 export function validateForm(state: CatalogFormState): FieldErrors {
   const errors: FieldErrors = {}
-  const p = applyDateMode(state)
+  // Checked against what is sent, so a field the current mode drops can't
+  // raise an error.
+  const p = recipeParams(state)
+  const collectionRow = isCollectionRow(state)
 
   if (!state.name.trim()) errors.name = 'Give this catalog a name.'
+
+  if (collectionRow && parseGenreList(p.with_collection).ids.length === 0) {
+    errors.with_collection = 'Pick a collection.'
+  }
 
   if (p.sort_by && !SORT_OPTIONS[state.type].includes(p.sort_by)) {
     errors.sort_by = `${state.type === 'movie' ? 'Movies' : 'Series'} can't be sorted this way.`
@@ -211,7 +258,7 @@ export function validateForm(state: CatalogFormState): FieldErrors {
     errors.watch_region = 'Pick a country — streaming services differ by country.'
   }
 
-  if (state.dateMode === 'rolling') {
+  if (state.dateMode === 'rolling' && !collectionRow) {
     const days = state.type === 'movie' ? p.released_within_days : p.aired_within_days
     if (!days || days < 1) errors.within_days = 'Pick how far back to look.'
   }
@@ -232,6 +279,13 @@ export function validateForm(state: CatalogFormState): FieldErrors {
     errors.vote_count = 'The first number is higher than the second.'
   }
 
+  if (parseGenreList(p.with_companies).ids.length > MAX_ENTITY_IDS) {
+    errors.with_companies = `Pick at most ${MAX_ENTITY_IDS} production companies.`
+  }
+  if (parseGenreList(p.with_keywords).ids.length > MAX_ENTITY_IDS) {
+    errors.with_keywords = `Pick at most ${MAX_ENTITY_IDS} keywords.`
+  }
+
   return errors
 }
 
@@ -244,7 +298,7 @@ export function validateForm(state: CatalogFormState): FieldErrors {
  * at all, so a catalog that doesn't exist yet can still be run.
  */
 export function paramsString(state: CatalogFormState): string {
-  return JSON.stringify(compact(applyDateMode(state)))
+  return JSON.stringify(compact(recipeParams(state)))
 }
 
 export function toPayload(state: CatalogFormState): CatalogPayload {
@@ -272,8 +326,9 @@ export function isSameCatalog(a: CatalogFormState, b: CatalogFormState): boolean
   return JSON.stringify(toPayload(a)) === JSON.stringify(toPayload(b))
 }
 
-/** Genre ids are stored as one string, comma-joined for AND and pipe-joined
- *  for OR. The form edits them as a list plus a join mode. */
+/** Genre, company and keyword ids are each stored as one string, comma-joined
+ *  for AND and pipe-joined for OR. The form edits them as a list plus a join
+ *  mode. A single id has no separator, so it parses as AND. */
 export type GenreJoin = 'and' | 'or'
 
 export function parseGenreList(raw: string | undefined): { ids: number[]; join: GenreJoin } {

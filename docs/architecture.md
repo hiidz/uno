@@ -178,7 +178,15 @@ for discover results (a ranking goes stale), only the TMDB-id→IMDB-id cache on
 entry per title TMDB has) and the lookup-list memos beside it
 (`internal/provider/cache.go`: genres, languages, countries, watch regions and certifications for
 the process's lifetime, watch providers for 24h since services move between markets). Every memo
-clones on read, so a caller that sorts what it got back cannot reach the cached copy.
+clones on read, so a caller that sorts what it got back cannot reach the cached copy. The memos
+keyed by an id a caller supplies — the per-id companies, keywords and collections, a collection's
+parts, and company title counts — are built with `newBoundedMemo`, because their key space is
+TMDB's whole catalogue: `maxEntityCacheEntries` (10,000; an entry is an id and a name or a count)
+for all but the parts, `maxCollectionPartsEntries` (1,000; an entry is a whole film list) for
+those. Inserting a new key at the bound drops the expired entries and, if the memo is still full,
+empties it whole — the `maxIMDBCacheEntries` policy, since an entry costs one TMDB call to
+re-derive. The whole-list memos stay unbounded; their key spaces are a handful of types and
+regions.
 `resolveMetas` bounds the per-page `/external_ids` fan-out at 8 concurrent lookups. A title TMDB
 has no IMDB id for is dropped from the page; a lookup that *fails* fails the whole page, so the
 502 goes to Stremio instead of a short row under a three-hour cache header. `releaseInfo`
@@ -254,7 +262,9 @@ encoded, would otherwise split at its `&`. It passes the `genre` value to `Fetch
 whose `applyGenrePick` (shared with `PreviewCatalog`) resolves the name through the same
 `GenreExtraOptions` list and narrows the discover query with `applyGenreExtra`
 (`internal/provider/query.go`): ANDed onto an AND `with_genres`, or replacing an OR one. `All`, an empty value, or a name not in that list leaves the recipe
-unfiltered.
+unfiltered. A collection recipe (`with_collection`, `docs/data-model.md`) has no `with_genres`, so it
+offers every genre, and its pick filters the collection's films by `genre_ids` instead of
+narrowing a discover query.
 
 Cache headers: `cacheMaxAge` 10800s / `staleRevalidate` 3600s — the same values the Cinemeta
 sample carries. With no server-side response cache, these are the only thing keeping Stremio from
@@ -292,7 +302,7 @@ The authenticated "run this recipe, show me tiles, save nothing" endpoint
 | Auth | `requireNuvioAuth` only — **not profile-scoped**. No vault read, so nothing to scope. |
 | Request | `{type, params, genre?}` — no `endpoint`, no `provider`, no `page`. `genre` narrows the recipe exactly as a client's genre pick does on the addon path (`applyGenrePick`), which is how a collection folder's per-reference genre is previewed |
 | Response | `{randomized, items: [{tmdb_id, title, year, poster}], total_results}` — `total_results` is TMDB's count across every page these filters match, not the page `items` carries, so the builder can say "20 of N" rather than implying the page in hand is the whole answer |
-| Cost | **1 TMDB call** per recipe; **2** for a `randomized` recipe whose random page isn't page 1. A `genre` adds one `/genre/{kind}/list` fetch the first time a process needs that type's list (`TMDBClient.Genres` caches it for the process's lifetime) |
+| Cost | **1 TMDB call** per recipe; **2** for a `randomized` recipe whose random page isn't page 1; a collection recipe reads its memoized `/collection/{id}` instead of discover and reports its film count as `total_results`. A `genre` adds one `/genre/{kind}/list` fetch the first time a process needs that type's list (`TMDBClient.Genres` caches it for the process's lifetime) |
 | Errors | `400` invalid recipe, `502` TMDB unreachable |
 
 Four properties, each load-bearing:
@@ -301,8 +311,8 @@ Four properties, each load-bearing:
   solely to mint IMDB ids for Stremio, and a preview has no use for them — poster, title, and
   year are all already on the discover response. Reusing `FetchCatalogPage` would make preview
   **21** TMDB calls per catalog instead of **1**. It does share `catalogEndpoint` +
-  `buildDiscoverQuery` + `discover`, which is the point: the underscore-to-dot param translation
-  must live in exactly one place.
+  `DecodeParams`/`DiscoverQuery` + `discover` (and `collectionItems` for a collection recipe), which
+  is the point: the underscore-to-dot param translation must live in exactly one place.
 - **It takes a raw recipe, not a saved catalog id.** A saved id would serve only the home preview
   and force a second endpoint for the catalog builder's unsaved edits.
 - **It derives the discover path from `type`; it never accepts one.** `TMDBClient.get` builds
@@ -335,6 +345,37 @@ picker reads it, so every genre it offers actually narrows the row. Not `GET /ap
 which is TMDB's whole list. Same auth and recipe validation as preview, and it takes a recipe
 rather than a catalog id for the same reason: a draft catalog has no id yet. `502` when TMDB's
 genre list can't be fetched.
+
+### TMDB lookup routes
+
+The builder's pickers read TMDB's vocabulary through thin `requireNuvioAuth` routes in
+`internal/api/provider.go`, all answered by one helper, `lookupList`: `GET /api/genres/{type}`,
+`/api/certifications/{type}`, `/api/languages`, `/api/countries`,
+`/api/watch-providers/{type}?region=`, `/api/watch-regions`, and, for the three vocabularies TMDB
+publishes no whole list of, `GET /api/keywords/search?q=` and `/api/collections/search?q=`
+(`[{id, name}]`, TMDB's first result page, `[]` when nothing matches),
+`GET /api/companies/search?q=&type=movie|series` (below), plus `GET /api/companies/{id}`,
+`/api/keywords/{id}` and `/api/collections/{id}` (`{id, name}`: a saved id resolved back to its
+name). `lookupList` classifies a failure once for every route: `ErrInvalidCatalogType` or
+`ErrInvalidParams` → `400` without contacting TMDB (a blank `q`, a missing or unknown company
+search `type`, an id below 1; a non-numeric `{id}` is rejected before the provider is called),
+`provider.ErrNotFound` → `404`, anything else → `502`. The literal `search` segment outranks
+`{id}` in `ServeMux`, so the two patterns coexist.
+
+Company search is ranked, because TMDB's raw order is not usable: its first page for "a24" put
+the real A24 third, behind same-named duplicates crediting no titles at all.
+`TMDBClient.SearchCompanies` (`internal/provider/companies.go`) keeps the first 10 results of
+TMDB's first page (`maxCompanyMatches`), counts each one's titles for the catalog's `type` with
+one `/discover/movie` or `/discover/tv` call (`with_companies=<id>`, reading `total_results`),
+drops those under 5 titles (`minCompanyTitles`: in a 15-studio probe every junk duplicate had at
+most 1 and the smallest real studios 8–9), and sorts the rest by count, descending, ties in
+TMDB's order. It answers `[{id, name, origin_country, title_count}]` — `origin_country` may be
+`""`, and `[]` when nothing survives. The counts run with `resolveMetas`' concurrency bound
+(`externalIDsConcurrency`) and are memoized for 24h per type and id (`companyTitles`, bounded like the
+per-id memos), so a repeated search costs one TMDB call. A failed count fails the whole search with a
+`502` rather than silently dropping the result it was for; a TMDB 404 on that discover call is
+reported without `ErrNotFound`, so it is a `502` too, not a `404` for a search. `type` is required
+and is Uno's `movie`/`series`, never TMDB's `tv`.
 
 ### Error responses
 

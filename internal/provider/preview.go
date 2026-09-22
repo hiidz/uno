@@ -26,7 +26,7 @@ type PreviewItem struct {
 
 // PreviewCatalog runs a recipe against TMDB and returns one page of tiles
 // plus TMDB's own count of how many titles match in total, saving nothing. It
-// shares catalogEndpoint, buildDiscoverQuery and discover with
+// shares catalogEndpoint, DecodeParams, DiscoverQuery and discover with
 // [TMDBClient.FetchCatalogPage] — which is the point, since the
 // underscore-to-dot param translation (vote_average_gte -> vote_average.gte)
 // and the type->path mapping each have to live in exactly one place — but it
@@ -41,16 +41,28 @@ type PreviewItem struct {
 // genre narrows the recipe the same way a client's genre pick does on the
 // addon path — a collection folder's per-reference genre is previewed through
 // it.
+//
+// A collection recipe skips discover (see collectionItems): the tiles are the
+// whole collection and totalResults is their count.
 func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON, genre string) (items []PreviewItem, totalResults int, randomized bool, err error) {
 	endpoint, err := catalogEndpoint(catalogType)
 	if err != nil {
 		return nil, 0, false, err
 	}
 
-	query, randomized, err := buildDiscoverQuery(catalogType, paramsJSON)
+	p, err := DecodeParams(catalogType, paramsJSON)
 	if err != nil {
 		return nil, 0, false, err
 	}
+	randomized = p.IsRandomized()
+	if parts, ok, err := c.collectionItems(ctx, p, catalogType, paramsJSON, genre); ok {
+		if err != nil {
+			return nil, 0, randomized, err
+		}
+		return previewItems(catalogType, parts), len(parts), randomized, nil
+	}
+
+	query := p.DiscoverQuery()
 	if err := c.applyGenrePick(ctx, query, catalogType, paramsJSON, genre); err != nil {
 		return nil, 0, randomized, err
 	}
@@ -72,11 +84,15 @@ func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON
 		}
 	}
 
-	items = make([]PreviewItem, 0, len(resp.Results))
-	for _, item := range resp.Results {
+	return previewItems(catalogType, resp.Results), resp.TotalResults, randomized, nil
+}
+
+func previewItems(catalogType string, results []tmdbDiscoverItem) []PreviewItem {
+	items := make([]PreviewItem, 0, len(results))
+	for _, item := range results {
 		items = append(items, tmdbItemToPreview(catalogType, item))
 	}
-	return items, resp.TotalResults, randomized, nil
+	return items
 }
 
 func tmdbItemToPreview(catalogType string, item tmdbDiscoverItem) PreviewItem {

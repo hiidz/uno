@@ -10,21 +10,13 @@ import (
 	"time"
 )
 
-// buildDiscoverQuery decodes the stored recipe and translates it into TMDB's
-// literal query params. The translation is done field-by-field (see each
-// type's DiscoverQuery) rather than as a generic json-roundtrip dump: our own
-// storage tags are underscore-only (vote_average_gte) but TMDB's real range
-// params use a dot (vote_average.gte) — dumping the struct directly would
-// silently produce query keys TMDB doesn't recognize and the filter would
-// just never apply.
-func buildDiscoverQuery(catalogType, paramsJSON string) (query url.Values, randomized bool, err error) {
-	p, err := DecodeParams(catalogType, paramsJSON)
-	if err != nil {
-		return nil, false, err
-	}
-	return p.DiscoverQuery(), p.IsRandomized(), nil
-}
-
+// commonQuery translates the fields both recipe types share into TMDB's
+// literal query params. The translation is done field-by-field (here and in
+// each type's DiscoverQuery) rather than as a generic json-roundtrip dump: our
+// own storage tags are underscore-only (vote_average_gte) but TMDB's real
+// range params use a dot (vote_average.gte) — dumping the struct directly
+// would silently produce query keys TMDB doesn't recognize and the filter
+// would just never apply.
 func commonQuery(p TMDBCommonParams) url.Values {
 	q := url.Values{}
 	setIf(q, "sort_by", p.SortBy)
@@ -33,6 +25,8 @@ func commonQuery(p TMDBCommonParams) url.Values {
 	setIf(q, "with_original_language", p.WithOriginalLanguage)
 	setIf(q, "with_watch_providers", p.WithWatchProviders)
 	setIf(q, "watch_region", p.WatchRegion)
+	setIf(q, "with_companies", p.WithCompanies)
+	setIf(q, "with_keywords", p.WithKeywords)
 	setIf(q, "certification", p.Certification)
 	setIf(q, "certification.gte", p.CertificationGte)
 	setIf(q, "certification.lte", p.CertificationLte)
@@ -47,6 +41,8 @@ func commonQuery(p TMDBCommonParams) url.Values {
 }
 
 // DiscoverQuery satisfies CatalogParams for a /discover/movie recipe.
+// with_collection is not sent: /discover/movie ignores it, and a collection
+// recipe never reaches discover (see collectionItems).
 func (p TMDBMovieParams) DiscoverQuery() url.Values {
 	q := commonQuery(p.TMDBCommonParams)
 	setIf(q, "primary_release_date.gte", p.PrimaryReleaseDateGte)
@@ -128,20 +124,30 @@ func genreIDSet(list string) map[int]bool {
 // GenreExtraOptions. "", GenreExtraAll, or a name not in that list leaves q
 // unfiltered.
 func (c *TMDBClient) applyGenrePick(ctx context.Context, q url.Values, catalogType, paramsJSON, genre string) error {
+	id, ok, err := c.pickedGenreID(ctx, catalogType, paramsJSON, genre)
+	if ok {
+		applyGenreExtra(q, id)
+	}
+	return err
+}
+
+// pickedGenreID resolves genre, a name picked from the recipe's
+// GenreExtraOptions, to its TMDB id. ok is false for "", GenreExtraAll, or a
+// name not in that list.
+func (c *TMDBClient) pickedGenreID(ctx context.Context, catalogType, paramsJSON, genre string) (id int, ok bool, err error) {
 	if genre == "" || genre == GenreExtraAll {
-		return nil
+		return 0, false, nil
 	}
 	options, err := c.GenreExtraOptions(ctx, catalogType, paramsJSON)
 	if err != nil {
-		return err
+		return 0, false, err
 	}
 	for _, g := range options {
 		if g.Name == genre {
-			applyGenreExtra(q, g.ID)
-			break
+			return g.ID, true, nil
 		}
 	}
-	return nil
+	return 0, false, nil
 }
 
 // applyGenreExtra narrows a discover query to one picked genre id: ANDed onto

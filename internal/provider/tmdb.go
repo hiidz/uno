@@ -14,8 +14,11 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/hiidz/uno/internal/jsonwire"
 )
 
 const tmdbBaseURL = "https://api.themoviedb.org/3"
@@ -50,7 +53,33 @@ type TMDBClient struct {
 	watchRegions   *memo[[]WatchRegion]
 	watchProviders *memo[[]WatchProvider]
 	certifications *memo[map[string][]Certification]
+
+	// Single entities looked up by id, keyed by the id: see Company,
+	// Keyword and Collection.
+	companies   *memo[Company]
+	keywords    *memo[Keyword]
+	collections *memo[Collection]
+
+	// collectionFilms holds each collection's films, keyed by collection id:
+	// see collectionParts.
+	collectionFilms *memo[[]tmdbDiscoverItem]
+
+	// companyTitles holds each company's title count for one catalog type,
+	// keyed "movie:123"/"series:456": see SearchCompanies.
+	companyTitles *memo[int]
 }
+
+// maxEntityCacheEntries bounds each memo keyed by an id a caller supplies:
+// the per-id companies, keywords and collections, and the company title
+// counts. Each entry is an id and a short name or a count, so the bound
+// holds each one to about a megabyte while sitting far above what this
+// deployment's users look up between restarts.
+const maxEntityCacheEntries = 10_000
+
+// maxCollectionPartsEntries bounds collectionFilms. An entry is a
+// collection's whole film list, overviews included — tens of kilobytes for
+// a long series — so it is held to fewer entries than the id memos.
+const maxCollectionPartsEntries = 1_000
 
 // maxIMDBCacheEntries bounds the tmdbID->IMDB-id cache. Its key space is
 // every title TMDB has, reachable one entry per item through the
@@ -82,14 +111,21 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		watchRegions:   newMemo(0, slices.Clone[[]WatchRegion]),
 		watchProviders: newMemo(watchProviderTTL, slices.Clone[[]WatchProvider]),
 		certifications: newMemo(0, cloneCertifications),
+		companies:      newBoundedMemo(0, maxEntityCacheEntries, func(v Company) Company { return v }),
+		keywords:       newBoundedMemo(0, maxEntityCacheEntries, func(v Keyword) Keyword { return v }),
+		collections:    newBoundedMemo(0, maxEntityCacheEntries, func(v Collection) Collection { return v }),
+
+		collectionFilms: newBoundedMemo(collectionPartsTTL, maxCollectionPartsEntries, slices.Clone[[]tmdbDiscoverItem]),
+		companyTitles:   newBoundedMemo(companyTitlesTTL, maxEntityCacheEntries, func(v int) int { return v }),
 	}
 }
 
-// errTMDBNotFound marks a TMDB 404 — the resource is absent rather than
+// ErrNotFound marks a TMDB 404 — the resource is absent rather than
 // momentarily unreachable, so a retry returns the same answer. Separated
 // from the other statuses because resolveMetas drops the one item whose
-// external_ids TMDB doesn't have instead of failing the page over it.
-var errTMDBNotFound = errors.New("provider: TMDB has no such resource")
+// external_ids TMDB doesn't have instead of failing the page over it, and
+// because a lookup of one company, keyword or collection by id answers a 404 with a 404.
+var ErrNotFound = errors.New("provider: TMDB has no such resource")
 
 // get is the shared low-level TMDB call: attach the API key, require a 200,
 // decode the body. discover and external_ids both go through this.
@@ -112,7 +148,7 @@ func (c *TMDBClient) get(ctx context.Context, path string, query url.Values, out
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("%w: %s", errTMDBNotFound, path)
+		return fmt.Errorf("%w: %s", ErrNotFound, path)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("provider: TMDB returned status %d for %s", resp.StatusCode, path)
@@ -129,6 +165,39 @@ func (c *TMDBClient) discover(ctx context.Context, endpoint string, query url.Va
 		return tmdbDiscoverResponse{}, err
 	}
 	return out, nil
+}
+
+// entityByID fetches the one TMDB entity at pathFormat's id through m, so
+// each id costs one round trip per process. A 404 comes back wrapping
+// ErrNotFound and, like every failed load, is not cached. An id below 1 is
+// rejected with ErrInvalidParams before TMDB is contacted.
+func entityByID[T any](ctx context.Context, c *TMDBClient, m *memo[T], pathFormat string, id int) (T, error) {
+	if id < 1 {
+		var zero T
+		return zero, fmt.Errorf("%w: id %d is not a TMDB id", ErrInvalidParams, id)
+	}
+	return m.load(strconv.Itoa(id), func() (T, error) {
+		var out T
+		err := c.get(ctx, fmt.Sprintf(pathFormat, id), url.Values{}, &out)
+		return out, err
+	})
+}
+
+// searchEntities returns the first page of a TMDB /search endpoint's results
+// for query. A blank query is rejected with ErrInvalidParams before TMDB is
+// contacted.
+func searchEntities[T any](ctx context.Context, c *TMDBClient, path, query string) ([]T, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, fmt.Errorf("%w: search query is blank", ErrInvalidParams)
+	}
+	var out struct {
+		Results []T `json:"results"`
+	}
+	if err := c.get(ctx, path, url.Values{"query": {query}}, &out); err != nil {
+		return nil, err
+	}
+	return jsonwire.OrEmpty(out.Results), nil
 }
 
 // imdbID resolves one TMDB id to an IMDB id, consulting the client's cache

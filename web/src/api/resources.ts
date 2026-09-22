@@ -7,14 +7,18 @@ import type {
   Collection,
   CommunityCatalog,
   CommunityCollection,
+  Company,
+  CompanySearchResult,
   Country,
   Genre,
   GenreOptionsRequest,
+  Keyword,
   Language,
   NuvioProfile,
   PreviewRequest,
   SelectedCatalog,
   SelectedProfile,
+  TMDBCollection,
   WatchProvider,
   WatchRegion,
 } from './types'
@@ -94,6 +98,42 @@ export function fetchWatchProviders(type: CatalogType, region: string): Promise<
  *  this one. */
 export function fetchWatchRegions(): Promise<WatchRegion[]> {
   return getList<WatchRegion>('/api/watch-regions')
+}
+
+/** Live from TMDB via the Go side: production companies whose name matches
+ *  `query`, counted and filtered for catalogs of `type`. The server rejects a
+ *  blank query, so callers only send a trimmed, non-empty one. */
+export function searchCompanies(query: string, type: CatalogType): Promise<CompanySearchResult[]> {
+  return getList<CompanySearchResult>(
+    `/api/companies/search?q=${encodeURIComponent(query)}&type=${type}`,
+  )
+}
+
+/** Names one company id. A `404` means TMDB has no company with that id. */
+export function fetchCompany(id: number): Promise<Company> {
+  return getJSON<Company>(`/api/companies/${id}`)
+}
+
+/** Live from TMDB via the Go side: keywords matching `query`. The server
+ *  rejects a blank query, so callers only send a trimmed, non-empty one. */
+export function searchKeywords(query: string): Promise<Keyword[]> {
+  return getList<Keyword>(`/api/keywords/search?q=${encodeURIComponent(query)}`)
+}
+
+/** Names one keyword id. A `404` means TMDB has no keyword with that id. */
+export function fetchKeyword(id: number): Promise<Keyword> {
+  return getJSON<Keyword>(`/api/keywords/${id}`)
+}
+
+/** Live from TMDB via the Go side: movie collections matching `query`. The
+ *  server rejects a blank query, so callers only send a trimmed, non-empty one. */
+export function searchCollections(query: string): Promise<TMDBCollection[]> {
+  return getList<TMDBCollection>(`/api/collections/search?q=${encodeURIComponent(query)}`)
+}
+
+/** Names one collection id. A `404` means TMDB has no collection with that id. */
+export function fetchCollection(id: number): Promise<TMDBCollection> {
+  return getJSON<TMDBCollection>(`/api/collections/${id}`)
 }
 
 /**

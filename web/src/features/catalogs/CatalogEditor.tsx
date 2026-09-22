@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, TriangleAlert } from 'lucide-react'
+import { fetchCollection, queryKeys } from '@/api'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
 import { Icon } from '@/components/Icon'
 import { EditorFooter } from '@/features/builder/EditorFooter'
@@ -11,6 +13,7 @@ import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
   emptyForm,
+  isCollectionRow,
   isSameCatalog,
   paramsString,
   parseGenreList,
@@ -20,6 +23,7 @@ import {
   validateForm,
   type CatalogFormState,
   type DateMode,
+  type SourceMode,
 } from './catalogForm'
 import { RecipePreview } from './RecipePreview'
 import {
@@ -28,7 +32,9 @@ import {
   UPCOMING_DAYS,
   formatWindowStart,
   sumAge,
+  sumCollection,
   sumDate,
+  sumEntities,
   sumGenres,
   sumLanguage,
   sumOrder,
@@ -36,6 +42,7 @@ import {
   sumShuffle,
   sumWatch,
 } from './summary'
+import { TMDBEntityPicker } from './TMDBEntityPicker'
 import { WatchProviderPicker } from './WatchProviderPicker'
 import {
   CertificationPicker,
@@ -117,10 +124,14 @@ export function CatalogEditor({
 
   // One section open at a time (DESIGN.md's "Collapsible sections as
   // credit-row buttons"). Every body stays mounted regardless — toggled with
-  // `hidden`, not unmounted — because `WatchProviderPicker` keeps its own
-  // region/search state locally and losing it every time the section closes
-  // would mean re-picking a region on every reopen.
-  const [openSection, setOpenSection] = useState<SectionKey | null>(null)
+  // `hidden`, not unmounted — because `WatchProviderPicker` and
+  // `TMDBEntityPicker` keep their own region/search state locally and losing
+  // it every time the section closes would mean re-picking a region on every
+  // reopen.
+  // A collection row has one section, so it starts open.
+  const [openSection, setOpenSection] = useState<SectionKey | null>(() =>
+    isCollectionRow(baseline) ? 'collection' : null,
+  )
 
   // Sorted by the name shown, not TMDB's response order, so the dropdown
   // reads alphabetically like the country and certification pickers.
@@ -183,6 +194,16 @@ export function CatalogEditor({
     ? state.params.with_watch_providers.split(/[,|]/).filter(Boolean).length
     : 0
 
+  // The same by-id key the collection picker's chip reads, so the section head
+  // names the pick without a request of its own.
+  const collectionID = isMovie ? parseGenreList(state.params.with_collection).ids[0] : undefined
+  const collectionName = useQuery({
+    queryKey: queryKeys.collection(collectionID ?? 0),
+    queryFn: () => fetchCollection(collectionID ?? 0),
+    enabled: collectionID !== undefined,
+    staleTime: Infinity,
+  }).data?.name
+
   function patch(update: Partial<CatalogFormState>) {
     setState((previous) => ({ ...previous, ...update }))
   }
@@ -195,6 +216,11 @@ export function CatalogEditor({
    *  until something is submitted, so pressing Preview has to be one of the
    *  things that reveals them — otherwise the note explaining why it won't run
    *  points at highlighting that isn't there yet. */
+  function switchSourceMode(sourceMode: SourceMode) {
+    patch({ sourceMode })
+    setOpenSection(sourceMode === 'collection' ? 'collection' : null)
+  }
+
   function runPreview() {
     if (recipeInvalid) {
       revealErrors()
@@ -216,7 +242,8 @@ export function CatalogEditor({
     const section = ERROR_SECTION[firstKey]
     if (!section) return
     setOpenSection(section)
-    requestAnimationFrame(() => document.getElementById(`sec-head-${section}`)?.focus())
+    const target = section === 'collection' ? 'cat-collection' : `sec-head-${section}`
+    requestAnimationFrame(() => document.getElementById(target)?.focus())
   }
 
   function trySubmit() {
@@ -245,6 +272,7 @@ export function CatalogEditor({
     countryNames,
     activeScale,
     watchProviderCount,
+    collectionName,
     errorFor,
     patch,
     patchParams,
@@ -326,6 +354,23 @@ export function CatalogEditor({
               </div>
             </div>
 
+            {isMovie && (
+              <div className="cr">
+                <span className="cr-role type-eyebrow">Mode</span>
+                <div className="cr-val">
+                  <Segmented<SourceMode>
+                    ariaLabel="Mode"
+                    value={state.sourceMode}
+                    onChange={switchSourceMode}
+                    options={[
+                      { value: 'filters', label: 'Filters' },
+                      { value: 'collection', label: 'Collection' },
+                    ]}
+                  />
+                </div>
+              </div>
+            )}
+
             {state.collectionID !== null ? (
               <div className="cr">
                 <span className="cr-role type-eyebrow">Scope</span>
@@ -402,7 +447,9 @@ export function CatalogEditor({
                     { value: 'on', label: 'On' },
                   ]}
                 />
-                <span className="ed-note">{sumShuffle(Boolean(state.params.randomized))}</span>
+                <span className="ed-note">
+                  {sumShuffle(Boolean(state.params.randomized), isCollectionRow(state))}
+                </span>
               </div>
             </div>
           </div>
@@ -414,7 +461,17 @@ export function CatalogEditor({
   )
 }
 
-type SectionKey = 'order' | 'genres' | 'ratings' | 'lang' | 'date' | 'age' | 'watch'
+type SectionKey =
+  | 'order'
+  | 'genres'
+  | 'ratings'
+  | 'lang'
+  | 'date'
+  | 'age'
+  | 'watch'
+  | 'companies'
+  | 'keywords'
+  | 'collection'
 
 /** Which section a server-mirrored validation error belongs to, so an
  *  invalid Save can open it. `name` isn't here — it's the one error outside
@@ -427,11 +484,15 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   certification_country: 'age',
   watch_region: 'watch',
   within_days: 'date',
+  with_companies: 'companies',
+  with_keywords: 'keywords',
+  with_collection: 'collection',
 }
 
 /** The order Save focuses errors in when more than one applies at once. */
 const ERROR_PRIORITY = [
   'name',
+  'with_collection',
   'sort_by',
   'watch_region',
   'certification_country',
@@ -439,6 +500,8 @@ const ERROR_PRIORITY = [
   'vote_average',
   'with_runtime',
   'vote_count',
+  'with_companies',
+  'with_keywords',
 ]
 
 function roleLabelFor(key: string, isMovie: boolean): string {
@@ -456,9 +519,12 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   date: (isMovie) => (isMovie ? 'Release date' : 'First aired'),
   age: () => 'Age rating',
   watch: () => 'Where to watch',
+  companies: () => 'Production companies',
+  keywords: () => 'Keywords',
+  collection: () => 'Collection',
 }
 
-/** Builds the seven collapsible sections: each carries the plain-English
+/** Builds the collapsible sections: each carries the plain-English
  *  summary its closed head shows, so the whole recipe reads down the page
  *  without opening anything. Kept as one function rather than inlined JSX so
  *  the summaries — which need almost every piece of derived state the editor
@@ -481,6 +547,7 @@ function buildSections(args: {
   countryNames: CountryLookup
   activeScale: CertificationsByCountry[string]
   watchProviderCount: number
+  collectionName: string | undefined
   errorFor: (key: string) => string | undefined
   patch: (update: Partial<CatalogFormState>) => void
   patchParams: (update: Partial<TMDBParams>) => void
@@ -502,12 +569,13 @@ function buildSections(args: {
     countryNames,
     activeScale,
     watchProviderCount,
+    collectionName,
     errorFor,
     patch,
     patchParams,
   } = args
 
-  return [
+  const sections = [
     {
       key: 'order' as const,
       role: 'Order the row',
@@ -681,7 +749,73 @@ function buildSections(args: {
         />
       ),
     },
+    {
+      key: 'companies' as const,
+      role: 'Production companies',
+      summary: sumEntities(state.params.with_companies, 'studio', 'Any studio'),
+      body: (
+        <>
+          <TMDBEntityPicker
+            kind="company"
+            type={state.type}
+            value={state.params.with_companies}
+            onChange={(with_companies) => patchParams({ with_companies })}
+          />
+          {errorFor('with_companies') && (
+            <FieldNote tone="danger">{errorFor('with_companies')}</FieldNote>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'keywords' as const,
+      role: 'Keywords',
+      summary: sumEntities(state.params.with_keywords, 'keyword', 'Any keywords'),
+      body: (
+        <>
+          <TMDBEntityPicker
+            kind="keyword"
+            type={state.type}
+            value={state.params.with_keywords}
+            onChange={(with_keywords) => patchParams({ with_keywords })}
+          />
+          {errorFor('with_keywords') && (
+            <FieldNote tone="danger">{errorFor('with_keywords')}</FieldNote>
+          )}
+        </>
+      ),
+    },
+    // Movie only: TMDB has no collections for series.
+    ...(isMovie
+      ? [
+          {
+            key: 'collection' as const,
+            role: 'Collection',
+            summary: sumCollection(state.params.with_collection, collectionName),
+            body: (
+              <>
+                <TMDBEntityPicker
+                  kind="collection"
+                  type={state.type}
+                  inputId="cat-collection"
+                  value={state.params.with_collection}
+                  onChange={(with_collection) => patchParams({ with_collection })}
+                />
+                {errorFor('with_collection') && (
+                  <FieldNote tone="danger">{errorFor('with_collection')}</FieldNote>
+                )}
+                <FieldNote>The row lists the collection's films in release order.</FieldNote>
+              </>
+            ),
+          },
+        ]
+      : []),
   ]
+
+  // Collection mode shows the collection picker alone and filters mode
+  // everything else, matching what `recipeParams` in catalogForm.ts sends.
+  const collectionRow = isCollectionRow(state)
+  return sections.filter((section) => (section.key === 'collection') === collectionRow)
 }
 
 /**

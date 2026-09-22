@@ -306,16 +306,33 @@ describing what a TMDB-backed catalog may ask for.
 
 - **Type hierarchy.** `BaseParams` (provider-agnostic behavior — `randomized`) →
   `TMDBCommonParams` (every discover filter both types share: genres, language, vote and runtime
-  ranges, watch providers, **and certification**) → `TMDBMovieParams` / `TMDBTVParams`
-  (type-specific only: the date window). Movie has `primary_release_date_*` and
-  `released_within_days`; series has `first_air_date_*` and `aired_within_days` — a different
-  axis, since a 2015 show still matches "aired in the last 30 days".
+  ranges, watch providers, production companies and keywords, **and certification**) → `TMDBMovieParams` / `TMDBTVParams`
+  (type-specific only: the date window, plus movie's `with_collection`). Movie has
+  `primary_release_date_*` and `released_within_days`; series has `first_air_date_*` and
+  `aired_within_days` — a different axis, since a 2015 show still matches "aired in the last 30
+  days". `with_collection` is one TMDB collection id (e.g. `10`, Star Wars), movie only.
+- **A collection catalog is a TMDB collection source, not a discover filter.** A collection
+  recipe is a movie recipe with `with_collection` set: its titles are one predefined TMDB
+  collection's films. `/discover/movie` accepts `with_collection` and ignores it — the same total
+  with or without it — so such a recipe never reaches discover. `collectionItems`
+  (`internal/provider/collections.go`), shared by `FetchCatalogPage` and `PreviewCatalog`, reads the films from `/collection/{id}`'s
+  `parts` (memoized for 24 hours, since a collection gains films), sorts them by `release_date`
+  ascending (undated last, ties by id), filters them locally by `genre_ids` for a client genre
+  pick, and shuffles them instead when `randomized`. The whole collection is page 1; a later page
+  is empty, and a preview's `total_results` is the filtered count. The addon path still resolves
+  each film's IMDB id through `resolveMetas`. `Validate()` makes the recipe exclusive:
+  `randomized` is the only field allowed beside `with_collection`, so no saved filter sits
+  unapplied. The check walks every field of the params struct by reflection (`firstSetField`)
+  and names the first one set, so a field added later is covered without editing it.
 - **Validation split, part one: the rules that need no network.** `Validate()` on each leaf type
   checks the `sort_by` enum (per type — movie and tv have different sort vocabularies),
-  fixed-vs-rolling date exclusivity, and that the rolling window isn't negative, then delegates
+  fixed-vs-rolling date exclusivity, that the rolling window isn't negative, and (movie) that
+  `with_collection` is a single id rather than a `,`/`|` list with no other filter beside it, then delegates
   to `TMDBCommonParams`'s shared check for the two required-together pairs (certification needs
-  a country, watch providers need a region) plus the numeric bounds: `vote_average_*` within
-  0–10, and no negative `vote_count_*` or `with_runtime_*`. Zero means "unset" for every numeric
+  a country, watch providers need a region), the numeric bounds (`vote_average_*` within
+  0–10, and no negative `vote_count_*` or `with_runtime_*`), and the id-list cap:
+  `with_companies` and `with_keywords` each hold at most 20 ids (`maxEntityIDs`, counted with
+  `parseIDList`), so an over-cap recipe is rejected before any TMDB lookup. Zero means "unset" for every numeric
   field (`setIntIf`/`setFloatIf` in `query.go`), so these bound what is sent rather than
   requiring a value. A negative rolling window is rejected rather than ignored — `DiscoverQuery`'s
   `> 0` guard would otherwise drop it silently and save a filter that never applies.
@@ -329,6 +346,22 @@ describing what a TMDB-backed catalog may ask for.
   `provider.ErrInvalidParams` (a 400); TMDB being unreachable wraps `errUpstreamValidation`,
   which `writeVaultError` answers with a 502 — a recipe that could not be checked has not been
   found at fault, so it is never reported as the caller's.
+- **Companies and keywords are checked per id.** `with_companies` and `with_keywords` are
+  comma (AND) or pipe (OR) separated TMDB id lists, like `with_genres`, but TMDB publishes no
+  whole list of either — only `/company/{id}`, `/keyword/{id}` and `/search/*`. So
+  `checkEntityIDs` shares `checkIDList`'s id-list parse (`parseIDList`) and then looks each id up
+  through `TMDBClient.Company`/`Keyword` instead of testing set membership. Each looked-up id is
+  memoized in a per-id `memo` with no expiry, bounded at `maxEntityCacheEntries` (see
+  `docs/architecture.md`), so a warm process still validates without the network; a TMDB 404
+  (`provider.ErrNotFound`) is a rejected value and becomes `ErrInvalidParams`, and is never
+  cached, while any other lookup failure stays a 502. A cold cache costs one TMDB call per
+  distinct id, which the 20-id cap in `Validate()` bounds at 20 per field.
+- **`with_collection` goes through the same per-id check, movie only.** `ValidateParams` decodes
+  it alongside `TMDBCommonParams` for either catalog type and looks the one id up through
+  `TMDBClient.Collection` (`/collection/{id}`). A series recipe carrying it is rejected with
+  `ErrInvalidParams`: `DecodeParams` is a plain `json.Unmarshal`, which ignores keys the type
+  doesn't declare, so without this the field would be saved on a series catalog and never
+  applied.
 - **Take re-validates what it copies.** `TakeCatalog` and `TakeCollection` both run the same
   params check against the source rows before copying them (the recipe is another profile's
   input, validated when they wrote it, not when it is taken), via a validator passed in by
@@ -369,8 +402,8 @@ describing what a TMDB-backed catalog may ask for.
   rather than a shared hardcoded list.
 - **Underscore-to-dot translation lives in one place.** Storage tags are underscore-only
   (`vote_average_gte`) while TMDB's real range params use a dot (`vote_average.gte`);
-  `buildDiscoverQuery`/`commonQuery` translate field-by-field, and both `FetchCatalogPage` and
-  `PreviewCatalog` go through them.
+  `commonQuery` and each recipe type's `DiscoverQuery` translate field-by-field, and both
+  `FetchCatalogPage` and `PreviewCatalog` go through them.
 - **Vocabulary.** Uno and Stremio say `movie`/`series`; TMDB says `movie`/`tv`. Every route the
   UI calls is on Uno's vocabulary, `GET /api/genres/{type}` included, and the translation is
   entirely server-side via `tmdbMediaType` — the same map `resolveMetas` uses. The one
@@ -389,7 +422,8 @@ describing what a TMDB-backed catalog may ask for.
   that answers an overshooting pick with an empty page, so an empty randomized page is refetched
   as page 1 — one discover call for a pick that lands, two for one that overshoots. Label it
   honestly in UI ("shuffle"), not "true random". Preview always asks page 1 and returns the flag
-  instead.
+  instead. A collection recipe (`with_collection`) has no pages to pick from: `randomized` shuffles
+  its film list instead of sorting it by release date.
 - **A second provider needs two places updated, not one.** `validProviders` in
   `vault.CatalogForm.Validate()` (`internal/vault/validation.go`) *and* the provider check at the
   top of `validateCatalogParams` (`internal/api/provider.go`), plus its own recipe type and a
