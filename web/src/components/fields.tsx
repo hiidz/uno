@@ -19,9 +19,13 @@ export function Field({
   hint,
   tip,
   error,
+  htmlFor,
   children,
 }: {
   label: string
+  /** The `id` of the input this labels. Omitted where the child is a control
+   *  a `<label>` can't point at, like a `Segmented`, which names itself. */
+  htmlFor?: string
   /** A line under the control. For something the user has to know *before*
    *  filling it in — the rest belongs in `tip`. */
   hint?: string
@@ -33,7 +37,9 @@ export function Field({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1.5">
-        <label className="type-eyebrow">{label}</label>
+        <label htmlFor={htmlFor} className="type-eyebrow">
+          {label}
+        </label>
         {tip && <InfoTip label={label} text={tip} />}
       </div>
       {children}
@@ -319,6 +325,7 @@ export function Segmented<T extends string>({
  * together has to say so in its signature.
  */
 export function DualRangeSlider({
+  label,
   min,
   max,
   step = 1,
@@ -328,6 +335,9 @@ export function DualRangeSlider({
   formatValue = (value) => String(value),
   showValues = true,
 }: {
+  /** What the range bounds, in lower case — the thumbs read as "Minimum
+   *  runtime" and "Maximum runtime", not a bare pair repeated per slider. */
+  label: string
   min: number
   max: number
   step?: number
@@ -365,12 +375,16 @@ export function DualRangeSlider({
         <Slider.Track className="bg-line-hi relative h-[3px] grow rounded-full">
           <Slider.Range className="bg-dim absolute h-full rounded-full" />
         </Slider.Track>
+        {/* `aria-valuetext` because the position isn't always the value: the
+            age-rating slider moves over indexes, and "3" is not "PG-13". */}
         <Slider.Thumb
-          aria-label="Minimum"
+          aria-label={`Minimum ${label}`}
+          aria-valuetext={formatValue(lowValue)}
           className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border shadow-sm outline-none focus-visible:ring-2"
         />
         <Slider.Thumb
-          aria-label="Maximum"
+          aria-label={`Maximum ${label}`}
+          aria-valuetext={formatValue(highValue)}
           className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border shadow-sm outline-none focus-visible:ring-2"
         />
       </Slider.Root>

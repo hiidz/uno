@@ -1,6 +1,4 @@
 import type { CatalogType, PreviewItem, TileShape, TMDBKind } from '@/api'
-import { tmdbKind } from '@/api'
-import type { CatalogTiles } from './tiles'
 
 /**
  * The shape of a collection, its folders, and the catalogs they reference —
@@ -183,51 +181,38 @@ export const ALL_TAB_TILE_CAP = 20
  * specifies how Nuvio merges a folder's sources. The UI has to label it as a
  * guess wherever it renders.
  *
- * De-duplicates on `tmdb_id`: two catalogs in one folder can surface the same
- * title (overlapping filters), and the same poster twice in one grid reads as a
- * rendering bug rather than as two sources agreeing.
+ * De-duplicates on kind and `tmdb_id` together: two catalogs in one folder can
+ * surface the same title (overlapping filters), and the same poster twice in
+ * one grid reads as a rendering bug rather than as two sources agreeing. The
+ * kind is part of the key because TMDB numbers movies and TV separately, so a
+ * movie and a series can share an id and still be different titles.
+ *
+ * The merge can span sources of different `CatalogType`, so the output has no
+ * single kind to hand `TileGrid`; `kinds` carries each merged item's kind
+ * instead.
  */
 export function interleaveTiles(
-  perSource: readonly (readonly PreviewItem[])[],
+  perSource: readonly { kind: TMDBKind | undefined; items: readonly PreviewItem[] }[],
   cap: number = ALL_TAB_TILE_CAP,
-): PreviewItem[] {
-  const merged: PreviewItem[] = []
-  const seen = new Set<number>()
-  const deepest = perSource.reduce((n, source) => Math.max(n, source.length), 0)
+): { items: PreviewItem[]; kinds: Map<PreviewItem, TMDBKind> } {
+  const items: PreviewItem[] = []
+  const kinds = new Map<PreviewItem, TMDBKind>()
+  const seen = new Set<string>()
+  const deepest = perSource.reduce((n, source) => Math.max(n, source.items.length), 0)
 
-  for (let round = 0; round < deepest && merged.length < cap; round++) {
+  for (let round = 0; round < deepest && items.length < cap; round++) {
     for (const source of perSource) {
-      if (merged.length >= cap) break
-      const item = source[round]
-      if (!item || seen.has(item.tmdb_id)) continue
-      seen.add(item.tmdb_id)
-      merged.push(item)
+      if (items.length >= cap) break
+      const item = source.items[round]
+      if (!item) continue
+      const key = `${source.kind}:${item.tmdb_id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push(item)
+      if (source.kind) kinds.set(item, source.kind)
     }
   }
-  return merged
-}
-
-/**
- * Which `TMDBKind` each item in a folder's merged "All" tab came from, keyed
- * by `tmdb_id`. The merge can span sources of different `CatalogType`, so
- * `interleaveTiles`'s output has no single kind to hand `TileGrid` — this
- * looks each tile's kind up per item instead, in the same source order
- * `interleaveTiles` merges, so a title carried by two sources resolves to
- * whichever source's tab lists it first.
- */
-export function interleavedKinds(
-  folder: PreviewFolder,
-  tiles: ReadonlyMap<string, CatalogTiles>,
-): Map<number, TMDBKind> {
-  const kinds = new Map<number, TMDBKind>()
-  for (const source of folder.sources) {
-    if (!source.type) continue
-    const kind = tmdbKind(source.type)
-    for (const item of tiles.get(source.key)?.items ?? []) {
-      if (!kinds.has(item.tmdb_id)) kinds.set(item.tmdb_id, kind)
-    }
-  }
-  return kinds
+  return { items, kinds }
 }
 
 /** The recipes a folder's sources need tiles for, filed under each source's

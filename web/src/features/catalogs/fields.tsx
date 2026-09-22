@@ -128,6 +128,7 @@ export function RangeField({
       {/* `showValues` off: the boxes above already print this pair, and a
           second copy travelling under the thumbs was the same number twice. */}
       <DualRangeSlider
+        label={label.toLowerCase()}
         min={min}
         max={max}
         step={step ? Number(step) : 1}
@@ -335,6 +336,7 @@ export function CertificationPicker({
                 carry only one bound from a stale closure, and whichever ran
                 last would overwrite the other with it. */}
             <DualRangeSlider
+              label="age rating"
               min={0}
               max={lastIndex}
               step={1}

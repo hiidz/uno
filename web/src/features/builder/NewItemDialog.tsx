@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Field, TextInput } from '@/components/fields'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
@@ -93,6 +93,7 @@ function NewItemForm({
 }) {
   const [value, setValue] = useState('')
   const [showError, setShowError] = useState(false)
+  const inputId = useId()
 
   const invalid = value.trim() === ''
 
@@ -108,9 +109,11 @@ function NewItemForm({
         <div className="flex flex-col gap-5">
           <Field
             label={label}
+            htmlFor={inputId}
             error={showError && invalid ? `Give this ${noun} a ${label.toLowerCase()}.` : undefined}
           >
             <TextInput
+              id={inputId}
               value={value}
               onChange={setValue}
               placeholder={placeholder}
