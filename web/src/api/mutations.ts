@@ -31,7 +31,8 @@ export function takeCollection(profileIndex: number, collectionID: string): Prom
  * `params` is a JSON-encoded *string*, not a nested object.
  *
  * `collection_id` scopes the catalog to one collection; omitted or `null`
- * means listed. No editor sets it yet.
+ * means listed. `PUT` writes it unconditionally, so an update must re-send a
+ * scoped catalog's own value — see `catalogForm.ts`'s `toPayload`.
  */
 export interface CatalogPayload {
   type: CatalogType
@@ -49,11 +50,11 @@ export function createCatalog(profileIndex: number, body: CatalogPayload): Promi
 }
 
 /**
- * `type` and `provider` are immutable once a catalog exists — but that is a
- * **UI-enforced rule, not a backend one**: `PUT` still accepts and writes
- * both. The edit form renders `type` as read-only and re-sends the
- * catalog's existing values, so the rule holds as long as every caller goes
- * through the form. Duplicate is the supported way to "change a catalog's type".
+ * `type` and `provider` are immutable once a catalog exists, and the server
+ * enforces both: a `type` that differs from the stored one is a 400, and
+ * `provider` is always `"tmdb"`, the only value it accepts. The edit form
+ * renders `type` as read-only for the same reason. Duplicate is the supported
+ * way to "change a catalog's type".
  */
 export function updateCatalog(
   profileIndex: number,
@@ -63,8 +64,9 @@ export function updateCatalog(
   return sendJSON<Catalog>('PUT', `/api/p/${profileIndex}/catalogs/${catalogID}`, body)
 }
 
-/** Hard delete. Removes the row for **every profile using it**, not just this
- *  one — the confirmation copy has to say so. */
+/** Hard delete of an owned catalog, cascading to the folder refs that point
+ *  at it. Copies other profiles took are independent rows and survive; the
+ *  delete only clears their `taken_from` link. */
 export function deleteCatalog(profileIndex: number, catalogID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/catalogs/${catalogID}`)
 }
@@ -170,8 +172,8 @@ export function updateCollection(
   return sendJSON<Collection>('PUT', `/api/p/${profileIndex}/collections/${collectionID}`, body)
 }
 
-/** Hard delete, cascading to folders and their catalog refs. Removes the
- *  collection for **every profile using it**, same as a catalog. */
+/** Hard delete of an owned collection, cascading to its folders and their
+ *  catalog refs. As with a catalog, copies other profiles took survive. */
 export function deleteCollection(profileIndex: number, collectionID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/collections/${collectionID}`)
 }

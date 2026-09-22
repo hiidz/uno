@@ -42,10 +42,10 @@ export interface RecipePreview {
   /**
    * Forget what was requested, back to `idle`.
    *
-   * A builder form outlives any one catalog it edits — it's seeded from a new
-   * target rather than remounted — so without this, opening a second catalog
-   * would inherit the first one's tiles and merely label them stale. Callers
-   * reset wherever they seed the form.
+   * For a caller that re-seeds its recipe in place: without this, the new
+   * recipe would inherit the old one's tiles and merely label them stale.
+   * `CatalogEditor` is keyed per catalog, so it gets a fresh hook for each one
+   * and only resets when its `initial` is replaced under the same key.
    */
   reset: () => void
 }
