@@ -128,10 +128,12 @@ function useRowScroll() {
   const measure = useCallback(() => {
     const el = ref.current
     if (!el) return
-    setBounds({
-      canPrev: el.scrollLeft > 1,
-      canNext: el.scrollLeft < el.scrollWidth - el.clientWidth - 1,
-    })
+    const canPrev = el.scrollLeft > 1
+    const canNext = el.scrollLeft < el.scrollWidth - el.clientWidth - 1
+    // Returning `prev` untouched lets React skip the render mid-scroll.
+    setBounds((prev) =>
+      prev.canPrev === canPrev && prev.canNext === canNext ? prev : { canPrev, canNext },
+    )
   }, [])
 
   useEffect(() => {
