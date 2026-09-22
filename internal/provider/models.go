@@ -171,6 +171,11 @@ type TMDBTVParams struct {
 // nothing.
 const tmdbMaxVoteAverage = 10.0
 
+// maxWithinDays caps released_within_days / aired_within_days at the same 50
+// years the builder's "Last N years" box allows, so a hand-crafted request
+// can't exceed what the UI itself permits.
+const maxWithinDays = 50 * 365
+
 // validMovieSortValues is TMDB's complete sort_by enum for /discover/movie.
 var validMovieSortValues = map[string]bool{
 	"popularity.asc": true, "popularity.desc": true,
@@ -256,6 +261,9 @@ func (p TMDBMovieParams) Validate() error {
 	if p.ReleasedWithinDays < 0 {
 		return errors.New("released_within_days cannot be negative")
 	}
+	if p.ReleasedWithinDays > maxWithinDays {
+		return fmt.Errorf("released_within_days cannot exceed %d (50 years)", maxWithinDays)
+	}
 
 	return p.validate()
 }
@@ -274,6 +282,9 @@ func (p TMDBTVParams) Validate() error {
 	// Same reason as TMDBMovieParams.Validate's released_within_days check.
 	if p.AiredWithinDays < 0 {
 		return errors.New("aired_within_days cannot be negative")
+	}
+	if p.AiredWithinDays > maxWithinDays {
+		return fmt.Errorf("aired_within_days cannot exceed %d (50 years)", maxWithinDays)
 	}
 
 	return p.validate()
