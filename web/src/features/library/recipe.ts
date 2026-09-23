@@ -238,8 +238,12 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
   // lookup per id.
   const companies = countIDs(p.with_companies)
   if (companies) out.push(`from ${pluralCount(companies, 'studio')}`)
+  const notCompanies = countIDs(p.without_companies)
+  if (notCompanies) out.push(`not from ${pluralCount(notCompanies, 'studio')}`)
   const keywords = countIDs(p.with_keywords)
   if (keywords) out.push(`tagged with ${pluralCount(keywords, 'keyword')}`)
+  const notKeywords = countIDs(p.without_keywords)
+  if (notKeywords) out.push(`not tagged with ${pluralCount(notKeywords, 'keyword')}`)
 
   // "shuffled", not "random": the backend picks a random TMDB page in [1,20],
   // not a random sample of the whole result set.

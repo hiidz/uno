@@ -26,8 +26,9 @@ export type DateMode = 'any' | 'fixed' | 'rolling'
  *  `'filters'`: TMDB has no collections for series. */
 export type SourceMode = 'filters' | 'collection'
 
-/** The most ids `with_companies` or `with_keywords` may hold. Mirrors
- *  the server's cap in `provider.Validate()`. */
+/** The most ids each of `with_companies`, `with_keywords`,
+ *  `without_companies` and `without_keywords` may hold. Mirrors the server's
+ *  cap in `provider.Validate()`. */
 export const MAX_ENTITY_IDS = 20
 
 export interface CatalogFormState {
@@ -284,6 +285,12 @@ export function validateForm(state: CatalogFormState): FieldErrors {
   }
   if (parseGenreList(p.with_keywords).ids.length > MAX_ENTITY_IDS) {
     errors.with_keywords = `Pick at most ${MAX_ENTITY_IDS} keywords.`
+  }
+  if (parseGenreList(p.without_companies).ids.length > MAX_ENTITY_IDS) {
+    errors.without_companies = `Leave out at most ${MAX_ENTITY_IDS} production companies.`
+  }
+  if (parseGenreList(p.without_keywords).ids.length > MAX_ENTITY_IDS) {
+    errors.without_keywords = `Leave out at most ${MAX_ENTITY_IDS} keywords.`
   }
 
   return errors

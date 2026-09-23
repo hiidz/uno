@@ -31,6 +31,8 @@ function filledForm(): CatalogFormState {
       with_watch_providers: '8',
       with_companies: '420',
       with_keywords: '9715',
+      without_companies: '2',
+      without_keywords: '180547',
       randomized: true,
     },
   }
@@ -48,7 +50,13 @@ describe('source mode', () => {
     const state = filledForm()
     state.params.with_collection = '10'
     const sent = JSON.parse(paramsString(state)) as Record<string, unknown>
-    expect(sent).toMatchObject({ sort_by: 'name.asc', with_companies: '420', randomized: true })
+    expect(sent).toMatchObject({
+      sort_by: 'name.asc',
+      with_companies: '420',
+      without_companies: '2',
+      without_keywords: '180547',
+      randomized: true,
+    })
     expect(sent).not.toHaveProperty('with_collection')
   })
 
@@ -114,11 +122,26 @@ describe('company and keyword cap', () => {
     const state: CatalogFormState = {
       ...emptyForm('movie'),
       name: 'Row',
-      params: { with_companies: ids(MAX_ENTITY_IDS), with_keywords: ids(MAX_ENTITY_IDS) },
+      params: {
+        with_companies: ids(MAX_ENTITY_IDS),
+        with_keywords: ids(MAX_ENTITY_IDS),
+        without_companies: ids(MAX_ENTITY_IDS),
+        without_keywords: ids(MAX_ENTITY_IDS),
+      },
     }
     expect(validateForm(state)).toEqual({})
-    state.params = { with_companies: ids(21), with_keywords: ids(21) }
-    expect(Object.keys(validateForm(state)).sort()).toEqual(['with_companies', 'with_keywords'])
+    state.params = {
+      with_companies: ids(21),
+      with_keywords: ids(21),
+      without_companies: ids(21),
+      without_keywords: ids(21),
+    }
+    expect(Object.keys(validateForm(state)).sort()).toEqual([
+      'with_companies',
+      'with_keywords',
+      'without_companies',
+      'without_keywords',
+    ])
   })
 })
 
@@ -154,10 +177,18 @@ describe('parseGenreList / serializeGenreList', () => {
 
 describe('sumEntities', () => {
   it('counts ids and names the join once there are two', () => {
-    expect(sumEntities(undefined, 'studio', 'Any studio')).toBe('Any studio')
-    expect(sumEntities('420', 'studio', 'Any studio')).toBe('1 studio')
-    expect(sumEntities('420|2', 'studio', 'Any studio')).toBe('2 studios, any of them')
-    expect(sumEntities('420,2', 'keyword', 'Any keywords')).toBe('2 keywords, all of them')
+    expect(sumEntities(undefined, undefined, 'studio', 'Any studio')).toBe('Any studio')
+    expect(sumEntities('420', undefined, 'studio', 'Any studio')).toBe('1 studio')
+    expect(sumEntities('420|2', undefined, 'studio', 'Any studio')).toBe('2 studios, any of them')
+    expect(sumEntities('420,2', '', 'keyword', 'Any keywords')).toBe('2 keywords, all of them')
+  })
+
+  it('counts the left-out ids after the included ones', () => {
+    expect(sumEntities(undefined, '2', 'studio', 'Any studio')).toBe('not 1 studio')
+    expect(sumEntities('420', '2,7', 'studio', 'Any studio')).toBe('1 studio · not 2 studios')
+    expect(sumEntities('420|3', '2', 'keyword', 'Any keywords')).toBe(
+      '2 keywords, any of them · not 1 keyword',
+    )
   })
 })
 

@@ -331,7 +331,8 @@ describing what a TMDB-backed catalog may ask for.
   to `TMDBCommonParams`'s shared check for the two required-together pairs (certification needs
   a country, watch providers need a region), the numeric bounds (`vote_average_*` within
   0–10, and no negative `vote_count_*` or `with_runtime_*`), and the id-list cap:
-  `with_companies` and `with_keywords` each hold at most 20 ids (`maxEntityIDs`, counted with
+  `with_companies`, `with_keywords`, `without_companies` and `without_keywords` each hold at
+  most 20 ids (`maxEntityIDs`, counted with
   `parseIDList`), so an over-cap recipe is rejected before any TMDB lookup. Zero means "unset" for every numeric
   field (`setIntIf`/`setFloatIf` in `query.go`), so these bound what is sent rather than
   requiring a value. A negative rolling window is rejected rather than ignored — `DiscoverQuery`'s
@@ -356,6 +357,12 @@ describing what a TMDB-backed catalog may ask for.
   (`provider.ErrNotFound`) is a rejected value and becomes `ErrInvalidParams`, and is never
   cached, while any other lookup failure stays a 502. A cold cache costs one TMDB call per
   distinct id, which the 20-id cap in `Validate()` bounds at 20 per field.
+- **`without_companies` and `without_keywords` are the same id lists, left out.** They are
+  checked the same way, through the same lookups, and passed to both discover endpoints under
+  the same names. TMDB drops a title carrying any listed id whether the list is comma- or
+  pipe-joined, so the builder always stores them comma-joined, as it does `without_genres`.
+  Nothing rejects an id that sits in both the `with_` and `without_` list, just as nothing does
+  for genres. The builder's pickers keep the two apart instead.
 - **`with_collection` goes through the same per-id check, movie only.** `ValidateParams` decodes
   it alongside `TMDBCommonParams` for either catalog type and looks the one id up through
   `TMDBClient.Collection` (`/collection/{id}`). A series recipe carrying it is rejected with

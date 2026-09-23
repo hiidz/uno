@@ -251,6 +251,14 @@ Other decisions worth keeping:
   Up/Down; Escape clears the search without closing the editor), and the searching / no-match /
   count line is a `role="status"` live region. Section heads and the library summary count these
   rather than name them, for the same reason as streaming services.
+- **Each of those sections holds two pickers, Include and Leave out** (`EntityLists` in
+  `CatalogEditor.tsx`), writing `with_*` and `without_*`. The Leave out picker is the same
+  component with `exclude`: no all/any `Segmented`, and always comma-joined, because TMDB drops a
+  title carrying any of the listed ids whichever separator is used. Each list has its own 20-id
+  cap. Each picker takes the other's ids as `hiddenIds` and never offers them in search, so one
+  id can't be both included and left out. There is no server rule for that overlap either, the
+  same as genres. The closed head reads "1 studio · not 2 studios" (`sumEntities`), and the
+  library summary reads "not from 2 studios" / "not tagged with 1 keyword".
 - **A movie catalog's Mode is either Filters or Collection**, a `Segmented` right under the
   Movie/Series row. The mode is form state (`sourceMode` in `catalogForm.ts`), not a stored field:
   `formFromCatalog` reads a saved `with_collection` as Collection, anything else as Filters.

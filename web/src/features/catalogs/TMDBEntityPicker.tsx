@@ -28,8 +28,10 @@ import { companyDetail } from './summary'
  * to the catalog's type, and each result names its country and title count.
  *
  * The stored value is one id-list string, comma-joined for "all of them" and
- * pipe-joined for "any of them". A single-pick kind stores one bare id, and a
- * new pick replaces it. A multi-pick kind holds at most `MAX_ENTITY_IDS`. Chips name their ids through the by-id route,
+ * pipe-joined for "any of them". An `exclude` list is always comma-joined:
+ * TMDB drops a title carrying any of its ids either way, so it has no join to
+ * pick. A single-pick kind stores one bare id, and a new pick replaces it. A
+ * multi-pick kind holds at most `MAX_ENTITY_IDS`. Chips name their ids through the by-id route,
  * cached for the session; an id TMDB no longer knows still shows as a chip,
  * marked, so it can be removed.
  */
@@ -111,6 +113,8 @@ export function TMDBEntityPicker({
   value,
   onChange,
   inputId,
+  exclude = false,
+  hiddenIds,
 }: {
   kind: EntityKind
   /** The catalog's type, which company search counts titles for. */
@@ -119,20 +123,29 @@ export function TMDBEntityPicker({
   onChange: (value: string | undefined) => void
   /** For focusing the search box from outside, e.g. on an invalid Save. */
   inputId?: string
+  /** The list of ids to leave out rather than to match. */
+  exclude?: boolean
+  /** Ids search never offers: the section's other list, so one id can't be
+   *  both matched and left out. */
+  hiddenIds?: number[]
 }) {
   const source = SOURCES[kind]
+  const plural = exclude ? `${source.plural} to leave out` : source.plural
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLUListElement>(null)
 
   const ids = useMemo(() => [...new Set(parseGenreList(value).ids)], [value])
 
-  // One id carries no separator, so it takes the kind's default join.
-  const join: GenreJoin = value?.includes('|')
-    ? 'or'
-    : value?.includes(',')
-      ? 'and'
-      : source.defaultJoin
+  // Outside an exclude list, one id carries no separator, so it takes the
+  // kind's default join.
+  const join: GenreJoin = exclude
+    ? 'and'
+    : value?.includes('|')
+      ? 'or'
+      : value?.includes(',')
+        ? 'and'
+        : source.defaultJoin
 
   const full = !source.single && ids.length >= MAX_ENTITY_IDS
 
@@ -155,8 +168,11 @@ export function TMDBEntityPicker({
   })
 
   const matches = useMemo(
-    () => (results.data ?? []).filter((entity) => !ids.includes(entity.id)),
-    [results.data, ids],
+    () =>
+      (results.data ?? []).filter(
+        (entity) => !ids.includes(entity.id) && !hiddenIds?.includes(entity.id),
+      ),
+    [results.data, ids, hiddenIds],
   )
 
   function write(nextIDs: number[], nextJoin: GenreJoin) {
@@ -220,7 +236,7 @@ export function TMDBEntityPicker({
   const searching = trimmed !== settled || results.isFetching
   const failed = !searching && results.isError
   const status = full
-    ? `A row can use up to ${MAX_ENTITY_IDS} ${source.plural}. Remove one to add another.`
+    ? `A row can ${exclude ? 'leave out' : 'use'} up to ${MAX_ENTITY_IDS} ${source.plural}. Remove one to add another.`
     : trimmed.length === 0
       ? ''
       : trimmed.length < MIN_QUERY
@@ -239,7 +255,7 @@ export function TMDBEntityPicker({
     // No label of its own: the section head above already names the field.
     <div className="flex w-full flex-col gap-2">
       {ids.length > 0 && (
-        <ul aria-label={`Chosen ${source.plural}`} className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+        <ul aria-label={`Chosen ${plural}`} className="m-0 flex list-none flex-wrap gap-1.5 p-0">
           {ids.map((id, index) => {
             const lookup = names[index]
             const missing = lookup?.isError ?? false
@@ -269,7 +285,7 @@ export function TMDBEntityPicker({
         </ul>
       )}
 
-      {!source.single && ids.length >= 2 && (
+      {!source.single && !exclude && ids.length >= 2 && (
         <Segmented
           ariaLabel={`How to combine ${source.plural}`}
           value={join}
@@ -289,7 +305,7 @@ export function TMDBEntityPicker({
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onInputKeyDown}
         placeholder={source.single && ids.length > 0 ? 'Search to replace it…' : 'Search by name…'}
-        aria-label={`Search ${source.plural}`}
+        aria-label={`Search ${plural}`}
         autoComplete="off"
         className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px] pointer-coarse:text-[16px]"
       />
@@ -299,7 +315,7 @@ export function TMDBEntityPicker({
       {showResults && (
         <ul
           ref={resultsRef}
-          aria-label={`Matching ${source.plural}`}
+          aria-label={`Matching ${plural}`}
           onKeyDown={onResultsKeyDown}
           className="border-line m-0 flex max-h-[50svh] w-full max-w-[var(--w-entry)] list-none flex-col overflow-y-auto overscroll-contain rounded-[2px] border p-1 lg:max-h-[13rem]"
         >

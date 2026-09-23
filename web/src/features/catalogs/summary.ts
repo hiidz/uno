@@ -197,12 +197,23 @@ export function sumWatch(
 }
 
 /** Counted, not named: the names live in the picker's by-id lookups, and a
- *  closed head is read at a glance. */
-export function sumEntities(raw: string | undefined, noun: string, anyLabel: string): string {
+ *  closed head is read at a glance. `withoutRaw` is the list left out. */
+export function sumEntities(
+  raw: string | undefined,
+  withoutRaw: string | undefined,
+  noun: string,
+  anyLabel: string,
+): string {
   const { ids, join } = parseGenreList(raw)
-  if (ids.length === 0) return anyLabel
-  if (ids.length === 1) return pluralCount(1, noun)
-  return `${pluralCount(ids.length, noun)}, ${join === 'or' ? 'any' : 'all'} of them`
+  const withoutCount = parseGenreList(withoutRaw).ids.length
+  if (ids.length === 0 && withoutCount === 0) return anyLabel
+  const parts: string[] = []
+  if (ids.length === 1) parts.push(pluralCount(1, noun))
+  if (ids.length > 1) {
+    parts.push(`${pluralCount(ids.length, noun)}, ${join === 'or' ? 'any' : 'all'} of them`)
+  }
+  if (withoutCount) parts.push(`not ${pluralCount(withoutCount, noun)}`)
+  return parts.join(' · ')
 }
 
 /** Named, unlike `sumEntities`: there is only ever one, and the editor reads

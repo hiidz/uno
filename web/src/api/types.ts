@@ -306,6 +306,9 @@ export interface TMDBParams {
   /** TMDB id lists: comma-joined means all of them, pipe-joined any of them. */
   with_companies?: string
   with_keywords?: string
+  /** Comma-joined TMDB id lists; a title carrying any of them is left out. */
+  without_companies?: string
+  without_keywords?: string
 
   certification?: string
   certification_gte?: string

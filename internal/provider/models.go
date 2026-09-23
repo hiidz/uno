@@ -135,6 +135,11 @@ type TMDBCommonParams struct {
 	WithCompanies string `json:"with_companies,omitempty"` // comma (AND) or pipe (OR) separated TMDB company ids
 	WithKeywords  string `json:"with_keywords,omitempty"`  // comma (AND) or pipe (OR) separated TMDB keyword ids
 
+	// TMDB drops a title carrying any listed id whichever separator joins
+	// them; the builder writes these comma-joined.
+	WithoutCompanies string `json:"without_companies,omitempty"`
+	WithoutKeywords  string `json:"without_keywords,omitempty"`
+
 	Certification        string `json:"certification,omitempty"`
 	CertificationGte     string `json:"certification_gte,omitempty"`
 	CertificationLte     string `json:"certification_lte,omitempty"`
@@ -187,7 +192,8 @@ const tmdbMaxVoteAverage = 10.0
 // can't exceed what the UI itself permits.
 const maxWithinDays = 50 * 365
 
-// maxEntityIDs caps how many ids with_companies and with_keywords each hold.
+// maxEntityIDs caps how many ids with_companies, with_keywords,
+// without_companies and without_keywords each hold.
 // ValidateParams looks every id up on TMDB one at a time, so the cap bounds
 // the round trips one save can cost on a cold cache.
 const maxEntityIDs = 20
@@ -229,6 +235,8 @@ func (p TMDBCommonParams) validate() error {
 	for _, f := range []struct{ name, list string }{
 		{"with_companies", p.WithCompanies},
 		{"with_keywords", p.WithKeywords},
+		{"without_companies", p.WithoutCompanies},
+		{"without_keywords", p.WithoutKeywords},
 	} {
 		ids, err := parseIDList(f.name, f.list)
 		if err != nil {

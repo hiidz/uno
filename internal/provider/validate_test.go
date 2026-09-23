@@ -85,8 +85,8 @@ func TestCheckEntityIDs(t *testing.T) {
 }
 
 // TestValidateParamsChecksCompaniesAndKeywords covers the wiring in
-// ValidateParams: both fields reach their own lookup, for either catalog
-// type.
+// ValidateParams: the include and exclude lists of both kinds reach their own
+// lookup, for either catalog type.
 func TestValidateParamsChecksCompaniesAndKeywords(t *testing.T) {
 	tests := []struct {
 		name, catalogType, params string
@@ -98,6 +98,10 @@ func TestValidateParamsChecksCompaniesAndKeywords(t *testing.T) {
 		{"unknown company", "movie", `{"with_companies":"999"}`, true, true, "with_companies"},
 		{"unknown keyword", "series", `{"with_keywords":"1,999"}`, true, true, "with_keywords"},
 		{"keyword lookup failing", "movie", `{"with_keywords":"500"}`, false, true, ""},
+		{"known exclusions", "series", `{"without_companies":"1","without_keywords":"1,1"}`, false, false, ""},
+		{"unknown excluded company", "movie", `{"without_companies":"1,999"}`, true, true, "without_companies"},
+		{"unknown excluded keyword", "series", `{"without_keywords":"999"}`, true, true, "without_keywords"},
+		{"excluded company lookup failing", "movie", `{"without_companies":"500"}`, false, true, ""},
 	}
 
 	for _, tc := range tests {
@@ -177,8 +181,8 @@ func TestMovieValidateRejectsCollectionList(t *testing.T) {
 	}
 }
 
-// TestValidateCapsEntityIDLists covers the no-network cap on with_companies
-// and with_keywords: twenty ids pass, a twenty-first is rejected naming the
+// TestValidateCapsEntityIDLists covers the no-network cap on the company and
+// keyword include and exclude lists: twenty ids pass, a twenty-first is rejected naming the
 // field and the cap, for either separator and either catalog type.
 func TestValidateCapsEntityIDLists(t *testing.T) {
 	ids := func(n int, sep string) string {
@@ -197,6 +201,8 @@ func TestValidateCapsEntityIDLists(t *testing.T) {
 			}{
 				{"with_companies", TMDBCommonParams{WithCompanies: ids(n, sep)}},
 				{"with_keywords", TMDBCommonParams{WithKeywords: ids(n, sep)}},
+				{"without_companies", TMDBCommonParams{WithoutCompanies: ids(n, sep)}},
+				{"without_keywords", TMDBCommonParams{WithoutKeywords: ids(n, sep)}},
 			} {
 				for _, p := range []CatalogParams{
 					TMDBMovieParams{TMDBCommonParams: tc.common},

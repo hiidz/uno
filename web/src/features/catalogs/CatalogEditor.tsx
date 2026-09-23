@@ -486,6 +486,8 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   within_days: 'date',
   with_companies: 'companies',
   with_keywords: 'keywords',
+  without_companies: 'companies',
+  without_keywords: 'keywords',
   with_collection: 'collection',
 }
 
@@ -501,7 +503,9 @@ const ERROR_PRIORITY = [
   'with_runtime',
   'vote_count',
   'with_companies',
+  'without_companies',
   'with_keywords',
+  'without_keywords',
 ]
 
 function roleLabelFor(key: string, isMovie: boolean): string {
@@ -752,37 +756,45 @@ function buildSections(args: {
     {
       key: 'companies' as const,
       role: 'Production companies',
-      summary: sumEntities(state.params.with_companies, 'studio', 'Any studio'),
+      summary: sumEntities(
+        state.params.with_companies,
+        state.params.without_companies,
+        'studio',
+        'Any studio',
+      ),
       body: (
-        <>
-          <TMDBEntityPicker
-            kind="company"
-            type={state.type}
-            value={state.params.with_companies}
-            onChange={(with_companies) => patchParams({ with_companies })}
-          />
-          {errorFor('with_companies') && (
-            <FieldNote tone="danger">{errorFor('with_companies')}</FieldNote>
-          )}
-        </>
+        <EntityLists
+          kind="company"
+          type={state.type}
+          withValue={state.params.with_companies}
+          withoutValue={state.params.without_companies}
+          withError={errorFor('with_companies')}
+          withoutError={errorFor('without_companies')}
+          onWith={(with_companies) => patchParams({ with_companies })}
+          onWithout={(without_companies) => patchParams({ without_companies })}
+        />
       ),
     },
     {
       key: 'keywords' as const,
       role: 'Keywords',
-      summary: sumEntities(state.params.with_keywords, 'keyword', 'Any keywords'),
+      summary: sumEntities(
+        state.params.with_keywords,
+        state.params.without_keywords,
+        'keyword',
+        'Any keywords',
+      ),
       body: (
-        <>
-          <TMDBEntityPicker
-            kind="keyword"
-            type={state.type}
-            value={state.params.with_keywords}
-            onChange={(with_keywords) => patchParams({ with_keywords })}
-          />
-          {errorFor('with_keywords') && (
-            <FieldNote tone="danger">{errorFor('with_keywords')}</FieldNote>
-          )}
-        </>
+        <EntityLists
+          kind="keyword"
+          type={state.type}
+          withValue={state.params.with_keywords}
+          withoutValue={state.params.without_keywords}
+          withError={errorFor('with_keywords')}
+          withoutError={errorFor('without_keywords')}
+          onWith={(with_keywords) => patchParams({ with_keywords })}
+          onWithout={(without_keywords) => patchParams({ without_keywords })}
+        />
       ),
     },
     // Movie only: TMDB has no collections for series.
@@ -816,6 +828,67 @@ function buildSections(args: {
   // everything else, matching what `recipeParams` in catalogForm.ts sends.
   const collectionRow = isCollectionRow(state)
   return sections.filter((section) => (section.key === 'collection') === collectionRow)
+}
+
+/**
+ * A company or keyword section's two lists: the ids a title must match, and
+ * the ids that drop a title. Each list's search hides the other's picks, so
+ * one id can't be in both.
+ */
+function EntityLists({
+  kind,
+  type,
+  withValue,
+  withoutValue,
+  withError,
+  withoutError,
+  onWith,
+  onWithout,
+}: {
+  kind: 'company' | 'keyword'
+  type: CatalogFormState['type']
+  withValue: string | undefined
+  withoutValue: string | undefined
+  withError: string | undefined
+  withoutError: string | undefined
+  onWith: (value: string | undefined) => void
+  onWithout: (value: string | undefined) => void
+}) {
+  const withIds = useMemo(() => parseGenreList(withValue).ids, [withValue])
+  const withoutIds = useMemo(() => parseGenreList(withoutValue).ids, [withoutValue])
+  return (
+    <>
+      <div className="flex w-full flex-col gap-2">
+        <label className="cr-role type-eyebrow" htmlFor={`cat-${kind}-with`}>
+          Include
+        </label>
+        <TMDBEntityPicker
+          kind={kind}
+          type={type}
+          inputId={`cat-${kind}-with`}
+          value={withValue}
+          hiddenIds={withoutIds}
+          onChange={onWith}
+        />
+        {withError && <FieldNote tone="danger">{withError}</FieldNote>}
+      </div>
+      <div className="flex w-full flex-col gap-2">
+        <label className="cr-role type-eyebrow" htmlFor={`cat-${kind}-without`}>
+          Leave out
+        </label>
+        <TMDBEntityPicker
+          kind={kind}
+          type={type}
+          inputId={`cat-${kind}-without`}
+          exclude
+          value={withoutValue}
+          hiddenIds={withIds}
+          onChange={onWithout}
+        />
+        {withoutError && <FieldNote tone="danger">{withoutError}</FieldNote>}
+      </div>
+    </>
+  )
 }
 
 /**

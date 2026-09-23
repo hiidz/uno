@@ -109,6 +109,12 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 	if err := checkEntityIDs(ctx, "with_keywords", p.WithKeywords, "keyword", c.Keyword); err != nil {
 		return err
 	}
+	if err := checkEntityIDs(ctx, "without_companies", p.WithoutCompanies, "company", c.Company); err != nil {
+		return err
+	}
+	if err := checkEntityIDs(ctx, "without_keywords", p.WithoutKeywords, "keyword", c.Keyword); err != nil {
+		return err
+	}
 	if p.WithCollection != "" {
 		if catalogType != "movie" {
 			return fmt.Errorf("%w: with_collection applies to movie catalogs only", ErrInvalidParams)

@@ -27,6 +27,8 @@ func commonQuery(p TMDBCommonParams) url.Values {
 	setIf(q, "watch_region", p.WatchRegion)
 	setIf(q, "with_companies", p.WithCompanies)
 	setIf(q, "with_keywords", p.WithKeywords)
+	setIf(q, "without_companies", p.WithoutCompanies)
+	setIf(q, "without_keywords", p.WithoutKeywords)
 	setIf(q, "certification", p.Certification)
 	setIf(q, "certification.gte", p.CertificationGte)
 	setIf(q, "certification.lte", p.CertificationLte)

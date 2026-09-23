@@ -15,6 +15,21 @@ describe('describeRecipe', () => {
     expect(describeRecipe(catalog('series', { with_collection: '10' }), lookup)).toEqual([])
   })
 
+  it('counts included and left-out companies and keywords', () => {
+    const params = {
+      with_companies: '420|2',
+      without_companies: '9993',
+      with_keywords: '9715',
+      without_keywords: '849,12',
+    }
+    expect(describeRecipe(catalog('series', params), new Map())).toEqual([
+      'from 2 studios',
+      'not from 1 studio',
+      'tagged with 1 keyword',
+      'not tagged with 2 keywords',
+    ])
+  })
+
   it('describes a collection row by the collection and shuffle alone', () => {
     const lookup = new Map<number, string>([[28, 'Action']])
     const params = { with_collection: '10', sort_by: 'popularity.desc', with_genres: '28' }
