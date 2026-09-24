@@ -15,7 +15,7 @@ export type CommunityAction = 'take' | 'update' | 'duplicate'
 /** A 404 or a 409 from a community POST: the lists the button was pressed on
  *  were behind the server — the original went private or was deleted, a
  *  linked copy already exists, or the copy was unlinked by a save. */
-export function isStale(error: Error): boolean {
+function isStale(error: Error): boolean {
   return error instanceof ApiError && (error.status === 404 || error.status === 409)
 }
 

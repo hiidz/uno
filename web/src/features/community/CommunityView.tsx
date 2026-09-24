@@ -12,7 +12,7 @@ import {
   collectionSummary,
 } from './CommunityRow'
 import { useCommunityCatalogs, useCommunityCollections } from './useCommunity'
-import { isStale, useCommunityMutations, type CommunityAction } from './useCommunityMutations'
+import { useCommunityMutations, type CommunityAction } from './useCommunityMutations'
 
 type Kind = 'catalogs' | 'collections'
 type Sort = 'name' | 'newest'
@@ -225,18 +225,27 @@ const DONE: Record<CommunityAction, Record<Kind, string>> = {
 }
 
 /** The toast for a failed action. A stale failure (`isStale`) has already
- *  refreshed the lists, so the two answers that mean "the row was behind" say
- *  what the refreshed row now shows rather than reporting an error: a 409
- *  from Take means the copy exists, and a 409 or 404 from Update means the
- *  copy is no longer linked. */
+ *  refreshed the lists, so the answers that mean "the row was behind" say what
+ *  happened rather than repeating the server's message: a 409 from Take means
+ *  the copy exists; a 409 from Update means Update found the copy edited and
+ *  unlinked it; a 404 from Update means the original went private or was
+ *  deleted, or the copy was already unlinked, and the response can't say
+ *  which. */
 function failure(action: CommunityAction, rowKind: Kind, error: Error): Toast {
   const noun = rowKind === 'catalogs' ? 'catalog' : 'collection'
-  if (action === 'take' && error instanceof ApiError && error.status === 409) {
+  const status = error instanceof ApiError ? error.status : undefined
+  if (action === 'take' && status === 409) {
     return { text: 'Already taken', tone: 'success' }
   }
-  if (action === 'update' && isStale(error)) {
+  if (action === 'update' && status === 409) {
     return {
       text: "Your copy was edited, so it's no longer linked. Take it again to get the latest",
+      tone: 'danger',
+    }
+  }
+  if (action === 'update' && status === 404) {
+    return {
+      text: "Couldn't update: the original is no longer available, or your copy is no longer linked.",
       tone: 'danger',
     }
   }

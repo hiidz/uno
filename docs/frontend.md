@@ -309,6 +309,10 @@ Other decisions worth keeping:
   community query keys, which the Community tab now subscribes to — an `is_public` flip changes
   what that tab shows) but deliberately **not** the selection queries, which would clobber
   pending edits.
+- **A collection save that moves a catalog to the library invalidates the catalog list**
+  (`useCollectionMutations`' `update`, when any `catalog_edits` entry has `move_to_library`), so
+  the moved catalog appears in the Library rail. It is the one collection write that adds a
+  listed row; other catalog edits inside a collection change scoped rows the list never holds.
 - **`useCatalogMutations` also invalidates the collection lists.** Not defensive — required.
   `DELETE FROM catalogs` cascades `folder_catalogs`, so a cached collection tree keeps a phantom
   ref: the overlay lists a folder member that no longer exists, and saving that collection
@@ -780,10 +784,12 @@ does, Update brings it in line with the owner's changes on request.
   being read.
 - **A 404 or a 409 means the row was stale** (`isStale`): the original went private or was
   deleted, a linked copy already exists, or the copy was unlinked by a save. The mutation
-  refreshes the same lists before it rejects, then the strip says what the refreshed row shows: a
-  409 from Take is "Already taken", and a 409 or a 404 from Update is "Your copy was edited, so
-  it's no longer linked. Take it again to get the latest". Any other failure reads "Couldn't …"
-  with the server's message.
+  refreshes the same lists before it rejects, then the strip says what happened: a 409 from Take
+  is "Already taken"; a 409 from Update, which unlinked a copy it found edited, is "Your copy was
+  edited, so it's no longer linked. Take it again to get the latest"; and a 404 from Update, which
+  can't say whether the original went private or was deleted or the copy was already unlinked,
+  is "Couldn't update: the original is no longer available, or your copy is no longer linked."
+  Any other failure reads "Couldn't …" with the server's message.
 - **The editors mark a linked copy and ask before unlinking it.** `Workspace` passes the open
   library row's `linked` to `CatalogEditor` and `CollectionEditor`, which then show a "Linked"
   banner as their first row (`LinkedBanner`, `features/builder/LinkedCopy.tsx`) — the
