@@ -38,7 +38,6 @@ erDiagram
     json params
     uuid owner_id FK
     bool is_public
-    bool is_default
     uuid collection_id FK "nullable — NULL means listed"
     int home_sort_order "nullable — NULL means not on the TV"
     bool show_in_home
@@ -53,7 +52,6 @@ erDiagram
     string title
     uuid owner_id FK
     bool is_public
-    bool is_default
     bool pin_to_top
     string view_mode
     bool show_all_tab
@@ -296,11 +294,12 @@ write credential.
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
   the wire. Every insert sets both to the same instant; every update rewrites only `updated_at`.
-- **Dead-by-design columns.** `is_default` on `catalogs`/`collections` exists only in the
-  schema: no Go code names it, so it is absent from every `SELECT` and `INSERT` column list and
-  has no struct field. It is `INTEGER NOT NULL DEFAULT 0`, so every insert writes 0 without
-  naming it. The column stays because a real "default catalog" feature is buildable later and
-  dropping it would force a delete-and-recreate.
+- **Legacy `is_default` columns.** `catalogs.is_default` and `collections.is_default`
+  (`INTEGER NOT NULL DEFAULT 0`) were removed from `schema.go` and are named nowhere in Go.
+  Databases created before that removal still carry them. Every insert omits the column, so the
+  default satisfies `NOT NULL`. New databases don't have them. Dropping them from an existing
+  database is optional: `ALTER TABLE catalogs DROP COLUMN is_default;
+  ALTER TABLE collections DROP COLUMN is_default;`, run once with the app stopped.
 - **Nuvio appearance fields.** `collections.focus_glow_enabled` (the TV's focus glow on the
   collection's home-screen folder cards), `folders.focus_gif_url`/`focus_gif_enabled` (an
   animated GIF played over a folder tile while it's focused), and
