@@ -1,4 +1,18 @@
-import type { Catalog, Collection, CollectionPayload, Folder, FolderCatalogRef, TileShape } from '@/api'
+import type {
+  Catalog,
+  CatalogType,
+  Collection,
+  CollectionPayload,
+  Folder,
+  FolderCatalogRef,
+  TileShape,
+} from '@/api'
+import {
+  formFromCatalog,
+  isSameCatalog,
+  toPayload as toCatalogPayload,
+  type CatalogFormState,
+} from '@/features/catalogs/catalogForm'
 
 /** Prefix marking a `FolderRefState.catalogID` as a client-only
  *  draft — staged locally by "copy into this collection"/"new inside this
@@ -95,6 +109,21 @@ export interface FolderRefState {
   genre: string
 }
 
+/**
+ * A pending edit to a catalog already scoped to this collection, made in the
+ * nested catalog editor. Part of the form rather than written on the spot, so
+ * it lands with the collection's own Save (as `catalog_edits`) and a discarded
+ * form never wrote it. `type` and `provider` ride along because the server
+ * checks the recipe before it reads the row.
+ */
+export interface CatalogEditState {
+  type: CatalogType
+  provider: string
+  name: string
+  params: string
+  moveToLibrary: boolean
+}
+
 export interface CollectionFormState {
   title: string
   isPublic: boolean
@@ -104,6 +133,9 @@ export interface CollectionFormState {
   backdropImageURL: string
   focusGlowEnabled: boolean
   folders: FolderFormState[]
+  /** Keyed by catalog id. An edit that would leave its catalog as saved is
+   *  removed rather than kept, so undoing one leaves the form clean. */
+  catalogEdits: Record<string, CatalogEditState>
 }
 
 let folderKeySeq = 0
@@ -163,6 +195,7 @@ export function emptyCollectionForm(): CollectionFormState {
     backdropImageURL: '',
     focusGlowEnabled: true,
     folders: [],
+    catalogEdits: {},
   }
 }
 
@@ -221,7 +254,38 @@ export function formFromCollection(collection: Collection): CollectionFormState 
     backdropImageURL: collection.backdrop_image_url,
     focusGlowEnabled: collection.focus_glow_enabled,
     folders: (collection.folders ?? []).map(folderFromWire),
+    catalogEdits: {},
   }
+}
+
+/**
+ * `state` with a pending edit to `saved` taken from the nested catalog
+ * editor's `form`, or with that edit dropped when `form` would leave the
+ * catalog as `saved` has it. The comparison runs on forms (`isSameCatalog`),
+ * never on the stored `params` string, which the form re-serializes: a stored
+ * string with its keys in another order would otherwise read as an edit.
+ * `saved` is the row as the collection editor opened it, not the latest local
+ * copy, so editing a catalog and then editing it back clears the edit.
+ */
+export function withCatalogEdit(
+  state: CollectionFormState,
+  saved: Catalog,
+  form: CatalogFormState,
+): CollectionFormState {
+  const catalogEdits = { ...state.catalogEdits }
+  if (isSameCatalog(formFromCatalog(saved), form)) {
+    delete catalogEdits[saved.id]
+  } else {
+    const payload = toCatalogPayload(form)
+    catalogEdits[saved.id] = {
+      type: payload.type,
+      provider: payload.provider,
+      name: payload.name,
+      params: payload.params,
+      moveToLibrary: form.collectionID === null,
+    }
+  }
+  return { ...state, catalogEdits }
 }
 
 export interface FolderErrors {
@@ -371,6 +435,14 @@ export function toCollectionPayload(
         // same way whether or not it ever had a genre.
         return genre ? { ...ref, genre } : ref
       }),
+    })),
+    catalog_edits: Object.entries(state.catalogEdits).map(([id, edit]) => ({
+      id,
+      type: edit.type,
+      provider: edit.provider,
+      name: edit.name,
+      params: edit.params,
+      move_to_library: edit.moveToLibrary,
     })),
   }
 }

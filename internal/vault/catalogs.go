@@ -257,15 +257,17 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	return c, nil
 }
 
-// UpdateUserCatalog validates input and updates the catalog identified by
-// catalogID, provided it's owned by profileID. Returns ErrCatalogNotFound
-// if no such row exists (including one owned by another profile).
+// UpdateUserCatalog validates input and updates the listed catalog
+// identified by catalogID, provided it's owned by profileID. Returns
+// ErrCatalogNotFound if no such row exists (including one owned by another
+// profile), and ErrInvalidInput for a catalog inside a collection — see
+// checkCatalogRewrite.
 //
-// input.CollectionID governs scope: setting it demotes the catalog into
-// that collection (it must be owned by profileID, the catalog must not be
-// on the home screen, and every existing folder ref to it must already be
-// inside the target collection); clearing it promotes the catalog back to
-// listed, always allowed.
+// input.CollectionID set demotes the catalog into that collection: it must be
+// owned by profileID, the catalog must not be on the home screen, and every
+// existing folder ref to it must already be inside the target collection.
+// The way back to listed is the collection's own save
+// (ScopedCatalogEdit.MoveToLibrary).
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
@@ -280,9 +282,10 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 	var createdAtStr, existingType string
 	var homeSortOrder sql.NullInt64
 	var showInHome int
+	var existingCollectionID sql.NullString
 	err = tx.QueryRowContext(ctx, `
-		SELECT created_at, home_sort_order, show_in_home, type FROM catalogs WHERE id = ? AND owner_id = ?
-	`, catalogID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &showInHome, &existingType)
+		SELECT created_at, home_sort_order, show_in_home, type, collection_id FROM catalogs WHERE id = ? AND owner_id = ?
+	`, catalogID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &showInHome, &existingType, &existingCollectionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Catalog{}, ErrCatalogNotFound
 	}
@@ -290,13 +293,8 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 		return Catalog{}, fmt.Errorf("loading catalog: %w", err)
 	}
 
-	// A catalog's type is part of the pushed collections blob (each folder
-	// source names its catalog's type), so changing it here would alter what
-	// Nuvio should have without bumping any collection's version — the UI
-	// already locks the field once a catalog exists, but that's a client
-	// convention, not something this write path enforced on its own.
-	if input.Type != existingType {
-		return Catalog{}, fmt.Errorf("%w: a catalog's type can't be changed", ErrInvalidInput)
+	if err := checkCatalogRewrite(existingType, existingCollectionID, input); err != nil {
+		return Catalog{}, err
 	}
 
 	if input.CollectionID != nil {
@@ -363,11 +361,35 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 	}, nil
 }
 
-// DeleteUserCatalog deletes the catalog identified by catalogID, provided
-// it's owned by profileID. Returns ErrCatalogNotFound otherwise.
+// checkCatalogRewrite refuses an UpdateUserCatalog the stored row can't take:
+//
+//   - A catalog inside a collection (existingCollectionID set) is written only
+//     through that collection's save (CollectionForm.CatalogEdits), so an edit
+//     made in the collection editor lands, or is discarded, with the rest of
+//     the collection. Moving a listed catalog into a collection is still this
+//     method's job: the row being written is listed until the write lands.
+//   - A catalog's type is part of the pushed collections blob (each folder
+//     source names its catalog's type), so changing it here would alter what
+//     Nuvio should have without bumping any collection's version. The UI
+//     locks the field once a catalog exists; this is the server enforcing it.
+func checkCatalogRewrite(existingType string, existingCollectionID sql.NullString, input CatalogForm) error {
+	if existingCollectionID.Valid {
+		return fmt.Errorf("%w: a catalog inside a collection is edited through the collection's save", ErrInvalidInput)
+	}
+	if input.Type != existingType {
+		return fmt.Errorf("%w: a catalog's type can't be changed", ErrInvalidInput)
+	}
+	return nil
+}
+
+// DeleteUserCatalog deletes the listed catalog identified by catalogID,
+// provided it's owned by profileID. Returns ErrCatalogNotFound if no such row
+// exists, and ErrInvalidInput for a catalog inside a collection, which is
+// removed by dropping its last folder ref and saving the collection
+// (deleteOrphanedScopedCatalogs).
 func (db *DB) DeleteUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID) error {
 	result, err := db.conn.ExecContext(ctx, `
-		DELETE FROM catalogs WHERE id = ? AND owner_id = ?
+		DELETE FROM catalogs WHERE id = ? AND owner_id = ? AND collection_id IS NULL
 	`, catalogID.String(), profileID.String())
 	if err != nil {
 		return fmt.Errorf("deleting catalog: %w", err)
@@ -378,10 +400,27 @@ func (db *DB) DeleteUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 		return fmt.Errorf("checking rows affected: %w", err)
 	}
 	if rows == 0 {
-		return ErrCatalogNotFound
+		return db.catalogNotDeleted(ctx, profileID, catalogID)
 	}
 
 	return nil
+}
+
+// catalogNotDeleted explains a DeleteUserCatalog that matched no row: the
+// catalog is either not owned by profileID at all (ErrCatalogNotFound) or
+// inside a collection (ErrInvalidInput).
+func (db *DB) catalogNotDeleted(ctx context.Context, profileID, catalogID uuid.UUID) error {
+	var exists int
+	err := db.conn.QueryRowContext(ctx, `
+		SELECT 1 FROM catalogs WHERE id = ? AND owner_id = ?
+	`, catalogID.String(), profileID.String()).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrCatalogNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("checking catalog: %w", err)
+	}
+	return fmt.Errorf("%w: a catalog inside a collection is removed through the collection's save", ErrInvalidInput)
 }
 
 // GetCurrentCatalogSelection returns profileID's active catalog selection —

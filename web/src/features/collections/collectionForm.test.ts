@@ -1,14 +1,21 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Catalog } from '@/api'
+import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
 import {
   emptyCollectionForm,
+  isSameCollection,
   newFolder,
   newRef,
   reorderRefs,
   toCollectionPayload,
   validateCollectionForm,
+  withCatalogEdit,
   type CollectionFormState,
 } from './collectionForm'
+
+// The catalog form's one value import from the API barrel, which would
+// otherwise load the auth session and its `window` listener.
+vi.mock('@/api', () => ({ CATALOG_PROVIDER: 'tmdb' }))
 
 function formWith(refs: ReturnType<typeof newRef>[]): CollectionFormState {
   return { ...emptyCollectionForm(), title: 'C', folders: [{ ...newFolder(), title: 'F', refs }] }
@@ -57,6 +64,61 @@ describe('toCollectionPayload', () => {
       { new: spec, genre: 'Action' },
       { new: spec, genre: 'Comedy' },
     ])
+  })
+})
+
+describe('withCatalogEdit', () => {
+  // Deliberately not byte-for-byte what the catalog form writes (it never
+  // writes whitespace), the way a row saved by another client can be.
+  const saved: Catalog = {
+    id: 'c1',
+    type: 'movie',
+    name: 'Scoped',
+    provider: 'tmdb',
+    params: '{"with_genres": "28", "sort_by": "popularity.desc"}',
+    owner_id: '',
+    is_public: false,
+    collection_id: 'col1',
+    created_at: '',
+    updated_at: '',
+  }
+  const baseline = formWith([newRef('c1')])
+
+  it('leaves no edit for a nested save that changes nothing, however the stored params are spelled', () => {
+    const untouched = formFromCatalog(saved)
+    expect(toCatalogPayload(untouched).params).not.toBe(saved.params)
+    const state = withCatalogEdit(baseline, saved, untouched)
+    expect(state.catalogEdits).toEqual({})
+    expect(isSameCollection(baseline, state)).toBe(true)
+  })
+
+  it('stages a real edit, which dirties the form and reaches the payload', () => {
+    const renamed = { ...formFromCatalog(saved), name: 'Renamed' }
+    const state = withCatalogEdit(baseline, saved, renamed)
+    expect(isSameCollection(baseline, state)).toBe(false)
+    expect(toCollectionPayload(state).catalog_edits).toEqual([
+      {
+        id: 'c1',
+        type: 'movie',
+        provider: 'tmdb',
+        name: 'Renamed',
+        params: toCatalogPayload(renamed).params,
+        move_to_library: false,
+      },
+    ])
+  })
+
+  it('drops the edit again once the catalog is edited back', () => {
+    const renamed = withCatalogEdit(baseline, saved, { ...formFromCatalog(saved), name: 'Renamed' })
+    const reverted = withCatalogEdit(renamed, saved, formFromCatalog(saved))
+    expect(reverted.catalogEdits).toEqual({})
+    expect(isSameCollection(baseline, reverted)).toBe(true)
+  })
+
+  it('marks Move to library', () => {
+    const moved = { ...formFromCatalog(saved), collectionID: null }
+    const [edit] = toCollectionPayload(withCatalogEdit(baseline, saved, moved)).catalog_edits
+    expect(edit.move_to_library).toBe(true)
   })
 })
 

@@ -2,36 +2,51 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/hiidz/uno/internal/httpx"
-	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
-// validateInlineCatalogs runs every folder's New catalog spec through the
-// same params validation and fingerprint computation a direct
-// POST /catalogs goes through (createUserCatalog), so an inline "copy into
-// this collection"/"new inside this collection" create 400s the same way a
-// standalone create would, instead of failing deep inside the vault
-// transaction with a less specific error.
+// validateInlineCatalogs runs every recipe a collection save carries — each
+// folder's New catalog spec and each catalog edit — through checkRecipe, the
+// same check a direct POST or PUT /catalogs goes through, so a bad inline
+// recipe 400s the same way a standalone one would instead of failing deep
+// inside the vault transaction with a less specific error. Sets each spec's
+// Fingerprint.
 func (s *Server) validateInlineCatalogs(ctx context.Context, input *vault.CollectionForm) error {
-	for i := range input.Folders {
-		for j := range input.Folders[i].Catalogs {
-			ref := &input.Folders[i].Catalogs[j]
-			if ref.New == nil {
+	if err := s.checkNewCatalogs(ctx, input.Folders); err != nil {
+		return err
+	}
+	return s.checkCatalogEdits(ctx, input.CatalogEdits)
+}
+
+// checkNewCatalogs is validateInlineCatalogs for the folders' New entries.
+func (s *Server) checkNewCatalogs(ctx context.Context, folders []vault.FolderData) error {
+	for i := range folders {
+		for j := range folders[i].Catalogs {
+			spec := folders[i].Catalogs[j].New
+			if spec == nil {
 				continue
 			}
-			if err := s.validateCatalogParams(ctx, ref.New.Type, ref.New.Provider, ref.New.Params); err != nil {
+			fingerprint, err := s.checkRecipe(ctx, spec.Type, spec.Provider, spec.Params)
+			if err != nil {
 				return err
 			}
-			fingerprint, err := provider.Fingerprint(ref.New.Type, ref.New.Provider, ref.New.Params)
-			if err != nil {
-				return fmt.Errorf("%w: %w", vault.ErrInvalidInput, err)
-			}
-			ref.New.Fingerprint = fingerprint
+			spec.Fingerprint = fingerprint
 		}
+	}
+	return nil
+}
+
+// checkCatalogEdits is validateInlineCatalogs for the catalog edits.
+func (s *Server) checkCatalogEdits(ctx context.Context, edits []vault.ScopedCatalogEdit) error {
+	for i := range edits {
+		fingerprint, err := s.checkRecipe(ctx, edits[i].Type, edits[i].Provider, edits[i].Params)
+		if err != nil {
+			return err
+		}
+		edits[i].Fingerprint = fingerprint
 	}
 	return nil
 }

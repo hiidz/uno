@@ -27,7 +27,6 @@ import {
 } from '@/features/catalogs/catalogForm'
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
-import { useCatalogMutations } from '@/features/catalogs/useCatalogMutations'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
 import { CollectionPreview } from './CollectionPreview'
@@ -47,6 +46,7 @@ import {
   reorderRefs,
   toCollectionPayload,
   validateCollectionForm,
+  withCatalogEdit,
   type CollectionFormState,
   type CollectionViewMode,
   type FolderFormState,
@@ -88,8 +88,9 @@ function draftCatalog(seed: {
  * duplicate mode here any more.
  *
  * **The whole tree, one save.** `POST`/`PUT` replace the collection, its
- * folders and every folder's refs in a single transaction, so this editor has
- * one dirty state and one Save button rather than a save per folder.
+ * folders, every folder's refs and every edit to its scoped catalogs in a
+ * single transaction, so this editor has one dirty state and one Save button
+ * rather than a save per folder or per catalog.
  *
  * The consequence the UI has to state: **a folder dropped from the tree is
  * deleted server-side**, along with its refs. Nothing is committed until Save,
@@ -116,8 +117,10 @@ function draftCatalog(seed: {
  * a scoped one. Folder rows render from this merged registry, never the
  * library alone, which is what makes a scoped catalog show at all.
  *
- * **Quiet Edit opens a catalog one level down**, in a `Modal` layered over
- * this editor rather than a second pane — the builder's pane holds one
+ * **Quiet Edit opens a catalog one level down**, and its Save writes nothing:
+ * it stages the change in this editor's own form (`catalogEdits`), which this
+ * collection's Save sends as `catalog_edits`. It sits in a `Modal` layered
+ * over this editor rather than a second pane — the builder's pane holds one
  * occupant (`EditorShell`'s own doc comment), so a second, real editor has to
  * be a modal, not a stack. `CollectionEditor` stays mounted underneath, so
  * this editor's own unsaved folder edits survive the round trip.
@@ -142,7 +145,6 @@ export function CollectionEditor({
   onDirtyChange,
   collectionID,
   initialCatalogs,
-  profileIndex,
   genres,
   genreLookups,
   certifications,
@@ -178,11 +180,6 @@ export function CollectionEditor({
    *  copies already populated (`Workspace.tsx`'s `EditorTarget.initialCatalogs`
    *  override). Seeds `localCatalogs`. */
   initialCatalogs: Catalog[]
-  /** For this editor's own instance of `useCatalogMutations` — deliberately
-   *  its own, not `Workspace`'s: sharing one mutation object between the two
-   *  would let a scoped copy/create here and the top-level "New catalog"
-   *  dialog stomp each other's pending/error state. */
-  profileIndex: number
   genres: { movie: Genre[]; tv: Genre[] }
   /** Same genres, shaped for `buildRefOptions` rather than the nested
    *  `CatalogEditor`'s own picker — building `RefOption`s for a freshly
@@ -197,8 +194,6 @@ export function CollectionEditor({
    *  Meaningful only for a listed catalog. */
   usedInFolders: (catalogID: string) => number
 }) {
-  const catalogMutations = useCatalogMutations(profileIndex)
-
   const baseline = useMemo(() => initial ?? emptyCollectionForm(), [initial])
   const { state, setState, showErrors, submit } = useEditorForm(
     baseline,
@@ -222,6 +217,12 @@ export function CollectionEditor({
   function rememberCatalog(catalog: Catalog) {
     setLocalCatalogs((previous) => new Map(previous).set(catalog.id, catalog))
   }
+  // Every scoped catalog as this editor opened it, before any staged edit —
+  // what `withCatalogEdit` compares a nested save against, so an edit made
+  // and then undone leaves no pending edit behind.
+  const [savedCatalogs] = useState<ReadonlyMap<string, Catalog>>(
+    () => new Map(initialCatalogs.map((c) => [c.id, c])),
+  )
 
   const localOptions = useMemo(
     () => buildRefOptions([...localCatalogs.values()], genreLookups),
@@ -302,9 +303,6 @@ export function CollectionEditor({
   const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
 
   function editRef(catalogID: string) {
-    // The nested editor reads `update`'s error as its own, so a failed save
-    // left over from the last catalog opened here must not carry into this one.
-    catalogMutations.update.reset()
     setNestedCatalogID(catalogID)
   }
 
@@ -322,30 +320,30 @@ export function CollectionEditor({
     setNestedCatalogID(null)
   }
 
-  /** Saves the nested editor's own row: a `PUT` for an already-real catalog
-   *  (only ever a scoped one — a listed ref has no quiet Edit here, see
-   *  `FolderCard.tsx`), or, for a draft, just a local replacement — nothing
-   *  is written until this collection's own Save resolves it into an inline
-   *  `new` spec (`toCollectionPayload`). */
+  /** Applies the nested editor's save locally and writes nothing: the
+   *  catalog (only ever a scoped one — a listed ref has no quiet Edit here,
+   *  see `FolderCard.tsx`) is replaced in `localCatalogs` so every folder
+   *  shows the change. A draft needs nothing more, since this collection's
+   *  own Save resolves it into an inline `new` spec (`toCollectionPayload`);
+   *  a real row also gets a pending edit in the form (`withCatalogEdit`),
+   *  which the same Save sends as `catalog_edits`. */
   function saveNestedCatalog(formState: CatalogFormState) {
     if (nestedCatalogID === null) return
+    const catalog = localCatalogs.get(nestedCatalogID)
+    if (!catalog) return
     const payload = toCatalogPayload(formState)
-    if (isDraftCatalogID(nestedCatalogID)) {
-      const draft = localCatalogs.get(nestedCatalogID)
-      if (!draft) return
-      rememberCatalog({ ...draft, type: payload.type, name: payload.name, params: payload.params })
-      setNestedCatalogID(null)
-      return
+    rememberCatalog({
+      ...catalog,
+      type: payload.type,
+      name: payload.name,
+      params: payload.params,
+      collection_id: formState.collectionID,
+    })
+    if (!isDraftCatalogID(catalog.id)) {
+      const saved = savedCatalogs.get(catalog.id) ?? catalog
+      setState((previous) => withCatalogEdit(previous, saved, formState))
     }
-    catalogMutations.update.mutate(
-      { id: nestedCatalogID, payload },
-      {
-        onSuccess: (catalog) => {
-          rememberCatalog(catalog)
-          setNestedCatalogID(null)
-        },
-      },
-    )
+    setNestedCatalogID(null)
   }
 
   /** "Copy" from the Add-catalogs picker: a fresh scoped catalog staged
@@ -850,12 +848,8 @@ export function CollectionEditor({
                   certifications={certifications}
                   countryNames={countryNames}
                   languages={languages}
-                  saving={!isDraftCatalogID(nestedCatalogID) && catalogMutations.update.isPending}
-                  serverError={
-                    isDraftCatalogID(nestedCatalogID)
-                      ? null
-                      : ((catalogMutations.update.error as Error | null)?.message ?? null)
-                  }
+                  saving={false}
+                  serverError={null}
                   onSave={saveNestedCatalog}
                   onRequestClose={closeNestedCatalog}
                   onDirtyChange={setNestedDirty}

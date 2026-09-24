@@ -1,11 +1,9 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/hiidz/uno/internal/httpx"
-	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -44,13 +42,9 @@ func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateCatalogParams(r.Context(), input.Type, input.Provider, input.Params); err != nil {
-		writeVaultError(w, "createUserCatalog", err, nil, "", "failed to create catalog")
-		return
-	}
-	fingerprint, err := provider.Fingerprint(input.Type, input.Provider, input.Params)
+	fingerprint, err := s.checkRecipe(r.Context(), input.Type, input.Provider, input.Params)
 	if err != nil {
-		writeVaultError(w, "createUserCatalog", fmt.Errorf("%w: %w", vault.ErrInvalidInput, err), nil, "", "failed to create catalog")
+		writeVaultError(w, "createUserCatalog", err, nil, "", "failed to create catalog")
 		return
 	}
 	input.Fingerprint = fingerprint
@@ -76,13 +70,9 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateCatalogParams(r.Context(), input.Type, input.Provider, input.Params); err != nil {
-		writeVaultError(w, "updateUserCatalog", err, nil, "", "failed to update catalog")
-		return
-	}
-	fingerprint, err := provider.Fingerprint(input.Type, input.Provider, input.Params)
+	fingerprint, err := s.checkRecipe(r.Context(), input.Type, input.Provider, input.Params)
 	if err != nil {
-		writeVaultError(w, "updateUserCatalog", fmt.Errorf("%w: %w", vault.ErrInvalidInput, err), nil, "", "failed to update catalog")
+		writeVaultError(w, "updateUserCatalog", err, nil, "", "failed to update catalog")
 		return
 	}
 	input.Fingerprint = fingerprint

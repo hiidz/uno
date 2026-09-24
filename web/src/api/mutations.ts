@@ -120,11 +120,29 @@ export interface FolderPayload {
 }
 
 /**
+ * One entry in a collection payload's `catalog_edits` — `vault.ScopedCatalogEdit`.
+ * The new name and recipe for a catalog already scoped to this collection,
+ * written in the same transaction as the rest of the save; the only way such
+ * a catalog is written once it exists. `type` and `provider` must match the
+ * stored row. `move_to_library` also makes the catalog listed.
+ */
+export interface ScopedCatalogEdit {
+  id: string
+  type: CatalogType
+  provider: string
+  name: string
+  params: string
+  move_to_library: boolean
+}
+
+/**
  * The create/update payload — `vault.CollectionForm`.
  *
  * The whole tree in one request: `POST`/`PUT` replace the collection, its
- * folders, and every folder's catalog refs in a single transaction, so there is
- * one dirty state and one save button rather than a save per folder.
+ * folders, every folder's catalog refs and the edits to its scoped catalogs in
+ * a single transaction, so there is one dirty state and one save button rather
+ * than a save per folder or per catalog. `catalog_edits` is always `[]` on
+ * create, which has no scoped catalogs yet.
  */
 export interface CollectionPayload {
   title: string
@@ -135,6 +153,7 @@ export interface CollectionPayload {
   backdrop_image_url: string
   focus_glow_enabled: boolean
   folders: FolderPayload[]
+  catalog_edits: ScopedCatalogEdit[]
 }
 
 export function createCollection(

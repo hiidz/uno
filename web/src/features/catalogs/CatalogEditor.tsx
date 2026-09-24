@@ -388,7 +388,7 @@ export function CatalogEditor({
                 </div>
                 <p className="type-data text-dimmer m-0 pt-1 text-[11px] leading-[1.45]">
                   {canMoveToLibrary
-                    ? "Scoped catalogs can't be shared. Moving it to your library makes it usable from any of your folders and lets it join the community list — takes effect on Save."
+                    ? "Scoped catalogs can't be shared. Moving it to your library makes it usable from any of your folders and lets it join the community list — takes effect when you save the collection."
                     : "Scoped catalogs can't be shared. Save the collection first, then this catalog can be moved to your library."}
                 </p>
               </div>

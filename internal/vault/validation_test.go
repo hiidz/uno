@@ -258,3 +258,40 @@ func TestUpdateFolderRejectsAForeignFolder(t *testing.T) {
 		t.Fatalf("updateFolder on a folder of no collection = %v, want ErrInvalidInput", err)
 	}
 }
+
+// A catalog edit is held to a catalog save's own rules, and one catalog can't
+// be edited twice in one save. Each problem is reported with the edit's
+// position.
+func TestCollectionFormCatalogEditProblems(t *testing.T) {
+	id := uuid.New()
+	valid := ScopedCatalogEdit{ID: id, Type: "movie", Provider: "tmdb", Name: "Fine", Params: "{}"}
+	with := func(change func(*ScopedCatalogEdit)) ScopedCatalogEdit {
+		e := valid
+		change(&e)
+		return e
+	}
+
+	for _, tt := range []struct {
+		name  string
+		edits []ScopedCatalogEdit
+		want  string
+	}{
+		{"blank name", []ScopedCatalogEdit{with(func(e *ScopedCatalogEdit) { e.Name = " " })}, "catalog edit 0: name is required"},
+		{"overlong name", []ScopedCatalogEdit{with(func(e *ScopedCatalogEdit) { e.Name = strings.Repeat("n", maxNameLen+1) })}, "catalog edit 0: name is longer"},
+		{"overlong params", []ScopedCatalogEdit{with(func(e *ScopedCatalogEdit) { e.Params = strings.Repeat("p", maxParamsLen+1) })}, "catalog edit 0: params is longer"},
+		{"unknown provider", []ScopedCatalogEdit{with(func(e *ScopedCatalogEdit) { e.Provider = "mdblist" })}, `catalog edit 0: provider must be "tmdb"`},
+		{"unknown type", []ScopedCatalogEdit{with(func(e *ScopedCatalogEdit) { e.Type = "anime" })}, `catalog edit 0: type must be "movie" or "series"`},
+		{"same catalog twice", []ScopedCatalogEdit{valid, valid}, "catalog edit 1: repeats a catalog"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := CollectionForm{Title: "C", CatalogEdits: tt.edits}.Validate()
+			if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Validate = %v, want ErrInvalidInput mentioning %q", err, tt.want)
+			}
+		})
+	}
+
+	if err := (CollectionForm{Title: "C", CatalogEdits: []ScopedCatalogEdit{valid}}).Validate(); err != nil {
+		t.Fatalf("Validate with one valid edit = %v, want nil", err)
+	}
+}

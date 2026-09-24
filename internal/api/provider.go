@@ -206,3 +206,18 @@ func (s *Server) validateCatalogParams(ctx context.Context, catalogType, catalog
 	}
 	return nil
 }
+
+// checkRecipe is what every client-supplied recipe goes through before the
+// vault writes it: validateCatalogParams, then the fingerprint the row
+// stores. Errors wrap vault.ErrInvalidInput or errUpstreamValidation, the
+// same as validateCatalogParams, so writeVaultError classifies them.
+func (s *Server) checkRecipe(ctx context.Context, catalogType, catalogProvider, params string) (string, error) {
+	if err := s.validateCatalogParams(ctx, catalogType, catalogProvider, params); err != nil {
+		return "", err
+	}
+	fingerprint, err := provider.Fingerprint(catalogType, catalogProvider, params)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", vault.ErrInvalidInput, err)
+	}
+	return fingerprint, nil
+}

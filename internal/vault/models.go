@@ -121,8 +121,8 @@ type CatalogForm struct {
 	Params   string `json:"params"`
 	IsPublic bool   `json:"is_public"`
 	// CollectionID scopes the catalog to one collection; nil (or absent on
-	// the wire) means listed. On update, setting it demotes the catalog and
-	// clearing it promotes — see CreateUserCatalog/UpdateUserCatalog.
+	// the wire) means listed. On update, setting it demotes a listed catalog
+	// into that collection — see CreateUserCatalog/UpdateUserCatalog.
 	CollectionID *uuid.UUID `json:"collection_id"`
 	// Fingerprint is computed server-side after validation, never accepted
 	// from the client.
@@ -140,6 +140,30 @@ type CollectionForm struct {
 	BackdropImageURL string       `json:"backdrop_image_url"`
 	FocusGlowEnabled bool         `json:"focus_glow_enabled"`
 	Folders          []FolderData `json:"folders"`
+	// CatalogEdits rewrites catalogs already scoped to this collection, in
+	// the same transaction as the rest of the save. It is the only way such a
+	// catalog is written once it exists (UpdateUserCatalog refuses one), so
+	// an edit made in the collection editor and then discarded never reaches
+	// the database. Update only: a collection being created has no scoped
+	// catalogs yet.
+	CatalogEdits []ScopedCatalogEdit `json:"catalog_edits"`
+}
+
+// ScopedCatalogEdit is one entry in CollectionForm.CatalogEdits: the new
+// name and recipe for catalog ID, which must already be scoped to the
+// collection being saved. Type and Provider must match the stored row — they
+// are carried so the recipe can be validated before the vault reads it.
+// MoveToLibrary also clears the catalog's collection_id, making it listed.
+type ScopedCatalogEdit struct {
+	ID            uuid.UUID `json:"id"`
+	Type          string    `json:"type"`
+	Provider      string    `json:"provider"`
+	Name          string    `json:"name"`
+	Params        string    `json:"params"`
+	MoveToLibrary bool      `json:"move_to_library"`
+	// Fingerprint is computed server-side after validation, never accepted
+	// from the client — same rule as CatalogForm.Fingerprint.
+	Fingerprint string `json:"-"`
 }
 
 // FolderData is one folder within a CollectionForm.

@@ -239,8 +239,10 @@ type folderNewRefKey struct {
 // Validate checks that in has a title and, for it and every folder, only
 // recognized enum values, names and ref genres within their length bounds,
 // folder and ref counts within theirs, no catalog repeated under the same
-// genre within a folder, and New entries that share a Key sharing one spec,
-// returning an ErrInvalidInput-wrapped error listing every problem found.
+// genre within a folder, New entries that share a Key sharing one spec, and
+// catalog edits that pass a catalog save's own checks with no catalog edited
+// twice, returning an ErrInvalidInput-wrapped error listing every problem
+// found.
 func (in CollectionForm) Validate() error {
 	specByKey := map[string]NewScopedCatalog{}
 
@@ -288,32 +290,64 @@ func (in CollectionForm) Validate() error {
 					problems = append(problems, fmt.Sprintf("folder %d: new catalog %d: key is shared with a different catalog spec", i, j))
 				}
 			}
-			// Same rules as CatalogForm.Validate — a New entry becomes
-			// exactly such a row, in the same transaction as this save.
-			if strings.TrimSpace(ref.New.Name) == "" {
-				problems = append(problems, fmt.Sprintf("folder %d: new catalog %d: name is required", i, j))
-			}
-			for _, f := range []struct {
-				name  string
-				value string
-				limit int
-			}{
-				{"name", ref.New.Name, maxNameLen},
-				{"params", ref.New.Params, maxParamsLen},
-			} {
-				problems = appendProblem(problems, lengthProblem(fmt.Sprintf("folder %d: new catalog %d: %s", i, j, f.name), f.value, f.limit))
-			}
-			if !validProviders[ref.New.Provider] {
-				problems = append(problems, fmt.Sprintf(`folder %d: new catalog %d: provider must be "tmdb"`, i, j))
-			}
-			if !validCatalogTypes[ref.New.Type] {
-				problems = append(problems, fmt.Sprintf(`folder %d: new catalog %d: type must be "movie" or "series"`, i, j))
-			}
+			// A New entry becomes exactly such a row, in the same
+			// transaction as this save.
+			problems = append(problems, catalogSpecProblems(fmt.Sprintf("folder %d: new catalog %d: ", i, j),
+				ref.New.Type, ref.New.Name, ref.New.Provider, ref.New.Params)...)
 		}
 	}
+
+	problems = append(problems, catalogEditProblems(in.CatalogEdits)...)
 
 	if len(problems) == 0 {
 		return nil
 	}
 	return fmt.Errorf("%w: %s", ErrInvalidInput, strings.Join(problems, "; "))
+}
+
+// validateCreate is Validate plus the one rule that only applies to a
+// collection being created: it has no scoped catalogs yet, so there is
+// nothing for CatalogEdits to rewrite.
+func (in CollectionForm) validateCreate() error {
+	if len(in.CatalogEdits) > 0 {
+		return fmt.Errorf("%w: a new collection has no catalogs to edit", ErrInvalidInput)
+	}
+	return in.Validate()
+}
+
+// catalogSpecProblems collects every problem on a catalog spec carried inside
+// a collection save — a folder's New entry or a CatalogEdits entry — each
+// message prefixed with where the spec sits. Same rules as
+// CatalogForm.Validate, since either spec is written as a catalog row in the
+// same transaction as the save.
+func catalogSpecProblems(prefix, catalogType, name, catalogProvider, params string) []string {
+	var problems []string
+	if strings.TrimSpace(name) == "" {
+		problems = append(problems, prefix+"name is required")
+	}
+	problems = appendProblem(problems, lengthProblem(prefix+"name", name, maxNameLen))
+	problems = appendProblem(problems, lengthProblem(prefix+"params", params, maxParamsLen))
+	if !validProviders[catalogProvider] {
+		problems = append(problems, prefix+`provider must be "tmdb"`)
+	}
+	if !validCatalogTypes[catalogType] {
+		problems = append(problems, prefix+`type must be "movie" or "series"`)
+	}
+	return problems
+}
+
+// catalogEditProblems collects every problem on a CollectionForm's
+// CatalogEdits: each entry's spec, and a catalog edited twice in one save.
+func catalogEditProblems(edits []ScopedCatalogEdit) []string {
+	var problems []string
+	seen := make(map[uuid.UUID]bool, len(edits))
+	for i, e := range edits {
+		prefix := fmt.Sprintf("catalog edit %d: ", i)
+		if seen[e.ID] {
+			problems = append(problems, prefix+"repeats a catalog another edit already changes")
+		}
+		seen[e.ID] = true
+		problems = append(problems, catalogSpecProblems(prefix, e.Type, e.Name, e.Provider, e.Params)...)
+	}
+	return problems
 }

@@ -12,7 +12,13 @@ export {
   updateCatalog,
   updateCollection,
 } from './mutations'
-export type { CatalogPayload, CollectionPayload, FolderCatalogRef, FolderPayload } from './mutations'
+export type {
+  CatalogPayload,
+  CollectionPayload,
+  FolderCatalogRef,
+  FolderPayload,
+  ScopedCatalogEdit,
+} from './mutations'
 export { pushSelection } from './push'
 export type { PushRequest, PushResult } from './push'
 export { queryKeys } from './keys'

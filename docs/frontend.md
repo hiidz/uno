@@ -316,8 +316,9 @@ Other decisions worth keeping:
   `400`s.
 - **A scoped catalog's "Sharing" row becomes a "Scope" row** (`CatalogFormState.collectionID`):
   it can't be shared while scoped (the schema's own CHECK), so the Switch is replaced by a note
-  and a "Move to library" button that clears `collectionID` — promote, always allowed, applied on
-  the next Save like any other field. This editor never offers the other direction (demote):
+  and a "Move to library" button that clears `collectionID` — promote, always allowed, and like
+  every edit made in this nested editor it takes effect when the collection is saved (a
+  `catalog_edits` entry with `move_to_library`). This editor never offers the other direction (demote):
   it's only ever opened on a scoped row from inside `CollectionEditor`, which is where "copy into
   this collection" and "new inside this collection" already cover getting one scoped in the first
   place. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
@@ -648,6 +649,15 @@ button.
   one commit, and discarding instead of saving never wrote anything in the first place, closing
   the leak structurally rather than by adding a cleanup step. The nested editor for a draft (below)
   edits this local object directly — no network call — until the collection's own Save resolves it.
+  **Edits to a real scoped catalog are staged the same way.** The nested editor's Save replaces
+  the catalog in `localCatalogs`, so every folder shows the change, and records a pending edit in
+  the collection form itself (`CollectionFormState.catalogEdits`, via `withCatalogEdit`), which
+  `toCollectionPayload` sends as `catalog_edits` with the collection's Save. Because the edit
+  lives in the form, `isSameCollection` sees it: the form is dirty, and `EditorGuard` asks before
+  discarding it. An edit that would leave the catalog as the editor opened it is dropped rather
+  than kept, compared form-to-form (`isSameCatalog`) rather than on the stored `params` string,
+  which the form re-serializes. The server refuses `PUT`/`DELETE` on a scoped catalog, so there
+  is no other door; a bad recipe comes back as a 400 on the collection's Save.
 - **A folder-catalog row's quiet Edit is scoped-catalog only**, DESIGN.md's own spec for the
   affordance. It opens the referenced catalog one level down: for a scoped catalog (real or a
   session's own draft) that's unambiguous, since nothing else can reference it. A *listed* catalog

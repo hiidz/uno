@@ -726,7 +726,6 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               onDirtyChange={setDirty}
               collectionID={target.collectionID}
               initialCatalogs={editingCollectionCatalogs}
-              profileIndex={profileIndex}
               genres={genres}
               genreLookups={library.genres}
               certifications={library.certifications}

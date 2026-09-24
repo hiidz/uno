@@ -127,9 +127,21 @@ write credential.
   hit. Demoting a listed catalog into a collection (`UpdateUserCatalog` with `collection_id` set)
   additionally requires it to be off the home screen (`requireNotOnHome`, checking
   `home_sort_order IS NULL` directly on the row) and every existing folder ref to it to already be
-  inside the target collection; promoting a scoped catalog back to listed (clearing
-  `collection_id`) is always allowed. `GetUserCatalogs` (the library) returns listed catalogs
+  inside the target collection; promoting a scoped catalog back to listed is always allowed, and
+  happens through its collection's save (a `catalog_edits` entry with `move_to_library`, below).
+  `GetUserCatalogs` (the library) returns listed catalogs
   only — a scoped one is reached through its owning collection's own response instead.
+- **A scoped catalog is written only through its collection's save.** `UpdateUserCatalog` and
+  `DeleteUserCatalog` refuse a row whose `collection_id` is set (`ErrInvalidInput`, a 400).
+  `CollectionForm.CatalogEdits` (`vault.ScopedCatalogEdit`) carries the new name and recipe for
+  catalogs already scoped to the collection being saved, and `applyCatalogEdits` writes them
+  inside `UpdateUserCollection`'s transaction, after the collection row and before the folder
+  rewrite and its orphan cleanup. Each edit's catalog must be owned by the caller and scoped to
+  this same collection, with the stored type and provider. An edit whose name, params and
+  fingerprint all match the row, with `move_to_library` unset, is skipped, so `updated_at` stays
+  put. `move_to_library` also clears `collection_id`. `CreateUserCollection` refuses any edit,
+  since a new collection has no scoped catalogs. So an edit made in the collection editor lands
+  with the rest of the collection, and a discarded one never wrote anything.
 - **A profile's data graph is closed: references never cross an owner boundary.** A folder may
   reference a catalog only if `internal/vault/access.go`'s `validateFolderRefs` accepts it: the
   catalog's `owner_id` must equal the collection's `owner_id`, and the catalog's `collection_id`
@@ -285,8 +297,8 @@ write credential.
   `api.maxRequestBodyBytes` (1 MiB) is no substitute: 1 MiB is thousands of folders, and every one
   of these strings is stored, served from the public addon route, and pushed into Nuvio's
   collections blob as a full replace. `CatalogForm.Validate` and `CollectionForm.Validate` enforce
-  them on save, a folder's inline `new` entries included, since such an entry becomes a catalog
-  row in the same transaction.
+  them on save, a folder's inline `new` entries and the save's `catalog_edits` included, since
+  either becomes a catalog row write in the same transaction.
 - **Empty lists serialize as `[]`, never `null`.** The row parsers in `internal/vault/scan.go`
   initialize their slices, and `jsonwire.OrEmpty[T]` (`internal/jsonwire`) covers the
   map-lookup, decoded-response and client-input spots that produce nested

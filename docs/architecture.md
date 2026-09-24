@@ -116,7 +116,7 @@ resolved profile ID. It is a **lookup-only** resolver — no create, no drift-ov
 hitting a CRUD route before ever calling `POST /api/profiles/select` gets a clean `404`, not a
 silent auto-provision.
 
-Three route-semantics facts the client has to honour:
+Five route-semantics facts the client has to honour:
 
 - **Selection is read via `GET .../selection` but never written there.** The whole pending
   selection travels in `POST .../push`'s body and is written by that handler, in one transaction,
@@ -151,6 +151,14 @@ Three route-semantics facts the client has to honour:
   rule Take uses, so a catalog referenced by two folders collapses into one new scoped copy
   referenced twice. `taken_from` stays `NULL` throughout: this is a copy of the caller's own data,
   not a take. 404s via `ErrCollectionNotFound` if the source isn't owned by the caller.
+- **A catalog inside a collection is written only through that collection's save.**
+  `PUT` and `DELETE /api/p/{i}/catalogs/{id}` answer `400` for a catalog whose `collection_id` is
+  set. Its edits travel in the collection's own `PUT` body as `catalog_edits`
+  (`vault.ScopedCatalogEdit`), whose recipes `validateInlineCatalogs` checks alongside the
+  folders' inline `new` specs, so a bad recipe is a `400` (or a `502` when TMDB can't judge it)
+  on the collection save. It goes away by dropping its last folder ref and saving the collection.
+  `PUT` still accepts a *listed* catalog with `collection_id` set, which moves it into that
+  collection.
 - **Selection lives on the rows themselves, not a join table.** `catalogs.home_sort_order`/
   `show_in_home` and `collections.home_sort_order` are columns on the owning row; the selection
   endpoints are `owner_id = ? AND home_sort_order IS NOT
