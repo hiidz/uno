@@ -226,7 +226,7 @@ write credential.
   recipe on save: a later recipe edit can leave a stored genre outside the options (now required
   or excluded), and the addon path then serves that row unfiltered, the same as any unknown
   extra. The collection editor flags that case rather than clearing it. Take and Duplicate carry
-  it onto the copy (`copyCollectionTree`). On the wire each folder carries an ordered
+  it onto the copy (`extractBundle` keeps each ref's genre). On the wire each folder carries an ordered
   `refs: [{catalog_id, genre}]` (`vault.FolderRef`), not a list of catalog ids, because one
   catalog can be two refs. A genre picked in Nuvio's own editor doesn't survive a push, because
   push rebuilds every Uno-managed collection from Uno's data.
@@ -266,8 +266,8 @@ write credential.
   Take/Duplicate, and pushed. Uno's Preview renders none of them. The two flags default to `1`
   because Nuvio reads an absent flag as on. Every URL among them, plus
   `collections.backdrop_image_url`, must be an absolute `http`/`https` URL under 2048 characters
-  — `CollectionForm.Validate` enforces it on save and `loadSourceCollectionTree` re-checks it on
-  Take/Duplicate. Uno never renders these, but Nuvio's clients do, and a Take carries them into
+  — `CollectionForm.Validate` enforces it on save, and on Take/Duplicate against the form built
+  from the source. Uno never renders these, but Nuvio's clients do, and a Take carries them into
   a profile that didn't author them, so a `javascript:` or `data:` value must not reach the push.
 - **`collections.backdrop_image_url` is stored, editable in the collection editor, pushed to
   Nuvio, and never rendered by Uno.** It is a collection-level field, and a collection renders on
@@ -401,30 +401,39 @@ describing what a TMDB-backed catalog may ask for.
   owner boundary either way, and a listed catalog reachable directly is equally reachable
   through a public collection that references it, so both doors check the same row. One
   rejected recipe fails the whole collection take — a half-copied collection is not a
-  collection. `TakeCatalog` re-checks the source row's `name` and `params` length too
-  (`validateSourceCatalog`), so a stored public catalog past `maxNameLen`/`maxParamsLen` is not
-  takeable at all and fails with `ErrInvalidInput` → 400, the single-catalog half of the same
-  rule. The collection copy path re-checks the rest of the source tree the same way, in
-  `validateSourceCollection` (called from `loadSourceCollectionTree`): the collection's and every
-  folder's enum values and media URLs, their titles, a folder's cover emoji, each folder's ref
-  count and ref genres, and each referenced catalog's `name` and `params` length. A stored
-  collection that never passed one of those checks — an unrecognized `view_mode`, a title past
-  `maxNameLen` — is therefore not copyable at all, by Take or by Duplicate, and fails with
-  `ErrInvalidInput` → 400.
+  collection. Every copy is also held to the save path's own rules, because being stored is not
+  evidence a row was ever checked: rows written before a given check existed reach here too.
+  `TakeCatalog` runs `CatalogForm.Validate` over the source row. A collection copy extracts the
+  source tree into its bundle form (`extractBundle`, `internal/vault/bundle.go`), builds the
+  `CollectionForm` that writes the copy from it (`collectionFormFromBundle`), and runs
+  `CollectionForm.Validate` on that form: the collection's and every folder's enum values and
+  media URLs, their titles, a folder's cover emoji, each folder's ref count and ref genres, and
+  every catalog the copy writes as a new row. A stored row that never passed one of those
+  checks — an unrecognized `view_mode`, a title past `maxNameLen` — is therefore not copyable
+  at all, by Take or by Duplicate, and fails with `ErrInvalidInput` → 400. Because a copied
+  catalog gets the full catalog rules rather than length bounds alone, a copied catalog with a
+  blank name, or a `type` or `provider` Uno doesn't accept, is refused too — by `TakeCatalog`,
+  `TakeCollection` and `DuplicateCollection` alike.
   `DuplicateCollection` passes no params validator: it copies rows the caller already owns, so a
   recipe TMDB has since outgrown must not block you from duplicating your own collection. It is
-  still subject to `validateSourceCollection` — a stale enum or an overlong title is stale
-  whoever owns it — and to `maxNameLen` on the `" (copy)"`-suffixed title it writes, so a
-  collection whose title already fills the bound cannot be duplicated rather than being copied
-  into a row the collection editor's own save would then refuse.
-- **A collection copy reads and checks before it opens a transaction.**
-  `loadSourceCollectionTree` reads the whole source tree — cosmetics, folders, refs, and the
-  catalog rows those refs name — through the pool, `copyCollection` validates that result, and
-  only then does the write transaction open, holding SQLite's write lock for inserts alone.
-  The params check reaches TMDB, and stalling every other writer for the length of a cold-cache
-  network call is the cost this ordering avoids; it is the same read-then-validate-then-insert
-  order `TakeCatalog` already used. A copy is a snapshot either way, so a source edit landing
-  between the read and the write only means copying the slightly older tree.
+  still subject to `CollectionForm.Validate` — a stale enum, an overlong title, or a scoped
+  catalog with a blank name or an unknown type or provider is stale whoever owns it — including
+  `maxNameLen` on the `" (copy)"`-suffixed title it writes, so a collection whose title already
+  fills the bound cannot be duplicated rather than being copied into a row the collection
+  editor's own save would then refuse. The listed catalogs a Duplicate references are not
+  checked: they stay `catalog_id` refs to rows the caller already owns, and nothing is written
+  from them.
+- **A collection copy reads and checks before it opens a transaction, then writes through the
+  create core.** `copyCollection` reads the whole source tree — cosmetics, folders, refs, and
+  the catalog rows those refs name — through the pool, and extracts and validates it as above.
+  Only then does the write transaction open, and `createCollectionTx`, the same core
+  `CreateUserCollection` runs, writes the copy, holding SQLite's write lock for inserts alone.
+  Each scoped catalog copy is one of the form's `new` entries, carrying the source's stored
+  fingerprint and, for a Take, `taken_from` naming the catalog it was copied from. The params
+  check reaches TMDB, and stalling every other writer for the length of a cold-cache network
+  call is the cost this ordering avoids; it is the same read-then-validate-then-insert order
+  `TakeCatalog` uses. A copy is a snapshot either way, so a source edit landing between the
+  read and the write only means copying the slightly older tree.
 - **Certification applies to both types.** `certification`, `certification.gte`,
   `certification.lte`, and `certification_country` sit on `TMDBCommonParams` and map in
   `commonQuery` (`internal/provider/query.go`), so `/discover/tv` gets them too. The **value

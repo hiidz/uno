@@ -191,9 +191,11 @@ type FolderData struct {
 // This is what makes "copy into this collection" and "new inside this
 // collection" atomic with the collection's own save: the builder stages
 // either kind of entry client-side with no request of its own, and the
-// catalog row (for a New entry) is only ever written here, inside
-// CreateUserCollection/UpdateUserCollection's transaction — so discarding
-// the edit instead of saving leaves nothing behind. See docs/frontend.md's
+// catalog row (for a New entry) is only ever written here, inside the
+// transaction of the collection write that carries it — so discarding the
+// edit instead of saving leaves nothing behind. A Take or Duplicate of a
+// whole collection writes its scoped catalog copies as New entries too. See
+// docs/frontend.md's
 // "Three sources for a folder's catalog".
 //
 // Genre narrows this one reference to a genre, by name: pushed as the folder
@@ -235,6 +237,10 @@ type NewScopedCatalog struct {
 	// Fingerprint is computed server-side after validation, never accepted
 	// from the client — same rule as CatalogForm.Fingerprint.
 	Fingerprint string `json:"-"`
+	// TakenFrom is the catalog this one is copied from, written to the new
+	// row's taken_from. Only a collection Take sets it; never accepted from
+	// the client.
+	TakenFrom *uuid.UUID `json:"-"`
 }
 
 // SelectedCatalogInput is one entry in a CatalogSelectionForm.

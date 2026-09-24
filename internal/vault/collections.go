@@ -14,14 +14,19 @@ import (
 	"github.com/hiidz/uno/internal/jsonwire"
 )
 
-// queryCollections runs a SELECT over collections with the given WHERE
-// clause and args, parsing the result rows. where is built from this
+// queryCollections is selectCollections against the pool.
+func (db *DB) queryCollections(ctx context.Context, where string, args ...any) ([]Collection, error) {
+	return selectCollections(ctx, db.conn, where, args...)
+}
+
+// selectCollections runs a SELECT over collections through q with the given
+// WHERE clause and args, parsing the result rows. where is built from this
 // package's own literals and buildInClause placeholders — never from client
 // input, which reaches the query only as a bound arg.
 //
 //nolint:gosec // G202: see above — the concatenated where is an internal literal.
-func (db *DB) queryCollections(ctx context.Context, where string, args ...any) ([]Collection, error) {
-	rows, err := db.conn.QueryContext(ctx, `
+func selectCollections(ctx context.Context, q querier, where string, args ...any) ([]Collection, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
 		       focus_glow_enabled, home_sort_order, version, pushed_version, taken_from, created_at, updated_at
 		FROM collections
@@ -41,7 +46,7 @@ func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]Co
 	if err != nil {
 		return nil, err
 	}
-	return db.assembleCollectionTree(ctx, collections)
+	return assembleCollectionTree(ctx, db.conn, collections)
 }
 
 // GetCommunityCollections returns the community collection list for
@@ -62,7 +67,7 @@ func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) 
 		return compareCreatedThenID(a.CreatedAt, b.CreatedAt, a.ID, b.ID)
 	})
 
-	trees, err := db.assembleCollectionTree(ctx, collections)
+	trees, err := assembleCollectionTree(ctx, db.conn, collections)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +100,7 @@ func (db *DB) GetCollectionsByIDs(ctx context.Context, ids []uuid.UUID) ([]Colle
 	if err != nil {
 		return nil, err
 	}
-	return db.assembleCollectionTree(ctx, collections)
+	return assembleCollectionTree(ctx, db.conn, collections)
 }
 
 // GetOwnedCollectionIDs lists just the IDs of collections this profile owns,
@@ -121,56 +126,9 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 	}
 	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
-	var existingCatalogIDs []uuid.UUID
-	for _, fd := range input.Folders {
-		existingCatalogIDs = append(existingCatalogIDs, existingRefIDs(fd.Catalogs)...)
-	}
-	if err := validateFolderRefs(ctx, tx, profileID, nil, existingCatalogIDs); err != nil {
-		return CollectionWithFolders{}, err
-	}
-
-	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
-	c := Collection{
-		ID:               uuid.New(),
-		Title:            input.Title,
-		OwnerID:          profileID,
-		IsPublic:         input.IsPublic,
-		PinToTop:         input.PinToTop,
-		ViewMode:         input.ViewMode,
-		ShowAllTab:       input.ShowAllTab,
-		BackdropImageURL: input.BackdropImageURL,
-		FocusGlowEnabled: input.FocusGlowEnabled,
-		Version:          1,
-		CreatedAt:        now,
-		UpdatedAt:        now,
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO collections (id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
-		                          focus_glow_enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Title, c.OwnerID.String(), c.IsPublic, c.PinToTop, c.ViewMode, c.ShowAllTab, c.BackdropImageURL,
-		c.FocusGlowEnabled, nowStr, nowStr)
+	created, allCatalogIDs, err := createCollectionTx(ctx, tx, profileID, input, nil)
 	if err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("inserting collection: %w", err)
-	}
-
-	folders := make([]FolderWithCatalogs, len(input.Folders))
-	var allCatalogIDs []uuid.UUID
-	created := map[string]uuid.UUID{}
-	for i, fd := range input.Folders {
-		f, err := insertFolder(ctx, tx, c.ID, i, fd)
-		if err != nil {
-			return CollectionWithFolders{}, err
-		}
-		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, c.ID, f.ID, fd.Catalogs, created)
-		if err != nil {
-			return CollectionWithFolders{}, err
-		}
-
-		folders[i] = FolderWithCatalogs{Folder: f, Refs: refs}
-		allCatalogIDs = append(allCatalogIDs, folders[i].CatalogIDs()...)
+		return CollectionWithFolders{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -182,7 +140,57 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 		return CollectionWithFolders{}, err
 	}
 
-	return CollectionWithFolders{Collection: c, Folders: folders, Catalogs: jsonwire.OrEmpty(catalogs)}, nil
+	created.Catalogs = jsonwire.OrEmpty(catalogs)
+	return created, nil
+}
+
+// createCollectionTx inserts form as a new collection owned by profileID —
+// the row, its folders and their catalog refs, with any New entry created as
+// a catalog scoped to it — after checking every existing catalog it
+// references is one of profileID's listed catalogs. takenFrom becomes the
+// row's taken_from: a Take passes its source, every other create nil.
+//
+// It is the one collection create: a save, a Take and a Duplicate all go
+// through it. The caller validates form first, runs this inside tx and
+// commits. Returns the new collection with its folders, Catalogs unset, and
+// the id of every catalog those folders reference, repeats included.
+func createCollectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, form CollectionForm, takenFrom *uuid.UUID) (CollectionWithFolders, []uuid.UUID, error) {
+	if err := validateFolderRefs(ctx, tx, profileID, nil, existingFolderRefIDs(form.Folders)); err != nil {
+		return CollectionWithFolders{}, nil, err
+	}
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+	c := Collection{
+		ID:               uuid.New(),
+		Title:            form.Title,
+		OwnerID:          profileID,
+		IsPublic:         form.IsPublic,
+		PinToTop:         form.PinToTop,
+		ViewMode:         form.ViewMode,
+		ShowAllTab:       form.ShowAllTab,
+		BackdropImageURL: form.BackdropImageURL,
+		FocusGlowEnabled: form.FocusGlowEnabled,
+		Version:          1,
+		TakenFrom:        takenFrom,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO collections (id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
+		                          focus_glow_enabled, taken_from, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Title, c.OwnerID.String(), c.IsPublic, c.PinToTop, c.ViewMode, c.ShowAllTab, c.BackdropImageURL,
+		c.FocusGlowEnabled, nullableUUIDString(c.TakenFrom), nowStr, nowStr); err != nil {
+		return CollectionWithFolders{}, nil, fmt.Errorf("inserting collection: %w", err)
+	}
+
+	folders, allCatalogIDs, err := insertFolders(ctx, tx, profileID, c.ID, form.Folders)
+	if err != nil {
+		return CollectionWithFolders{}, nil, err
+	}
+	return CollectionWithFolders{Collection: c, Folders: folders}, allCatalogIDs, nil
 }
 
 // collectionUpdateState is the pre-update state UpdateUserCollection reads
@@ -334,6 +342,23 @@ func deleteOrphanedScopedCatalogs(ctx context.Context, tx *sql.Tx, collectionID 
 	return nil
 }
 
+// updateCollectionTx writes form over collectionID inside tx: the row's own
+// columns with its version bump, form's catalog edits, and then its folder
+// set, which drops the folders form leaves out and deletes any scoped catalog
+// no folder references any more. The caller validates form first, confirms
+// collectionID is owned by profileID, and commits. Returns the folders in
+// the response's nested shape and the id of every catalog they reference,
+// repeats included.
+func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, form CollectionForm, nowStr string) ([]FolderWithCatalogs, []uuid.UUID, error) {
+	if err := updateCollectionRowAndEdits(ctx, tx, profileID, collectionID, form, nowStr); err != nil {
+		return nil, nil, err
+	}
+	if err := deleteRemovedFolders(ctx, tx, collectionID, form.Folders); err != nil {
+		return nil, nil, err
+	}
+	return writeFolderSet(ctx, tx, profileID, collectionID, form.Folders)
+}
+
 // UpdateUserCollection validates input and replaces the collection
 // identified by collectionID (title, settings, and its full folder set),
 // provided it's owned by profileID.
@@ -354,35 +379,8 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	}
 
 	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
-	if err := updateCollectionRowAndEdits(ctx, tx, profileID, collectionID, input, nowStr); err != nil {
-		return CollectionWithFolders{}, err
-	}
-
-	removed, err := removedFolderIDs(ctx, tx, collectionID, input.Folders)
+	folders, allCatalogIDs, err := updateCollectionTx(ctx, tx, profileID, collectionID, input, now.Format(time.RFC3339))
 	if err != nil {
-		return CollectionWithFolders{}, err
-	}
-	if err := deleteFolders(ctx, tx, removed); err != nil {
-		return CollectionWithFolders{}, err
-	}
-
-	// One validation query for every catalog ID across every folder, up
-	// front — New entries are skipped, they aren't rows yet (existingRefIDs).
-	var existingCatalogIDs []uuid.UUID
-	for _, fd := range input.Folders {
-		existingCatalogIDs = append(existingCatalogIDs, existingRefIDs(fd.Catalogs)...)
-	}
-	if err := validateFolderRefs(ctx, tx, profileID, &collectionID, existingCatalogIDs); err != nil {
-		return CollectionWithFolders{}, err
-	}
-
-	folders, allCatalogIDs, err := upsertFolders(ctx, tx, profileID, collectionID, input.Folders)
-	if err != nil {
-		return CollectionWithFolders{}, err
-	}
-
-	if err := deleteOrphanedScopedCatalogs(ctx, tx, collectionID); err != nil {
 		return CollectionWithFolders{}, err
 	}
 
@@ -466,7 +464,7 @@ func (db *DB) GetCurrentCollectionSelection(ctx context.Context, profileID uuid.
 
 	slices.SortFunc(collections, compareCollectionsByHomeSortOrder)
 
-	return db.assembleCollectionTree(ctx, collections)
+	return assembleCollectionTree(ctx, db.conn, collections)
 }
 
 // saveCollectionSelectionTx resets this profile's collection selection to

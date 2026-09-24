@@ -1,6 +1,6 @@
 // Reading a collection's folders and folder_catalogs rows in bulk, and
-// assembling them into the nested shape the API returns. The two queries
-// serve both the read path here and the copy path in collection_copy.go.
+// assembling them into the nested shape the API returns. The same assembly
+// is what the copy path in collection_copy.go extracts a source tree from.
 
 package vault
 
@@ -13,10 +13,10 @@ import (
 	"github.com/hiidz/uno/internal/jsonwire"
 )
 
-// assembleCollectionTree fetches folders and folder_catalogs for the given
-// collections and zips everything into the nested response shape. Order of
-// the input collections slice is preserved.
-func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collection) ([]CollectionWithFolders, error) {
+// assembleCollectionTree fetches folders, folder_catalogs and catalogs for
+// the given collections through q and zips everything into the nested
+// response shape. Order of the input collections slice is preserved.
+func assembleCollectionTree(ctx context.Context, q querier, collections []Collection) ([]CollectionWithFolders, error) {
 	if len(collections) == 0 {
 		return []CollectionWithFolders{}, nil
 	}
@@ -26,7 +26,7 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 		collectionIDs[i] = c.ID
 	}
 
-	folders, err := loadFoldersByCollections(ctx, db.conn, collectionIDs)
+	folders, err := loadFoldersByCollections(ctx, q, collectionIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 		folderIDs[i] = f.ID
 	}
 
-	refsByFolder, err := loadFolderRefs(ctx, db.conn, folderIDs)
+	refsByFolder, err := loadFolderRefs(ctx, q, folderIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (db *DB) assembleCollectionTree(ctx context.Context, collections []Collecti
 	}
 	catalogsByID := make(map[uuid.UUID]Catalog)
 	if len(allCatalogIDs) > 0 {
-		catalogs, err := db.GetCatalogsByIDs(ctx, dedupeUUIDs(allCatalogIDs))
+		catalogs, err := catalogsByIDs(ctx, q, dedupeUUIDs(allCatalogIDs))
 		if err != nil {
 			return nil, err
 		}
@@ -111,8 +111,7 @@ func loadFoldersByCollections(ctx context.Context, q querier, collectionIDs []uu
 // grouped by folder and, within each folder, in sort_order — the order
 // rewriteFolderCatalogRefs writes as the ref's position in its folder. A
 // folder with no refs has no entry, which reads back from the map as a nil
-// slice. Both the read path (assembleCollectionTree) and the copy path
-// (loadSourceCollectionTree) take a tree's refs from here.
+// slice.
 func loadFolderRefs(ctx context.Context, q querier, folderIDs []uuid.UUID) (map[uuid.UUID][]FolderRef, error) {
 	refsByFolder := make(map[uuid.UUID][]FolderRef, len(folderIDs))
 	if len(folderIDs) == 0 {

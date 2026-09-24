@@ -7,20 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// queryCatalogs runs a SELECT over catalogs with the given WHERE clause and
-// args, parsing the result rows. where is built from this package's own
-// literals and buildInClause placeholders — never from client input, which
-// reaches the query only as a bound arg.
+// queryCatalogs is selectCatalogs against the pool.
+func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]Catalog, error) {
+	return selectCatalogs(ctx, db.conn, where, args...)
+}
+
+// selectCatalogs runs a SELECT over catalogs through q with the given WHERE
+// clause and args, parsing the result rows. where is built from this
+// package's own literals and buildInClause placeholders — never from client
+// input, which reaches the query only as a bound arg.
 //
 //nolint:gosec // G202: see above — the concatenated where is an internal literal.
-func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]Catalog, error) {
-	rows, err := db.conn.QueryContext(ctx, `
+func selectCatalogs(ctx context.Context, q querier, where string, args ...any) ([]Catalog, error) {
+	rows, err := q.QueryContext(ctx, `
 		SELECT id, type, name, provider, params, owner_id, is_public,
 		       collection_id, home_sort_order, show_in_home, taken_from, fingerprint,
 		       created_at, updated_at
@@ -127,27 +131,15 @@ func isOlderCatalog(a, b Catalog) bool {
 // passed in by the caller that can (api.validateCatalogParams).
 type CatalogParamsValidator func(catalogType, catalogProvider, params string) error
 
-// validateSourceCatalog re-checks a catalog row about to be copied against
-// the length bounds CatalogForm.Validate applies to a save — the
-// single-catalog half of what validateSourceCollection does for a whole
-// tree, so the same listed row is bounded whichever door it is taken
-// through. Its type and provider are left to the caller's params validator,
-// which owns the recipe.
-func validateSourceCatalog(source Catalog) error {
-	problems := appendProblem(nil, lengthProblem("name", source.Name, maxNameLen))
-	problems = appendProblem(problems, lengthProblem("params", source.Params, maxParamsLen))
-	if len(problems) == 0 {
-		return nil
-	}
-	return fmt.Errorf("%w: source catalog: %s", ErrInvalidInput, strings.Join(problems, "; "))
-}
-
 // TakeCatalog deep-copies a public catalog owned by someone else into a new
 // listed catalog owned by profileID, with fresh ids and taken_from set to
 // the source so the copy is unaffected by later changes to the source.
 // Returns ErrCatalogNotFound if sourceID isn't public or is already owned by
-// profileID, and ErrInvalidInput if the source row's name or params are
-// past the bounds a save enforces.
+// profileID, and ErrInvalidInput if the source row fails CatalogForm.Validate,
+// the check a catalog save runs: a stored row is not evidence it was ever
+// checked, since rows written before a given check existed reach here too.
+// The collection copy path holds a whole tree to the same rules, so the same
+// listed row is bounded whichever door it is taken through.
 //
 // validateParams re-runs the create/update params check against the source
 // row before anything is copied: the recipe is someone else's input, and it
@@ -165,7 +157,8 @@ func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uui
 	if len(source) == 0 {
 		return Catalog{}, ErrCatalogNotFound
 	}
-	if err := validateSourceCatalog(source[0]); err != nil {
+	form := CatalogForm{Type: source[0].Type, Name: source[0].Name, Provider: source[0].Provider, Params: source[0].Params}
+	if err := form.Validate(); err != nil {
 		return Catalog{}, err
 	}
 	if err := validateParams(source[0].Type, source[0].Provider, source[0].Params); err != nil {
@@ -173,7 +166,6 @@ func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uui
 	}
 
 	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
 	c := Catalog{
 		ID:          uuid.New(),
 		Type:        source[0].Type,
@@ -186,29 +178,52 @@ func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uui
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-
-	_, err = db.conn.ExecContext(ctx, `
-		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
-		                       taken_from, fingerprint, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic,
-		c.TakenFrom.String(), c.Fingerprint, nowStr, nowStr)
-	if err != nil {
-		return Catalog{}, fmt.Errorf("inserting taken catalog: %w", err)
+	if err := insertCatalog(ctx, db.conn, c); err != nil {
+		return Catalog{}, err
 	}
 
 	return c, nil
+}
+
+// execer is the common subset of *sql.DB and *sql.Tx a single write needs, so
+// insertCatalog can run straight against the pool or inside a caller's
+// transaction — the ExecContext counterpart to scan.go's querier.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// insertCatalog writes c as a new catalogs row. It is the one catalog INSERT
+// in this package: a catalog save, a catalog Take and a collection save's New
+// entries all go through it. home_sort_order and show_in_home are left to
+// their column defaults, since no catalog is born on the home screen.
+func insertCatalog(ctx context.Context, e execer, c Catalog) error {
+	_, err := e.ExecContext(ctx, `
+		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
+		                       collection_id, taken_from, fingerprint, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic,
+		nullableUUIDString(c.CollectionID), nullableUUIDString(c.TakenFrom), c.Fingerprint,
+		c.CreatedAt.Format(time.RFC3339), c.UpdatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("inserting catalog: %w", err)
+	}
+	return nil
 }
 
 // GetCatalogsByIDs batch-loads catalogs by id, no ownership check — push
 // uses this to resolve a folder's catalog_ids (already access-checked at
 // selection time) into Type/Provider for building catalogSources.
 func (db *DB) GetCatalogsByIDs(ctx context.Context, ids []uuid.UUID) ([]Catalog, error) {
+	return catalogsByIDs(ctx, db.conn, ids)
+}
+
+// catalogsByIDs is GetCatalogsByIDs through q.
+func catalogsByIDs(ctx context.Context, q querier, ids []uuid.UUID) ([]Catalog, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	placeholders, args := buildInClause(ids)
-	return db.queryCatalogs(ctx, fmt.Sprintf("id IN (%s)", placeholders), args...)
+	return selectCatalogs(ctx, q, fmt.Sprintf("id IN (%s)", placeholders), args...)
 }
 
 // CreateUserCatalog validates input and inserts a new catalog owned by
@@ -229,7 +244,6 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	}
 
 	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
 	c := Catalog{
 		ID:           uuid.New(),
 		Type:         input.Type,
@@ -243,15 +257,8 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-
-	_, err := db.conn.ExecContext(ctx, `
-		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
-		                       collection_id, fingerprint, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic,
-		nullableUUIDString(c.CollectionID), c.Fingerprint, nowStr, nowStr)
-	if err != nil {
-		return Catalog{}, fmt.Errorf("inserting catalog: %w", err)
+	if err := insertCatalog(ctx, db.conn, c); err != nil {
+		return Catalog{}, err
 	}
 
 	return c, nil

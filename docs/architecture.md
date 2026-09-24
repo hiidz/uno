@@ -145,7 +145,8 @@ Five route-semantics facts the client has to honour:
   unscoped, unauthenticated-by-profile community routes) are removed.
 - **Duplicating a collection you own is one atomic server call, not a client-built copy.**
   `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) reuses `TakeCollection`'s
-  tree-copy logic (`copyCollectionTree`): folders and their refs are copied in order, a listed
+  copy path (`copyCollection`, which writes through the same `createCollectionTx` a collection
+  create runs): folders and their refs are copied in order, a listed
   source catalog stays a reference (same id), and each distinct catalog scoped to the source
   collection becomes a fresh scoped copy in the new one — the same one-copy-per-distinct-catalog
   rule Take uses, so a catalog referenced by two folders collapses into one new scoped copy

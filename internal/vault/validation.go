@@ -155,9 +155,7 @@ func mediaURLProblem(field, raw string) string {
 
 // collectionProblems collects every problem on a collection's own fields —
 // its title, its view mode, its backdrop, and how many folders it holds, but
-// not the folders themselves. Shared by CollectionForm.Validate and the
-// take/duplicate copy path, which checks rows it is about to copy out of
-// another profile rather than a form.
+// not the folders themselves. Part of CollectionForm.Validate.
 func collectionProblems(title, viewMode, backdropImageURL string, folders int) []string {
 	var problems []string
 	if strings.TrimSpace(title) == "" {
@@ -176,8 +174,8 @@ func collectionProblems(title, viewMode, backdropImageURL string, folders int) [
 
 // folderProblems collects every problem on one folder's own fields — its
 // title, its tile shape, its cover emoji and its media URLs, but not its
-// catalog refs — prefixed with the folder's index. Shared by
-// CollectionForm.Validate and the take/duplicate copy path.
+// catalog refs — prefixed with the folder's index. Part of
+// CollectionForm.Validate.
 func folderProblems(index int, fd FolderData) []string {
 	var problems []string
 	if strings.TrimSpace(fd.Title) == "" {
@@ -209,9 +207,8 @@ func folderProblems(index int, fd FolderData) []string {
 }
 
 // refCountProblem reports that folder index holds more catalog refs than
-// maxRefsPerFolder allows, or "" when it doesn't. Shared by
-// CollectionForm.Validate, which counts a form's entries, and the
-// take/duplicate copy path, which counts stored refs.
+// maxRefsPerFolder allows, or "" when it doesn't. Part of
+// CollectionForm.Validate.
 func refCountProblem(index, count int) string {
 	if count > maxRefsPerFolder {
 		return fmt.Sprintf("folder %d: holds more than %d catalogs", index, maxRefsPerFolder)
@@ -286,7 +283,7 @@ func (in CollectionForm) Validate() error {
 				seenNew[newKey] = true
 				if first, ok := specByKey[key]; !ok {
 					specByKey[key] = *ref.New
-				} else if first != *ref.New {
+				} else if !sameSpec(first, *ref.New) {
 					problems = append(problems, fmt.Sprintf("folder %d: new catalog %d: key is shared with a different catalog spec", i, j))
 				}
 			}
@@ -303,6 +300,15 @@ func (in CollectionForm) Validate() error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s", ErrInvalidInput, strings.Join(problems, "; "))
+}
+
+// sameSpec reports whether a and b describe the same catalog. TakenFrom is
+// compared by the id it names, not by address, so two entries for one Key
+// agree whether or not they share a pointer.
+func sameSpec(a, b NewScopedCatalog) bool {
+	sameSource := nullableUUIDString(a.TakenFrom) == nullableUUIDString(b.TakenFrom)
+	a.TakenFrom, b.TakenFrom = nil, nil
+	return sameSource && a == b
 }
 
 // validateCreate is Validate plus the one rule that only applies to a
