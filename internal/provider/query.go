@@ -63,6 +63,7 @@ func (p TMDBTVParams) DiscoverQuery() url.Values {
 	if p.AiredWithinDays > 0 {
 		q.Set("air_date.gte", daysAgo(p.AiredWithinDays))
 	}
+	setIf(q, "with_networks", p.WithNetworks)
 	return q
 }
 

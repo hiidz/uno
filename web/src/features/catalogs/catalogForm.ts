@@ -27,8 +27,8 @@ export type DateMode = 'any' | 'fixed' | 'rolling'
 export type SourceMode = 'filters' | 'collection'
 
 /** The most ids each of `with_companies`, `with_keywords`,
- *  `without_companies` and `without_keywords` may hold. Mirrors the server's
- *  cap in `provider.Validate()`. */
+ *  `without_companies`, `without_keywords` and `with_networks` may hold.
+ *  Mirrors the server's cap in `provider.Validate()`. */
 export const MAX_ENTITY_IDS = 20
 
 export interface CatalogFormState {
@@ -184,11 +184,13 @@ function applyDateMode(state: CatalogFormState): TMDBParams {
   // The other branch's date fields must never be sent — a series catalog
   // carrying primary_release_date is silently ignored at best. Certification
   // is shared: movies use theatrical ratings, series use TV content ratings,
-  // both scoped by the same certification_country.
+  // both scoped by the same certification_country. Networks are series only,
+  // and the server rejects them on a movie catalog.
   if (state.type === 'movie') {
     delete p.first_air_date_gte
     delete p.first_air_date_lte
     delete p.aired_within_days
+    delete p.with_networks
   } else {
     delete p.primary_release_date_gte
     delete p.primary_release_date_lte
@@ -291,6 +293,9 @@ export function validateForm(state: CatalogFormState): FieldErrors {
   }
   if (parseGenreList(p.without_keywords).ids.length > MAX_ENTITY_IDS) {
     errors.without_keywords = `Leave out at most ${MAX_ENTITY_IDS} keywords.`
+  }
+  if (parseGenreList(p.with_networks).ids.length > MAX_ENTITY_IDS) {
+    errors.with_networks = `Pick at most ${MAX_ENTITY_IDS} networks.`
   }
 
   return errors

@@ -14,6 +14,8 @@ import type {
   GenreOptionsRequest,
   Keyword,
   Language,
+  Network,
+  NetworkSearchResult,
   NuvioProfile,
   PreviewRequest,
   SelectedCatalog,
@@ -134,6 +136,18 @@ export function searchCollections(query: string): Promise<TMDBCollection[]> {
 /** Names one collection id. A `404` means TMDB has no collection with that id. */
 export function fetchCollection(id: number): Promise<TMDBCollection> {
   return getJSON<TMDBCollection>(`/api/collections/${id}`)
+}
+
+/** Live from TMDB via the Go side: TV networks whose name matches `query`,
+ *  counted and filtered like `searchCompanies` for series. The server rejects
+ *  a blank query, so callers only send a trimmed, non-empty one. */
+export function searchNetworks(query: string): Promise<NetworkSearchResult[]> {
+  return getList<NetworkSearchResult>(`/api/networks/search?q=${encodeURIComponent(query)}`)
+}
+
+/** Names one network id. A `404` means TMDB has no network with that id. */
+export function fetchNetwork(id: number): Promise<Network> {
+  return getJSON<Network>(`/api/networks/${id}`)
 }
 
 /**

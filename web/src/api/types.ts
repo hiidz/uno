@@ -196,6 +196,20 @@ export interface Keyword {
   name: string
 }
 
+/** `GET /api/networks/{id}` — a TV network `with_networks` accepts.
+ *  `origin_country` is an ISO 3166-1 code, or `""` when TMDB has none. */
+export interface Network {
+  id: number
+  name: string
+  origin_country: string
+}
+
+/** One result from `GET /api/networks/search`: the same shape and rules as
+ *  `CompanySearchResult`, with `title_count` counting series. */
+export interface NetworkSearchResult extends Network {
+  title_count: number
+}
+
 /** One result from `GET /api/collections/search` or `GET /api/collections/{id}`
  *  — a TMDB movie collection `with_collection` accepts, e.g. "Star Wars Collection".
  *  Not Uno's own `Collection`. */
@@ -326,4 +340,7 @@ export interface TMDBParams {
   first_air_date_gte?: string
   first_air_date_lte?: string
   aired_within_days?: number
+  /** TMDB network ids: comma-joined means all of them, pipe-joined any of
+   *  them. TMDB has no network exclusion, so there is no `without_networks`. */
+  with_networks?: string
 }

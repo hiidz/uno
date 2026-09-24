@@ -433,8 +433,9 @@ func TestIDKeyedMemosAreBounded(t *testing.T) {
 		"companies":       c.companies.maxEntries,
 		"keywords":        c.keywords.maxEntries,
 		"collections":     c.collections.maxEntries,
+		"networks":        c.networks.maxEntries,
 		"collectionFilms": c.collectionFilms.maxEntries,
-		"companyTitles":   c.companyTitles.maxEntries,
+		"titleCounts":     c.titleCounts.maxEntries,
 	} {
 		if got <= 0 {
 			t.Fatalf("%s is unbounded", name)
@@ -447,6 +448,7 @@ func TestIDKeyedMemosAreBounded(t *testing.T) {
 		"watchRegions":   c.watchRegions.maxEntries,
 		"watchProviders": c.watchProviders.maxEntries,
 		"certifications": c.certifications.maxEntries,
+		"networkIDs":     c.networkIDs.maxEntries,
 	} {
 		if got != 0 {
 			t.Fatalf("%s is bounded at %d, want unbounded", name, got)

@@ -115,6 +115,29 @@ describe('source mode', () => {
   })
 })
 
+describe('networks', () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => i + 1).join('|')
+
+  it('sends networks on a series catalog and never on a movie catalog', () => {
+    const series: CatalogFormState = { ...emptyForm('series'), params: { with_networks: '213|49' } }
+    expect(JSON.parse(paramsString(series))).toEqual({ with_networks: '213|49' })
+    const movie: CatalogFormState = { ...emptyForm('movie'), params: { with_networks: '213|49' } }
+    expect(JSON.parse(paramsString(movie))).not.toHaveProperty('with_networks')
+  })
+
+  it('allows 20 networks and rejects 21, on series only', () => {
+    const state: CatalogFormState = {
+      ...emptyForm('series'),
+      name: 'Row',
+      params: { with_networks: ids(MAX_ENTITY_IDS) },
+    }
+    expect(validateForm(state)).toEqual({})
+    state.params = { with_networks: ids(21) }
+    expect(Object.keys(validateForm(state))).toEqual(['with_networks'])
+    expect(validateForm({ ...state, type: 'movie' })).toEqual({})
+  })
+})
+
 describe('company and keyword cap', () => {
   const ids = (n: number) => Array.from({ length: n }, (_, i) => i + 1).join('|')
 

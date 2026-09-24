@@ -471,6 +471,7 @@ type SectionKey =
   | 'watch'
   | 'companies'
   | 'keywords'
+  | 'networks'
   | 'collection'
 
 /** Which section a server-mirrored validation error belongs to, so an
@@ -488,6 +489,7 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   with_keywords: 'keywords',
   without_companies: 'companies',
   without_keywords: 'keywords',
+  with_networks: 'networks',
   with_collection: 'collection',
 }
 
@@ -506,6 +508,7 @@ const ERROR_PRIORITY = [
   'without_companies',
   'with_keywords',
   'without_keywords',
+  'with_networks',
 ]
 
 function roleLabelFor(key: string, isMovie: boolean): string {
@@ -525,6 +528,7 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   watch: () => 'Where to watch',
   companies: () => 'Production companies',
   keywords: () => 'Keywords',
+  networks: () => 'Networks',
   collection: () => 'Collection',
 }
 
@@ -797,6 +801,29 @@ function buildSections(args: {
         />
       ),
     },
+    // Series only: /discover/movie has no network filter.
+    ...(isMovie
+      ? []
+      : [
+          {
+            key: 'networks' as const,
+            role: 'Networks',
+            summary: sumEntities(state.params.with_networks, undefined, 'network', 'Any network'),
+            body: (
+              <>
+                <TMDBEntityPicker
+                  kind="network"
+                  type={state.type}
+                  value={state.params.with_networks}
+                  onChange={(with_networks) => patchParams({ with_networks })}
+                />
+                {errorFor('with_networks') && (
+                  <FieldNote tone="danger">{errorFor('with_networks')}</FieldNote>
+                )}
+              </>
+            ),
+          },
+        ]),
     // Movie only: TMDB has no collections for series.
     ...(isMovie
       ? [

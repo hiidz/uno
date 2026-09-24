@@ -30,6 +30,12 @@ describe('describeRecipe', () => {
     ])
   })
 
+  it('counts networks on series catalogs only', () => {
+    const params = { with_networks: '213|49' }
+    expect(describeRecipe(catalog('series', params), new Map())).toEqual(['on 2 networks'])
+    expect(describeRecipe(catalog('movie', params), new Map())).toEqual([])
+  })
+
   it('describes a collection row by the collection and shuffle alone', () => {
     const lookup = new Map<number, string>([[28, 'Action']])
     const params = { with_collection: '10', sort_by: 'popularity.desc', with_genres: '28' }

@@ -236,8 +236,8 @@ export const sumShuffle = (randomized: boolean, collectionRow = false): string =
       ? 'On, a different set each time the row opens'
       : 'Off, the same set every time'
 
-/** The detail a company search result shows after its name — "US · 176
- *  films" — counted for the catalog's type. */
+/** The detail a company or network search result shows after its name —
+ *  "US · 176 films" — counted for the catalog's type. */
 export function companyDetail(
   company: { origin_country: string; title_count: number },
   type: CatalogType,

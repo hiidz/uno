@@ -117,6 +117,8 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /api/keywords/{id}", s.requireNuvioAuth(s.getKeyword))
 	s.router.HandleFunc("GET /api/collections/search", s.requireNuvioAuth(s.searchCollections))
 	s.router.HandleFunc("GET /api/collections/{id}", s.requireNuvioAuth(s.getCollection))
+	s.router.HandleFunc("GET /api/networks/search", s.requireNuvioAuth(s.searchNetworks))
+	s.router.HandleFunc("GET /api/networks/{id}", s.requireNuvioAuth(s.getNetwork))
 
 	s.router.HandleFunc("GET /api/profiles", s.requireNuvioAuth(s.listProfiles))
 	s.router.HandleFunc("POST /api/profiles/select", s.requireNuvioAuth(s.selectProfile))

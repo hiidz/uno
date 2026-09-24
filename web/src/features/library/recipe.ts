@@ -234,8 +234,8 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
     out.push(p.watch_region ? `on ${services} in ${countryLabel(p.watch_region)}` : `on ${services}`)
   }
 
-  // Counted for the same reason: naming a company or keyword needs a TMDB
-  // lookup per id.
+  // Counted for the same reason: naming a company, keyword or network needs a
+  // TMDB lookup per id.
   const companies = countIDs(p.with_companies)
   if (companies) out.push(`from ${pluralCount(companies, 'studio')}`)
   const notCompanies = countIDs(p.without_companies)
@@ -244,6 +244,9 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
   if (keywords) out.push(`tagged with ${pluralCount(keywords, 'keyword')}`)
   const notKeywords = countIDs(p.without_keywords)
   if (notKeywords) out.push(`not tagged with ${pluralCount(notKeywords, 'keyword')}`)
+  // Series params only, like the collection above is movie params only.
+  const networks = catalog.type === 'series' ? countIDs(p.with_networks) : 0
+  if (networks) out.push(`on ${pluralCount(networks, 'network')}`)
 
   // "shuffled", not "random": the backend picks a random TMDB page in [1,20],
   // not a random sample of the whole result set.

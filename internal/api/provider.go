@@ -96,8 +96,15 @@ func (s *Server) searchCollections(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getCompany, getKeyword and getCollection resolve one saved id back to its
-// name for the picker. A TMDB 404 answers 404, so the picker can tell a stale id from an
+// searchNetworks takes no catalog type: networks filter series only.
+func (s *Server) searchNetworks(w http.ResponseWriter, r *http.Request) {
+	lookupList(w, "failed to search networks", func() ([]provider.NetworkMatch, error) {
+		return s.provider.SearchNetworks(r.Context(), r.URL.Query().Get("q"))
+	})
+}
+
+// getCompany, getKeyword, getCollection and getNetwork resolve one saved id
+// back to its name for the picker. A TMDB 404 answers 404, so the picker can tell a stale id from an
 // outage.
 func (s *Server) getCompany(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathTMDBID(w, r)
@@ -126,6 +133,16 @@ func (s *Server) getCollection(w http.ResponseWriter, r *http.Request) {
 	}
 	lookupList(w, "failed to fetch collection", func() (provider.Collection, error) {
 		return s.provider.Collection(r.Context(), id)
+	})
+}
+
+func (s *Server) getNetwork(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathTMDBID(w, r)
+	if !ok {
+		return
+	}
+	lookupList(w, "failed to fetch network", func() (provider.Network, error) {
+		return s.provider.Network(r.Context(), id)
 	})
 }
 

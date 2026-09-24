@@ -20,8 +20,8 @@ var ErrInvalidParams = errors.New("invalid params")
 // ValidateParams checks the recipe fields that carry TMDB's own vocabulary
 // — genre ids, a language code, a watch region and its provider ids, a
 // certification country and its scale — against the lists TMDB publishes
-// for them, and company, keyword and collection ids against TMDB one id at
-// a time, since TMDB publishes no whole list of any of them. It complements
+// for them, and company, keyword, collection and network ids against TMDB
+// one id at a time, since its API serves no whole list of any of them. It complements
 // [CatalogParams.Validate], which covers the rules that need no network
 // (enums, bounds, required-together pairs) and runs first.
 //
@@ -38,12 +38,14 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 	}
 
 	// Both recipe types embed TMDBCommonParams, and every field checked here
-	// but with_collection lives on it, so decoding into it covers movie and
-	// tv alike. with_collection is decoded alongside for either type, so a
-	// series recipe carrying it is rejected rather than silently ignored.
+	// but with_collection and with_networks lives on it, so decoding into it
+	// covers movie and tv alike. Those two are decoded alongside for either
+	// type, so a recipe of the other type carrying one is rejected rather
+	// than silently ignored.
 	var p struct {
 		TMDBCommonParams
 		WithCollection string `json:"with_collection"`
+		WithNetworks   string `json:"with_networks"`
 	}
 	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
 		return fmt.Errorf("%w: decode %s params: %w", ErrInvalidParams, catalogType, err)
@@ -120,6 +122,14 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 			return fmt.Errorf("%w: with_collection applies to movie catalogs only", ErrInvalidParams)
 		}
 		if err := checkEntityIDs(ctx, "with_collection", p.WithCollection, "collection", c.Collection); err != nil {
+			return err
+		}
+	}
+	if p.WithNetworks != "" {
+		if catalogType != "series" {
+			return fmt.Errorf("%w: with_networks applies to series catalogs only", ErrInvalidParams)
+		}
+		if err := checkEntityIDs(ctx, "with_networks", p.WithNetworks, "network", c.Network); err != nil {
 			return err
 		}
 	}

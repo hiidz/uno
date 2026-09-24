@@ -81,11 +81,12 @@ func TestFetchCatalogPageServesWithoutGenresWhenGenreListFails(t *testing.T) {
 
 // TestFetchCatalogPageSendsEntityFilters proves the company and keyword
 // include and exclude lists reach the discover request TMDB sees, on both
-// discover endpoints, with their AND/OR separators intact.
+// discover endpoints, with their AND/OR separators intact — and that
+// with_networks reaches /discover/tv alone.
 func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
-	for _, tc := range []struct{ catalogType, path string }{
-		{"movie", "/discover/movie"},
-		{"series", "/discover/tv"},
+	for _, tc := range []struct{ catalogType, path, networks string }{
+		{"movie", "/discover/movie", ""},
+		{"series", "/discover/tv", "213|49"},
 	} {
 		t.Run(tc.catalogType, func(t *testing.T) {
 			var mu sync.Mutex
@@ -104,7 +105,7 @@ func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
 			c := NewTMDBClient("key")
 			c.baseURL = srv.URL
 
-			params := `{"with_companies":"420|2","with_keywords":"9715,180547","without_companies":"9993","without_keywords":"849,12"}`
+			params := `{"with_companies":"420|2","with_keywords":"9715,180547","without_companies":"9993","without_keywords":"849,12","with_networks":"213|49"}`
 			if _, err := c.FetchCatalogPage(t.Context(), tc.catalogType, params, "", 1); err != nil {
 				t.Fatal(err)
 			}
@@ -116,6 +117,7 @@ func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
 				"with_keywords":     "9715,180547",
 				"without_companies": "9993",
 				"without_keywords":  "849,12",
+				"with_networks":     tc.networks,
 			} {
 				if got := seen.Get(key); got != want {
 					t.Fatalf("%s = %q, want %q", key, got, want)

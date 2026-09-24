@@ -177,10 +177,11 @@ for discover results (a ranking goes stale), only the TMDB-id→IMDB-id cache on
 `maxIMDBCacheEntries` and emptied whole once it fills, because the public addon route can add one
 entry per title TMDB has) and the lookup-list memos beside it
 (`internal/provider/cache.go`: genres, languages, countries, watch regions and certifications for
-the process's lifetime, watch providers for 24h since services move between markets). Every memo
+the process's lifetime, watch providers and the network export for 24h since services move between
+markets and TMDB republishes the export daily). Every memo
 clones on read, so a caller that sorts what it got back cannot reach the cached copy. The memos
-keyed by an id a caller supplies — the per-id companies, keywords and collections, a collection's
-parts, and company title counts — are built with `newBoundedMemo`, because their key space is
+keyed by an id a caller supplies — the per-id companies, keywords, collections and networks, a
+collection's parts, and company and network title counts — are built with `newBoundedMemo`, because their key space is
 TMDB's whole catalogue: `maxEntityCacheEntries` (10,000; an entry is an id and a name or a count)
 for all but the parts, `maxCollectionPartsEntries` (1,000; an entry is a whole film list) for
 those. Inserting a new key at the bound drops the expired entries and, if the memo is still full,
@@ -351,12 +352,12 @@ genre list can't be fetched.
 The builder's pickers read TMDB's vocabulary through thin `requireNuvioAuth` routes in
 `internal/api/provider.go`, all answered by one helper, `lookupList`: `GET /api/genres/{type}`,
 `/api/certifications/{type}`, `/api/languages`, `/api/countries`,
-`/api/watch-providers/{type}?region=`, `/api/watch-regions`, and, for the three vocabularies TMDB
-publishes no whole list of, `GET /api/keywords/search?q=` and `/api/collections/search?q=`
+`/api/watch-providers/{type}?region=`, `/api/watch-regions`, and, for the four vocabularies TMDB's
+API serves no whole list of, `GET /api/keywords/search?q=` and `/api/collections/search?q=`
 (`[{id, name}]`, TMDB's first result page, `[]` when nothing matches),
-`GET /api/companies/search?q=&type=movie|series` (below), plus `GET /api/companies/{id}`,
-`/api/keywords/{id}` and `/api/collections/{id}` (`{id, name}`: a saved id resolved back to its
-name). `lookupList` classifies a failure once for every route: `ErrInvalidCatalogType` or
+`GET /api/companies/search?q=&type=movie|series` and `GET /api/networks/search?q=` (below), plus
+`GET /api/companies/{id}`, `/api/keywords/{id}`, `/api/collections/{id}` (`{id, name}`) and
+`/api/networks/{id}` (`{id, name, origin_country}`): a saved id resolved back to its name. `lookupList` classifies a failure once for every route: `ErrInvalidCatalogType` or
 `ErrInvalidParams` → `400` without contacting TMDB (a blank `q`, a missing or unknown company
 search `type`, an id below 1; a non-numeric `{id}` is rejected before the provider is called),
 `provider.ErrNotFound` → `404`, anything else → `502`. The literal `search` segment outranks
@@ -365,17 +366,33 @@ search `type`, an id below 1; a non-numeric `{id}` is rejected before the provid
 Company search is ranked, because TMDB's raw order is not usable: its first page for "a24" put
 the real A24 third, behind same-named duplicates crediting no titles at all.
 `TMDBClient.SearchCompanies` (`internal/provider/companies.go`) keeps the first 10 results of
-TMDB's first page (`maxCompanyMatches`), counts each one's titles for the catalog's `type` with
+TMDB's first page (`maxCountedMatches`), counts each one's titles for the catalog's `type` with
 one `/discover/movie` or `/discover/tv` call (`with_companies=<id>`, reading `total_results`),
-drops those under 5 titles (`minCompanyTitles`: in a 15-studio probe every junk duplicate had at
+drops those under 5 titles (`minMatchTitles`: in a 15-studio probe every junk duplicate had at
 most 1 and the smallest real studios 8–9), and sorts the rest by count, descending, ties in
 TMDB's order. It answers `[{id, name, origin_country, title_count}]` — `origin_country` may be
-`""`, and `[]` when nothing survives. The counts run with `resolveMetas`' concurrency bound
-(`externalIDsConcurrency`) and are memoized for 24h per type and id (`companyTitles`, bounded like the
-per-id memos), so a repeated search costs one TMDB call. A failed count fails the whole search with a
+`""`, and `[]` when nothing survives. The counts (`titleCount` and `forEachMatch` in
+`internal/provider/titlecounts.go`) run with `resolveMetas`' concurrency bound
+(`externalIDsConcurrency`) and are memoized for 24h per filter, type and id (`titleCounts`,
+bounded like the per-id memos), so a repeated search costs one TMDB call. A failed count fails the whole search with a
 `502` rather than silently dropping the result it was for; a TMDB 404 on that discover call is
 reported without `ErrNotFound`, so it is a `502` too, not a `404` for a search. `type` is required
 and is Uno's `movie`/`series`, never TMDB's `tv`.
+
+Network search has no TMDB search to rank: TMDB's API has `/network/{id}` but no
+`/search/network`. `TMDBClient.SearchNetworks` (`internal/provider/networks.go`) searches TMDB's
+daily network export instead: `tv_network_ids_MM_DD_YYYY.json.gz` on `files.tmdb.org`, a
+gzipped file of one `{"id","name"}` per line (about 5,600 networks, 52 KB). It is the one TMDB
+request that goes to a host other than `api.themoviedb.org`, and it carries no API key. Today's
+(UTC) file is tried first, and on any non-200 answer yesterday's (the host answers 403 for a date
+it has not published yet). The list is memoized under one key for 24h (`networkIDs`), and a
+failed fetch is not cached. Names match case-insensitively, ranked whole name, then name start,
+then the start of a later word ("hbo" never matches "Beachbody"), the lower id first within each
+rank. The first 10 are looked up through `TMDBClient.Network` for their `origin_country` and
+counted on `/discover/tv` (`with_networks=<id>`) through the same helpers as company search. A
+name whose `/network/{id}` now answers 404 is dropped, and the rest are filtered and sorted
+exactly as companies are. The answer has the company search's shape, with `title_count` counting
+series. There is no `type` param: networks filter series only.
 
 ### Error responses
 

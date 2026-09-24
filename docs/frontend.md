@@ -281,6 +281,16 @@ Other decisions worth keeping:
   name costs no extra request. "Collection" is also Uno's word for a group of catalogs, so the
   TMDB kind is `TMDBCollection` in code, and the library summary describes a collection row as
   "from a movie collection" (plus "shuffled"), with none of the other filters.
+- **A series catalog's Networks section is the same server-search picker again**
+  (`kind="network"`, over `GET /api/networks/{search,{id}}`, stored as `with_networks`). It is
+  series only, since `/discover/movie` has no network filter. A movie catalog has no Networks
+  section, and `applyDateMode` drops `with_networks` from anything a movie catalog sends. The
+  section holds one picker, with no Leave out list, because TMDB ignores `without_networks`.
+  Networks default to "any", like companies, because a show rarely airs on two networks. Rows
+  read "HBO · US · 376 series" through the same `companyDetail`. The search takes no type, and
+  the server always counts series. The cap is 20, the same as the other id lists. The closed
+  head reads "2 networks, any of them" (`sumEntities` with no left-out list), and the library
+  summary reads "on 2 networks".
 - **Age rating is the same shape**, over `GET /api/certifications/{type}` — options come from
   TMDB per type because the scales differ, and picking a rating defaults its country.
 - **The editor previews on request, not as you type** (`RecipePreview` → `useRecipeTiles` →

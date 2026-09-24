@@ -10,10 +10,9 @@ import (
 	"testing"
 )
 
-// fakeEntityTMDB serves /company/{id}, /keyword/{id} and /collection/{id}:
-// id 1 exists, id 500
-// fails with a server error, anything else is a 404. It counts every request
-// per path.
+// fakeEntityTMDB serves /company/{id}, /keyword/{id}, /collection/{id} and
+// /network/{id}: id 1 exists, id 500 fails with a server error, anything else
+// is a 404. It counts every request per path.
 func fakeEntityTMDB(t *testing.T) (*TMDBClient, func(path string) int) {
 	t.Helper()
 	var mu sync.Mutex
@@ -30,7 +29,9 @@ func fakeEntityTMDB(t *testing.T) (*TMDBClient, func(path string) int) {
 			fmt.Fprint(w, `{"id":1,"name":"superhero"}`)
 		case "/collection/1":
 			fmt.Fprint(w, `{"id":1,"name":"Star Wars Collection","parts":[]}`)
-		case "/company/500", "/keyword/500", "/collection/500":
+		case "/network/1":
+			fmt.Fprint(w, `{"id":1,"name":"Fuji TV","origin_country":"JP"}`)
+		case "/company/500", "/keyword/500", "/collection/500", "/network/500":
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
@@ -158,6 +159,69 @@ func TestValidateParamsChecksCollection(t *testing.T) {
 				t.Fatalf("TMDB hit %d times, want %d", total, tc.wantHits)
 			}
 		})
+	}
+}
+
+// TestValidateParamsChecksNetworks covers with_networks in ValidateParams: a
+// series recipe's ids are looked up on TMDB, and a movie recipe carrying them
+// is rejected without a lookup, since /discover/movie has no such filter and
+// the value would otherwise be saved but never applied.
+func TestValidateParamsChecksNetworks(t *testing.T) {
+	tests := []struct {
+		name, catalogType, params string
+		wantInvalid, wantErr      bool
+		wantHits                  int
+	}{
+		{"known networks, AND and OR", "series", `{"with_networks":"1|1,1"}`, false, false, 1},
+		{"unknown network", "series", `{"with_networks":"1|999"}`, true, true, 2},
+		{"malformed network", "series", `{"with_networks":"abc"}`, true, true, 0},
+		{"network lookup failing", "series", `{"with_networks":"500"}`, false, true, 1},
+		{"networks on movie", "movie", `{"with_networks":"1"}`, true, true, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c, hits := fakeEntityTMDB(t)
+
+			err := c.ValidateParams(t.Context(), tc.catalogType, tc.params)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want error: %v", err, tc.wantErr)
+			}
+			if got := errors.Is(err, ErrInvalidParams); got != tc.wantInvalid {
+				t.Fatalf("errors.Is(err, ErrInvalidParams) = %v, want %v (err: %v)", got, tc.wantInvalid, err)
+			}
+			if tc.wantInvalid && !strings.Contains(err.Error(), "with_networks") {
+				t.Fatalf("err = %v, want it to name with_networks", err)
+			}
+			total := hits("/network/1") + hits("/network/999") + hits("/network/500")
+			if total != tc.wantHits {
+				t.Fatalf("TMDB hit %d times, want %d", total, tc.wantHits)
+			}
+		})
+	}
+}
+
+// TestTVValidateCapsNetworks covers the no-network cap on with_networks,
+// which lives on the series recipe alone: twenty ids pass, a twenty-first is
+// rejected naming the field and the cap, for either separator.
+func TestTVValidateCapsNetworks(t *testing.T) {
+	for _, sep := range []string{",", "|"} {
+		for _, n := range []int{maxEntityIDs, maxEntityIDs + 1} {
+			parts := make([]string, n)
+			for i := range parts {
+				parts[i] = fmt.Sprint(i + 1)
+			}
+			err := TMDBTVParams{WithNetworks: strings.Join(parts, sep)}.Validate()
+			if n <= maxEntityIDs {
+				if err != nil {
+					t.Fatalf("with_networks with %d ids: %v, want accepted", n, err)
+				}
+				continue
+			}
+			if err == nil || !strings.Contains(err.Error(), "with_networks") || !strings.Contains(err.Error(), "20") {
+				t.Fatalf("with_networks with %d ids: %v, want an error naming with_networks and the cap", n, err)
+			}
+		}
 	}
 }
 

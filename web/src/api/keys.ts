@@ -51,6 +51,8 @@ export const queryKeys = {
   /** TMDB movie collections, prefixed apart from Uno's own collections. */
   collectionSearch: (query: string) => ['tmdb-collections', 'search', query] as const,
   collection: (id: number) => ['tmdb-collections', 'id', id] as const,
+  networkSearch: (query: string) => ['networks', 'search', query] as const,
+  network: (id: number) => ['networks', 'id', id] as const,
 
   /**
    * Keyed on the **recipe**, not on a catalog id. Two catalogs with identical

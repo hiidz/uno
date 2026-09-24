@@ -88,6 +88,11 @@ func TestEntityLookupRoutes(t *testing.T) {
 		{name: "collection search without q", path: "/api/collections/search", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
 		{name: "non-numeric collection id", path: "/api/collections/starwars", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
 		{name: "non-positive collection id", path: "/api/collections/-1", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
+		{name: "unauthenticated network search", path: "/api/networks/search?q=hbo", noAuth: true, wantStatus: http.StatusUnauthorized},
+		{name: "unauthenticated network id", path: "/api/networks/49", noAuth: true, wantStatus: http.StatusUnauthorized},
+		{name: "network search with blank q", path: "/api/networks/search?q=%20", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
+		{name: "non-numeric network id", path: "/api/networks/hbo", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
+		{name: "non-positive network id", path: "/api/networks/0", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
 	}
 
 	for _, tc := range tests {

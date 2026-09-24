@@ -5,10 +5,12 @@ import {
   fetchCollection,
   fetchCompany,
   fetchKeyword,
+  fetchNetwork,
   queryKeys,
   searchCollections,
   searchCompanies,
   searchKeywords,
+  searchNetworks,
 } from '@/api'
 import type { CatalogType } from '@/api'
 import { FieldNote, Segmented } from '@/components/fields'
@@ -19,13 +21,16 @@ import { companyDetail } from './summary'
 
 /**
  * TMDB entities picked by name from a server search, kept as chips — the
- * production companies, keywords and movie collection of a recipe.
+ * production companies, keywords, movie collection and series networks of a
+ * recipe.
  *
- * TMDB has no "list them all" endpoint for either, so unlike every other
- * picker in the editor this one searches the server as you type: the query
- * settles for `SEARCH_DELAY_MS`, then `GET /api/{companies,keywords,collections}/search`
- * runs once it is at least `MIN_QUERY` characters. Company search is scoped
- * to the catalog's type, and each result names its country and title count.
+ * TMDB's API has no "list them all" endpoint for any of them, so unlike every
+ * other picker in the editor this one searches the server as you type: the
+ * query settles for `SEARCH_DELAY_MS`, then
+ * `GET /api/{companies,keywords,collections,networks}/search` runs once it is
+ * at least `MIN_QUERY` characters. Company search is scoped to the catalog's
+ * type, network search to series, and each of their results names its country
+ * and title count.
  *
  * The stored value is one id-list string, comma-joined for "all of them" and
  * pipe-joined for "any of them". An `exclude` list is always comma-joined:
@@ -36,7 +41,7 @@ import { companyDetail } from './summary'
  * marked, so it can be removed.
  */
 
-export type EntityKind = 'company' | 'keyword' | 'collection'
+export type EntityKind = 'company' | 'keyword' | 'collection' | 'network'
 
 interface Entity {
   id: number
@@ -102,6 +107,22 @@ const SOURCES: Record<EntityKind, EntitySource> = {
     fetchOne: fetchCollection,
     oneKey: queryKeys.collection,
   },
+  network: {
+    plural: 'networks',
+    singular: 'Network',
+    // A show rarely airs on two networks, so "all of them" is almost always
+    // an empty row.
+    defaultJoin: 'or',
+    search: searchNetworks,
+    searchKey: (query) => queryKeys.networkSearch(query),
+    rowDetail: (result) =>
+      companyDetail(
+        { origin_country: result.origin_country ?? '', title_count: result.title_count ?? 0 },
+        'series',
+      ),
+    fetchOne: fetchNetwork,
+    oneKey: queryKeys.network,
+  },
 }
 
 const SEARCH_DELAY_MS = 300
@@ -117,7 +138,8 @@ export function TMDBEntityPicker({
   hiddenIds,
 }: {
   kind: EntityKind
-  /** The catalog's type, which company search counts titles for. */
+  /** The catalog's type, which company search counts titles for. Network
+   *  search always counts series. */
   type: CatalogType
   value: string | undefined
   onChange: (value: string | undefined) => void

@@ -23,6 +23,10 @@ import (
 
 const tmdbBaseURL = "https://api.themoviedb.org/3"
 
+// tmdbExportsURL is where TMDB publishes its daily id exports. It needs no
+// API key: see networkList.
+const tmdbExportsURL = "https://files.tmdb.org/p/exports"
+
 // maxResponseBytes caps how much of a TMDB response this package will read.
 // The largest of them is the watch-provider list at a few hundred entries,
 // far under this; the cap keeps a malfunctioning upstream from making Uno
@@ -34,6 +38,7 @@ type TMDBClient struct {
 	httpClient *http.Client
 	apiKey     string
 	baseURL    string
+	exportsURL string
 
 	// imdbCache holds tmdbID->IMDB-id lookups, keyed "movie:123"/"tv:456".
 	// An id pairing never changes once TMDB has it, so an entry never
@@ -55,22 +60,28 @@ type TMDBClient struct {
 	certifications *memo[map[string][]Certification]
 
 	// Single entities looked up by id, keyed by the id: see Company,
-	// Keyword and Collection.
+	// Keyword, Collection and Network.
 	companies   *memo[Company]
 	keywords    *memo[Keyword]
 	collections *memo[Collection]
+	networks    *memo[Network]
+
+	// networkIDs holds the daily network export under one key: see
+	// networkList.
+	networkIDs *memo[[]networkEntry]
 
 	// collectionFilms holds each collection's films, keyed by collection id:
 	// see collectionParts.
 	collectionFilms *memo[[]tmdbDiscoverItem]
 
-	// companyTitles holds each company's title count for one catalog type,
-	// keyed "movie:123"/"series:456": see SearchCompanies.
-	companyTitles *memo[int]
+	// titleCounts holds each company's or network's title count for one
+	// catalog type, keyed "with_companies:movie:123"/"with_networks:series:213":
+	// see titleCount.
+	titleCounts *memo[int]
 }
 
 // maxEntityCacheEntries bounds each memo keyed by an id a caller supplies:
-// the per-id companies, keywords and collections, and the company title
+// the per-id companies, keywords, collections and networks, and the title
 // counts. Each entry is an id and a short name or a count, so the bound
 // holds each one to about a megabyte while sitting far above what this
 // deployment's users look up between restarts.
@@ -101,9 +112,10 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		apiKey:    apiKey,
-		baseURL:   tmdbBaseURL,
-		imdbCache: make(map[string]string),
+		apiKey:     apiKey,
+		baseURL:    tmdbBaseURL,
+		exportsURL: tmdbExportsURL,
+		imdbCache:  make(map[string]string),
 
 		genres:         newMemo(0, slices.Clone[[]Genre]),
 		languages:      newMemo(0, slices.Clone[[]Language]),
@@ -114,9 +126,11 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		companies:      newBoundedMemo(0, maxEntityCacheEntries, func(v Company) Company { return v }),
 		keywords:       newBoundedMemo(0, maxEntityCacheEntries, func(v Keyword) Keyword { return v }),
 		collections:    newBoundedMemo(0, maxEntityCacheEntries, func(v Collection) Collection { return v }),
+		networks:       newBoundedMemo(0, maxEntityCacheEntries, func(v Network) Network { return v }),
+		networkIDs:     newMemo(networkExportTTL, slices.Clone[[]networkEntry]),
 
 		collectionFilms: newBoundedMemo(collectionPartsTTL, maxCollectionPartsEntries, slices.Clone[[]tmdbDiscoverItem]),
-		companyTitles:   newBoundedMemo(companyTitlesTTL, maxEntityCacheEntries, func(v int) int { return v }),
+		titleCounts:     newBoundedMemo(titleCountsTTL, maxEntityCacheEntries, func(v int) int { return v }),
 	}
 }
 
@@ -124,7 +138,8 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 // momentarily unreachable, so a retry returns the same answer. Separated
 // from the other statuses because resolveMetas drops the one item whose
 // external_ids TMDB doesn't have instead of failing the page over it, and
-// because a lookup of one company, keyword or collection by id answers a 404 with a 404.
+// because a lookup of one company, keyword, collection or network by id
+// answers a 404 with a 404.
 var ErrNotFound = errors.New("provider: TMDB has no such resource")
 
 // get is the shared low-level TMDB call: attach the API key, require a 200,

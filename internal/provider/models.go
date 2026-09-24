@@ -180,6 +180,11 @@ type TMDBTVParams struct {
 	// at query time, every render. Mutually exclusive with the fixed
 	// fields above — enforced in Validate.
 	AiredWithinDays int `json:"aired_within_days,omitempty"`
+
+	// Comma (AND) or pipe (OR) separated TMDB network ids. TV only:
+	// /discover/movie has no network filter. TMDB ignores without_networks,
+	// so there is no exclude list beside it.
+	WithNetworks string `json:"with_networks,omitempty"`
 }
 
 // tmdbMaxVoteAverage is the top of TMDB's rating scale; vote_average.gte
@@ -193,7 +198,7 @@ const tmdbMaxVoteAverage = 10.0
 const maxWithinDays = 50 * 365
 
 // maxEntityIDs caps how many ids with_companies, with_keywords,
-// without_companies and without_keywords each hold.
+// without_companies, without_keywords and with_networks each hold.
 // ValidateParams looks every id up on TMDB one at a time, so the cap bounds
 // the round trips one save can cost on a cold cache.
 const maxEntityIDs = 20
@@ -354,6 +359,13 @@ func (p TMDBTVParams) Validate() error {
 	}
 	if p.AiredWithinDays > maxWithinDays {
 		return fmt.Errorf("aired_within_days cannot exceed %d (50 years)", maxWithinDays)
+	}
+	networks, err := parseIDList("with_networks", p.WithNetworks)
+	if err != nil {
+		return err
+	}
+	if len(networks) > maxEntityIDs {
+		return fmt.Errorf("with_networks cannot hold more than %d ids", maxEntityIDs)
 	}
 
 	return p.validate()

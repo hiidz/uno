@@ -307,10 +307,15 @@ describing what a TMDB-backed catalog may ask for.
 - **Type hierarchy.** `BaseParams` (provider-agnostic behavior — `randomized`) →
   `TMDBCommonParams` (every discover filter both types share: genres, language, vote and runtime
   ranges, watch providers, production companies and keywords, **and certification**) → `TMDBMovieParams` / `TMDBTVParams`
-  (type-specific only: the date window, plus movie's `with_collection`). Movie has
+  (type-specific only: the date window, plus movie's `with_collection` and series'
+  `with_networks`). Movie has
   `primary_release_date_*` and `released_within_days`; series has `first_air_date_*` and
   `aired_within_days` — a different axis, since a 2015 show still matches "aired in the last 30
   days". `with_collection` is one TMDB collection id (e.g. `10`, Star Wars), movie only.
+  `with_networks` is a comma (AND) or pipe (OR) separated list of TMDB network ids (e.g.
+  `213|49`, Netflix or HBO), series only: `/discover/movie` has no network filter. It has no
+  `without_networks` partner, because `/discover/tv` accepts that param and ignores it (the same
+  total with or without it).
 - **A collection catalog is a TMDB collection source, not a discover filter.** A collection
   recipe is a movie recipe with `with_collection` set: its titles are one predefined TMDB
   collection's films. `/discover/movie` accepts `with_collection` and ignores it — the same total
@@ -326,8 +331,9 @@ describing what a TMDB-backed catalog may ask for.
   and names the first one set, so a field added later is covered without editing it.
 - **Validation split, part one: the rules that need no network.** `Validate()` on each leaf type
   checks the `sort_by` enum (per type — movie and tv have different sort vocabularies),
-  fixed-vs-rolling date exclusivity, that the rolling window isn't negative, and (movie) that
-  `with_collection` is a single id rather than a `,`/`|` list with no other filter beside it, then delegates
+  fixed-vs-rolling date exclusivity, that the rolling window isn't negative, (movie) that
+  `with_collection` is a single id rather than a `,`/`|` list with no other filter beside it, and
+  (series) that `with_networks` holds at most 20 ids, then delegates
   to `TMDBCommonParams`'s shared check for the two required-together pairs (certification needs
   a country, watch providers need a region), the numeric bounds (`vote_average_*` within
   0–10, and no negative `vote_count_*` or `with_runtime_*`), and the id-list cap:
@@ -369,6 +375,12 @@ describing what a TMDB-backed catalog may ask for.
   `ErrInvalidParams`: `DecodeParams` is a plain `json.Unmarshal`, which ignores keys the type
   doesn't declare, so without this the field would be saved on a series catalog and never
   applied.
+- **`with_networks` goes through the same per-id check, series only.** `ValidateParams` decodes
+  it alongside `with_collection` and looks each id up through `TMDBClient.Network`
+  (`/network/{id}`, memoized like the other per-id lookups). A movie recipe carrying it is
+  rejected with `ErrInvalidParams`, for the same `json.Unmarshal` reason. Validation never reads
+  the network export that network search uses (`docs/architecture.md`), so saving a recipe does
+  not depend on TMDB's file host.
 - **Take re-validates what it copies.** `TakeCatalog` and `TakeCollection` both run the same
   params check against the source rows before copying them (the recipe is another profile's
   input, validated when they wrote it, not when it is taken), via a validator passed in by
