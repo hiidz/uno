@@ -339,7 +339,7 @@ write credential.
   `api.maxRequestBodyBytes` (1 MiB) is no substitute: 1 MiB is thousands of folders, and every one
   of these strings is stored, served from the public addon route, and pushed into Nuvio's
   collections blob as a full replace. `CatalogForm.Validate` and `CollectionForm.Validate` enforce
-  them on save, a folder's inline `new` entries and the save's `catalog_edits` included, since
+  them on save (an import, whose body limit is 4 MiB, is held to the same rules), a folder's inline `new` entries and the save's `catalog_edits` included, since
   either becomes a catalog row write in the same transaction.
 - **Empty lists serialize as `[]`, never `null`.** The row parsers in `internal/vault/scan.go`
   initialize their slices, and `jsonwire.OrEmpty[T]` (`internal/jsonwire`) covers the
@@ -519,6 +519,64 @@ describing what a TMDB-backed catalog may ask for.
   `CHECK`); the constraint is app-level only. There is no `Provider` interface, deliberately —
   deferred until a second provider is real enough to show what the interface should abstract
   over.
+
+## Bundle format
+
+**A bundle is catalogs and collections with every row id replaced by a key.** It is the file
+export writes and import reads, and the in-memory shape every collection copy and the link hash
+go through. The Go types in `internal/vault/bundle.go` (`Bundle`, `BundleCatalog`,
+`BundleCollection`, `BundleFolder`, `BundleRef`) are its only definition. Keys are snake_case.
+Version 1:
+
+```json
+{ "format": "uno", "version": 1,
+  "catalogs": [ { "key": "c1", "name": "80s Horror", "type": "movie", "provider": "tmdb", "params": { } } ],
+  "collections": [ {
+    "title": "Halloween", "pin_to_top": false, "view_mode": "TABBED_GRID", "show_all_tab": true,
+    "backdrop_image_url": "", "focus_glow_enabled": true,
+    "catalogs": [ { "key": "c2", "name": "Slashers", "type": "movie", "provider": "tmdb", "params": { } } ],
+    "folders": [ { "title": "Classics", "tile_shape": "POSTER", "hide_title": false, "cover_emoji": "",
+                   "cover_image_url": "", "focus_gif_url": "", "focus_gif_enabled": true,
+                   "hero_backdrop_url": "", "hero_video_url": "", "title_logo_url": "",
+                   "refs": [ { "catalog": "c1", "genre": "" }, { "catalog": "c2", "genre": "Horror" } ] } ] } ] }
+```
+
+- **Two kinds of catalog list.** The top-level `catalogs` are listed catalogs. A collection's own
+  `catalogs` are scoped to it; one that no ref uses is ignored on import.
+- **Never in the bundle:** row ids, `owner_id`, `is_public`, `collection_id`, timestamps,
+  `home_sort_order`, `show_in_home`, `taken_from`, `taken_hash`, `fingerprint`, `version` and
+  `pushed_version`.
+- **Export writes every field.** Booleans are plain bools, and an empty list is `[]`. `params` is
+  the stored recipe as a JSON object.
+- **Export placement** (`ExportBundle`): the selected listed catalogs come first, in library
+  order, then each listed catalog a selected collection references, once across all of them.
+  Keys are `c1`, `c2`, … in the order catalogs are emitted, so a collection's scoped catalogs take
+  keys between the top-level ones. A scoped catalog can't be selected by itself; it travels
+  inside its collection.
+- **File-level rules** (`Bundle.Validate`): format `"uno"` and version 1; each key non-empty, at
+  most 64 bytes, and unique across the whole bundle; `params` a JSON object; a ref names a
+  top-level key or one of its own collection's keys, never another collection's; at most 200
+  catalogs (top-level and in collections together) and 50 collections. Every problem is listed in
+  one 400. Decoding compacts `params`, so an imported recipe is stored the way a saved one is.
+  Everything else is bounded by the form validators the rows are written through:
+  `CatalogForm`'s rules for each new listed catalog, `CollectionForm.Validate` for each
+  collection, and `checkRecipe` for every recipe (see `docs/architecture.md`).
+
+**Import creates copies** (`ImportBundle`):
+
+- Every row id is minted by Uno; the file only ever supplies keys. Importing one file twice gives
+  two independent sets.
+- Imported rows are private and off Home, with `taken_from` NULL, `version` 1 and
+  `pushed_version` NULL. Titles are kept as they are, with no "(copy)" suffix. Imports never link.
+- **Optional reuse.** `reuse` maps a bundle catalog key, top-level or a collection's own, to one
+  of the importer's own *listed* catalogs; its refs then point at that row and no new row is
+  written for it. The import check offers the listed catalogs whose fingerprint matches. A reuse
+  target owned by someone else, or scoped to one of the importer's collections, fails the import.
+  Reuse can map two bundle catalogs onto one row, so within a folder a repeated (catalog, trimmed
+  genre) ref is dropped, keeping the first.
+- **All or nothing.** Every check that needs no database runs before the transaction. Inside it,
+  the new listed catalogs are inserted first, in bundle order, then each collection through
+  `createCollectionTx`. Any failure rolls everything back.
 
 ## Push wire shape (Nuvio collections)
 

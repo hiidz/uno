@@ -1,0 +1,74 @@
+{
+  "format": "uno",
+  "version": 1,
+  "catalogs": [
+    {
+      "key": "c1",
+      "name": "80s Horror",
+      "type": "movie",
+      "provider": "tmdb",
+      "params": {
+        "sort_by": "popularity.desc"
+      }
+    },
+    {
+      "key": "c2",
+      "name": "Top Rated",
+      "type": "series",
+      "provider": "tmdb",
+      "params": { "sort_by": "vote_average.desc" }
+    }
+  ],
+  "collections": [
+    {
+      "title": "Halloween",
+      "pin_to_top": true,
+      "view_mode": "TABBED_GRID",
+      "show_all_tab": true,
+      "backdrop_image_url": "https://example.com/backdrop.jpg",
+      "focus_glow_enabled": true,
+      "catalogs": [
+        {
+          "key": "c3",
+          "name": "Slashers",
+          "type": "movie",
+          "provider": "tmdb",
+          "params": { "sort_by": "revenue.desc" }
+        }
+      ],
+      "folders": [
+        {
+          "title": "Classics",
+          "tile_shape": "POSTER",
+          "hide_title": false,
+          "cover_emoji": "🎃",
+          "cover_image_url": "",
+          "focus_gif_url": "",
+          "focus_gif_enabled": true,
+          "hero_backdrop_url": "",
+          "hero_video_url": "",
+          "title_logo_url": "",
+          "refs": [
+            { "catalog": "c1", "genre": "" },
+            { "catalog": "c3", "genre": "Horror" }
+          ]
+        },
+        {
+          "title": "Late Night",
+          "tile_shape": "LANDSCAPE",
+          "hide_title": true,
+          "cover_emoji": "",
+          "cover_image_url": "",
+          "focus_gif_url": "",
+          "focus_gif_enabled": false,
+          "hero_backdrop_url": "",
+          "hero_video_url": "",
+          "title_logo_url": "",
+          "refs": [
+            { "catalog": "c3", "genre": "" }
+          ]
+        }
+      ]
+    }
+  ]
+}

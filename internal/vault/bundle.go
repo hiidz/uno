@@ -1,18 +1,20 @@
-// The bundle: the portable, ID-free form of catalogs and collections, the
-// two conversions that connect it to stored rows, and the content hashes a
-// linked copy is compared by. extractBundle turns stored trees into a
-// Bundle; collectionFormFromBundle turns one of its collections into the
-// CollectionForm the create core writes.
+// The bundle: the portable, ID-free form of catalogs and collections, its
+// file-level rules, the two conversions that connect it to stored rows, and
+// the content hashes a linked copy is compared by. extractBundle turns stored
+// trees into a Bundle; collectionFormFromBundle turns one of its collections
+// into the CollectionForm the create core writes.
 
 package vault
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -77,11 +79,147 @@ type BundleFolder struct {
 	Refs            []BundleRef `json:"refs"`
 }
 
+// UnmarshalJSON decodes c with its params compacted, so an imported recipe is
+// stored in the same form a saved one is. Params that don't compact are kept
+// as they came, for Bundle.Validate to report.
+func (c *BundleCatalog) UnmarshalJSON(data []byte) error {
+	type plain BundleCatalog
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	var compact bytes.Buffer
+	if json.Compact(&compact, p.Params) == nil {
+		p.Params = compact.Bytes()
+	}
+	*c = BundleCatalog(p)
+	return nil
+}
+
 // BundleRef is one folder ref: a catalog key and the genre the ref is
 // narrowed to ("" for unfiltered).
 type BundleRef struct {
 	Catalog string `json:"catalog"`
 	Genre   string `json:"genre"`
+}
+
+// The whole-bundle limits. maxBundleKeyLen bounds a catalog key, which
+// export writes as c1, c2, …; maxBundleCatalogs counts top-level and
+// collection catalogs together. Each collection inside a bundle is further
+// bounded by CollectionForm.Validate's own limits.
+const (
+	maxBundleKeyLen      = 64
+	maxBundleCatalogs    = 200
+	maxBundleCollections = 50
+)
+
+// Validate checks the rules that belong to the file rather than to any one
+// row: the format and version, the whole-bundle limits, every catalog key
+// non-empty, within maxBundleKeyLen and unique across the bundle, every
+// catalog's params a JSON object, and every ref naming a top-level key or
+// one of its own collection's keys. It returns an ErrInvalidInput-wrapped
+// error listing every problem found. Everything else is bounded by the form
+// validators the rows are written through.
+func (b Bundle) Validate() error {
+	k := bundleKeyChecker{seen: map[string]bool{}, problems: bundleHeaderProblems(b)}
+	top := k.catalogs("", b.Catalogs)
+	for i, bc := range b.Collections {
+		prefix := fmt.Sprintf("collection %d: ", i)
+		own := k.catalogs(prefix, bc.Catalogs)
+		k.problems = append(k.problems, bundleRefProblems(prefix, bc.Folders, top, own)...)
+	}
+	if len(k.problems) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: bundle: %s", ErrInvalidInput, strings.Join(k.problems, "; "))
+}
+
+// bundleHeaderProblems collects the problems with b as a whole: its format,
+// its version and its size. Part of Bundle.Validate.
+func bundleHeaderProblems(b Bundle) []string {
+	var problems []string
+	if b.Format != BundleFormat {
+		problems = append(problems, fmt.Sprintf("format must be %q", BundleFormat))
+	}
+	if b.Version != BundleVersion {
+		problems = append(problems, fmt.Sprintf("version must be %d", BundleVersion))
+	}
+	if b.catalogCount() > maxBundleCatalogs {
+		problems = append(problems, fmt.Sprintf("a bundle holds at most %d catalogs", maxBundleCatalogs))
+	}
+	if len(b.Collections) > maxBundleCollections {
+		problems = append(problems, fmt.Sprintf("a bundle holds at most %d collections", maxBundleCollections))
+	}
+	return problems
+}
+
+// catalogCount is how many catalogs b holds, top-level and in collections.
+func (b Bundle) catalogCount() int {
+	n := len(b.Catalogs)
+	for _, bc := range b.Collections {
+		n += len(bc.Catalogs)
+	}
+	return n
+}
+
+// bundleKeyChecker is the state Bundle.Validate shares across the bundle's
+// catalog lists: every key seen so far, and the problems found so far.
+type bundleKeyChecker struct {
+	seen     map[string]bool
+	problems []string
+}
+
+// catalogs checks one catalog list, each problem prefixed with where the
+// list sits, and returns the set of its keys.
+func (k *bundleKeyChecker) catalogs(prefix string, catalogs []BundleCatalog) map[string]bool {
+	keys := make(map[string]bool, len(catalogs))
+	for i, c := range catalogs {
+		at := fmt.Sprintf("%scatalog %d: ", prefix, i)
+		k.problems = appendProblem(k.problems, bundleKeyProblem(at, c.Key, k.seen))
+		k.problems = appendProblem(k.problems, paramsObjectProblem(at, c.Params))
+		k.seen[c.Key] = true
+		keys[c.Key] = true
+	}
+	return keys
+}
+
+// bundleKeyProblem reports what is wrong with a catalog key, given every key
+// seen before it, or "" when nothing is.
+func bundleKeyProblem(prefix, key string, seen map[string]bool) string {
+	switch {
+	case key == "":
+		return prefix + "key is required"
+	case len(key) > maxBundleKeyLen:
+		return fmt.Sprintf("%skey is longer than %d characters", prefix, maxBundleKeyLen)
+	case seen[key]:
+		return fmt.Sprintf("%skey %q is used by another catalog", prefix, key)
+	}
+	return ""
+}
+
+// paramsObjectProblem reports that params is not a JSON object, or "" when
+// it is. Missing or null params are not one.
+func paramsObjectProblem(prefix string, params json.RawMessage) string {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(params, &object); err != nil || object == nil {
+		return prefix + "params must be a JSON object"
+	}
+	return ""
+}
+
+// bundleRefProblems reports every ref in folders that names neither a
+// top-level key nor one of own, the keys of the collection the folders
+// belong to.
+func bundleRefProblems(prefix string, folders []BundleFolder, top, own map[string]bool) []string {
+	var problems []string
+	for i, f := range folders {
+		for j, ref := range f.Refs {
+			if !top[ref.Catalog] && !own[ref.Catalog] {
+				problems = append(problems, fmt.Sprintf("%sfolder %d: ref %d: catalog %q is neither a top-level catalog nor one of this collection's own", prefix, i, j, ref.Catalog))
+			}
+		}
+	}
+	return problems
 }
 
 // extractBundle builds the Bundle form of listed and trees. listed is

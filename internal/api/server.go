@@ -103,6 +103,10 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/update", s.requireProfileAuth(s.updateTakenCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/duplicate", s.requireProfileAuth(s.duplicateCommunityCollection))
 
+	s.router.HandleFunc("POST /api/p/{profileIndex}/export", s.requireProfileAuth(s.exportBundle))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/import/check", s.requireProfileAuth(s.checkImport))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/import", s.requireProfileAuth(s.importBundle))
+
 	// Selection is read here but never written here: the whole selection
 	// travels in POST .../push's body and is written by that handler, in one
 	// transaction, only after Nuvio has accepted the push.

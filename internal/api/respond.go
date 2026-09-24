@@ -36,10 +36,16 @@ func listByProfile[T any](w http.ResponseWriter, r *http.Request, op, failMsg st
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
 // decodeJSON decodes the request body into v, refusing a body over
-// maxRequestBodyBytes. An oversized body is its own status (413) rather than
-// a generic 400, so a client can tell "too big" from "malformed".
+// maxRequestBodyBytes; see decodeJSONLimit.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	return decodeJSONLimit(w, r, v, maxRequestBodyBytes)
+}
+
+// decodeJSONLimit decodes the request body into v, refusing a body over
+// limit bytes. An oversized body is its own status (413) rather than a
+// generic 400, so a client can tell "too big" from "malformed".
+func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		var tooLarge *http.MaxBytesError
