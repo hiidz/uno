@@ -28,7 +28,7 @@ func (db *DB) queryCollections(ctx context.Context, where string, args ...any) (
 func selectCollections(ctx context.Context, q querier, where string, args ...any) ([]Collection, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
-		       focus_glow_enabled, home_sort_order, version, pushed_version, taken_from, created_at, updated_at
+		       focus_glow_enabled, home_sort_order, version, pushed_version, taken_from, taken_hash, created_at, updated_at
 		FROM collections
 		WHERE `+where, args...)
 	if err != nil {
@@ -53,8 +53,9 @@ func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]Co
 // profileID: every collection marked public and owned by someone else, each
 // with its folders assembled, sorted by title, then created_at, then id so
 // equal titles don't swap between requests (no fingerprint collapse —
-// that's a catalog-only concept), flagged with whether profileID has
-// already taken a copy.
+// that's a catalog-only concept). A row is Taken when profileID holds a
+// linked copy of it, and UpdateAvailable when that copy's taken_hash no
+// longer matches the row's collectionHash.
 func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) ([]CommunityCollection, error) {
 	collections, err := db.queryCollections(ctx, "is_public = TRUE AND owner_id != ?", profileID.String())
 	if err != nil {
@@ -72,16 +73,41 @@ func (db *DB) GetCommunityCollections(ctx context.Context, profileID uuid.UUID) 
 		return nil, err
 	}
 
-	taken, err := db.takenSourceIDs(ctx, "collections", profileID)
+	linked, err := db.linkedCollectionSources(ctx, profileID)
 	if err != nil {
 		return nil, err
 	}
+	return communityCollections(trees, linked)
+}
 
+// communityCollections builds the community list row for each of trees,
+// given the caller's linked copies (see linkedCollectionSources).
+func communityCollections(trees []CollectionWithFolders, linked map[uuid.UUID]string) ([]CommunityCollection, error) {
 	out := make([]CommunityCollection, len(trees))
-	for i, c := range trees {
-		out[i] = CommunityCollection{CollectionWithFolders: c, Taken: taken[c.ID]}
+	for i, tree := range trees {
+		row, err := communityCollection(tree, linked)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = row
 	}
 	return out, nil
+}
+
+// communityCollection is tree's community list row. Only a tree the caller
+// is linked to is hashed.
+func communityCollection(tree CollectionWithFolders, linked map[uuid.UUID]string) (CommunityCollection, error) {
+	takenHash, taken := linked[tree.ID]
+	row := CommunityCollection{CollectionWithFolders: tree, Taken: taken}
+	if !taken {
+		return row, nil
+	}
+	hash, err := collectionHash(tree)
+	if err != nil {
+		return CommunityCollection{}, err
+	}
+	row.UpdateAvailable = hash != takenHash
+	return row, nil
 }
 
 // GetCollectionsByIDs batch-loads collections (with folders) by id, no
@@ -202,6 +228,8 @@ type collectionUpdateState struct {
 	homeSortOrder sql.NullInt64
 	version       int
 	pushedVersion sql.NullInt64
+	takenFrom     sql.NullString
+	takenHash     sql.NullString
 }
 
 // loadCollectionForUpdate reads collectionID's pre-update state, confirming
@@ -210,8 +238,9 @@ type collectionUpdateState struct {
 func loadCollectionForUpdate(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID) (collectionUpdateState, error) {
 	var s collectionUpdateState
 	err := tx.QueryRowContext(ctx, `
-		SELECT created_at, home_sort_order, version, pushed_version FROM collections WHERE id = ? AND owner_id = ?
-	`, collectionID.String(), profileID.String()).Scan(&s.createdAtStr, &s.homeSortOrder, &s.version, &s.pushedVersion)
+		SELECT created_at, home_sort_order, version, pushed_version, taken_from, taken_hash
+		FROM collections WHERE id = ? AND owner_id = ?
+	`, collectionID.String(), profileID.String()).Scan(&s.createdAtStr, &s.homeSortOrder, &s.version, &s.pushedVersion, &s.takenFrom, &s.takenHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return collectionUpdateState{}, ErrCollectionNotFound
 	}
@@ -268,7 +297,9 @@ func applyCatalogEdits(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 
 // applyCatalogEdit writes one ScopedCatalogEdit: the new name, params and
 // fingerprint and, for MoveToLibrary, a cleared collection_id, which makes the
-// catalog listed. An edit that changes nothing is skipped, so the row's
+// catalog listed, and a cleared taken_from: a listed catalog carrying the
+// taken_from of a catalog copied inside a taken collection would read as a
+// Take of its own. An edit that changes nothing is skipped, so the row's
 // updated_at stays put.
 func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
 	stored, err := loadEditedCatalog(ctx, tx, profileID, collectionID, e)
@@ -281,9 +312,10 @@ func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
 		SET name = ?, params = ?, fingerprint = ?, updated_at = ?,
-		    collection_id = CASE WHEN ? THEN NULL ELSE collection_id END
+		    collection_id = CASE WHEN ? THEN NULL ELSE collection_id END,
+		    taken_from = CASE WHEN ? THEN NULL ELSE taken_from END
 		WHERE id = ? AND owner_id = ?
-	`, e.Name, e.Params, e.Fingerprint, nowStr, e.MoveToLibrary, e.ID.String(), profileID.String()); err != nil {
+	`, e.Name, e.Params, e.Fingerprint, nowStr, e.MoveToLibrary, e.MoveToLibrary, e.ID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating edited catalog: %w", err)
 	}
 	return nil
@@ -359,9 +391,75 @@ func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID
 	return writeFolderSet(ctx, tx, profileID, collectionID, form.Folders)
 }
 
+// collectionSave is what saveCollectionTx wrote: the folders and catalog ids
+// updateCollectionTx returns, and the collection's link after the save.
+type collectionSave struct {
+	folders    []FolderWithCatalogs
+	catalogIDs []uuid.UUID
+	linked     bool
+	takenHash  string
+}
+
+// saveCollectionTx is updateCollectionTx for an editor save, which also
+// decides the collection's link: a linked collection stays linked only
+// while its content still hashes to taken_hash and no catalog edit moves a
+// catalog to the library. Anything else unlinks it, in the same transaction.
+// A save that changes only is_public keeps the link, since the hash leaves
+// it out. Update writes through updateCollectionTx directly, since it
+// refreshes the link rather than judging it.
+func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, form CollectionForm, before collectionUpdateState, nowStr string) (collectionSave, error) {
+	folders, catalogIDs, err := updateCollectionTx(ctx, tx, profileID, collectionID, form, nowStr)
+	if err != nil {
+		return collectionSave{}, err
+	}
+	saved := collectionSave{folders: folders, catalogIDs: catalogIDs}
+	saved.linked, err = keepCollectionLink(ctx, tx, collectionID, before, form.CatalogEdits)
+	if saved.linked {
+		saved.takenHash = before.takenHash.String
+	}
+	return saved, err
+}
+
+// keepCollectionLink reports whether collectionID stays linked after a save
+// whose pre-save state was before, unlinking it when it doesn't; see
+// saveCollectionTx.
+func keepCollectionLink(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, before collectionUpdateState, edits []ScopedCatalogEdit) (bool, error) {
+	if !before.takenFrom.Valid {
+		return false, nil
+	}
+	edited, err := collectionEdited(ctx, tx, collectionID, before.takenHash.String, edits)
+	if err != nil || !edited {
+		return !edited, err
+	}
+	return false, unlinkCollection(ctx, tx, collectionID)
+}
+
+// collectionEdited reports whether a save left collectionID different from
+// what its link was taken as: a catalog moved to the library, or content
+// that no longer hashes to takenHash.
+func collectionEdited(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, takenHash string, edits []ScopedCatalogEdit) (bool, error) {
+	if movesToLibrary(edits) {
+		return true, nil
+	}
+	hash, err := storedCollectionHash(ctx, tx, collectionID)
+	return hash != takenHash, err
+}
+
+// movesToLibrary reports whether any of edits moves its catalog to the
+// library.
+func movesToLibrary(edits []ScopedCatalogEdit) bool {
+	for _, e := range edits {
+		if e.MoveToLibrary {
+			return true
+		}
+	}
+	return false
+}
+
 // UpdateUserCollection validates input and replaces the collection
 // identified by collectionID (title, settings, and its full folder set),
-// provided it's owned by profileID.
+// provided it's owned by profileID. A linked collection is unlinked when the
+// save changes its content; see saveCollectionTx.
 func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID, input CollectionForm) (CollectionWithFolders, error) {
 	if err := input.Validate(); err != nil {
 		return CollectionWithFolders{}, err
@@ -379,10 +477,11 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	}
 
 	now := time.Now().UTC()
-	folders, allCatalogIDs, err := updateCollectionTx(ctx, tx, profileID, collectionID, input, now.Format(time.RFC3339))
+	saved, err := saveCollectionTx(ctx, tx, profileID, collectionID, input, before, now.Format(time.RFC3339))
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
+	folders, allCatalogIDs := saved.folders, saved.catalogIDs
 
 	if err := tx.Commit(); err != nil {
 		return CollectionWithFolders{}, fmt.Errorf("committing transaction: %w", err)
@@ -403,6 +502,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 		// before it for an accurate response. Version is the freshly bumped
 		// value updateCollectionRow just wrote.
 		HomeSortOrder: nullableInt(before.homeSortOrder), Version: before.version + 1, PushedVersion: nullableInt(before.pushedVersion),
+		TakenHash: saved.takenHash, Linked: saved.linked,
 		CreatedAt: createdAt, UpdatedAt: now,
 	}
 

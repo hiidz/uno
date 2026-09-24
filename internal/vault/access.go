@@ -175,22 +175,34 @@ func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UU
 	})
 }
 
-// takenSourceIDs returns the set of taken_from ids that a row owned by
-// profileID in the given table (catalogs or collections) already points at
-// — the community list's "taken" flag, one query shared by
-// GetCommunityCatalogs and GetCommunityCollections. table is always an
-// internal literal, never client input.
-func (db *DB) takenSourceIDs(ctx context.Context, table string, profileID uuid.UUID) (map[uuid.UUID]bool, error) {
-	ids, err := queryUUIDs(ctx, db.conn, "taken_from id", fmt.Sprintf(`
-		SELECT taken_from FROM %s WHERE owner_id = ? AND taken_from IS NOT NULL
-	`, table), profileID.String())
+// linkedCatalogSources maps each community catalog profileID holds a linked
+// copy of to that copy's taken_hash: GetCommunityCatalogs' "taken" and
+// "update available" flags. Only listed copies count. A catalog copied
+// inside a taken collection also carries taken_from, but the collection
+// holds that link.
+func (db *DB) linkedCatalogSources(ctx context.Context, profileID uuid.UUID) (map[uuid.UUID]string, error) {
+	copies, err := db.queryCatalogs(ctx, "owner_id = ? AND taken_from IS NOT NULL AND collection_id IS NULL", profileID.String())
 	if err != nil {
 		return nil, err
 	}
-
-	taken := make(map[uuid.UUID]bool, len(ids))
-	for _, id := range ids {
-		taken[id] = true
+	linked := make(map[uuid.UUID]string, len(copies))
+	for _, c := range copies {
+		linked[*c.TakenFrom] = c.TakenHash
 	}
-	return taken, nil
+	return linked, nil
+}
+
+// linkedCollectionSources maps each community collection profileID holds a
+// linked copy of to that copy's taken_hash: GetCommunityCollections' "taken"
+// and "update available" flags.
+func (db *DB) linkedCollectionSources(ctx context.Context, profileID uuid.UUID) (map[uuid.UUID]string, error) {
+	copies, err := db.queryCollections(ctx, "owner_id = ? AND taken_from IS NOT NULL", profileID.String())
+	if err != nil {
+		return nil, err
+	}
+	linked := make(map[uuid.UUID]string, len(copies))
+	for _, c := range copies {
+		linked[*c.TakenFrom] = c.TakenHash
+	}
+	return linked, nil
 }

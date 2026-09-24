@@ -1,11 +1,12 @@
-// Take and Duplicate of a whole collection: the source tree is extracted into
-// its bundle form and written back as a new collection through the same
-// create core a collection save uses.
+// Take, Duplicate and Community Duplicate of a whole collection: the source
+// tree is extracted into its bundle form and written back as a new
+// collection through the same create core a collection save uses.
 
 package vault
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -14,14 +15,17 @@ import (
 
 // TakeCollection deep-copies a public collection owned by someone else —
 // its cosmetics, folders, and every catalog its folders reference — into a
-// new collection owned by profileID, with fresh ids throughout so the copy
-// is unaffected by later changes to the source. Every copied catalog is
-// scoped to the new collection, even if the source catalog was listed; a
-// source catalog referenced by two folders becomes one scoped copy
-// referenced twice. The new collection's taken_from is the source, and each
-// catalog copy's is the catalog it was copied from. Returns
-// ErrCollectionNotFound if sourceID isn't public or is already owned by
-// profileID.
+// new collection owned by profileID, with fresh ids throughout, linked to
+// the source. Every copied catalog is scoped to the new collection, even if
+// the source catalog was listed; a source catalog referenced by two folders
+// becomes one scoped copy referenced twice. The new collection's taken_from
+// is the source and its taken_hash the hash of the copy as written, which
+// equals the source's, so Community offers an Update only once the source
+// changes; the copy's own content is unaffected until then. Each catalog
+// copy's taken_from is the catalog it was copied from, which is how Update
+// pairs them. Returns ErrCollectionNotFound if sourceID isn't public or is
+// already owned by profileID, and ErrConflict if profileID already holds a
+// linked copy of it.
 //
 // validateParams re-checks every catalog recipe the copy would carry over,
 // for the same reason [DB.TakeCatalog] re-checks the one it copies: the
@@ -37,14 +41,37 @@ func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID 
 		return CollectionWithFolders{}, errors.New("vault: TakeCollection requires a params validator")
 	}
 
-	return db.copyCollection(ctx, profileID, sourceID, copyCollectionSpec{
+	spec := communitySpec(profileID, validateParams)
+	spec.takenFrom = &sourceID
+	spec.verb = "taken"
+	return db.copyCollection(ctx, profileID, sourceID, spec)
+}
+
+// DuplicateCommunityCollection is TakeCollection without the link: an
+// independent copy of sourceID, keeping its title, whose catalog copies
+// carry no taken_from either. Community never offers it an Update, and any
+// number of Duplicates or a Take can sit beside it.
+func (db *DB) DuplicateCommunityCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID, validateParams CatalogParamsValidator) (CollectionWithFolders, error) {
+	if validateParams == nil {
+		return CollectionWithFolders{}, errors.New("vault: DuplicateCommunityCollection requires a params validator")
+	}
+	spec := communitySpec(profileID, validateParams)
+	spec.verb = "duplicated"
+	return db.copyCollection(ctx, profileID, sourceID, spec)
+}
+
+// communitySpec is the copyCollectionSpec for reading a public collection
+// owned by someone other than profileID, with every catalog it references in
+// its own list and every recipe checked by validateParams: the source of a
+// Take, an Update or a Community Duplicate.
+func communitySpec(profileID uuid.UUID, validateParams CatalogParamsValidator) copyCollectionSpec {
+	return copyCollectionSpec{
 		sourceWhere:    " AND is_public = TRUE AND owner_id != ?",
 		sourceArgs:     []any{profileID.String()},
-		takenFrom:      &sourceID,
 		scopeAll:       true,
 		validateParams: validateParams,
-		verb:           "taken",
-	})
+		verb:           "copied",
+	}
 }
 
 // DuplicateCollection deep-copies a collection profileID already owns —
@@ -130,7 +157,7 @@ func (db *DB) copyCollection(ctx context.Context, profileID, sourceID uuid.UUID,
 	}
 	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
-	created, _, err := createCollectionTx(ctx, tx, profileID, form, spec.takenFrom)
+	created, err := spec.createCopy(ctx, tx, profileID, form)
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
@@ -171,6 +198,20 @@ func (db *DB) loadCopySource(ctx context.Context, sourceID uuid.UUID, spec copyC
 		return Bundle{}, err
 	}
 	return extractBundle(nil, trees, spec.scopeAll), nil
+}
+
+// createCopy writes form as the copy through the create core and, for a
+// Take, sets the copy's taken_hash from the copy as stored. A second Take of
+// one source is ErrConflict.
+func (spec copyCollectionSpec) createCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, form CollectionForm) (CollectionWithFolders, error) {
+	created, _, err := createCollectionTx(ctx, tx, profileID, form, spec.takenFrom)
+	if err != nil {
+		return CollectionWithFolders{}, takeConflict(err)
+	}
+	if spec.takenFrom == nil {
+		return created, nil
+	}
+	return created, setCollectionTakenHash(ctx, tx, created.ID)
 }
 
 // topSourceIDs maps each top-level catalog's key to the row it was extracted

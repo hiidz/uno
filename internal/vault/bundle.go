@@ -1,12 +1,17 @@
-// The bundle: the portable, ID-free form of catalogs and collections, and
-// the two conversions that connect it to stored rows. extractBundle turns
-// stored trees into a Bundle; collectionFormFromBundle turns one of its
-// collections into the CollectionForm the create core writes.
+// The bundle: the portable, ID-free form of catalogs and collections, the
+// two conversions that connect it to stored rows, and the content hashes a
+// linked copy is compared by. extractBundle turns stored trees into a
+// Bundle; collectionFormFromBundle turns one of its collections into the
+// CollectionForm the create core writes.
 
 package vault
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -293,4 +298,58 @@ func folderDataFromBundle(f BundleFolder, specs map[string]*NewScopedCatalog, to
 		TitleLogoURL:    f.TitleLogoURL,
 		Catalogs:        refs,
 	}
+}
+
+// catalogHash is the content hash of a listed catalog: its name and stored
+// fingerprint, the two things a catalog save or Update can change. The name
+// is length-prefixed, so no two (name, fingerprint) pairs share an input.
+func catalogHash(name, fingerprint string) string {
+	return sha256Hex([]byte(strconv.Itoa(len(name)) + ":" + name + fingerprint))
+}
+
+// collectionHash is bundleCollectionHash over tree's bundle form, with every
+// catalog it references in its own list.
+func collectionHash(tree CollectionWithFolders) (string, error) {
+	return bundleCollectionHash(extractBundle(nil, []CollectionWithFolders{tree}, true).Collections[0])
+}
+
+// bundleCollectionHash is the content hash of bc: sha256 hex over its JSON
+// form, with each catalog's params replaced by that catalog's stored
+// fingerprint. A copy carries its original's fingerprints unchanged, so the
+// two hash alike whatever their params bytes. Whatever the bundle form
+// leaves out — ids, scope, is_public, the home fields, version and
+// timestamps — the hash leaves out too, and a content field added to the
+// form is hashed with no change here.
+func bundleCollectionHash(bc BundleCollection) (string, error) {
+	catalogs := make([]BundleCatalog, len(bc.Catalogs))
+	for i, c := range bc.Catalogs {
+		fingerprint, err := json.Marshal(c.Fingerprint)
+		if err != nil {
+			return "", fmt.Errorf("hashing collection: %w", err)
+		}
+		c.Params = fingerprint
+		catalogs[i] = c
+	}
+	bc.Catalogs = catalogs
+	b, err := json.Marshal(bc)
+	if err != nil {
+		return "", fmt.Errorf("hashing collection: %w", err)
+	}
+	return sha256Hex(b), nil
+}
+
+// storedCollectionHash loads collection id's tree through q and hashes it.
+// Returns ErrCollectionNotFound if there is no such row.
+func storedCollectionHash(ctx context.Context, q querier, id uuid.UUID) (string, error) {
+	tree, err := selectTree(ctx, q, "id = ?", id.String())
+	if err != nil {
+		return "", err
+	}
+	return collectionHash(tree)
+}
+
+// sha256Hex is the hex sha256 of b.
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }

@@ -83,6 +83,23 @@ func assembleCollectionTree(ctx context.Context, q querier, collections []Collec
 	return result, nil
 }
 
+// selectTree loads the one collection where selects, with its tree
+// assembled, through q. Returns ErrCollectionNotFound if there is none.
+func selectTree(ctx context.Context, q querier, where string, args ...any) (CollectionWithFolders, error) {
+	collections, err := selectCollections(ctx, q, where, args...)
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+	trees, err := assembleCollectionTree(ctx, q, collections)
+	if err != nil {
+		return CollectionWithFolders{}, err
+	}
+	if len(trees) == 0 {
+		return CollectionWithFolders{}, ErrCollectionNotFound
+	}
+	return trees[0], nil
+}
+
 // loadFoldersByCollections reads the folders of the given collections in one
 // query, ordered by collection and then by sort_order within each — the order
 // assembleCollectionTree's grouping relies on.

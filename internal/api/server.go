@@ -80,7 +80,8 @@ func New(d Deps) (*Server, error) {
 func (s *Server) routes() error {
 	// Not profile-scoped: previewing a recipe reads nothing from the vault, so
 	// there is no profile to resolve. Every other catalog route, including the
-	// community list and take, lives under /api/p/{profileIndex}/.
+	// community list, take, update and duplicate, lives under
+	// /api/p/{profileIndex}/.
 	s.router.HandleFunc("POST /api/catalogs/preview", s.requireNuvioAuth(s.previewCatalog))
 	s.router.HandleFunc("POST /api/catalogs/genre-options", s.requireNuvioAuth(s.catalogGenreOptions))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.listUserCatalogs))
@@ -89,6 +90,8 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community/catalogs", s.requireProfileAuth(s.listCommunityCatalogs))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/take", s.requireProfileAuth(s.takeCatalog))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/update", s.requireProfileAuth(s.updateTakenCatalog))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/duplicate", s.requireProfileAuth(s.duplicateCommunityCatalog))
 
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireProfileAuth(s.listUserCollections))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
@@ -97,6 +100,8 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.deleteUserCollection))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community/collections", s.requireProfileAuth(s.listCommunityCollections))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/take", s.requireProfileAuth(s.takeCollection))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/update", s.requireProfileAuth(s.updateTakenCollection))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/duplicate", s.requireProfileAuth(s.duplicateCommunityCollection))
 
 	// Selection is read here but never written here: the whole selection
 	// travels in POST .../push's body and is written by that handler, in one

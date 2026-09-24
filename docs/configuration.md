@@ -108,7 +108,15 @@ service already running there rather than being the one bare-`systemd` outlier.
 
 ## Database lifecycle
 
-There are no migrations. `vault.InitDB` runs `CREATE TABLE IF NOT EXISTS`, which never alters an
-existing table, so any schema change means deleting and recreating the database — the local dev
-`vault.db` and the `uno-data` compose volume (`docker compose down -v`) both. A database whose
-schema predates the current one fails hard on the affected writes rather than degrading silently.
+There are no migrations. On every start, `vault.InitDB` runs the whole schema once. Its
+`CREATE TABLE IF NOT EXISTS` never alters an existing table; its `CREATE INDEX IF NOT EXISTS`
+does create an index that is new since the database was made. A database whose tables predate
+the current schema fails hard on the affected reads and writes rather than degrading silently.
+So a schema change needs one of two steps:
+
+- **Local dev:** delete `vault.db`.
+- **The deployed `uno-data` volume:** it holds real data, so never `docker compose down -v` it.
+  Stop the app, back up the database, and run the change's upgrade SQL against it once
+  (`ALTER TABLE … ADD COLUMN`, plus whatever data fix a new constraint needs). Then start the new
+  build, which creates any new index on its first start. If an index can't be created (a new
+  unique index over rows that break it), `InitDB` fails and the app won't start.

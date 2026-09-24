@@ -42,12 +42,27 @@ type Catalog struct {
 	// the manifest's per-catalog genre extra (see buildManifest). Never on
 	// the wire directly — SelectedCatalog carries its own copy for that.
 	ShowInHome bool `json:"-"`
-	// TakenFrom is the source catalog a Take copied this row from, kept only
-	// to answer "you already took this" — never rendered as attribution.
+	// TakenFrom is the source catalog this row was copied from by a Take,
+	// directly or inside a taken collection; nil once unlinked. TakenHash is
+	// catalogHash of that source when this copy was last in step with it, set
+	// only on a listed copy. Neither is on the wire, and neither is rendered
+	// as attribution.
 	TakenFrom *uuid.UUID `json:"-"`
+	TakenHash string     `json:"-"`
+	// Linked is true for a listed catalog still linked to the community
+	// catalog it was taken from (see linkedCopy): the one kind of catalog
+	// Update reaches and a save can unlink.
+	Linked bool `json:"linked"`
 	// Fingerprint collapses duplicate community catalogs by recipe; never on
 	// the wire.
 	Fingerprint string `json:"-"`
+}
+
+// linkedCopy reports whether c is a listed catalog linked to the community
+// catalog it was taken from. A scoped catalog's TakenFrom only pairs it with
+// its source for its collection's Update; the collection holds the link.
+func (c Catalog) linkedCopy() bool {
+	return c.TakenFrom != nil && c.CollectionID == nil
 }
 
 // Collection is a Nuvio home-screen collection: a titled group of Folders,
@@ -77,9 +92,15 @@ type Collection struct {
 	// selection endpoint (GetCurrentCollectionSelection) returns collections
 	// already ordered by it.
 	HomeSortOrder *int `json:"-"`
-	// TakenFrom is the source collection a Take copied this row from, kept
-	// only to answer "you already took this" — never rendered as attribution.
+	// TakenFrom is the source collection a Take copied this row from; nil
+	// once unlinked. TakenHash is collectionHash of that source when this
+	// copy was last in step with it. Neither is on the wire, and neither is
+	// rendered as attribution.
 	TakenFrom *uuid.UUID `json:"-"`
+	TakenHash string     `json:"-"`
+	// Linked is true while TakenFrom is set: Community offers this copy
+	// Update, and a save that changes its content unlinks it.
+	Linked bool `json:"linked"`
 }
 
 // Folder is one tile row within a Collection.
@@ -306,17 +327,20 @@ type SelectedCatalog struct {
 
 // CommunityCatalog is a Catalog as it appears in the community list: public,
 // owned by someone else, collapsed to one row per fingerprint, plus whether
-// the caller has already taken a copy.
+// the caller holds a linked copy of it and whether that copy is behind it.
 type CommunityCatalog struct {
 	Catalog
-	Taken bool `json:"taken"`
+	Taken           bool `json:"taken"`
+	UpdateAvailable bool `json:"update_available"`
 }
 
 // CommunityCollection is a CollectionWithFolders as it appears in the
-// community list: public, owned by someone else, plus whether the caller has
-// already taken a copy. Unlike CommunityCatalog there is no fingerprint
-// collapse — that's a catalog-only concept.
+// community list: public, owned by someone else, plus whether the caller
+// holds a linked copy of it and whether that copy is behind it. Unlike
+// CommunityCatalog there is no fingerprint collapse — that's a catalog-only
+// concept.
 type CommunityCollection struct {
 	CollectionWithFolders
-	Taken bool `json:"taken"`
+	Taken           bool `json:"taken"`
+	UpdateAvailable bool `json:"update_available"`
 }

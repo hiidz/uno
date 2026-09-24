@@ -79,7 +79,7 @@ func nullableInt(n sql.NullInt64) *int {
 	return &v
 }
 
-// scanCatalog reads one catalog row: the fourteen catalog columns, in the
+// scanCatalog reads one catalog row: the fifteen catalog columns, in the
 // order every catalog SELECT in this package lists them, followed by
 // extraDests — destinations for any further columns the caller's own query
 // appended (see GetPublishedCatalogs' ordering columns).
@@ -87,14 +87,14 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	var c Catalog
 	var idStr, ownerIDStr string
 	var isPublic, showInHome int
-	var collectionIDStr, takenFromStr sql.NullString
+	var collectionIDStr, takenFromStr, takenHash sql.NullString
 	var homeSortOrder sql.NullInt64
 	var createdAtStr, updatedAtStr string
 
 	dests := append([]any{
 		&idStr, &c.Type, &c.Name, &c.Provider,
 		&c.Params, &ownerIDStr, &isPublic,
-		&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &c.Fingerprint,
+		&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &takenHash, &c.Fingerprint,
 		&createdAtStr, &updatedAtStr,
 	}, extraDests...)
 	if err := rows.Scan(dests...); err != nil {
@@ -123,6 +123,8 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	if err != nil {
 		return Catalog{}, err
 	}
+	c.TakenHash = takenHash.String
+	c.Linked = c.linkedCopy()
 
 	c.CreatedAt, err = parseTimestamp(createdAtStr, "catalog created_at")
 	if err != nil {
@@ -157,13 +159,13 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 		var c Collection
 		var idStr, ownerIDStr string
 		var isPublic, pinToTop, showAllTab, focusGlowEnabled, version int
-		var takenFromStr sql.NullString
+		var takenFromStr, takenHash sql.NullString
 		var homeSortOrder, pushedVersion sql.NullInt64
 		var createdAtStr, updatedAtStr string
 
 		if err := rows.Scan(&idStr, &c.Title, &ownerIDStr, &isPublic,
 			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
-			&homeSortOrder, &version, &pushedVersion, &takenFromStr, &createdAtStr, &updatedAtStr); err != nil {
+			&homeSortOrder, &version, &pushedVersion, &takenFromStr, &takenHash, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, fmt.Errorf("scanning collection row: %w", err)
 		}
 
@@ -186,6 +188,8 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 		if err != nil {
 			return nil, err
 		}
+		c.TakenHash = takenHash.String
+		c.Linked = c.TakenFrom != nil
 		c.HomeSortOrder = nullableInt(homeSortOrder)
 		c.Version = version
 		c.PushedVersion = nullableInt(pushedVersion)

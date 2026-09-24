@@ -160,8 +160,9 @@ func TestGetCommunityCatalogsCollapseTieBreaksByID(t *testing.T) {
 	}
 }
 
-// A collapsed row is Taken if the caller took *any* row in its fingerprint
-// group — not only the surviving (oldest) one.
+// A collapsed row shows the member the caller is linked to, not the oldest:
+// taking the newer duplicate shows that one, flagged Taken, since it is the
+// row the caller's Update follows.
 func TestGetCommunityCatalogsTakenAppliesToWholeFingerprintGroup(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -194,8 +195,8 @@ func TestGetCommunityCatalogsTakenAppliesToWholeFingerprintGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCommunityCatalogs: %v", err)
 	}
-	if len(got) != 1 || got[0].ID != older.ID || !got[0].Taken {
-		t.Fatalf("GetCommunityCatalogs = %+v, want the older survivor %s flagged Taken=true", got, older.ID)
+	if len(got) != 1 || got[0].ID != newer.ID || !got[0].Taken || got[0].UpdateAvailable {
+		t.Fatalf("GetCommunityCatalogs = %+v, want the linked row %s flagged Taken=true, UpdateAvailable=false", got, newer.ID)
 	}
 }
 
@@ -646,5 +647,190 @@ func TestCopyCollectionDropsDanglingFolderRefs(t *testing.T) {
 	}
 	if len(taken.Catalogs) != 1 || taken.Catalogs[0].Name != "Kept" {
 		t.Fatalf("taken collection catalogs = %+v, want just the surviving %q", taken.Catalogs, "Kept")
+	}
+}
+
+// deleteCatalogLeavingRefs deletes catalogID with foreign keys off, so its
+// folder refs survive it: the tree a concurrent delete can leave between the
+// two reads that assemble it.
+func deleteCatalogLeavingRefs(t *testing.T, db *DB, catalogID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := db.conn.ExecContext(ctx, `PRAGMA foreign_keys = off`); err != nil {
+		t.Fatalf("disabling foreign keys: %v", err)
+	}
+	if _, err := db.conn.ExecContext(ctx, `DELETE FROM catalogs WHERE id = ?`, catalogID.String()); err != nil {
+		t.Fatalf("deleting catalog: %v", err)
+	}
+	if _, err := db.conn.ExecContext(ctx, `PRAGMA foreign_keys = on`); err != nil {
+		t.Fatalf("re-enabling foreign keys: %v", err)
+	}
+}
+
+// newLinkSourceCollection creates a public collection owned by owner holding
+// every shape the link hash must see through unchanged: a listed catalog and
+// a scoped one, one catalog under two genres in a folder, one catalog in two
+// folders, and a ref whose catalog is gone. Returns the collection's id.
+func newLinkSourceCollection(t *testing.T, db *DB, owner uuid.UUID) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+
+	listedForm := listedCatalogForm("Listed")
+	listedForm.Fingerprint = "fp-listed"
+	listed, err := db.CreateUserCatalog(ctx, owner, listedForm)
+	if err != nil {
+		t.Fatalf("create listed catalog: %v", err)
+	}
+	doomed, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Doomed"))
+	if err != nil {
+		t.Fatalf("create doomed catalog: %v", err)
+	}
+	scoped := &NewScopedCatalog{
+		Key: "scoped", Type: "movie", Name: "Scoped", Provider: "tmdb",
+		Params: `{"sort_by":"vote_average.desc"}`, Fingerprint: "fp-scoped",
+	}
+
+	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
+		Title:    "Source",
+		IsPublic: true,
+		ViewMode: "TABBED_GRID",
+		Folders: []FolderData{
+			{Title: "Folder 1", Catalogs: []FolderCatalogRef{
+				{CatalogID: &listed.ID},
+				{CatalogID: &listed.ID, Genre: "Horror"},
+				{New: scoped},
+			}},
+			{Title: "Folder 2", Catalogs: []FolderCatalogRef{
+				{New: scoped},
+				{CatalogID: &listed.ID},
+				{CatalogID: &doomed.ID},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create source collection: %v", err)
+	}
+	deleteCatalogLeavingRefs(t, db, doomed.ID)
+	return source.ID
+}
+
+// communityCollectionRow returns the row for sourceID in profileID's
+// community collection list.
+func communityCollectionRow(t *testing.T, db *DB, profileID, sourceID uuid.UUID) CommunityCollection {
+	t.Helper()
+	rows, err := db.GetCommunityCollections(context.Background(), profileID)
+	if err != nil {
+		t.Fatalf("GetCommunityCollections: %v", err)
+	}
+	for _, row := range rows {
+		if row.ID == sourceID {
+			return row
+		}
+	}
+	t.Fatalf("GetCommunityCollections = %+v, want a row for %s", rows, sourceID)
+	return CommunityCollection{}
+}
+
+// communityCatalogRow returns the row for sourceID in profileID's community
+// catalog list.
+func communityCatalogRow(t *testing.T, db *DB, profileID, sourceID uuid.UUID) CommunityCatalog {
+	t.Helper()
+	rows, err := db.GetCommunityCatalogs(context.Background(), profileID)
+	if err != nil {
+		t.Fatalf("GetCommunityCatalogs: %v", err)
+	}
+	for _, row := range rows {
+		if row.ID == sourceID {
+			return row
+		}
+	}
+	t.Fatalf("GetCommunityCatalogs = %+v, want a row for %s", rows, sourceID)
+	return CommunityCatalog{}
+}
+
+// requireSameTree fails unless got is want as stored: the same collection
+// id, version and updated_at, the same folder ids in order, and the same refs.
+func requireSameTree(t *testing.T, got, want CollectionWithFolders) {
+	t.Helper()
+	if got.ID != want.ID || got.Version != want.Version || !got.UpdatedAt.Equal(want.UpdatedAt) {
+		t.Fatalf("collection = %s v%d at %s, want %s v%d at %s",
+			got.ID, got.Version, got.UpdatedAt, want.ID, want.Version, want.UpdatedAt)
+	}
+	if len(got.Folders) != len(want.Folders) {
+		t.Fatalf("collection has %d folders, want %d", len(got.Folders), len(want.Folders))
+	}
+	for i := range want.Folders {
+		if got.Folders[i].ID != want.Folders[i].ID {
+			t.Fatalf("folder %d id = %s, want %s", i, got.Folders[i].ID, want.Folders[i].ID)
+		}
+		if fmt.Sprint(got.Folders[i].Refs) != fmt.Sprint(want.Folders[i].Refs) {
+			t.Fatalf("folder %d refs = %v, want %v", i, got.Folders[i].Refs, want.Folders[i].Refs)
+		}
+	}
+}
+
+// Straight after a Take, the copy matches its original: Community shows it
+// taken with no update, and Update changes nothing. The source holds every
+// shape the hash has to see through, so a hash that isn't stable across the
+// copy fails here first.
+func TestTakenCollectionIsCurrent(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	owner := newTestProfile(t, db, "owner")
+	taker := newTestProfile(t, db, "taker")
+	sourceID := newLinkSourceCollection(t, db, owner)
+
+	taken, err := db.TakeCollection(ctx, taker, sourceID, allowAnyCatalogParams)
+	if err != nil {
+		t.Fatalf("TakeCollection: %v", err)
+	}
+
+	row := communityCollectionRow(t, db, taker, sourceID)
+	if !row.Taken || row.UpdateAvailable {
+		t.Fatalf("community row taken = %v, update_available = %v, want true, false", row.Taken, row.UpdateAvailable)
+	}
+
+	updated, err := db.UpdateTakenCollection(ctx, taker, sourceID, allowAnyCatalogParams)
+	if err != nil {
+		t.Fatalf("UpdateTakenCollection: %v", err)
+	}
+	requireSameTree(t, updated, taken)
+}
+
+// Straight after a Take, a catalog copy matches its original: Community shows
+// it taken with no update, and Update changes nothing.
+func TestTakenCatalogIsCurrent(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+
+	owner := newTestProfile(t, db, "owner")
+	taker := newTestProfile(t, db, "taker")
+
+	form := publicCatalogForm("Source")
+	form.Fingerprint = "fp-source"
+	source, err := db.CreateUserCatalog(ctx, owner, form)
+	if err != nil {
+		t.Fatalf("create source catalog: %v", err)
+	}
+	if _, err := db.TakeCatalog(ctx, taker, source.ID, allowAnyCatalogParams); err != nil {
+		t.Fatalf("TakeCatalog: %v", err)
+	}
+	stored, err := db.GetUserCatalogs(ctx, taker)
+	if err != nil || len(stored) != 1 {
+		t.Fatalf("GetUserCatalogs = %+v, %v, want the one taken copy", stored, err)
+	}
+
+	row := communityCatalogRow(t, db, taker, source.ID)
+	if !row.Taken || row.UpdateAvailable {
+		t.Fatalf("community row taken = %v, update_available = %v, want true, false", row.Taken, row.UpdateAvailable)
+	}
+
+	updated, err := db.UpdateTakenCatalog(ctx, taker, source.ID, allowAnyCatalogParams)
+	if err != nil {
+		t.Fatalf("UpdateTakenCatalog: %v", err)
+	}
+	if updated.ID != stored[0].ID || updated.Name != stored[0].Name || !updated.UpdatedAt.Equal(stored[0].UpdatedAt) {
+		t.Fatalf("UpdateTakenCatalog = %+v, want the stored copy %+v unchanged", updated, stored[0])
 	}
 }

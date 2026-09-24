@@ -33,6 +33,12 @@ func TestWriteVaultErrorClassification(t *testing.T) {
 			wantBody:   "is not a TMDB genre id",
 		},
 		{
+			name:       "state the caller's request conflicts with is a 409",
+			err:        fmt.Errorf("%w: already taken", vault.ErrConflict),
+			wantStatus: http.StatusConflict,
+			wantBody:   "already taken",
+		},
+		{
 			name:       "missing row is a 404",
 			err:        fmt.Errorf("loading: %w", errNotFound),
 			wantStatus: http.StatusNotFound,

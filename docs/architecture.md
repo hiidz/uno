@@ -128,21 +128,39 @@ Five route-semantics facts the client has to honour:
   (`GetCommunityCatalogs`/`GetCommunityCollections`) are `is_public = TRUE AND owner_id != ?`,
   so — unlike the pre-closed-graph community routes — there is no merge or dedup left for the
   frontend to do: a row you own never appears there. Catalogs additionally collapse to one row
-  per fingerprint: the survivor is the oldest `created_at`, ties
-  broken by the smallest id — a fully deterministic rule, not the query's own row order — and the
-  final list is sorted name/title, then `created_at`, then id, so equal names never swap between
-  requests. Both responses carry a per-row `taken: bool` — for catalogs, true if the caller has
-  taken *any* row in that fingerprint group, not only the surviving one; for collections, an
-  `EXISTS` against the caller's own `taken_from` values — computed server-side, never inferred
-  client-side.
-  `POST /api/p/{i}/community/catalogs/{id}/take` and `.../community/collections/{id}/take`
-  (`TakeCatalog`/`TakeCollection`) deep-copy a public, not-own source into a new row the caller
-  fully owns; both 404 via `ErrCatalogNotFound`/`ErrCollectionNotFound` if the source isn't
-  public or is already the caller's own. Both re-validate the recipes they copy against TMDB
-  before writing anything, so either take can also 400 on a source recipe that no longer
-  validates or 502 when TMDB can't be reached to judge it — see "Take re-validates what it
-  copies" in `docs/data-model.md`. `GET /api/catalogs` and `GET /api/collections` (the old
-  unscoped, unauthenticated-by-profile community routes) are removed.
+  per fingerprint: the row shown is the one the caller holds a linked copy of, if any, and
+  otherwise the oldest `created_at`, ties broken by the smallest id — a fully deterministic rule,
+  not the query's own row order — and the final list is sorted name/title, then `created_at`,
+  then id, so equal names never swap between requests. Both responses carry per-row
+  `taken: bool` (the caller holds a linked copy) and `update_available: bool` (that copy's
+  `taken_hash` no longer matches the original), computed server-side, never inferred
+  client-side; "A Take is a linked copy" in `docs/data-model.md` has the rules.
+- **Take, Update and Community Duplicate share one shape.** All six routes run through
+  `serveCommunityCall` (`internal/api/community.go`) except the two Takes, which predate it and
+  answer the same way. The id in the path is always the original's.
+  - `POST /api/p/{i}/community/catalogs/{id}/take` and `.../community/collections/{id}/take`
+    (`TakeCatalog`/`TakeCollection`) deep-copy a public, not-own source into a new row the caller
+    fully owns, linked to the source (201). A second Take of one source is a 409.
+  - `POST .../community/catalogs/{id}/update` and `.../community/collections/{id}/update`
+    (`UpdateTakenCatalog`/`UpdateTakenCollection`) rewrite the caller's linked copy with the
+    original's current content (200, the copy). A 404 means the original isn't public any more or
+    the caller holds no linked copy of it. A 409 means the copy no longer matched what was taken:
+    Update has unlinked it, and a Take works again.
+  - `POST .../community/catalogs/{id}/duplicate` and `.../community/collections/{id}/duplicate`
+    (`DuplicateCommunityCatalog`/`DuplicateCommunityCollection`) are Take without the link (201).
+  - All six 404 via `ErrCatalogNotFound`/`ErrCollectionNotFound` if the original isn't public or
+    is the caller's own, and re-validate the recipes they copy against TMDB before writing
+    anything, so any of them can also 400 on a source recipe that no longer validates or 502 when
+    TMDB can't be reached to judge it — see "Take re-validates what it copies" in
+    `docs/data-model.md`. `vault.ErrConflict` is `writeVaultError`'s 409, with the error's own
+    message.
+  - Updating a linked *listed* catalog changes its addon rows at once: a folder source in the
+    pushed blob names a catalog only by id and type, and the addon server reads the name and
+    params live. Updating a
+    collection bumps its `version`, so a pushed copy shows on Home as an unpushed change until the
+    next push carries its folders to Nuvio.
+  - `GET /api/catalogs` and `GET /api/collections` (the old unscoped, unauthenticated-by-profile
+    community routes) are removed.
 - **Duplicating a collection you own is one atomic server call, not a client-built copy.**
   `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) reuses `TakeCollection`'s
   copy path (`copyCollection`, which writes through the same `createCollectionTx` a collection

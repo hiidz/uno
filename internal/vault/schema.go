@@ -25,10 +25,12 @@ CREATE TABLE IF NOT EXISTS collections (
     version            INTEGER NOT NULL DEFAULT 1, -- +1 on every content write
     pushed_version     INTEGER,                 -- version push read and sent; NULL = never pushed
     taken_from         TEXT    REFERENCES collections(id) ON DELETE SET NULL,
+    taken_hash         TEXT,                    -- the original's content hash when this link was last in step
     created_at         TEXT    NOT NULL,        -- RFC3339 UTC
     updated_at         TEXT    NOT NULL         -- RFC3339 UTC
 );
 CREATE INDEX IF NOT EXISTS collections_by_owner ON collections (owner_id);
+CREATE UNIQUE INDEX IF NOT EXISTS collections_one_link ON collections (owner_id, taken_from) WHERE taken_from IS NOT NULL;
 CREATE TABLE IF NOT EXISTS catalogs (
     id              TEXT    PRIMARY KEY,          -- UUID, permanent once selected
     type            TEXT    NOT NULL,             -- Stremio's word: movie | series
@@ -41,6 +43,7 @@ CREATE TABLE IF NOT EXISTS catalogs (
     home_sort_order INTEGER,                    -- NULL = not on the TV
     show_in_home    INTEGER NOT NULL DEFAULT 1, -- whether the home row appears when on the TV
     taken_from      TEXT    REFERENCES catalogs(id) ON DELETE SET NULL,
+    taken_hash      TEXT,                         -- the original's content hash when this link was last in step
     fingerprint     TEXT    NOT NULL,             -- sha256 hex, see internal/provider.Fingerprint
     created_at      TEXT    NOT NULL,             -- RFC3339 UTC
     updated_at      TEXT    NOT NULL,             -- RFC3339 UTC
@@ -48,6 +51,7 @@ CREATE TABLE IF NOT EXISTS catalogs (
 );
 CREATE INDEX IF NOT EXISTS catalogs_by_owner      ON catalogs (owner_id);
 CREATE INDEX IF NOT EXISTS catalogs_by_collection ON catalogs (collection_id);
+CREATE UNIQUE INDEX IF NOT EXISTS catalogs_one_link ON catalogs (owner_id, taken_from) WHERE taken_from IS NOT NULL AND collection_id IS NULL;
 CREATE TABLE IF NOT EXISTS folders (
     id                TEXT    PRIMARY KEY,
     collection_id     TEXT    NOT NULL REFERENCES collections(id) ON DELETE CASCADE,

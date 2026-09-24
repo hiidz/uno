@@ -26,7 +26,7 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 func selectCatalogs(ctx context.Context, q querier, where string, args ...any) ([]Catalog, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, type, name, provider, params, owner_id, is_public,
-		       collection_id, home_sort_order, show_in_home, taken_from, fingerprint,
+		       collection_id, home_sort_order, show_in_home, taken_from, taken_hash, fingerprint,
 		       created_at, updated_at
 		FROM catalogs
 		WHERE `+where, args...)
@@ -47,48 +47,31 @@ func (db *DB) GetUserCatalogs(ctx context.Context, profileID uuid.UUID) ([]Catal
 
 // GetCommunityCatalogs returns the community catalog list for profileID: a
 // public catalog owned by someone else, collapsed to one row per fingerprint
-// — oldest created_at wins, ties broken by the smallest id, both fully
-// deterministic rather than left to the query's row order — sorted by name,
-// then created_at, then id so equal names don't swap between requests, each
-// flagged with whether profileID has already taken a copy of *any* row in
-// its fingerprint group — not just the surviving one, since taking a newer
-// duplicate still counts as taking it.
+// (see fingerprintGroup.with for which row is shown), sorted by name, then
+// created_at, then id so equal names don't swap between requests. A row is
+// Taken when profileID holds a linked copy of it, and UpdateAvailable when
+// that copy's taken_hash no longer matches the row's catalogHash.
 func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]CommunityCatalog, error) {
 	catalogs, err := db.queryCatalogs(ctx, "is_public = TRUE AND owner_id != ?", profileID.String())
 	if err != nil {
 		return nil, err
 	}
 
-	taken, err := db.takenSourceIDs(ctx, "catalogs", profileID)
+	linked, err := db.linkedCatalogSources(ctx, profileID)
 	if err != nil {
 		return nil, err
 	}
 
-	type fingerprintGroup struct {
-		survivor Catalog
-		taken    bool
-	}
 	byFingerprint := make(map[string]fingerprintGroup, len(catalogs))
 	for _, c := range catalogs {
-		g, ok := byFingerprint[c.Fingerprint]
-		if !ok {
-			byFingerprint[c.Fingerprint] = fingerprintGroup{survivor: c, taken: taken[c.ID]}
-			continue
-		}
-		if taken[c.ID] {
-			g.taken = true
-		}
-		if isOlderCatalog(c, g.survivor) {
-			g.survivor = c
-		}
-		byFingerprint[c.Fingerprint] = g
+		byFingerprint[c.Fingerprint] = byFingerprint[c.Fingerprint].with(c, linked)
 	}
 	collapsed := make([]fingerprintGroup, 0, len(byFingerprint))
 	for _, g := range byFingerprint {
 		collapsed = append(collapsed, g)
 	}
 	slices.SortFunc(collapsed, func(x, y fingerprintGroup) int {
-		a, b := x.survivor, y.survivor
+		a, b := x.shown, y.shown
 		if c := cmp.Compare(a.Name, b.Name); c != 0 {
 			return c
 		}
@@ -97,9 +80,49 @@ func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 
 	out := make([]CommunityCatalog, len(collapsed))
 	for i, g := range collapsed {
-		out[i] = CommunityCatalog{Catalog: g.survivor, Taken: g.taken}
+		out[i] = g.row()
 	}
 	return out, nil
+}
+
+// fingerprintGroup is one fingerprint's community catalogs, collapsed to the
+// row shown for them. linked is whether profileID holds a linked copy of the
+// shown row, and takenHash that copy's taken_hash. The zero group is empty.
+type fingerprintGroup struct {
+	shown     Catalog
+	linked    bool
+	takenHash string
+}
+
+// with is g after considering c, given the caller's linked copies (see
+// linkedCatalogSources). A row the caller is linked to is shown ahead of any
+// other, since that is the one their Update follows; otherwise the oldest
+// created_at is shown, ties broken by the smallest id, both fully
+// deterministic rather than left to the query's row order.
+func (g fingerprintGroup) with(c Catalog, linked map[uuid.UUID]string) fingerprintGroup {
+	takenHash, isLinked := linked[c.ID]
+	if g.shown.ID != uuid.Nil && !g.showsBefore(c, isLinked) {
+		return g
+	}
+	return fingerprintGroup{shown: c, linked: isLinked, takenHash: takenHash}
+}
+
+// showsBefore reports whether c, linked or not, should be shown in place of
+// g's current row; see with.
+func (g fingerprintGroup) showsBefore(c Catalog, isLinked bool) bool {
+	if isLinked != g.linked {
+		return isLinked
+	}
+	return isOlderCatalog(c, g.shown)
+}
+
+// row is g as its community list row.
+func (g fingerprintGroup) row() CommunityCatalog {
+	return CommunityCatalog{
+		Catalog:         g.shown,
+		Taken:           g.linked,
+		UpdateAvailable: g.linked && catalogHash(g.shown.Name, g.shown.Fingerprint) != g.takenHash,
+	}
 }
 
 // compareByHomeSortOrder orders catalogs by HomeSortOrder, nil-safe: a nil
@@ -132,24 +155,72 @@ func isOlderCatalog(a, b Catalog) bool {
 type CatalogParamsValidator func(catalogType, catalogProvider, params string) error
 
 // TakeCatalog deep-copies a public catalog owned by someone else into a new
-// listed catalog owned by profileID, with fresh ids and taken_from set to
-// the source so the copy is unaffected by later changes to the source.
-// Returns ErrCatalogNotFound if sourceID isn't public or is already owned by
-// profileID, and ErrInvalidInput if the source row fails CatalogForm.Validate,
-// the check a catalog save runs: a stored row is not evidence it was ever
-// checked, since rows written before a given check existed reach here too.
-// The collection copy path holds a whole tree to the same rules, so the same
-// listed row is bounded whichever door it is taken through.
-//
-// validateParams re-runs the create/update params check against the source
-// row before anything is copied: the recipe is someone else's input, and it
-// was validated when they wrote it, not when this profile takes it. It is
-// required — a nil validator is a programming error, not "skip the check".
+// listed catalog owned by profileID, with fresh ids, linked to the source:
+// taken_from is the source and taken_hash its catalogHash, which is what lets
+// Community offer an Update once the source changes. The copy's own content
+// is unaffected by later changes to the source until that Update. Returns
+// ErrCatalogNotFound if sourceID isn't public or is already owned by
+// profileID, ErrConflict if profileID already holds a linked copy of it, and
+// ErrInvalidInput if the source fails the checks in loadCommunityCatalog,
+// which also requires validateParams.
 func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID, validateParams CatalogParamsValidator) (Catalog, error) {
-	if validateParams == nil {
-		return Catalog{}, errors.New("vault: TakeCatalog requires a params validator")
-	}
+	return db.copyCommunityCatalog(ctx, profileID, sourceID, validateParams, true)
+}
 
+// DuplicateCommunityCatalog is TakeCatalog without the link: an independent
+// listed copy of sourceID that Community never offers an Update for, and
+// that any number of Duplicates or a Take can sit beside.
+func (db *DB) DuplicateCommunityCatalog(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID, validateParams CatalogParamsValidator) (Catalog, error) {
+	return db.copyCommunityCatalog(ctx, profileID, sourceID, validateParams, false)
+}
+
+// copyCommunityCatalog copies sourceID, a public catalog owned by someone
+// else, into a new listed catalog owned by profileID, linked to the source
+// when link is set. The copy keeps the source's stored fingerprint rather
+// than computing its own, so the two hash on the same terms.
+func (db *DB) copyCommunityCatalog(ctx context.Context, profileID, sourceID uuid.UUID, validateParams CatalogParamsValidator, link bool) (Catalog, error) {
+	source, err := db.loadCommunityCatalog(ctx, profileID, sourceID, validateParams)
+	if err != nil {
+		return Catalog{}, err
+	}
+	now := time.Now().UTC()
+	c := Catalog{
+		ID:          uuid.New(),
+		Type:        source.Type,
+		Name:        source.Name,
+		Provider:    source.Provider,
+		Params:      source.Params,
+		OwnerID:     profileID,
+		Fingerprint: source.Fingerprint,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if link {
+		c.TakenFrom, c.TakenHash, c.Linked = &source.ID, catalogHash(source.Name, source.Fingerprint), true
+	}
+	if err := insertCatalog(ctx, db.conn, c); err != nil {
+		return Catalog{}, takeConflict(err)
+	}
+	return c, nil
+}
+
+// loadCommunityCatalog reads sourceID, which must be public and not owned by
+// profileID (ErrCatalogNotFound otherwise), and checks it as the form a copy
+// of it is written from: CatalogForm.Validate, the check a catalog save
+// runs, then validateParams. A stored row is not evidence it was ever
+// checked, since rows written before a given check existed reach here too,
+// and the recipe is someone else's input, validated when they wrote it
+// rather than when this profile copies it. The collection copy path holds a
+// whole tree to the same rules, so the same listed row is bounded whichever
+// door it is taken through.
+//
+// It reads through the pool: validateParams reaches TMDB, and a caller must
+// not be holding SQLite's write lock across that. validateParams is required
+// — a nil validator is a programming error, not "skip the check".
+func (db *DB) loadCommunityCatalog(ctx context.Context, profileID, sourceID uuid.UUID, validateParams CatalogParamsValidator) (Catalog, error) {
+	if validateParams == nil {
+		return Catalog{}, errors.New("vault: reading a community catalog requires a params validator")
+	}
 	source, err := db.queryCatalogs(ctx, "id = ? AND is_public = TRUE AND owner_id != ?", sourceID.String(), profileID.String())
 	if err != nil {
 		return Catalog{}, err
@@ -157,32 +228,27 @@ func (db *DB) TakeCatalog(ctx context.Context, profileID uuid.UUID, sourceID uui
 	if len(source) == 0 {
 		return Catalog{}, ErrCatalogNotFound
 	}
-	form := CatalogForm{Type: source[0].Type, Name: source[0].Name, Provider: source[0].Provider, Params: source[0].Params}
+	return source[0], source[0].checkAsCopySource(validateParams)
+}
+
+// checkAsCopySource runs CatalogForm.Validate and then validateParams over c;
+// see loadCommunityCatalog.
+func (c Catalog) checkAsCopySource(validateParams CatalogParamsValidator) error {
+	form := CatalogForm{Type: c.Type, Name: c.Name, Provider: c.Provider, Params: c.Params}
 	if err := form.Validate(); err != nil {
-		return Catalog{}, err
+		return err
 	}
-	if err := validateParams(source[0].Type, source[0].Provider, source[0].Params); err != nil {
-		return Catalog{}, err
-	}
+	return validateParams(c.Type, c.Provider, c.Params)
+}
 
-	now := time.Now().UTC()
-	c := Catalog{
-		ID:          uuid.New(),
-		Type:        source[0].Type,
-		Name:        source[0].Name,
-		Provider:    source[0].Provider,
-		Params:      source[0].Params,
-		OwnerID:     profileID,
-		TakenFrom:   &source[0].ID,
-		Fingerprint: source[0].Fingerprint,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+// takeConflict turns the unique-index violation a second Take of one source
+// hits (catalogs_one_link or collections_one_link) into ErrConflict, and
+// passes any other error through.
+func takeConflict(err error) error {
+	if isUniqueConstraintErr(err) {
+		return fmt.Errorf("%w: already taken", ErrConflict)
 	}
-	if err := insertCatalog(ctx, db.conn, c); err != nil {
-		return Catalog{}, err
-	}
-
-	return c, nil
+	return err
 }
 
 // execer is the common subset of *sql.DB and *sql.Tx a single write needs, so
@@ -195,14 +261,16 @@ type execer interface {
 // insertCatalog writes c as a new catalogs row. It is the one catalog INSERT
 // in this package: a catalog save, a catalog Take and a collection save's New
 // entries all go through it. home_sort_order and show_in_home are left to
-// their column defaults, since no catalog is born on the home screen.
+// their column defaults, since no catalog is born on the home screen. An
+// empty TakenHash is stored as NULL.
 func insertCatalog(ctx context.Context, e execer, c Catalog) error {
 	_, err := e.ExecContext(ctx, `
 		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
-		                       collection_id, taken_from, fingerprint, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                       collection_id, taken_from, taken_hash, fingerprint, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic,
-		nullableUUIDString(c.CollectionID), nullableUUIDString(c.TakenFrom), c.Fingerprint,
+		nullableUUIDString(c.CollectionID), nullableUUIDString(c.TakenFrom),
+		sql.NullString{String: c.TakenHash, Valid: c.TakenHash != ""}, c.Fingerprint,
 		c.CreatedAt.Format(time.RFC3339), c.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("inserting catalog: %w", err)
@@ -275,6 +343,9 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 // existing folder ref to it must already be inside the target collection.
 // The way back to listed is the collection's own save
 // (ScopedCatalogEdit.MoveToLibrary).
+//
+// A save of a linked copy that changes its content, or moves it into a
+// collection, unlinks it in the same UPDATE; see catalogLinkAfterSave.
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
@@ -289,10 +360,11 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 	var createdAtStr, existingType string
 	var homeSortOrder sql.NullInt64
 	var showInHome int
-	var existingCollectionID sql.NullString
+	var existingCollectionID, takenFrom, takenHash sql.NullString
 	err = tx.QueryRowContext(ctx, `
-		SELECT created_at, home_sort_order, show_in_home, type, collection_id FROM catalogs WHERE id = ? AND owner_id = ?
-	`, catalogID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &showInHome, &existingType, &existingCollectionID)
+		SELECT created_at, home_sort_order, show_in_home, type, collection_id, taken_from, taken_hash
+		FROM catalogs WHERE id = ? AND owner_id = ?
+	`, catalogID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &showInHome, &existingType, &existingCollectionID, &takenFrom, &takenHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Catalog{}, ErrCatalogNotFound
 	}
@@ -321,14 +393,15 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 
 	now := time.Now().UTC()
 	nowStr := now.Format(time.RFC3339)
+	takenFrom, takenHash = catalogLinkAfterSave(takenFrom, takenHash, input)
 
 	result, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
 		SET type = ?, name = ?, provider = ?, params = ?, is_public = ?,
-		    collection_id = ?, fingerprint = ?, updated_at = ?
+		    collection_id = ?, fingerprint = ?, taken_from = ?, taken_hash = ?, updated_at = ?
 		WHERE id = ? AND owner_id = ?
 	`, input.Type, input.Name, input.Provider, input.Params, input.IsPublic,
-		nullableUUIDString(input.CollectionID), input.Fingerprint, nowStr,
+		nullableUUIDString(input.CollectionID), input.Fingerprint, takenFrom, takenHash, nowStr,
 		catalogID.String(), profileID.String())
 	if err != nil {
 		return Catalog{}, fmt.Errorf("updating catalog: %w", err)
@@ -362,10 +435,24 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 		CollectionID:  input.CollectionID,
 		HomeSortOrder: nullableInt(homeSortOrder), // unchanged by this update, read back for an accurate response
 		ShowInHome:    showInHome != 0,
+		TakenHash:     takenHash.String,
+		Linked:        takenFrom.Valid,
 		Fingerprint:   input.Fingerprint,
 		CreatedAt:     createdAt,
 		UpdatedAt:     now,
 	}, nil
+}
+
+// catalogLinkAfterSave is what a catalog save leaves in taken_from and
+// taken_hash. The link stands while the catalog stays listed and the saved
+// name and fingerprint still hash to taken_hash, so a save that changes only
+// is_public keeps it. Any other save clears both: the copy no longer holds
+// what was taken, and Update would otherwise overwrite the change.
+func catalogLinkAfterSave(takenFrom, takenHash sql.NullString, input CatalogForm) (sql.NullString, sql.NullString) {
+	if input.CollectionID != nil || catalogHash(input.Name, input.Fingerprint) != takenHash.String {
+		return sql.NullString{}, sql.NullString{}
+	}
+	return takenFrom, takenHash
 }
 
 // checkCatalogRewrite refuses an UpdateUserCatalog the stored row can't take:
@@ -458,14 +545,14 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
 	rows, err := db.conn.QueryContext(ctx, `
 		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public,
-		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.fingerprint,
+		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.taken_hash, c.fingerprint,
 		       c.created_at, c.updated_at,
 		       c.show_in_home AS derived_show_in_home, 0 AS rank, c.home_sort_order AS o1, 0 AS o2, 0 AS o3
 		FROM catalogs c
 		WHERE c.owner_id = ? AND c.home_sort_order IS NOT NULL
 		UNION
 		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public,
-		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.fingerprint,
+		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.taken_hash, c.fingerprint,
 		       c.created_at, c.updated_at,
 		       0 AS derived_show_in_home, 1 AS rank, col.home_sort_order AS o1, f.sort_order AS o2, fc.sort_order AS o3
 		FROM catalogs c

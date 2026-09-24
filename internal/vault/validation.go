@@ -16,6 +16,10 @@ var (
 	ErrCatalogNotFound    = errors.New("catalog not found")
 	ErrCollectionNotFound = errors.New("collection not found")
 	ErrInvalidInput       = errors.New("invalid input")
+	// ErrConflict is a request the caller's own current state rules out: a
+	// second Take of one source, or an Update onto a copy that no longer
+	// matches what was taken. Its message is safe to show the client.
+	ErrConflict = errors.New("conflict")
 )
 
 var validCatalogTypes = map[string]bool{

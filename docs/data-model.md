@@ -4,9 +4,15 @@ SQLite, defined in `internal/vault/schema.go`. Row structs and wire DTOs are in
 `internal/vault/models.go`, all with explicit `snake_case` JSON tags. `internal/vault/db.go`
 opens the database in WAL mode with a 5s `busy_timeout` and foreign keys on.
 
-There are no migrations: `InitDB` runs `CREATE TABLE IF NOT EXISTS`, which never alters an
-existing table. Any schema change means deleting and recreating both the local `vault.db` and the
-`uno-data` compose volume (`docker compose down -v`).
+There are no migrations. On every start, `InitDB` runs the whole `schema` string once. Its
+`CREATE TABLE IF NOT EXISTS` never alters an existing table; its `CREATE INDEX IF NOT EXISTS`
+does create an index that is new since the database was made. A schema change therefore reaches
+an existing database one of two ways:
+
+- **Local dev:** delete `vault.db` and let `InitDB` recreate it.
+- **The deployed database:** it holds real data. Upgrade it by hand, with SQL run once, with the
+  app stopped, before starting the new build: `ALTER TABLE … ADD COLUMN` for a new column, plus
+  whatever data fix a new constraint needs. The new indexes are then created on the first start.
 
 ```mermaid
 erDiagram
@@ -36,7 +42,8 @@ erDiagram
     uuid collection_id FK "nullable — NULL means listed"
     int home_sort_order "nullable — NULL means not on the TV"
     bool show_in_home
-    uuid taken_from FK "nullable — bookkeeping only, never rendered"
+    uuid taken_from FK "nullable — the catalog a Take copied this from; NULL once unlinked"
+    string taken_hash "nullable — listed copies only: the original's catalogHash when last in step"
     string fingerprint "sha256 hex of type+provider+canonical params"
     string created_at
     string updated_at
@@ -55,7 +62,8 @@ erDiagram
     int home_sort_order "nullable — NULL means not on the TV"
     int version "starts at 1, +1 on every content write; never touched by push"
     int pushed_version "nullable — NULL means never pushed; the version push last read and sent"
-    uuid taken_from FK "nullable — bookkeeping only, never rendered"
+    uuid taken_from FK "nullable — the collection a Take copied this from; NULL once unlinked"
+    string taken_hash "nullable — the original's collectionHash when last in step"
     string created_at
     string updated_at
   }
@@ -158,14 +166,48 @@ write credential.
   by that collection's folders `)`. This is also what catches a scoped catalog created via
   `POST .../catalogs` and abandoned before Save — it has no folder ref yet, so the next Save (or
   the collection's own deletion, by cascade) removes it.
-- **`catalogs.fingerprint` and `catalogs.taken_from`/`collections.taken_from` back the
-  cross-owner sharing model.** `fingerprint` is a sha256 hex of the catalog's type, provider, and
-  canonically re-marshaled params (`provider.Fingerprint`), computed by the create/update
-  handlers before every insert/update — `GetCommunityCatalogs` collapses rows sharing a
-  fingerprint to the oldest `created_at`, and it never reaches the wire. `taken_from` records the
-  source row `TakeCatalog`/`TakeCollection` copied from, purely to answer "you already took this"
-  (`taken: bool` on community rows, an `EXISTS` against the caller's own `taken_from` values);
-  both are `json:"-"` and never rendered as attribution.
+- **`catalogs.fingerprint` identifies a recipe.** It is a sha256 hex of the catalog's type,
+  provider and canonically re-marshaled params (`provider.Fingerprint`), computed by the
+  create/update handlers before every insert or update. `GetCommunityCatalogs` collapses rows
+  that share one, and it never reaches the wire. A copy keeps its source's stored fingerprint
+  and never computes its own, so an original and its copy always hash on the same terms.
+- **A Take is a linked copy.** `taken_from` names the original, and `taken_hash` is the
+  original's content hash from when the copy was last in step with it. Both are `json:"-"`, and
+  neither is rendered as attribution. The wire carries `linked` instead: a collection is linked
+  while `taken_from` is set, and a catalog while `taken_from` is set and it is listed.
+  - **Where the link lives.** A listed catalog Take links the catalog. A collection Take links
+    the collection: every catalog copied inside it also carries `taken_from`, which is how Update
+    pairs it with its source, but no `taken_hash`.
+  - **One link per source.** `catalogs_one_link` (unique on `(owner_id, taken_from)` for listed
+    rows) and `collections_one_link` (unique on `(owner_id, taken_from)`) are the only check. A
+    second Take hits one of them, and `takeConflict` turns the unique violation into
+    `ErrConflict` (409).
+  - **The hashes** (`internal/vault/bundle.go`). `catalogHash` is a sha256 of the name and stored
+    fingerprint. `collectionHash` is a sha256 of the collection's bundle form (`extractBundle`,
+    every referenced catalog in the collection's own list), with each catalog's params replaced
+    by its stored fingerprint. Whatever the bundle form leaves out — ids, scope, `is_public`, the
+    home fields, `version`, timestamps — the hash leaves out too. A content field added to the
+    bundle form is hashed with no other change, which also shifts every stored `taken_hash` once:
+    Community then offers each linked copy an Update that changes nothing but `taken_hash`.
+  - **Community flags.** `taken` means the caller holds a linked copy. `update_available` means
+    that copy's `taken_hash` differs from the original's hash now. Among community catalogs that
+    share a fingerprint, the row shown is the one the caller is linked to, otherwise the oldest.
+  - **A save that changes content unlinks.** `UpdateUserCatalog` clears both columns when the
+    saved name and fingerprint no longer hash to `taken_hash`, or the catalog moves into a
+    collection. `UpdateUserCollection` clears them when the saved tree no longer hashes to
+    `taken_hash`, or any catalog edit moves a catalog to the library. A moved catalog's own
+    `taken_from` is cleared too, so it never reads as a Take of its own. Toggling `is_public` and
+    the selection writes of push never unlink.
+  - **Update** (`internal/vault/link.go`) compares the original's hash now, the copy's hash now,
+    and `taken_hash`. A copy equal to its original only has `taken_hash` rewritten. A copy that
+    no longer matches `taken_hash` was changed some way a save didn't unlink, so Update unlinks
+    it, commits that, and returns `ErrConflict` rather than overwrite it. Anything else is
+    rewritten through the same update core a save uses: the original's content, with the copy's
+    `is_public`, home placement and `pushed_version` kept, folders matched by position and
+    catalogs by `taken_from`, and `version` bumped by one. An original made private is not found
+    (404), and a deleted one unlinks its copies (`taken_from` is `ON DELETE SET NULL`).
+  - **Community Duplicate** is a Take without the link: no `taken_from` anywhere in the copy, the
+    original's title kept, and any number of them beside a Take.
 - **`catalogs.id` is permanent once created** — never rename or recycle it. It is baked into
   `addon.ManifestID` and therefore into Nuvio's `catalogSources[].catalogId`.
 - **`catalogs.params` is opaque `TEXT` at the schema level.** For `provider = 'tmdb'` there is an
@@ -184,7 +226,7 @@ write credential.
   - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped single `DELETE`,
     all downstream cleanup via `ON DELETE CASCADE`. A public row leaves Community, but every copy
     another profile already took survives: those copies are independent rows whose `taken_from`
-    is `ON DELETE SET NULL`, so the delete only clears that bookkeeping link.
+    is `ON DELETE SET NULL`, so the delete only unlinks them.
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
     into `catalogs.home_sort_order`/`show_in_home` and `collections.home_sort_order`
     (`saveCatalogSelectionTx`/`saveCollectionSelectionTx`, `internal/vault`). Every owned row's
@@ -207,8 +249,9 @@ write credential.
   `GetCurrentCatalogSelection` (the narrower `home_sort_order IS NOT NULL` query)
   remains the pre-push validation/selection-editor view; only the addon server needs the wider
   published set.
-- **`collections.version` bumps on every content write (`UpdateUserCollection`), starting at 1 on
-  insert (`CreateUserCollection`, `TakeCollection`, `DuplicateCollection`) — push never touches it.**
+- **`collections.version` bumps on every content write (`UpdateUserCollection`,
+  `UpdateTakenCollection`), starting at 1 on insert (`CreateUserCollection`, `TakeCollection`,
+  `DuplicateCollection`, `DuplicateCommunityCollection`) — push never touches it.**
   `collections.pushed_version` is stamped by `SaveSelectionsForPush` with the version
   `pushCollections` read for that collection *before* calling Nuvio, for every collection in the
   pushed selection, and only there. `NULL` means never pushed. The frontend flags a pending change
@@ -396,7 +439,8 @@ describing what a TMDB-backed catalog may ask for.
 - **Take re-validates what it copies.** `TakeCatalog` and `TakeCollection` both run the same
   params check against the source rows before copying them (the recipe is another profile's
   input, validated when they wrote it, not when it is taken), via a validator passed in by
-  `api` — `internal/vault` is the leaf package and cannot reach `internal/provider`. Both
+  `api` — `internal/vault` is the leaf package and cannot reach `internal/provider`. Update and
+  Community Duplicate read the original the same way and run the same check. All of them
   require the validator: nil is a programming error, not "skip the check". A take crosses the
   owner boundary either way, and a listed catalog reachable directly is equally reachable
   through a public collection that references it, so both doors check the same row. One
@@ -429,7 +473,8 @@ describing what a TMDB-backed catalog may ask for.
   Only then does the write transaction open, and `createCollectionTx`, the same core
   `CreateUserCollection` runs, writes the copy, holding SQLite's write lock for inserts alone.
   Each scoped catalog copy is one of the form's `new` entries, carrying the source's stored
-  fingerprint and, for a Take, `taken_from` naming the catalog it was copied from. The params
+  fingerprint and, for a Take, `taken_from` naming the catalog it was copied from. A Take then
+  sets the new collection's `taken_hash` from the copy as written, before committing. The params
   check reaches TMDB, and stalling every other writer for the length of a cold-cache network
   call is the cost this ordering avoids; it is the same read-then-validate-then-insert order
   `TakeCatalog` uses. A copy is a snapshot either way, so a source edit landing between the

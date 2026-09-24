@@ -746,11 +746,11 @@ private copy of it.
   `HomeSelectionContext` already hold open, so this is a third subscriber to cached data, not a
   third network round trip.
 - **No author, no handle, no "copied from" line anywhere here** —
-  that provenance is retired, not merely hidden. `taken_from` exists in the schema only so a
-  profile's own copies can answer "you already took this," which surfaces here as a plain
-  "✓ Taken" mark beside the row's Take button, from the server's own `taken` field. Taking again
-  is allowed and makes another copy, so the button never disables once a row is taken — mirroring
-  the backend's own Take semantics.
+  that provenance is retired, not merely hidden. `taken_from` links a profile's copy to its
+  original (see "A Take is a linked copy" in `docs/data-model.md`), which surfaces here as a
+  plain "✓ Taken" mark beside the row's Take button, from the server's own `taken` field. The
+  button stays enabled once a row is taken, but the server refuses a second Take of a source the
+  profile holds a linked copy of, with a 409 the view shows as a failed take.
 - **Preview reuses the editors' own preview components, not a new one.** A catalog row's Preview
   mounts `CommunityCatalogPreview`, which is `RecipePreview` run over the row's own stored
   `type`/`params` via `useRecipeTiles` — the same on-request, one-TMDB-page component the catalog

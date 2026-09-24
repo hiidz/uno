@@ -54,9 +54,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 }
 
 // writeVaultError classifies a vault-layer (or vault-flavored, see
-// validateCatalogParams) error into one HTTP response: vault.ErrInvalidInput
-// is a 400 using the error's own message (safe — every ErrInvalidInput
-// message is built from validation text, never a lower-level detail),
+// validateCatalogParams) error into one HTTP response: an error the caller
+// caused (clientErrorStatus) is its 400 or 409 using the error's own message
+// (safe — every ErrInvalidInput and ErrConflict message is built from
+// validation or state text, never a lower-level detail),
 // notFound is the resource's own not-found sentinel (pass nil to skip that
 // case, e.g. create has none), errUpstreamValidation is a 502 because a
 // recipe that couldn't be checked against TMDB has not been found at fault,
@@ -71,9 +72,9 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // http.Error(err.Error(), 400) from validateCatalogParams while a bad
 // vault.CatalogForm went through this same errors.Is switch.
 func writeVaultError(w http.ResponseWriter, op string, err error, notFound error, notFoundMsg, defaultMsg string) {
-	switch {
-	case errors.Is(err, vault.ErrInvalidInput):
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	switch status := clientErrorStatus(err); {
+	case status != 0:
+		http.Error(w, err.Error(), status)
 	case notFound != nil && errors.Is(err, notFound):
 		http.Error(w, notFoundMsg, http.StatusNotFound)
 	case errors.Is(err, errUpstreamValidation):
@@ -83,6 +84,19 @@ func writeVaultError(w http.ResponseWriter, op string, err error, notFound error
 		log.Printf("%s: %v", op, err)
 		http.Error(w, defaultMsg, http.StatusInternalServerError)
 	}
+}
+
+// clientErrorStatus is the status of a vault error the caller caused —
+// 400 for vault.ErrInvalidInput, 409 for vault.ErrConflict — or 0 for any
+// other error.
+func clientErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, vault.ErrInvalidInput):
+		return http.StatusBadRequest
+	case errors.Is(err, vault.ErrConflict):
+		return http.StatusConflict
+	}
+	return 0
 }
 
 // writeNuvioError classifies a Nuvio-call error and writes a plain-text
