@@ -66,11 +66,12 @@ func run() error {
 	}
 
 	apiServer, err := api.New(api.Deps{
-		Vault:       db,
-		Provider:    tmdb,
-		Verifier:    verifier,
-		Nuvio:       nuvioAPI,
-		SiteBaseURL: cfg.SiteBaseURL,
+		Vault:        db,
+		Provider:     tmdb,
+		Verifier:     verifier,
+		Nuvio:        nuvioAPI,
+		SiteBaseURL:  cfg.SiteBaseURL,
+		NuvioBaseURL: cfg.NuvioBaseURL,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to build server: %w", err)

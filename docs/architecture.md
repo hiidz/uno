@@ -37,7 +37,7 @@ embedded frontend build.
 | `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |
 | `internal/nuvio` | JWT verification against JWKS; authenticated REST/RPC calls |
 | `internal/config` | Env loading with defaults (`godotenv`) |
-| `internal/static` | SPA-fallback file serving + gzip middleware |
+| `internal/static` | SPA-fallback file serving + CSP/security headers + gzip middleware |
 | `web` | `//go:embed all:dist` — the built frontend |
 
 **`internal/addon` never depends on Nuvio anything**, and this is enforced at the package level: it
@@ -418,6 +418,24 @@ to a real file is rewritten to `/` so React Router handles it. Cache-Control spl
 hashed output: everything under `/assets/` is `public, max-age=31536000, immutable`; everything
 else (`index.html`, icons) is `no-cache`, because caching the shell would strand clients on a
 page referencing asset hashes a new build no longer has.
+
+Every SPA response also carries `X-Content-Type-Options: nosniff` and a
+`Content-Security-Policy`, built in `contentSecurityPolicy` (`internal/static/static.go`). The
+refresh token lives in `localStorage`, so an injected script could steal the Nuvio account. The
+policy limits the page to its own origin, which stops such a script from loading more code or
+sending the token anywhere except Uno and Nuvio. Each exception has a concrete cause:
+
+- `style-src 'unsafe-inline'`: Radix injects `<style>` elements at runtime.
+- `img-src https: data:`: collection and folder art are arbitrary user-supplied URLs.
+- `font-src data:`: Vite inlines the smallest `@fontsource` subsets.
+- `connect-src` allows the origin of `NUVIO_BASE_URL`, because login and refresh go from the
+  browser straight to Nuvio.
+
+`frame-ancestors 'none'`, `base-uri` and `form-action` are set explicitly, since they don't fall
+back to `default-src`, and `object-src` is `'none'`. The policy is a response header, not a `<meta>` tag, for two reasons: a
+meta tag can't express `frame-ancestors`, and it would also apply under `vite dev`, whose inline
+React Refresh preamble `script-src 'self'` would block. The API and addon routes don't get these
+headers.
 
 Gzip is `gzhttp` (`internal/static/gzip.go`) with an explicit content-type allow-list rather than
 gzhttp's default filter, because the default still compresses fonts — and woff2/woff are already

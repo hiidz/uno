@@ -20,13 +20,14 @@ import (
 // Server is Uno's HTTP handler: the authenticated JSON API plus the public
 // addon and SPA routes registered in routes().
 type Server struct {
-	vault       *vault.DB
-	router      *http.ServeMux
-	provider    *provider.TMDBClient
-	verifier    TokenVerifier
-	nuvio       NuvioClient
-	addon       *addon.Server
-	siteBaseURL string
+	vault        *vault.DB
+	router       *http.ServeMux
+	provider     *provider.TMDBClient
+	verifier     TokenVerifier
+	nuvio        NuvioClient
+	addon        *addon.Server
+	siteBaseURL  string
+	nuvioBaseURL string
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -61,13 +62,14 @@ func New(d Deps) (*Server, error) {
 	}
 
 	s := &Server{
-		vault:       d.Vault,
-		router:      http.NewServeMux(),
-		provider:    d.Provider,
-		verifier:    d.Verifier,
-		nuvio:       d.Nuvio,
-		addon:       addonServer,
-		siteBaseURL: d.SiteBaseURL,
+		vault:        d.Vault,
+		router:       http.NewServeMux(),
+		provider:     d.Provider,
+		verifier:     d.Verifier,
+		nuvio:        d.Nuvio,
+		addon:        addonServer,
+		siteBaseURL:  d.SiteBaseURL,
+		nuvioBaseURL: d.NuvioBaseURL,
 	}
 	if err := s.routes(); err != nil {
 		return nil, err
@@ -134,7 +136,11 @@ func (s *Server) routes() error {
 	if err != nil {
 		return fmt.Errorf("api: opening embedded web/dist: %w", err)
 	}
-	gzipped, err := static.Gzip(static.Handler(distFS))
+	spa, err := static.Handler(distFS, s.nuvioBaseURL)
+	if err != nil {
+		return fmt.Errorf("api: building static handler: %w", err)
+	}
+	gzipped, err := static.Gzip(spa)
 	if err != nil {
 		return fmt.Errorf("api: building static handler: %w", err)
 	}

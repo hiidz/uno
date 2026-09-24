@@ -17,11 +17,12 @@ import (
 func newProfileTestServer(t *testing.T, db *vault.DB) *Server {
 	t.Helper()
 	s, err := New(Deps{
-		Vault:       db,
-		Provider:    provider.NewTMDBClient("key"),
-		Verifier:    acceptAnyToken{},
-		Nuvio:       &fakeNuvio{},
-		SiteBaseURL: "http://example.com",
+		Vault:        db,
+		Provider:     provider.NewTMDBClient("key"),
+		Verifier:     acceptAnyToken{},
+		Nuvio:        &fakeNuvio{},
+		SiteBaseURL:  "http://example.com",
+		NuvioBaseURL: "https://nuvio.example.com",
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

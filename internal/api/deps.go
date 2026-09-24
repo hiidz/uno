@@ -47,4 +47,8 @@ type Deps struct {
 	Verifier    TokenVerifier
 	Nuvio       NuvioClient
 	SiteBaseURL string
+	// NuvioBaseURL is the Nuvio origin the SPA's Content-Security-Policy
+	// lets it call, since login and refresh go from the browser straight to
+	// Nuvio. It must match the VITE_NUVIO_BASE_URL the SPA was built with.
+	NuvioBaseURL string
 }

@@ -58,11 +58,12 @@ func TestLookupListClassification(t *testing.T) {
 // how it shows the literal "search" segment wins.
 func TestEntityLookupRoutes(t *testing.T) {
 	s, err := New(Deps{
-		Vault:       newTestVaultDB(t),
-		Provider:    provider.NewTMDBClient("key"),
-		Verifier:    acceptAnyToken{},
-		Nuvio:       &fakeNuvio{},
-		SiteBaseURL: "http://example.com",
+		Vault:        newTestVaultDB(t),
+		Provider:     provider.NewTMDBClient("key"),
+		Verifier:     acceptAnyToken{},
+		Nuvio:        &fakeNuvio{},
+		SiteBaseURL:  "http://example.com",
+		NuvioBaseURL: "https://nuvio.example.com",
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
