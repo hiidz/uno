@@ -15,7 +15,7 @@ is gitignored except for the committed `.gitkeep`, which keeps the embed target 
 | Router | React Router. Four routes total: `/login`, `/` (redirects to `/profiles`), `/profiles`, `/configure` |
 | Server state | TanStack Query, keys scoped by profile under `['p', i, …]` so switching slots invalidates cleanly with no manual cache wipe |
 | Drag-and-drop | dnd-kit — `PointerSensor` (covers touch and mouse) + `KeyboardSensor`, so every reorderable list is operable with no pointer at all |
-| Components | Hand-written, on Radix UI primitives (`Popover`, `Slider`, `DropdownMenu`) for the three controls that need real accessible behaviour. Everything else — `Modal`, `ConfirmDialog`, `TypeBar`, `ListState`, `fields.tsx`, `GlyphButton` — is local. Styling is Tailwind v4 against Uno's own `--uno-*` tokens in `web/src/index.css`; `shadcn` remains a devDependency (its CLI), and a small base set (`--background`, `--foreground`, `--border`, `--ring`, `--sidebar`) is aliased onto the Uno palette |
+| Components | Hand-written, on Radix UI primitives (`Popover`, `Slider`, `DropdownMenu`) for the three controls that need real accessible behaviour. Everything else — `Modal`, `ConfirmDialog`, `Toast`, `TypeBar`, `ListState`, `fields.tsx`, `GlyphButton` — is local. Styling is Tailwind v4 against Uno's own `--uno-*` tokens in `web/src/index.css`; `shadcn` remains a devDependency (its CLI), and a small base set (`--background`, `--foreground`, `--border`, `--ring`, `--sidebar`) is aliased onto the Uno palette |
 | Types | **Hand-written per endpoint, no codegen.** For a one-person team on both ends, drift surfaces immediately in the browser rather than silently in production. If drift pain ever shows up, a lightweight generator reading the Go structs (`tygo`-style) is the first upgrade to reach for, not a full OpenAPI pipeline |
 
 Because there is no codegen, **`"strict": true` must stay on in `web/tsconfig.app.json`.** The
@@ -163,6 +163,47 @@ Two things established here that everything downstream depends on: **genre looku
 per-kind, never merged** (the movie and tv genre id spaces are separate), and **genre queries are
 excluded from the rail's loading/error state** — a failed genre fetch degrades the summary line
 to raw ids rather than failing the list, so the rail never blocks on TMDB being reachable.
+
+### Import and export
+
+**Import** and **Export** are `btn-ghost` buttons in the rail's "Mine" header
+(`LibrarySection`'s `onImport`/`onExport`). `Workspace` owns both dialogs' open state, as it does
+the naming dialogs and the confirms. Neither dialog goes through `EditorGuard`: both open over the
+pane without replacing what it holds. Both are `Modal`s, so below `lg` they fill the viewport width
+less its padding. The dialogs live in `web/src/features/bundle/`, and the three calls in
+`web/src/api/bundle.ts`. The bundle stays `unknown` in TypeScript because the format is defined
+by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import/check` answer
+(`ImportCheck`, `ImportMatch`) and the import answer (`ImportResult`) are typed.
+
+- **`ExportDialog`** has two checkbox groups, Catalogs and Collections, filled from `useLibrary`'s
+  lists, each with **All** and **None**. The row open in the pane starts ticked. A note says
+  collections include the catalogs they use, and the server exports those whether or not they are
+  ticked. Export is disabled while nothing is ticked. The response is saved as
+  `uno-export-YYYY-MM-DD.json` in local time, pretty-printed, through an object URL (`download.ts`).
+- **`ImportDialog`** has three steps.
+  1. **Pick a file.** A file over 4 MiB is refused before it is read (`MAX_BUNDLE_BYTES`, the twin
+     of the server's `maxBundleBodyBytes`), and a `JSON.parse` failure is shown in place. Neither
+     sends a request. A 400 or 502 from `/import/check` is shown in place too.
+  2. **Review.** The dialog shows the file's counts, then one row per match. Each row is
+     **Import a copy** (the default) or the reuse choice. A top-level catalog reads **Skip, I
+     already have it**. A collection's own catalog reads **Use my existing one**, with a hint that
+     the collection will then share the library catalog. Several existing matches get a `Select`,
+     which starts on the first by name. **Copy all** and **Use existing for all** set every row;
+     the second picks each row's first match. The choices are `reuse.ts`'s `ReuseChoices`, and
+     `reuseMap` turns them into the request's `reuse` map. With no matches, the step shows only
+     the counts.
+  3. **Import.** The button is disabled while the request is in flight, because a second import
+     writes a second set. `useImport` invalidates the two owned lists and settles only once they
+     have refetched. The dialog then closes, and a toast under the "Mine" header names what the
+     rail gained, for example "Imported 2 catalogs and 1 collection". It counts only new listed
+     catalogs and new collections, which is what the import response lists. An import opens
+     nothing and adds nothing to home.
+
+The owned-list keys prefix the selection and Community keys, so an import marks those stale too.
+An import changes neither, so the refetch returns what they already held.
+
+The toast is `components/Toast.tsx` with `components/useToast.ts`, the same auto-dismissing
+message the Community tab shows its outcomes in.
 
 ## Catalog authoring
 

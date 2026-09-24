@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ApiError, ProfileNotSelectedError } from '@/api'
 import { Segmented } from '@/components/fields'
 import { ListState } from '@/components/ListState'
+import { Toast } from '@/components/Toast'
+import { useToast, type ToastMessage } from '@/components/useToast'
 import { useLibrary } from '@/features/library/useLibrary'
 import {
   catalogSummary,
@@ -42,17 +44,9 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>('name')
   const [previewID, setPreviewID] = useState<string | null>(null)
-  const [toast, setToast] = useState<Toast | null>(null)
+  const [toast, setToast] = useToast()
   // Keyed by the original's id; catalog and collection ids never collide.
   const [pending, setPending] = useState<ReadonlyMap<string, CommunityAction>>(new Map())
-
-  // Auto-dismissing, unlike the push outcome strip: nothing here needs a
-  // decision, so there is nothing worth keeping on screen once it's been read.
-  useEffect(() => {
-    if (!toast) return
-    const timer = window.setTimeout(() => setToast(null), 2500)
-    return () => window.clearTimeout(timer)
-  }, [toast])
 
   const query = search.trim().toLowerCase()
 
@@ -111,16 +105,7 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
         </p>
       </div>
 
-      {toast && (
-        <div
-          role="status"
-          className={`bg-raised type-data border px-3 py-2 text-[11px] ${
-            toast.tone === 'danger' ? 'border-danger text-danger' : 'border-line text-ink'
-          }`}
-        >
-          {toast.text}
-        </div>
-      )}
+      <Toast toast={toast} />
 
       <div className="flex flex-wrap items-center gap-3">
         <Segmented
@@ -213,11 +198,6 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
   )
 }
 
-interface Toast {
-  text: string
-  tone: 'success' | 'danger'
-}
-
 const DONE: Record<CommunityAction, Record<Kind, string>> = {
   take: { catalogs: 'Added to your catalogs', collections: 'Added to your collections' },
   update: { catalogs: 'Updated your copy', collections: 'Updated your copy' },
@@ -231,7 +211,7 @@ const DONE: Record<CommunityAction, Record<Kind, string>> = {
  *  unlinked it; a 404 from Update means the original went private or was
  *  deleted, or the copy was already unlinked, and the response can't say
  *  which. */
-function failure(action: CommunityAction, rowKind: Kind, error: Error): Toast {
+function failure(action: CommunityAction, rowKind: Kind, error: Error): ToastMessage {
   const noun = rowKind === 'catalogs' ? 'catalog' : 'collection'
   const status = error instanceof ApiError ? error.status : undefined
   if (action === 'take' && status === 409) {

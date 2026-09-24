@@ -130,6 +130,37 @@ export interface CommunityCollection extends Collection {
   update_available: boolean
 }
 
+/** `POST /api/p/{i}/import/check` — what a bundle holds, and every catalog in
+ *  it whose recipe matches one of this profile's listed catalogs. `catalogs`
+ *  counts top-level and collection catalogs together. */
+export interface ImportCheck {
+  catalogs: number
+  collections: number
+  folders: number
+  matches: ImportMatch[]
+}
+
+/** One bundle catalog the import may point at an existing catalog instead of
+ *  copying. `scope` is `listed` for a top-level catalog, with `collection`
+ *  empty, and `scoped` for one of a collection's own, with `collection` that
+ *  collection's title. `existing` is sorted by name and never empty. */
+export interface ImportMatch {
+  key: string
+  name: string
+  type: CatalogType
+  scope: 'listed' | 'scoped'
+  collection: string
+  existing: Array<{ id: string; name: string }>
+}
+
+/** `POST /api/p/{i}/import` — the new listed catalogs and the new
+ *  collections. A catalog the import reused is not among `catalogs`, and
+ *  neither is a catalog imported inside a collection. */
+export interface ImportResult {
+  catalogs: Catalog[]
+  collections: Collection[]
+}
+
 export interface Genre {
   id: number
   name: string

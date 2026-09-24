@@ -23,6 +23,7 @@ export type {
   FolderPayload,
   ScopedCatalogEdit,
 } from './mutations'
+export { checkImport, exportBundle, importBundle } from './bundle'
 export { pushSelection } from './push'
 export type { PushRequest, PushResult } from './push'
 export { queryKeys } from './keys'
@@ -69,6 +70,9 @@ export type {
   FolderRef,
   Genre,
   GenreOptionsRequest,
+  ImportCheck,
+  ImportMatch,
+  ImportResult,
   Keyword,
   Language,
   Network,

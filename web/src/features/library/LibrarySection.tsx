@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { tmdbKind } from '@/api'
 import { ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
@@ -27,6 +28,9 @@ export function LibrarySection({
   onDuplicateCollection,
   onDeleteCatalog,
   onDeleteCollection,
+  onImport,
+  onExport,
+  notice,
 }: {
   library: Library
   /** The row whose editor is open in the pane, or `null` for none. */
@@ -39,6 +43,10 @@ export function LibrarySection({
   onDuplicateCollection: (collection: LibraryCollection) => void
   onDeleteCatalog: (catalog: LibraryCatalog) => void
   onDeleteCollection: (collection: LibraryCollection) => void
+  onImport: () => void
+  onExport: () => void
+  /** A short outcome line under the header, such as the result of an import. */
+  notice?: ReactNode
 }) {
   const [search, setSearch] = useState('')
   const home = useHomeSelection()
@@ -83,8 +91,15 @@ export function LibrarySection({
   return (
     <section className="border-line flex flex-col gap-2.5 border-b p-4 last:border-b-0 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
       <div className="flex items-center justify-between gap-2">
-        <span className="type-eyebrow">Mine</span>
+        <span className="type-eyebrow flex-1">Mine</span>
+        <button type="button" className="btn-ghost" onClick={onImport}>
+          Import
+        </button>
+        <button type="button" className="btn-ghost" onClick={onExport}>
+          Export
+        </button>
       </div>
+      {notice}
       <input
         type="search"
         value={search}

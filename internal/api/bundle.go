@@ -17,6 +17,9 @@ import (
 // whole library's worth of catalogs and collections rather than one save.
 // An exported library is typically tens of kilobytes; this leaves generous
 // room past that without letting a client make the server buffer for free.
+// Its twin is MAX_BUNDLE_BYTES in web/src/features/bundle/ImportDialog.tsx,
+// the largest file the import dialog reads; change one and you must change
+// the other.
 const maxBundleBodyBytes = 4 << 20 // 4 MiB
 
 // prepareBundle runs the file-level checks on b, then checks every catalog

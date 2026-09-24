@@ -2,9 +2,13 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ComponentProps } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
-import type { CatalogType, CollectionPayload } from '@/api'
+import type { CatalogType, CollectionPayload, ImportResult } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Field, Segmented } from '@/components/fields'
+import { Toast } from '@/components/Toast'
+import { useToast } from '@/components/useToast'
+import { ExportDialog } from '@/features/bundle/ExportDialog'
+import { ImportDialog } from '@/features/bundle/ImportDialog'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
 import {
   duplicatePayload,
@@ -109,6 +113,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
   const [namingCollection, setNamingCollection] = useState(false)
   const [confirming, setConfirming] = useState<Confirmation | null>(null)
+  const [transfer, setTransfer] = useState<'import' | 'export' | null>(null)
+  const [toast, setToast] = useToast()
 
   const railRef = useRef<HTMLElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -665,6 +671,9 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
             onDuplicateCollection={duplicateCollection}
             onDeleteCatalog={deleteCatalog}
             onDeleteCollection={deleteCollection}
+            onImport={() => setTransfer('import')}
+            onExport={() => setTransfer('export')}
+            notice={<Toast toast={toast} />}
           />
         </aside>
 
@@ -790,6 +799,27 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         }}
       />
 
+      {/* Neither goes through the guard: both open over the pane and leave
+          its occupant alone, and an import neither opens what it wrote nor
+          adds it to home. */}
+      <ExportDialog
+        open={transfer === 'export'}
+        profileIndex={profileIndex}
+        catalogs={library.catalogs}
+        collections={library.collections}
+        preselected={target?.sourceID ?? null}
+        onClose={() => setTransfer(null)}
+      />
+      <ImportDialog
+        open={transfer === 'import'}
+        profileIndex={profileIndex}
+        onClose={() => setTransfer(null)}
+        onImported={(result) => {
+          setTransfer(null)
+          setToast({ text: importedText(result), tone: 'success' })
+        }}
+      />
+
       {/* Rendered here rather than beside the guard itself, because this is the
           level that knows what is being edited — the prompt names it. */}
       {prompt && <ConfirmDialog open {...prompt} />}
@@ -833,6 +863,17 @@ function editorSubject(target: EditorTarget | null): string {
   if (target === null) return 'this editor'
   if (target.kind === 'catalog') return target.initial.name.trim() || 'this catalog'
   return target.initial.title.trim() || 'this collection'
+}
+
+/** Counts what the rail gained: the new listed catalogs and the new
+ *  collections. A catalog imported inside a collection, or reused, is not a
+ *  new rail row, so it isn't counted. */
+function importedText(result: ImportResult): string {
+  const parts = [
+    result.catalogs.length > 0 && pluralCount(result.catalogs.length, 'catalog'),
+    result.collections.length > 0 && pluralCount(result.collections.length, 'collection'),
+  ].filter(Boolean)
+  return parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'Imported nothing new'
 }
 
 function folderCount(collection: LibraryCollection): string {
