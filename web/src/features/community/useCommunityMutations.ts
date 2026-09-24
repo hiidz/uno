@@ -1,33 +1,70 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { queryKeys, takeCatalog, takeCollection } from '@/api'
+import {
+  ApiError,
+  duplicateCommunityCatalog,
+  duplicateCommunityCollection,
+  queryKeys,
+  takeCatalog,
+  takeCollection,
+  updateTakenCatalog,
+  updateTakenCollection,
+} from '@/api'
+
+export type CommunityAction = 'take' | 'update' | 'duplicate'
+
+/** A 404 or a 409 from a community POST: the lists the button was pressed on
+ *  were behind the server — the original went private or was deleted, a
+ *  linked copy already exists, or the copy was unlinked by a save. */
+export function isStale(error: Error): boolean {
+  return error instanceof ApiError && (error.status === 404 || error.status === 409)
+}
 
 /**
- * Take, for both kinds. A copy is a fresh, private row this profile fully
- * owns — nothing about the source or the copy changes together afterwards,
- * so there is nothing to reconcile beyond
- * refetching the two lists that just became stale: the library gained a row,
- * and the community list's `taken` flag on this source flipped. Taking again
- * is allowed and creates another copy, so nothing here disables a taken row.
+ * Take, Update and Duplicate, for both kinds. Each changes a library list and
+ * the Community list together — a copy appears or changes in "Mine", and the
+ * original's `taken`/`update_available` flip — so each refreshes both, and its
+ * promise settles only once they have refetched: a row never offers Take
+ * again for a copy that already exists. The owned-list keys prefix the
+ * selection keys, so the selections refresh too, which an Update to a
+ * collection needs because it bumps `version`.
+ *
+ * A stale failure (`isStale`) refreshes the same lists before it rejects, so
+ * the caller's message lands on rows that already show the server's state.
  */
 export function useCommunityMutations(profileIndex: number) {
   const queryClient = useQueryClient()
 
-  function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCatalogs(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections(profileIndex) })
+  function refresh() {
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.communityCatalogs(profileIndex) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections(profileIndex) }),
+    ])
   }
 
-  const takeCatalogMutation = useMutation({
-    mutationFn: (catalogID: string) => takeCatalog(profileIndex, catalogID),
-    onSuccess: invalidate,
-  })
+  return {
+    catalogs: {
+      take: useCommunityMutation(profileIndex, takeCatalog, refresh),
+      update: useCommunityMutation(profileIndex, updateTakenCatalog, refresh),
+      duplicate: useCommunityMutation(profileIndex, duplicateCommunityCatalog, refresh),
+    },
+    collections: {
+      take: useCommunityMutation(profileIndex, takeCollection, refresh),
+      update: useCommunityMutation(profileIndex, updateTakenCollection, refresh),
+      duplicate: useCommunityMutation(profileIndex, duplicateCommunityCollection, refresh),
+    },
+  }
+}
 
-  const takeCollectionMutation = useMutation({
-    mutationFn: (collectionID: string) => takeCollection(profileIndex, collectionID),
-    onSuccess: invalidate,
+function useCommunityMutation(
+  profileIndex: number,
+  act: (profileIndex: number, id: string) => Promise<unknown>,
+  refresh: () => Promise<unknown>,
+) {
+  return useMutation({
+    mutationFn: (id: string) => act(profileIndex, id),
+    onSuccess: refresh,
+    onError: (error) => (isStale(error) ? refresh() : undefined),
   })
-
-  return { takeCatalog: takeCatalogMutation, takeCollection: takeCollectionMutation }
 }

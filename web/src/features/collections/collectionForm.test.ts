@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Catalog } from '@/api'
 import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
+import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import {
+  changesContent,
   emptyCollectionForm,
   isSameCollection,
   newFolder,
@@ -57,6 +59,7 @@ describe('toCollectionPayload', () => {
       collection_id: 'col1',
       created_at: '',
       updated_at: '',
+      linked: false,
     }
     const form = formWith([newRef(draft.id, 'Action'), newRef(draft.id, 'Comedy')])
     const spec = { key: 'draft:d1', type: 'movie', name: 'Staged', provider: 'tmdb', params: '{}' }
@@ -81,6 +84,7 @@ describe('withCatalogEdit', () => {
     collection_id: 'col1',
     created_at: '',
     updated_at: '',
+    linked: false,
   }
   const baseline = formWith([newRef('c1')])
 
@@ -119,6 +123,64 @@ describe('withCatalogEdit', () => {
     const moved = { ...formFromCatalog(saved), collectionID: null }
     const [edit] = toCollectionPayload(withCatalogEdit(baseline, saved, moved)).catalog_edits
     expect(edit.move_to_library).toBe(true)
+  })
+})
+
+// The collection editor's Undo on a staged Move to library: the catalog as the
+// editor holds it after the nested save (name and params from that save's
+// payload), put back into the collection, then re-read through the form.
+describe('undoing a staged Move to library', () => {
+  // Keys out of order and a rolling date window, the two ways a stored
+  // recipe differs from what the form writes back.
+  const saved: Catalog = {
+    id: 'c1',
+    type: 'movie',
+    name: 'Scoped',
+    provider: 'tmdb',
+    params: '{"sort_by": "popularity.desc", "released_within_days": 30, "with_genres": "28"}',
+    owner_id: '',
+    is_public: false,
+    collection_id: 'col1',
+    created_at: '',
+    updated_at: '',
+    linked: false,
+  }
+  const baseline = formWith([newRef('c1')])
+
+  function stageAndUndo(nested: CatalogFormState) {
+    const staged = withCatalogEdit(baseline, saved, nested)
+    const payload = toCatalogPayload(nested)
+    const held: Catalog = { ...saved, name: payload.name, params: payload.params, collection_id: null }
+    return withCatalogEdit(staged, saved, formFromCatalog({ ...held, collection_id: saved.collection_id }))
+  }
+
+  it('leaves the form clean when the move was the only change', () => {
+    expect(toCatalogPayload(formFromCatalog(saved)).params).not.toBe(saved.params)
+    const undone = stageAndUndo({ ...formFromCatalog(saved), collectionID: null })
+    expect(undone.catalogEdits).toEqual({})
+    expect(isSameCollection(baseline, undone)).toBe(true)
+  })
+
+  it('keeps a rename made alongside the move', () => {
+    const undone = stageAndUndo({ ...formFromCatalog(saved), name: 'Renamed', collectionID: null })
+    expect(undone.catalogEdits.c1).toMatchObject({ name: 'Renamed', moveToLibrary: false })
+  })
+})
+
+describe('changesContent', () => {
+  const baseline = formWith([newRef('c1')])
+
+  it('ignores a Public toggle on its own', () => {
+    expect(changesContent(baseline, { ...baseline, isPublic: true })).toBe(false)
+  })
+
+  it('counts a change to anything else', () => {
+    expect(changesContent(baseline, { ...baseline, isPublic: true, title: 'Renamed' })).toBe(true)
+  })
+
+  it('counts a staged Move to library with nothing else changed', () => {
+    const edit = { type: 'movie', provider: 'tmdb', name: 'Scoped', params: '{}', moveToLibrary: true } as const
+    expect(changesContent(baseline, { ...baseline, catalogEdits: { c1: edit } })).toBe(true)
   })
 })
 

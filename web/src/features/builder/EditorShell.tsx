@@ -75,11 +75,14 @@ export function EditorShell({
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape') return
-      // A dialog is in front of the editor and Escape belongs to it. `Modal`
-      // listens on `document` too, so without this both fire: dismissing a
-      // discard prompt would immediately ask again, and dismissing a delete
-      // confirmation would also try to close the editor behind it.
-      if (document.querySelector('[role="dialog"]')) return
+      // A dialog or menu is in front of the editor and Escape belongs to it.
+      // Radix closes its layers from a capture listener on `document` and
+      // marks the event `defaultPrevented`, so by the time this listener runs
+      // the dialog may already be gone from the DOM: without both checks,
+      // dismissing a discard prompt would immediately ask again, and
+      // dismissing a delete confirmation would also try to close the editor
+      // behind it.
+      if (event.defaultPrevented || document.querySelector('[role="dialog"]')) return
       onRequestClose()
     }
     document.addEventListener('keydown', onKeyDown)

@@ -355,8 +355,10 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
 
   // The library row the open editor was opened from. Below `lg` the editor's
   // own header carries that row's duplicate and delete — the row itself is a
-  // screen-length scroll away — so it has to know which row it stands for. A
-  // brand-new catalog has no row yet, so this comes back undefined.
+  // screen-length scroll away — so it has to know which row it stands for. Its
+  // `linked` drives the editor's linked banner, and is current after a save or
+  // an Update because both refetch the library. A brand-new catalog has no row
+  // yet, so this comes back undefined.
   const activeCatalog =
     target?.kind === 'catalog' && target.sourceID !== undefined
       ? library.catalogs.find((catalog) => catalog.id === target.sourceID)
@@ -705,6 +707,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
               onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
               onDirtyChange={setDirty}
+              linked={activeCatalog?.linked ?? false}
             />
           ) : (
             <CollectionEditor
@@ -732,6 +735,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               countryNames={library.countryNames}
               languages={library.languages}
               usedInFolders={usedInFolders}
+              linked={activeCollection?.linked ?? false}
             />
           )}
         </div>

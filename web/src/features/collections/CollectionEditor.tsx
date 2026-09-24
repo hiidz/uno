@@ -17,6 +17,7 @@ import { Icon } from '@/components/Icon'
 import { Modal } from '@/components/Modal'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
+import { ConfirmUnlink, LinkedBanner } from '@/features/builder/LinkedCopy'
 import { NewItemDialog } from '@/features/builder/NewItemDialog'
 import { useEditorForm } from '@/features/builder/useEditorForm'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
@@ -35,6 +36,7 @@ import {
   DRAFT_ID_PREFIX,
   VIEW_MODES,
   VIEW_MODE_LABELS,
+  changesContent,
   countErrors,
   emptyCollectionForm,
   isDraftCatalogID,
@@ -77,6 +79,7 @@ function draftCatalog(seed: {
     collection_id: seed.collectionID,
     created_at: '',
     updated_at: '',
+    linked: false,
   }
 }
 
@@ -129,7 +132,13 @@ function draftCatalog(seed: {
  * editor has none: the closed-graph sharing model has no such state — a
  * taken collection is a private copy, fully
  * yours from the moment it's created, folders and scoped catalogs included.
- * Every row this editor opens is yours.
+ * Every row this editor opens is yours. While a taken copy is still
+ * `linked`, a banner says so, and a save that would unlink it — pending
+ * catalog edits included — asks first.
+ *
+ * **A staged Move to library has its own Undo.** Once staged, the catalog
+ * reads as listed in every folder, which offers no Edit to reopen it, so the
+ * standing note naming it is the way back short of discarding the whole form.
  */
 export function CollectionEditor({
   initial,
@@ -151,6 +160,7 @@ export function CollectionEditor({
   countryNames,
   languages,
   usedInFolders,
+  linked = false,
 }: {
   initial: CollectionFormState | null
   options: RefOption[]
@@ -193,6 +203,10 @@ export function CollectionEditor({
    *  computed in `Workspace`, which is the level that has the whole library.
    *  Meaningful only for a listed catalog. */
   usedInFolders: (catalogID: string) => number
+  /** A collection still linked to the community collection it was taken
+   *  from: shows the linked banner, and a save that changes anything besides
+   *  Public asks first (`ConfirmUnlink`). */
+  linked?: boolean
 }) {
   const baseline = useMemo(() => initial ?? emptyCollectionForm(), [initial])
   const { state, setState, showErrors, submit } = useEditorForm(
@@ -278,6 +292,12 @@ export function CollectionEditor({
     return [...seen.values()]
   }, [state.folders, mergedOptionByID])
 
+  // Catalogs the next Save moves out of this collection into the library.
+  const movingToLibrary = Object.entries(state.catalogEdits)
+    .filter(([, edit]) => edit.moveToLibrary)
+    .map(([id]) => localCatalogs.get(id))
+    .filter((catalog) => catalog !== undefined)
+
   const errors = useMemo(
     () => validateCollectionForm(state, mergedAccessibleIDs),
     [state, mergedAccessibleIDs],
@@ -344,6 +364,19 @@ export function CollectionEditor({
       setState((previous) => withCatalogEdit(previous, saved, formState))
     }
     setNestedCatalogID(null)
+  }
+
+  /** Undo on a staged Move to library: the catalog goes back into this
+   *  collection in `localCatalogs`, and its pending edit keeps whatever else
+   *  the nested save changed, or goes once nothing else is left
+   *  (`withCatalogEdit`). */
+  function undoMoveToLibrary(catalogID: string) {
+    const catalog = localCatalogs.get(catalogID)
+    const saved = savedCatalogs.get(catalogID)
+    if (!catalog || !saved) return
+    const restored = { ...catalog, collection_id: saved.collection_id }
+    rememberCatalog(restored)
+    setState((previous) => withCatalogEdit(previous, saved, formFromCatalog(restored)))
   }
 
   /** "Copy" from the Add-catalogs picker: a fresh scoped catalog staged
@@ -500,15 +533,29 @@ export function CollectionEditor({
     showErrors ? state.folders.filter((f) => errors.folders[f.key]).map((f) => f.key) : [],
   )
 
+  const [confirmingUnlink, setConfirmingUnlink] = useState(false)
+
+  // Resolves every draft catalog into its inline `new` spec here, right
+  // before it reaches the wire — `localCatalogs` is this editor's own
+  // state, which `Workspace.tsx`'s `onSave` has no way to see.
+  function save(finalState: CollectionFormState) {
+    onSave(toCollectionPayload(finalState, localCatalogs))
+  }
+
   function trySubmit() {
     if (errorCount > 0) {
       const badFolder = state.folders.find((f) => errors.folders[f.key])
       if (badFolder) setSelectedFolderKey(badFolder.key)
     }
-    // Resolves every draft catalog into its inline `new` spec here, right
-    // before it reaches the wire — `localCatalogs` is this editor's own
-    // state, which `Workspace.tsx`'s `onSave` has no way to see.
-    submit(errorCount, (finalState) => onSave(toCollectionPayload(finalState, localCatalogs)))
+    submit(errorCount, (finalState) => {
+      if (linked && changesContent(baseline, finalState)) setConfirmingUnlink(true)
+      else save(finalState)
+    })
+  }
+
+  function confirmUnlink() {
+    setConfirmingUnlink(false)
+    save(state)
   }
 
   const roleLabels = showErrors
@@ -586,6 +633,7 @@ export function CollectionEditor({
       <div className="ed-container">
         <div className="ed ed-tv">
           <div className="ed-form">
+            {linked && <LinkedBanner noun="collection" />}
             <div className="cr is-field">
               <label htmlFor="col-title" className="cr-role type-eyebrow">
                 Title
@@ -748,6 +796,10 @@ export function CollectionEditor({
               <RemovalWarning names={willDelete.map((f) => f.title.trim() || 'an untitled folder')} onUndo={undoRemoving} />
             )}
 
+            {movingToLibrary.map((catalog) => (
+              <StagedMove key={catalog.id} name={catalog.name} onUndo={() => undoMoveToLibrary(catalog.id)} />
+            ))}
+
             {selectedFolder === undefined ? (
               <div className="cr-indent py-4">
                 <p className="ed-note m-0">No folders yet. Add one, then put catalogs in it.</p>
@@ -900,6 +952,14 @@ export function CollectionEditor({
         onCreate={createNewInCollection}
         onClose={() => setNamingNewFolderKey(null)}
       />
+
+      <ConfirmUnlink
+        open={confirmingUnlink}
+        noun="collection"
+        name={state.title.trim() || 'this collection'}
+        onConfirm={confirmUnlink}
+        onCancel={() => setConfirmingUnlink(false)}
+      />
     </EditorShell>
   )
 }
@@ -926,6 +986,27 @@ function RemovalWarning({
         <span className="text-[14px] leading-[20px]">
           Saving deletes {names.length === 1 ? 'the folder' : 'the folders'} {joinQuoted(names)}.
           Copies others have taken keep theirs.
+        </span>
+        <button type="button" onClick={onUndo} className="btn-quiet h-auto px-0 text-[13px]">
+          Undo
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** A staged Move to library, stated the way `RemovalWarning` states a folder
+ *  removal: what the next Save does, with an Undo, since nothing has been
+ *  written yet. Not a danger — the catalog survives, in the library. */
+function StagedMove({ name, onUndo }: { name: string; onUndo: () => void }) {
+  return (
+    <div className="cr">
+      <span className="cr-role flex self-start justify-end pt-0.5 max-[640px]:justify-start">
+        <Icon icon={TriangleAlert} size={16} className="text-dim" />
+      </span>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-[14px] leading-[20px]">
+          Saving moves “{name}” out of this collection and into your library.
         </span>
         <button type="button" onClick={onUndo} className="btn-quiet h-auto px-0 text-[13px]">
           Undo

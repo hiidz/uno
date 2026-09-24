@@ -7,10 +7,14 @@ export {
   deleteCatalog,
   deleteCollection,
   duplicateCollection,
+  duplicateCommunityCatalog,
+  duplicateCommunityCollection,
   takeCatalog,
   takeCollection,
   updateCatalog,
   updateCollection,
+  updateTakenCatalog,
+  updateTakenCollection,
 } from './mutations'
 export type {
   CatalogPayload,

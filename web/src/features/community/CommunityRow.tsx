@@ -1,7 +1,10 @@
 import { useEffect, useId, useMemo, type ReactNode } from 'react'
+import { MoreHorizontal } from 'lucide-react'
+import { DropdownMenu } from 'radix-ui'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
 import { tmdbKind } from '@/api'
 import { InfoTip } from '@/components/fields'
+import { Icon } from '@/components/Icon'
 import { RecipePreview } from '@/features/catalogs/RecipePreview'
 import { CollectionPreview } from '@/features/collections/CollectionPreview'
 import { formFromCollection } from '@/features/collections/collectionForm'
@@ -9,6 +12,13 @@ import { buildRefOptions, indexRefOptions } from '@/features/collections/refs'
 import { describeCollection } from '@/features/library/collection'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
+import type { CommunityAction } from './useCommunityMutations'
+
+const PENDING_LABEL: Record<CommunityAction, string> = {
+  take: 'Taking…',
+  update: 'Updating…',
+  duplicate: 'Duplicating…',
+}
 
 /**
  * One community row: name, then either "Movies"/"Series" or a folder count in
@@ -17,29 +27,46 @@ import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
  * provenance: the closed graph means nothing here can be attributed without
  * becoming a live pointer.
  *
- * **Taking again is allowed.** `taken` only marks that a copy exists, so the
- * button never disables — a second press makes a second, independent copy.
+ * **One main button, three states**, from the server's own flags: Take; a
+ * disabled "✓ Taken" while this profile holds a linked copy (the server
+ * answers a second Take with a 409); and Update while that copy is behind the
+ * original. Duplicate, an unlinked copy that is always allowed, waits behind
+ * "⋯", following the collection editor's `RefMenu`.
  */
 export function CommunityRow({
   name,
   summary,
   taken,
-  taking,
+  updateAvailable,
+  pending,
   previewOpen,
   onTogglePreview,
   onTake,
+  onUpdate,
+  onDuplicate,
   preview,
 }: {
   name: string
   summary: string
   taken: boolean
-  taking: boolean
+  updateAvailable: boolean
+  /** The action in flight on this row, if any. Every action waits for it. */
+  pending: CommunityAction | undefined
   previewOpen: boolean
   onTogglePreview: () => void
   onTake: () => void
+  onUpdate: () => void
+  onDuplicate: () => void
   preview: ReactNode
 }) {
   const previewPanelID = useId()
+  const label = pending
+    ? PENDING_LABEL[pending]
+    : updateAvailable
+      ? 'Update'
+      : taken
+        ? '✓ Taken'
+        : 'Take'
 
   return (
     <div className="border-line border-b py-2.5">
@@ -59,23 +86,42 @@ export function CommunityRow({
           {previewOpen ? 'Hide preview' : 'Preview'}
         </button>
 
-        {taken && (
-          <span className="type-data text-dimmer shrink-0 text-[10.5px]">✓ Taken</span>
-        )}
-
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
-            onClick={onTake}
-            disabled={taking}
+            onClick={updateAvailable ? onUpdate : onTake}
+            disabled={pending !== undefined || (taken && !updateAvailable)}
             className="btn-secondary btn-sm"
           >
-            {taking ? 'Taking…' : 'Take'}
+            {label}
           </button>
           <InfoTip
             label="Take"
-            text="Taking makes an independent copy. Nothing you do to it reaches this original, and you can take it again anytime."
+            text="Taking makes a copy that stays linked to this one: when its owner changes it, Update brings your copy in line. Editing your copy unlinks it. Nothing you do to your copy reaches this one. Duplicate, under ⋯, makes a copy that is never linked."
           />
+          <DropdownMenu.Root modal={false}>
+            <DropdownMenu.Trigger
+              aria-label={`More for ${name}`}
+              className="tap text-dimmer hover:bg-line hover:text-ink grid h-8 w-8 shrink-0 place-items-center rounded-[2px] transition-colors"
+            >
+              <Icon icon={MoreHorizontal} size={16} />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={4}
+                className="bg-raised-hi border-line-hi z-40 flex w-56 flex-col gap-0.5 rounded-[2px] border p-1.5"
+              >
+                <DropdownMenu.Item
+                  disabled={pending !== undefined}
+                  onSelect={onDuplicate}
+                  className="hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent text-ink flex items-center rounded-[2px] px-2 py-2 text-left text-[12px] transition-colors"
+                >
+                  Duplicate
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       </div>
 

@@ -6,12 +6,14 @@ import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api
 import { Icon } from '@/components/Icon'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
+import { ConfirmUnlink, LinkedBanner } from '@/features/builder/LinkedCopy'
 import { useEditorForm } from '@/features/builder/useEditorForm'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import { pluralCount } from '@/lib/plural'
 import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
+  changesContent,
   emptyForm,
   isCollectionRow,
   isSameCatalog,
@@ -70,7 +72,9 @@ import {
  * **There is no read-only "imported" view.** The closed-graph sharing model
  * has no such state: a taken catalog is a private copy you fully own from
  * the moment it's created, not a live pointer that could ever need a
- * read-only screen. Every row this editor opens is yours.
+ * read-only screen. Every row this editor opens is yours. While a taken
+ * copy is still `linked`, a banner says so, and a save that would unlink it
+ * asks first.
  *
  * **`type` is always locked.** Duplicate is the only thing that ever creates
  * a catalog of a different type, and it does so by copying the source's type
@@ -91,6 +95,7 @@ export function CatalogEditor({
   onDelete,
   onDirtyChange,
   canMoveToLibrary = true,
+  linked = false,
 }: {
   initial: CatalogFormState | null
   genres: { movie: Genre[]; tv: Genre[] }
@@ -113,6 +118,10 @@ export function CatalogEditor({
    *  is created scoped when the collection saves, so there is nothing to move
    *  until then. */
   canMoveToLibrary?: boolean
+  /** A library catalog still linked to the community catalog it was taken
+   *  from: shows the linked banner, and a save that changes anything besides
+   *  Public asks first (`ConfirmUnlink`). */
+  linked?: boolean
 }) {
   const baseline = useMemo(() => initial ?? emptyForm(), [initial])
   const { state, setState, showErrors, revealErrors, submit } = useEditorForm(
@@ -246,13 +255,23 @@ export function CatalogEditor({
     requestAnimationFrame(() => document.getElementById(target)?.focus())
   }
 
+  const [confirmingUnlink, setConfirmingUnlink] = useState(false)
+
   function trySubmit() {
     if (errorCount > 0) {
       revealErrors()
       focusFirstError()
       return
     }
-    submit(errorCount, onSave)
+    submit(errorCount, (finalState) => {
+      if (linked && changesContent(baseline, finalState)) setConfirmingUnlink(true)
+      else onSave(finalState)
+    })
+  }
+
+  function confirmUnlink() {
+    setConfirmingUnlink(false)
+    onSave(state)
   }
 
   const sections = buildSections({
@@ -323,6 +342,7 @@ export function CatalogEditor({
       <div className="ed-container">
         <div className="ed ed-results">
           <div className="ed-form">
+            {linked && <LinkedBanner noun="catalog" />}
             <div className="cr is-field">
               <label htmlFor="cat-name" className="cr-role type-eyebrow">
                 Name
@@ -457,6 +477,14 @@ export function CatalogEditor({
           <RecipePreview preview={preview} type={state.type} invalid={recipeInvalid} onRun={runPreview} />
         </div>
       </div>
+
+      <ConfirmUnlink
+        open={confirmingUnlink}
+        noun="catalog"
+        name={state.name.trim() || 'this catalog'}
+        onConfirm={confirmUnlink}
+        onCancel={() => setConfirmingUnlink(false)}
+      />
     </EditorShell>
   )
 }

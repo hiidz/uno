@@ -453,3 +453,11 @@ export function toCollectionPayload(
 export function isSameCollection(a: CollectionFormState, b: CollectionFormState): boolean {
   return JSON.stringify(toCollectionPayload(a)) === JSON.stringify(toCollectionPayload(b))
 }
+
+/** True when saving `state` over `baseline` changes anything besides Public —
+ *  pending `catalogEdits` included, a staged Move to library among them: what
+ *  the editor asks about before saving a linked collection. Which saves
+ *  actually unlink is the server's call; this only decides whether to ask. */
+export function changesContent(baseline: CollectionFormState, state: CollectionFormState): boolean {
+  return !isSameCollection({ ...baseline, isPublic: state.isPublic }, state)
+}

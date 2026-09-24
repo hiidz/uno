@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { ProfileNotSelectedError } from '@/api'
-import type { CommunityCatalog, CommunityCollection } from '@/api'
+import { ApiError, ProfileNotSelectedError } from '@/api'
 import { Segmented } from '@/components/fields'
 import { ListState } from '@/components/ListState'
 import { useLibrary } from '@/features/library/useLibrary'
@@ -13,7 +12,7 @@ import {
   collectionSummary,
 } from './CommunityRow'
 import { useCommunityCatalogs, useCommunityCollections } from './useCommunity'
-import { useCommunityMutations } from './useCommunityMutations'
+import { isStale, useCommunityMutations, type CommunityAction } from './useCommunityMutations'
 
 type Kind = 'catalogs' | 'collections'
 type Sort = 'name' | 'newest'
@@ -23,8 +22,8 @@ type Sort = 'name' | 'newest'
  * and copied rather than referenced — the closed-graph model's only path
  * across an owner boundary. No author, no handle, no "copied from" line
  * anywhere here: that provenance is retired,
- * not merely hidden — `taken_from` exists only so this profile's own copies
- * can say "you already took this."
+ * not merely hidden — `taken_from` exists only to link this profile's own
+ * copy to its original, so a row can say "✓ Taken" or offer Update.
  *
  * `useLibrary` is called here only for its genre lookups, which
  * `describeRecipe`/`buildRefOptions` need to render a recipe or a folder's
@@ -43,9 +42,9 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<Sort>('name')
   const [previewID, setPreviewID] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ text: string; tone: 'success' | 'danger' } | null>(null)
-  const [pendingCatalogIDs, setPendingCatalogIDs] = useState<ReadonlySet<string>>(new Set())
-  const [pendingCollectionIDs, setPendingCollectionIDs] = useState<ReadonlySet<string>>(new Set())
+  const [toast, setToast] = useState<Toast | null>(null)
+  // Keyed by the original's id; catalog and collection ids never collide.
+  const [pending, setPending] = useState<ReadonlyMap<string, CommunityAction>>(new Map())
 
   // Auto-dismissing, unlike the push outcome strip: nothing here needs a
   // decision, so there is nothing worth keeping on screen once it's been read.
@@ -70,50 +69,23 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
     setPreviewID((current) => (current === id ? null : id))
   }
 
-  // Takes on different rows can overlap, so each take settles through its own
+  // Actions on different rows can overlap, so each settles through its own
   // mutateAsync promise: callbacks passed to mutate() run only for the latest
-  // call, which would leave an earlier row stuck on "Taking…".
-  function take(catalog: CommunityCatalog) {
-    setPendingCatalogIDs((ids) => new Set(ids).add(catalog.id))
-    mutations.takeCatalog
-      .mutateAsync(catalog.id)
+  // call, which would leave an earlier row stuck on "Taking…". The promise
+  // settles once the lists have refetched (`useCommunityMutations`), so the
+  // toast arrives with the row already showing the outcome.
+  function run(rowKind: Kind, id: string, action: CommunityAction) {
+    setPending((current) => new Map(current).set(id, action))
+    mutations[rowKind][action]
+      .mutateAsync(id)
       .then(
-        () =>
-          setToast({
-            text: catalog.taken ? 'Added another copy to your catalogs' : 'Added to your catalogs',
-            tone: 'success',
-          }),
-        (error: Error) =>
-          setToast({ text: `Couldn't take this catalog: ${error.message}`, tone: 'danger' }),
+        () => setToast({ text: DONE[action][rowKind], tone: 'success' }),
+        (error: Error) => setToast(failure(action, rowKind, error)),
       )
       .finally(() =>
-        setPendingCatalogIDs((ids) => {
-          const next = new Set(ids)
-          next.delete(catalog.id)
-          return next
-        }),
-      )
-  }
-
-  function takeCollection(collection: CommunityCollection) {
-    setPendingCollectionIDs((ids) => new Set(ids).add(collection.id))
-    mutations.takeCollection
-      .mutateAsync(collection.id)
-      .then(
-        () =>
-          setToast({
-            text: collection.taken
-              ? 'Added another copy to your collections'
-              : 'Added to your collections',
-            tone: 'success',
-          }),
-        (error: Error) =>
-          setToast({ text: `Couldn't take this collection: ${error.message}`, tone: 'danger' }),
-      )
-      .finally(() =>
-        setPendingCollectionIDs((ids) => {
-          const next = new Set(ids)
-          next.delete(collection.id)
+        setPending((current) => {
+          const next = new Map(current)
+          next.delete(id)
           return next
         }),
       )
@@ -133,8 +105,9 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
       <div className="flex flex-col gap-1">
         <h1 className="type-display m-0 text-[17px] lg:text-[21px]">Community</h1>
         <p className="type-data text-dimmer m-0 text-[11px]">
-          Take a copy of anything shared here. It's yours from then on — nothing you do to it
-          reaches the original, and nothing that happens to the original reaches your copy.
+          Take a copy of anything shared here. Nothing you do to it reaches the original. When
+          the owner changes theirs, Update brings your copy in line, as long as you haven't
+          edited it.
         </p>
       </div>
 
@@ -209,10 +182,13 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
                 name={catalog.name}
                 summary={catalogSummary(catalog)}
                 taken={catalog.taken}
-                taking={pendingCatalogIDs.has(catalog.id)}
+                updateAvailable={catalog.update_available}
+                pending={pending.get(catalog.id)}
                 previewOpen={previewID === catalog.id}
                 onTogglePreview={() => togglePreview(catalog.id)}
-                onTake={() => take(catalog)}
+                onTake={() => run('catalogs', catalog.id, 'take')}
+                onUpdate={() => run('catalogs', catalog.id, 'update')}
+                onDuplicate={() => run('catalogs', catalog.id, 'duplicate')}
                 preview={<CommunityCatalogPreview catalog={catalog} />}
               />
             ))
@@ -222,16 +198,50 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
                 name={collection.title}
                 summary={collectionSummary(collection)}
                 taken={collection.taken}
-                taking={pendingCollectionIDs.has(collection.id)}
+                updateAvailable={collection.update_available}
+                pending={pending.get(collection.id)}
                 previewOpen={previewID === collection.id}
                 onTogglePreview={() => togglePreview(collection.id)}
-                onTake={() => takeCollection(collection)}
+                onTake={() => run('collections', collection.id, 'take')}
+                onUpdate={() => run('collections', collection.id, 'update')}
+                onDuplicate={() => run('collections', collection.id, 'duplicate')}
                 preview={<CommunityCollectionPreview collection={collection} genres={genres} />}
               />
             ))}
       </ListState>
     </section>
   )
+}
+
+interface Toast {
+  text: string
+  tone: 'success' | 'danger'
+}
+
+const DONE: Record<CommunityAction, Record<Kind, string>> = {
+  take: { catalogs: 'Added to your catalogs', collections: 'Added to your collections' },
+  update: { catalogs: 'Updated your copy', collections: 'Updated your copy' },
+  duplicate: { catalogs: 'Duplicated to your catalogs', collections: 'Duplicated to your collections' },
+}
+
+/** The toast for a failed action. A stale failure (`isStale`) has already
+ *  refreshed the lists, so the two answers that mean "the row was behind" say
+ *  what the refreshed row now shows rather than reporting an error: a 409
+ *  from Take means the copy exists, and a 409 or 404 from Update means the
+ *  copy is no longer linked. */
+function failure(action: CommunityAction, rowKind: Kind, error: Error): Toast {
+  const noun = rowKind === 'catalogs' ? 'catalog' : 'collection'
+  if (action === 'take' && error instanceof ApiError && error.status === 409) {
+    return { text: 'Already taken', tone: 'success' }
+  }
+  if (action === 'update' && isStale(error)) {
+    return {
+      text: "Your copy was edited, so it's no longer linked. Take it again to get the latest",
+      tone: 'danger',
+    }
+  }
+  const what = action === 'update' ? 'your copy' : `this ${noun}`
+  return { text: `Couldn't ${action} ${what}: ${error.message}`, tone: 'danger' }
 }
 
 function filterByName<T>(rows: T[], name: (row: T) => string, query: string): T[] {

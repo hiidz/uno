@@ -34,6 +34,10 @@ export interface Catalog {
   collection_id: string | null
   created_at: string
   updated_at: string
+  /** True for a listed catalog still linked to the community catalog it was
+   *  taken from: Community offers it Update, and a save that changes its name
+   *  or recipe unlinks it. Always false on a catalog inside a collection. */
+  linked: boolean
 }
 
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
@@ -86,6 +90,10 @@ export interface Collection {
    *  never pushed. A collection is pending re-push when `version !==
    *  pushed_version`. */
   pushed_version: number | null
+  /** True while this collection is linked to the community collection it was
+   *  taken from: Community offers it Update, and a save that changes anything
+   *  besides `is_public` unlinks it. */
+  linked: boolean
   folders: Folder[] | null
   /** Every catalog this collection's folders reference, listed or scoped —
    *  so the editor never needs the library to render a folder. */
@@ -106,16 +114,20 @@ export interface SelectedCatalog extends Catalog {
 }
 
 /** `GET /api/p/{i}/community/catalogs` — a public catalog owned by someone
- *  else, one row per distinct recipe, plus whether this profile has already
- *  taken a copy. */
+ *  else, one row per distinct recipe. `taken` is true while this profile
+ *  holds a linked copy of it, and `update_available` while that copy is
+ *  behind it. */
 export interface CommunityCatalog extends Catalog {
   taken: boolean
+  update_available: boolean
 }
 
 /** `GET /api/p/{i}/community/collections` — a public collection owned by
- *  someone else, plus whether this profile has already taken a copy. */
+ *  someone else. `taken` is true while this profile holds a linked copy of
+ *  it, and `update_available` while that copy is behind it. */
 export interface CommunityCollection extends Collection {
   taken: boolean
+  update_available: boolean
 }
 
 export interface Genre {

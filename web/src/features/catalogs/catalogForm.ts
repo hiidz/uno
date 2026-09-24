@@ -338,6 +338,13 @@ export function isSameCatalog(a: CatalogFormState, b: CatalogFormState): boolean
   return JSON.stringify(toPayload(a)) === JSON.stringify(toPayload(b))
 }
 
+/** True when saving `state` over `baseline` changes anything besides Public:
+ *  what the editor asks about before saving a linked catalog. Which saves
+ *  actually unlink is the server's call; this only decides whether to ask. */
+export function changesContent(baseline: CatalogFormState, state: CatalogFormState): boolean {
+  return !isSameCatalog({ ...baseline, isPublic: state.isPublic }, state)
+}
+
 /** Genre, company and keyword ids are each stored as one string, comma-joined
  *  for AND and pipe-joined for OR. The form edits them as a list plus a join
  *  mode. A single id has no separator, so it parses as AND. */

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Catalog } from '@/api'
 import {
   MAX_ENTITY_IDS,
+  changesContent,
   emptyForm,
   formFromCatalog,
   paramsString,
@@ -112,6 +113,19 @@ describe('source mode', () => {
     const sent = JSON.parse(paramsString(state)) as Record<string, unknown>
     expect(sent).toMatchObject({ with_genres: '18' })
     expect(sent).not.toHaveProperty('with_collection')
+  })
+})
+
+describe('changesContent', () => {
+  const baseline: CatalogFormState = { ...emptyForm('movie'), name: 'Row', params: { with_genres: '28' } }
+
+  it('ignores a Public toggle on its own', () => {
+    expect(changesContent(baseline, { ...baseline, isPublic: true })).toBe(false)
+  })
+
+  it('counts a rename or a recipe change', () => {
+    expect(changesContent(baseline, { ...baseline, name: 'Renamed' })).toBe(true)
+    expect(changesContent(baseline, { ...baseline, isPublic: true, params: { with_genres: '18' } })).toBe(true)
   })
 })
 

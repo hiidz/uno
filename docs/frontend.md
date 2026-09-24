@@ -317,7 +317,12 @@ Other decisions worth keeping:
   it can't be shared while scoped (the schema's own CHECK), so the Switch is replaced by a note
   and a "Move to library" button that clears `collectionID` — promote, always allowed, and like
   every edit made in this nested editor it takes effect when the collection is saved (a
-  `catalog_edits` entry with `move_to_library`). This editor never offers the other direction (demote):
+  `catalog_edits` entry with `move_to_library`). Once staged, the catalog reads as listed in every
+  folder, whose rows offer no Edit to reopen it, so `CollectionEditor` states each staged move as a
+  standing note above the folders ("Saving moves … into your library", `StagedMove`) with its own
+  Undo. Undo puts the catalog back in `localCatalogs` with its `collection_id` and re-reads it
+  through `withCatalogEdit`, so a move that was the only change leaves the form clean and a rename
+  made alongside it survives. This editor never offers the other direction (demote):
   it's only ever opened on a scoped row from inside `CollectionEditor`, which is where "copy into
   this collection" and "new inside this collection" already cover getting one scoped in the first
   place. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
@@ -734,7 +739,8 @@ button.
 copied rather than referenced. The closed-graph model's only path across an owner boundary:
 a folder can only ever reference your own listed catalogs (see
 "Library rail" above), so this tab never lets you *use* another owner's row live, only Take a
-private copy of it.
+private copy of it. A taken copy stays linked to its original until you edit it, and while it
+does, Update brings it in line with the owner's changes on request.
 
 - **`CommunityView.tsx`** owns the Catalogs / Collections `Segmented`, a name-only search field,
   and a Name / Newest `Select` — pure client-side filtering and sorting over
@@ -746,10 +752,13 @@ private copy of it.
   third network round trip.
 - **No author, no handle, no "copied from" line anywhere here** —
   that provenance is retired, not merely hidden. `taken_from` links a profile's copy to its
-  original (see "A Take is a linked copy" in `docs/data-model.md`), which surfaces here as a
-  plain "✓ Taken" mark beside the row's Take button, from the server's own `taken` field. The
-  button stays enabled once a row is taken, but the server refuses a second Take of a source the
-  profile holds a linked copy of, with a 409 the view shows as a failed take.
+  original (see "A Take is a linked copy" in `docs/data-model.md`), which surfaces here only
+  through the row's main button, driven by the server's own `taken` and `update_available`:
+  **Take**; a disabled **✓ Taken** while the profile holds a linked copy (the server refuses a
+  second Take with a 409); or **Update** while that copy is behind the original. **Duplicate** —
+  the same copy with no link, always allowed — waits behind a "⋯" menu built like the collection
+  editor's `RefMenu` (Radix `DropdownMenu`). While any of the three is in flight on a row, the
+  main button is disabled and says so ("Taking…", "Updating…", "Duplicating…").
 - **Preview reuses the editors' own preview components, not a new one.** A catalog row's Preview
   mounts `CommunityCatalogPreview`, which is `RecipePreview` run over the row's own stored
   `type`/`params` via `useRecipeTiles` — the same on-request, one-TMDB-page component the catalog
@@ -760,11 +769,30 @@ private copy of it.
   library — the community row already carries every catalog its folders reference, listed or
   scoped on the source side, so nothing resolves as unavailable the way a library-sourced ref
   picker's accessible set would for someone else's catalog.
-- **Take invalidates both the library and the community lists** (`useCommunityMutations.ts`) —
-  the taken copy has to appear in "Mine" and the source row's `taken` flag has to flip, both from
-  one mutation. A small auto-dismissing strip (2.5s) reports "Added to your catalogs" /
-  "Added to your collections"; unlike the push outcome strip this never needs a decision, so
-  nothing about it persists past being read.
+- **Take, Update and Duplicate refresh both the library and the community lists**
+  (`useCommunityMutations.ts`) — a copy appears or changes in "Mine" and the original's flags
+  flip, both from one mutation — and each mutation settles only once those refetches have landed,
+  so a row never offers Take again for a copy that already exists. The owned-list keys prefix the
+  selection keys, so the selections refetch too, which a collection Update needs because it bumps
+  `version`. A small auto-dismissing strip (2.5s) reports the outcome: "Added to your
+  catalogs"/"collections", "Updated your copy", "Duplicated to your catalogs"/"collections";
+  unlike the push outcome strip this never needs a decision, so nothing about it persists past
+  being read.
+- **A 404 or a 409 means the row was stale** (`isStale`): the original went private or was
+  deleted, a linked copy already exists, or the copy was unlinked by a save. The mutation
+  refreshes the same lists before it rejects, then the strip says what the refreshed row shows: a
+  409 from Take is "Already taken", and a 409 or a 404 from Update is "Your copy was edited, so
+  it's no longer linked. Take it again to get the latest". Any other failure reads "Couldn't …"
+  with the server's message.
+- **The editors mark a linked copy and ask before unlinking it.** `Workspace` passes the open
+  library row's `linked` to `CatalogEditor` and `CollectionEditor`, which then show a "Linked"
+  banner as their first row (`LinkedBanner`, `features/builder/LinkedCopy.tsx`) — the
+  collection's also covers the catalogs edited inside it, which have no link of their own. Saving
+  a linked copy with anything other than Public changed opens `ConfirmUnlink` ("Save and
+  unlink"); for a collection, pending `catalog_edits` count, a staged Move to library included
+  (`changesContent` in each form module). The client only decides whether to ask — which saves
+  unlink is the server's call. The save refetches the library and the community lists, so the
+  row's `linked` is current the next time an editor opens on it.
 - **The tab switch is a `Segmented` in `Builder.tsx`'s header**, not a route — `/configure` stays
   one URL. Above `lg` it sits inline in the header row; below `lg` it drops to its own row
   underneath, because the header row's height is measured to fit exactly what it holds at phone

@@ -2,18 +2,51 @@ import { sendJSON } from './http'
 import type { Catalog, CatalogType, Collection, TileShape } from './types'
 
 /** Deep-copies a community catalog into a new, private, listed catalog owned
- *  by this profile — `POST .../community/catalogs/{id}/take`. 404s if the
- *  source isn't public or is already owned by this profile. */
+ *  by this profile and linked to the original —
+ *  `POST .../community/catalogs/{id}/take`. 404s if the source isn't public or
+ *  is already owned by this profile, and 409s if this profile already holds a
+ *  linked copy of it. */
 export function takeCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/community/catalogs/${catalogID}/take`)
 }
 
 /** Deep-copies a community collection — its folders and every catalog they
- *  reference — into a new collection owned by this profile —
- *  `POST .../community/collections/{id}/take`. 404s if the source isn't
- *  public or is already owned by this profile. */
+ *  reference — into a new collection owned by this profile and linked to the
+ *  original — `POST .../community/collections/{id}/take`. 404s if the source
+ *  isn't public or is already owned by this profile, and 409s if this profile
+ *  already holds a linked copy of it. */
 export function takeCollection(profileIndex: number, collectionID: string): Promise<Collection> {
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/community/collections/${collectionID}/take`)
+}
+
+/** Rewrites this profile's linked copy of a community catalog from the
+ *  original's current name and recipe —
+ *  `POST .../community/catalogs/{id}/update`, where `id` is the original's.
+ *  404s if the original isn't public or no linked copy exists, and 409s, after
+ *  unlinking it, if the copy was edited since it was last in step. */
+export function updateTakenCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/community/catalogs/${catalogID}/update`)
+}
+
+/** Rewrites this profile's linked copy of a community collection from the
+ *  original's current tree, keeping the copy's id, `is_public` and home
+ *  placement and bumping its `version` —
+ *  `POST .../community/collections/{id}/update`. Fails the same ways as
+ *  `updateTakenCatalog`. */
+export function updateTakenCollection(profileIndex: number, collectionID: string): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/community/collections/${collectionID}/update`)
+}
+
+/** Take without the link: a private, listed copy of a community catalog that
+ *  Community never offers Update for — `POST .../community/catalogs/{id}/duplicate`. */
+export function duplicateCommunityCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/community/catalogs/${catalogID}/duplicate`)
+}
+
+/** Take without the link, for a collection —
+ *  `POST .../community/collections/{id}/duplicate`. */
+export function duplicateCommunityCollection(profileIndex: number, collectionID: string): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/community/collections/${collectionID}/duplicate`)
 }
 
 /**
