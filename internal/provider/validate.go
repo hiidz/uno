@@ -37,74 +37,107 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 		return err
 	}
 
-	// Both recipe types embed TMDBCommonParams, and every field checked here
-	// but with_collection and with_networks lives on it, so decoding into it
-	// covers movie and tv alike. Those two are decoded alongside for either
-	// type, so a recipe of the other type carrying one is rejected rather
-	// than silently ignored.
-	var p struct {
-		TMDBCommonParams
-		WithCollection string `json:"with_collection"`
-		WithNetworks   string `json:"with_networks"`
-	}
+	var p vocabParams
 	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
 		return fmt.Errorf("%w: decode %s params: %w", ErrInvalidParams, catalogType, err)
 	}
 
-	if p.WithGenres != "" || p.WithoutGenres != "" {
-		genres, err := c.Genres(ctx, catalogType)
-		if err != nil {
-			return err
-		}
-		allowed := make(map[int]bool, len(genres))
-		for _, g := range genres {
-			allowed[g.ID] = true
-		}
-		if err := checkIDList("with_genres", p.WithGenres, allowed, "genre"); err != nil {
-			return err
-		}
-		if err := checkIDList("without_genres", p.WithoutGenres, allowed, "genre"); err != nil {
-			return err
-		}
-	}
-
-	if p.WithOriginalLanguage != "" {
-		languages, err := c.Languages(ctx)
-		if err != nil {
-			return err
-		}
-		if !slices.ContainsFunc(languages, func(l Language) bool { return l.ISO6391 == p.WithOriginalLanguage }) {
-			return fmt.Errorf("%w: with_original_language %q is not a TMDB language code", ErrInvalidParams, p.WithOriginalLanguage)
-		}
-	}
-
-	if p.WatchRegion != "" {
-		regions, err := c.WatchRegions(ctx)
-		if err != nil {
-			return err
-		}
-		if !slices.ContainsFunc(regions, func(r WatchRegion) bool { return r.ISO31661 == p.WatchRegion }) {
-			return fmt.Errorf("%w: watch_region %q is not a TMDB watch region", ErrInvalidParams, p.WatchRegion)
-		}
-	}
-
-	if p.WithWatchProviders != "" {
-		// validate() already requires WatchRegion alongside this field, so
-		// the list is scoped to the region the recipe actually queries —
-		// a provider id is only meaningful within one.
-		providers, err := c.WatchProviders(ctx, catalogType, p.WatchRegion)
-		if err != nil {
-			return err
-		}
-		allowed := make(map[int]bool, len(providers))
-		for _, wp := range providers {
-			allowed[wp.ProviderID] = true
-		}
-		if err := checkIDList("with_watch_providers", p.WithWatchProviders, allowed, "watch provider"); err != nil {
+	for _, check := range []func(context.Context, string, vocabParams) error{
+		c.validateGenres,
+		c.validateLanguage,
+		c.validateWatchRegion,
+		c.validateWatchProviders,
+		c.validateCompaniesAndKeywords,
+		c.validateCollection,
+		c.validateNetworks,
+		c.validateCertifications,
+	} {
+		if err := check(ctx, catalogType, p); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
+// vocabParams is the slice of a recipe ValidateParams checks. Both recipe
+// types embed TMDBCommonParams, and every field checked here but
+// with_collection and with_networks lives on it, so decoding into it covers
+// movie and tv alike. Those two are decoded alongside for either type, so a
+// recipe of the other type carrying one is rejected rather than silently
+// ignored.
+type vocabParams struct {
+	TMDBCommonParams
+	WithCollection string `json:"with_collection"`
+	WithNetworks   string `json:"with_networks"`
+}
+
+// validateGenres checks with_genres and without_genres against TMDB's genre
+// list for the catalog type.
+func (c *TMDBClient) validateGenres(ctx context.Context, catalogType string, p vocabParams) error {
+	if p.WithGenres == "" && p.WithoutGenres == "" {
+		return nil
+	}
+	genres, err := c.Genres(ctx, catalogType)
+	if err != nil {
+		return err
+	}
+	allowed := idSet(genres, func(g Genre) int { return g.ID })
+	if err := checkIDList("with_genres", p.WithGenres, allowed, "genre"); err != nil {
+		return err
+	}
+	return checkIDList("without_genres", p.WithoutGenres, allowed, "genre")
+}
+
+// validateLanguage checks with_original_language against TMDB's language
+// codes.
+func (c *TMDBClient) validateLanguage(ctx context.Context, _ string, p vocabParams) error {
+	if p.WithOriginalLanguage == "" {
+		return nil
+	}
+	languages, err := c.Languages(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(languages, func(l Language) bool { return l.ISO6391 == p.WithOriginalLanguage }) {
+		return fmt.Errorf("%w: with_original_language %q is not a TMDB language code", ErrInvalidParams, p.WithOriginalLanguage)
+	}
+	return nil
+}
+
+// validateWatchRegion checks watch_region against TMDB's watch regions.
+func (c *TMDBClient) validateWatchRegion(ctx context.Context, _ string, p vocabParams) error {
+	if p.WatchRegion == "" {
+		return nil
+	}
+	regions, err := c.WatchRegions(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(regions, func(r WatchRegion) bool { return r.ISO31661 == p.WatchRegion }) {
+		return fmt.Errorf("%w: watch_region %q is not a TMDB watch region", ErrInvalidParams, p.WatchRegion)
+	}
+	return nil
+}
+
+// validateWatchProviders checks with_watch_providers against TMDB's
+// providers for the recipe's watch_region. validate() already requires
+// WatchRegion alongside this field, so the list is scoped to the region the
+// recipe actually queries — a provider id is only meaningful within one.
+func (c *TMDBClient) validateWatchProviders(ctx context.Context, catalogType string, p vocabParams) error {
+	if p.WithWatchProviders == "" {
+		return nil
+	}
+	providers, err := c.WatchProviders(ctx, catalogType, p.WatchRegion)
+	if err != nil {
+		return err
+	}
+	allowed := idSet(providers, func(wp WatchProvider) int { return wp.ProviderID })
+	return checkIDList("with_watch_providers", p.WithWatchProviders, allowed, "watch provider")
+}
+
+// validateCompaniesAndKeywords looks up each include and exclude company
+// and keyword id on TMDB.
+func (c *TMDBClient) validateCompaniesAndKeywords(ctx context.Context, _ string, p vocabParams) error {
 	if err := checkEntityIDs(ctx, "with_companies", p.WithCompanies, "company", c.Company); err != nil {
 		return err
 	}
@@ -114,35 +147,47 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 	if err := checkEntityIDs(ctx, "without_companies", p.WithoutCompanies, "company", c.Company); err != nil {
 		return err
 	}
-	if err := checkEntityIDs(ctx, "without_keywords", p.WithoutKeywords, "keyword", c.Keyword); err != nil {
-		return err
-	}
-	if p.WithCollection != "" {
-		if catalogType != "movie" {
-			return fmt.Errorf("%w: with_collection applies to movie catalogs only", ErrInvalidParams)
-		}
-		if err := checkEntityIDs(ctx, "with_collection", p.WithCollection, "collection", c.Collection); err != nil {
-			return err
-		}
-	}
-	if p.WithNetworks != "" {
-		if catalogType != "series" {
-			return fmt.Errorf("%w: with_networks applies to series catalogs only", ErrInvalidParams)
-		}
-		if err := checkEntityIDs(ctx, "with_networks", p.WithNetworks, "network", c.Network); err != nil {
-			return err
-		}
-	}
-
-	return c.validateCertifications(ctx, catalogType, p.TMDBCommonParams)
+	return checkEntityIDs(ctx, "without_keywords", p.WithoutKeywords, "keyword", c.Keyword)
 }
+
+// validateCollection rejects with_collection on anything but a movie
+// catalog, then looks its id up on TMDB.
+func (c *TMDBClient) validateCollection(ctx context.Context, catalogType string, p vocabParams) error {
+	if p.WithCollection == "" {
+		return nil
+	}
+	if catalogType != "movie" {
+		return fmt.Errorf("%w: with_collection applies to movie catalogs only", ErrInvalidParams)
+	}
+	return checkEntityIDs(ctx, "with_collection", p.WithCollection, "collection", c.Collection)
+}
+
+// validateNetworks rejects with_networks on anything but a series catalog,
+// then looks each id up on TMDB.
+func (c *TMDBClient) validateNetworks(ctx context.Context, catalogType string, p vocabParams) error {
+	if p.WithNetworks == "" {
+		return nil
+	}
+	if catalogType != "series" {
+		return fmt.Errorf("%w: with_networks applies to series catalogs only", ErrInvalidParams)
+	}
+	return checkEntityIDs(ctx, "with_networks", p.WithNetworks, "network", c.Network)
+}
+
+// certField is one certification value of a recipe, named for error text.
+type certField struct{ name, value string }
 
 // validateCertifications checks the certification country against TMDB's
 // list of rating systems and each certification value against that
 // country's own scale — the scales differ per country, so the country has
 // to resolve before the values can be checked at all.
-func (c *TMDBClient) validateCertifications(ctx context.Context, catalogType string, p TMDBCommonParams) error {
-	if p.CertificationCountry == "" && p.Certification == "" && p.CertificationGte == "" && p.CertificationLte == "" {
+func (c *TMDBClient) validateCertifications(ctx context.Context, catalogType string, p vocabParams) error {
+	fields := []certField{
+		{"certification", p.Certification},
+		{"certification_gte", p.CertificationGte},
+		{"certification_lte", p.CertificationLte},
+	}
+	if p.CertificationCountry == "" && !slices.ContainsFunc(fields, func(f certField) bool { return f.value != "" }) {
 		return nil
 	}
 
@@ -154,21 +199,31 @@ func (c *TMDBClient) validateCertifications(ctx context.Context, catalogType str
 	if !ok {
 		return fmt.Errorf("%w: certification_country %q has no TMDB certification scale", ErrInvalidParams, p.CertificationCountry)
 	}
+	return checkCertifications(p.CertificationCountry, scale, fields)
+}
 
+// checkCertifications reports the first set field whose value isn't on
+// country's certification scale.
+func checkCertifications(country string, scale []Certification, fields []certField) error {
 	allowed := make(map[string]bool, len(scale))
 	for _, cert := range scale {
 		allowed[cert.Certification] = true
 	}
-	for _, f := range []struct{ name, value string }{
-		{"certification", p.Certification},
-		{"certification_gte", p.CertificationGte},
-		{"certification_lte", p.CertificationLte},
-	} {
+	for _, f := range fields {
 		if f.value != "" && !allowed[f.value] {
-			return fmt.Errorf("%w: %s %q is not in %s's certification scale", ErrInvalidParams, f.name, f.value, p.CertificationCountry)
+			return fmt.Errorf("%w: %s %q is not in %s's certification scale", ErrInvalidParams, f.name, f.value, country)
 		}
 	}
 	return nil
+}
+
+// idSet collects the TMDB id of each item, for checkIDList.
+func idSet[T any](items []T, id func(T) int) map[int]bool {
+	set := make(map[int]bool, len(items))
+	for _, item := range items {
+		set[id(item)] = true
+	}
+	return set
 }
 
 // checkIDList reports the first entry of a TMDB id list that isn't an

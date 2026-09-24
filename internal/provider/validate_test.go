@@ -287,3 +287,139 @@ func TestValidateCapsEntityIDLists(t *testing.T) {
 		}
 	}
 }
+
+// fakeVocabTMDB serves the lists ValidateParams checks recipe vocabulary
+// against: genre 28 for either type, language "en", watch region "US",
+// watch provider 8 in the US only, and the US certification scale PG-13 and
+// R. failPath answers with a server error instead. It counts every request.
+func fakeVocabTMDB(t *testing.T, failPath string) (*TMDBClient, func() int) {
+	t.Helper()
+	var mu sync.Mutex
+	total := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		total++
+		mu.Unlock()
+
+		if r.URL.Path == failPath {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		switch r.URL.Path {
+		case "/genre/movie/list", "/genre/tv/list":
+			fmt.Fprint(w, `{"genres":[{"id":28,"name":"Action"}]}`)
+		case "/configuration/languages":
+			fmt.Fprint(w, `[{"iso_639_1":"en","english_name":"English","name":"English"}]`)
+		case "/watch/providers/regions":
+			fmt.Fprint(w, `{"results":[{"iso_3166_1":"US","english_name":"United States","native_name":"United States"}]}`)
+		case "/watch/providers/movie", "/watch/providers/tv":
+			if r.URL.Query().Get("watch_region") != "US" {
+				fmt.Fprint(w, `{"results":[]}`)
+				return
+			}
+			fmt.Fprint(w, `{"results":[{"provider_id":8,"provider_name":"Netflix","display_priority":1}]}`)
+		case "/certification/movie/list", "/certification/tv/list":
+			fmt.Fprint(w, `{"certifications":{"US":[{"certification":"PG-13","order":3},{"certification":"R","order":4}]}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewTMDBClient("key")
+	c.baseURL = srv.URL
+	return c, func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return total
+	}
+}
+
+// TestValidateParamsChecksVocabularyLists covers the fields ValidateParams
+// checks against TMDB's published lists — genres, language, watch region,
+// watch providers and certifications: a known value passes, an unknown one
+// is rejected naming its field, and a list TMDB fails to serve is returned
+// as a plain error rather than a rejection.
+func TestValidateParamsChecksVocabularyLists(t *testing.T) {
+	tests := []struct {
+		name, catalogType, params, failPath string
+		wantInvalid, wantErr                bool
+		wantField                           string
+	}{
+		{"known genres", "movie", `{"with_genres":"28|28","without_genres":"28"}`, "", false, false, ""},
+		{"known genre on series", "series", `{"with_genres":"28"}`, "", false, false, ""},
+		{"unknown genre", "movie", `{"with_genres":"28,99"}`, "", true, true, "with_genres"},
+		{"unknown excluded genre", "series", `{"without_genres":"99"}`, "", true, true, "without_genres"},
+		{"malformed genre", "movie", `{"with_genres":"action"}`, "", true, true, "with_genres"},
+		{"genre list failing", "movie", `{"with_genres":"28"}`, "/genre/movie/list", false, true, ""},
+
+		{"known language", "movie", `{"with_original_language":"en"}`, "", false, false, ""},
+		{"unknown language", "series", `{"with_original_language":"xx"}`, "", true, true, "with_original_language"},
+		{"language list failing", "movie", `{"with_original_language":"en"}`, "/configuration/languages", false, true, ""},
+
+		{"known region", "movie", `{"watch_region":"US"}`, "", false, false, ""},
+		{"unknown region", "series", `{"watch_region":"ZZ"}`, "", true, true, "watch_region"},
+		{"region list failing", "movie", `{"watch_region":"US"}`, "/watch/providers/regions", false, true, ""},
+
+		{"known provider", "movie", `{"watch_region":"US","with_watch_providers":"8"}`, "", false, false, ""},
+		{"known provider on series", "series", `{"watch_region":"US","with_watch_providers":"8|8"}`, "", false, false, ""},
+		{"unknown provider", "movie", `{"watch_region":"US","with_watch_providers":"8,9"}`, "", true, true, "with_watch_providers"},
+		{"provider list failing", "movie", `{"watch_region":"US","with_watch_providers":"8"}`, "/watch/providers/movie", false, true, ""},
+
+		{"known certification", "movie", `{"certification_country":"US","certification":"PG-13"}`, "", false, false, ""},
+		{"known certification range", "series", `{"certification_country":"US","certification_gte":"PG-13","certification_lte":"R"}`, "", false, false, ""},
+		{"country alone", "movie", `{"certification_country":"US"}`, "", false, false, ""},
+		{"unknown country", "movie", `{"certification_country":"ZZ","certification":"PG-13"}`, "", true, true, "certification_country"},
+		{"certification without country", "movie", `{"certification":"PG-13"}`, "", true, true, "certification_country"},
+		{"unknown certification", "movie", `{"certification_country":"US","certification":"X"}`, "", true, true, "certification "},
+		{"unknown lower bound", "series", `{"certification_country":"US","certification_gte":"X"}`, "", true, true, "certification_gte"},
+		{"unknown upper bound", "movie", `{"certification_country":"US","certification_lte":"X"}`, "", true, true, "certification_lte"},
+		{"certification list failing", "movie", `{"certification_country":"US"}`, "/certification/movie/list", false, true, ""},
+
+		{"undecodable params", "movie", `{"with_genres":28}`, "", true, true, "decode"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := fakeVocabTMDB(t, tc.failPath)
+
+			err := c.ValidateParams(t.Context(), tc.catalogType, tc.params)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want error: %v", err, tc.wantErr)
+			}
+			if got := errors.Is(err, ErrInvalidParams); got != tc.wantInvalid {
+				t.Fatalf("errors.Is(err, ErrInvalidParams) = %v, want %v (err: %v)", got, tc.wantInvalid, err)
+			}
+			if tc.wantField != "" && !strings.Contains(err.Error(), tc.wantField) {
+				t.Fatalf("err = %v, want it to name %s", err, tc.wantField)
+			}
+		})
+	}
+}
+
+// TestValidateParamsFetchesNothingForBareRecipe pins that a recipe setting
+// none of the vocabulary fields costs no TMDB round trip at all.
+func TestValidateParamsFetchesNothingForBareRecipe(t *testing.T) {
+	c, total := fakeVocabTMDB(t, "")
+
+	if err := c.ValidateParams(t.Context(), "movie", `{"sort_by":"popularity.desc"}`); err != nil {
+		t.Fatalf("ValidateParams: %v", err)
+	}
+	if n := total(); n != 0 {
+		t.Fatalf("TMDB requests = %d, want 0", n)
+	}
+}
+
+// TestValidateParamsRejectsUnknownCatalogType pins that the catalog type is
+// checked before anything else.
+func TestValidateParamsRejectsUnknownCatalogType(t *testing.T) {
+	c, total := fakeVocabTMDB(t, "")
+
+	err := c.ValidateParams(t.Context(), "anime", `{"with_genres":"28"}`)
+	if !errors.Is(err, ErrInvalidCatalogType) {
+		t.Fatalf("err = %v, want ErrInvalidCatalogType", err)
+	}
+	if n := total(); n != 0 {
+		t.Fatalf("TMDB requests = %d, want 0", n)
+	}
+}

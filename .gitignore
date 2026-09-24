@@ -3,6 +3,7 @@
 *.exe
 *.test
 *.out
+lcov.info
 
 # SQLite (vault database, wherever it's generated)
 *.db

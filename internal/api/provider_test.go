@@ -11,6 +11,7 @@ import (
 
 	"github.com/hiidz/uno/internal/nuvio"
 	"github.com/hiidz/uno/internal/provider"
+	"github.com/hiidz/uno/internal/vault"
 )
 
 // acceptAnyToken is a TokenVerifier that authenticates every bearer token.
@@ -109,6 +110,49 @@ func TestEntityLookupRoutes(t *testing.T) {
 			}
 			if !strings.Contains(w.Body.String(), tc.wantBody) {
 				t.Fatalf("body = %q, want it to contain %q", w.Body.String(), tc.wantBody)
+			}
+		})
+	}
+}
+
+// TestValidateCatalogParams covers how validateCatalogParams classifies a
+// recipe: anything wrong with the recipe itself wraps vault.ErrInvalidInput
+// (a 400), and TMDB failing to serve a list wraps errUpstreamValidation (a
+// 502). The upstream case uses a cancelled context, so the TMDB request
+// fails before it is sent.
+func TestValidateCatalogParams(t *testing.T) {
+	s := newProfileTestServer(t, newTestVaultDB(t))
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tests := []struct {
+		name, catalogType, catalogProvider, params string
+		ctx                                        context.Context
+		wantErr                                    error
+	}{
+		{"clean recipe", "movie", "tmdb", `{"sort_by":"popularity.desc"}`, t.Context(), nil},
+		{"other provider", "movie", "mdblist", `{}`, t.Context(), vault.ErrInvalidInput},
+		{"unknown catalog type", "anime", "tmdb", `{}`, t.Context(), vault.ErrInvalidInput},
+		{"undecodable params", "movie", "tmdb", `{`, t.Context(), vault.ErrInvalidInput},
+		{"recipe rule broken", "movie", "tmdb", `{"sort_by":"bogus.desc"}`, t.Context(), vault.ErrInvalidInput},
+		{"vocabulary rejected", "series", "tmdb", `{"with_collection":"10"}`, t.Context(), vault.ErrInvalidInput},
+		{"TMDB unreachable", "movie", "tmdb", `{"with_genres":"28"}`, cancelled, errUpstreamValidation},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := s.validateCatalogParams(tc.ctx, tc.catalogType, tc.catalogProvider, tc.params)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("err = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("err = %v, want it to wrap %v", err, tc.wantErr)
+			}
+			if errors.Is(tc.wantErr, errUpstreamValidation) && errors.Is(err, vault.ErrInvalidInput) {
+				t.Fatalf("err = %v, an unreachable TMDB must not read as a rejected recipe", err)
 			}
 		})
 	}
