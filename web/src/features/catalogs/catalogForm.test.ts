@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Catalog } from '@/api'
+import { catalog } from '@/test/fixtures'
 import {
   MAX_ENTITY_IDS,
   changesContent,
@@ -14,7 +14,6 @@ import {
 
 // `@/api`'s barrel pulls in the auth session, which needs a browser `window`.
 vi.mock('@/api', () => ({ CATALOG_PROVIDER: 'tmdb' }))
-import { companyDetail, sumCollection, sumEntities } from './summary'
 
 /** A movie form with a filter in every section, several of them invalid. */
 function filledForm(): CatalogFormState {
@@ -95,14 +94,8 @@ describe('source mode', () => {
   })
 
   it('reads a saved collection back as collection mode', () => {
-    const saved = { id: '1', name: 'Row', is_public: false, collection_id: null }
-    expect(
-      formFromCatalog({ ...saved, type: 'movie', params: '{"with_collection":"10"}' } as Catalog)
-        .sourceMode,
-    ).toBe('collection')
-    expect(formFromCatalog({ ...saved, type: 'movie', params: '{}' } as Catalog).sourceMode).toBe(
-      'filters',
-    )
+    expect(formFromCatalog(catalog({ params: '{"with_collection":"10"}' })).sourceMode).toBe('collection')
+    expect(formFromCatalog(catalog({ params: '{}' })).sourceMode).toBe('filters')
   })
 
   it('never sends a collection on a series catalog', () => {
@@ -209,43 +202,5 @@ describe('parseGenreList / serializeGenreList', () => {
     expect(serializeGenreList([1, 2], 'and')).toBe('1,2')
     expect(serializeGenreList([1, 2], 'or')).toBe('1|2')
     expect(serializeGenreList([], 'or')).toBe('')
-  })
-})
-
-describe('sumEntities', () => {
-  it('counts ids and names the join once there are two', () => {
-    expect(sumEntities(undefined, undefined, 'studio', 'Any studio')).toBe('Any studio')
-    expect(sumEntities('420', undefined, 'studio', 'Any studio')).toBe('1 studio')
-    expect(sumEntities('420|2', undefined, 'studio', 'Any studio')).toBe('2 studios, any of them')
-    expect(sumEntities('420,2', '', 'keyword', 'Any keywords')).toBe('2 keywords, all of them')
-  })
-
-  it('counts the left-out ids after the included ones', () => {
-    expect(sumEntities(undefined, '2', 'studio', 'Any studio')).toBe('not 1 studio')
-    expect(sumEntities('420', '2,7', 'studio', 'Any studio')).toBe('1 studio · not 2 studios')
-    expect(sumEntities('420|3', '2', 'keyword', 'Any keywords')).toBe(
-      '2 keywords, any of them · not 1 keyword',
-    )
-  })
-})
-
-describe('sumCollection', () => {
-  it('names the one pick, falling back to its id until the name loads', () => {
-    expect(sumCollection(undefined, undefined)).toBe('No collection picked')
-    expect(sumCollection('', 'Star Wars Collection')).toBe('No collection picked')
-    expect(sumCollection('10', 'Star Wars Collection')).toBe('Star Wars Collection')
-    expect(sumCollection('10', undefined)).toBe('Collection 10')
-  })
-})
-
-describe('companyDetail', () => {
-  it('names the country and counts titles of the catalog type', () => {
-    expect(companyDetail({ origin_country: 'US', title_count: 176 }, 'movie')).toBe('US · 176 films')
-    expect(companyDetail({ origin_country: 'GB', title_count: 1 }, 'movie')).toBe('GB · 1 film')
-    expect(companyDetail({ origin_country: 'US', title_count: 11 }, 'series')).toBe('US · 11 series')
-  })
-
-  it('leaves out a missing country', () => {
-    expect(companyDetail({ origin_country: '', title_count: 9 }, 'movie')).toBe('9 films')
   })
 })

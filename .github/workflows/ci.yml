@@ -32,6 +32,9 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    # A render loop inside a test blocks vitest's own per-test timeout, so this
+    # is what ends a hung run.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: web

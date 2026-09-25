@@ -62,9 +62,11 @@ export function sumGenres(
   return parts.join(' · ')
 }
 
+// Each bound reads as the number set. A slider parked at its end sets no bound
+// at all, and one typed past the end in the number box is a real bound.
 const fmtRating = (n: number) => (n >= 10 ? '10' : n.toFixed(1))
-const fmtVotes = (n: number) => (n >= 5000 ? '5,000+' : n.toLocaleString('en-GB'))
-const fmtRuntime = (n: number) => (n >= 300 ? '300+ min' : `${n} min`)
+const fmtVotes = (n: number) => n.toLocaleString('en-GB')
+const fmtRuntime = (n: number) => `${n} min`
 
 function ratingPhrase(low: number | undefined, high: number | undefined): string {
   if (low == null && high == null) return 'any rating'
@@ -163,10 +165,12 @@ export function sumDate(
   return `${cap1(recentLabel(days))} · ${line}`
 }
 
+/** A picked date is a calendar day with no zone, which `new Date` reads as UTC
+ *  midnight; formatting it in UTC keeps the same day west of Greenwich. */
 function fmtShortDate(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
 export function sumAge(

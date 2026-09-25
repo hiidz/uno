@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog } from '@/api'
+import { catalog as row } from '@/test/fixtures'
 import { describeRecipe } from './recipe'
 
 function catalog(type: Catalog['type'], params: object): Catalog {
-  return { type, params: JSON.stringify(params) } as Catalog
+  return row({ type, params: JSON.stringify(params) })
 }
 
 describe('describeRecipe', () => {

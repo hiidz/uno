@@ -80,7 +80,10 @@ export interface PreviewCollection {
    *  above the catalog rows, not merely to the front of the collections. */
   pinned: boolean
   viewMode: PreviewViewMode
-  /** True when `view_mode` was empty or a value this build doesn't know. */
+  /** True when the layout drawn is a stand-in: `FOLLOW_LAYOUT`, which leaves
+   *  it to an app setting Uno can't read, or a collection nothing describes.
+   *  An empty or unknown `view_mode` is no guess: Nuvio reads it as
+   *  `TABBED_GRID`. */
   viewModeAssumed: boolean
   /** Adds an "All" tab to a `TABBED_GRID` folder page, merging every catalog in
    *  the folder into one grid. Meaningless in `ROWS`, where every catalog is

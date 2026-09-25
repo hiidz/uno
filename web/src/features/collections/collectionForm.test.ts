@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Catalog, Collection } from '@/api'
 import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
+import { catalog, collection, folder } from '@/test/fixtures'
 import {
   changesContent,
   emptyCollectionForm,
@@ -49,19 +50,7 @@ describe('toCollectionPayload', () => {
   })
 
   it('keys every ref to one draft with its draft id', () => {
-    const draft: Catalog = {
-      id: 'draft:d1',
-      type: 'movie',
-      name: 'Staged',
-      provider: 'tmdb',
-      params: '{}',
-      owner_id: '',
-      is_public: false,
-      collection_id: 'col1',
-      created_at: '',
-      updated_at: '',
-      linked: false,
-    }
+    const draft = catalog({ id: 'draft:d1', name: 'Staged', collection_id: 'col1' })
     const form = formWith([newRef(draft.id, 'Action'), newRef(draft.id, 'Comedy')])
     const spec = { key: 'draft:d1', type: 'movie', name: 'Staged', provider: 'tmdb', params: '{}' }
     expect(toCollectionPayload(form, new Map([[draft.id, draft]])).folders[0].catalogs).toEqual([
@@ -74,19 +63,11 @@ describe('toCollectionPayload', () => {
 describe('withCatalogEdit', () => {
   // Deliberately not byte-for-byte what the catalog form writes (it never
   // writes whitespace), the way a row saved by another client can be.
-  const saved: Catalog = {
-    id: 'c1',
-    type: 'movie',
+  const saved = catalog({
     name: 'Scoped',
-    provider: 'tmdb',
     params: '{"with_genres": "28", "sort_by": "popularity.desc"}',
-    owner_id: '',
-    is_public: false,
     collection_id: 'col1',
-    created_at: '',
-    updated_at: '',
-    linked: false,
-  }
+  })
   const baseline = formWith([newRef('c1')])
 
   it('leaves no edit for a nested save that changes nothing, however the stored params are spelled', () => {
@@ -133,19 +114,11 @@ describe('withCatalogEdit', () => {
 describe('undoing a staged Move to library', () => {
   // Keys out of order and a rolling date window, the two ways a stored
   // recipe differs from what the form writes back.
-  const saved: Catalog = {
-    id: 'c1',
-    type: 'movie',
+  const saved = catalog({
     name: 'Scoped',
-    provider: 'tmdb',
     params: '{"sort_by": "popularity.desc", "released_within_days": 30, "with_genres": "28"}',
-    owner_id: '',
-    is_public: false,
     collection_id: 'col1',
-    created_at: '',
-    updated_at: '',
-    linked: false,
-  }
+  })
   const baseline = formWith([newRef('c1')])
 
   function stageAndUndo(nested: CatalogFormState) {
@@ -195,24 +168,7 @@ describe('reorderRefs', () => {
 
 describe('view mode', () => {
   function stored(viewMode: string): Collection {
-    return {
-      id: 'col1',
-      title: 'C',
-      owner_id: '',
-      is_public: false,
-      pin_to_top: false,
-      view_mode: viewMode,
-      show_all_tab: false,
-      backdrop_image_url: '',
-      focus_glow_enabled: true,
-      created_at: '',
-      updated_at: '',
-      version: 1,
-      pushed_version: null,
-      linked: true,
-      folders: [],
-      catalogs: [],
-    }
+    return collection({ view_mode: viewMode })
   }
 
   it('loads an empty or unknown view mode as Tabbed Grids, what Nuvio shows for one', () => {
@@ -223,26 +179,8 @@ describe('view mode', () => {
 
   it('starts a new folder as Poster and loads an empty tile shape as Poster, what Nuvio shows for one', () => {
     expect(newFolder().tileShape).toBe('POSTER')
-    const collection = stored('ROWS')
-    collection.folders = [
-      {
-        id: 'f1',
-        collection_id: 'col1',
-        title: 'F',
-        sort_order: 0,
-        tile_shape: '',
-        hide_title: false,
-        cover_emoji: '',
-        cover_image_url: '',
-        focus_gif_url: '',
-        focus_gif_enabled: true,
-        hero_backdrop_url: '',
-        hero_video_url: '',
-        title_logo_url: '',
-        refs: [],
-      },
-    ]
-    expect(formFromCollection(collection).folders[0].tileShape).toBe('POSTER')
+    const saved = collection({ view_mode: 'ROWS', folders: [folder({ tile_shape: '' })] })
+    expect(formFromCollection(saved).folders[0].tileShape).toBe('POSTER')
   })
 
   it('saves each named view mode back as itself', () => {
