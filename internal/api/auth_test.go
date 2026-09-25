@@ -16,11 +16,18 @@ import (
 // directly.
 func newProfileTestServer(t *testing.T, db *vault.DB) *Server {
 	t.Helper()
+	return newTestServer(t, db, &fakeNuvio{})
+}
+
+// newTestServer builds a Server over db and nuvioClient that authenticates every
+// bearer token as acceptAnyToken's account.
+func newTestServer(t *testing.T, db *vault.DB, nuvioClient NuvioClient) *Server {
+	t.Helper()
 	s, err := New(Deps{
 		Vault:        db,
 		Provider:     provider.NewTMDBClient("key"),
 		Verifier:     acceptAnyToken{},
-		Nuvio:        &fakeNuvio{},
+		Nuvio:        nuvioClient,
 		SiteBaseURL:  "http://example.com",
 		NuvioBaseURL: "https://nuvio.example.com",
 	})

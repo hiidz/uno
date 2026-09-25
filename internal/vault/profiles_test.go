@@ -108,3 +108,41 @@ func TestCrossAccountIsolationAtSameSlot(t *testing.T) {
 		t.Fatalf("ResolveProfileID(bogus token) error = %v, want ErrProfileNotFound", err)
 	}
 }
+
+// A Nuvio profile deleted and recreated at the same slot comes back with a
+// new UUID. The slot keeps its Uno profile, and with it the token every
+// installed manifest URL carries; only the stored UUID follows Nuvio.
+func TestResolveOrCreateProfileFollowsNuvioProfileDrift(t *testing.T) {
+	ctx := t.Context()
+	db := newTestDB(t)
+
+	first, err := db.ResolveOrCreateProfile(ctx, "nuvio-user", 2, "nuvio-profile-uuid-old")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+	again, err := db.ResolveOrCreateProfile(ctx, "nuvio-user", 2, "nuvio-profile-uuid-old")
+	if err != nil {
+		t.Fatalf("resolving unchanged profile: %v", err)
+	}
+	if again != first {
+		t.Fatalf("resolving an unchanged slot = %+v, want %+v", again, first)
+	}
+
+	drifted, err := db.ResolveOrCreateProfile(ctx, "nuvio-user", 2, "nuvio-profile-uuid-new")
+	if err != nil {
+		t.Fatalf("resolving drifted profile: %v", err)
+	}
+	if drifted.ID != first.ID || drifted.Token != first.Token {
+		t.Fatalf("drifted profile = %+v, want the same id and token as %+v", drifted, first)
+	}
+	if drifted.NuvioProfileUUID != "nuvio-profile-uuid-new" {
+		t.Fatalf("returned NuvioProfileUUID = %q, want the new one", drifted.NuvioProfileUUID)
+	}
+	stored, err := db.GetProfileByID(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("GetProfileByID: %v", err)
+	}
+	if stored.NuvioProfileUUID != "nuvio-profile-uuid-new" {
+		t.Fatalf("stored NuvioProfileUUID = %q, want the new one", stored.NuvioProfileUUID)
+	}
+}
