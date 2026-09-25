@@ -20,15 +20,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
-  MoreHorizontal,
   Plus,
   TriangleAlert,
 } from 'lucide-react'
-import { DropdownMenu } from 'radix-ui'
 import { Grip, RowIconButton, reorder, useDragSensors } from '@/components/dnd'
-import { fetchCatalogGenreOptions, queryKeys, type Catalog } from '@/api'
+import { fetchCatalogGenreOptions, queryKeys, type Catalog, type TileShape } from '@/api'
 import { Segmented, Select, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
+import { MoreMenu, MoreMenuItem, MoreMenuSeparator } from '@/components/MoreMenu'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { TILE_ASPECT } from '@/features/preview/tiles'
 import { ordinal } from '@/lib/ordinal'
@@ -39,7 +38,6 @@ import {
   type FolderErrors,
   type FolderFormState,
   type FolderRefState,
-  type FolderTileShape,
 } from './collectionForm'
 import type { RefOption } from './refs'
 
@@ -191,8 +189,7 @@ export function FolderTreeDnd({
   )
 }
 
-const SHAPE_LABEL: Record<FolderTileShape, string> = {
-  '': 'poster',
+const SHAPE_LABEL: Record<TileShape, string> = {
   POSTER: 'poster',
   LANDSCAPE: 'landscape',
   SQUARE: 'square',
@@ -268,7 +265,7 @@ function FolderTileItem({
     data: { container: FOLDERS } satisfies SortableData,
   })
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
-  const width = TILE_H * TILE_ASPECT[folder.tileShape || 'POSTER']
+  const width = TILE_H * TILE_ASPECT[folder.tileShape]
   const name = folder.title.trim() || 'Untitled folder'
 
   return (
@@ -429,17 +426,6 @@ export function FolderDetail({
           <div className="cr">
             <span className="cr-role type-eyebrow">Tile shape</span>
             <div className="cr-val choices" role="group" aria-label={`Tile shape for ${label}`}>
-              {/* `''` is its own option, not normalised to POSTER on save: it's
-                  a storable value the server accepts, and rewriting it would
-                  edit data the user never touched. */}
-              <button
-                type="button"
-                className="choice"
-                aria-pressed={folder.tileShape === ''}
-                onClick={() => onChange({ tileShape: '' })}
-              >
-                Default
-              </button>
               {TILE_SHAPES.map((shape) => (
                 <button
                   key={shape}
@@ -963,9 +949,6 @@ function FolderError({ children }: { children: ReactNode }) {
   )
 }
 
-const MENU_ITEM =
-  'hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent flex items-center rounded-[2px] px-2 py-2 text-left text-[12px] transition-colors'
-
 /**
  * Everything on a catalog row besides Edit: Edit is the row's one inline
  * action, and dragging the grip (pointer, touch or keyboard) is the main way
@@ -998,48 +981,29 @@ function RefMenu({
   onCopyIntoCollection?: () => void
 }) {
   return (
-    <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger
-        aria-label={`More for ${label}`}
-        className="tap text-dimmer hover:bg-line hover:text-ink grid h-8 w-8 shrink-0 place-items-center rounded-[2px] transition-colors"
-      >
-        <Icon icon={MoreHorizontal} size={16} />
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          sideOffset={4}
-          className="bg-raised-hi border-line-hi z-40 flex w-56 flex-col gap-0.5 rounded-[2px] border p-1.5"
+    <MoreMenu label={label}>
+      {onAddGenre && (
+        <MoreMenuItem
+          disabled={nextGenre === undefined}
+          onSelect={() => {
+            if (nextGenre !== undefined) onAddGenre(nextGenre)
+          }}
         >
-          {onAddGenre && (
-            <DropdownMenu.Item
-              disabled={nextGenre === undefined}
-              onSelect={() => {
-                if (nextGenre !== undefined) onAddGenre(nextGenre)
-              }}
-              className={`${MENU_ITEM} text-ink`}
-            >
-              Add another genre
-            </DropdownMenu.Item>
-          )}
-          {onCopyIntoCollection && (
-            <DropdownMenu.Item onSelect={onCopyIntoCollection} className={`${MENU_ITEM} text-ink`}>
-              Copy into this collection
-            </DropdownMenu.Item>
-          )}
-          {(onAddGenre || onCopyIntoCollection) && <DropdownMenu.Separator className="bg-line my-1 h-px" />}
-          <DropdownMenu.Item disabled={first} onSelect={() => onMove(-1)} className={`${MENU_ITEM} text-ink`}>
-            Move up
-          </DropdownMenu.Item>
-          <DropdownMenu.Item disabled={last} onSelect={() => onMove(1)} className={`${MENU_ITEM} text-ink`}>
-            Move down
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator className="bg-line my-1 h-px" />
-          <DropdownMenu.Item onSelect={onRemove} className={`${MENU_ITEM} text-ink`}>
-            Remove from folder
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+          Add another genre
+        </MoreMenuItem>
+      )}
+      {onCopyIntoCollection && (
+        <MoreMenuItem onSelect={onCopyIntoCollection}>Copy into this collection</MoreMenuItem>
+      )}
+      {(onAddGenre || onCopyIntoCollection) && <MoreMenuSeparator />}
+      <MoreMenuItem disabled={first} onSelect={() => onMove(-1)}>
+        Move up
+      </MoreMenuItem>
+      <MoreMenuItem disabled={last} onSelect={() => onMove(1)}>
+        Move down
+      </MoreMenuItem>
+      <MoreMenuSeparator />
+      <MoreMenuItem onSelect={onRemove}>Remove from folder</MoreMenuItem>
+    </MoreMenu>
   )
 }

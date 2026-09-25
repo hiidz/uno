@@ -3,21 +3,16 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { pluralCount } from '@/lib/plural'
 import { FOLDER_LAYOUT_LABEL, TVCollectionRow, TVFolderPage } from '@/features/home/tv'
 import { CollectionMeta } from '@/features/preview/CollectionMeta'
-import {
-  normalizeTileShape,
-  normalizeViewMode,
-  type PreviewCollection,
-  type PreviewFolder,
-  type PreviewSource,
-} from '@/features/preview/model'
+import type { PreviewCollection } from '@/features/preview/model'
 import { useRecipesTiles, type TileRecipe } from '@/features/preview/useRecipesTiles'
-import type { CollectionFormState } from './collectionForm'
-import type { RefOption } from './refs'
 
 /**
  * "On your TV" — DESIGN.md's docked panel beside the collection form: the
- * collection's row from the live draft, drawn with the Home preview's own TV
- * components, and the folder pages it opens.
+ * collection's row, drawn with the Home preview's own TV components, and the
+ * folder pages it opens. The editor passes its live draft (`previewFromForm`),
+ * Community a saved collection (`toPreviewCollection`); both memoise it, since
+ * the open folder page is found by folder id and its tiles by the folder's
+ * sources.
  *
  * **A crop of a real-scale TV** (`.tv-crop`): tiles are the Home preview's
  * size however narrow the column, rows run off the frame's edge and scroll,
@@ -32,14 +27,7 @@ import type { RefOption } from './refs'
  * so it never reaches the editor's own Escape-to-close. There is no history
  * entry — the browser's Back belongs to the editor, not to this panel.
  */
-export function CollectionPreview({
-  state,
-  optionByID,
-}: {
-  state: CollectionFormState
-  optionByID: ReadonlyMap<string, RefOption>
-}) {
-  const collection = useMemo(() => previewFromForm(state, optionByID), [state, optionByID])
+export function CollectionPreview({ collection }: { collection: PreviewCollection }) {
   const title = collection.title.trim() || 'Untitled collection'
   const empty = collection.folders.length === 0
 
@@ -140,69 +128,4 @@ export function CollectionPreview({
       <CollectionMeta collection={collection} />
     </div>
   )
-}
-
-/**
- * The form's own state as a previewable collection.
- *
- * A folder's identity here is its form `key`, not its server `id`: a folder
- * that hasn't been saved yet has no id, and `CollectionMeta` still has to be
- * able to count it.
- *
- * An id the picker can't resolve becomes an unresolved source — the same shape
- * Home uses for a catalog that's since been deleted. In this form that state
- * is also a validation error, so the form names it on the folder; this panel
- * only has to avoid claiming content that isn't there.
- */
-function previewFromForm(
-  state: CollectionFormState,
-  optionByID: ReadonlyMap<string, RefOption>,
-): PreviewCollection {
-  const { mode, assumed } = normalizeViewMode(state.viewMode)
-
-  const folders: PreviewFolder[] = state.folders.map((folder) => {
-    const tile = normalizeTileShape(folder.tileShape)
-
-    const sources: PreviewSource[] = folder.refs.map((ref) => {
-      const option = optionByID.get(ref.catalogID)
-      return {
-        // The ref's own key, not the catalog/genre pair: the form can briefly
-        // hold a repeated pair, which is a validation error rather than a
-        // state the preview may collide on.
-        key: ref.key,
-        id: ref.catalogID,
-        name: option?.name ?? null,
-        type: option?.catalog.type ?? null,
-        params: option?.catalog.params ?? '',
-        genre: ref.genre,
-      }
-    })
-
-    return {
-      id: folder.key,
-      title: folder.title,
-      hideTitle: folder.hideTitle,
-      tileShape: tile.shape,
-      tileShapeAssumed: tile.assumed,
-      coverEmoji: folder.coverEmoji,
-      coverImageUrl: folder.coverImageURL,
-      sources,
-      unresolved: sources.filter((s) => s.name === null).length,
-    }
-  })
-
-  return {
-    // Never rendered — the row's identity is the form, not a stored row, and a
-    // collection being created has no id at all.
-    id: '',
-    title: state.title,
-    pinned: state.pinToTop,
-    viewMode: mode,
-    viewModeAssumed: assumed,
-    showAllTab: state.showAllTab,
-    hasBackdrop: state.backdropImageURL.trim() !== '',
-    folders,
-    // The form is the description, so there is always something to draw.
-    missing: false,
-  }
 }

@@ -6,9 +6,10 @@ import { importBundle, queryKeys } from '@/api'
  * only once both owned lists have refetched, so the outcome message arrives
  * with the new rows already in the rail.
  *
- * The owned-list keys prefix the selection and Community keys, so those are
- * marked stale too. An import changes neither — every row it writes is
- * private and off Home — and a refetch of either returns what they held.
+ * The owned-list keys prefix the selection keys, so those are marked stale
+ * too. An import doesn't change them — every row it writes is private and off
+ * Home — and a refetch returns what they held. Community is left alone, since
+ * no private row appears there.
  */
 export function useImport(profileIndex: number) {
   const queryClient = useQueryClient()

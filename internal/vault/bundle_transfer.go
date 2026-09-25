@@ -120,23 +120,6 @@ func (db *DB) ImportBundle(ctx context.Context, profileID uuid.UUID, b Bundle, r
 	return db.loadImported(ctx, plan.listedIDs(), collectionIDs)
 }
 
-// inTx runs write inside one transaction, committing only when it succeeds.
-func (db *DB) inTx(ctx context.Context, write func(*sql.Tx) error) error {
-	tx, err := db.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
-
-	if err := write(tx); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
-	}
-	return nil
-}
-
 // importPlan is what ImportBundle writes, fully checked except for the reuse
 // targets: the new listed catalogs, the collection forms, and the reused
 // catalog ids.
@@ -224,13 +207,14 @@ func mintListed(profileID uuid.UUID, catalogs []BundleCatalog, reuse map[string]
 	return ids, listed, nil
 }
 
-// importedCatalog is c as a new private listed catalog owned by profileID.
+// importedCatalog is c as a new private listed catalog owned by profileID,
+// its name trimmed the way CatalogForm.normalized trims one.
 func importedCatalog(profileID uuid.UUID, c BundleCatalog) Catalog {
 	now := time.Now().UTC()
 	return Catalog{
 		ID:          uuid.New(),
 		Type:        c.Type,
-		Name:        c.Name,
+		Name:        strings.TrimSpace(c.Name),
 		Provider:    c.Provider,
 		Params:      string(c.Params),
 		OwnerID:     profileID,
@@ -248,7 +232,7 @@ func importForms(collections []BundleCollection, ids map[string]uuid.UUID) ([]Co
 	forms := make([]CollectionForm, len(collections))
 	for i, bc := range collections {
 		bc.Catalogs = withoutKeys(bc.Catalogs, ids)
-		form := collectionFormFromBundle(bc, ids, false)
+		form := collectionFormFromBundle(bc, ids, false).normalized()
 		for j := range form.Folders {
 			form.Folders[j].Catalogs = dedupeCatalogRefs(form.Folders[j].Catalogs)
 		}

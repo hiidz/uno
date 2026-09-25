@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Catalog } from '@/api'
+import type { Catalog, Collection } from '@/api'
 import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import {
   changesContent,
   emptyCollectionForm,
+  formFromCollection,
   isSameCollection,
   newFolder,
   newRef,
@@ -189,5 +190,64 @@ describe('reorderRefs', () => {
     const a = newRef('c1', 'Western')
     const b = newRef('c1', 'War')
     expect(reorderRefs([a, b], [b.key, a.key])).toEqual([b, a])
+  })
+})
+
+describe('view mode', () => {
+  function stored(viewMode: string): Collection {
+    return {
+      id: 'col1',
+      title: 'C',
+      owner_id: '',
+      is_public: false,
+      pin_to_top: false,
+      view_mode: viewMode,
+      show_all_tab: false,
+      backdrop_image_url: '',
+      focus_glow_enabled: true,
+      created_at: '',
+      updated_at: '',
+      version: 1,
+      pushed_version: null,
+      linked: true,
+      folders: [],
+      catalogs: [],
+    }
+  }
+
+  it('loads an empty or unknown view mode as Tabbed Grids, what Nuvio shows for one', () => {
+    for (const mode of ['', 'SIDEWAYS']) {
+      expect(formFromCollection(stored(mode)).viewMode).toBe('TABBED_GRID')
+    }
+  })
+
+  it('starts a new folder as Poster and loads an empty tile shape as Poster, what Nuvio shows for one', () => {
+    expect(newFolder().tileShape).toBe('POSTER')
+    const collection = stored('ROWS')
+    collection.folders = [
+      {
+        id: 'f1',
+        collection_id: 'col1',
+        title: 'F',
+        sort_order: 0,
+        tile_shape: '',
+        hide_title: false,
+        cover_emoji: '',
+        cover_image_url: '',
+        focus_gif_url: '',
+        focus_gif_enabled: true,
+        hero_backdrop_url: '',
+        hero_video_url: '',
+        title_logo_url: '',
+        refs: [],
+      },
+    ]
+    expect(formFromCollection(collection).folders[0].tileShape).toBe('POSTER')
+  })
+
+  it('saves each named view mode back as itself', () => {
+    for (const mode of ['FOLLOW_LAYOUT', 'TABBED_GRID', 'ROWS']) {
+      expect(toCollectionPayload(formFromCollection(stored(mode))).view_mode).toBe(mode)
+    }
   })
 })

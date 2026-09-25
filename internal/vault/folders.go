@@ -13,8 +13,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// insertFolder inserts fd as a new folder under collectionID at sortOrder
-// and returns the resulting row (with a freshly generated ID).
 // folderFrom builds the folder row fd describes: id and sortOrder from the
 // caller, every other column straight off fd. The one place that field list
 // lives, shared by insertFolder and updateFolder.
@@ -36,6 +34,8 @@ func folderFrom(id, collectionID uuid.UUID, sortOrder int, fd FolderData) Folder
 	}
 }
 
+// insertFolder inserts fd as a new folder under collectionID at sortOrder
+// and returns the resulting row (with a freshly generated ID).
 func insertFolder(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, sortOrder int, fd FolderData) (Folder, error) {
 	f := folderFrom(uuid.New(), collectionID, sortOrder, fd)
 

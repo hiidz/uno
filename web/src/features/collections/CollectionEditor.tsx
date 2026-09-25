@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import type {
   Catalog,
@@ -44,13 +44,13 @@ import {
   isSameCollection,
   newFolder,
   newRef,
+  previewFromForm,
   removedFolders,
   reorderRefs,
   toCollectionPayload,
   validateCollectionForm,
   withCatalogEdit,
   type CollectionFormState,
-  type CollectionViewMode,
   type FolderFormState,
   type FolderRefState,
 } from './collectionForm'
@@ -247,6 +247,7 @@ export function CollectionEditor({
     () => new Map([...optionByID, ...localOptionByID]),
     [optionByID, localOptionByID],
   )
+  const preview = useMemo(() => previewFromForm(state, mergedOptionByID), [state, mergedOptionByID])
   const mergedAccessibleIDs = useMemo(
     () => new Set([...accessibleIDs, ...localCatalogs.keys()]),
     [accessibleIDs, localCatalogs],
@@ -712,7 +713,7 @@ export function CollectionEditor({
                       type="button"
                       className="choice"
                       aria-pressed={state.viewMode === viewMode}
-                      onClick={() => patch({ viewMode: viewMode as CollectionViewMode })}
+                      onClick={() => patch({ viewMode })}
                     >
                       {VIEW_MODE_LABELS[viewMode]}
                     </button>
@@ -793,11 +794,17 @@ export function CollectionEditor({
             </div>
 
             {willDelete.length > 0 && (
-              <RemovalWarning names={willDelete.map((f) => f.title.trim() || 'an untitled folder')} onUndo={undoRemoving} />
+              <StagedNote tone="danger" onUndo={undoRemoving}>
+                Saving deletes {willDelete.length === 1 ? 'the folder' : 'the folders'}{' '}
+                {joinQuoted(willDelete.map((f) => f.title.trim() || 'an untitled folder'))}. Copies others
+                have taken keep theirs.
+              </StagedNote>
             )}
 
             {movingToLibrary.map((catalog) => (
-              <StagedMove key={catalog.id} name={catalog.name} onUndo={() => undoMoveToLibrary(catalog.id)} />
+              <StagedNote key={catalog.id} tone="neutral" onUndo={() => undoMoveToLibrary(catalog.id)}>
+                Saving moves “{catalog.name}” out of this collection and into your library.
+              </StagedNote>
             ))}
 
             {selectedFolder === undefined ? (
@@ -858,7 +865,7 @@ export function CollectionEditor({
             )}
           </div>
 
-          <CollectionPreview state={state} optionByID={mergedOptionByID} />
+          <CollectionPreview collection={preview} />
         </div>
       </div>
 
@@ -965,49 +972,27 @@ export function CollectionEditor({
 }
 
 /**
- * DESIGN.md's "Standing removal warning": a saved folder dropped from the
- * tree is deleted server-side on the next Save, cascading its refs. Nothing
- * commits until then, so this states what would happen rather than confirming
- * something that already did.
+ * DESIGN.md's "Standing removal warning": a note stating what the next Save
+ * does, with an Undo, since nothing has been written yet. `danger` is a saved
+ * folder dropped from the tree, which the Save deletes server-side, cascading
+ * its refs; `neutral` is a staged Move to library, which the catalog survives.
  */
-function RemovalWarning({
-  names,
+function StagedNote({
+  tone,
   onUndo,
+  children,
 }: {
-  names: string[]
+  tone: 'danger' | 'neutral'
   onUndo: () => void
+  children: ReactNode
 }) {
   return (
     <div className="cr">
       <span className="cr-role flex self-start justify-end pt-0.5 max-[640px]:justify-start">
-        <Icon icon={TriangleAlert} size={16} className="text-danger" />
+        <Icon icon={TriangleAlert} size={16} className={tone === 'danger' ? 'text-danger' : 'text-dim'} />
       </span>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[14px] leading-[20px]">
-          Saving deletes {names.length === 1 ? 'the folder' : 'the folders'} {joinQuoted(names)}.
-          Copies others have taken keep theirs.
-        </span>
-        <button type="button" onClick={onUndo} className="btn-quiet h-auto px-0 text-[13px]">
-          Undo
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** A staged Move to library, stated the way `RemovalWarning` states a folder
- *  removal: what the next Save does, with an Undo, since nothing has been
- *  written yet. Not a danger — the catalog survives, in the library. */
-function StagedMove({ name, onUndo }: { name: string; onUndo: () => void }) {
-  return (
-    <div className="cr">
-      <span className="cr-role flex self-start justify-end pt-0.5 max-[640px]:justify-start">
-        <Icon icon={TriangleAlert} size={16} className="text-dim" />
-      </span>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[14px] leading-[20px]">
-          Saving moves “{name}” out of this collection and into your library.
-        </span>
+        <span className="text-[14px] leading-[20px]">{children}</span>
         <button type="button" onClick={onUndo} className="btn-quiet h-auto px-0 text-[13px]">
           Undo
         </button>

@@ -391,3 +391,44 @@ func TestCollectionFormSharedKeyComparesTakenFromByValue(t *testing.T) {
 		}
 	}
 }
+
+// The link hashes are pinned to literal values, because every stored
+// taken_hash was computed by today's rules. Anything that moves a hash — a
+// field added to, renamed in or reordered in the bundle form, a change to the
+// keys extractBundle hands out, a change to catalogHash's input — makes every
+// linked copy unlink on its next save, even a save that only toggles Public.
+// A new value here needs a plan for the stored taken_hash values first.
+func TestLinkHashesArePinned(t *testing.T) {
+	const consequence = "every stored taken_hash was computed by the old rule, so each linked copy would unlink on its next save"
+	check := func(t *testing.T, what, got, want string) {
+		t.Helper()
+		if got != want {
+			t.Errorf("%s = %s, pinned %s: %s", what, got, want, consequence)
+		}
+	}
+
+	t.Run("catalogHash", func(t *testing.T) {
+		check(t, "catalogHash", catalogHash("80s Horror", "fp:movie:{}"), "8108fc398c31c24ec1f12b61e5c55a7df0cb8c07371477317d76975637db46c2")
+	})
+
+	t.Run("bundleCollectionHash of the fixture", func(t *testing.T) {
+		got, err := bundleCollectionHash(stampFingerprints(readTestBundle(t)).Collections[0])
+		if err != nil {
+			t.Fatalf("bundleCollectionHash: %v", err)
+		}
+		check(t, "bundleCollectionHash", got, "56a6918d719f8f1f7531a73a01ac8c6aadb2163360f96279aa4de70ae0e3b144")
+	})
+
+	t.Run("collectionHash of the fixture once stored", func(t *testing.T) {
+		db := newTestDB(t)
+		_, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), stampFingerprints(readTestBundle(t)), nil)
+		if err != nil {
+			t.Fatalf("ImportBundle: %v", err)
+		}
+		got, err := collectionHash(collections[0])
+		if err != nil {
+			t.Fatalf("collectionHash: %v", err)
+		}
+		check(t, "collectionHash", got, "43643471282b12e7b8b4fb5d2b30c4eac495eb31312dd7c152259276d8649351")
+	})
+}

@@ -107,9 +107,8 @@ export function normalizeTileShape(shape: TileShape | ''): {
   shape: TileShape
   assumed: boolean
 } {
-  // The one real `collections_json` sample sets `tileShape` explicitly on every
-  // folder, so `''` is untested on the Nuvio side. Poster is the safer guess,
-  // and the renderer marks it as a guess rather than presenting it as fact.
+  // Only an older row holds `''`. Nuvio shows it as a poster, and so does
+  // this; the renderer notes that no shape was set.
   if (shape === 'POSTER' || shape === 'LANDSCAPE' || shape === 'SQUARE') {
     return { shape, assumed: false }
   }
@@ -120,10 +119,12 @@ export function normalizeViewMode(mode: string): {
   mode: PreviewViewMode
   assumed: boolean
 } {
-  if (mode === 'TABBED_GRID' || mode === 'ROWS') return { mode, assumed: false }
-  // `FOLLOW_LAYOUT` and an empty/unknown value land in the same place: Uno
-  // can't read the app's global layout setting, so it picks one and flags it.
-  return { mode: 'FOLLOW_LAYOUT', assumed: true }
+  // Uno can't read the app's global layout setting, so `FOLLOW_LAYOUT` is
+  // drawn as a flagged guess. An empty or unknown value is what every Nuvio
+  // client reads it as: `TABBED_GRID`.
+  if (mode === 'FOLLOW_LAYOUT') return { mode, assumed: true }
+  if (mode === 'ROWS') return { mode, assumed: false }
+  return { mode: 'TABBED_GRID', assumed: false }
 }
 
 const KIND_LABEL: Record<CatalogType, string> = { movie: 'Movie', series: 'Series' }

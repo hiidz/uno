@@ -186,7 +186,10 @@ write credential.
     by its stored fingerprint. Whatever the bundle form leaves out — ids, scope, `is_public`, the
     home fields, `version`, timestamps — the hash leaves out too. A content field added to the
     bundle form is hashed with no other change, which also shifts every stored `taken_hash` once:
-    Community then offers each linked copy an Update that changes nothing but `taken_hash`.
+    Community then offers each linked copy an Update that changes nothing but `taken_hash`, and
+    any save of a copy before that Update — even one that only toggles `is_public` — unlinks it.
+    `TestLinkHashesArePinned` (`bundle_test.go`) holds all three hashes to literal values, so
+    such a change fails a test rather than landing silently.
   - **Community flags.** `taken` means the caller holds a linked copy. `update_available` means
     that copy's `taken_hash` differs from the original's hash now. Among community catalogs that
     share a fingerprint, the row shown is the one the caller is linked to, otherwise the oldest.
@@ -282,14 +285,19 @@ write credential.
   rejects entries that share a key but not a spec. The same catalog in two *different* folders is
   allowed and supported. `GetPublishedCatalogs` still lists a catalog once however many refs
   point at it.
-- **`folders.tile_shape` defaults to `'LANDSCAPE'` at the schema level, and Preview reads `''`
-  as `POSTER`.** The two point different directions and neither is wrong: the schema
-  default only applies to a row inserted without the column, and the collection editor always
-  sends a value — including `''`, which it keeps as its own "Default" option rather than
-  normalising. Nothing inserts a folder without `tile_shape`, so the schema default is
-  unreachable in practice. Preview's `POSTER` is what the TV does: push always sends `tileShape`,
-  and Nuvio maps `''` or any unrecognised value to `POSTER`. Nuvio's `SQUARE` default applies
-  only when the key is absent, which a Uno push never produces (see "Push wire shape" below).
+- **A builder write or an import stores its input normalized, then validates it**
+  (`CollectionForm.normalized` and `CatalogForm.normalized`, `internal/vault/validation.go`). Every
+  text field the editors trim is trimmed: titles, catalog names (the names of new and edited
+  scoped catalogs included), the cover emoji and the media URLs. An empty `view_mode` or
+  `tile_shape` is stored as `TABBED_GRID` or `POSTER`, which is what every Nuvio client shows
+  for one (see "Push wire shape" below). So an untouched editor save writes back exactly what is
+  stored, and never unlinks a linked copy. A Take, Duplicate or Update writes the values it read
+  without normalizing them, so a copy hashes like its original. Rows written before
+  normalization can still hold `''` or padding; Preview and the editor read an empty value the
+  way Nuvio does.
+- **`folders.tile_shape` defaults to `'LANDSCAPE'` at the schema level**, but every write sends
+  the column, so the default is unreachable in practice. Nuvio's `SQUARE` default applies only
+  when the key is absent, which a Uno push never produces.
 - **`catalogs.created_at`/`updated_at` and `collections.created_at`/`updated_at` are `TEXT`
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
@@ -596,7 +604,9 @@ NuvioTV's `CollectionsDataStore` and `domain/model/Collection.kt`): `focusGlowEn
 So every boolean and `tileShape` goes out on every push, never `omitempty`: an omitted `false`
 would read as `true` on the TV. The appearance URLs, `coverImageUrl`, `coverEmoji` and
 `backdropImageUrl` are `omitempty`, since an absent URL and an empty one mean the same thing
-there. A present but empty or unrecognised `tileShape` is `POSTER` (`PosterShape.fromString`).
+there. A present but empty or unrecognised `tileShape` is `POSTER` (`PosterShape.fromString`),
+and a present but empty or unrecognised `viewMode` is `TABBED_GRID` (`FolderViewMode.fromString`
+in NuvioTV `1a132cb`; NuvioMobile `90b58e2` and NuvioDesktop `c5826cb` read it the same way).
 
 **Field name:** the code sends `catalogSources`, as the public doc documents. **Confirmed against
 a real Nuvio profile:** a collection Uno has pushed round-trips its folder sources

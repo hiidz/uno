@@ -80,16 +80,7 @@ function ExportForm({
   const collectionIDs = collections.filter((c) => picked.has(c.id)).map((c) => c.id)
   const empty = catalogIDs.length === 0 && collectionIDs.length === 0
 
-  function toggle(id: string, on: boolean) {
-    setPicked((current) => {
-      const next = new Set(current)
-      if (on) next.add(id)
-      else next.delete(id)
-      return next
-    })
-  }
-
-  function setAll(ids: string[], on: boolean) {
+  function pick(ids: string[], on: boolean) {
     setPicked((current) => {
       const next = new Set(current)
       for (const id of ids) {
@@ -108,15 +99,13 @@ function ExportForm({
             label="Catalogs"
             rows={catalogs.map((c) => ({ id: c.id, name: c.name }))}
             picked={picked}
-            onToggle={toggle}
-            onSetAll={setAll}
+            onPick={pick}
           />
           <PickGroup
             label="Collections"
             rows={collections.map((c) => ({ id: c.id, name: c.title }))}
             picked={picked}
-            onToggle={toggle}
-            onSetAll={setAll}
+            onPick={pick}
           />
           <p className="type-data text-dimmer m-0 text-[11px]">
             Collections include the catalogs they use.
@@ -152,14 +141,12 @@ function PickGroup({
   label,
   rows,
   picked,
-  onToggle,
-  onSetAll,
+  onPick,
 }: {
   label: string
   rows: Array<{ id: string; name: string }>
   picked: ReadonlySet<string>
-  onToggle: (id: string, on: boolean) => void
-  onSetAll: (ids: string[], on: boolean) => void
+  onPick: (ids: string[], on: boolean) => void
 }) {
   const labelID = useId()
   const ids = rows.map((row) => row.id)
@@ -174,10 +161,10 @@ function PickGroup({
         <span className="type-data text-dimmer text-[10px]">
           {count} of {rows.length}
         </span>
-        <button type="button" className="btn-ghost" onClick={() => onSetAll(ids, true)}>
+        <button type="button" className="btn-ghost" onClick={() => onPick(ids, true)}>
           All
         </button>
-        <button type="button" className="btn-ghost" onClick={() => onSetAll(ids, false)}>
+        <button type="button" className="btn-ghost" onClick={() => onPick(ids, false)}>
           None
         </button>
       </div>
@@ -188,7 +175,7 @@ function PickGroup({
           <Checkbox
             key={row.id}
             checked={picked.has(row.id)}
-            onChange={(on) => onToggle(row.id, on)}
+            onChange={(on) => onPick([row.id], on)}
             label={row.name}
           />
         ))

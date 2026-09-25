@@ -456,8 +456,10 @@ func collectionHash(tree CollectionWithFolders) (string, error) {
 // fingerprint. A copy carries its original's fingerprints unchanged, so the
 // two hash alike whatever their params bytes. Whatever the bundle form
 // leaves out — ids, scope, is_public, the home fields, version and
-// timestamps — the hash leaves out too, and a content field added to the
-// form is hashed with no change here.
+// timestamps — the hash leaves out too. A content field added to the form
+// is hashed with no change here, and that changes every collection's hash,
+// so each linked copy's stored taken_hash stops matching and its next save
+// unlinks it. TestLinkHashesArePinned holds the hashes to literal values.
 func bundleCollectionHash(bc BundleCollection) (string, error) {
 	catalogs := make([]BundleCatalog, len(bc.Catalogs))
 	for i, c := range bc.Catalogs {

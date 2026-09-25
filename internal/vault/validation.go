@@ -1,9 +1,11 @@
 package vault
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -76,20 +78,7 @@ func appendProblem(problems []string, problem string) []string {
 // maxParamsLen, returning an ErrInvalidInput-wrapped error listing every
 // problem found.
 func (in CatalogForm) Validate() error {
-	var problems []string
-
-	if strings.TrimSpace(in.Name) == "" {
-		problems = append(problems, "name is required")
-	}
-	problems = appendProblem(problems, lengthProblem("name", in.Name, maxNameLen))
-	if !validProviders[in.Provider] {
-		problems = append(problems, `provider must be "tmdb"`)
-	}
-	if !validCatalogTypes[in.Type] {
-		problems = append(problems, `type must be "movie" or "series"`)
-	}
-	problems = appendProblem(problems, lengthProblem("params", in.Params, maxParamsLen))
-
+	problems := catalogSpecProblems("", in.Type, in.Name, in.Provider, in.Params)
 	if len(problems) == 0 {
 		return nil
 	}
@@ -106,6 +95,61 @@ var validTileShapes = map[string]bool{
 	"POSTER":    true,
 	"LANDSCAPE": true,
 	"SQUARE":    true,
+}
+
+// The values stored for an empty view mode or tile shape: what every Nuvio
+// client shows for one.
+const (
+	defaultViewMode  = "TABBED_GRID"
+	defaultTileShape = "POSTER"
+)
+
+// normalized is in as a builder write or an import stores it: its name
+// trimmed. Normalizing before validating means an untouched save, which the
+// editor sends trimmed, writes back exactly what is stored.
+func (in CatalogForm) normalized() CatalogForm {
+	in.Name = strings.TrimSpace(in.Name)
+	return in
+}
+
+// normalized is in as a builder write or an import stores it: every text
+// field trimmed, including the names of its new catalogs and catalog edits,
+// and an empty view mode or tile shape replaced by its default. A copy or an
+// Update writes the stored values it read instead, so it hashes like its
+// original.
+func (in CollectionForm) normalized() CollectionForm {
+	in.Title = strings.TrimSpace(in.Title)
+	in.ViewMode = cmp.Or(in.ViewMode, defaultViewMode)
+	in.BackdropImageURL = strings.TrimSpace(in.BackdropImageURL)
+	in.Folders = slices.Clone(in.Folders)
+	for i := range in.Folders {
+		in.Folders[i] = in.Folders[i].normalized()
+	}
+	in.CatalogEdits = slices.Clone(in.CatalogEdits)
+	for i := range in.CatalogEdits {
+		in.CatalogEdits[i].Name = strings.TrimSpace(in.CatalogEdits[i].Name)
+	}
+	return in
+}
+
+// normalized is fd as CollectionForm.normalized stores it.
+func (fd FolderData) normalized() FolderData {
+	for _, s := range []*string{
+		&fd.Title, &fd.CoverEmoji, &fd.CoverImageURL, &fd.FocusGIFURL,
+		&fd.HeroBackdropURL, &fd.HeroVideoURL, &fd.TitleLogoURL,
+	} {
+		*s = strings.TrimSpace(*s)
+	}
+	fd.TileShape = cmp.Or(fd.TileShape, defaultTileShape)
+	fd.Catalogs = slices.Clone(fd.Catalogs)
+	for i, ref := range fd.Catalogs {
+		if ref.New != nil {
+			spec := *ref.New
+			spec.Name = strings.TrimSpace(spec.Name)
+			fd.Catalogs[i].New = &spec
+		}
+	}
+	return fd
 }
 
 // maxGenreLen bounds a folder ref's genre. It is a TMDB genre name, the
@@ -325,24 +369,23 @@ func (in CollectionForm) validateCreate() error {
 	return in.Validate()
 }
 
-// catalogSpecProblems collects every problem on a catalog spec carried inside
-// a collection save — a folder's New entry or a CatalogEdits entry — each
-// message prefixed with where the spec sits. Same rules as
-// CatalogForm.Validate, since either spec is written as a catalog row in the
-// same transaction as the save.
+// catalogSpecProblems collects every problem on a catalog spec, each message
+// prefixed with where the spec sits: the one set of catalog rules, behind
+// CatalogForm.Validate (with no prefix), a collection save's New entries and
+// CatalogEdits, and a bundle's catalogs.
 func catalogSpecProblems(prefix, catalogType, name, catalogProvider, params string) []string {
 	var problems []string
 	if strings.TrimSpace(name) == "" {
 		problems = append(problems, prefix+"name is required")
 	}
 	problems = appendProblem(problems, lengthProblem(prefix+"name", name, maxNameLen))
-	problems = appendProblem(problems, lengthProblem(prefix+"params", params, maxParamsLen))
 	if !validProviders[catalogProvider] {
 		problems = append(problems, prefix+`provider must be "tmdb"`)
 	}
 	if !validCatalogTypes[catalogType] {
 		problems = append(problems, prefix+`type must be "movie" or "series"`)
 	}
+	problems = appendProblem(problems, lengthProblem(prefix+"params", params, maxParamsLen))
 	return problems
 }
 

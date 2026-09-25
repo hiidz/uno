@@ -90,7 +90,10 @@ function toFolder(
   }
 }
 
-function toCollection(
+/** A saved collection as a previewable one, its refs resolved against
+ *  `catalogById`. `undefined` is a selected id nothing describes. Also what
+ *  Community previews a community collection with. */
+export function toPreviewCollection(
   id: string,
   collection: Collection | undefined,
   catalogById: ReadonlyMap<string, Catalog>,
@@ -156,7 +159,7 @@ export function buildHomePreview({
   collectionById: ReadonlyMap<string, Collection>
 }): HomeScreenPreview {
   const previewCollections = collections.map((id) =>
-    toCollection(id, collectionById.get(id), catalogById),
+    toPreviewCollection(id, collectionById.get(id), catalogById),
   )
 
   const rows: PreviewRow[] = []

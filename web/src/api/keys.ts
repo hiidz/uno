@@ -26,9 +26,12 @@ export const queryKeys = {
   collectionSelection: (profileIndex: number) =>
     ['p', profileIndex, 'collections', 'selection'] as const,
 
-  communityCatalogs: (profileIndex: number) => ['p', profileIndex, 'catalogs', 'community'] as const,
+  /** Beside the owned-list keys rather than under them, so refreshing a
+   *  library list leaves Community alone; a write that changes Community
+   *  refreshes these keys itself. */
+  communityCatalogs: (profileIndex: number) => ['p', profileIndex, 'community', 'catalogs'] as const,
   communityCollections: (profileIndex: number) =>
-    ['p', profileIndex, 'collections', 'community'] as const,
+    ['p', profileIndex, 'community', 'collections'] as const,
 
   genres: (type: CatalogType) => ['genres', type] as const,
   certifications: (type: CatalogType) => ['certifications', type] as const,

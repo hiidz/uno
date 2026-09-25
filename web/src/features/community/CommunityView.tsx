@@ -5,7 +5,6 @@ import { Segmented } from '@/components/fields'
 import { ListState } from '@/components/ListState'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
-import { useLibrary } from '@/features/library/useLibrary'
 import {
   catalogSummary,
   CommunityCatalogPreview,
@@ -26,16 +25,8 @@ type Sort = 'name' | 'newest'
  * anywhere here: that provenance is retired,
  * not merely hidden — `taken_from` exists only to link this profile's own
  * copy to its original, so a row can say "✓ Taken" or offer Update.
- *
- * `useLibrary` is called here only for its genre lookups, which
- * `describeRecipe`/`buildRefOptions` need to render a recipe or a folder's
- * sources in plain English. It's the same query key `Workspace` and
- * `HomeSelectionContext` already hold open, so this is a third subscriber to
- * cached data, not a third network round trip (see `docs/frontend.md`'s note
- * on `useLibrary`'s existing multiple call sites).
  */
 export function CommunityView({ profileIndex }: { profileIndex: number }) {
-  const { genres } = useLibrary(profileIndex)
   const catalogsQuery = useCommunityCatalogs(profileIndex)
   const collectionsQuery = useCommunityCollections(profileIndex)
   const mutations = useCommunityMutations(profileIndex)
@@ -190,7 +181,7 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
                 onTake={() => run('collections', collection.id, 'take')}
                 onUpdate={() => run('collections', collection.id, 'update')}
                 onDuplicate={() => run('collections', collection.id, 'duplicate')}
-                preview={<CommunityCollectionPreview collection={collection} genres={genres} />}
+                preview={<CommunityCollectionPreview collection={collection} />}
               />
             ))}
       </ListState>

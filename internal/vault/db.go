@@ -3,6 +3,7 @@
 package vault
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -38,4 +39,21 @@ func InitDB(path string) (*DB, error) {
 	}
 
 	return &DB{conn: d}, nil
+}
+
+// inTx runs write inside one transaction, committing only when it succeeds.
+func (db *DB) inTx(ctx context.Context, write func(*sql.Tx) error) error {
+	tx, err := db.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
+
+	if err := write(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing transaction: %w", err)
+	}
+	return nil
 }

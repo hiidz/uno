@@ -199,8 +199,10 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
      catalogs and new collections, which is what the import response lists. An import opens
      nothing and adds nothing to home.
 
-The owned-list keys prefix the selection and Community keys, so an import marks those stale too.
-An import changes neither, so the refetch returns what they already held.
+The owned-list keys prefix the selection keys, so an import marks those stale too. An import
+doesn't change them, so the refetch returns what they already held. The Community keys sit beside
+the owned-list keys rather than under them (`['p', i, 'community', …]`), and an import leaves
+them alone: nothing it writes is public.
 
 The toast is `components/Toast.tsx` with `components/useToast.ts`, the same auto-dismissing
 message the Community tab shows its outcomes in.
@@ -364,8 +366,8 @@ Other decisions worth keeping:
   every edit made in this nested editor it takes effect when the collection is saved (a
   `catalog_edits` entry with `move_to_library`). Once staged, the catalog reads as listed in every
   folder, whose rows offer no Edit to reopen it, so `CollectionEditor` states each staged move as a
-  standing note above the folders ("Saving moves … into your library", `StagedMove`) with its own
-  Undo. Undo puts the catalog back in `localCatalogs` with its `collection_id` and re-reads it
+  standing note above the folders ("Saving moves … into your library", a neutral `StagedNote`)
+  with its own Undo. Undo puts the catalog back in `localCatalogs` with its `collection_id` and re-reads it
   through `withCatalogEdit`, so a move that was the only change leaves the form clean and a rename
   made alongside it survives. This editor never offers the other direction (demote):
   it's only ever opened on a scoped row from inside `CollectionEditor`, which is where "copy into
@@ -475,7 +477,8 @@ applied to every folder in it, and it governs this page only:
 | --- | --- |
 | `TABBED_GRID` | One tab per **catalog in the folder** (plus "All" when `show_all_tab`), over a grid of that catalog's content |
 | `ROWS` | One row per catalog in the folder, stacked — the same shape home uses |
-| `FOLLOW_LAYOUT` / unknown | Falls back to `ROWS`, labelled on screen as a guess |
+| `FOLLOW_LAYOUT` | Falls back to `ROWS`, labelled on screen as a guess |
+| `''` / unknown | Drawn as `TABBED_GRID`, which is how every Nuvio client reads it |
 
 Corroborating details from Nuvio's own field descriptions: `hideTitle` is "Hide the **tile**
 title text" (singular tile — it hides the title under the folder's own tile on home). Nuvio's
@@ -505,10 +508,11 @@ Decisions that shape the code:
   Discover-only list beneath the frame still names it, in List's own wording, because that list is
   Uno's own words about the picture, not the picture itself. Unresolvability still degrades a row
   inside the frame to an empty strip, no explanation, matching how the TV would show it.
-- **Slack wire values are handled, not cast away.** `tile_shape` can be `''` (falls back to
-  `POSTER`, and says so on screen; Nuvio does the same with a pushed `''` — see
-  `docs/data-model.md`); `view_mode` is a bare `string`, so `FOLLOW_LAYOUT` and
-  anything unrecognised land in one branch that admits it's guessing.
+- **Slack wire values are handled, not cast away.** An older row's `tile_shape` can be `''`
+  (falls back to `POSTER`, and says so on screen; Nuvio does the same with a pushed `''` — see
+  `docs/data-model.md`). `view_mode` is a bare `string`: `FOLLOW_LAYOUT` lands in a branch that
+  admits it's guessing, and `''` or anything unrecognised is drawn as `TABBED_GRID`, which is
+  what Nuvio does with it.
 - **Selection order is preserved within each band**, so pinning moves a row between bands
   without discarding the order the user just dragged.
 - **`ListState` owns loading and error for both views; each view owns its own empty case.**
@@ -638,11 +642,10 @@ button.
   lose. Both route through the same call, this editor's own `onRequestClose`, and from there
   through the one shared `EditorGuard` confirm every exit from a dirty editor already goes
   through — there is no second, folder-aware confirm layered on top of it.
-- **`tile_shape: ''` and an unknown `view_mode` are handled differently, and both are honest.**
-  `''` is a value the server accepts and Preview reads as an assumed poster, so it's kept as its
-  own "Default" option rather than normalised — a round trip through this form must not silently
-  rewrite stored data. An unrecognised `view_mode` can't be shown at all, so it reads as unset;
-  there is no third option.
+- **`view_mode` and `tile_shape` are the server's enums, with no "unset" option.** The server
+  stores an empty value as `TABBED_GRID` or `POSTER`, what every Nuvio client shows for one
+  (`docs/data-model.md`), so a new folder starts as Poster and an empty or unrecognised value in
+  an older row loads as Tabbed Grids or Poster.
 - **`cover_emoji` is a short text input** (`maxLength` 8, since an emoji can be several
   codepoints), not a picker — a bundled emoji picker is a large dependency for a field every
   keyboard already has an input method for.
@@ -792,28 +795,27 @@ does, Update brings it in line with the owner's changes on request.
   `useCommunityCatalogs`/`useCommunityCollections` (`useCommunity.ts`), which are thin
   `useQuery` wrappers over the community endpoints, keyed the same way the library's queries are
   (`queryKeys.communityCatalogs`/`communityCollections`, both under the `['p', i, …]` prefix).
-  It also calls `useLibrary` for its genre lookups only — the same query key `Workspace` and
-  `HomeSelectionContext` already hold open, so this is a third subscriber to cached data, not a
-  third network round trip.
 - **No author, no handle, no "copied from" line anywhere here** —
   that provenance is retired, not merely hidden. `taken_from` links a profile's copy to its
   original (see "A Take is a linked copy" in `docs/data-model.md`), which surfaces here only
   through the row's main button, driven by the server's own `taken` and `update_available`:
   **Take**; a disabled **✓ Taken** while the profile holds a linked copy (the server refuses a
   second Take with a 409); or **Update** while that copy is behind the original. **Duplicate** —
-  the same copy with no link, always allowed — waits behind a "⋯" menu built like the collection
-  editor's `RefMenu` (Radix `DropdownMenu`). While any of the three is in flight on a row, the
+  the same copy with no link, always allowed — waits behind a "⋯" menu, the same
+  `components/MoreMenu.tsx` (Radix `DropdownMenu`) the collection editor's `RefMenu` is built on. While any of the three is in flight on a row, the
   main button is disabled and says so ("Taking…", "Updating…", "Duplicating…").
 - **Preview reuses the editors' own preview components, not a new one.** A catalog row's Preview
   mounts `CommunityCatalogPreview`, which is `RecipePreview` run over the row's own stored
   `type`/`params` via `useRecipeTiles` — the same on-request, one-TMDB-page component the catalog
   editor's results panel uses, never `invalid` since a community row is always a saved catalog the
   server already accepted. A collection row's Preview mounts `CommunityCollectionPreview`, which
-  is the collection editor's own "On your TV" panel (`CollectionPreview`) fed from
-  `buildRefOptions`/`formFromCollection` over the row's own `catalogs` array rather than the
-  library — the community row already carries every catalog its folders reference, listed or
-  scoped on the source side, so nothing resolves as unavailable the way a library-sourced ref
-  picker's accessible set would for someone else's catalog.
+  is the collection editor's own "On your TV" panel (`CollectionPreview`) fed a
+  `PreviewCollection` built by Home's `toPreviewCollection` (`features/home/preview.ts`) over the
+  row's own `catalogs` array rather than the library — the community row already carries every
+  catalog its folders reference, listed or scoped on the source side, so nothing resolves as
+  unavailable the way a library-sourced ref picker's accessible set would for someone else's
+  catalog. The editor feeds the same panel its draft through `previewFromForm`
+  (`collectionForm.ts`).
 - **Take, Update and Duplicate refresh both the library and the community lists**
   (`useCommunityMutations.ts`) — a copy appears or changes in "Mine" and the original's flags
   flip, both from one mutation — and each mutation settles only once those refetches have landed,

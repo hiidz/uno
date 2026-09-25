@@ -298,6 +298,7 @@ func catalogsByIDs(ctx context.Context, q querier, ids []uuid.UUID) ([]Catalog, 
 // profileID. If input.CollectionID is set, the catalog is scoped to that
 // collection (must be owned by profileID, and may not be public).
 func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input CatalogForm) (Catalog, error) {
+	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
 	}
@@ -347,6 +348,7 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 // A save of a linked copy that changes its content, or moves it into a
 // collection, unlinks it in the same UPDATE; see catalogLinkAfterSave.
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
+	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
 	}

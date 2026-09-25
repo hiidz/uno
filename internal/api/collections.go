@@ -60,23 +60,8 @@ func (s *Server) listCommunityCollections(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) takeCollection(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	collectionID, ok := httpx.PathUUID(w, r, "collectionID", "collection id")
-	if !ok {
-		return
-	}
-
-	collection, err := s.vault.TakeCollection(r.Context(), profileID, collectionID,
-		func(catalogType, catalogProvider, params string) error {
-			return s.validateCatalogParams(r.Context(), catalogType, catalogProvider, params)
-		})
-	if err != nil {
-		writeVaultError(w, "takeCollection", err, vault.ErrCollectionNotFound, "collection not found", "failed to take collection")
-		return
-	}
-
-	httpx.WriteJSON(w, http.StatusCreated, collection)
+	serveCommunityCall(s, w, r, communityCall{collectionItem, "takeCollection", "failed to take collection", http.StatusCreated},
+		s.vault.TakeCollection)
 }
 
 func (s *Server) duplicateUserCollection(w http.ResponseWriter, r *http.Request) {

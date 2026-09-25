@@ -3,6 +3,7 @@ package vault
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -293,5 +294,145 @@ func TestCollectionFormCatalogEditProblems(t *testing.T) {
 
 	if err := (CollectionForm{Title: "C", CatalogEdits: []ScopedCatalogEdit{valid}}).Validate(); err != nil {
 		t.Fatalf("Validate with one valid edit = %v, want nil", err)
+	}
+}
+
+// normalizedWant is what the normalization tests store for their padded,
+// empty-valued forms.
+var normalizedWant = []string{"C", "TABBED_GRID", "https://example.com/b.jpg", "Folder", "POSTER", "🎃", "https://example.com/cover.jpg"}
+
+// paddedForm is a collection form with every trimmed field padded and an
+// empty view mode and tile shape, its one folder holding refs.
+func paddedForm(refs ...FolderCatalogRef) CollectionForm {
+	return CollectionForm{
+		Title: " C ", BackdropImageURL: " https://example.com/b.jpg ",
+		Folders: []FolderData{{
+			Title: " Folder ", CoverEmoji: " 🎃 ", CoverImageURL: " https://example.com/cover.jpg ",
+			Catalogs: refs,
+		}},
+	}
+}
+
+// requireNormalizedTree fails unless tree holds normalizedWant and its one
+// scoped catalog is named scopedName.
+func requireNormalizedTree(t *testing.T, label string, tree CollectionWithFolders, scopedName string) {
+	t.Helper()
+	f := tree.Folders[0]
+	got := []string{tree.Title, tree.ViewMode, tree.BackdropImageURL, f.Title, f.TileShape, f.CoverEmoji, f.CoverImageURL}
+	if !slices.Equal(got, normalizedWant) {
+		t.Errorf("%s = %q, want %q", label, got, normalizedWant)
+	}
+	for _, c := range tree.Catalogs {
+		if c.CollectionID != nil && c.Name != scopedName {
+			t.Errorf("%s scoped catalog name = %q, want %q", label, c.Name, scopedName)
+		}
+	}
+}
+
+// A builder write stores its form normalized — text trimmed, new and edited
+// catalog names included, an empty view mode or tile shape as its default —
+// and responds with what it stored. A padded URL is trimmed before it is
+// checked, so it is accepted.
+func TestBuilderWritesStoreNormalizedValues(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+
+	listed, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("  Listed  "))
+	if err != nil {
+		t.Fatalf("CreateUserCatalog: %v", err)
+	}
+	if listed.Name != "Listed" || reloadCatalog(t, db, listed.ID).Name != "Listed" {
+		t.Errorf("created catalog name = %q, want it trimmed", listed.Name)
+	}
+	renamed, err := db.UpdateUserCatalog(ctx, owner, listed.ID, listedCatalogForm(" Renamed "))
+	if err != nil {
+		t.Fatalf("UpdateUserCatalog: %v", err)
+	}
+	if renamed.Name != "Renamed" || reloadCatalog(t, db, listed.ID).Name != "Renamed" {
+		t.Errorf("updated catalog name = %q, want it trimmed", renamed.Name)
+	}
+
+	scoped := &NewScopedCatalog{Key: "k", Type: "movie", Name: " Scoped ", Provider: "tmdb", Params: "{}"}
+	created, err := db.CreateUserCollection(ctx, owner, paddedForm(FolderCatalogRef{CatalogID: &listed.ID}, FolderCatalogRef{New: scoped}))
+	if err != nil {
+		t.Fatalf("CreateUserCollection: %v", err)
+	}
+	requireNormalizedTree(t, "created", created, "Scoped")
+	stored, err := db.reloadCollection(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	requireNormalizedTree(t, "stored after create", stored, "Scoped")
+
+	i := slices.IndexFunc(stored.Catalogs, func(c Catalog) bool { return c.CollectionID != nil })
+	edited := stored.Catalogs[i]
+	form := paddedForm(FolderCatalogRef{CatalogID: &listed.ID}, FolderCatalogRef{CatalogID: &edited.ID})
+	form.Folders[0].ID = &stored.Folders[0].ID
+	form.CatalogEdits = []ScopedCatalogEdit{{ID: edited.ID, Type: edited.Type, Provider: edited.Provider, Name: " Scoped 2 ", Params: edited.Params}}
+	updated, err := db.UpdateUserCollection(ctx, owner, created.ID, form)
+	if err != nil {
+		t.Fatalf("UpdateUserCollection: %v", err)
+	}
+	requireNormalizedTree(t, "updated", updated, "Scoped 2")
+	if stored, err = db.reloadCollection(ctx, created.ID); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	requireNormalizedTree(t, "stored after update", stored, "Scoped 2")
+}
+
+// An import stores the bundle normalized the way a builder write does.
+func TestImportBundleStoresNormalizedValues(t *testing.T) {
+	db := newTestDB(t)
+	b := readTestBundle(t)
+	b.Catalogs[0].Name = " 80s Horror "
+	bc := &b.Collections[0]
+	bc.Title, bc.ViewMode, bc.BackdropImageURL = " C ", "", " https://example.com/b.jpg "
+	bc.Catalogs[0].Name = " Slashers "
+	f := &bc.Folders[0]
+	f.Title, f.TileShape, f.CoverEmoji, f.CoverImageURL = " Folder ", "", " 🎃 ", " https://example.com/cover.jpg "
+
+	catalogs, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), stampFingerprints(b), nil)
+	if err != nil {
+		t.Fatalf("ImportBundle: %v", err)
+	}
+	if catalogs[0].Name != "80s Horror" {
+		t.Errorf("listed catalog name = %q, want it trimmed", catalogs[0].Name)
+	}
+	requireNormalizedTree(t, "imported", collections[0], "Slashers")
+}
+
+// A Take copies what its original stores as it is, values a builder write
+// would normalize included, so the copy hashes like its original: Community
+// shows it taken with no update available.
+func TestTakeCopiesStoredValuesAsTheyAre(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner, taker := newTestProfile(t, db, "owner"), newTestProfile(t, db, "taker")
+	scoped := &NewScopedCatalog{Key: "k", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}", Fingerprint: "fp"}
+	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
+		Title: "Source", IsPublic: true, Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: scoped}}}},
+	})
+	if err != nil {
+		t.Fatalf("CreateUserCollection: %v", err)
+	}
+	for _, stmt := range []string{
+		`UPDATE collections SET title = ' Source ', view_mode = '' WHERE id = ?`,
+		`UPDATE folders SET tile_shape = '' WHERE collection_id = ?`,
+	} {
+		if _, err := db.conn.ExecContext(ctx, stmt, source.ID.String()); err != nil {
+			t.Fatalf("storing unnormalized values: %v", err)
+		}
+	}
+
+	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
+	if err != nil {
+		t.Fatalf("TakeCollection: %v", err)
+	}
+	if taken.Title != " Source " || taken.ViewMode != "" || taken.Folders[0].TileShape != "" {
+		t.Errorf("taken title, view mode, tile shape = %q, %q, %q, want the source's as stored", taken.Title, taken.ViewMode, taken.Folders[0].TileShape)
+	}
+	if row := communityCollectionRow(t, db, taker, source.ID); !row.Taken || row.UpdateAvailable {
+		t.Errorf("community row taken = %v, update_available = %v, want true, false", row.Taken, row.UpdateAvailable)
 	}
 }

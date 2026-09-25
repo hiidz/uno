@@ -1,16 +1,12 @@
 import { useEffect, useId, useMemo, type ReactNode } from 'react'
-import { MoreHorizontal } from 'lucide-react'
-import { DropdownMenu } from 'radix-ui'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
 import { tmdbKind } from '@/api'
 import { InfoTip } from '@/components/fields'
-import { Icon } from '@/components/Icon'
+import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { RecipePreview } from '@/features/catalogs/RecipePreview'
 import { CollectionPreview } from '@/features/collections/CollectionPreview'
-import { formFromCollection } from '@/features/collections/collectionForm'
-import { buildRefOptions, indexRefOptions } from '@/features/collections/refs'
+import { toPreviewCollection } from '@/features/home/preview'
 import { describeCollection } from '@/features/library/collection'
-import type { GenreLookups } from '@/features/library/useLibrary'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import type { CommunityAction } from './useCommunityMutations'
 
@@ -99,29 +95,11 @@ export function CommunityRow({
             label="Take"
             text="Taking makes a copy that stays linked to this one: when its owner changes it, Update brings your copy in line. Editing your copy unlinks it. Nothing you do to your copy reaches this one. Duplicate, under ⋯, makes a copy that is never linked."
           />
-          <DropdownMenu.Root modal={false}>
-            <DropdownMenu.Trigger
-              aria-label={`More for ${name}`}
-              className="tap text-dimmer hover:bg-line hover:text-ink grid h-8 w-8 shrink-0 place-items-center rounded-[2px] transition-colors"
-            >
-              <Icon icon={MoreHorizontal} size={16} />
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="end"
-                sideOffset={4}
-                className="bg-raised-hi border-line-hi z-40 flex w-56 flex-col gap-0.5 rounded-[2px] border p-1.5"
-              >
-                <DropdownMenu.Item
-                  disabled={pending !== undefined}
-                  onSelect={onDuplicate}
-                  className="hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent text-ink flex items-center rounded-[2px] px-2 py-2 text-left text-[12px] transition-colors"
-                >
-                  Duplicate
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+          <MoreMenu label={name}>
+            <MoreMenuItem disabled={pending !== undefined} onSelect={onDuplicate}>
+              Duplicate
+            </MoreMenuItem>
+          </MoreMenu>
         </div>
       </div>
 
@@ -155,22 +133,17 @@ export function CommunityCatalogPreview({ catalog }: { catalog: CommunityCatalog
  *  the collection editor's docked panel uses, fed from the row's own
  *  `catalogs` rather than the library, so every folder resolves regardless of
  *  what this profile owns. */
-export function CommunityCollectionPreview({
-  collection,
-  genres,
-}: {
-  collection: CommunityCollection
-  genres: GenreLookups
-}) {
-  const optionByID = useMemo(
-    () => indexRefOptions(buildRefOptions(collection.catalogs ?? [], genres)),
-    [collection, genres],
+export function CommunityCollectionPreview({ collection }: { collection: CommunityCollection }) {
+  const preview = useMemo(
+    () =>
+      toPreviewCollection(
+        collection.id,
+        collection,
+        new Map((collection.catalogs ?? []).map((catalog) => [catalog.id, catalog])),
+      ),
+    [collection],
   )
-  // Memoised on the row: `formFromCollection` mints fresh folder keys on every
-  // call, and the preview holds its open folder page by key, so a fresh form on
-  // each render of the list would close that page.
-  const state = useMemo(() => formFromCollection(collection), [collection])
-  return <CollectionPreview state={state} optionByID={optionByID} />
+  return <CollectionPreview collection={preview} />
 }
 
 export function catalogSummary(catalog: CommunityCatalog): string {

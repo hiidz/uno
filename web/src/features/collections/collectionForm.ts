@@ -13,6 +13,14 @@ import {
   toPayload as toCatalogPayload,
   type CatalogFormState,
 } from '@/features/catalogs/catalogForm'
+import {
+  normalizeTileShape,
+  normalizeViewMode,
+  type PreviewCollection,
+  type PreviewFolder,
+  type PreviewSource,
+} from '@/features/preview/model'
+import type { RefOption } from './refs'
 
 /** Prefix marking a `FolderRefState.catalogID` as a client-only
  *  draft — staged locally by "copy into this collection"/"new inside this
@@ -50,17 +58,9 @@ export function isDraftCatalogID(id: string): boolean {
  *    session.
  */
 
-/** `''` is a real, storable value meaning "unset" — the server's `Validate`
- *  explicitly allows it, and Preview treats it as an assumed `POSTER` rather
- *  than a fact. Modelled as its own option instead of being normalised away, so
- *  a round-trip through this form doesn't quietly rewrite stored data. */
-export type FolderTileShape = TileShape | ''
-
-/** Mirrors `validViewModes` in `internal/vault/validation.go`. No `''`: every
- *  collection has a view mode, and "unset" already has a name in that enum —
- *  `FOLLOW_LAYOUT`, which is what the app does with an empty one anyway.
- *  Union-typed rather than validated, so an invalid view mode is
- *  unrepresentable and `validateCollectionForm` doesn't have to check it. */
+/** Mirrors `validViewModes` in `internal/vault/validation.go`. Union-typed
+ *  rather than validated, so an invalid view mode is unrepresentable and
+ *  `validateCollectionForm` doesn't have to check it. */
 export type CollectionViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
 
 /** Ordered as the select lists them, so the default reads first. */
@@ -80,7 +80,7 @@ export interface FolderFormState {
   /** The server's folder id, absent on a folder that doesn't exist yet. */
   id?: string
   title: string
-  tileShape: FolderTileShape
+  tileShape: TileShape
   hideTitle: boolean
   coverEmoji: string
   coverImageURL: string
@@ -172,7 +172,7 @@ export function newFolder(): FolderFormState {
   return {
     key: nextFolderKey(),
     title: '',
-    tileShape: '',
+    tileShape: 'POSTER',
     hideTitle: false,
     coverEmoji: '',
     coverImageURL: '',
@@ -199,16 +199,16 @@ export function emptyCollectionForm(): CollectionFormState {
   }
 }
 
+// The server stores an empty view mode or tile shape as `TABBED_GRID` or
+// `POSTER`, what every Nuvio client shows for one, so an empty or unknown
+// value loads as that too.
+
 function toViewMode(raw: string): CollectionViewMode {
-  // `view_mode` is a bare string on the wire, so an empty or unknown value is
-  // representable. Both land on `FOLLOW_LAYOUT`: it is what the app falls back
-  // to for them, so the form shows what the collection already does rather
-  // than a fourth state meaning "whatever this string was".
-  return (VIEW_MODES as string[]).includes(raw) ? (raw as CollectionViewMode) : 'FOLLOW_LAYOUT'
+  return (VIEW_MODES as string[]).includes(raw) ? (raw as CollectionViewMode) : 'TABBED_GRID'
 }
 
-function toTileShape(raw: string): FolderTileShape {
-  return (TILE_SHAPES as string[]).includes(raw) ? (raw as FolderTileShape) : ''
+function toTileShape(raw: string): TileShape {
+  return (TILE_SHAPES as string[]).includes(raw) ? (raw as TileShape) : 'POSTER'
 }
 
 function folderFromWire(folder: Folder): FolderFormState {
@@ -460,4 +460,70 @@ export function isSameCollection(a: CollectionFormState, b: CollectionFormState)
  *  actually unlink is the server's call; this only decides whether to ask. */
 export function changesContent(baseline: CollectionFormState, state: CollectionFormState): boolean {
   return !isSameCollection({ ...baseline, isPublic: state.isPublic }, state)
+}
+
+/**
+ * The form's own state as a previewable collection, for the editor's "On your
+ * TV" panel.
+ *
+ * A folder's identity here is its form `key`, not its server `id`: a folder
+ * that hasn't been saved yet has no id, and `CollectionMeta` still has to be
+ * able to count it.
+ *
+ * An id `optionByID` can't resolve becomes an unresolved source — the same
+ * shape Home uses for a catalog that's since been deleted. In this form that
+ * state is also a validation error, so the form names it on the folder; the
+ * preview only has to avoid claiming content that isn't there.
+ */
+export function previewFromForm(
+  state: CollectionFormState,
+  optionByID: ReadonlyMap<string, RefOption>,
+): PreviewCollection {
+  const { mode, assumed } = normalizeViewMode(state.viewMode)
+
+  const folders: PreviewFolder[] = state.folders.map((folder) => {
+    const tile = normalizeTileShape(folder.tileShape)
+
+    const sources: PreviewSource[] = folder.refs.map((ref) => {
+      const option = optionByID.get(ref.catalogID)
+      return {
+        // The ref's own key, not the catalog/genre pair: the form can briefly
+        // hold a repeated pair, which is a validation error rather than a
+        // state the preview may collide on.
+        key: ref.key,
+        id: ref.catalogID,
+        name: option?.name ?? null,
+        type: option?.catalog.type ?? null,
+        params: option?.catalog.params ?? '',
+        genre: ref.genre,
+      }
+    })
+
+    return {
+      id: folder.key,
+      title: folder.title,
+      hideTitle: folder.hideTitle,
+      tileShape: tile.shape,
+      tileShapeAssumed: tile.assumed,
+      coverEmoji: folder.coverEmoji,
+      coverImageUrl: folder.coverImageURL,
+      sources,
+      unresolved: sources.filter((s) => s.name === null).length,
+    }
+  })
+
+  return {
+    // Never rendered — the row's identity is the form, not a stored row, and a
+    // collection being created has no id at all.
+    id: '',
+    title: state.title,
+    pinned: state.pinToTop,
+    viewMode: mode,
+    viewModeAssumed: assumed,
+    showAllTab: state.showAllTab,
+    hasBackdrop: state.backdropImageURL.trim() !== '',
+    folders,
+    // The form is the description, so there is always something to draw.
+    missing: false,
+  }
 }

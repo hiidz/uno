@@ -142,23 +142,20 @@ func (db *DB) GetOwnedCollectionIDs(ctx context.Context, profileID uuid.UUID) ([
 // every referenced catalog, and inserts the collection with its folders in
 // one transaction.
 func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, input CollectionForm) (CollectionWithFolders, error) {
+	input = input.normalized()
 	if err := input.validateCreate(); err != nil {
 		return CollectionWithFolders{}, err
 	}
 
-	tx, err := db.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
-
-	created, allCatalogIDs, err := createCollectionTx(ctx, tx, profileID, input, nil)
+	var created CollectionWithFolders
+	var allCatalogIDs []uuid.UUID
+	err := db.inTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		created, allCatalogIDs, err = createCollectionTx(ctx, tx, profileID, input, nil)
+		return err
+	})
 	if err != nil {
 		return CollectionWithFolders{}, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("committing transaction: %w", err)
 	}
 
 	catalogs, err := db.GetCatalogsByIDs(ctx, dedupeUUIDs(allCatalogIDs))
@@ -461,6 +458,7 @@ func movesToLibrary(edits []ScopedCatalogEdit) bool {
 // provided it's owned by profileID. A linked collection is unlinked when the
 // save changes its content; see saveCollectionTx.
 func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID, input CollectionForm) (CollectionWithFolders, error) {
+	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return CollectionWithFolders{}, err
 	}

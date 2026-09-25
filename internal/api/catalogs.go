@@ -16,22 +16,8 @@ func (s *Server) listCommunityCatalogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) takeCatalog(w http.ResponseWriter, r *http.Request) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	catalogID, ok := httpx.PathUUID(w, r, "catalogID", "catalog id")
-	if !ok {
-		return
-	}
-
-	catalog, err := s.vault.TakeCatalog(r.Context(), profileID, catalogID,
-		func(catalogType, catalogProvider, params string) error {
-			return s.validateCatalogParams(r.Context(), catalogType, catalogProvider, params)
-		})
-	if err != nil {
-		writeVaultError(w, "takeCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to take catalog")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusCreated, catalog)
+	serveCommunityCall(s, w, r, communityCall{catalogItem, "takeCatalog", "failed to take catalog", http.StatusCreated},
+		s.vault.TakeCatalog)
 }
 
 func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {

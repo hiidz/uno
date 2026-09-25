@@ -8,7 +8,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -43,7 +42,6 @@ func (db *DB) TakeCollection(ctx context.Context, profileID uuid.UUID, sourceID 
 
 	spec := communitySpec(profileID, validateParams)
 	spec.takenFrom = &sourceID
-	spec.verb = "taken"
 	return db.copyCollection(ctx, profileID, sourceID, spec)
 }
 
@@ -56,7 +54,6 @@ func (db *DB) DuplicateCommunityCollection(ctx context.Context, profileID uuid.U
 		return CollectionWithFolders{}, errors.New("vault: DuplicateCommunityCollection requires a params validator")
 	}
 	spec := communitySpec(profileID, validateParams)
-	spec.verb = "duplicated"
 	return db.copyCollection(ctx, profileID, sourceID, spec)
 }
 
@@ -70,7 +67,6 @@ func communitySpec(profileID uuid.UUID, validateParams CatalogParamsValidator) c
 		sourceArgs:     []any{profileID.String()},
 		scopeAll:       true,
 		validateParams: validateParams,
-		verb:           "copied",
 	}
 }
 
@@ -89,7 +85,6 @@ func (db *DB) DuplicateCollection(ctx context.Context, profileID uuid.UUID, sour
 		sourceWhere: " AND owner_id = ?",
 		sourceArgs:  []any{profileID.String()},
 		titleSuffix: " (copy)",
-		verb:        "duplicated",
 	})
 }
 
@@ -102,8 +97,7 @@ func (db *DB) DuplicateCollection(ctx context.Context, profileID uuid.UUID, sour
 // makes every catalog the source references a scoped copy in the new
 // collection; without it a listed catalog stays a reference (extractBundle).
 // takenFrom, when set, is the new collection's taken_from, and each catalog
-// copy's taken_from is then the catalog it was copied from. verb names the
-// operation in the post-insert reload's error message.
+// copy's taken_from is then the catalog it was copied from.
 //
 // validateParams re-checks the recipes the copy writes as new rows before
 // anything is written, and is nil for a copy that stays within one profile —
@@ -115,7 +109,6 @@ type copyCollectionSpec struct {
 	takenFrom      *uuid.UUID
 	scopeAll       bool
 	validateParams CatalogParamsValidator
-	verb           string
 }
 
 // copyCollection runs one collection copy end to end: extract the source
@@ -151,29 +144,16 @@ func (db *DB) copyCollection(ctx context.Context, profileID, sourceID uuid.UUID,
 		return CollectionWithFolders{}, err
 	}
 
-	tx, err := db.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
-
-	created, err := spec.createCopy(ctx, tx, profileID, form)
-	if err != nil {
-		return CollectionWithFolders{}, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return CollectionWithFolders{}, fmt.Errorf("committing transaction: %w", err)
-	}
-
-	trees, err := db.GetCollectionsByIDs(ctx, []uuid.UUID{created.ID})
+	var created CollectionWithFolders
+	err = db.inTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		created, err = spec.createCopy(ctx, tx, profileID, form)
+		return err
+	})
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
-	if len(trees) == 0 {
-		return CollectionWithFolders{}, fmt.Errorf("loading %s collection %s: not found after insert", spec.verb, created.ID)
-	}
-	return trees[0], nil
+	return db.reloadCollection(ctx, created.ID)
 }
 
 // loadCopySource reads sourceID's tree through the pool, subject to
