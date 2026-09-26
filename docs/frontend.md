@@ -934,8 +934,8 @@ widest and heaviest is sign lettering only. Roboto is the TV's own face, loaded 
 fonts only from `'self'` and `data:`.
 
 **Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Shared
-(`.stk-shared`, community pink, because Community is where a shared row turns up), and
-Unavailable (`.stk-danger`). A library row's home-screen toggle is `.tv-sticker`: a dashed empty
+(`.stk-shared`, community pink, because Community is where a shared row turns up), Linked
+(`.stk-linked`, outlined in community pink: a Take still linked to its original), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.tv-sticker`: a dashed empty
 circle while it's off the TV, a yellow ON TV price sticker once it's on. A home row's position is
 a yellow `.pos-sticker`, read out as "3rd on your TV"; the pending count and a profile's slot
 number are `.count-sticker`s.

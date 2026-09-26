@@ -348,7 +348,8 @@
 
     /* Stickers: the small printed labels on a row. Kind is an outline in the
        shelf's own line; Shared is Community pink, because that is where a
-       shared row turns up; Unavailable is outlined in danger red. */
+       shared row turns up; Linked, a copy still linked to its Community original, is
+       outlined in the same pink; Unavailable is outlined in danger red. */
     .stk {
         display: inline-flex;
         align-items: center;
@@ -380,6 +381,10 @@
     .stk-shared {
         background: var(--uno-community);
         color: var(--uno-sign-ink);
+    }
+    .stk-linked {
+        box-shadow: inset 0 0 0 1.5px var(--uno-community);
+        color: var(--uno-community);
     }
     .stk-danger {
         box-shadow: inset 0 0 0 1.5px var(--uno-danger);

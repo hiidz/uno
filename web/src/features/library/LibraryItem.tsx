@@ -31,13 +31,16 @@ const KIND_LABEL: Record<RowKind, string> = {
  * actions would be a screen-length scroll from the thing they act on; the
  * editor's own sticky header carries them there instead.
  *
- * `isPublic` marks a row as also shared to the community — the closed-graph
- * model means every row in the rail is yours, so this is the only ownership
- * fact left worth stating. It is a Community-pink sticker because Community
- * is where a shared row turns up.
+ * The closed-graph model means every row in the rail is yours, so the
+ * stickers left to state are about Community, both in Community pink.
+ * `linked` marks a row still linked to the Community original it was taken
+ * from, outlined; `isPublic` marks a row
+ * as also shared to the community, solid because Community is where a shared
+ * row turns up.
  */
 export function LibraryItem({
   kind,
+  linked,
   isPublic,
   name,
   summary,
@@ -49,6 +52,8 @@ export function LibraryItem({
   onDelete,
 }: {
   kind: RowKind
+  /** Still linked to the Community original it was taken from. */
+  linked?: boolean
   /** Visible to everyone else, not just you. */
   isPublic?: boolean
   name: string
@@ -90,12 +95,21 @@ export function LibraryItem({
             <span className="sr-only">
               {' '}
               — {KIND_LABEL[kind]}
+              {linked ? ', linked to a community original' : ''}
               {isPublic ? ', shared with the community' : ''}
             </span>
           </span>
           {summary && <span className="text-dim truncate text-[13px]">{summary}</span>}
           <span aria-hidden="true" className="mt-0.5 flex flex-wrap gap-1.5">
             <span className="stk stk-kind">{kind === 'collection' ? 'Collection' : typeLabel(kind)}</span>
+            {linked && (
+              <span
+                className="stk stk-linked"
+                title="Taken from Community — gets the owner's updates until you edit it"
+              >
+                Linked
+              </span>
+            )}
             {isPublic && (
               <span className="stk stk-shared" title="Also visible to the community">
                 Shared

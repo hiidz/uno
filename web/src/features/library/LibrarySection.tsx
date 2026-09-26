@@ -149,6 +149,7 @@ export function LibrarySection({
           <LibraryItem
             key={catalog.id}
             kind={catalog.type}
+            linked={catalog.linked}
             isPublic={catalog.is_public}
             name={catalog.name}
             summary={summary}
@@ -188,6 +189,7 @@ export function LibrarySection({
           <LibraryItem
             key={collection.id}
             kind="collection"
+            linked={collection.linked}
             isPublic={collection.is_public}
             name={collection.title}
             summary={summary}
