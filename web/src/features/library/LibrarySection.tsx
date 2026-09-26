@@ -90,7 +90,7 @@ export function LibrarySection({
   )
 
   return (
-    <section className="border-line flex flex-col gap-2.5 border-b p-4 last:border-b-0 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+    <section className="flex flex-col gap-2.5 p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
       <div className="flex items-center justify-between gap-1">
         <h2 className="text-ink m-0 flex-1 text-[16px] font-bold">Mine</h2>
         <button type="button" className="btn-ghost btn-sm" onClick={onImport}>
@@ -237,8 +237,10 @@ function LibraryGroup({
   return (
     <div className="flex flex-col gap-1">
       {/* The sign spans the rail edge to edge, out through the section's own
-          padding; the rows sit 8px in from it. */}
-      <div className={`sign tone-${tone} -mx-4 mt-1.5 mb-1`}>
+          padding; the rows sit 8px in from it. Below `lg` it pins under the
+          app header while its own group is scrolling past, as the pane's sign
+          does, and the next group's sign pushes it out. */}
+      <div className={`sign tone-${tone} sticky top-[var(--app-h)] z-20 -mx-4 mt-1.5 mb-1 lg:static`}>
         <h3 className="type-sign m-0 flex flex-1 items-center gap-2.5">
           {label}
           {!isLoading && <span className="sign-count">{count}</span>}

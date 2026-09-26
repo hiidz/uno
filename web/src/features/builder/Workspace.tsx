@@ -589,33 +589,15 @@ export function Workspace({
             catalog or collection is the Community tab's job, not this rail's.
 
             Below `lg` the rail is the top of one long page rather than a
-            column, with the pane stacked underneath it. It keeps its link to
-            home, which stops being a way *across* to the pane and becomes a
-            shortcut *down* to it. */}
+            column, with the pane stacked underneath it, and it ends in a
+            shortcut *down* to home. */}
         <aside
           ref={railRef}
           tabIndex={-1}
           data-landing
           aria-label="Library"
-          className="bg-sidebar border-line flex scroll-mt-[var(--app-h)] flex-col outline-none lg:min-h-0 lg:border-r"
+          className="bg-sidebar border-line flex flex-col outline-none lg:min-h-0 lg:border-r"
         >
-          {/* Above `lg` home is simply the other half of the screen and needs
-              no link. Below it the pane is further down the same page, so
-              this is a shortcut to it rather than a way across — hence `↓`
-              and not `›`. It still guards, because arriving at home means the
-              open editor is replaced by it. */}
-          <button
-            type="button"
-            onClick={showHome}
-            aria-current={target === null ? 'true' : undefined}
-            className={`border-line hover:bg-raised flex items-center gap-3 border-b px-4 py-3 text-left transition-colors lg:hidden ${
-              target === null ? 'bg-raised-hi' : ''
-            }`}
-          >
-            <span className="type-display flex-1 text-[15px]">Your home screen</span>
-            <Icon icon={ArrowDown} size={16} className="text-dim" />
-          </button>
-
           <LibrarySection
             library={library}
             selectedID={target?.id ?? null}
@@ -640,6 +622,22 @@ export function Workspace({
             onExport={() => setTransfer('export')}
             notice={<Toast toast={toast} />}
           />
+
+          {/* Above `lg` home is simply the other half of the screen and needs
+              no link. Below it the pane is further down the same page, so
+              this is a shortcut down to it — hence `↓` and not `›`. Sticky
+              as the rail's last child: it pins to the bottom of the viewport
+              while the rail is on screen, and leaves with the rail's end as
+              the pane scrolls in. It still guards, because arriving at home
+              means the open editor is replaced by it. */}
+          <button
+            type="button"
+            onClick={showHome}
+            className="btn-secondary bg-raised-hi sticky bottom-4 z-10 mb-4 self-center lg:hidden"
+          >
+            Your home screen
+            <Icon icon={ArrowDown} size={16} />
+          </button>
         </aside>
 
         {/* `min-h` below `lg` is what makes the pane scrollable *to*: a short

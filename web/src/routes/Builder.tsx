@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Check } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Segmented } from '@/components/fields'
+import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
@@ -86,8 +88,7 @@ function BuilderHeader({
   const home = useHomeSelection()
   const editor = useEditorGuard()
   const push = usePush(profile.profileIndex)
-  // One count for both copies of the pending indicator (the header's and the
-  // phone tab row's): it rings down only as a push succeeds.
+  // The pending indicator's count: it rings down only as a push succeeds.
   const pendingShown = useCountDown(
     home.pendingCount,
     push.outcome?.kind === 'success' ? push.outcome : null,
@@ -147,23 +148,22 @@ function BuilderHeader({
 
   return (
     <>
-      {/* Sticky below `lg`, where the page scrolls as one document: Push and
-          the banner reporting its result are the two things that must not
-          scroll away from someone halfway down a home screen. Above `lg` the
-          shell is a fixed-height flex column and this band is already pinned.
-          `z-30` sits under `Modal` and `ConfirmDialog`, which are `z-50`.
+      {/* Sticky below `lg`, where the page scrolls as one document: Push, the
+          pending count, the list of changes it opens, and the banner reporting
+          a push's result must not scroll away from someone halfway down a
+          home screen. The tab row is not in it — it scrolls with the page.
+          Above `lg` the shell is a fixed-height flex column and this band is
+          already pinned. `z-30` sits under `Modal` and `ConfirmDialog`, which
+          are `z-50`.
 
           Measured, not assumed: this band is what everything below `lg` pins
-          and scrolls to the underside of. The header itself is now one row at a
-          fixed height, but `PushBanner` is this wrapper's second child rather
-          than the header's, and it mounts and unmounts while the page is open —
-          so the band's height still moves and is still read from the DOM. */}
+          and scrolls to the underside of. The header is one row at a fixed
+          height, but the list of changes and `PushBanner` mount and unmount
+          while the page is open, so the band's height moves and is read from
+          the DOM. */}
       <div ref={stickyRef} className="sticky top-0 z-30 shrink-0 lg:static">
         {/* One row that never wraps, at every width: the profile chip
-            truncates instead. Below `lg` the pending count sits in the tab row
-            underneath, which does wrap when its words don't fit beside the
-            tabs — one more reason the band's height is measured rather than
-            assumed. */}
+            truncates instead. */}
         <header className="bg-ground border-line flex min-h-[55px] items-center gap-3 border-b px-4 py-2 lg:h-[60px] lg:gap-4 lg:px-5 lg:py-0">
           <Wordmark className="text-ink h-[14px] w-auto shrink-0 lg:h-[16px]" />
 
@@ -197,34 +197,25 @@ function BuilderHeader({
           {/* Grouped so the row doesn't reflow while PendingIndicator is still
               withholding itself during load. `shrink-0`: what the row runs out
               of room for is absorbed by the chip, not taken out of the status
-              and the action. */}
-          <div className="ml-auto flex shrink-0 items-center gap-3 lg:gap-4">
-            {/* Below `lg` the header has no room for it in words; it moves to the
-                tab row underneath. */}
-            <div className="hidden lg:block">
-              <PendingIndicator
-                count={pendingShown}
-                open={changesOpen}
-                onToggle={() => setChangesOpen((o) => !o)}
-              />
-            </div>
+              and the action.
+
+              Below `lg` the pending count is the left half of one pill with
+              Push — no gap, stretched to Push's height, Push squared off on
+              the side they share — which is what fits it into a row with no
+              room for its words. Until it renders, Push keeps both ends
+              round. */}
+          <div className="ml-auto flex shrink-0 items-stretch lg:items-center lg:gap-4">
+            <PendingIndicator
+              count={pendingShown}
+              open={changesOpen}
+              onToggle={() => setChangesOpen((o) => !o)}
+            />
             {profile.manifestURL && (
               <AddonURLButton url={profile.manifestURL} className="hidden lg:inline-flex" />
             )}
-            <PushButton {...push} />
+            <PushButton {...push} className={home.ready ? 'max-lg:rounded-l-none' : ''} />
           </div>
         </header>
-
-        {/* Wraps: on a narrow phone the tabs and a pending count in words don't
-            fit on one line together. */}
-        <div className="border-line bg-ground flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b px-4 py-2 lg:hidden">
-          <BuilderTabs tab={tab} onChange={requestTabChange} />
-          <PendingIndicator
-            count={pendingShown}
-            open={changesOpen}
-            onToggle={() => setChangesOpen((o) => !o)}
-          />
-        </div>
 
         <ChangesStrip
           changes={home.changes}
@@ -232,6 +223,12 @@ function BuilderHeader({
           onHide={() => setChangesOpen(false)}
         />
         <PushBanner {...push} />
+      </div>
+
+      {/* Below `lg` only, and outside the sticky band: it scrolls with the
+          page. */}
+      <div className="border-line bg-ground border-b px-4 py-2 lg:hidden">
+        <BuilderTabs tab={tab} onChange={requestTabChange} />
       </div>
 
       <ConfirmDialog
@@ -258,11 +255,12 @@ function BuilderHeader({
  * Pending edits live only in browser memory, so without this the user has no
  * way to tell that what's on screen isn't what's on their TV. From `lg` up it
  * sits beside the Push button, information next to the action that resolves
- * it; below `lg` the header has no room for its words, so it sits in the tab
- * row underneath.
+ * it. Below `lg` the header has no room for its words, so it is drawn without
+ * them as the left half of one pill with Push: the count alone while anything
+ * is pending, a check once nothing is.
  *
  * It reads as the count and "not on TV yet" while anything is pending, and as
- * "Everything is on the TV" ("All on TV" below `lg`) once nothing is. The
+ * "Everything is on the TV" once nothing is. The
  * clean state is drawn rather than dropped: this returns `null` until
  * `home.ready`, so rendering nothing already means "not loaded yet", and a
  * silent clean state would be indistinguishable from one still loading.
@@ -316,17 +314,15 @@ function PendingIndicator({
           each one interrupts the work that caused it. It is readable on
           request, not broadcast. */}
       <span className="sr-only lg:hidden">{sentence}</span>
-      <span aria-hidden="true" className="lg:hidden">
-        {dirty ? 'not on TV yet' : 'All on TV'}
-      </span>
+      {!dirty && <Icon icon={Check} size={16} className="lg:hidden" />}
       <span className="hidden lg:inline">{sentence}</span>
     </>
   )
 
-  const className = `type-data flex h-[34px] shrink-0 items-center gap-2 rounded-full text-[13.5px] font-semibold whitespace-nowrap transition-colors ${
+  const className = `type-data flex shrink-0 items-center gap-2 rounded-l-full text-[13.5px] font-semibold whitespace-nowrap transition-colors lg:h-[34px] lg:rounded-full ${
     dirty
-      ? 'text-pending pr-3.5 pl-1 shadow-[inset_0_0_0_1.5px_var(--uno-pending)]'
-      : 'text-dim px-3.5 shadow-[inset_0_0_0_1px_var(--uno-line-hi)]'
+      ? 'text-pending pr-2 pl-2.5 shadow-[inset_0_0_0_1.5px_var(--uno-pending)] lg:pr-3.5 lg:pl-1'
+      : 'text-dim pr-2.5 pl-3.5 shadow-[inset_0_0_0_1px_var(--uno-line-hi)] lg:px-3.5'
   }`
 
   if (!home.isDirty) {

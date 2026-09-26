@@ -18,7 +18,7 @@ import { useCopy } from './useCopy'
  * pending state is empty, and a full-replace push of it would remove every Uno
  * row from the profile.
  */
-export function PushButton({ push, ready, pushing }: Push) {
+export function PushButton({ push, ready, pushing, className = '' }: Push & { className?: string }) {
   return (
     <button
       type="button"
@@ -28,7 +28,7 @@ export function PushButton({ push, ready, pushing }: Push) {
       // push is in flight, and in a header that no longer wraps the extra width
       // comes out of the profile chip beside it, which re-truncates as it goes.
       // Above `lg` the row is far from full and the button keeps its own width.
-      className="btn-tv min-w-[88px] lg:min-w-[auto]"
+      className={`btn-tv min-w-[88px] lg:min-w-[auto] ${className}`}
     >
       <Icon icon={Tv} size={16} />
       <span>

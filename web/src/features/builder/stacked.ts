@@ -122,6 +122,10 @@ export function useScrollRequests() {
  * remounts on every target change (`key` in `Workspace`), so at the moment the
  * effect runs the pane still has the outgoing editor's height; reading the
  * destination in the next frame reads it after layout.
+ *
+ * The rail is reached by scrolling to the top of the page rather than to the
+ * rail itself: the tab row sits above the rail and outside the sticky header,
+ * so lining the rail up under the header would leave the tabs just out of view.
  */
 export function useStackedScroll({
   stacked,
@@ -141,7 +145,8 @@ export function useStackedScroll({
     if (!element) return
 
     const frame = requestAnimationFrame(() => {
-      element.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
+      if (request.to === 'rail') window.scrollTo({ top: 0, behavior: scrollBehavior() })
+      else element.scrollIntoView({ behavior: scrollBehavior(), block: 'start' })
       land(element)
     })
     return () => cancelAnimationFrame(frame)

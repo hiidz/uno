@@ -107,7 +107,7 @@ naming the pending count when edits are pending; `useUnloadGuard` covers reload 
 `web/src/routes/Builder.tsx` renders one top-level `Segmented` switch, Workspace / Community
 (its own row below `lg`, matching DESIGN.md's two-row phone top bar) — everything below is one
 of the two. Push and the profile chip sit in the header outside both, and so does the pending
-indicator (beside Push from `lg` up, in the tab row below it):
+indicator (beside Push from `lg` up, joined to Push as one pill below it):
 Home's state and its commit don't belong to either tab. Switching tabs goes through the same
 `EditorGuard` an in-app exit already does, since it unmounts `Workspace` (and any editor mid-edit
 inside it) the same way leaving `/configure` would; unlike leaving the page, it also resets
