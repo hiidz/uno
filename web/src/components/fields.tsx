@@ -6,8 +6,9 @@ import { Icon } from './Icon'
 /**
  * The form primitives shared by both builders. Nothing here is
  * catalog-specific; the catalog-shaped ones (`NumberInput`, `RangeField`,
- * `GenreCycler`, `CertificationPicker`) live in `features/catalogs/fields.tsx`,
- * which also re-exports these so the catalog builder has a single import site.
+ * `GenreCycler`, `CertificationPicker`, `CatalogTypeField`) live in
+ * `features/catalogs/fields.tsx`, which also re-exports these so the catalog
+ * builder has a single import site.
  *
  * **Each control's width is a property of what it holds**, expressed against
  * the `--w-*` tokens in `index.css` rather than filling whatever it is given.
@@ -184,8 +185,8 @@ export function TextInput({
  *
  * **`placeholder` is what decides whether empty is even reachable.** Omitted,
  * there is no empty option at all: the options *are* the values, which is what
- * a closed enum like a view mode needs — one used to gain a fourth entry from
- * whatever the placeholder said, a value the type didn't have.
+ * a closed set needs — a placeholder would add an empty value the type doesn't
+ * have.
  *
  * Given, `clearable` then decides what empty means. Off, the empty option is a
  * choice in its own right — "Any language" is a filter setting, and picking it

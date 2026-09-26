@@ -86,8 +86,8 @@ export function createCatalog(profileIndex: number, body: CatalogPayload): Promi
  * `type` and `provider` are immutable once a catalog exists, and the server
  * enforces both: a `type` that differs from the stored one is a 400, and
  * `provider` is always `"tmdb"`, the only value it accepts. The edit form
- * renders `type` as read-only for the same reason. Duplicate is the supported
- * way to "change a catalog's type".
+ * renders `type` as read-only for the same reason, and a duplicate copies it
+ * verbatim, so nothing changes an existing catalog's type.
  */
 export function updateCatalog(
   profileIndex: number,
@@ -213,8 +213,9 @@ export function duplicateCollection(
  *
  * Two ways this 400s that the form has to prevent rather than report, since
  * the body is plain text with no field name in it: a folder `id` that doesn't
- * belong to this collection, and a folder ref the profile can't
- * reference (`owner_id = ? OR is_public = 1`). See `collectionForm.ts`.
+ * belong to this collection, and a folder ref to a catalog that isn't this
+ * profile's own and either listed or scoped to this collection
+ * (`validateFolderRefs`). See `collectionForm.ts`.
  */
 export function updateCollection(
   profileIndex: number,

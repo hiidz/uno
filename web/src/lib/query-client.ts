@@ -14,7 +14,7 @@ export const queryClient = new QueryClient({
       },
       // Every list endpoint is unpaginated and small, and nothing else
       // mutates them behind our back — a window refocus doesn't need to
-      // trigger a refetch storm across four queries.
+      // refetch every query on the page.
       refetchOnWindowFocus: false,
       staleTime: 30_000,
     },

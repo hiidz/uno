@@ -2,15 +2,13 @@ import type { ReactNode } from 'react'
 import { Dialog } from 'radix-ui'
 
 /**
- * Scrim + panel, for the few things that genuinely interrupt: the short,
- * blocking question — naming a catalog before it exists — where the whole
- * point is that nothing else can be done until it's answered. The catalog and
- * collection editors fill the builder's right pane instead of this.
+ * Scrim + panel, for what opens over the builder without replacing the pane's
+ * occupant: naming a catalog or collection before it exists, import and
+ * export, and a collection's nested catalog editor. The catalog and collection
+ * editors themselves fill the builder's right pane instead of this.
  *
- * Built on Radix `Dialog` for a real focus trap and return-focus-on-close —
- * the hand-rolled scrim this replaced had Escape and click-outside but no Tab
- * cycling. `labelledBy` is kept for callers that already `id` their own
- * heading; new callers can pass a `Dialog.Title` as the first child instead.
+ * Built on Radix `Dialog` for a real focus trap and return-focus-on-close.
+ * `labelledBy` is the `id` of the caller's own heading.
  */
 export function Modal({
   open,

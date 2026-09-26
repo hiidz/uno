@@ -216,14 +216,9 @@ function folderFromWire(folder: Folder): FolderFormState {
 }
 
 /**
- * Seed the builder from an existing collection for editing.
- *
- * There's no `mode` any more: duplicating a collection is now a single
- * atomic server call (`DuplicateCollection`) that returns a
- * brand-new row with its own folders and scoped-catalog copies already in
- * place, so the result opens through this same edit-mode seed rather than a
- * pre-filled, not-yet-saved form. Unresolvable refs (pre-existing data on a
- * row this profile can't fully reach) are kept rather than dropped —
+ * Seed the editor from a saved collection — one picked in the rail, or a
+ * duplicate's finished copy. Unresolvable refs (pre-existing data on a row
+ * this profile can't fully reach) are kept rather than dropped —
  * `validateCollectionForm` flags them instead of silently deleting rows the
  * user never asked to touch.
  */
@@ -293,20 +288,21 @@ export function countErrors(errors: CollectionErrors): number {
 }
 
 /**
- * Mirrors `CollectionForm.Validate()` plus the two rejections that live outside
- * it, in `UpdateUserCollection`/`validateCatalogAccess`.
+ * Mirrors `CollectionForm.Validate()` plus the folder-ref rule that lives
+ * outside it, in `UpdateUserCollection`'s `validateFolderRefs`.
  *
  * What is *not* checked here, because the types make it unrepresentable:
- * `view_mode` is the server's own enum and `tile_shape` is that enum plus `''`,
- * and a folder `id` only ever comes from a collection this form loaded, so
- * "folder does not belong to this collection" can't be constructed.
+ * `view_mode` and `tile_shape` are the server's own enums, and a folder `id`
+ * only ever comes from a collection this form loaded, so "folder does not
+ * belong to this collection" can't be constructed.
  *
  * **`accessibleCatalogIDs` is an exact mirror, not an approximation.** The
- * builder's only source of catalogs is the library — `GET /api/p/{i}/catalogs`,
- * exactly this profile's own listed catalogs — and the server's
+ * editor's catalogs are the library — `GET /api/p/{i}/catalogs`, exactly
+ * this profile's own listed catalogs — plus the ones scoped to this
+ * collection that it already knows about, and the server's
  * `validateFolderRefs` checks the same closed-graph rule. So here, unlike in
- * the Home pane, "not in the library" and "the server will reject this" are
- * one condition: no selection endpoint supplies a third source of rows.
+ * the Home pane, "not accessible" and "the server will reject this" are one
+ * condition: no selection endpoint supplies another source of rows.
  */
 export function validateCollectionForm(
   state: CollectionFormState,

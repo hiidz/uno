@@ -9,8 +9,8 @@ import { prefersReducedMotion } from '@/lib/motion'
  * scrolling on its own, and nothing in here applies. Below it there is a single
  * column and a single scrolling document: the rail on top, the pane underneath,
  * **both always mounted**. Selecting a row doesn't hide anything — it scrolls
- * the page to the pane, which is why the pane being far down the document is no
- * longer the problem it was when the user had to find it themselves.
+ * the page to the pane, so the pane sitting far down the document never leaves
+ * the user to find it themselves.
  *
  * Two things have to be true for that to work, and both live here: the sticky
  * app header's height has to be known (it is measured, not assumed), and the

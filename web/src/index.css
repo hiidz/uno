@@ -623,8 +623,9 @@
         cursor: default;
     }
 
-    /* Red text button: danger red, underlined, for a destructive action that
-       opens its own confirmation ("Delete catalog"). */
+    /* Red text button: danger red, underlined, for a destructive action named
+       in words — a folder's Remove, which the collection editor then states
+       as a standing note with an Undo. */
     .btn-danger-text {
         background: transparent;
         color: var(--uno-danger);
@@ -873,7 +874,7 @@
     }
     /* The row's title and its "see more" chevron — the header a real Nuvio
        row carries, not just a caption. `margin-bottom` lives here rather than
-       on `.tv-row-title` now that the chevron shares the line. */
+       on `.tv-row-title`, because the chevrons share the line. */
     .tv-row-head {
         display: flex;
         align-items: baseline;
@@ -1315,20 +1316,15 @@
 
     /* The catalog editor's layout: the form takes whatever the pane gives it up
        to `--w-form` (the shell caps the whole at `--w-editor-results`), and the
-       results column takes a share, 290–360px, beside it. The results span both
-       rows so the delete link sits under the form, not under the tiles; the
-       `1fr` row soaks up the height when the results run longer than the form,
-       rather than opening a gap between the last setting and the link. */
+       results column takes a share, 290–360px, beside it. */
     .ed.ed-results {
         grid-template-columns: minmax(0, 1fr) clamp(290px, 30cqw, 360px);
-        grid-template-rows: auto 1fr;
     }
     .ed-results > .ed-form {
         max-width: var(--w-form);
     }
     .ed-results > .ed-pv {
         grid-column: 2;
-        grid-row: 1 / span 2;
     }
 
     /* What a catalog returns, in one sentence, at the top of its editor — the
@@ -1871,16 +1867,14 @@
     }
     /* Undocked once the form beside a 290px column would drop under 570px,
        where section summaries start wrapping and a `--w-track` slider no
-       longer fits. Source order is already form, results, delete, so nothing
-       is reordered. */
+       longer fits. Source order is already form, then results, so nothing is
+       reordered. */
     @container (max-width: 900px) {
         .ed.ed-results {
             grid-template-columns: minmax(0, 1fr);
-            grid-template-rows: none;
         }
         .ed-results > .ed-pv {
             grid-column: auto;
-            grid-row: auto;
             position: static;
             margin-top: 24px;
         }

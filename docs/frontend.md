@@ -482,7 +482,7 @@ applied to every folder in it, and it governs this page only:
 | --- | --- |
 | `TABBED_GRID` | One tab per **catalog in the folder** (plus "All" when `show_all_tab`), over a grid of that catalog's content |
 | `ROWS` | One row per catalog in the folder, stacked — the same shape home uses |
-| `FOLLOW_LAYOUT` | Falls back to `ROWS`, labelled on screen as a guess |
+| `FOLLOW_LAYOUT` | Drawn as tabs with the "All" tab first, the app's own default (`TVFolderPage` in `features/home/tv.tsx`); the caption outside the frame reads "Follows the app's layout" |
 | `''` / unknown | Drawn as `TABBED_GRID`, which is how every Nuvio client reads it |
 
 Corroborating details from Nuvio's own field descriptions: `hideTitle` is "Hide the **tile**
@@ -507,8 +507,8 @@ Decisions that shape the code:
 - **"Not in library" and "nothing resolves" are two different conditions here**, and conflating
   them is a real bug. `catalogById`/`collectionById` are assembled from the selection response
   *as well as* the library, so a row deleted after selection still resolves through the selection
-  response even once it's gone from the library. Per DESIGN.md's Clean Preview spec (its ninth
-  amendment, `web/_incoming-design/DESIGN.md`), `isDetached` marks nothing *inside* the TV
+  response even once it's gone from the library. Per DESIGN.md's Clean Preview Rule,
+  `isDetached` marks nothing *inside* the TV
   frame — the real TV shows a detached row plainly, with no note pinned onto it — but the
   Discover-only list beneath the frame still names it, in List's own wording, because that list is
   Uno's own words about the picture, not the picture itself. Unresolvability still degrades a row

@@ -340,11 +340,9 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
 /**
  * First run, nothing selected anywhere — not merely "no rows on home", which
  * `HomeScreenView`'s own empty case reports. The tab still works and shows
- * its own picture, per DESIGN.md's empty-state list; this one Uno moment
- * predates the redesign and stays: SMPTE colour bars, television's own
- * artifact for "nothing to show", now filling the real TV screen instead of
- * a plain panel. `docs/frontend.md`'s Visual direction section has the
- * rationale.
+ * its own picture, per DESIGN.md's empty-state list: SMPTE colour bars,
+ * television's own artifact for "nothing to show", filling the TV screen.
+ * `docs/frontend.md`'s Visual direction section has the rationale.
  */
 function EmptyHomeScreen() {
   const bars = [

@@ -20,9 +20,8 @@ import { useStackedLayout } from './stacked'
  * button added beside it.
  *
  * Two costs, both accepted: switching profile is two taps below `lg` rather
- * than one, and the addon URL is a tap further away than it was before a
- * first push, which is the only point at which `PushBanner` isn't also
- * offering it.
+ * than one, and the addon URL sits inside the menu — the only place to copy
+ * it below `lg` until a push's success banner offers it too.
  *
  * Which shape renders is read from `useStackedLayout`, the same query
  * `Workspace` and `EditorShell` use for the same breakpoint — not `lg:hidden`
@@ -38,8 +37,8 @@ import { useStackedLayout } from './stacked'
  * **Menu, dismiss, and keyboard navigation are Radix's `DropdownMenu`**, not
  * hand-rolled — role, focus management, Escape, and outside-dismiss all come
  * from the primitive. `modal={false}` keeps it non-blocking: no scroll lock
- * and no hiding the rest of the page from assistive tech, matching what this
- * chip has always done. `loop` keeps Up/Down wrapping between the two items.
+ * and no hiding the rest of the page from assistive tech. `loop` keeps
+ * Up/Down wrapping between the two items.
  * No `DropdownMenu.Portal`: this stays in normal DOM flow rather than
  * escaping to `document.body`, which is what keeps it under the header's own
  * `z-40` without a portal's stacking context to reconcile against `Modal` and
@@ -67,8 +66,7 @@ export function ProfileMenu({
   const { copied, copy } = useCopy(manifestURL ?? '')
 
   // Above `lg` there's room for the addon URL button and Push beside the
-  // chip, so the chip needs no menu behind it — a direct switch is the
-  // one-tap control it's always been.
+  // chip, so the chip needs no menu behind it: it is a one-tap switch.
   if (!stacked) {
     return (
       <button

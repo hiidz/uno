@@ -174,7 +174,7 @@ export function EditorShell({
       {/* Sticky below `lg`, where the page scrolls as one document and Save
           would otherwise sit at the far end of a form as long as the catalog
           editor. It needs a ground of its own to sit over the form; above `lg`
-          the flex column pins it and the band is transparent as before. */}
+          the flex column pins it and the band is transparent. */}
       <div className="border-line bg-ground sticky bottom-0 z-20 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 py-4 lg:static lg:bg-transparent lg:px-6">
         {footer}
       </div>
