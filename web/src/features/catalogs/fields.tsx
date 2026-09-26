@@ -2,7 +2,7 @@ import { Check, X } from 'lucide-react'
 import type { Certification, CertificationsByCountry, Genre } from '@/api'
 import { DualRangeSlider, FieldNote, Segmented, Select } from '@/components/fields'
 import { Icon } from '@/components/Icon'
-import type { GenreJoin } from './catalogForm'
+import type { IdJoin } from './params'
 import { countryName, type CountryLookup } from './countries'
 
 /**
@@ -65,6 +65,8 @@ export function NumberInput({
  * server's `_gte`/`_lte` pair. The slider covers the range almost everyone
  * needs; the number boxes below it stay for the rare exact value (or one
  * past the slider's ceiling) that dragging can't reach precisely.
+ *
+ * One `onChange` carrying both bounds, for the reason `DualRangeSlider` gives.
  */
 export function RangeField({
   label,
@@ -72,8 +74,7 @@ export function RangeField({
   unit,
   low,
   high,
-  onLow,
-  onHigh,
+  onChange,
   step,
   min,
   max,
@@ -84,8 +85,7 @@ export function RangeField({
   unit?: string
   low: number | undefined
   high: number | undefined
-  onLow: (value: number | undefined) => void
-  onHigh: (value: number | undefined) => void
+  onChange: (low: number | undefined, high: number | undefined) => void
   step?: string
   min: number
   max: number
@@ -106,7 +106,7 @@ export function RangeField({
         </label>
         <NumberInput
           value={low}
-          onChange={(next) => onLow(next)}
+          onChange={(next) => onChange(next, high)}
           ariaLabel={`Minimum ${label.toLowerCase()}`}
           placeholder={String(min)}
           step={step}
@@ -117,7 +117,7 @@ export function RangeField({
         </span>
         <NumberInput
           value={high}
-          onChange={(next) => onHigh(next)}
+          onChange={(next) => onChange(low, next)}
           ariaLabel={`Maximum ${label.toLowerCase()}`}
           placeholder={formatValue ? formatValue(max) : String(max)}
           step={step}
@@ -134,10 +134,7 @@ export function RangeField({
         step={step ? Number(step) : 1}
         low={low}
         high={high}
-        onChange={(nextLow, nextHigh) => {
-          onLow(nextLow)
-          onHigh(nextHigh)
-        }}
+        onChange={onChange}
         formatValue={formatValue}
         showValues={false}
       />
@@ -167,9 +164,9 @@ export function GenreCycler({
 }: {
   genres: Genre[]
   withIds: number[]
-  withJoin: GenreJoin
+  withJoin: IdJoin
   withoutIds: number[]
-  onChange: (withIds: number[], withJoin: GenreJoin, withoutIds: number[]) => void
+  onChange: (withIds: number[], withJoin: IdJoin, withoutIds: number[]) => void
 }) {
   function cycle(id: number) {
     if (withIds.includes(id)) {

@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query'
 import type { CatalogType } from './types'
 
 /**
@@ -79,3 +80,20 @@ export const queryKeys = {
   catalogGenreOptions: (type: CatalogType, params: string) =>
     ['catalogs', 'genre-options', type, params] as const,
 } as const
+
+/**
+ * Marks this profile's own catalog and collection lists stale, and the
+ * Community lists beside them — what a write that can add a copy or change a
+ * row's sharing has to refresh. The owned-list keys prefix the selection keys,
+ * so the selections refetch too. Settles once every active list has refetched.
+ */
+export async function invalidateProfileLists(queryClient: QueryClient, profileIndex: number): Promise<void> {
+  await Promise.all(
+    [
+      queryKeys.ownedCatalogs(profileIndex),
+      queryKeys.ownedCollections(profileIndex),
+      queryKeys.communityCatalogs(profileIndex),
+      queryKeys.communityCollections(profileIndex),
+    ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+  )
+}

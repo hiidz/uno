@@ -5,13 +5,9 @@ import { Segmented } from '@/components/fields'
 import { ListState } from '@/components/ListState'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
-import {
-  catalogSummary,
-  CommunityCatalogPreview,
-  CommunityCollectionPreview,
-  CommunityRow,
-  collectionSummary,
-} from './CommunityRow'
+import { describeCollection } from '@/features/library/collection'
+import { typeLabel } from '@/features/library/recipe'
+import { CommunityCatalogPreview, CommunityCollectionPreview, CommunityRow } from './CommunityRow'
 import { useCommunityCatalogs, useCommunityCollections } from './useCommunity'
 import { useCommunityMutations, type CommunityAction } from './useCommunityMutations'
 
@@ -42,11 +38,11 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
   const query = search.trim().toLowerCase()
 
   const catalogs = useMemo(
-    () => sortRows(filterByName(catalogsQuery.data ?? [], (c) => c.name, query), sort),
+    () => filterAndSort(catalogsQuery.data ?? [], (c) => c.name, query, sort),
     [catalogsQuery.data, query, sort],
   )
   const collections = useMemo(
-    () => sortRows(filterByName(collectionsQuery.data ?? [], (c) => c.title, query), sort),
+    () => filterAndSort(collectionsQuery.data ?? [], (c) => c.title, query, sort),
     [collectionsQuery.data, query, sort],
   )
 
@@ -157,7 +153,7 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
                 <CommunityRow
                   key={catalog.id}
                   name={catalog.name}
-                  summary={catalogSummary(catalog)}
+                  summary={typeLabel(catalog.type)}
                   taken={catalog.taken}
                   updateAvailable={catalog.update_available}
                   pending={pending.get(catalog.id)}
@@ -173,7 +169,7 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
                 <CommunityRow
                   key={collection.id}
                   name={collection.title}
-                  summary={collectionSummary(collection)}
+                  summary={describeCollection(collection)}
                   taken={collection.taken}
                   updateAvailable={collection.update_available}
                   pending={pending.get(collection.id)}
@@ -226,20 +222,15 @@ function failure(action: CommunityAction, rowKind: Kind, error: Error): ToastMes
   return { text: `Couldn't ${action} ${what}: ${error.message}`, tone: 'danger' }
 }
 
-function filterByName<T>(rows: T[], name: (row: T) => string, query: string): T[] {
-  if (!query) return rows
-  return rows.filter((row) => name(row).toLowerCase().includes(query))
-}
-
-function sortRows<T extends { name?: string; title?: string; created_at: string }>(
+/** The rows whose name holds `query`, by name or newest first. */
+function filterAndSort<T extends { created_at: string }>(
   rows: T[],
+  name: (row: T) => string,
+  query: string,
   sort: Sort,
 ): T[] {
-  const sorted = [...rows]
-  if (sort === 'newest') {
-    sorted.sort((a, b) => b.created_at.localeCompare(a.created_at))
-  } else {
-    sorted.sort((a, b) => (a.name ?? a.title ?? '').localeCompare(b.name ?? b.title ?? ''))
-  }
-  return sorted
+  const matched = query ? rows.filter((row) => name(row).toLowerCase().includes(query)) : [...rows]
+  return sort === 'newest'
+    ? matched.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    : matched.sort((a, b) => name(a).localeCompare(name(b)))
 }

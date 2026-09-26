@@ -3,8 +3,8 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { pluralCount } from '@/lib/plural'
 import { FOLDER_LAYOUT_LABEL, TVCollectionRow, TVFolderPage } from '@/features/home/tv'
 import { CollectionMeta } from '@/features/preview/CollectionMeta'
-import type { PreviewCollection } from '@/features/preview/model'
-import { useRecipesTiles, type TileRecipe } from '@/features/preview/useRecipesTiles'
+import { folderRecipes, type PreviewCollection } from '@/features/preview/model'
+import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
 
 /**
  * "On your TV" — DESIGN.md's docked panel beside the collection form: the
@@ -35,15 +35,7 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
   // A folder removed from the form while its page is open falls back to the row.
   const folder = openKey === null ? null : (collection.folders.find((f) => f.id === openKey) ?? null)
 
-  const recipes = useMemo<TileRecipe[]>(
-    () =>
-      (folder?.sources ?? []).flatMap((source) =>
-        source.type === null
-          ? []
-          : [{ id: source.key, type: source.type, params: source.params, genre: source.genre }],
-      ),
-    [folder],
-  )
+  const recipes = useMemo(() => (folder ? folderRecipes(folder) : []), [folder])
   const tiles = useRecipesTiles(recipes)
 
   const screenRef = useRef<HTMLDivElement>(null)

@@ -1,14 +1,12 @@
 import { useEffect, useId, useMemo, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
-import { tmdbKind } from '@/api'
 import { InfoTip } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { RecipePreview } from '@/features/catalogs/RecipePreview'
 import { CollectionPreview } from '@/features/collections/CollectionPreview'
 import { toPreviewCollection } from '@/features/home/preview'
-import { describeCollection } from '@/features/library/collection'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import type { CommunityAction } from './useCommunityMutations'
 
@@ -20,8 +18,8 @@ const PENDING_LABEL: Record<CommunityAction, string> = {
 
 /**
  * One community row: name, then either "Movies"/"Series" or a folder count in
- * place of the library's recipe summary — nobody is filtering these by name
- * yet, they're deciding whether to take a copy. No author, no handle, no
+ * place of the library's recipe summary — someone here is deciding whether to
+ * take a copy, and Preview shows the rest. No author, no handle, no
  * provenance: the closed graph means nothing here can be attributed without
  * becoming a live pointer.
  *
@@ -151,12 +149,4 @@ export function CommunityCollectionPreview({ collection }: { collection: Communi
     [collection],
   )
   return <CollectionPreview collection={preview} />
-}
-
-export function catalogSummary(catalog: CommunityCatalog): string {
-  return tmdbKind(catalog.type) === 'tv' ? 'Series' : 'Movies'
-}
-
-export function collectionSummary(collection: CommunityCollection): string {
-  return describeCollection(collection)
 }

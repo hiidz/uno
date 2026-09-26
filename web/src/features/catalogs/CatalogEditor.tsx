@@ -8,7 +8,7 @@ import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { ConfirmUnlink, LinkedBanner } from '@/features/builder/LinkedCopy'
 import { useEditorForm } from '@/features/builder/useEditorForm'
-import { buildGenreLookup, recipeSentence } from '@/features/library/recipe'
+import { buildGenreLookup, recipeSentence, typeLabel } from '@/features/library/recipe'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import { pluralCount } from '@/lib/plural'
 import type { CountryLookup } from './countries'
@@ -18,20 +18,22 @@ import {
   isCollectionRow,
   isSameCatalog,
   paramsString,
-  parseGenreList,
   parseSortBy,
-  serializeGenreList,
   serializeSortBy,
   validateForm,
   type CatalogFormState,
   type DateMode,
   type SourceMode,
 } from './catalogForm'
-import { RecipePreview } from './RecipePreview'
 import {
   DATE_PRESETS,
   DAYS_PER_YEAR,
   UPCOMING_DAYS,
+  parseIdList,
+  serializeIdList,
+} from './params'
+import { RecipePreview } from './RecipePreview'
+import {
   formatWindowStart,
   sumAge,
   sumCollection,
@@ -189,8 +191,8 @@ export function CatalogEditor({
     () => recipeSentence({ type: state.type, params }, genreLookup),
     [state.type, params, genreLookup],
   )
-  const withGenres = parseGenreList(state.params.with_genres)
-  const withoutGenres = parseGenreList(state.params.without_genres)
+  const withGenres = parseIdList(state.params.with_genres)
+  const withoutGenres = parseIdList(state.params.without_genres)
 
   const { field: sortField, direction: sortDirection } = parseSortBy(state.params.sort_by)
 
@@ -204,17 +206,16 @@ export function CatalogEditor({
   const dateGte = isMovie ? state.params.primary_release_date_gte : state.params.first_air_date_gte
   const dateLte = isMovie ? state.params.primary_release_date_lte : state.params.first_air_date_lte
   const dateDays = isMovie ? state.params.released_within_days : state.params.aired_within_days
-  const watchProviderCount = state.params.with_watch_providers
-    ? state.params.with_watch_providers.split(/[,|]/).filter(Boolean).length
-    : 0
+  const watchProviderCount = parseIdList(state.params.with_watch_providers).ids.length
 
-  // The same by-id key the collection picker's chip reads, so the section head
-  // names the pick without a request of its own.
-  const collectionID = isMovie ? parseGenreList(state.params.with_collection).ids[0] : undefined
-  const collectionName = useQuery({
-    queryKey: queryKeys.collection(collectionID ?? 0),
-    queryFn: () => fetchCollection(collectionID ?? 0),
-    enabled: collectionID !== undefined,
+  // The picked TMDB collection (not the Uno collection `state.collectionID`
+  // scopes this catalog to), through the same by-id key the picker's chip
+  // reads, so the section head names it without a request of its own.
+  const tmdbCollectionID = isMovie ? parseIdList(state.params.with_collection).ids[0] : undefined
+  const tmdbCollectionName = useQuery({
+    queryKey: queryKeys.collection(tmdbCollectionID ?? 0),
+    queryFn: () => fetchCollection(tmdbCollectionID ?? 0),
+    enabled: tmdbCollectionID !== undefined,
     staleTime: Infinity,
   }).data?.name
 
@@ -226,15 +227,15 @@ export function CatalogEditor({
     setState((previous) => ({ ...previous, params: { ...previous.params, ...update } }))
   }
 
-  /** Same shape as `submit`: reveal what's wrong, or go. Errors stay hidden
-   *  until something is submitted, so pressing Preview has to be one of the
-   *  things that reveals them — otherwise the note explaining why it won't run
-   *  points at highlighting that isn't there yet. */
   function switchSourceMode(sourceMode: SourceMode) {
     patch({ sourceMode })
     setOpenSection(sourceMode === 'collection' ? 'collection' : null)
   }
 
+  /** Same shape as `submit`: reveal what's wrong, or go. Errors stay hidden
+   *  until something is submitted, so pressing Preview has to be one of the
+   *  things that reveals them — otherwise the note explaining why it won't run
+   *  points at highlighting that isn't there yet. */
   function runPreview() {
     if (recipeInvalid) {
       revealErrors()
@@ -296,7 +297,7 @@ export function CatalogEditor({
     countryNames,
     activeScale,
     watchProviderCount,
-    collectionName,
+    tmdbCollectionName,
     errorFor,
     patch,
     patchParams,
@@ -327,7 +328,7 @@ export function CatalogEditor({
       tone="catalog"
       badges={
         <>
-          <span className="stk">{isMovie ? 'Movies' : 'Series'}</span>
+          <span className="stk">{typeLabel(state.type)}</span>
           {state.isPublic && <span className="stk stk-shared">Shared</span>}
         </>
       }
@@ -465,7 +466,7 @@ export function CatalogEditor({
                     setOpenSection((current) => (current === section.key ? null : section.key))
                   }
                 >
-                  <span className="setting-label type-label">{section.role}</span>
+                  <span className="setting-label type-label">{SECTION_ROLE[section.key](isMovie)}</span>
                   <span className="sec-sum">{section.summary}</span>
                   <Icon icon={ChevronDown} size={16} className="ico" />
                 </button>
@@ -588,15 +589,15 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
  *  summary its closed head shows, so the whole recipe reads down the page
  *  without opening anything. Kept as one function rather than inlined JSX so
  *  the summaries — which need almost every piece of derived state the editor
- *  already computed — don't have to be threaded through seven separate
- *  components a second time. */
+ *  already computed — don't have to be threaded through a component per
+ *  section a second time. Each section's title is `SECTION_ROLE`'s. */
 function buildSections(args: {
   state: CatalogFormState
   sortField: string
   sortDirection: 'asc' | 'desc'
   activeGenres: Genre[]
-  withGenres: { ids: number[]; join: 'and' | 'or' }
-  withoutGenres: { ids: number[]; join: 'and' | 'or' }
+  withGenres: ReturnType<typeof parseIdList>
+  withoutGenres: ReturnType<typeof parseIdList>
   languageOptions: { value: string; label: string }[]
   languages: Language[]
   isMovie: boolean
@@ -607,7 +608,7 @@ function buildSections(args: {
   countryNames: CountryLookup
   activeScale: CertificationsByCountry[string]
   watchProviderCount: number
-  collectionName: string | undefined
+  tmdbCollectionName: string | undefined
   errorFor: (key: string) => string | undefined
   patch: (update: Partial<CatalogFormState>) => void
   patchParams: (update: Partial<TMDBParams>) => void
@@ -629,7 +630,7 @@ function buildSections(args: {
     countryNames,
     activeScale,
     watchProviderCount,
-    collectionName,
+    tmdbCollectionName,
     errorFor,
     patch,
     patchParams,
@@ -638,7 +639,6 @@ function buildSections(args: {
   const sections = [
     {
       key: 'order' as const,
-      role: 'Order the row',
       summary: sumOrder(state.type, sortField, sortDirection),
       body: (
         <>
@@ -675,7 +675,6 @@ function buildSections(args: {
     },
     {
       key: 'genres' as const,
-      role: 'Genres',
       summary: sumGenres(activeGenres, withGenres.ids, withGenres.join, withoutGenres.ids),
       body: (
         <GenreCycler
@@ -685,8 +684,8 @@ function buildSections(args: {
           withoutIds={withoutGenres.ids}
           onChange={(withIds, withJoin, withoutIds) =>
             patchParams({
-              with_genres: withIds.length ? serializeGenreList(withIds, withJoin) : undefined,
-              without_genres: withoutIds.length ? serializeGenreList(withoutIds, 'and') : undefined,
+              with_genres: withIds.length ? serializeIdList(withIds, withJoin) : undefined,
+              without_genres: withoutIds.length ? serializeIdList(withoutIds, 'and') : undefined,
             })
           }
         />
@@ -694,7 +693,6 @@ function buildSections(args: {
     },
     {
       key: 'ratings' as const,
-      role: 'Ratings and runtime',
       summary: sumRatings(
         state.params.vote_average_gte,
         state.params.vote_average_lte,
@@ -710,8 +708,7 @@ function buildSections(args: {
             error={errorFor('vote_average')}
             low={state.params.vote_average_gte}
             high={state.params.vote_average_lte}
-            onLow={(vote_average_gte) => patchParams({ vote_average_gte })}
-            onHigh={(vote_average_lte) => patchParams({ vote_average_lte })}
+            onChange={(vote_average_gte, vote_average_lte) => patchParams({ vote_average_gte, vote_average_lte })}
             step="0.1"
             min={0}
             max={10}
@@ -721,8 +718,7 @@ function buildSections(args: {
             error={errorFor('vote_count')}
             low={state.params.vote_count_gte}
             high={state.params.vote_count_lte}
-            onLow={(vote_count_gte) => patchParams({ vote_count_gte })}
-            onHigh={(vote_count_lte) => patchParams({ vote_count_lte })}
+            onChange={(vote_count_gte, vote_count_lte) => patchParams({ vote_count_gte, vote_count_lte })}
             step="10"
             min={0}
             max={5000}
@@ -734,8 +730,7 @@ function buildSections(args: {
             error={errorFor('with_runtime')}
             low={state.params.with_runtime_gte}
             high={state.params.with_runtime_lte}
-            onLow={(with_runtime_gte) => patchParams({ with_runtime_gte })}
-            onHigh={(with_runtime_lte) => patchParams({ with_runtime_lte })}
+            onChange={(with_runtime_gte, with_runtime_lte) => patchParams({ with_runtime_gte, with_runtime_lte })}
             step="5"
             min={0}
             max={300}
@@ -746,7 +741,6 @@ function buildSections(args: {
     },
     {
       key: 'lang' as const,
-      role: 'Original language',
       summary: sumLanguage(state.params.with_original_language, languages),
       body: (
         <>
@@ -763,11 +757,14 @@ function buildSections(args: {
     },
     {
       key: 'date' as const,
-      role: isMovie ? 'Release date' : 'First aired',
       summary: sumDate(state.type, state.dateMode, dateGte, dateLte, dateDays),
       body: (
         <DateWindow
-          state={state}
+          isMovie={isMovie}
+          mode={state.dateMode}
+          gte={dateGte}
+          lte={dateLte}
+          days={dateDays}
           error={errorFor('within_days')}
           onMode={(dateMode) => patch({ dateMode })}
           onParams={patchParams}
@@ -776,7 +773,6 @@ function buildSections(args: {
     },
     {
       key: 'age' as const,
-      role: 'Age rating',
       summary: sumAge(
         state.params.certification_country,
         countryNames,
@@ -798,7 +794,6 @@ function buildSections(args: {
     },
     {
       key: 'watch' as const,
-      role: 'Where to watch',
       summary: sumWatch(state.params.watch_region, countryNames, watchProviderCount),
       body: (
         <WatchProviderPicker
@@ -811,7 +806,6 @@ function buildSections(args: {
     },
     {
       key: 'companies' as const,
-      role: 'Production companies',
       summary: sumEntities(
         state.params.with_companies,
         state.params.without_companies,
@@ -833,7 +827,6 @@ function buildSections(args: {
     },
     {
       key: 'keywords' as const,
-      role: 'Keywords',
       summary: sumEntities(
         state.params.with_keywords,
         state.params.without_keywords,
@@ -859,7 +852,6 @@ function buildSections(args: {
       : [
           {
             key: 'networks' as const,
-            role: 'Networks',
             summary: sumEntities(state.params.with_networks, undefined, 'network', 'Any network'),
             body: (
               <>
@@ -881,8 +873,7 @@ function buildSections(args: {
       ? [
           {
             key: 'collection' as const,
-            role: 'Collection',
-            summary: sumCollection(state.params.with_collection, collectionName),
+            summary: sumCollection(state.params.with_collection, tmdbCollectionName),
             body: (
               <>
                 <TMDBEntityPicker
@@ -933,8 +924,8 @@ function EntityLists({
   onWith: (value: string | undefined) => void
   onWithout: (value: string | undefined) => void
 }) {
-  const withIds = useMemo(() => parseGenreList(withValue).ids, [withValue])
-  const withoutIds = useMemo(() => parseGenreList(withoutValue).ids, [withoutValue])
+  const withIds = useMemo(() => parseIdList(withValue).ids, [withValue])
+  const withoutIds = useMemo(() => parseIdList(withoutValue).ids, [withoutValue])
   return (
     <>
       <div className="flex w-full flex-col gap-2">
@@ -975,26 +966,31 @@ function EntityLists({
  * being set; making the mode the control means that state can't be expressed.
  */
 function DateWindow({
-  state,
+  isMovie,
+  mode,
+  gte,
+  lte,
+  days,
   error,
   onMode,
   onParams,
 }: {
-  state: CatalogFormState
+  isMovie: boolean
+  mode: DateMode
+  /** This type's own fixed bounds and rolling window: the release date's for
+   *  a movie, the first air date's for a series. */
+  gte: string | undefined
+  lte: string | undefined
+  days: number | undefined
   error?: string
   onMode: (mode: DateMode) => void
   onParams: (update: Partial<TMDBParams>) => void
 }) {
-  const isMovie = state.type === 'movie'
-  const gte = isMovie ? state.params.primary_release_date_gte : state.params.first_air_date_gte
-  const lte = isMovie ? state.params.primary_release_date_lte : state.params.first_air_date_lte
-  const days = isMovie ? state.params.released_within_days : state.params.aired_within_days
-
   return (
     <>
       <Segmented
         ariaLabel="Date window"
-        value={state.dateMode}
+        value={mode}
         onChange={onMode}
         options={[
           { value: 'any', label: 'Any time' },
@@ -1003,7 +999,7 @@ function DateWindow({
         ]}
       />
 
-      {state.dateMode === 'fixed' && (
+      {mode === 'fixed' && (
         <div className="ed-dates">
           <label className="setting-label type-label" htmlFor="ed-from">
             From
@@ -1040,7 +1036,7 @@ function DateWindow({
         </div>
       )}
 
-      {state.dateMode === 'rolling' && (
+      {mode === 'rolling' && (
         <RollingWindow
           isMovie={isMovie}
           days={days}
@@ -1056,7 +1052,7 @@ function DateWindow({
 
 /**
  * The windows people actually ask for, as a row of preset choice buttons
- * (`DATE_PRESETS`, `summary.ts`) rather than a box that wants a number of
+ * (`DATE_PRESETS`, `params.ts`) rather than a box that wants a number of
  * days — "90" is not a thing anyone thinks in. Each preset is still just
  * `_within_days` on the wire; only the way the number is arrived at differs.
  * "Upcoming" is the same rolling filter closed up to yesterday: `_within_days`

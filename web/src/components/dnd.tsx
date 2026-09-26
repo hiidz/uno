@@ -59,8 +59,8 @@ export function Grip({
 /** A 32px grey icon button for a row's ↑/↓ (or any other single-icon action),
  *  greying to the dimmest text colour with no hover response when `disabled` — the
  *  first row's ↑ and the last row's ↓ in any reorderable list. Shared by the
- *  Home pane's running-order rows and the collection editor's folder and
- *  folder-catalog rows, which all reorder the same way. */
+ *  Home pane's running-order rows (↑/↓) and the collection editor's selected
+ *  folder (←/→). */
 export function RowIconButton({
   icon,
   label,
@@ -96,26 +96,4 @@ export function MoveUpButton(props: Omit<Parameters<typeof RowIconButton>[0], 'i
 
 export function MoveDownButton(props: Omit<Parameters<typeof RowIconButton>[0], 'icon'>) {
   return <RowIconButton icon={ChevronDown} {...props} />
-}
-
-/** Moves the item at `from` to `to`'s position. Returns `ids` unchanged if
- *  either isn't found. */
-export function reorder(ids: string[], from: string, to: string): string[] {
-  const fromIndex = ids.indexOf(from)
-  const toIndex = ids.indexOf(to)
-  if (fromIndex === -1 || toIndex === -1) return ids
-  const next = [...ids]
-  next.splice(toIndex, 0, ...next.splice(fromIndex, 1))
-  return next
-}
-
-/** Moves the item at `id` one step in `direction`. A no-op at either edge —
- *  callers grey the button instead of relying on this to clamp silently. */
-export function moveByOne(ids: string[], id: string, direction: -1 | 1): string[] {
-  const index = ids.indexOf(id)
-  const target = index + direction
-  if (index === -1 || target < 0 || target >= ids.length) return ids
-  const next = [...ids]
-  ;[next[index], next[target]] = [next[target], next[index]]
-  return next
 }

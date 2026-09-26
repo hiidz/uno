@@ -1,9 +1,10 @@
 import type { CatalogType, Certification, Genre, Language } from '@/api'
 import type { CountryLookup } from './countries'
 import { countryName } from './countries'
-import type { GenreJoin } from './catalogForm'
-import { SORT_FIELDS, parseGenreList } from './catalogForm'
+import { SORT_FIELDS } from './catalogForm'
+import { DATE_PRESETS, DAYS_PER_YEAR, UPCOMING_DAYS, parseIdList, type IdJoin } from './params'
 import { capitalize } from '@/lib/capitalize'
+import { andList, orList } from '@/lib/list'
 import { plural, pluralCount } from '@/lib/plural'
 
 /**
@@ -36,20 +37,10 @@ export function sumOrder(type: CatalogType, field: string, direction: 'asc' | 'd
   return `${label}, ${directionLabel(field || 'popularity', direction).toLowerCase()}`
 }
 
-function andList(items: string[]): string {
-  if (items.length < 2) return items[0] ?? ''
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
-}
-
-function orList(items: string[]): string {
-  if (items.length < 2) return items[0] ?? ''
-  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`
-}
-
 export function sumGenres(
   genres: Genre[],
   withIds: number[],
-  withJoin: GenreJoin,
+  withJoin: IdJoin,
   withoutIds: number[],
 ): string {
   if (!withIds.length && !withoutIds.length) return 'Any genre'
@@ -112,17 +103,6 @@ export function sumLanguage(code: string | undefined, languages: Language[]): st
   return `In ${name}`
 }
 
-/** The windows people actually ask for, as presets rather than a bare number
- *  of days — shared with the Release date / First aired section body. */
-export const DATE_PRESETS: { days: number; label: string }[] = [
-  { days: 30, label: '30 days' },
-  { days: 90, label: '90 days' },
-  { days: 182, label: '6 months' },
-  { days: 365, label: '1 year' },
-]
-export const UPCOMING_DAYS = 1
-export const DAYS_PER_YEAR = 365
-
 /** The date the server's rolling window would produce for `days` as of today. */
 export function formatWindowStart(days: number): string {
   const start = new Date()
@@ -156,7 +136,7 @@ export function sumDate(
   if (!days) return `${verb} recently — no window chosen yet`
   const line =
     days === UPCOMING_DAYS
-      ? `${verb.toLowerCase() === 'released' ? 'released' : 'airing'} from today on, updated daily`
+      ? `${type === 'movie' ? 'released' : 'airing'} from today on, updated daily`
       : `${verb.toLowerCase()} since ${formatWindowStart(days)}, updated daily`
   return `${capitalize(recentLabel(days))} · ${line}`
 }
@@ -204,8 +184,8 @@ export function sumEntities(
   noun: string,
   anyLabel: string,
 ): string {
-  const { ids, join } = parseGenreList(raw)
-  const withoutCount = parseGenreList(withoutRaw).ids.length
+  const { ids, join } = parseIdList(raw)
+  const withoutCount = parseIdList(withoutRaw).ids.length
   if (ids.length === 0 && withoutCount === 0) return anyLabel
   const parts: string[] = []
   if (ids.length === 1) parts.push(pluralCount(1, noun))
@@ -220,7 +200,7 @@ export function sumEntities(
  *  its name from the same by-id lookup the picker's chip uses. Until that
  *  lookup answers, the id stands in. */
 export function sumCollection(raw: string | undefined, name: string | undefined): string {
-  const id = parseGenreList(raw).ids[0]
+  const id = parseIdList(raw).ids[0]
   if (id === undefined) return 'No collection picked'
   return name ?? `Collection ${id}`
 }

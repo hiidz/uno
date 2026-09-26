@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyOrder, moveWithinBand, reorderWithinBand, toPushPayload, type HomeCatalogEntry } from './pending'
+import { moveWithinBand, reorderWithinBand, toPushPayload, type HomeCatalogEntry } from './pending'
 
 const shown = (id: string): HomeCatalogEntry => ({ id, showInHome: true })
 const discover = (id: string): HomeCatalogEntry => ({ id, showInHome: false })
@@ -27,20 +27,6 @@ describe('toPushPayload', () => {
       catalogs: { catalogs: [] },
       collections: { collection_ids: [] },
     })
-  })
-})
-
-describe('applyOrder', () => {
-  it('follows the given order', () => {
-    expect(ids(applyOrder([shown('a'), shown('b'), shown('c')], ['c', 'a', 'b']))).toEqual(['c', 'a', 'b'])
-  })
-
-  it('keeps entries the order leaves out, at the end in their own order', () => {
-    expect(ids(applyOrder([shown('a'), shown('b'), shown('c'), shown('d')], ['c']))).toEqual(['c', 'a', 'b', 'd'])
-  })
-
-  it('ignores ids that name no entry', () => {
-    expect(ids(applyOrder([shown('a'), shown('b')], ['z', 'b', 'a']))).toEqual(['b', 'a'])
   })
 })
 

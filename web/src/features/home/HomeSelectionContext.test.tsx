@@ -26,6 +26,7 @@ library.current = {
   ],
   collections: [],
   genres: { movie: new Map(), tv: new Map() },
+  genreLists: { movie: [], tv: [] },
   certifications: { movie: {}, tv: {} },
   languages: [],
   countryNames: new Map(),

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowRight, TriangleAlert } from 'lucide-react'
-import { ApiError, fetchProfiles, queryKeys, selectProfile } from '@/api'
+import { fetchProfiles, queryKeys, selectProfile } from '@/api'
 import type { NuvioProfile } from '@/api'
 import { logout } from '@/auth'
 import { Fascia } from '@/components/Fascia'
@@ -54,9 +54,7 @@ export function ProfilePicker() {
     navigate('/login')
   }
 
-  const error =
-    (profiles.error instanceof ApiError ? profiles.error.message : profiles.error?.message) ??
-    (select.error instanceof ApiError ? select.error.message : select.error?.message)
+  const error = profiles.error?.message ?? select.error?.message
 
   const choosingName = profiles.data?.find((p) => p.profile_index === selecting)?.name ?? 'that profile'
   const noteId = 'profiles-note'

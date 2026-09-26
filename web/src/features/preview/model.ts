@@ -1,13 +1,15 @@
 import type { CatalogType, PreviewItem, TileShape, TMDBKind } from '@/api'
+import type { TileRecipe } from './useRecipesTiles'
 
 /**
  * The shape of a collection, its folders, and the catalogs they reference —
  * the structure every preview renders, independent of where it was read from.
  *
- * Two sources build these: the Home pane, from a saved `Collection` on the
- * selection response, and the collection builder, from the form state of a
- * collection that may not exist yet. Both then render the same components, so
- * the two previews can't drift apart in what they claim a layout will do.
+ * Two builders make these: `toPreviewCollection` (`features/home/preview.ts`),
+ * from a saved `Collection` — Home's selection, or a Community row — and the
+ * collection editor's `previewFromForm`, from its unsaved form. All of them
+ * render through the same components, so the previews can't drift apart in
+ * what they claim a layout will do.
  *
  * **The screen this models has two levels.** A collection is **one row** on
  * home, and its tiles are its **folders** — drawn from folder metadata (cover
@@ -19,8 +21,10 @@ import type { CatalogType, PreviewItem, TileShape, TMDBKind } from '@/api'
  */
 
 /**
- * `collections.view_mode` is a bare `string` on the wire, not an enum, so an
- * unrecognised value is representable and has to be handled rather than cast.
+ * A collection's `view_mode`, mirroring `validViewModes` in
+ * `internal/vault/validation.go` — the collection form edits exactly these.
+ * On the wire it is a bare `string`, not an enum, so an unrecognised value is
+ * representable and `normalizeViewMode` handles it rather than casting.
  * `FOLLOW_LAYOUT` means "use whatever the app is globally set to" — a value
  * Uno cannot know, so the renderer picks a shape and says it is guessing.
  *
@@ -28,7 +32,7 @@ import type { CatalogType, PreviewItem, TileShape, TMDBKind } from '@/api'
  * collection; it describes how a folder's catalogs are laid out once you're
  * inside it, not how the collection itself sits on home.
  */
-export type PreviewViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
+export type ViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
 
 /** One catalog referenced by a folder. This is the folder page's content spine:
  *  each source is a row (`ROWS`) or a tab (`TABBED_GRID`). `name === null`
@@ -77,7 +81,7 @@ export interface PreviewCollection {
   /** `pin_to_top` — hoists the whole collection row to the top of **home**,
    *  above the catalog rows, not merely to the front of the collections. */
   pinned: boolean
-  viewMode: PreviewViewMode
+  viewMode: ViewMode
   /** True when the layout drawn is a stand-in: `FOLLOW_LAYOUT`, which leaves
    *  it to an app setting Uno can't read, or a collection nothing describes.
    *  An empty or unknown `view_mode` is no guess: Nuvio reads it as
@@ -96,8 +100,8 @@ export interface PreviewCollection {
    *
    *  **Not the same as detached.** A collection that's left the library but is
    *  still on the selection response resolves here and renders normally. That
-   *  case is `isDetached` on the Home selection, and the renderer asks it
-   *  separately — see `DetachedNote` in `HomePreview.tsx`.
+   *  case is `isDetached` on the Home selection, which the List view's rows
+   *  and the Preview's "Not on home" list ask separately.
    *
    *  Never true for a collection built from builder form state: the form *is*
    *  the description. */
@@ -117,7 +121,7 @@ export function normalizeTileShape(shape: TileShape | ''): {
 }
 
 export function normalizeViewMode(mode: string): {
-  mode: PreviewViewMode
+  mode: ViewMode
   assumed: boolean
 } {
   // Uno can't read the app's global layout setting, so `FOLLOW_LAYOUT` is
@@ -180,8 +184,8 @@ export const ALL_TAB_TILE_CAP = 20
  * cap of 20, concatenating would show source 1 and nothing else.
  *
  * This ordering is Uno's own guess: folders aren't an addon concept, so nothing
- * specifies how Nuvio merges a folder's sources. The UI has to label it as a
- * guess wherever it renders.
+ * specifies how Nuvio merges a folder's sources. The TV picture shows the
+ * merge without saying so, per DESIGN.md's Clean Preview rule.
  *
  * De-duplicates on kind and `tmdb_id` together: two catalogs in one folder can
  * surface the same title (overlapping filters), and the same poster twice in
@@ -220,9 +224,7 @@ export function interleaveTiles(
 /** The recipes a folder's sources need tiles for, filed under each source's
  *  `key`. Unresolved sources have no recipe to run, so they're dropped rather
  *  than queried. */
-export function folderRecipes(
-  folder: PreviewFolder,
-): { id: string; type: CatalogType; params: string; genre: string }[] {
+export function folderRecipes(folder: PreviewFolder): TileRecipe[] {
   return folder.sources
     .filter((source) => source.type !== null)
     .map((source) => ({ id: source.key, type: source.type!, params: source.params, genre: source.genre }))

@@ -16,7 +16,8 @@ import type { CatalogType } from '@/api'
 import { FieldNote, Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { useDebounce } from '@/lib/useDebounce'
-import { MAX_ENTITY_IDS, parseGenreList, serializeGenreList, type GenreJoin } from './catalogForm'
+import { MAX_ENTITY_IDS } from './catalogForm'
+import { parseIdList, serializeIdList, type IdJoin } from './params'
 import { companyDetail } from './summary'
 
 /**
@@ -60,7 +61,7 @@ interface EntitySource {
   /** Names a chip whose id has no name to show: "Company 420". */
   singular: string
   /** The join a second pick gets before anyone has chosen one. */
-  defaultJoin: GenreJoin
+  defaultJoin: IdJoin
   /** At most one pick: TMDB takes a single id for this field. */
   single?: true
   search: (query: string, type: CatalogType) => Promise<SearchResult[]>
@@ -157,11 +158,11 @@ export function TMDBEntityPicker({
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLUListElement>(null)
 
-  const ids = useMemo(() => [...new Set(parseGenreList(value).ids)], [value])
+  const ids = useMemo(() => [...new Set(parseIdList(value).ids)], [value])
 
   // Outside an exclude list, one id carries no separator, so it takes the
   // kind's default join.
-  const join: GenreJoin = exclude
+  const join: IdJoin = exclude
     ? 'and'
     : value?.includes('|')
       ? 'or'
@@ -197,8 +198,8 @@ export function TMDBEntityPicker({
     [results.data, ids, hiddenIds],
   )
 
-  function write(nextIDs: number[], nextJoin: GenreJoin) {
-    onChange(nextIDs.length ? serializeGenreList(nextIDs, nextJoin) : undefined)
+  function write(nextIDs: number[], nextJoin: IdJoin) {
+    onChange(nextIDs.length ? serializeIdList(nextIDs, nextJoin) : undefined)
   }
 
   function add(entity: SearchResult) {

@@ -23,7 +23,7 @@ import {
   Plus,
   TriangleAlert,
 } from 'lucide-react'
-import { Grip, RowIconButton, reorder, useDragSensors } from '@/components/dnd'
+import { Grip, RowIconButton, useDragSensors } from '@/components/dnd'
 import { fetchCatalogGenreOptions, queryKeys, type Catalog, type TileShape } from '@/api'
 import { Segmented, Select, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
@@ -31,6 +31,7 @@ import { MoreMenu, MoreMenuItem, MoreMenuSeparator } from '@/components/MoreMenu
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { TILE_ASPECT } from '@/features/preview/tiles'
 import { ordinal } from '@/lib/ordinal'
+import { reorder } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import {
@@ -760,7 +761,6 @@ function RefRow({
   const taken = new Set([refState.genre, ...siblingGenres])
   const nextGenre = genreOptions.data?.find((g) => !taken.has(g.name))?.name
 
-  const kind = option ? (option.catalog.type === 'movie' ? 'movie' : 'series') : "can't be saved"
   const isScoped = option ? option.catalog.collection_id !== null : false
   // The home screen is counted here, not in `usedInFolders`, so a change to
   // the selection re-renders the rows that state it and not the workspace.
@@ -792,7 +792,7 @@ function RefRow({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-[13px] font-medium">{option.name}</span>
             <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
-              {option.recipe} · {kind}
+              {option.recipe} · {option.catalog.type}
               {!isScoped && ` · used in ${pluralCount(places, 'place')}`}
             </span>
             <RefGenrePicker

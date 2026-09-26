@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { createCatalog, deleteCatalog, queryKeys, updateCatalog } from '@/api'
+import { createCatalog, deleteCatalog, invalidateProfileLists, updateCatalog } from '@/api'
 import type { CatalogPayload } from '@/api'
 
 /**
@@ -14,8 +14,8 @@ import type { CatalogPayload } from '@/api'
  * (`ON DELETE CASCADE`), so every cached collection that referenced it is now
  * wrong — the collection editor would keep listing a folder member that no
  * longer exists, and saving that collection would `400` on a catalog id the
- * user can't see. Create and `is_public` flips take the same path because
- * they change what a folder is *allowed* to reference.
+ * user can't see. Create takes the same path because it adds a row a folder
+ * may reference.
  *
  * The selection queries are refetched as well: their keys sit under the owned
  * list keys and invalidation prefix-matches, so `['p', i, 'catalogs']` and
@@ -27,11 +27,10 @@ import type { CatalogPayload } from '@/api'
 export function useCatalogMutations(profileIndex: number) {
   const queryClient = useQueryClient()
 
+  // Not awaited: a save settles when the server answers, not when the lists
+  // have refetched behind it.
   function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCatalogs(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections(profileIndex) })
+    void invalidateProfileLists(queryClient, profileIndex)
   }
 
   const create = useMutation({

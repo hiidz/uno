@@ -11,7 +11,6 @@ import type {
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { moveByOne } from '@/components/dnd'
 import { Field, Segmented, Switch, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Modal } from '@/components/Modal'
@@ -29,6 +28,8 @@ import {
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { andList } from '@/lib/list'
+import { moveByOne, orderByKeys } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
 import { CollectionPreview } from './CollectionPreview'
 import { FolderDetail, FolderTiles, FolderTreeDnd, folderLabel } from './FolderCard'
@@ -45,7 +46,6 @@ import {
   newRef,
   previewFromForm,
   removedFolders,
-  reorderRefs,
   toCollectionPayload,
   validateCollectionForm,
   withCatalogEdit,
@@ -375,40 +375,36 @@ export function CollectionEditor({
     setState((previous) => withCatalogEdit(previous, saved, formFromCatalog(restored)))
   }
 
-  /** "Copy" from the Add-catalogs picker: a fresh scoped catalog staged
-   *  locally with the source's exact saved values (never re-derived through
-   *  the form, so its `params` string round-trips byte for byte), referenced
-   *  as a new ref. Not written to the DB until this collection's own Save —
-   *  see `draftCatalog`'s doc comment. */
-  function copyIntoCollection(folderKey: string, source: Catalog) {
-    const draft = draftCatalog({
-      type: source.type,
-      name: source.name,
-      params: source.params,
-      collectionID,
-    })
+  /** A fresh scoped copy of `catalogID`, staged locally with the source's
+   *  exact saved values (never re-derived through the form, so its `params`
+   *  string round-trips byte for byte), and its draft id. Not written to the
+   *  DB until this collection's own Save — see `draftCatalog`'s doc comment.
+   *  The source is looked up in the merged registry: a catalog linked this
+   *  session is a library one this editor's own registry never had reason to
+   *  remember. */
+  function stageCopy(catalogID: string): string | undefined {
+    const source = mergedOptionByID.get(catalogID)?.catalog
+    if (!source) return undefined
+    const draft = draftCatalog({ type: source.type, name: source.name, params: source.params, collectionID })
     rememberCatalog(draft)
-    addRef(folderKey, draft.id)
+    return draft.id
   }
 
-  /** "Copy into this collection" on an already-linked listed catalog's own
-   *  row: same staged copy, but it replaces that ref in place rather than
-   *  adding a second one, so the folder's order doesn't change. */
+  /** "Copy" from the Add-catalogs picker: the staged copy as a new ref. */
+  function copyIntoCollection(folderKey: string, catalogID: string) {
+    const draftID = stageCopy(catalogID)
+    if (draftID) addRef(folderKey, draftID)
+  }
+
+  /** "Copy into this collection" on a listed catalog's own row: the staged
+   *  copy replaces that ref in place rather than adding a second one, so the
+   *  folder's order doesn't change. Only this ref moves to the copy, keeping
+   *  its genre; another ref to the same listed catalog under a different
+   *  genre stays linked. */
   function copyRefIntoCollection(folderKey: string, refKey: string, catalogID: string) {
-    // A ref linked this session (via the picker) is a library catalog this
-    // editor's own registry never had reason to remember — fall back to it.
-    const source = localCatalogs.get(catalogID) ?? optionByID.get(catalogID)?.catalog
-    if (!source) return
-    const draft = draftCatalog({
-      type: source.type,
-      name: source.name,
-      params: source.params,
-      collectionID,
-    })
-    rememberCatalog(draft)
-    // Only this ref moves to the copy, keeping its genre; another ref to the
-    // same listed catalog under a different genre stays linked.
-    patchRefs(folderKey, (refs) => refs.map((ref) => (ref.key === refKey ? { ...ref, catalogID: draft.id } : ref)))
+    const draftID = stageCopy(catalogID)
+    if (!draftID) return
+    patchRefs(folderKey, (refs) => refs.map((ref) => (ref.key === refKey ? { ...ref, catalogID: draftID } : ref)))
   }
 
   function startNewInCollection(folderKey: string) {
@@ -423,13 +419,8 @@ export function CollectionEditor({
   function createNewInCollection(name: string) {
     if (namingNewFolderKey === null) return
     const folderKey = namingNewFolderKey
-    const form = { ...emptyForm(newCatalogType, collectionID), name }
-    const draft = draftCatalog({
-      type: form.type,
-      name: toCatalogPayload(form).name,
-      params: toCatalogPayload(form).params,
-      collectionID,
-    })
+    const payload = toCatalogPayload({ ...emptyForm(newCatalogType, collectionID), name })
+    const draft = draftCatalog({ type: payload.type, name: payload.name, params: payload.params, collectionID })
     rememberCatalog(draft)
     addRef(folderKey, draft.id)
     setNamingNewFolderKey(null)
@@ -449,22 +440,17 @@ export function CollectionEditor({
   }
 
   function reorderFolders(orderedKeys: string[]) {
-    patchFolders((folders) =>
-      orderedKeys
-        .map((key) => folders.find((f) => f.key === key))
-        .filter((f): f is FolderFormState => f !== undefined),
-    )
+    patchFolders((folders) => orderByKeys(folders, orderedKeys, (f) => f.key))
   }
 
   function moveFolder(key: string, direction: -1 | 1) {
-    patchFolders((folders) => {
-      const ids = moveByOne(
-        folders.map((f) => f.key),
-        key,
-        direction,
-      )
-      return ids.map((id) => folders.find((f) => f.key === id)!).filter(Boolean)
-    })
+    patchFolders((folders) =>
+      orderByKeys(folders, moveByOne(folders.map((f) => f.key), key, direction), (f) => f.key),
+    )
+  }
+
+  function reorderRefs(folderKey: string, orderedKeys: string[]) {
+    patchRefs(folderKey, (refs) => orderByKeys(refs, orderedKeys, (ref) => ref.key))
   }
 
   /** Adds an unfiltered ref to `catalogID`. Guarded as well as filtered out of
@@ -505,7 +491,9 @@ export function CollectionEditor({
   }
 
   function moveRef(folderKey: string, refKey: string, direction: -1 | 1) {
-    patchRefs(folderKey, (refs) => reorderRefs(refs, moveByOne(refs.map((ref) => ref.key), refKey, direction)))
+    patchRefs(folderKey, (refs) =>
+      orderByKeys(refs, moveByOne(refs.map((ref) => ref.key), refKey, direction), (ref) => ref.key),
+    )
   }
 
   /** Re-inserts what the next Save would delete, at the end of the list —
@@ -789,7 +777,7 @@ export function CollectionEditor({
             {willDelete.length > 0 && (
               <StagedNote tone="danger" onUndo={undoRemoving}>
                 Saving deletes {willDelete.length === 1 ? 'the folder' : 'the folders'}{' '}
-                {joinQuoted(willDelete.map((f) => f.title.trim() || 'an untitled folder'))}. Copies others
+                {andList(willDelete.map((f) => `“${f.title.trim() || 'an untitled folder'}”`))}. Copies others
                 have taken keep theirs.
               </StagedNote>
             )}
@@ -818,7 +806,7 @@ export function CollectionEditor({
                   return ref?.genre ? `${name}, ${ref.genre}` : name
                 }}
                 onReorderFolders={reorderFolders}
-                onReorderRefs={(folderKey, refKeys) => patchRefs(folderKey, (refs) => reorderRefs(refs, refKeys))}
+                onReorderRefs={reorderRefs}
               >
                 <FolderTiles
                   folders={state.folders}
@@ -841,10 +829,7 @@ export function CollectionEditor({
                   onMove={(direction) => moveFolder(selectedFolder.key, direction)}
                   onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
                   onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
-                  onCopyRefIntoCollection={(catalogID) => {
-                    const source = localOptionByID.get(catalogID)?.catalog ?? optionByID.get(catalogID)?.catalog
-                    if (source) copyIntoCollection(selectedFolder.key, source)
-                  }}
+                  onCopyRefIntoCollection={(catalogID) => copyIntoCollection(selectedFolder.key, catalogID)}
                   onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
                   onSetRefGenre={(refKey, genre) => setRefGenre(selectedFolder.key, refKey, genre)}
                   onAddGenreRef={(refKey, genre) => addGenreRef(selectedFolder.key, refKey, genre)}
@@ -991,11 +976,4 @@ function StagedNote({
       </div>
     </div>
   )
-}
-
-function joinQuoted(names: string[]): string {
-  const quoted = names.map((name) => `“${name}”`)
-  if (quoted.length <= 1) return quoted.join('')
-  if (quoted.length === 2) return `${quoted[0]} and ${quoted[1]}`
-  return `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}`
 }

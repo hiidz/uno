@@ -19,6 +19,7 @@ import {
   type PreviewCollection,
   type PreviewFolder,
   type PreviewSource,
+  type ViewMode,
 } from '@/features/preview/model'
 import type { RefOption } from './refs'
 
@@ -58,15 +59,10 @@ export function isDraftCatalogID(id: string): boolean {
  *    session.
  */
 
-/** Mirrors `validViewModes` in `internal/vault/validation.go`. Union-typed
- *  rather than validated, so an invalid view mode is unrepresentable and
- *  `validateCollectionForm` doesn't have to check it. */
-export type CollectionViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
+/** Ordered as the editor's choices list them, so the default reads first. */
+export const VIEW_MODES: ViewMode[] = ['FOLLOW_LAYOUT', 'TABBED_GRID', 'ROWS']
 
-/** Ordered as the select lists them, so the default reads first. */
-export const VIEW_MODES: CollectionViewMode[] = ['FOLLOW_LAYOUT', 'TABBED_GRID', 'ROWS']
-
-export const VIEW_MODE_LABELS: Record<CollectionViewMode, string> = {
+export const VIEW_MODE_LABELS: Record<ViewMode, string> = {
   FOLLOW_LAYOUT: 'Follow layout',
   TABBED_GRID: 'Tabbed Grids',
   ROWS: 'Rows',
@@ -128,7 +124,9 @@ export interface CollectionFormState {
   title: string
   isPublic: boolean
   pinToTop: boolean
-  viewMode: CollectionViewMode
+  /** Typed to the server's enum, so an invalid view mode is unrepresentable
+   *  and `validateCollectionForm` doesn't have to check it. */
+  viewMode: ViewMode
   showAllTab: boolean
   backdropImageURL: string
   focusGlowEnabled: boolean
@@ -158,12 +156,6 @@ export function newRef(catalogID: string, genre = ''): FolderRefState {
  *  primary key forbids repeating. */
 export function hasRef(folder: FolderFormState, catalogID: string, genre: string): boolean {
   return folder.refs.some((ref) => ref.catalogID === catalogID && ref.genre === genre)
-}
-
-/** `refs` in the order of `orderedKeys`, dropping any key not among them. */
-export function reorderRefs(refs: FolderRefState[], orderedKeys: string[]): FolderRefState[] {
-  const byKey = new Map(refs.map((ref) => [ref.key, ref]))
-  return orderedKeys.map((key) => byKey.get(key)).filter((ref) => ref !== undefined)
 }
 
 /** The two focus flags start on: Nuvio reads an absent flag as on, and the
@@ -199,24 +191,15 @@ export function emptyCollectionForm(): CollectionFormState {
   }
 }
 
-// The server stores an empty view mode or tile shape as `TABBED_GRID` or
-// `POSTER`, what every Nuvio client shows for one, so an empty or unknown
-// value loads as that too.
-
-function toViewMode(raw: string): CollectionViewMode {
-  return (VIEW_MODES as string[]).includes(raw) ? (raw as CollectionViewMode) : 'TABBED_GRID'
-}
-
-function toTileShape(raw: string): TileShape {
-  return (TILE_SHAPES as string[]).includes(raw) ? (raw as TileShape) : 'POSTER'
-}
-
 function folderFromWire(folder: Folder): FolderFormState {
   return {
     key: nextFolderKey(),
     id: folder.id,
     title: folder.title,
-    tileShape: toTileShape(folder.tile_shape),
+    // The server stores an empty tile shape or view mode as `POSTER` or
+    // `TABBED_GRID`, what every Nuvio client shows for one, so an empty or
+    // unknown value loads as that too.
+    tileShape: normalizeTileShape(folder.tile_shape).shape,
     hideTitle: folder.hide_title,
     coverEmoji: folder.cover_emoji,
     coverImageURL: folder.cover_image_url,
@@ -249,7 +232,7 @@ export function formFromCollection(collection: Collection): CollectionFormState 
     title: collection.title,
     isPublic: collection.is_public,
     pinToTop: collection.pin_to_top,
-    viewMode: toViewMode(collection.view_mode),
+    viewMode: normalizeViewMode(collection.view_mode).mode,
     showAllTab: collection.show_all_tab,
     backdropImageURL: collection.backdrop_image_url,
     focusGlowEnabled: collection.focus_glow_enabled,
@@ -447,7 +430,7 @@ export function toCollectionPayload(
   }
 }
 
-/** Structural equality over everything that reaches the wire, so the dialog can
+/** Structural equality over everything that reaches the wire, so the editor can
  *  tell an untouched form from an edited one without diffing by hand. `key` is
  *  excluded — it's session-local and moving a folder doesn't change it. */
 export function isSameCollection(a: CollectionFormState, b: CollectionFormState): boolean {
@@ -512,8 +495,7 @@ export function previewFromForm(
   })
 
   return {
-    // Never rendered — the row's identity is the form, not a stored row, and a
-    // collection being created has no id at all.
+    // Never rendered — the row's identity is the form, not a stored row.
     id: '',
     title: state.title,
     pinned: state.pinToTop,

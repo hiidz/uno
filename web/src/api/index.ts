@@ -26,7 +26,7 @@ export type {
 export { checkImport, exportBundle, importBundle } from './bundle'
 export { pushSelection } from './push'
 export type { PushRequest, PushResult } from './push'
-export { queryKeys } from './keys'
+export { invalidateProfileLists, queryKeys } from './keys'
 export {
   fetchOwnedCatalogs,
   fetchCommunityCatalogs,

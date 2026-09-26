@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -10,16 +10,15 @@ import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
 import { describeCollection } from '@/features/library/collection'
-import { recipeLine } from '@/features/library/recipe'
+import { recipeLine, typeLabel } from '@/features/library/recipe'
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
 import { noTiles, TileRun, TILE_ASPECT } from '@/features/preview/tiles'
 import { ordinal } from '@/lib/ordinal'
 import { HomePreview } from './HomePreview'
-import { buildHomePreview } from './preview'
 import type { PreviewRow } from './preview'
 import { SortableList } from './SortableList'
 import { useCatalogTiles } from './useCatalogTiles'
-import { useHomeSelection } from './useHomeSelection'
+import { useHomePreview, useHomeSelection } from './useHomeSelection'
 
 export type HomeView = 'list' | 'preview'
 
@@ -195,18 +194,7 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
  */
 function HomeList({ compact }: { compact: boolean }) {
   const home = useHomeSelection()
-
-  const preview = useMemo(
-    () =>
-      buildHomePreview({
-        catalogs: home.catalogs,
-        collections: home.collections,
-        catalogById: home.catalogById,
-        collectionById: home.collectionById,
-      }),
-    [home.catalogs, home.collections, home.catalogById, home.collectionById],
-  )
-
+  const preview = useHomePreview()
   const tiles = useCatalogTiles(preview.rows.map((row) => row.id))
 
   if (preview.isEmpty) {
@@ -527,9 +515,7 @@ function CatalogRow({
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[16.5px] font-bold">{row.name}</span>
           {catalog && (
-            <span className="stk stk-kind shrink-0">
-              {catalog.type === 'movie' ? 'Movies' : 'Series'}
-            </span>
+            <span className="stk stk-kind shrink-0">{typeLabel(catalog.type)}</span>
           )}
           {detached && <DetachedTag />}
         </span>

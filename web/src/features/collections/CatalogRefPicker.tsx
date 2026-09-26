@@ -79,7 +79,7 @@ export function CatalogRefPicker({
               <button
                 type="button"
                 onClick={() => onAdd(option.id)}
-                title={`Link ${option.name} — ${option.recipe} · ${option.catalog.type === 'movie' ? 'movie' : 'series'}`}
+                title={`Link ${option.name} — ${option.recipe} · ${option.catalog.type}`}
                 className="choice"
               >
                 <Icon icon={Plus} size={13} />

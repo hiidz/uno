@@ -32,6 +32,7 @@ import { HomePane, type HomeView } from '@/features/home/HomePane'
 import { useHomeEdits } from '@/features/home/useHomeSelection'
 import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
+import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
 import { useEditorGuard } from './EditorGuard'
 import { NewItemDialog } from './NewItemDialog'
@@ -136,14 +137,6 @@ export function Workspace({
   )
   const refOptionByID = useMemo(() => indexRefOptions(refOptions), [refOptions])
   const refAccessible = useMemo(() => accessibleIDs(refOptions), [refOptions])
-
-  const genres = useMemo(
-    () => ({
-      movie: [...library.genres.movie].map(([id, name]) => ({ id, name })),
-      tv: [...library.genres.tv].map(([id, name]) => ({ id, name })),
-    }),
-    [library.genres],
-  )
 
   // `reset` is stable per mutation, so hoisting these makes `show` stable too
   // — which matters because it reaches `EditorShell`'s Escape listener.
@@ -489,7 +482,7 @@ export function Workspace({
           cancelLabel: 'Keep it',
           destructive: true,
           pending: catalogMutations.remove.isPending,
-          error: (catalogMutations.remove.error as Error | null)?.message ?? null,
+          error: catalogMutations.remove.error?.message ?? null,
           onConfirm: () => confirmDeleteCatalog(catalog),
           onCancel: () => {
             catalogMutations.remove.reset()
@@ -511,7 +504,7 @@ export function Workspace({
           confirmLabel: catalogMutations.create.isPending ? 'Duplicating…' : 'Duplicate catalog',
           cancelLabel: 'Cancel',
           pending: catalogMutations.create.isPending,
-          error: (catalogMutations.create.error as Error | null)?.message ?? null,
+          error: catalogMutations.create.error?.message ?? null,
           onConfirm: () => confirmDuplicateCatalog(catalog),
           onCancel: () => {
             catalogMutations.create.reset()
@@ -550,7 +543,7 @@ export function Workspace({
           cancelLabel: 'Keep it',
           destructive: true,
           pending: collectionMutations.remove.isPending,
-          error: (collectionMutations.remove.error as Error | null)?.message ?? null,
+          error: collectionMutations.remove.error?.message ?? null,
           onConfirm: () => confirmDeleteCollection(collection),
           onCancel: () => {
             collectionMutations.remove.reset()
@@ -573,7 +566,7 @@ export function Workspace({
           confirmLabel: collectionMutations.duplicate.isPending ? 'Duplicating…' : 'Duplicate collection',
           cancelLabel: 'Cancel',
           pending: collectionMutations.duplicate.isPending,
-          error: (collectionMutations.duplicate.error as Error | null)?.message ?? null,
+          error: collectionMutations.duplicate.error?.message ?? null,
           onConfirm: () => confirmDuplicateCollection(collection),
           onCancel: () => {
             collectionMutations.duplicate.reset()
@@ -674,14 +667,14 @@ export function Workspace({
               // subject".
               key={target.id}
               initial={target.initial}
-              genres={genres}
+              genres={library.genreLists}
               certifications={library.certifications}
               countryNames={library.countryNames}
               languages={library.languages}
               // Only `update`: `create` belongs to the naming dialog and to
               // Duplicate, which can run while this editor is open.
               saving={catalogMutations.update.isPending}
-              serverError={(catalogMutations.update.error as Error | null)?.message ?? null}
+              serverError={catalogMutations.update.error?.message ?? null}
               onSave={saveCatalog}
               onRequestClose={close}
               onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
@@ -698,7 +691,7 @@ export function Workspace({
               accessibleIDs={refAccessible}
               // Only `update`, for the same reason as the catalog editor's.
               saving={collectionMutations.update.isPending}
-              serverError={(collectionMutations.update.error as Error | null)?.message ?? null}
+              serverError={collectionMutations.update.error?.message ?? null}
               onSave={saveCollection}
               onRequestClose={close}
               onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
@@ -706,7 +699,7 @@ export function Workspace({
               onDirtyChange={setDirty}
               collectionID={target.id}
               initialCatalogs={editingCollectionCatalogs}
-              genres={genres}
+              genres={library.genreLists}
               genreLookups={library.genres}
               certifications={library.certifications}
               countryNames={library.countryNames}
@@ -728,7 +721,7 @@ export function Workspace({
         label="Name"
         placeholder="Trending Sci-Fi"
         saving={catalogMutations.create.isPending}
-        serverError={(catalogMutations.create.error as Error | null)?.message ?? null}
+        serverError={catalogMutations.create.error?.message ?? null}
         extra={
           <Field label="Type" hint="Can't be changed later.">
             <Segmented
@@ -759,7 +752,7 @@ export function Workspace({
         label="Title"
         placeholder="Saturday night"
         saving={collectionMutations.create.isPending}
-        serverError={(collectionMutations.create.error as Error | null)?.message ?? null}
+        serverError={collectionMutations.create.error?.message ?? null}
         onCreate={createBareCollection}
         onClose={() => {
           setNamingCollection(false)
@@ -818,11 +811,10 @@ function editorSubject(target: EditorTarget | null): string {
  *  collections. A catalog imported inside a collection, or reused, is not a
  *  new rail row, so it isn't counted. */
 function importedText(result: ImportResult): string {
-  const parts = [
-    result.catalogs.length > 0 && pluralCount(result.catalogs.length, 'catalog'),
-    result.collections.length > 0 && pluralCount(result.collections.length, 'collection'),
-  ].filter(Boolean)
-  return parts.length > 0 ? `Imported ${parts.join(' and ')}` : 'Imported nothing new'
+  const parts: string[] = []
+  if (result.catalogs.length > 0) parts.push(pluralCount(result.catalogs.length, 'catalog'))
+  if (result.collections.length > 0) parts.push(pluralCount(result.collections.length, 'collection'))
+  return parts.length > 0 ? `Imported ${andList(parts)}` : 'Imported nothing new'
 }
 
 function folderCount(collection: LibraryCollection): string {

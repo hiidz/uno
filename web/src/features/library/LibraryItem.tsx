@@ -3,18 +3,13 @@ import { Copy, Plus, Trash2 } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
 import { prefersReducedMotion } from '@/lib/motion'
+import { typeLabel } from './recipe'
 
-export type BarKind = 'movie' | 'series' | 'collection'
+type RowKind = 'movie' | 'series' | 'collection'
 
-const KIND_LABEL: Record<BarKind, string> = {
+const KIND_LABEL: Record<RowKind, string> = {
   movie: 'Movie catalog',
   series: 'Series catalog',
-  collection: 'Collection',
-}
-
-const KIND_STICKER: Record<BarKind, string> = {
-  movie: 'Movies',
-  series: 'Series',
   collection: 'Collection',
 }
 
@@ -53,7 +48,7 @@ export function LibraryItem({
   onDuplicate,
   onDelete,
 }: {
-  kind: BarKind
+  kind: RowKind
   /** Visible to everyone else, not just you. */
   isPublic?: boolean
   name: string
@@ -100,7 +95,7 @@ export function LibraryItem({
           </span>
           {summary && <span className="text-dim truncate text-[13px]">{summary}</span>}
           <span aria-hidden="true" className="mt-0.5 flex flex-wrap gap-1.5">
-            <span className="stk stk-kind">{KIND_STICKER[kind]}</span>
+            <span className="stk stk-kind">{kind === 'collection' ? 'Collection' : typeLabel(kind)}</span>
             {isPublic && (
               <span className="stk stk-shared" title="Also visible to the community">
                 Shared

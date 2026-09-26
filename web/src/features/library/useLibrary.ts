@@ -10,7 +10,7 @@ import {
   ProfileNotSelectedError,
   queryKeys,
 } from '@/api'
-import type { Catalog, CertificationsByCountry, Collection, Folder, Language } from '@/api'
+import type { Catalog, CertificationsByCountry, Collection, Folder, Genre, Language } from '@/api'
 import { buildCountryLookup, type CountryLookup } from '@/features/catalogs/countries'
 import { buildGenreLookup, type GenreLookup } from './recipe'
 
@@ -53,6 +53,9 @@ export interface Library {
    *  genre queries land — recipes fall back to raw ids, which is degraded but
    *  not broken, so the list never blocks on it. */
   genres: GenreLookups
+  /** The same genres as lists, in TMDB's order, for the catalog editor's
+   *  genre chips. Empty until the queries land, like `genres`. */
+  genreLists: { movie: Genre[]; tv: Genre[] }
   /** Every country's age-rating scale, for the certification picker. Empty
    *  until the queries land — same degrade-gracefully treatment as genres. */
   certifications: CertificationLookups
@@ -73,6 +76,7 @@ export interface Library {
 /** Stable fallbacks for a list that hasn't loaded, so memos keyed on it don't
  *  recompute on every render while it's pending or failed. */
 const NO_CATALOGS: LibraryCatalog[] = []
+const NO_GENRES: Genre[] = []
 const NO_LANGUAGES: Language[] = []
 
 export function useLibrary(profileIndex: number): Library {
@@ -101,10 +105,11 @@ export function useLibrary(profileIndex: number): Library {
     ],
   })
 
-  const movieGenres = genreResults[0].data
-  const tvGenres = genreResults[1].data
+  const movieGenres = genreResults[0].data ?? NO_GENRES
+  const tvGenres = genreResults[1].data ?? NO_GENRES
+  const genreLists = useMemo(() => ({ movie: movieGenres, tv: tvGenres }), [movieGenres, tvGenres])
   const genres = useMemo<GenreLookups>(
-    () => ({ movie: buildGenreLookup(movieGenres ?? []), tv: buildGenreLookup(tvGenres ?? []) }),
+    () => ({ movie: buildGenreLookup(movieGenres), tv: buildGenreLookup(tvGenres) }),
     [movieGenres, tvGenres],
   )
 
@@ -158,6 +163,7 @@ export function useLibrary(profileIndex: number): Library {
     catalogs,
     collections,
     genres,
+    genreLists,
     certifications,
     languages,
     countryNames,

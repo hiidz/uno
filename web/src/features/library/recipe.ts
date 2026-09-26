@@ -1,10 +1,19 @@
-import type { Catalog, Genre, TMDBParams } from '@/api'
+import type { Catalog, CatalogType, Genre, TMDBParams } from '@/api'
+import {
+  DATE_PRESETS,
+  DAYS_PER_YEAR,
+  UPCOMING_DAYS,
+  parseIdList,
+  parseParams,
+} from '@/features/catalogs/params'
 import { capitalize } from '@/lib/capitalize'
+import { andList, orList } from '@/lib/list'
 import { plural, pluralCount } from '@/lib/plural'
 
 /**
- * Renders a catalog's stored params as a plain-English summary — what the
- * Home list and the folder pickers show in place of content.
+ * Renders a catalog's stored params as plain English — the line the rail, the
+ * Home list and a folder's catalog picker show in place of content, and the
+ * sentence the catalog editor opens with.
  *
  * **Written for someone who has never heard of TMDB.** The params are that
  * API's vocabulary — `popularity.desc`, `with_original_language: "ja"`,
@@ -17,29 +26,22 @@ import { plural, pluralCount } from '@/lib/plural'
  * a table would drift.
  */
 
-/** Never `JSON.parse` a catalog's params at a call site — a single malformed
- *  row would take down the whole list. */
-export function parseParams(raw: string): TMDBParams {
-  if (!raw) return {}
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? (parsed as TMDBParams) : {}
-  } catch {
-    return {}
-  }
-}
-
 export type GenreLookup = ReadonlyMap<number, string>
 
 export function buildGenreLookup(genres: Genre[]): GenreLookup {
   return new Map(genres.map((g) => [g.id, g.name]))
 }
 
+/** A catalog's kind as its sticker reads: "Movies" or "Series". */
+export function typeLabel(type: CatalogType): string {
+  return type === 'movie' ? 'Movies' : 'Series'
+}
+
 /** How a `sort_by` reads out loud. Keyed on the whole stored value, direction
  *  included, because "newest first" and "oldest first" are different phrases
  *  rather than one phrase plus a suffix. An unrecognised value falls through
  *  to itself — better an unfamiliar word than a wrong one. */
-export const SORT_PHRASE: Record<string, string> = {
+const SORT_PHRASE: Record<string, string> = {
   'popularity.desc': 'Most popular',
   'popularity.asc': 'Least popular',
   'vote_average.desc': 'Highest rated',
@@ -90,30 +92,31 @@ function displayName(type: 'language' | 'region', code: string): string {
 
 /** `CA-QC` is a certification key, not a country — TMDB scopes a few rating
  *  boards to a subdivision. The parent country is the recognisable half. */
-export function countryLabel(code: string): string {
+function countryLabel(code: string): string {
   const [country, subdivision] = code.split('-')
   const name = displayName('region', country)
   return subdivision ? `${name} (${subdivision})` : name
 }
 
-export { displayName }
-
-export function joinGenres(raw: string | undefined, lookup: GenreLookup): string | null {
-  if (!raw) return null
-  // TMDB's own convention: comma means AND, pipe means OR.
-  const isOr = raw.includes('|')
-  const ids = raw
-    .split(/[,|]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  if (ids.length === 0) return null
-  const names = ids.map((id) => lookup.get(Number(id)) ?? id)
-  if (names.length === 1) return names[0]
-  const last = names[names.length - 1]
-  return `${names.slice(0, -1).join(', ')} ${isOr ? 'or' : 'and'} ${last}`
+/** A stored genre list's names, joined the way the list is — "Action and
+ *  Comedy", or "Action or Comedy" for a pipe-joined one. An id the lookup
+ *  can't name stands in for its name, or with `knownOnly` is left out. */
+function genreNames(raw: string | undefined, lookup: GenreLookup, knownOnly = false): string | null {
+  const { ids, join } = parseIdList(raw)
+  const names = ids.flatMap((id) => {
+    const name = lookup.get(id)
+    if (name) return [name]
+    return knownOnly ? [] : [String(id)]
+  })
+  if (names.length === 0) return null
+  return join === 'or' ? orList(names) : andList(names)
 }
 
-export function range(
+function countIDs(raw: string | undefined): number {
+  return parseIdList(raw).ids.length
+}
+
+function range(
   gte: number | undefined,
   lte: number | undefined,
   format: (n: number) => string,
@@ -129,15 +132,15 @@ function year(date: string): string {
   return date.slice(0, 4)
 }
 
-/** A rolling window in the units it was chosen in. The builder offers 30, 90,
- *  182 and 365 days plus whole years, so those are the ones worth naming. */
-export function describeDays(days: number): string {
-  if (days === 182) return 'in the last 6 months'
-  if (days % 365 === 0) {
-    const years = days / 365
+/** A rolling window in the units it was chosen in: whole years, or the
+ *  builder's own presets, or plain days. */
+function describeDays(days: number): string {
+  if (days % DAYS_PER_YEAR === 0) {
+    const years = days / DAYS_PER_YEAR
     return years === 1 ? 'in the last year' : `in the last ${years} years`
   }
-  return `in the last ${days} days`
+  const preset = DATE_PRESETS.find((option) => option.days === days)
+  return `in the last ${preset?.label ?? `${days} days`}`
 }
 
 function dateWindow(
@@ -151,7 +154,7 @@ function dateWindow(
   if (withinDays) {
     // The builder's "Upcoming" chip is a one-day window, which reads as a
     // date rather than a duration.
-    return withinDays === 1 ? 'not out yet' : `${verb} ${describeDays(withinDays)}`
+    return withinDays === UPCOMING_DAYS ? 'not out yet' : `${verb} ${describeDays(withinDays)}`
   }
   if (gte && lte) return `${verb} ${year(gte)}–${year(lte)}`
   if (gte) return `${verb} ${year(gte)} or later`
@@ -189,10 +192,10 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
 
   if (p.sort_by) out.push(SORT_PHRASE[p.sort_by] ?? p.sort_by)
 
-  const genres = joinGenres(p.with_genres, lookup)
+  const genres = genreNames(p.with_genres, lookup)
   if (genres) out.push(genres)
 
-  const without = joinGenres(p.without_genres, lookup)
+  const without = genreNames(p.without_genres, lookup)
   if (without) out.push(`no ${without}`)
 
   const rating = range(p.vote_average_gte, p.vote_average_lte, (n) => n.toFixed(1))
@@ -219,8 +222,8 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
       : dateWindow(p.first_air_date_gte, p.first_air_date_lte, p.aired_within_days, 'aired')
   if (window) out.push(window)
 
-  // Certification exists only on movie params - `TMDBTVParams` has no such
-  // fields.
+  // Both kinds carry a rating: theatrical ratings for movies, TV content
+  // ratings for series, each read against `certification_country`'s scale.
   const cert = p.certification ?? p.certification_gte ?? p.certification_lte
   if (cert) {
     out.push(
@@ -234,9 +237,9 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   // would need a fetch per region, while "on 8, 337" told a reader who doesn't
   // hold TMDB's id table in their head nothing at all. The builder names them
   // where the choice is actually made.
-  if (p.with_watch_providers) {
-    const count = p.with_watch_providers.split(/[,|]/).filter(Boolean).length
-    const services = `${count} streaming ${plural(count, 'service')}`
+  const serviceCount = countIDs(p.with_watch_providers)
+  if (serviceCount) {
+    const services = `${serviceCount} streaming ${plural(serviceCount, 'service')}`
     out.push(p.watch_region ? `on ${services} in ${countryLabel(p.watch_region)}` : `on ${services}`)
   }
 
@@ -259,20 +262,6 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   if (p.randomized) out.push('shuffled')
 
   return out
-}
-
-/** `raw`'s genre ids that `lookup` can name, kept in its own comma (AND) or
- *  pipe (OR) form. */
-function knownGenres(raw: string, lookup: GenreLookup): string {
-  return raw
-    .split(/[,|]/)
-    .map((id) => id.trim())
-    .filter((id) => id && lookup.has(Number(id)))
-    .join(raw.includes('|') ? '|' : ',')
-}
-
-function countIDs(raw: string | undefined): number {
-  return raw ? raw.split(/[,|]/).filter((part) => part.trim()).length : 0
 }
 
 /** A recipe's segments as one line of plain words, capitalised to start a
@@ -300,11 +289,11 @@ export function recipeSentence(
   }
 
   const sort = p.sort_by ? rest.shift() : undefined
-  if (joinGenres(p.with_genres, lookup)) rest.shift()
+  if (countIDs(p.with_genres)) rest.shift()
   // Only the genres the lookup can name. An id standing in for a name — the
   // genre list still loading, or an id TMDB has retired — would read as a
   // count of titles as the subject ("27 movies"), so it is left out instead.
-  const genres = p.with_genres ? joinGenres(knownGenres(p.with_genres, lookup), lookup) : null
+  const genres = genreNames(p.with_genres, lookup, true)
   const noun = catalog.type === 'movie' ? 'movies' : 'series'
   const subject = genres ? `${genres.toLowerCase()} ${noun}` : noun
   // "A-Z" and "Z-A" keep their capitals, with or without "by original

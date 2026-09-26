@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchWatchProviders, fetchWatchRegions, queryKeys } from '@/api'
 import type { CatalogType, TMDBParams } from '@/api'
 import { FieldNote, Select } from '@/components/fields'
+import { parseIdList, serializeIdList } from './params'
 
 /**
  * Which streaming services a title has to be on, picked by name.
@@ -19,7 +20,6 @@ import { FieldNote, Select } from '@/components/fields'
  * the picks, unlike the certification country, where the codes really do mean
  * different things.
  */
-
 
 export function WatchProviderPicker({
   type,
@@ -53,9 +53,7 @@ export function WatchProviderPicker({
   })
 
   const all = useMemo(() => providers.data ?? [], [providers.data])
-  const selectedIDs = useMemo(() => parseProviderIDs(params.with_watch_providers), [
-    params.with_watch_providers,
-  ])
+  const selectedIDs = useMemo(() => parseIdList(params.with_watch_providers).ids, [params.with_watch_providers])
 
   const regionOptions = useMemo(
     () =>
@@ -100,7 +98,7 @@ export function WatchProviderPicker({
       // Pipe-joined: TMDB reads `|` as "on any of these" and `,` as "on every
       // one of these", and a title streaming on all of several services at
       // once is almost never what picking them means.
-      with_watch_providers: next.length ? next.join('|') : undefined,
+      with_watch_providers: next.length ? serializeIdList(next, 'or') : undefined,
       // The pair is required together server-side, so the region rides along
       // with the ids rather than being a field of its own to forget.
       watch_region: next.length ? region : undefined,
@@ -190,15 +188,4 @@ export function WatchProviderPicker({
       {error && <FieldNote tone="danger">{error}</FieldNote>}
     </div>
   )
-}
-
-/** Stored TMDB-side as a comma- or pipe-separated id list. Anything that isn't
- *  a number is dropped rather than carried through as `NaN`, which would
- *  render as a chip nobody can deselect. */
-function parseProviderIDs(raw: string | undefined): number[] {
-  if (!raw) return []
-  return raw
-    .split(/[,|]/)
-    .map((part) => Number(part.trim()))
-    .filter((id) => Number.isInteger(id) && id > 0)
 }

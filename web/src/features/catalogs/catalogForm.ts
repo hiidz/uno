@@ -1,6 +1,6 @@
 import { CATALOG_PROVIDER } from '@/api'
 import type { Catalog, CatalogPayload, CatalogType, TMDBParams } from '@/api'
-import { parseParams } from '@/features/library/recipe'
+import { parseIdList, parseParams } from './params'
 
 /**
  * The catalog builder's form model, and the client-side mirror of
@@ -138,9 +138,7 @@ export function formFromCatalog(catalog: Catalog): CatalogFormState {
  * public or scoped — publishing and scoping are deliberate acts, not
  * something inherited from whoever it was forked from; only reachable from
  * the library, which is listed catalogs only. `type`/`params` are copied
- * verbatim: duplicate is a straight copy, not a way to change a catalog's
- * type any more (that capability was dropped along with unsaved duplicate
- * state — see `CatalogEditor`'s doc comment).
+ * verbatim: a duplicate is a straight copy.
  */
 export function duplicatePayload(catalog: Catalog): CatalogPayload {
   return {
@@ -243,7 +241,7 @@ export function validateForm(state: CatalogFormState): FieldErrors {
 
   if (!state.name.trim()) errors.name = 'Give this catalog a name.'
 
-  if (collectionRow && parseGenreList(p.with_collection).ids.length === 0) {
+  if (collectionRow && parseIdList(p.with_collection).ids.length === 0) {
     errors.with_collection = 'Pick a collection.'
   }
 
@@ -282,19 +280,19 @@ export function validateForm(state: CatalogFormState): FieldErrors {
     errors.vote_count = 'The first number is higher than the second.'
   }
 
-  if (parseGenreList(p.with_companies).ids.length > MAX_ENTITY_IDS) {
+  if (parseIdList(p.with_companies).ids.length > MAX_ENTITY_IDS) {
     errors.with_companies = `Pick at most ${MAX_ENTITY_IDS} production companies.`
   }
-  if (parseGenreList(p.with_keywords).ids.length > MAX_ENTITY_IDS) {
+  if (parseIdList(p.with_keywords).ids.length > MAX_ENTITY_IDS) {
     errors.with_keywords = `Pick at most ${MAX_ENTITY_IDS} keywords.`
   }
-  if (parseGenreList(p.without_companies).ids.length > MAX_ENTITY_IDS) {
+  if (parseIdList(p.without_companies).ids.length > MAX_ENTITY_IDS) {
     errors.without_companies = `Leave out at most ${MAX_ENTITY_IDS} production companies.`
   }
-  if (parseGenreList(p.without_keywords).ids.length > MAX_ENTITY_IDS) {
+  if (parseIdList(p.without_keywords).ids.length > MAX_ENTITY_IDS) {
     errors.without_keywords = `Leave out at most ${MAX_ENTITY_IDS} keywords.`
   }
-  if (parseGenreList(p.with_networks).ids.length > MAX_ENTITY_IDS) {
+  if (parseIdList(p.with_networks).ids.length > MAX_ENTITY_IDS) {
     errors.with_networks = `Pick at most ${MAX_ENTITY_IDS} networks.`
   }
 
@@ -343,23 +341,4 @@ export function isSameCatalog(a: CatalogFormState, b: CatalogFormState): boolean
  *  actually unlink is the server's call; this only decides whether to ask. */
 export function changesContent(baseline: CatalogFormState, state: CatalogFormState): boolean {
   return !isSameCatalog({ ...baseline, isPublic: state.isPublic }, state)
-}
-
-/** Genre, company and keyword ids are each stored as one string, comma-joined
- *  for AND and pipe-joined for OR. The form edits them as a list plus a join
- *  mode. A single id has no separator, so it parses as AND. */
-export type GenreJoin = 'and' | 'or'
-
-export function parseGenreList(raw: string | undefined): { ids: number[]; join: GenreJoin } {
-  if (!raw) return { ids: [], join: 'and' }
-  const join: GenreJoin = raw.includes('|') ? 'or' : 'and'
-  const ids = raw
-    .split(/[,|]/)
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0)
-  return { ids, join }
-}
-
-export function serializeGenreList(ids: number[], join: GenreJoin): string {
-  return ids.join(join === 'or' ? '|' : ',')
 }

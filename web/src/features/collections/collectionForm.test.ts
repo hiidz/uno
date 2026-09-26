@@ -10,7 +10,6 @@ import {
   isSameCollection,
   newFolder,
   newRef,
-  reorderRefs,
   toCollectionPayload,
   validateCollectionForm,
   withCatalogEdit,
@@ -155,14 +154,6 @@ describe('changesContent', () => {
   it('counts a staged Move to library with nothing else changed', () => {
     const edit = { type: 'movie', provider: 'tmdb', name: 'Scoped', params: '{}', moveToLibrary: true } as const
     expect(changesContent(baseline, { ...baseline, catalogEdits: { c1: edit } })).toBe(true)
-  })
-})
-
-describe('reorderRefs', () => {
-  it('orders refs by key, so two refs to one catalog keep their own genres', () => {
-    const a = newRef('c1', 'Western')
-    const b = newRef('c1', 'War')
-    expect(reorderRefs([a, b], [b.key, a.key])).toEqual([b, a])
   })
 })
 

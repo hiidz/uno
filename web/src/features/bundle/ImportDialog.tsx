@@ -4,6 +4,7 @@ import { checkImport } from '@/api'
 import type { ImportCheck, ImportMatch, ImportResult } from '@/api'
 import { Segmented, Select } from '@/components/fields'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
+import { typeLabel } from '@/features/library/recipe'
 import { pluralCount } from '@/lib/plural'
 import { choicesForAll, reuseMap, type ReuseChoice, type ReuseChoices } from './reuse'
 import { useImport } from './useImport'
@@ -261,7 +262,7 @@ function MatchRow({
   onChange: (choice: ReuseChoice) => void
 }) {
   const scoped = match.scope === 'scoped'
-  const kind = match.type === 'movie' ? 'Movies' : 'Series'
+  const kind = typeLabel(match.type)
 
   return (
     <li className="border-line flex min-w-0 flex-col gap-2 border-t py-3">

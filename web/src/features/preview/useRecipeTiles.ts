@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchCatalogPreview, queryKeys } from '@/api'
 import type { CatalogType } from '@/api'
 import { noTiles, type CatalogTiles } from './tiles'
+import { PREVIEW_QUERY_OPTIONS, tilesFrom } from './useRecipesTiles'
 
 /**
  * TMDB tiles for a recipe that has no saved catalog behind it — one still being
@@ -65,11 +66,7 @@ export function useRecipeTiles(type: CatalogType, params: string): RecipePreview
     queryKey: queryKeys.catalogPreview(requested?.type ?? type, requested?.params ?? params),
     queryFn: () => fetchCatalogPreview({ type: requested!.type, params: requested!.params }),
     enabled: requested !== null,
-    staleTime: 5 * 60_000,
-    // No retry: a 400 means the recipe is invalid and a 502 means TMDB won't
-    // recover inside a retry window. Pressing the button again is the retry,
-    // and unlike the Home pane there is always someone there to press it.
-    retry: false,
+    ...PREVIEW_QUERY_OPTIONS,
   })
 
   const isSameRecipe =
@@ -92,15 +89,7 @@ export function useRecipeTiles(type: CatalogType, params: string): RecipePreview
   const reset = useCallback(() => setRequested(null), [])
 
   return {
-    tiles:
-      requested === null
-        ? noTiles()
-        : {
-            items: query.data?.items ?? [],
-            randomized: query.data?.randomized ?? false,
-            isLoading: query.isPending,
-            isError: query.isError,
-          },
+    tiles: requested === null ? noTiles() : tilesFrom(query),
     totalResults: query.data?.total_results ?? null,
     idle: requested === null,
     isStale: requested !== null && !isSameRecipe,

@@ -6,8 +6,6 @@ import {
   emptyForm,
   formFromCatalog,
   paramsString,
-  parseGenreList,
-  serializeGenreList,
   validateForm,
   type CatalogFormState,
 } from './catalogForm'
@@ -172,35 +170,5 @@ describe('company and keyword cap', () => {
       'without_companies',
       'without_keywords',
     ])
-  })
-})
-
-describe('parseGenreList / serializeGenreList', () => {
-  it('reads commas as all and pipes as any', () => {
-    expect(parseGenreList('420,2')).toEqual({ ids: [420, 2], join: 'and' })
-    expect(parseGenreList('420|2')).toEqual({ ids: [420, 2], join: 'or' })
-  })
-
-  it('reads empty and missing as no ids', () => {
-    expect(parseGenreList(undefined)).toEqual({ ids: [], join: 'and' })
-    expect(parseGenreList('')).toEqual({ ids: [], join: 'and' })
-  })
-
-  it('drops parts that are not positive ids', () => {
-    expect(parseGenreList(' 420 ,,abc,-3,0, 2 ').ids).toEqual([420, 2])
-    expect(parseGenreList('x|7|').ids).toEqual([7])
-  })
-
-  it('round-trips both joins', () => {
-    for (const raw of ['420,2,7', '420|2|7', '99']) {
-      const { ids, join } = parseGenreList(raw)
-      expect(serializeGenreList(ids, join)).toBe(raw)
-    }
-  })
-
-  it('writes the join it is given', () => {
-    expect(serializeGenreList([1, 2], 'and')).toBe('1,2')
-    expect(serializeGenreList([1, 2], 'or')).toBe('1|2')
-    expect(serializeGenreList([], 'or')).toBe('')
   })
 })

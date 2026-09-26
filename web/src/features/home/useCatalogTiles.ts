@@ -4,16 +4,13 @@ import { useRecipesTiles, type TileRecipe } from '@/features/preview/useRecipesT
 import { useHomeSelection } from './useHomeSelection'
 
 /**
- * Tiles for the catalogs the Home pane's Preview view is about to draw.
+ * Tiles for the Home pane's catalog rows — the List view's strips and the
+ * Preview's rows.
  *
  * Resolution only: `ids` are catalog ids, and the recipe behind each is looked
  * up in `catalogById`, which merges the library with the selection response. An
- * id that resolves to nothing is skipped — a folder can reference a catalog
- * that has since been deleted, and there is no recipe to run for it.
- * `useRecipesTiles` does the fetching.
- *
- * A recipe with no saved catalog behind it — one still being typed in a builder
- * form — has no id to look up, so it uses `useRecipeTiles` instead.
+ * id that resolves to nothing is skipped — a selected row nothing describes
+ * any more has no recipe to run. `useRecipesTiles` does the fetching.
  */
 export function useCatalogTiles(ids: readonly string[]): ReadonlyMap<string, CatalogTiles> {
   const home = useHomeSelection()

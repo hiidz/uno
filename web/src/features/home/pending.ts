@@ -9,6 +9,7 @@
  */
 
 import type { PushRequest } from '@/api'
+import { moveByOne, orderByKeys } from '@/lib/order'
 
 export interface HomeCatalogEntry {
   id: string
@@ -38,22 +39,6 @@ export function toPushPayload(state: HomeState): PushRequest {
   }
 }
 
-/** Reorders `entries` so their ids follow `orderedIds`. Ids missing from
- *  `orderedIds` keep their relative position at the end rather than being
- *  dropped; dnd-kit always hands back the complete list, so this is a guard. */
-export function applyOrder<T extends { id: string }>(entries: T[], orderedIds: string[]): T[] {
-  const byId = new Map(entries.map((e) => [e.id, e]))
-  const ordered: T[] = []
-  for (const id of orderedIds) {
-    const entry = byId.get(id)
-    if (entry) {
-      ordered.push(entry)
-      byId.delete(id)
-    }
-  }
-  return [...ordered, ...byId.values()]
-}
-
 /**
  * Reorders the subset of `entries` for which `inBand` is true, to
  * `orderedBandIds`, leaving the rest in their existing relative order and
@@ -70,7 +55,7 @@ export function reorderWithinBand<T extends { id: string }>(
 ): T[] {
   const band = entries.filter(inBand)
   const rest = entries.filter((entry) => !inBand(entry))
-  return [...applyOrder(band, orderedBandIds), ...rest]
+  return [...orderByKeys(band, orderedBandIds, (entry) => entry.id), ...rest]
 }
 
 /** Moves the entry with `id` one step within its own band (the partition
@@ -82,11 +67,7 @@ export function moveWithinBand<T extends { id: string }>(
   id: string,
   direction: -1 | 1,
 ): T[] {
-  const band = entries.filter(inBand)
-  const index = band.findIndex((entry) => entry.id === id)
-  const target = index + direction
-  if (index === -1 || target < 0 || target >= band.length) return entries
-  const reorderedBand = [...band]
-  ;[reorderedBand[index], reorderedBand[target]] = [reorderedBand[target], reorderedBand[index]]
-  return reorderWithinBand(entries, inBand, reorderedBand.map((entry) => entry.id))
+  const bandIds = entries.filter(inBand).map((entry) => entry.id)
+  const moved = moveByOne(bandIds, id, direction)
+  return moved === bandIds ? entries : reorderWithinBand(entries, inBand, moved)
 }

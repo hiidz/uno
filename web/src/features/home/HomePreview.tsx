@@ -7,9 +7,9 @@ import { plural } from '@/lib/plural'
 import { folderRecipes } from '@/features/preview/model'
 import { noTiles } from '@/features/preview/tiles'
 import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
-import { useHomeSelection } from './useHomeSelection'
+import { useHomePreview, useHomeSelection } from './useHomeSelection'
 import { useCatalogTiles } from './useCatalogTiles'
-import { buildHomePreview, findFolderPage } from './preview'
+import { findFolderPage } from './preview'
 import type { FolderPageTarget, HomeScreenPreview, PreviewRow } from './preview'
 import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from './tv'
 
@@ -34,18 +34,7 @@ import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from
  */
 export function HomePreview() {
   const home = useHomeSelection()
-
-  const preview = useMemo(
-    () =>
-      buildHomePreview({
-        catalogs: home.catalogs,
-        collections: home.collections,
-        catalogById: home.catalogById,
-        collectionById: home.collectionById,
-      }),
-    [home.catalogs, home.collections, home.catalogById, home.collectionById],
-  )
-
+  const preview = useHomePreview()
   const { page, openFolder, closeFolder } = useFolderPage(preview)
 
   if (preview.isEmpty) return <EmptyHomeScreen />

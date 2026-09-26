@@ -307,19 +307,14 @@ export function TVCollectionRow({
   collection: PreviewCollection
   onOpenFolder: (target: FolderPageTarget) => void
 }) {
-  const scroll = useRowScroll()
+  const { stripRef, canPrev, canNext, scrollBy } = useRowScroll()
   return (
     <div className="tv-band">
       <div className="tv-row-head">
         <p className="tv-row-title">{collection.title}</p>
-        <RowNav
-          canPrev={scroll.canPrev}
-          canNext={scroll.canNext}
-          onScroll={scroll.scrollBy}
-          name={collection.title}
-        />
+        <RowNav canPrev={canPrev} canNext={canNext} onScroll={scrollBy} name={collection.title} />
       </div>
-      <div ref={scroll?.stripRef} className="tv-strip">
+      <div ref={stripRef} className="tv-strip">
         {collection.folders.map((folder) => (
           <TVFolderTile
             key={folder.id}

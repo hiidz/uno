@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { fetchCatalogPreview, queryKeys } from '@/api'
-import type { CatalogType } from '@/api'
+import type { CatalogPreview, CatalogType } from '@/api'
 import type { CatalogTiles } from './tiles'
 
 /**
@@ -17,20 +17,40 @@ import type { CatalogTiles } from './tiles'
  * every source, and because the keys are per-recipe, clicking through the
  * per-catalog tabs afterwards costs nothing.
  *
- * Takes recipes rather than catalog ids so it serves both callers: the Home
+ * Takes recipes rather than catalog ids so it serves every caller: the Home
  * pane, which resolves ids through its own `catalogById` (see
- * `useCatalogTiles`), and the collection builder, which already holds the
- * catalogs a folder references and has no Home state to resolve through.
+ * `useCatalogTiles`), and a folder page, whose sources carry their own recipe
+ * and genre — the collection editor's draft included.
  */
 export interface TileRecipe {
-  /** The key the resulting tiles are filed under — a catalog id at both call
-   *  sites, but this hook never looks it up, only hands it back. */
+  /** The key the resulting tiles are filed under — a catalog id for a Home
+   *  row, a source's `key` on a folder page. This hook never looks it up,
+   *  only hands it back. */
   id: string
   type: CatalogType
   params: string
   /** A folder reference's genre, narrowing the recipe; absent or `''` is
    *  unfiltered. */
   genre?: string
+}
+
+/** How long a recipe's tiles stay fresh, and no retry: a 400 means the recipe
+ *  is invalid and a 502 means TMDB won't recover inside a retry window.
+ *  Asking again is the retry — the Run button, or reopening the view. */
+export const PREVIEW_QUERY_OPTIONS = { staleTime: 5 * 60_000, retry: false } as const
+
+/** A preview query's state as the tiles a view draws. */
+export function tilesFrom(result: {
+  data?: CatalogPreview
+  isPending: boolean
+  isError: boolean
+}): CatalogTiles {
+  return {
+    items: result.data?.items ?? [],
+    randomized: result.data?.randomized ?? false,
+    isLoading: result.isPending,
+    isError: result.isError,
+  }
 }
 
 export function useRecipesTiles(
@@ -45,24 +65,14 @@ export function useRecipesTiles(
       queryKey: queryKeys.catalogPreview(recipe.type, recipe.params, recipe.genre),
       queryFn: () =>
         fetchCatalogPreview({ type: recipe.type, params: recipe.params, genre: recipe.genre || undefined }),
-      staleTime: 5 * 60_000,
-      // No retry: a 400 means the recipe is invalid and a 502 means TMDB won't
-      // recover inside a retry window. Either way placeholders stay, and
-      // reopening the view is the manual retry.
-      retry: false,
+      ...PREVIEW_QUERY_OPTIONS,
     })),
   })
 
   const tiles = new Map<string, CatalogTiles>()
   recipes.forEach((recipe, i) => {
     const result = results[i]
-    if (!result) return
-    tiles.set(recipe.id, {
-      items: result.data?.items ?? [],
-      randomized: result.data?.randomized ?? false,
-      isLoading: result.isPending,
-      isError: result.isError,
-    })
+    if (result) tiles.set(recipe.id, tilesFrom(result))
   })
   return tiles
 }

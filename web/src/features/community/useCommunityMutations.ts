@@ -3,7 +3,7 @@ import {
   ApiError,
   duplicateCommunityCatalog,
   duplicateCommunityCollection,
-  queryKeys,
+  invalidateProfileLists,
   takeCatalog,
   takeCollection,
   updateTakenCatalog,
@@ -35,12 +35,7 @@ export function useCommunityMutations(profileIndex: number) {
   const queryClient = useQueryClient()
 
   function refresh() {
-    return Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.communityCatalogs(profileIndex) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections(profileIndex) }),
-    ])
+    return invalidateProfileLists(queryClient, profileIndex)
   }
 
   return {

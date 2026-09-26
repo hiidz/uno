@@ -281,7 +281,8 @@ Other decisions worth keeping:
   The query settles for 300ms (`lib/useDebounce.ts`) and runs against
   `GET /api/{companies,keywords}/search` only once it is two or more characters, since the route
   rejects a blank one. Picks are chips; ids and join are one value on the wire, like genres
-  (`420,2` all, `420|2` any, through `parseGenreList`/`serializeGenreList`), and the all/any
+  (`420,2` all, `420|2` any, through `parseIdList`/`serializeIdList` in
+  `features/catalogs/params.ts`, the one reader of every stored id list), and the all/any
   `Segmented` appears once two are picked. Companies default to "any" — a title rarely has two
   named studios. Each holds at most 20 ids (`MAX_ENTITY_IDS`, mirroring the server's cap): at 20
   the picker stops offering results and its status line says to remove one first, and
@@ -652,8 +653,8 @@ button.
   keyboard already has an input method for.
 - **Ordering is array position.** No `sort_order` field in the form; drag order *is* the value.
   Folders are reordered by dragging a tile's corner grip (`rectSortingStrategy`, since the strip
-  wraps) or with the selected folder's ←/→ (`RowIconButton`, `moveByOne` — the same shared pieces
-  in `components/dnd.tsx` the Home pane's rows use). A folder's own catalogs are running-order
+  wraps) or with the selected folder's ←/→ (`RowIconButton` from `components/dnd.tsx` and
+  `moveByOne` from `lib/order.ts` — the same shared pieces the Home pane's rows use). A folder's own catalogs are running-order
   rows (`.run-row`) that number in plain figures ("1", "2") and carry only the grip inline — see
   the "⋯" note below.
 - **Folders are a tile strip, the way the TV draws them.** Under the "Folders" `.setting.is-head`
