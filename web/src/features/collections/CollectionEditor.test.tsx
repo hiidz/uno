@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { catalog, collection, folder } from '@/test/fixtures'
 import { CollectionEditor } from './CollectionEditor'
-import { formFromCollection } from './collectionForm'
+import { emptyCollectionForm, formFromCollection } from './collectionForm'
 import { accessibleIDs, buildRefOptions, indexRefOptions } from './refs'
 
 // Every request the nested pickers and previews make stays pending: these
@@ -31,7 +31,8 @@ function renderEditor(props: Partial<ComponentProps<typeof CollectionEditor>> = 
   render(
     <QueryClientProvider client={new QueryClient()}>
       <CollectionEditor
-        initial={null}
+        initial={emptyCollectionForm()}
+        collectionID={saved.id}
         options={options}
         optionByID={indexRefOptions(options)}
         accessibleIDs={accessibleIDs(options)}
@@ -64,7 +65,7 @@ describe('CollectionEditor', () => {
   })
 
   it('shows what needs fixing instead of saving a folder with no title', () => {
-    const { onSave } = renderEditor({ initial: formFromCollection(saved), collectionID: saved.id })
+    const { onSave } = renderEditor({ initial: formFromCollection(saved) })
     fireEvent.click(screen.getByRole('button', { name: 'Add folder' }))
     save()
     expect(onSave).not.toHaveBeenCalled()
@@ -74,7 +75,6 @@ describe('CollectionEditor', () => {
   it('saves the finished payload, keeping each folder and its catalogs', () => {
     const { onSave, onDirtyChange } = renderEditor({
       initial: formFromCollection(saved),
-      collectionID: saved.id,
       initialCatalogs: library,
     })
     fireEvent.change(titleInput(), { target: { value: '  Weekend nights ' } })
@@ -92,7 +92,6 @@ describe('CollectionEditor', () => {
   it('asks before a save that would unlink a linked copy, and saves once confirmed', () => {
     const { onSave } = renderEditor({
       initial: formFromCollection({ ...saved, linked: true }),
-      collectionID: saved.id,
       initialCatalogs: library,
       linked: true,
     })

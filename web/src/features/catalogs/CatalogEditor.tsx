@@ -15,7 +15,6 @@ import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
   changesContent,
-  emptyForm,
   isCollectionRow,
   isSameCatalog,
   paramsString,
@@ -59,11 +58,12 @@ import {
 } from './fields'
 
 /**
- * Edit a catalog, filling the builder's right pane. Always a real row: a
- * catalog is named into existence by its own dialog and saved before this
- * editor ever opens, and Duplicate is now its own atomic server call
- * (`Workspace.tsx`'s `confirmDuplicateCatalog`) that opens straight into this
- * same editor on the finished copy — there is no unsaved/create state here.
+ * Edit a catalog, filling the builder's right pane — or, for a catalog scoped
+ * to a collection, a modal over that collection's editor. Always a saved row
+ * (or a collection's staged draft): a catalog is named into existence by its
+ * own dialog before this editor opens, and Duplicate is one server call
+ * (`Workspace.tsx`'s `confirmDuplicateCatalog`) whose finished copy opens here
+ * like any other row.
  *
  * **Dirtiness is reported, not handled.** Every way out of this editor
  * originates outside it — the × in the shell, Escape, selecting another row in
@@ -77,10 +77,8 @@ import {
  * copy is still `linked`, a banner says so, and a save that would unlink it
  * asks first.
  *
- * **`type` is always locked.** Duplicate is the only thing that ever creates
- * a catalog of a different type, and it does so by copying the source's type
- * verbatim at the moment it fires — there is no path, here or anywhere else,
- * that changes an existing row's type.
+ * **`type` is always locked.** It is chosen when the catalog is named, and
+ * nothing — here or anywhere else — changes an existing row's type.
  */
 export function CatalogEditor({
   initial,
@@ -98,7 +96,9 @@ export function CatalogEditor({
   canMoveToLibrary = true,
   linked = false,
 }: {
-  initial: CatalogFormState | null
+  /** The form as the row stands. A new identity re-seeds the editor (see
+   *  `useEditorForm`), so callers hand over a stable object. */
+  initial: CatalogFormState
   genres: { movie: Genre[]; tv: Genre[] }
   certifications: { movie: CertificationsByCountry; tv: CertificationsByCountry }
   countryNames: CountryLookup
@@ -111,7 +111,8 @@ export function CatalogEditor({
   /** Also backs the mobile Library button below `lg` — see `EditorShell`. */
   onRequestClose: () => void
   /** This catalog's own row actions, carried in the header below `lg`. Absent
-   *  while creating, when there is no row yet. */
+   *  in a collection's nested editor, and until the library lists a row that
+   *  was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
   onDirtyChange: (dirty: boolean) => void
@@ -124,7 +125,7 @@ export function CatalogEditor({
    *  Public asks first (`ConfirmUnlink`). */
   linked?: boolean
 }) {
-  const baseline = useMemo(() => initial ?? emptyForm(), [initial])
+  const baseline = initial
   const { state, setState, showErrors, revealErrors, submit } = useEditorForm(
     baseline,
     isSameCatalog,
@@ -181,10 +182,7 @@ export function CatalogEditor({
   // order, and blocking preview on an empty name would invert it.
   const recipeInvalid = Object.keys(errors).some((key) => key !== 'name')
 
-  // Genre ids differ between movie and tv, so the list swaps with `type` —
-  // and any ids already picked are cleared, because they mean something
-  // different (or nothing) in the other space. Only reachable while creating;
-  // `type` is locked once a catalog exists.
+  // Genre ids differ between movie and tv, so the list follows `type`.
   const activeGenres = state.type === 'movie' ? genres.movie : genres.tv
   const genreLookup = useMemo(() => buildGenreLookup(activeGenres), [activeGenres])
   const recipeWords = useMemo(
@@ -340,10 +338,8 @@ export function CatalogEditor({
       docked="results"
       footer={
         <EditorFooter
-          mode="edit"
           noun="catalog"
           saving={saving}
-          showErrors={showErrors}
           errorCount={errorCount}
           onCancel={onRequestClose}
           onSubmit={trySubmit}

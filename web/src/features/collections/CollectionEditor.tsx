@@ -38,7 +38,6 @@ import {
   VIEW_MODE_LABELS,
   changesContent,
   countErrors,
-  emptyCollectionForm,
   isDraftCatalogID,
   hasRef,
   isSameCollection,
@@ -84,11 +83,10 @@ function draftCatalog(seed: {
 }
 
 /**
- * Create or edit a collection, folders and catalog refs included, filling
- * the builder's right pane. Duplicating one is a separate, atomic server
- * call (`DuplicateCollection`) that hands back a finished
- * copy this editor then opens for editing like any other row — there is no
- * duplicate mode here any more.
+ * Edit a collection, folders and catalog refs included, filling the builder's
+ * right pane. Always a saved row: a collection is titled into existence
+ * before this editor opens, and Duplicate is one server call
+ * (`DuplicateCollection`) whose finished copy opens here like any other row.
  *
  * **The whole tree, one save.** `POST`/`PUT` replace the collection, its
  * folders, every folder's refs and every edit to its scoped catalogs in a
@@ -109,9 +107,8 @@ function draftCatalog(seed: {
  * (the original picker — a live pointer, edits to it reach every folder that
  * references it); **copy into this collection** (a fresh, scoped catalog only
  * this collection references, which nothing else can drift); **new inside
- * this collection** (the same, named first). The last two need this
- * collection to already have a server id, so they're offered only once it's
- * been saved at least once.
+ * this collection** (the same, named first). The last two are staged as drafts
+ * scoped to this collection and written by its Save.
  *
  * **This editor keeps its own catalog registry** (`localCatalogs`), seeded
  * from `initialCatalogs` and grown by every scoped create/edit it makes —
@@ -162,7 +159,9 @@ export function CollectionEditor({
   usedInFolders,
   linked = false,
 }: {
-  initial: CollectionFormState | null
+  /** The form as the row stands. A new identity re-seeds the editor (see
+   *  `useEditorForm`), so callers hand over a stable object. */
+  initial: CollectionFormState
   options: RefOption[]
   optionByID: ReadonlyMap<string, RefOption>
   accessibleIDs: ReadonlySet<string>
@@ -177,16 +176,15 @@ export function CollectionEditor({
   /** Also backs the mobile Library button below `lg` — see `EditorShell`. */
   onRequestClose: () => void
   /** This collection's own row actions, carried in the header below `lg`.
-   *  Absent while creating, when there is no row yet. */
+   *  Absent until the library lists a row that was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
   onDirtyChange: (dirty: boolean) => void
-  /** This collection's own server id — present only once edit mode is seeded
-   *  from a real row, or a brand-new one has been saved once. */
-  collectionID?: string
+  /** This collection's own server id: what a copied or new catalog is scoped
+   *  to. */
+  collectionID: string
   /** Every catalog this collection's folders already reference, listed or
-   *  scoped — `[]` for a brand-new collection, which references nothing
-   *  yet. A duplicated collection arrives here with its own fresh scoped
+   *  scoped. A duplicated collection arrives here with its own fresh scoped
    *  copies already populated (`Workspace.tsx`'s `EditorTarget.initialCatalogs`
    *  override). Seeds `localCatalogs`. */
   initialCatalogs: Catalog[]
@@ -208,7 +206,7 @@ export function CollectionEditor({
    *  Public asks first (`ConfirmUnlink`). */
   linked?: boolean
 }) {
-  const baseline = useMemo(() => initial ?? emptyCollectionForm(), [initial])
+  const baseline = initial
   const { state, setState, showErrors, submit } = useEditorForm(
     baseline,
     isSameCollection,
@@ -260,10 +258,7 @@ export function CollectionEditor({
   // "not referenced by any folder in `state`". A draft is not a row, and an
   // unreferenced one is never sent, so drafts are left out.
   const scopedHere = useMemo(
-    () =>
-      collectionID === undefined
-        ? []
-        : [...localCatalogs.values()].filter((c) => c.collection_id === collectionID && !isDraftCatalogID(c.id)),
+    () => [...localCatalogs.values()].filter((c) => c.collection_id === collectionID && !isDraftCatalogID(c.id)),
     [localCatalogs, collectionID],
   )
   const catalogsWillDelete = useMemo(
@@ -386,7 +381,6 @@ export function CollectionEditor({
    *  as a new ref. Not written to the DB until this collection's own Save —
    *  see `draftCatalog`'s doc comment. */
   function copyIntoCollection(folderKey: string, source: Catalog) {
-    if (collectionID === undefined) return
     const draft = draftCatalog({
       type: source.type,
       name: source.name,
@@ -401,7 +395,6 @@ export function CollectionEditor({
    *  row: same staged copy, but it replaces that ref in place rather than
    *  adding a second one, so the folder's order doesn't change. */
   function copyRefIntoCollection(folderKey: string, refKey: string, catalogID: string) {
-    if (collectionID === undefined) return
     // A ref linked this session (via the picker) is a library catalog this
     // editor's own registry never had reason to remember — fall back to it.
     const source = localCatalogs.get(catalogID) ?? optionByID.get(catalogID)?.catalog
@@ -428,7 +421,7 @@ export function CollectionEditor({
    *  filters — same two-step the library's own "New catalog" uses, but
    *  nothing is written to the DB until this collection's own Save. */
   function createNewInCollection(name: string) {
-    if (namingNewFolderKey === null || collectionID === undefined) return
+    if (namingNewFolderKey === null) return
     const folderKey = namingNewFolderKey
     const form = { ...emptyForm(newCatalogType, collectionID), name }
     const draft = draftCatalog({
@@ -618,10 +611,8 @@ export function CollectionEditor({
       onDelete={onDelete}
       footer={
         <EditorFooter
-          mode="edit"
           noun="collection"
           saving={saving}
-          showErrors={showErrors}
           errorCount={errorCount}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
@@ -845,7 +836,6 @@ export function CollectionEditor({
                   errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
                   options={options}
                   optionByID={mergedOptionByID}
-                  collectionID={collectionID}
                   usedInFolders={usedInFolders}
                   onChange={(update) => patchFolder(selectedFolder.key, update)}
                   onMove={(direction) => moveFolder(selectedFolder.key, direction)}

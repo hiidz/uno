@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
 import { Copy, Plus } from 'lucide-react'
 import { Icon } from '@/components/Icon'
 import { filterRefOptions, type RefOption } from './refs'
@@ -17,18 +16,16 @@ import { filterRefOptions, type RefOption } from './refs'
  * place in the list above, where the order is visible.
  *
  * Two ways to add a listed catalog, per row: the plus links it (the same
- * catalog everywhere it's used), and — only once this collection has a real
- * id, `onCopy` present — a second icon copies it into a fresh, scoped catalog
- * this collection alone references. `footer` is where the caller puts the
- * third source, "new inside this collection", which isn't a pick from this
- * list at all.
+ * catalog everywhere it's used), and a second icon copies it into a fresh,
+ * scoped catalog this collection alone references. The third source, "new
+ * inside this collection", isn't a pick from this list at all: it's the
+ * folder's own New catalog button.
  */
 export function CatalogRefPicker({
   options,
   exclude,
   onAdd,
   onCopy,
-  footer,
   onClose,
 }: {
   options: RefOption[]
@@ -36,9 +33,7 @@ export function CatalogRefPicker({
    *  `filterRefOptions` for why a repeat has to be unrepresentable. */
   exclude: ReadonlySet<string>
   onAdd: (catalogID: string) => void
-  /** Absent until this collection has a server id — see `CollectionEditor`. */
-  onCopy?: (catalogID: string) => void
-  footer?: ReactNode
+  onCopy: (catalogID: string) => void
   onClose: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -91,23 +86,19 @@ export function CatalogRefPicker({
                 {option.name}
                 <span className="sr-only">to this folder</span>
               </button>
-              {onCopy && (
-                <button
-                  type="button"
-                  onClick={() => onCopy(option.id)}
-                  title={`Copy ${option.name} into this collection, instead of linking it`}
-                  aria-label={`Copy ${option.name} into this collection`}
-                  className="choice px-1.5"
-                >
-                  <Icon icon={Copy} size={12} />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => onCopy(option.id)}
+                title={`Copy ${option.name} into this collection, instead of linking it`}
+                aria-label={`Copy ${option.name} into this collection`}
+                className="choice px-1.5"
+              >
+                <Icon icon={Copy} size={12} />
+              </button>
             </span>
           ))}
         </div>
       )}
-
-      {footer}
     </div>
   )
 }

@@ -6,8 +6,8 @@ import type { Dispatch, SetStateAction } from 'react'
  * its errors are on show yet, and the dirtiness the pane guards on.
  *
  * `baseline` is the form as it was seeded, and a **new identity re-seeds it** —
- * so it has to be memoised at the call site. An `initial ?? empty()` computed
- * fresh each render would clear the fields between keystrokes.
+ * so it has to be stable at the call site. A form object built fresh each
+ * render would clear the fields between keystrokes.
  *
  * **Dirtiness is reported, not handled.** Every way out of an editor originates
  * outside it — the × in the shell, Escape, selecting another row in the rail,

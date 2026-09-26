@@ -5,7 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { catalog } from '@/test/fixtures'
 import { CatalogEditor } from './CatalogEditor'
-import { formFromCatalog } from './catalogForm'
+import { emptyForm, formFromCatalog } from './catalogForm'
 
 // Every request the editor's pickers and preview make stays pending: these
 // tests are about the form, not what TMDB answers.
@@ -16,7 +16,7 @@ function renderEditor(props: Partial<ComponentProps<typeof CatalogEditor>> = {})
   render(
     <QueryClientProvider client={new QueryClient()}>
       <CatalogEditor
-        initial={null}
+        initial={emptyForm()}
         genres={{ movie: [], tv: [] }}
         certifications={{ movie: {}, tv: {} }}
         countryNames={new Map()}

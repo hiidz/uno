@@ -145,8 +145,8 @@ export function Workspace({
     [library.genres],
   )
 
-  // `reset` is stable per mutation, so hoisting the four makes `show` stable
-  // too — which matters because it reaches `EditorShell`'s Escape listener.
+  // `reset` is stable per mutation, so hoisting these makes `show` stable too
+  // — which matters because it reaches `EditorShell`'s Escape listener.
   const resetCatalogCreate = catalogMutations.create.reset
   const resetCatalogUpdate = catalogMutations.update.reset
   const resetCollectionCreate = collectionMutations.create.reset
@@ -156,9 +156,9 @@ export function Workspace({
    * Hand the pane to something else, and say where that leaves the reader.
    *
    * Clears the dirty flag: the incoming editor reports its own, and a stale
-   * `true` would guard a form that no longer exists. Clears the mutations'
-   * errors for the same reason — a save that failed leaves its message behind,
-   * and the next editor would open showing a rejection of something else.
+   * `true` would guard a form that no longer exists. Clears the saves' errors
+   * for the same reason — a save that failed leaves its message behind, and
+   * the next editor would open showing a rejection of something else.
    *
    * `scrollTo` is the caller's decision because emptying the pane means two
    * different things: a save is finished with the pane and belongs back at the
@@ -169,30 +169,17 @@ export function Workspace({
   const show = useCallback(
     (next: EditorTarget | null, scrollTo: ScrollDestination = 'pane') => {
       setDirty(false)
-      resetCatalogCreate()
       resetCatalogUpdate()
-      resetCollectionCreate()
       resetCollectionUpdate()
       setTarget(next)
       requestScroll(scrollTo)
     },
-    [
-      setDirty,
-      resetCatalogCreate,
-      resetCatalogUpdate,
-      resetCollectionCreate,
-      resetCollectionUpdate,
-      requestScroll,
-    ],
+    [setDirty, resetCatalogUpdate, resetCollectionUpdate, requestScroll],
   )
 
   const open = useCallback(
     (next: EditorTarget) => {
-      if (
-        next.sourceID !== undefined &&
-        target?.sourceID === next.sourceID &&
-        sameEditorKind(target, next)
-      ) {
+      if (target?.kind === next.kind && target.id === next.id) {
         // Re-selecting the open row must not re-seed the form from its saved
         // state — that would silently discard edits. Stacked, though, tapping
         // the row you already have open is how you ask to be taken back to it,
@@ -282,30 +269,20 @@ export function Workspace({
     })
   }
 
-  // A catalog target always has a real row behind it now — creation (bare or
-  // via duplicate) is its own atomic call before the editor ever opens
-  // (`createBareCatalog`, `confirmDuplicateCatalog`) — so this is always an
-  // update.
   function saveCatalog(state: CatalogFormState) {
     if (target?.kind !== 'catalog') return
     catalogMutations.update.mutate(
-      { id: target.catalogID, payload: toPayload(state) },
+      { id: target.id, payload: toPayload(state) },
       { onSuccess: closeAfterSave },
     )
   }
 
   // `payload` already resolved every draft catalog into an inline `new`
   // spec inside `CollectionEditor` itself, which is the one place that has
-  // `localCatalogs` to resolve them against — see its own `trySubmit`.
+  // `localCatalogs` to resolve them against — see its own `save`.
   function saveCollection(payload: CollectionPayload) {
-    if (target?.kind === 'collection' && target.collectionID) {
-      collectionMutations.update.mutate(
-        { id: target.collectionID, payload },
-        { onSuccess: closeAfterSave },
-      )
-    } else {
-      collectionMutations.create.mutate(payload, { onSuccess: closeAfterSave })
-    }
+    if (target?.kind !== 'collection') return
+    collectionMutations.update.mutate({ id: target.id, payload }, { onSuccess: closeAfterSave })
   }
 
   function confirmDeleteCatalog(catalog: LibraryCatalog) {
@@ -322,7 +299,7 @@ export function Workspace({
         // that takes the pane's place — deleting is finished with the pane, and
         // stacked, the alternative is leaving the reader parked at a region
         // that just changed under them into something they didn't ask for.
-        if (target?.sourceID === id) show(null, 'rail')
+        if (target?.id === id) show(null, 'rail')
       },
     })
   }
@@ -333,7 +310,7 @@ export function Workspace({
       onSuccess: () => {
         home.removeCollection(id)
         setConfirming(null)
-        if (target?.sourceID === id) show(null, 'rail')
+        if (target?.id === id) show(null, 'rail')
       },
     })
   }
@@ -363,23 +340,17 @@ export function Workspace({
     return <Navigate to="/profiles" replace />
   }
 
-  const catalogSaving = catalogMutations.create.isPending || catalogMutations.update.isPending
-  const collectionSaving =
-    collectionMutations.create.isPending || collectionMutations.update.isPending
-
   // The library row the open editor was opened from. Below `lg` the editor's
   // own header carries that row's duplicate and delete — the row itself is a
   // screen-length scroll away — so it has to know which row it stands for. Its
   // `linked` drives the editor's linked banner, and is current after a save or
-  // an Update because both refetch the library. A brand-new catalog has no row
-  // yet, so this comes back undefined.
+  // an Update because both refetch the library. Undefined until the library's
+  // refetch lists a row that was just created or duplicated.
   const activeCatalog =
-    target?.kind === 'catalog' && target.sourceID !== undefined
-      ? library.catalogs.find((catalog) => catalog.id === target.sourceID)
-      : undefined
+    target?.kind === 'catalog' ? library.catalogs.find((catalog) => catalog.id === target.id) : undefined
   const activeCollection =
-    target?.kind === 'collection' && target.sourceID !== undefined
-      ? library.collections.find((collection) => collection.id === target.sourceID)
+    target?.kind === 'collection'
+      ? library.collections.find((collection) => collection.id === target.id)
       : undefined
 
   // Every catalog the open collection's folders already reference, listed or
@@ -425,12 +396,10 @@ export function Workspace({
     setConfirming({ kind: 'duplicate-collection', collection })
   }
 
-  // Duplicating a catalog is one atomic server call — the same `create`
-  // mutation `createBareCatalog` uses, just seeded from an existing row
-  // (`duplicatePayload`) instead of a bare name — rather than a pre-filled
-  // form the editor saves to create the copy. The finished duplicate opens
-  // straight into its own editor for review, same as collection duplicate
-  // below.
+  // Duplicating a catalog is one server call — the same `create` mutation
+  // `createBareCatalog` uses, seeded from an existing row (`duplicatePayload`)
+  // instead of a bare name. The finished copy opens straight into its own
+  // editor for review, as a duplicated collection does below.
   function confirmDuplicateCatalog(catalog: LibraryCatalog) {
     catalogMutations.create.mutate(duplicatePayload(catalog), {
       onSuccess: (newCatalog) => {
@@ -440,23 +409,20 @@ export function Workspace({
     })
   }
 
-  // Duplicating a collection is one atomic server call — TakeCollection's
-  // own tree-copy logic, reused via DuplicateCollection — rather than a
-  // pre-filled form the editor saves to create the copy: a
-  // collection's scoped catalogs can't be represented client-side without
-  // fetching them, so the copy has to happen server-side regardless. The
-  // finished duplicate opens straight into its own editor for review, same
-  // as the catalog duplicate's confirm copy already promises ("Creates a new,
-  // editable copy... the original is left untouched").
+  // Duplicating a collection is one server call (`DuplicateCollection`,
+  // which shares `TakeCollection`'s tree copy): a collection's scoped
+  // catalogs can't be represented client-side without fetching them, so the
+  // copy happens server-side. The finished copy opens straight into its own
+  // editor for review, carrying its catalogs because the library may not
+  // list it yet.
   function confirmDuplicateCollection(collection: LibraryCollection) {
     collectionMutations.duplicate.mutate(collection.id, {
       onSuccess: (newCollection) => {
         setConfirming(null)
         open({
           kind: 'collection',
+          id: newCollection.id,
           initial: formFromCollection(newCollection),
-          collectionID: newCollection.id,
-          sourceID: newCollection.id,
           initialCatalogs: newCollection.catalogs ?? [],
         })
       },
@@ -659,7 +625,7 @@ export function Workspace({
 
           <LibrarySection
             library={library}
-            selectedID={target?.sourceID ?? null}
+            selectedID={target?.id ?? null}
             onNewCatalog={() => {
               // A rejection from a previous attempt — or from a duplicate,
               // which shares this mutation — must not greet the next one.
@@ -706,18 +672,16 @@ export function Workspace({
               // the form, its validation and its preview are all per-catalog,
               // and a key is the honest way to say "this is a different
               // subject".
-              key={target.catalogID}
+              key={target.id}
               initial={target.initial}
               genres={genres}
               certifications={library.certifications}
               countryNames={library.countryNames}
               languages={library.languages}
-              saving={catalogSaving}
-              serverError={
-                (catalogMutations.create.error as Error | null)?.message ??
-                (catalogMutations.update.error as Error | null)?.message ??
-                null
-              }
+              // Only `update`: `create` belongs to the naming dialog and to
+              // Duplicate, which can run while this editor is open.
+              saving={catalogMutations.update.isPending}
+              serverError={(catalogMutations.update.error as Error | null)?.message ?? null}
               onSave={saveCatalog}
               onRequestClose={close}
               onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
@@ -727,23 +691,20 @@ export function Workspace({
             />
           ) : (
             <CollectionEditor
-              key={target.sourceID}
+              key={target.id}
               initial={target.initial}
               options={refOptions}
               optionByID={refOptionByID}
               accessibleIDs={refAccessible}
-              saving={collectionSaving}
-              serverError={
-                (collectionMutations.create.error as Error | null)?.message ??
-                (collectionMutations.update.error as Error | null)?.message ??
-                null
-              }
+              // Only `update`, for the same reason as the catalog editor's.
+              saving={collectionMutations.update.isPending}
+              serverError={(collectionMutations.update.error as Error | null)?.message ?? null}
               onSave={saveCollection}
               onRequestClose={close}
               onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
               onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
               onDirtyChange={setDirty}
-              collectionID={target.collectionID}
+              collectionID={target.id}
               initialCatalogs={editingCollectionCatalogs}
               genres={genres}
               genreLookups={library.genres}
@@ -759,8 +720,8 @@ export function Workspace({
 
       {/* Two fields, because two of them are hard to change later: a name is
           how the row is found in the rail, and `type` is immutable once the
-          catalog exists — every filter in the builder branches on it, and the
-          supported way to change one is to duplicate. */}
+          catalog exists — every filter in the builder branches on it, and
+          nothing changes it afterwards. */}
       <NewItemDialog
         open={namingCatalog}
         noun="catalog"
@@ -814,7 +775,7 @@ export function Workspace({
         profileIndex={profileIndex}
         catalogs={library.catalogs}
         collections={library.collections}
-        preselected={target?.sourceID ?? null}
+        preselected={target?.id ?? null}
         onClose={() => setTransfer(null)}
       />
       <ImportDialog
@@ -834,38 +795,19 @@ export function Workspace({
   )
 }
 
-/**
- * Selecting a library row always opens it for editing — everything in the
- * library is yours, and every row this pane opens (catalog or collection) is
- * always a real one now — see `EditorTarget`'s own doc comment.
- */
+/** Selecting a library row opens it for editing: everything in the library is
+ *  yours. */
 function catalogTarget(catalog: LibraryCatalog): EditorTarget {
-  return {
-    kind: 'catalog',
-    initial: formFromCatalog(catalog),
-    catalogID: catalog.id,
-    sourceID: catalog.id,
-  }
+  return { kind: 'catalog', id: catalog.id, initial: formFromCatalog(catalog) }
 }
 
 function collectionTarget(collection: LibraryCollection): EditorTarget {
-  return {
-    kind: 'collection',
-    initial: formFromCollection(collection),
-    collectionID: collection.id,
-    sourceID: collection.id,
-  }
+  return { kind: 'collection', id: collection.id, initial: formFromCollection(collection) }
 }
 
-/** Whether two targets are "the same row" for `open`'s re-selection guard.
- *  Neither variant has a `mode` any more — see `EditorTarget` — so same
- *  `kind` is enough for both. */
-function sameEditorKind(a: EditorTarget | null, b: EditorTarget): boolean {
-  return a !== null && a.kind === b.kind
-}
-
-/** What the discard prompt is about. Named from the form's own title so it
- *  matches the header the user is looking at, including "Untitled". */
+/** What the discard prompt is about: the row as it was opened, which is the
+ *  name the rail still shows — a rename is itself one of the changes the
+ *  prompt is asking about. */
 function editorSubject(target: EditorTarget | null): string {
   if (target === null) return 'this editor'
   if (target.kind === 'catalog') return target.initial.name.trim() || 'this catalog'

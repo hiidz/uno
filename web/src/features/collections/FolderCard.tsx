@@ -565,9 +565,6 @@ interface FolderCatalogsProps {
    *  never appear in `options` (only listed ones are linkable), but they do
    *  need to render once referenced. */
   optionByID: ReadonlyMap<string, RefOption>
-  /** This collection's own server id. Absent until the first Save — "copy"
-   *  and "new" both need a real collection row to scope a catalog to. */
-  collectionID?: string
   /** How many folders across every owned collection reference a catalog —
    *  only meaningful for a listed catalog, so the row asks with its own id. */
   usedInFolders: (catalogID: string) => number
@@ -596,7 +593,6 @@ function FolderCatalogs({
   errors,
   options,
   optionByID,
-  collectionID,
   usedInFolders,
   onAddRef,
   onCopyRefIntoCollection,
@@ -629,11 +625,9 @@ function FolderCatalogs({
         <div className="setting-value flex flex-wrap items-center justify-end gap-2">
           {!picking && (
             <>
-              {collectionID && (
-                <button type="button" onClick={onAddNewInCollection} className="btn-ghost btn-sm">
-                  New catalog
-                </button>
-              )}
+              <button type="button" onClick={onAddNewInCollection} className="btn-ghost btn-sm">
+                New catalog
+              </button>
               <button type="button" onClick={() => setPicking(true)} className="btn-secondary btn-sm">
                 Add catalogs
               </button>
@@ -646,38 +640,21 @@ function FolderCatalogs({
         <div className="flex flex-col gap-2 pt-3">
           <p className="ed-note m-0">
             <Icon icon={Plus} size={12} className="mb-px inline" /> links a catalog, so edits to it
-            show up everywhere it's used.
-            {collectionID && (
-              <>
-                {' '}
-                <Icon icon={Copy} size={12} className="mb-px inline" /> copies it into this
-                collection only.
-              </>
-            )}
+            show up everywhere it's used.{' '}
+            <Icon icon={Copy} size={12} className="mb-px inline" /> copies it into this collection
+            only.
           </p>
           <CatalogRefPicker
             options={options}
             exclude={unfilteredInFolder}
             onAdd={onAddRef}
-            onCopy={collectionID ? onCopyRefIntoCollection : undefined}
+            onCopy={onCopyRefIntoCollection}
             onClose={() => setPicking(false)}
-            footer={
-              !collectionID ? (
-                <p className="ed-note m-0">
-                  Save this collection to also copy a catalog in or create one new, scoped
-                  to it.
-                </p>
-              ) : undefined
-            }
           />
         </div>
       )}
 
-      {errors?.catalogIDs && (
-        <div>
-          <FolderError>{errors.catalogIDs}</FolderError>
-        </div>
-      )}
+      {errors?.catalogIDs && <FolderError>{errors.catalogIDs}</FolderError>}
 
       {folder.refs.length === 0 ? (
         <div className="py-3">
@@ -707,7 +684,7 @@ function FolderCatalogs({
                 onRemove={() => onRemoveRef(ref.key)}
                 onMove={(direction) => onMoveRef(ref.key, direction)}
                 onEdit={() => onEditRef(ref.catalogID)}
-                onCopyIntoCollection={collectionID ? () => onCopyRef(ref.key, ref.catalogID) : undefined}
+                onCopyIntoCollection={() => onCopyRef(ref.key, ref.catalogID)}
               />
             ))}
           </ul>
@@ -770,8 +747,8 @@ function RefRow({
   onRemove: () => void
   onMove: (direction: -1 | 1) => void
   onEdit: () => void
-  /** Present only once this collection has a server id to scope a copy to. */
-  onCopyIntoCollection?: () => void
+  /** Offered on a listed catalog's row only; see `RefMenu`. */
+  onCopyIntoCollection: () => void
 }) {
   const sortable = useSortable({
     id: refDragID(folderKey, refState.key),

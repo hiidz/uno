@@ -39,11 +39,14 @@ against that frame's own `container-type`, and the TV picture never pins a note 
 "Home pane — Preview view" below). Nothing under `features/` is a separate URL; `Builder`
 composes all of it.
 
-Neither editor has a `mode` concept any more. Duplicating a catalog (`useCatalogMutations`'
-`create`, called directly with a duplicate payload) and duplicating a collection
-(`useCollectionMutations`'s `duplicate`) are both single atomic server calls that hand back a
-finished copy, not a pre-filled form the editor saves to create one — see "Catalog authoring" and
-"Collection authoring" below. Every row either editor opens is always a real one.
+Every row either editor opens is a saved one, and `EditorTarget`
+(`web/src/features/builder/target.ts`) always carries its `id`. A catalog or collection is named
+into existence before its editor opens, and duplicating a catalog (`useCatalogMutations`'
+`create`, called directly with a duplicate payload) or a collection (`useCollectionMutations`'s
+`duplicate`) is a single server call that hands back a finished copy — see "Catalog authoring"
+and "Collection authoring" below. An open editor reads only its `update` mutation's pending state
+and error: `create` belongs to the naming dialogs and to Duplicate, which can run while an editor
+is open, and their failures stay in their own dialogs.
 
 ## Auth / session
 
@@ -607,15 +610,13 @@ button.
   (`useCollectionMutations`'s `duplicate`) reuses `TakeCollection`'s own tree-copy logic
   server-side: every folder ref survives, a listed source catalog stays a reference, and each
   distinct catalog scoped to the source collection becomes a fresh scoped copy in the new one.
-  There is no client-side seed-and-drop step any more — a collection's scoped catalogs can't be
-  represented on the client without fetching them, so the copy has to happen server-side
-  regardless, which is what makes every scoped ref survive a duplicate (the client's library only
-  ever holds listed catalogs, so a client-built clone could only ever seed listed ones).
-  `Workspace.tsx`'s `confirmDuplicateCollection` calls the mutation, then
+  A collection's scoped catalogs can't be represented on the client without fetching them, so the
+  copy happens server-side, which is what makes every scoped ref survive a duplicate (the
+  client's library only ever holds listed catalogs, so a client-built clone could only ever seed
+  listed ones). `Workspace.tsx`'s `confirmDuplicateCollection` calls the mutation, then
   opens the finished copy straight into its own editor for review — `EditorTarget`'s collection
   variant carries an `initialCatalogs` override for this, since the fresh copy's scoped rows may
-  not have reached a `library.collections` refetch yet. `CollectionEditor` itself has no
-  `'duplicate'` mode any more — every collection it opens is editing a real row.
+  not have reached a `library.collections` refetch yet.
 - **A catalog can be in one folder more than once, never twice under the same genre.** The
   (catalog, genre) pair is `folder_catalogs`' primary key. Form refs are
   `FolderRefState {key, catalogID, genre}`, and every per-ref action, drag id and React key uses
@@ -676,13 +677,11 @@ button.
   folder being filled. It stays open across picks and drops each chosen row out of the list, so
   what remains is always exactly what can still be added.
 - **Three sources for a folder's catalog:** the picker's plus icon **links** a listed catalog — a live pointer,
-  edits reach every folder that references it — and, once this collection has been saved at
-  least once, a second icon **copies** the same row into a fresh catalog scoped to this
-  collection alone, which the original can't drift. A third button, beside "Add catalogs",
-  starts a catalog **new inside this collection**: named first (the same two-step the library's
-  own "New catalog" uses), then opened in the nested editor below to fill its filters. The last
-  two are hidden with a hint to save first when the collection doesn't have a server id yet — a
-  scoped catalog needs a real collection row to scope to.
+  edits reach every folder that references it — and a second icon **copies** the same row into a
+  fresh catalog scoped to this collection alone, which the original can't drift. A third button,
+  beside "Add catalogs", starts a catalog **new inside this collection**: named first (the same
+  two-step the library's own "New catalog" uses), then opened in the nested editor below to fill
+  its filters.
   **Copy and new-inside-this-collection are staged locally, not written until Save.** Both used
   to `POST /api/catalogs` immediately on click, independent of the collection's own Save — which
   meant discarding the edit instead of saving it left the row behind forever (nothing in the
