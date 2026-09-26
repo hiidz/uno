@@ -118,9 +118,7 @@ function useFolderPage(preview: HomeScreenPreview) {
   // current one: an in-app navigation away (Switch profile) has already pushed
   // past it, and going back from there would land on it again and re-render
   // the builder the user just left.
-  useEffect(() => {
-    if (target !== null && page === null) setTarget(null)
-  }, [target, page])
+  if (target !== null && page === null) setTarget(null)
 
   useEffect(() => {
     if (target === null && pushed.current) {

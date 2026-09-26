@@ -41,7 +41,7 @@ export interface GenreLookups {
 /** Same per-kind split as GenreLookups, and for the same reason: a country's
  *  movie ratings and its TV ratings are different scales entirely (US movies
  *  go G/PG/PG-13/R/NC-17, US TV goes TV-Y/TV-PG/TV-14/TV-MA). */
-export interface CertificationLookups {
+interface CertificationLookups {
   movie: CertificationsByCountry
   tv: CertificationsByCountry
 }

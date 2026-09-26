@@ -49,7 +49,7 @@ export function CatalogTypeField({
 /** A number field that models "unset" as undefined rather than 0 — Go's
  *  `omitempty` drops zeros, so 0 and absent are the same on the wire, and
  *  treating an empty box as 0 would silently add a filter. */
-export function NumberInput({
+function NumberInput({
   value,
   onChange,
   placeholder,

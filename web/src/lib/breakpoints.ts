@@ -8,7 +8,7 @@
  * change it in both places — `index.css` carries a comment pointing back
  * here for exactly that reason.
  */
-export const LG_BREAKPOINT = '64rem'
+const LG_BREAKPOINT = '64rem'
 
 /** The media query Tailwind's `lg:` variant compiles to. */
 export const LG_MEDIA_QUERY = `(min-width: ${LG_BREAKPOINT})`

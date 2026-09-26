@@ -10,7 +10,7 @@ import { useHomeSelection } from '@/features/home/useHomeSelection'
  * anything locally, so every ordinary failure collapses into one "nothing
  * changed" rather than a per-stage report.
  */
-export type PushOutcome =
+type PushOutcome =
   | { kind: 'success'; manifestURL?: string }
   /** Anything ordinary: rejected input, Nuvio unreachable, either push
    *  refused. Nothing was written, so retrying costs nothing. */

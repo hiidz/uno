@@ -137,7 +137,7 @@ export type FolderCatalogRef = (
  * rejects the repeat as a 400. The same catalog in two *different* folders is
  * fine and is a supported thing to want.
  */
-export interface FolderPayload {
+interface FolderPayload {
   id?: string
   title: string
   tile_shape: TileShape | ''
@@ -159,7 +159,7 @@ export interface FolderPayload {
  * a catalog is written once it exists. `type` and `provider` must match the
  * stored row. `move_to_library` also makes the catalog listed.
  */
-export interface ScopedCatalogEdit {
+interface ScopedCatalogEdit {
   id: string
   type: CatalogType
   provider: string

@@ -112,7 +112,7 @@ export interface FolderRefState {
  * form never wrote it. `type` and `provider` ride along because the server
  * checks the recipe before it reads the row.
  */
-export interface CatalogEditState {
+interface CatalogEditState {
   type: CatalogType
   provider: string
   name: string
@@ -140,7 +140,7 @@ let folderKeySeq = 0
 
 /** A counter, not a random id: these never leave the tab and never persist, so
  *  uniqueness within one form is the only requirement. */
-export function nextFolderKey(): string {
+function nextFolderKey(): string {
   folderKeySeq += 1
   return `f${folderKeySeq}`
 }

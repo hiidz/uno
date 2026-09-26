@@ -35,11 +35,13 @@ export function useEditorForm<T>(
 } {
   const [state, setState] = useState<T>(baseline)
   const [showErrors, setShowErrors] = useState(false)
+  const [seededFrom, setSeededFrom] = useState(baseline)
 
-  useEffect(() => {
+  if (seededFrom !== baseline) {
+    setSeededFrom(baseline)
     setState(baseline)
     setShowErrors(false)
-  }, [baseline])
+  }
 
   const dirty = !isSame(baseline, state)
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])

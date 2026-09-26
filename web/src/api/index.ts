@@ -1,5 +1,4 @@
-export { apiFetch } from './client'
-export { ApiError, ProfileNotSelectedError, getJSON, getList, sendJSON } from './http'
+export { ApiError, ProfileNotSelectedError } from './http'
 export {
   CATALOG_PROVIDER,
   createCatalog,
@@ -20,8 +19,6 @@ export type {
   CatalogPayload,
   CollectionPayload,
   FolderCatalogRef,
-  FolderPayload,
-  ScopedCatalogEdit,
 } from './mutations'
 export { checkImport, exportBundle, importBundle } from './bundle'
 export { pushSelection } from './push'
@@ -63,29 +60,17 @@ export type {
   Collection,
   CommunityCatalog,
   CommunityCollection,
-  Company,
-  CompanySearchResult,
   Country,
   Folder,
-  FolderRef,
   Genre,
-  GenreOptionsRequest,
   ImportCheck,
   ImportMatch,
   ImportResult,
-  Keyword,
   Language,
-  Network,
-  NetworkSearchResult,
   NuvioProfile,
   PreviewItem,
-  PreviewRequest,
   SelectedCatalog,
-  SelectedProfile,
   TileShape,
-  TMDBCollection,
   TMDBKind,
   TMDBParams,
-  WatchProvider,
-  WatchRegion,
 } from './types'

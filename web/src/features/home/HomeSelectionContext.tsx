@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { fetchCatalogSelection, fetchCollectionSelection, queryKeys } from '@/api'
@@ -128,8 +128,7 @@ export function HomeSelectionProvider({
   const catalogSelectionData = catalogSelection.data
   const collectionSelectionData = collectionSelection.data
 
-  useEffect(() => {
-    if (current !== null || !selectionLoaded) return
+  if (current === null && selectionLoaded) {
     const hydrated: HomeState = {
       catalogs: (catalogSelectionData ?? []).map((c) => ({
         id: c.id,
@@ -139,7 +138,7 @@ export function HomeSelectionProvider({
     }
     setBaseline(hydrated)
     setCurrent(hydrated)
-  }, [current, selectionLoaded, catalogSelectionData, collectionSelectionData])
+  }
 
   const collectionById = useMemo(() => {
     const map = new Map<string, Collection>()

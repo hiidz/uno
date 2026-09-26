@@ -48,7 +48,7 @@ export interface CatalogFormState {
 /** TMDB's complete `sort_by` enum per discover endpoint. Mirrors
  *  `validMovieSortValues` / `validTVSortValues` in internal/provider. Note the
  *  lists genuinely differ — tv has no `revenue` or `title`, and uses `name`. */
-export const SORT_OPTIONS: Record<CatalogType, string[]> = {
+const SORT_OPTIONS: Record<CatalogType, string[]> = {
   movie: [
     'popularity.desc', 'popularity.asc',
     'vote_average.desc', 'vote_average.asc',
