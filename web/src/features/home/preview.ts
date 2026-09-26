@@ -69,7 +69,6 @@ function toFolder(
       // Unique within a saved folder: `folder_catalogs` is
       // `PRIMARY KEY (folder_id, catalog_id, genre)`.
       key: `${id}::${genre}`,
-      id,
       name: catalog?.name ?? null,
       type: catalog?.type ?? null,
       params: catalog?.params ?? '',

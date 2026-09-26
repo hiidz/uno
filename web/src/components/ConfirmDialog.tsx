@@ -74,7 +74,7 @@ export function ConfirmDialog({
               </p>
             )}
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={onCancel} className="btn-quiet">
+              <button type="button" onClick={onCancel} className="btn-ghost">
                 {cancelLabel}
               </button>
               <button

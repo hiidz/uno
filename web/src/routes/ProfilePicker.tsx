@@ -185,7 +185,7 @@ export function ProfilePicker() {
             disabled={isChoosing}
             aria-disabled={isChoosing || undefined}
             aria-describedby={isChoosing ? noteId : undefined}
-            className="btn-quiet -ml-3"
+            className="btn-ghost -ml-3"
           >
             Sign in with a different account
           </button>

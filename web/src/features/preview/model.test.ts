@@ -11,7 +11,7 @@ import {
 } from './model'
 
 function source(overrides: Partial<PreviewSource>): PreviewSource {
-  return { key: 'k', id: 'c1', name: 'Popular', type: 'movie', params: '{}', genre: '', ...overrides }
+  return { key: 'k', name: 'Popular', type: 'movie', params: '{}', genre: '', ...overrides }
 }
 
 function folderOf(sources: PreviewSource[]): PreviewFolder {

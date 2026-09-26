@@ -630,7 +630,7 @@ function FolderCatalogs({
           {!picking && (
             <>
               {collectionID && (
-                <button type="button" onClick={onAddNewInCollection} className="btn-quiet btn-sm">
+                <button type="button" onClick={onAddNewInCollection} className="btn-ghost btn-sm">
                   New catalog
                 </button>
               )}
@@ -643,7 +643,7 @@ function FolderCatalogs({
       </div>
 
       {picking && (
-        <div className="setting-indent flex flex-col gap-2 pt-3">
+        <div className="flex flex-col gap-2 pt-3">
           <p className="ed-note m-0">
             <Icon icon={Plus} size={12} className="mb-px inline" /> links a catalog, so edits to it
             show up everywhere it's used.
@@ -674,13 +674,13 @@ function FolderCatalogs({
       )}
 
       {errors?.catalogIDs && (
-        <div className="setting-indent">
+        <div>
           <FolderError>{errors.catalogIDs}</FolderError>
         </div>
       )}
 
       {folder.refs.length === 0 ? (
-        <div className="setting-indent py-3">
+        <div className="py-3">
           <p className="ed-note m-0">This folder needs at least one catalog to show anything on your TV.</p>
         </div>
       ) : (
@@ -835,11 +835,11 @@ function RefRow({
 
         <div className="flex shrink-0 items-center gap-1">
           {isScoped ? (
-            <button type="button" onClick={onEdit} className="btn-quiet px-2 text-[12px]">
+            <button type="button" onClick={onEdit} className="btn-ghost px-2 text-[12px]">
               Edit
             </button>
           ) : !option ? (
-            <button type="button" onClick={onRemove} className="btn-quiet px-2 text-[12px]">
+            <button type="button" onClick={onRemove} className="btn-ghost px-2 text-[12px]">
               Remove
             </button>
           ) : null}

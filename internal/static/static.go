@@ -14,7 +14,7 @@ import (
 // assetsPrefix is Vite's output directory. Everything under it is named
 // with a content hash, so a changed file arrives under a new name and the
 // old one can be cached indefinitely. Files outside it — index.html,
-// favicon.svg, icons.svg — keep their names across builds and must not be.
+// favicon.svg — keep their names across builds and must not be.
 const assetsPrefix = "/assets/"
 
 // Handler serves fsys as a single-page app: any request that doesn't

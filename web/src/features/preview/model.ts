@@ -38,8 +38,6 @@ export interface PreviewSource {
    *  under. Not the catalog id: one catalog can be two sources in a folder,
    *  under two genres. */
   key: string
-  /** The referenced catalog's id. */
-  id: string
   name: string | null
   type: CatalogType | null
   /** The recipe to run for this source's tiles, or `''` when unresolved. */
@@ -192,7 +190,7 @@ export const ALL_TAB_TILE_CAP = 20
  * movie and a series can share an id and still be different titles.
  *
  * The merge can span sources of different `CatalogType`, so the output has no
- * single kind to hand `TileGrid`; `kinds` carries each merged item's kind
+ * single kind to hand the tile grid; `kinds` carries each merged item's kind
  * instead.
  */
 export function interleaveTiles(

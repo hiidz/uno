@@ -810,7 +810,7 @@ export function CollectionEditor({
             ))}
 
             {selectedFolder === undefined ? (
-              <div className="setting-indent py-4">
+              <div className="py-4">
                 <p className="ed-note m-0">No folders yet. Add one, then put catalogs in it.</p>
               </div>
             ) : (
@@ -995,7 +995,7 @@ function StagedNote({
       </span>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-[14px] leading-[20px]">{children}</span>
-        <button type="button" onClick={onUndo} className="btn-quiet h-auto px-0 text-[13px]">
+        <button type="button" onClick={onUndo} className="btn-ghost h-auto px-0 text-[13px]">
           Undo
         </button>
       </div>

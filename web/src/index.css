@@ -9,12 +9,11 @@
 @import "@fontsource/roboto/400.css";
 @import "@fontsource/roboto/500.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
     --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+    /* Tailwind's preflight sets `<code>` in this, so the addon URL reads in
+       Figtree like everything else Uno says. */
     --font-mono: var(--font-sans);
-    --font-heading: var(--font-sans);
     --font-sign: 'Archivo Variable', 'Figtree Variable', ui-sans-serif, sans-serif;
 
     /* Tailwind's own default for `lg` — asserted explicitly, rather than left
@@ -26,7 +25,6 @@
 
     /* Uno palette, exposed as utilities: bg-raised, text-dim, border-line… */
     --color-ground: var(--uno-ground);
-    --color-rail: var(--uno-rail);
     --color-raised: var(--uno-raised);
     --color-raised-hi: var(--uno-raised-hi);
     --color-line: var(--uno-line);
@@ -40,17 +38,8 @@
     --color-community: var(--uno-community);
     --color-tv-yellow: var(--uno-tv-yellow);
     --color-danger: var(--uno-danger);
-    --color-danger-hover: var(--uno-danger-hover);
-    --color-danger-pressed: var(--uno-danger-pressed);
-    --color-danger-text-hover: var(--uno-danger-text-hover);
     --color-danger-ink: var(--uno-danger-ink);
     --color-pending: var(--uno-pending);
-
-    /* The TV's own colours — used only inside the frame and on the screen. */
-    --color-tv-bezel: var(--uno-tv-bezel);
-    --color-tv-screen: var(--uno-tv-screen);
-    --color-tv-text: var(--uno-tv-text);
-    --color-tv-text-2: var(--uno-tv-text-2);
 
     /* Flat placeholder tiles, cycled across strips and results grids. */
     --color-tile-a: var(--uno-tile-a);
@@ -76,8 +65,7 @@
      - TV yellow means "bound for the TV" and nothing else: Push, what is on
        the home screen, and what is not on the TV yet;
      - danger red marks what can't be undone, always beside words. */
-:root,
-.dark {
+:root {
     --uno-ground: #10132B;
     --uno-rail: #141836;
     --uno-raised: #1A1F40;
@@ -201,8 +189,7 @@
    rem to the content they hold, have to grow with the text or a date stops
    fitting in the box named for a date. */
 @media (pointer: coarse) {
-    :root,
-    .dark {
+    :root {
         --w-code: 5.5rem;
         --w-num: 7.5rem;
         --w-date: 12rem;
@@ -511,10 +498,9 @@
     .btn-primary,
     .btn-tv,
     .btn-secondary,
-    .btn-quiet,
+    .btn-ghost,
     .btn-danger,
-    .btn-danger-text,
-    .btn-ghost {
+    .btn-danger-text {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -603,20 +589,17 @@
         cursor: default;
     }
 
-    /* Quiet: dim label, no outline until the pointer is over it — Cancel,
-       Stay, Hide, Undo, Import. `.btn-ghost` is the same weight. */
-    .btn-quiet,
+    /* Quiet (DESIGN.md's "Quiet / Ghost"): dim label, no outline until the
+       pointer is over it — Cancel, Stay, Hide, Undo, Import. */
     .btn-ghost {
         background: transparent;
         color: var(--uno-dim);
         padding: 0 12px;
     }
-    .btn-quiet:hover:not(:disabled),
     .btn-ghost:hover:not(:disabled) {
         color: var(--uno-ink);
         background: var(--uno-raised-hi);
     }
-    .btn-quiet:disabled,
     .btn-ghost:disabled {
         color: var(--uno-dimmer);
     }
@@ -661,7 +644,6 @@
     .btn-primary:focus-visible,
     .btn-tv:focus-visible,
     .btn-secondary:focus-visible,
-    .btn-quiet:focus-visible,
     .btn-ghost:focus-visible,
     .btn-danger:focus-visible,
     .btn-danger-text:focus-visible {
@@ -673,7 +655,6 @@
         .btn-primary,
         .btn-tv,
         .btn-secondary,
-        .btn-quiet,
         .btn-ghost,
         .btn-danger {
             height: 44px;
@@ -1445,11 +1426,6 @@
         flex: none;
         align-self: center;
     }
-    /* Anything that belongs under a setting without a label of its own. */
-    .setting-indent {
-        padding-left: 0;
-    }
-
     /* A section of settings that folds: a shelf with its name and a summary of
        what it's set to, opening in place into its settings. */
     .sec-head {
@@ -1656,11 +1632,6 @@
         border-radius: 999px;
     }
 
-    .ed select.select {
-        height: 44px;
-        min-width: 240px;
-        font-size: 15px;
-    }
     .ed input[type='date'] {
         width: var(--w-date);
     }
@@ -1876,8 +1847,7 @@
     .fold-detail .field {
         background: var(--uno-ground);
     }
-    .fold-detail .sec-head,
-    .fold-detail .sec-body {
+    .fold-detail .sec-head {
         background: var(--uno-raised-hi);
     }
     .fold-detail button.sec-head:hover {

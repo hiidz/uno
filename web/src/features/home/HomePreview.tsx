@@ -149,7 +149,7 @@ function useFolderPage(preview: HomeScreenPreview) {
     }
   }, [])
 
-  return { target, page, openFolder, closeFolder }
+  return { page, openFolder, closeFolder }
 }
 
 /** Steps back off the folder's history entry, if it is the current one. */

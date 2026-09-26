@@ -60,7 +60,7 @@ export function CatalogRefPicker({
           aria-label="Search catalogs to add to this folder"
           className="field w-full min-w-0"
         />
-        <button type="button" onClick={onClose} className="btn-quiet shrink-0">
+        <button type="button" onClick={onClose} className="btn-ghost shrink-0">
           Done
         </button>
       </div>

@@ -19,7 +19,6 @@ import { Icon } from './Icon'
 export function Field({
   label,
   hint,
-  tip,
   error,
   htmlFor,
   children,
@@ -28,22 +27,17 @@ export function Field({
   /** The `id` of the input this labels. Omitted where the child is a control
    *  a `<label>` can't point at, like a `Segmented`, which names itself. */
   htmlFor?: string
-  /** A line under the control. For something the user has to know *before*
-   *  filling it in — the rest belongs in `tip`. */
+  /** A line under the control, for something the user has to know before
+   *  filling it in. */
   hint?: string
-  /** Secondary explanation, behind an icon beside the label. See `InfoTip`. */
-  tip?: string
   error?: string
   children: ReactNode
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
-        <label htmlFor={htmlFor} className="type-label">
-          {label}
-        </label>
-        {tip && <InfoTip label={label} text={tip} />}
-      </div>
+      <label htmlFor={htmlFor} className="type-label self-start">
+        {label}
+      </label>
       {children}
       {hint && !error && <FieldNote>{hint}</FieldNote>}
       {error && <FieldNote tone="danger">{error}</FieldNote>}
@@ -52,14 +46,14 @@ export function Field({
 }
 
 /**
- * A field's secondary explanation, behind an icon.
+ * A control's secondary explanation, behind an icon beside it — Community's
+ * Take button is the one control that carries one.
  *
  * **Not a place to move hints to.** A hint that survives "does the user need
- * this before they can fill the field in" stays on the page as a `FieldNote`;
+ * this before they can use the control" stays on the page as a `FieldNote`;
  * one that doesn't survive "is this needed at all" is deleted. This is for the
- * narrow middle: a control whose behaviour is genuinely worth a sentence, in a
- * dense grid where that sentence would push every neighbouring field down a
- * line.
+ * narrow middle: a control whose behaviour is genuinely worth a sentence,
+ * where that sentence on the page would crowd everything beside it.
  *
  * **A popover, not a tooltip.** A Radix tooltip opens on hover and on
  * keyboard focus, and closes on pointer-down — so on a touch screen there is no
@@ -471,51 +465,25 @@ export function Switch({
   )
 }
 
-/**
- * A checkbox with its label and, optionally, a line under it.
- *
- * **Disabled greys it without changing what it holds.** A setting that doesn't
- * apply under the current shape of the form is still a setting the user chose,
- * and clearing it on their behalf would send a payload they never asked for —
- * so the box keeps its value and the `hint` says why it can't be touched. A
- * greyed box with no explanation is the version people file bugs about.
- */
+/** A checkbox with its label. */
 export function Checkbox({
   checked,
   onChange,
   label,
-  hint,
-  disabled = false,
 }: {
   checked: boolean
   onChange: (checked: boolean) => void
   label: string
-  hint?: string
-  disabled?: boolean
 }) {
   return (
-    <label
-      className={`group flex max-w-[var(--w-entry)] items-start gap-2.5 ${
-        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-      }`}
-    >
+    <label className="group flex max-w-[var(--w-entry)] cursor-pointer items-start gap-2.5">
       <input
         type="checkbox"
         checked={checked}
-        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         className="checkbox mt-[3px]"
       />
-      <span className="flex flex-col gap-1">
-        <span
-          className={`text-[14.5px] transition-colors ${disabled ? '' : 'group-hover:text-ink'}`}
-        >
-          {label}
-        </span>
-        {hint && (
-          <span className="type-data text-dimmer text-[13px] leading-[1.45]">{hint}</span>
-        )}
-      </span>
+      <span className="group-hover:text-ink text-[14.5px] transition-colors">{label}</span>
     </label>
   )
 }

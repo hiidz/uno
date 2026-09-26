@@ -15,7 +15,7 @@ is gitignored except for the committed `.gitkeep`, which keeps the embed target 
 | Router | React Router. Four routes total: `/login`, `/` (redirects to `/profiles`), `/profiles`, `/configure` |
 | Server state | TanStack Query, keys scoped by profile under `['p', i, …]` so switching slots invalidates cleanly with no manual cache wipe |
 | Drag-and-drop | dnd-kit — `PointerSensor` (covers touch and mouse) + `KeyboardSensor`, so every reorderable list is operable with no pointer at all |
-| Components | Hand-written, on Radix UI primitives (`Popover`, `Slider`, `DropdownMenu`) for the three controls that need real accessible behaviour. Everything else — `Modal`, `ConfirmDialog`, `Toast`, `TypeBar`, `ListState`, `fields.tsx`, `GlyphButton` — is local. Styling is Tailwind v4 against Uno's own `--uno-*` tokens in `web/src/index.css`; `shadcn` remains a devDependency (its CLI), and a small base set (`--background`, `--foreground`, `--border`, `--ring`, `--sidebar`) is aliased onto the Uno palette |
+| Components | Hand-written, on Radix UI primitives wherever a control needs real accessible behaviour: `Dialog` under `Modal` and `ConfirmDialog`, `Popover`, `Slider`, `DropdownMenu`, and `Tabs` on the TV folder page. The rest — `Toast`, `ListState`, `fields.tsx`, `GlyphButton` — is plain local markup. Styling is Tailwind v4 against Uno's own `--uno-*` tokens in `web/src/index.css`; a small base set (`--background`, `--foreground`, `--border`, `--ring`, `--sidebar`) is aliased onto the Uno palette |
 | Types | **Hand-written per endpoint, no codegen.** For a one-person team on both ends, drift surfaces immediately in the browser rather than silently in production. If drift pain ever shows up, a lightweight generator reading the Go structs (`tygo`-style) is the first upgrade to reach for, not a full OpenAPI pipeline |
 
 Because there is no codegen, **`"strict": true` must stay on in `web/tsconfig.app.json`.** The
@@ -27,15 +27,15 @@ check that exists.
 Load-bearing shared modules, rather than a directory listing: `web/src/components/fields.tsx`
 holds `Field`, `TextInput`, `Select`, `Segmented`, `Checkbox` — shared between both editors —
 while `web/src/features/catalogs/fields.tsx` re-exports them and keeps `NumberInput`,
-`RangeField`, `GenrePicker`, which are catalog-shaped. `EditorShell` + `EditorFooter` +
-`useEditorForm` under `web/src/features/builder/` are the scaffolding both editors sit in, so a
-catalog and a collection get the same header, dirty state, footer, and save/discard behaviour
-from one place. `web/src/features/preview/` holds the Figtree-styled tile rendering shared by the
-collection editor's own preview panel and the catalog editor's Run button. The Home pane's
-Preview on TV tab is a separate tree, `web/src/features/home/tv.tsx` — Roboto inside a real
-framed bezel, not a restyle of `features/preview/` — because `cqw` sizing only means anything
-against that frame's own `container-type`, and the two panels carry different content (the
-collection editor's panel states layout only; the TV picture never pins a note onto itself — see
+`RangeField`, `GenreCycler` and `CertificationPicker`, which are catalog-shaped. `EditorShell` +
+`EditorFooter` + `useEditorForm` under `web/src/features/builder/` are the scaffolding both
+editors sit in, so a catalog and a collection get the same header, dirty state, footer, and
+save/discard behaviour from one place. `web/src/features/preview/` holds the preview model
+(`model.ts`), the tile queries, and the Figtree-styled tiles the catalog editor's results panel
+and the Home list's strips draw. The TV picture — the Home pane's Preview tab and the collection
+editor's "On your TV" panel — is a separate tree, `web/src/features/home/tv.tsx`: Roboto inside a
+real framed bezel, not a restyle of `features/preview/`, because `cqw` sizing only means anything
+against that frame's own `container-type`, and the TV picture never pins a note onto itself (see
 "Home pane — Preview view" below). Nothing under `features/` is a separate URL; `Builder`
 composes all of it.
 
@@ -548,10 +548,9 @@ Clean Preview spec and the owner's instruction that Uno pin nothing onto the TV 
   unspecified** — folders aren't an addon concept, so nothing in the addon protocol or Nuvio's
   docs specifies the order, and Uno cannot derive it. This applies to **exactly one view**: the
   `show_all_tab` "All" tab on a `TABBED_GRID` folder page (`interleaveTiles` in
-  `features/preview/model.ts`, still shared with the collection editor's own preview panel, which
-  keeps its own caveat text — Clean Preview's no-pinned-notes rule applies only inside the TV
-  frame). The TV's own "All" tab just shows the merged tiles, with no caption saying the order is
-  a guess.
+  `features/preview/model.ts`, which the collection editor's "On your TV" panel draws through the
+  same TV components). The TV's own "All" tab just shows the merged tiles, with no caption saying
+  the order is a guess.
 - **`randomized` catalogs** take a random TMDB page per call on both the addon path and the
   preview, independently, so the TV preview genuinely won't match the TV. A collection row shuffles
   its film list instead, with the same independent-per-call mismatch. Not flagged inline; the
@@ -989,7 +988,7 @@ to know. Three rules, in order:
 
 **`InfoTip` is not a place to move hints to.** A hint the user needs *before* filling a field in
 stays on the page as a `FieldNote`; one that doesn't survive "is this needed at all" is deleted.
-The icon is for the narrow middle — a control genuinely worth a sentence, in a grid where that
-sentence would push its neighbours down a line. Three fields pass a `tip`: the age-rating
-control in `CatalogEditor`, and view mode and backdrop image in `CollectionEditor`. Adding a
-tenth means rule 1 is being skipped.
+The icon is for the narrow middle — a control genuinely worth a sentence, where that sentence
+on the page would crowd everything beside it. One control carries one: Community's Take button,
+whose linked-copy behaviour the row has no room to explain. Adding a second means rule 1 is
+being skipped.

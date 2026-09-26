@@ -91,7 +91,7 @@ export function ChangesStrip({
     <div className="bg-raised border-line flex flex-col gap-2 border-b px-4 py-3 lg:px-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-pending m-0 text-[14px] font-bold">What's not on your TV yet</p>
-        <button type="button" onClick={onHide} className="btn-quiet btn-sm shrink-0">
+        <button type="button" onClick={onHide} className="btn-ghost btn-sm shrink-0">
           Hide
         </button>
       </div>

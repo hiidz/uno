@@ -596,8 +596,7 @@ function CollectionRow({
 }
 
 /** A collection's strip: its folders at the catalog rows' 126px poster height,
- *  each as wide as its own tile shape — taller than `FolderTile`'s own
- *  92px-high preview tile, so this draws its own box rather than reusing it. */
+ *  each as wide as its own tile shape. */
 function FolderStrip({ folders }: { folders: PreviewFolder[] }) {
   if (folders.length === 0) return null
   return (

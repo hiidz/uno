@@ -37,8 +37,8 @@ export function LibrarySection({
   library: Library
   /** The row whose editor is open in the pane, or `null` for none. */
   selectedID: string | null
-  onNewCatalog?: () => void
-  onNewCollection?: () => void
+  onNewCatalog: () => void
+  onNewCollection: () => void
   onSelectCatalog: (catalog: LibraryCatalog) => void
   onSelectCollection: (collection: LibraryCollection) => void
   onDuplicateCatalog: (catalog: LibraryCatalog) => void
@@ -138,17 +138,10 @@ export function LibrarySection({
         label="Catalogs"
         tone="catalog"
         action={
-          onNewCatalog && (
-            <button
-              type="button"
-              className="sign-btn"
-              onClick={onNewCatalog}
-              aria-label="New catalog"
-            >
-              <Icon icon={Plus} size={14} />
-              New
-            </button>
-          )
+          <button type="button" className="sign-btn" onClick={onNewCatalog} aria-label="New catalog">
+            <Icon icon={Plus} size={14} />
+            New
+          </button>
         }
         count={catalogs.length}
         isLoading={library.isLoading}
@@ -184,17 +177,10 @@ export function LibrarySection({
         label="Collections"
         tone="collection"
         action={
-          onNewCollection && (
-            <button
-              type="button"
-              className="sign-btn"
-              onClick={onNewCollection}
-              aria-label="New collection"
-            >
-              <Icon icon={Plus} size={14} />
-              New
-            </button>
-          )
+          <button type="button" className="sign-btn" onClick={onNewCollection} aria-label="New collection">
+            <Icon icon={Plus} size={14} />
+            New
+          </button>
         }
         count={collections.length}
         isLoading={library.isLoading}
@@ -242,14 +228,14 @@ function LibraryGroup({
   label: string
   /** The region's colour: its sign. */
   tone: 'catalog' | 'collection'
-  action?: React.ReactNode
+  action: ReactNode
   count: number
   isLoading: boolean
   /** This list has no rows because its request failed. The group is left out
    *  entirely — the rail's own error above carries the message and the Retry. */
   failed: boolean
   emptyLabel: string
-  children: React.ReactNode
+  children: ReactNode
 }) {
   if (failed) return null
 

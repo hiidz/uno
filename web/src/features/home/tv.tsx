@@ -14,21 +14,15 @@ import {
   type PreviewFolder,
   type PreviewSource,
 } from '@/features/preview/model'
-import {
-  TILES_PER_PAGE,
-  noTiles,
-  resolveTileKind,
-  type CatalogTiles,
-  type TileKind,
-} from '@/features/preview/tiles'
+import { TILES_PER_PAGE, noTiles, type CatalogTiles } from '@/features/preview/tiles'
 import type { FolderPageTarget, PreviewRow } from './preview'
 
 /**
  * The Home pane's TV preview: a framed 16:9 picture in Roboto, DESIGN.md's
  * "TV preview". Deliberately its own component tree, not a restyle of
- * `features/preview/tiles.tsx`/`FolderPage.tsx` — those stay in Uno's own
- * Figtree for their unframed consumers, and `cqw` sizing only means anything
- * against `.tv-bezel`'s own `container-type`, so sharing the classes across a
+ * `features/preview/tiles.tsx` — that stays in Uno's own Figtree for its
+ * unframed consumers, and `cqw` sizing only means anything against
+ * `.tv-bezel`'s own `container-type`, so sharing the classes across a
  * non-framed consumer would silently fall back to viewport units there. The
  * collection editor's docked row is framed, so it draws with these.
  *
@@ -41,6 +35,16 @@ import type { FolderPageTarget, PreviewRow } from './preview'
  * hasn't loaded yet, or is missing — is the tone cycle below, not text.
  */
 
+/** A fixed kind for every tile in the run, or a per-item lookup for a run
+ *  merged from sources that don't all share one — the "All" tab's case.
+ *  Either way, a tile whose kind can't be resolved stays inert rather than
+ *  linking to a guessed URL. */
+type TileKind = TMDBKind | ((item: PreviewItem) => TMDBKind | undefined)
+
+function resolveTileKind(kind: TileKind | undefined, item: PreviewItem): TMDBKind | undefined {
+  return typeof kind === 'function' ? kind(item) : kind
+}
+
 const TILE_TONES = ['bg-tile-a', 'bg-tile-b', 'bg-tile-c'] as const
 
 function tone(index: number): string {
@@ -52,8 +56,8 @@ function tone(index: number): string {
  * until the poster loads, or in its place if there is none — DESIGN.md's
  * accepted placeholder treatment, not a Uno note.
  *
- * Linked when the caller knows the kind, exactly like the workspace's own
- * `ContentTile` — opens in a new tab so it doesn't discard the pane's state.
+ * Linked when the caller knows the kind, exactly like `tiles.tsx`'s own
+ * content tile — opens in a new tab so it doesn't discard the pane's state.
  */
 function TVPosterTile({
   item,

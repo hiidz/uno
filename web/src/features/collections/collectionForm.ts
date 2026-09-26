@@ -491,7 +491,6 @@ export function previewFromForm(
         // hold a repeated pair, which is a validation error rather than a
         // state the preview may collide on.
         key: ref.key,
-        id: ref.catalogID,
         name: option?.name ?? null,
         type: option?.catalog.type ?? null,
         params: option?.catalog.params ?? '',

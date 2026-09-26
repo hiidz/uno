@@ -73,7 +73,7 @@ export function EditorFooter({
             Fix the highlighted {plural(errorCount, 'field')}.
           </span>
         ))}
-      <button type="button" onClick={onCancel} className="btn-quiet">
+      <button type="button" onClick={onCancel} className="btn-ghost">
         {cancelLabel ?? 'Cancel'}
       </button>
       <button

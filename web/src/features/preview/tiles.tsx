@@ -1,16 +1,14 @@
-import type { ReactNode } from 'react'
 import type { PreviewItem, TileShape, TMDBKind } from '@/api'
-import { pluralCount } from '@/lib/plural'
-import type { PreviewFolder } from './model'
 
 /**
- * Drawing a catalog's content: the tiles themselves, the shapes they're drawn
- * at, and the note that says what the tiles couldn't.
+ * Drawing a catalog's content in Uno's own look: the tiles themselves and the
+ * shapes they're drawn at.
  *
- * Shared by the Home pane's Preview view and by both builder forms, which is
- * why it lives outside `features/home`. Everything here is presentational and
- * takes `CatalogTiles` — how those tiles were fetched (for a saved catalog, or
- * for a recipe still being typed) is the caller's problem.
+ * Shared by the Home pane's List strips and the catalog editor's results
+ * panel, which is why it lives outside `features/home`. The TV preview draws
+ * its own tiles (`features/home/tv.tsx`). Everything here is presentational
+ * and takes `CatalogTiles` — how those tiles were fetched (for a saved
+ * catalog, or for a recipe still being typed) is the caller's problem.
  */
 
 /** One TMDB discover page. Every view except the folder page's "All" tab is
@@ -31,8 +29,7 @@ export const TILE_ASPECT: Record<TileShape, number> = {
  *
  * `tile_shape` is a folder field and applies to the *folder's own tile* on
  * home, nothing else, so content tiles have no stored shape to read. Poster is
- * an assumption — the convention in every client in this space — and the
- * renderer says so on screen.
+ * an assumption — the convention in every client in this space.
  */
 export const CONTENT_TILE_SHAPE: TileShape = 'POSTER'
 
@@ -55,116 +52,6 @@ export function noTiles(): CatalogTiles {
   return EMPTY
 }
 
-/**
- * One folder, drawn as a tile at its own `tile_shape`.
- *
- * The tile face falls back in order: cover image, then cover emoji, then the
- * folder's title. Clicking opens the folder's page.
- *
- * A collection's row on home is made of these — folder metadata, never catalog
- * content. Folders in one collection can disagree about `tile_shape`, so the
- * row is legitimately ragged and is drawn that way: the raggedness is part of
- * what's being previewed, not a glitch to normalise away.
- */
-export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () => void }) {
-  const height = 92
-  const width = height * TILE_ASPECT[folder.tileShape]
-  const name = folder.title || 'Untitled folder'
-
-  const notes = [pluralCount(folder.sources.length, 'catalog')]
-  if (folder.unresolved > 0) notes.push(`${folder.unresolved} unavailable`)
-  if (folder.tileShapeAssumed) notes.push('no shape set — shown as poster')
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      // The accessible name carries the folder's identity even when
-      // `hide_title` suppresses the caption, so the tile never becomes an
-      // anonymous target.
-      aria-label={`Open ${name}`}
-      title={`${name} — ${notes.join(' · ')}`}
-      className="group flex shrink-0 flex-col gap-1.5 text-left"
-    >
-      <span
-        style={{ width: `${width}px`, height: `${height}px` }}
-        className="bg-raised border-line group-hover:border-line-hi relative grid shrink-0 place-items-center overflow-hidden rounded-md border px-1 transition-colors"
-      >
-        {folder.coverEmoji ? (
-          <span aria-hidden="true" className="text-[22px] leading-none">
-            {folder.coverEmoji}
-          </span>
-        ) : (
-          <span aria-hidden="true" className="type-data text-dimmer text-center text-[11px] leading-tight">
-            {name}
-          </span>
-        )}
-        {/* Layered over the emoji/title rather than replacing them, so a cover
-            URL that 404s or is slow leaves a legible tile instead of a void. */}
-        {folder.coverImageUrl && (
-          <img
-            src={folder.coverImageUrl}
-            alt=""
-            loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        )}
-      </span>
-
-      <span
-        style={{ maxWidth: `${width}px` }}
-        className="type-data text-dim truncate text-[12px]"
-        aria-hidden="true"
-      >
-        {/* `hide_title` hides the tile's title text on the TV, so preview hides
-            it too. The slot is kept — and says what happened — so the row's
-            baseline doesn't jump between folders that hide titles and folders
-            that don't. */}
-        {folder.hideTitle ? <span className="text-dimmer">title hidden</span> : name}
-      </span>
-    </button>
-  )
-}
-
-/**
- * A horizontal row of tiles, clipped at the pane's edge the way a real row runs
- * off the side of the screen.
- *
- * The clipped tiles cost nothing: a full TMDB page arrives whether seven or
- * twenty are drawn, and `loading="lazy"` on each poster means the ones past the
- * edge never fetch their image.
- */
-/** A fixed kind for every tile in the run, or a per-item lookup for a run
- *  merged from sources that don't all share one — the "All" tab's case.
- *  Either way, a tile whose kind can't be resolved stays inert rather than
- *  linking to a guessed URL. */
-export type TileKind = TMDBKind | ((item: PreviewItem) => TMDBKind | undefined)
-
-export function resolveTileKind(kind: TileKind | undefined, item: PreviewItem): TMDBKind | undefined {
-  return typeof kind === 'function' ? kind(item) : kind
-}
-
-export function TileStrip({
-  shape,
-  tiles,
-  kind,
-}: {
-  shape: TileShape
-  tiles: CatalogTiles
-  kind?: TileKind
-}) {
-  const height = 92
-  return (
-    <TileRun
-      tiles={tiles}
-      width={height * TILE_ASPECT[shape]}
-      height={height}
-      wrap={false}
-      kind={kind}
-    />
-  )
-}
-
 export function TileGrid({
   shape,
   tiles,
@@ -172,7 +59,7 @@ export function TileGrid({
 }: {
   shape: TileShape
   tiles: CatalogTiles
-  kind?: TileKind
+  kind?: TMDBKind
 }) {
   const width = 88
   return (
@@ -181,8 +68,8 @@ export function TileGrid({
 }
 
 /**
- * The shared body of both layouts: real posters once they land, placeholders
- * until then.
+ * Real posters once they land, placeholders until then — wrapped into a grid
+ * (`TileGrid`), or clipped to one strip of whole tiles (a Home list row).
  *
  * Placeholders are drawn at `TILES_PER_PAGE`, matching a full page, so the row
  * doesn't reflow when content arrives.
@@ -198,7 +85,7 @@ export function TileRun({
   width: number
   height: number
   wrap: boolean
-  kind?: TileKind
+  kind?: TMDBKind
 }) {
   // A strip (`wrap` off) is one row of whole tiles: fixed-width columns fill
   // the row only as far as a tile fits entire, and the tiles past them fall to
@@ -230,15 +117,7 @@ export function TileRun({
   return (
     <div className={className} style={style}>
       {tiles.items.map((item) => (
-        // TMDB numbers movies and TV separately, so the "All" tab can hold
-        // two tiles with one id.
-        <ContentTile
-          key={`${resolveTileKind(kind, item)}:${item.tmdb_id}`}
-          item={item}
-          width={width}
-          height={height}
-          kind={kind}
-        />
+        <ContentTile key={item.tmdb_id} item={item} width={width} height={height} kind={kind} />
       ))}
     </div>
   )
@@ -248,14 +127,13 @@ export function TileRun({
  * One real title. The title sits behind the poster rather than beside it, so a
  * title TMDB has no poster for degrades to a readable tile, not an empty box.
  *
- * **A link when the caller can resolve this item's kind, a plain tile
- * otherwise.** `tmdb_id` plus movie-or-tv is the whole of a themoviedb.org
- * URL, and checking a title the recipe returned is the obvious next question
- * once the tiles are on screen. It opens in a new tab: the builder holds
- * unsaved form state, and navigating away from it to read a synopsis would
- * discard the work.
+ * **A link when the caller knows the kind, a plain tile otherwise.** `tmdb_id`
+ * plus movie-or-tv is the whole of a themoviedb.org URL, and checking a title
+ * the recipe returned is the obvious next question once the tiles are on
+ * screen. It opens in a new tab: the builder holds unsaved form state, and
+ * navigating away from it to read a synopsis would discard the work.
  */
-export function ContentTile({
+function ContentTile({
   item,
   width,
   height,
@@ -264,9 +142,8 @@ export function ContentTile({
   item: PreviewItem
   width: number
   height: number
-  kind?: TileKind
+  kind?: TMDBKind
 }) {
-  const resolvedKind = resolveTileKind(kind, item)
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>
@@ -286,7 +163,7 @@ export function ContentTile({
   const box = 'bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-md border'
   const style = { width: `${width}px`, height: `${height}px` }
 
-  if (!resolvedKind) {
+  if (!kind) {
     return (
       <span title={name} style={style} className={box}>
         {face}
@@ -296,7 +173,7 @@ export function ContentTile({
 
   return (
     <a
-      href={`https://www.themoviedb.org/${resolvedKind}/${item.tmdb_id}`}
+      href={`https://www.themoviedb.org/${kind}/${item.tmdb_id}`}
       target="_blank"
       rel="noopener noreferrer"
       title={`${name} — open on TMDB`}
@@ -308,65 +185,11 @@ export function ContentTile({
   )
 }
 
-export function PlaceholderTile({ width, height }: { width: number; height: number }) {
+function PlaceholderTile({ width, height }: { width: number; height: number }) {
   return (
     <span
       className="bg-raised border-line shrink-0 rounded-md border"
       style={{ width: `${width}px`, height: `${height}px` }}
     />
   )
-}
-
-/**
- * A small, dim, mono aside beside a preview row's own heading — "pinned to
- * the top of home", "not in library" — for a fact that doesn't need its own
- * line. The leading `·` is drawn here, not by the caller, so two of these
- * side by side read as one clause rather than two independent sentences.
- */
-export function Note({ children }: { children: ReactNode }) {
-  return <span className="type-data text-dimmer shrink-0 text-[12px]">· {children}</span>
-}
-
-/**
- * What the tiles beside a heading couldn't say for themselves.
- *
- * Silent while loading — the placeholder tiles already carry that.
- *
- * The error wording assumes the Home pane's contract, where tiles are fetched
- * for the user rather than on request: it explains the gap and moves on. A
- * caller that fetched because someone pressed a button owes them a retry
- * instead, and says so itself.
- */
-export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
-  if (tiles.isLoading) return null
-
-  if (tiles.isError) {
-    return (
-      <span
-        className="type-data text-dimmer shrink-0 text-[12px]"
-        title="The catalog itself is fine — only this preview failed to load."
-      >
-        · couldn't load titles — showing layout only
-      </span>
-    )
-  }
-
-  if (tiles.items.length === 0) {
-    return <span className="type-data text-dimmer shrink-0 text-[12px]">· nothing matches these filters right now</span>
-  }
-
-  if (tiles.randomized) {
-    // Preview and the addon path each take their own random TMDB page, so
-    // these specific titles are not what the TV will show.
-    return (
-      <span
-        className="type-data text-dimmer shrink-0 text-[12px]"
-        title="This catalog shuffles, so your TV gets a different set each time. These are a sample, not a prediction."
-      >
-        · shuffles — your TV will show a different set
-      </span>
-    )
-  }
-
-  return null
 }

@@ -65,10 +65,9 @@ export function LibraryItem({
   /** Already on the home screen — the sticker becomes a remove. */
   onHome: boolean
   onToggle: () => void
-  onDuplicate?: () => void
-  onDelete?: () => void
+  onDuplicate: () => void
+  onDelete: () => void
 }) {
-  const hasActions = Boolean(onDuplicate || onDelete)
   const [slap, setSlap] = useState(false)
 
   return (
@@ -133,25 +132,16 @@ export function LibraryItem({
         </button>
       </div>
 
-      {hasActions && selected && (
+      {selected && (
         <div className="hidden items-center gap-1.5 px-3 pb-3 lg:flex">
-          {onDuplicate && (
-            <GlyphButton
-              label={`Duplicate ${name}`}
-              icon={Copy}
-              onClick={onDuplicate}
-              variant="labeled"
-            />
-          )}
-          {onDelete && (
-            <GlyphButton
-              label={`Delete ${name}`}
-              icon={Trash2}
-              onClick={onDelete}
-              destructive
-              variant="labeled"
-            />
-          )}
+          <GlyphButton label={`Duplicate ${name}`} icon={Copy} onClick={onDuplicate} variant="labeled" />
+          <GlyphButton
+            label={`Delete ${name}`}
+            icon={Trash2}
+            onClick={onDelete}
+            destructive
+            variant="labeled"
+          />
         </div>
       )}
     </div>

@@ -13,8 +13,9 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
  *
  * That rule is what decides how many fields there are, so `extra` is where a
  * kind with a second immutable field puts it. A kind whose name is the only
- * thing worth settling up front leaves the slot out. Both call sites are in
- * `Workspace`, which says which is which.
+ * thing worth settling up front leaves the slot out. `Workspace`'s two call
+ * sites say which is which; `CollectionEditor`'s "new inside this collection"
+ * asks the same two things a library catalog does.
  */
 export function NewItemDialog({
   open,
@@ -28,9 +29,10 @@ export function NewItemDialog({
   onClose,
 }: {
   open: boolean
-  /** What is being created, carried through every line of copy here: "New
-   *  catalog", "Give this catalog a name.", "Create catalog". */
-  noun: string
+  /** What is being created, carried through every line of copy here — "New
+   *  catalog", "Give this catalog a name.", "Create catalog" — and the region
+   *  colour of its Create button. */
+  noun: 'catalog' | 'collection'
   /** What the one required field is called — "Name", "Title". */
   label: string
   placeholder: string
@@ -81,16 +83,7 @@ function NewItemForm({
   extra,
   onCreate,
   onClose,
-}: {
-  noun: string
-  label: string
-  placeholder: string
-  saving: boolean
-  serverError: string | null
-  extra?: ReactNode
-  onCreate: (value: string) => void
-  onClose: () => void
-}) {
+}: Omit<Parameters<typeof NewItemDialog>[0], 'open'>) {
   const [value, setValue] = useState('')
   const [showError, setShowError] = useState(false)
   const inputId = useId()
@@ -131,7 +124,7 @@ function NewItemForm({
         </div>
       </ModalBody>
 
-      <ModalFooter tone={noun === 'collection' ? 'collection' : 'catalog'}>
+      <ModalFooter tone={noun}>
         <button type="button" onClick={onClose} className="btn-ghost">
           Cancel
         </button>

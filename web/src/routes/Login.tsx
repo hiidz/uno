@@ -157,7 +157,7 @@ export function Login() {
 
         {devBypassToken && (
           <div className="border-line mt-8 flex flex-col gap-2 border-t pt-4">
-            <button type="button" onClick={handleDevBypass} className="btn-quiet -ml-3 self-start">
+            <button type="button" onClick={handleDevBypass} className="btn-ghost -ml-3 self-start">
               Dev bypass login
             </button>
             <p className="type-data text-dimmer m-0 text-[13px]">
