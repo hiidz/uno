@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Download, Plus, Search, Upload } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import { Icon } from '@/components/Icon'
-import { ListState } from '@/components/ListState'
+import { ListError, ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { describeCollection } from './collection'
 import { LibraryItem } from './LibraryItem'
@@ -123,16 +123,9 @@ export function LibrarySection({
           the same kind of request, and a single refetch reloads whichever
           failed. A group whose own list failed isn't drawn at all; the one
           that loaded keeps its rows. */}
-      <ListState
-        isLoading={false}
-        error={library.error}
-        isEmpty={false}
-        errorLabel="Couldn't load your library."
-        emptyLabel={null}
-        onRetry={library.refetch}
-      >
-        {null}
-      </ListState>
+      {library.error && (
+        <ListError label="Couldn't load your library." error={library.error} onRetry={library.refetch} />
+      )}
 
       <LibraryGroup
         label="Catalogs"
@@ -252,10 +245,8 @@ function LibraryGroup({
       </div>
       <ListState
         isLoading={isLoading}
-        error={null}
         isEmpty={count === 0}
         loadingLabel={`Loading ${label.toLowerCase()}…`}
-        errorLabel=""
         emptyLabel={emptyLabel}
       >
         <div className="-mx-2 flex flex-col gap-0.5">{children}</div>

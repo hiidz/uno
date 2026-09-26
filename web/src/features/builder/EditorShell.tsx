@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowUp, Copy, Trash2, X } from 'lucide-react'
+import { Copy, Trash2, X } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
+import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
 import { useStackedLayout } from './stacked'
 
 /**
@@ -43,7 +44,7 @@ export function EditorShell({
   docked,
   children,
 }: {
-  /** What kind of edit this is — "Edit catalog", "New collection". Read out
+  /** What kind of edit this is — "Edit catalog", "Edit collection". Read out
    *  ahead of the title; on screen the sign's own colour says it. */
   purpose: string
   /** The region this editor belongs to: its header is that region's sign,
@@ -58,9 +59,9 @@ export function EditorShell({
    *  the rail here, because leaving this row *is* an exit: it deselects, which
    *  a dirty form has to be able to hold and ask about. */
   onRequestClose: () => void
-  /** The open row's own actions, mirrored here below `lg`. Absent when there is
-   *  no row to act on — a catalog being created, or a community row, which can
-   *  be neither duplicated from here nor deleted. */
+  /** The open row's own actions, mirrored here below `lg`. Absent in a
+   *  collection's nested catalog editor, and until the library lists a row
+   *  that was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
   footer: ReactNode
@@ -100,11 +101,7 @@ export function EditorShell({
 
   return (
     <main className={`tone-${tone} flex min-w-0 flex-1 flex-col lg:h-full lg:min-h-0`}>
-      {/* Pinned under the app header below `lg` — `--app-h` is that header
-          measured, not assumed, because the push banner mounts and unmounts
-          beneath it. Above `lg` the flex column already holds this in place and
-          `static` restores exactly what was here before. */}
-      <header className="sign sticky top-[var(--app-h)] z-20 shrink-0 gap-3 px-4 py-2.5 lg:static lg:min-h-[80px] lg:px-6 lg:py-4">
+      <PaneSign as="header" className="shrink-0 gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* Where focus lands when the page scrolls here. A scroll moves the
               viewport and nothing else, so without this a keyboard or
@@ -142,15 +139,7 @@ export function EditorShell({
           {/* Same call as the desktop ×, not a scroll of its own — see the
               doc comment on `onRequestClose` above. A held discard prompt has
               to be able to stop this exactly as it stops that one. */}
-          <button
-            type="button"
-            onClick={onRequestClose}
-            title="Close editor (back to the library)"
-            className="tap sign-btn-outline ml-1"
-          >
-            <Icon icon={ArrowUp} size={15} />
-            Library
-          </button>
+          <SignLibraryButton onClick={onRequestClose} title="Close editor (back to the library)" className="ml-1" />
         </div>
 
         <button
@@ -162,7 +151,7 @@ export function EditorShell({
         >
           <Icon icon={X} size={20} />
         </button>
-      </header>
+      </PaneSign>
 
       {/* One inset on all three bands — `px-4` narrow, `px-6` from `lg`: the
           header, the form, and the footer are stacked and share an edge, so a

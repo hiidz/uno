@@ -351,6 +351,12 @@ export function validateCollectionForm(
   return errors
 }
 
+/** A folder's name for labels and announcements: its title, or its place in
+ *  the row while it has none. */
+export function folderLabel(folder: FolderFormState, position: number): string {
+  return folder.title.trim() || `folder ${position + 1}`
+}
+
 /**
  * The folders that saving `current` would delete server-side.
  *

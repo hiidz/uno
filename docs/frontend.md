@@ -586,7 +586,7 @@ button.
   `data`, and `onDragEnd` reorders only when the dragged item and the drop target agree on it,
   so a ref dragged out of its folder is a no-op rather than a mis-drop.
 - **`collisionDetection` filters the droppables to the dragged item's own list before ranking**
-  (`web/src/features/collections/FolderCard.tsx`). This is not optional. `closestCenter` ranks
+  (`withinContainer` in `web/src/features/collections/folderDnd.ts`). This is not optional. `closestCenter` ranks
   *every* droppable in the context, and the selected folder's catalogs sit right under the tile
   strip — so a folder tile dragged downward finds a **ref row** to be the nearest center;
   `onDragEnd` then correctly refuses to guess and drops the folder back where it started. The
@@ -801,7 +801,8 @@ does, Update brings it in line with the owner's changes on request.
   **Take**; a disabled **✓ Taken** while the profile holds a linked copy (the server refuses a
   second Take with a 409); or **Update** while that copy is behind the original. **Duplicate** —
   the same copy with no link, always allowed — waits behind a "⋯" menu, the same
-  `components/MoreMenu.tsx` (Radix `DropdownMenu`) the collection editor's `RefMenu` is built on. While any of the three is in flight on a row, the
+  `components/MoreMenu.tsx` (Radix `DropdownMenu`) the collection editor's `RefMenu` and the Home
+  list's rows are built on. While any of the three is in flight on a row, the
   main button is disabled and says so ("Taking…", "Updating…", "Duplicating…").
 - **Preview reuses the editors' own preview components, not a new one.** A catalog row's Preview
   mounts `CommunityCatalogPreview`, which is `RecipePreview` run over the row's own stored

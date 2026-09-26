@@ -5,7 +5,6 @@ import { ProfileNotSelectedError } from '@/api'
 import type { CatalogType, CollectionPayload, ImportResult } from '@/api'
 import { ArrowDown } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { Field, Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Toast } from '@/components/Toast'
 import { useToast } from '@/components/useToast'
@@ -19,6 +18,7 @@ import {
   toPayload,
   type CatalogFormState,
 } from '@/features/catalogs/catalogForm'
+import { CatalogTypeField } from '@/features/catalogs/fields'
 import { useCatalogMutations } from '@/features/catalogs/useCatalogMutations'
 import { CollectionEditor } from '@/features/collections/CollectionEditor'
 import {
@@ -722,19 +722,7 @@ export function Workspace({
         placeholder="Trending Sci-Fi"
         saving={catalogMutations.create.isPending}
         serverError={catalogMutations.create.error?.message ?? null}
-        extra={
-          <Field label="Type" hint="Can't be changed later.">
-            <Segmented
-              ariaLabel="Catalog type"
-              value={newCatalogType}
-              onChange={setNewCatalogType}
-              options={[
-                { value: 'movie', label: 'Movie' },
-                { value: 'series', label: 'Series' },
-              ]}
-            />
-          </Field>
-        }
+        extra={<CatalogTypeField value={newCatalogType} onChange={setNewCatalogType} />}
         onCreate={createBareCatalog}
         onClose={() => {
           setNamingCatalog(false)

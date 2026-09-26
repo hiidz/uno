@@ -11,7 +11,7 @@ import type {
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { Field, Segmented, Switch, TextInput } from '@/components/fields'
+import { FieldError, Segmented, Switch, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Modal } from '@/components/Modal'
 import { EditorFooter } from '@/features/builder/EditorFooter'
@@ -27,18 +27,21 @@ import {
 } from '@/features/catalogs/catalogForm'
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
+import { CatalogTypeField } from '@/features/catalogs/fields'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { andList } from '@/lib/list'
 import { moveByOne, orderByKeys } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
 import { CollectionPreview } from './CollectionPreview'
-import { FolderDetail, FolderTiles, FolderTreeDnd, folderLabel } from './FolderCard'
+import { FolderDetail } from './FolderDetail'
+import { FolderTiles, FolderTreeDnd } from './FolderTree'
 import {
   DRAFT_ID_PREFIX,
   VIEW_MODES,
   VIEW_MODE_LABELS,
   changesContent,
   countErrors,
+  folderLabel,
   isDraftCatalogID,
   hasRef,
   isSameCollection,
@@ -207,12 +210,11 @@ export function CollectionEditor({
   linked?: boolean
 }) {
   const baseline = initial
-  const { state, setState, showErrors, submit } = useEditorForm(
+  const { state, setState, dirty, showErrors, submit } = useEditorForm(
     baseline,
     isSameCollection,
     onDirtyChange,
   )
-  const dirty = !isSameCollection(baseline, state)
 
   // The folder tile whose contents show under the strip — DESIGN.md's
   // "Folder strip". `null` until one is picked; see `selectedIndex`.
@@ -338,7 +340,7 @@ export function CollectionEditor({
 
   /** Applies the nested editor's save locally and writes nothing: the
    *  catalog (only ever a scoped one — a listed ref has no quiet Edit here,
-   *  see `FolderCard.tsx`) is replaced in `localCatalogs` so every folder
+   *  see `RefRow.tsx`) is replaced in `localCatalogs` so every folder
    *  shows the change. A draft needs nothing more, since this collection's
    *  own Save resolves it into an inline `new` spec (`toCollectionPayload`);
    *  a real row also gets a pending edit in the form (`withCatalogEdit`),
@@ -553,40 +555,18 @@ export function CollectionEditor({
       })()
     : []
 
-  const status =
-    errorCount > 0 ? (
-      <span className="ed-status is-error">
-        <Icon icon={TriangleAlert} size={16} />
-        {pluralCount(errorCount, 'thing')} {errorCount === 1 ? 'needs' : 'need'} fixing:{' '}
-        {roleLabels.join(', ')}
-      </span>
-    ) : dirty ? (
-      <span className="ed-status">
-        Unsaved changes
-        {willDelete.length > 0 && (
-          <span className="text-dim"> · {pluralCount(willDelete.length, 'folder')} will be deleted</span>
-        )}
-        {catalogsWillDelete.length > 0 && (
-          <span className="text-dim"> · {pluralCount(catalogsWillDelete.length, 'catalog')} will be deleted</span>
-        )}
-        {emptyFolders.length > 0 && (
-          <span className="text-dim">
-            {' '}
-            · {pluralCount(emptyFolders.length, 'folder')} {emptyFolders.length === 1 ? 'has' : 'have'} no catalogs
-          </span>
-        )}
-      </span>
-    ) : emptyFolders.length > 0 ? (
-      <span className="ed-status is-muted">
-        No changes yet
-        <span className="text-dim">
-          {' '}
-          · {pluralCount(emptyFolders.length, 'folder')} {emptyFolders.length === 1 ? 'has' : 'have'} no catalogs
-        </span>
-      </span>
-    ) : (
-      <span className="ed-status is-muted">No changes yet</span>
-    )
+  // What the save bar adds after its status: what the next Save deletes, and
+  // folders that would show nothing — the last one whether or not anything
+  // has changed.
+  const statusNotes = [
+    ...(dirty && willDelete.length > 0 ? [`${pluralCount(willDelete.length, 'folder')} will be deleted`] : []),
+    ...(dirty && catalogsWillDelete.length > 0
+      ? [`${pluralCount(catalogsWillDelete.length, 'catalog')} will be deleted`]
+      : []),
+    ...(emptyFolders.length > 0
+      ? [`${pluralCount(emptyFolders.length, 'folder')} ${emptyFolders.length === 1 ? 'has' : 'have'} no catalogs`]
+      : []),
+  ]
 
   return (
     <EditorShell
@@ -602,9 +582,11 @@ export function CollectionEditor({
           noun="collection"
           saving={saving}
           errorCount={errorCount}
+          errorLabels={roleLabels}
+          dirty={dirty}
+          notes={statusNotes}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
-          status={status}
           saveLabel="Save collection"
           cancelLabel="Discard changes"
           saveError={serverError}
@@ -628,12 +610,7 @@ export function CollectionEditor({
                   placeholder="Saturday night"
                   invalid={Boolean(showErrors && errors.title)}
                 />
-                {showErrors && errors.title && (
-                  <p className="field-error">
-                    <Icon icon={TriangleAlert} size={16} className="text-danger" />
-                    <span>{errors.title}</span>
-                  </p>
-                )}
+                {showErrors && errors.title && <FieldError>{errors.title}</FieldError>}
               </div>
             </div>
 
@@ -650,16 +627,13 @@ export function CollectionEditor({
                   }
                 />
                 {state.isPublic && privateReferencedCatalogs.length > 0 && (
-                  <p className="field-error">
-                    <Icon icon={TriangleAlert} size={16} className="text-dim" />
-                    <span>
-                      {pluralCount(privateReferencedCatalogs.length, 'catalog')} in here{' '}
-                      {privateReferencedCatalogs.length === 1 ? "isn't" : "aren't"} shared on{' '}
-                      {privateReferencedCatalogs.length === 1 ? 'its' : 'their'} own (
-                      {privateReferencedCatalogs.map((c) => c.name).join(', ')}) — sharing this
-                      collection shares its contents too.
-                    </span>
-                  </p>
+                  <FieldError tone="caution">
+                    {pluralCount(privateReferencedCatalogs.length, 'catalog')} in here{' '}
+                    {privateReferencedCatalogs.length === 1 ? "isn't" : "aren't"} shared on{' '}
+                    {privateReferencedCatalogs.length === 1 ? 'its' : 'their'} own (
+                    {privateReferencedCatalogs.map((c) => c.name).join(', ')}) — sharing this
+                    collection shares its contents too.
+                  </FieldError>
                 )}
               </div>
             </div>
@@ -849,8 +823,8 @@ export function CollectionEditor({
       {nestedCatalogID !== null &&
         (() => {
           // This modal only ever opens on a scoped catalog, real or draft —
-          // `FolderCard.tsx`'s row has no quiet Edit for a listed one any
-          // more — and every scoped catalog this editor knows about is
+          // `RefRow` has no quiet Edit for a listed one — and every scoped
+          // catalog this editor knows about is
           // already in `localCatalogs` (seeded from `initialCatalogs`, grown
           // by copy/new-in-collection), so there is no library fallback here.
           const catalog = nestedCatalog
@@ -920,19 +894,7 @@ export function CollectionEditor({
         // Save (see `createNewInCollection`) — there is nothing async here.
         saving={false}
         serverError={null}
-        extra={
-          <Field label="Type" hint="Can't be changed later.">
-            <Segmented
-              ariaLabel="Catalog type"
-              value={newCatalogType}
-              onChange={setNewCatalogType}
-              options={[
-                { value: 'movie', label: 'Movie' },
-                { value: 'series', label: 'Series' },
-              ]}
-            />
-          </Field>
-        }
+        extra={<CatalogTypeField value={newCatalogType} onChange={setNewCatalogType} />}
         onCreate={createNewInCollection}
         onClose={() => setNamingNewFolderKey(null)}
       />

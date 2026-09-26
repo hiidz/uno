@@ -1,6 +1,6 @@
 import { Check, X } from 'lucide-react'
-import type { Certification, CertificationsByCountry, Genre } from '@/api'
-import { DualRangeSlider, FieldNote, Segmented, Select } from '@/components/fields'
+import type { CatalogType, Certification, CertificationsByCountry, Genre } from '@/api'
+import { DualRangeSlider, Field, FieldNote, Segmented, Select } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import type { IdJoin } from './params'
 import { countryName, type CountryLookup } from './countries'
@@ -14,13 +14,37 @@ import { countryName, type CountryLookup } from './countries'
  * (its 400s are plain text), so the form encodes them structurally: an invalid
  * combination is unrepresentable rather than merely caught.
  *
- * The generic primitives the catalog builder uses (`FieldNote`, `TextInput`,
- * `Select`, `Segmented`, `Switch`) live in `components/fields.tsx`, shared with
- * the collection builder, and are re-exported here so this stays the catalog
- * builder's one import site.
+ * The generic primitives the catalog builder uses (`FieldError`, `FieldNote`,
+ * `TextInput`, `Select`, `Segmented`, `Switch`) live in `components/fields.tsx`,
+ * shared with the collection builder, and are re-exported here so this stays
+ * the catalog builder's one import site.
  */
 
-export { FieldNote, Segmented, Select, Switch, TextInput } from '@/components/fields'
+export { FieldError, FieldNote, Segmented, Select, Switch, TextInput } from '@/components/fields'
+
+/** The type a catalog is named with — the one choice that can't be changed
+ *  afterwards, asked by both "New catalog" dialogs. */
+export function CatalogTypeField({
+  value,
+  onChange,
+}: {
+  value: CatalogType
+  onChange: (type: CatalogType) => void
+}) {
+  return (
+    <Field label="Type" hint="Can't be changed later.">
+      <Segmented
+        ariaLabel="Catalog type"
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: 'movie', label: 'Movie' },
+          { value: 'series', label: 'Series' },
+        ]}
+      />
+    </Field>
+  )
+}
 
 /** A number field that models "unset" as undefined rather than 0 — Go's
  *  `omitempty` drops zeros, so 0 and absent are the same on the wire, and

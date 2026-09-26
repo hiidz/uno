@@ -26,6 +26,8 @@ export function useEditorForm<T>(
 ): {
   state: T
   setState: Dispatch<SetStateAction<T>>
+  /** The form differs from `baseline` — what `onDirtyChange` reports. */
+  dirty: boolean
   showErrors: boolean
   revealErrors: () => void
   /** Reveal what's wrong, or save. */
@@ -45,6 +47,7 @@ export function useEditorForm<T>(
   return {
     state,
     setState,
+    dirty,
     showErrors,
     revealErrors: () => setShowErrors(true),
     submit(errorCount, save) {

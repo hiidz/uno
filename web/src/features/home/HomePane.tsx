@@ -2,13 +2,14 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ArrowUp, MoreHorizontal, Tv } from 'lucide-react'
-import { DropdownMenu } from 'radix-ui'
+import { Tv } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import { Grip, MoveDownButton, MoveUpButton } from '@/components/dnd'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
+import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
+import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
 import { describeCollection } from '@/features/library/collection'
 import { recipeLine, typeLabel } from '@/features/library/recipe'
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
@@ -66,16 +67,13 @@ export function HomePane({
 
   return (
     <main className="tone-tv flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
-      {/* Pinned under the app header below `lg`, for the same reason the
-          editors' header is: it names the region the page has just scrolled to
-          and carries the way back up out of it. The padding is split between
-          this band and the content below rather than sitting on `main`, because
-          a sticky child of a padded parent leaves a gap above it that the
-          content then scrolls through.
+      {/* The padding is split between this band and the content below rather
+          than sitting on `main`, because a sticky child of a padded parent
+          leaves a gap above it that the content then scrolls through.
 
           It is the home screen's sign: TV yellow, because everything under it
           is what the TV shows. */}
-      <div className="sign sticky top-[var(--app-h)] z-20 flex-wrap gap-x-4 gap-y-2 px-4 py-2.5 lg:static lg:min-h-[80px] lg:px-6 lg:py-4">
+      <PaneSign className="flex-wrap gap-x-4 gap-y-2">
         <Icon icon={Tv} size={24} className="hidden shrink-0 lg:block" />
         {/* Where focus lands when the page scrolls here — see `stacked.ts`. */}
         <h1
@@ -90,16 +88,8 @@ export function HomePane({
         <div className="hidden lg:block">
           <ViewSwitch view={view} onChange={onViewChange} />
         </div>
-        <button
-          type="button"
-          onClick={onShowLibrary}
-          title="Back up to the library"
-          className="tap sign-btn-outline ml-auto lg:hidden"
-        >
-          <Icon icon={ArrowUp} size={15} />
-          Library
-        </button>
-      </div>
+        <SignLibraryButton onClick={onShowLibrary} title="Back up to the library" className="ml-auto lg:hidden" />
+      </PaneSign>
 
       <div
         className={`flex max-w-[calc(var(--w-home)+3rem)] flex-wrap items-center gap-x-5 gap-y-3 px-4 pt-5 lg:px-6 ${
@@ -150,10 +140,8 @@ export function HomePane({
           isLoading={home.isLoading || !home.ready}
           error={home.error}
           onRetry={home.retry}
-          isEmpty={false}
           loadingLabel="Loading your home screen…"
           errorLabel="Couldn't load your home screen."
-          emptyLabel={null}
         >
           {view === 'list' ? <HomeList compact={compact} /> : <HomePreview />}
         </ListState>
@@ -398,65 +386,14 @@ function RowBody({ children }: { children: ReactNode }) {
   return <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">{children}</div>
 }
 
-/** The row's ⋯ menu: the trigger and the popover, holding whichever items the
- *  row composes into it. */
-function RowMenu({ name, children }: { name: string; children: ReactNode }) {
-  return (
-    <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger
-        aria-label={`More for ${name}`}
-        className="tap text-dim hover:bg-raised-hi hover:text-ink grid h-8 w-8 place-items-center rounded-full transition-colors"
-      >
-        <Icon icon={MoreHorizontal} size={16} />
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          sideOffset={4}
-          className="bg-raised-hi border-line-hi z-40 flex w-60 flex-col gap-0.5 rounded-xl border p-1.5"
-        >
-          {children}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
-  )
-}
-
 /** One name for the action everywhere, matching the add button's own "Take off
  *  TV" (see DESIGN.md's add button spec). Danger-styled when the item is
  *  detached, since removing it there can't be undone. */
 function TakeOffTVItem({ detached, onSelect }: { detached: boolean; onSelect: () => void }) {
   return (
-    <RowMenuItem
-      label="Take off TV"
-      danger={detached}
-      reason={detached ? "can't be undone" : undefined}
-      onSelect={onSelect}
-    />
-  )
-}
-
-function RowMenuItem({
-  label,
-  danger,
-  reason,
-  onSelect,
-}: {
-  label: string
-  danger?: boolean
-  reason?: string
-  onSelect: () => void
-}) {
-  return (
-    <DropdownMenu.Item
-      onSelect={onSelect}
-      className={`hover:bg-line focus-visible:bg-line flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[14px] font-medium transition-colors ${
-        danger ? 'text-danger' : 'text-ink'
-      }`}
-    >
-      <span>{label}</span>
-      {reason && <span className="text-dimmer text-[12.5px]">{reason}</span>}
-    </DropdownMenu.Item>
+    <MoreMenuItem danger={detached} reason={detached ? "can't be undone" : undefined} onSelect={onSelect}>
+      Take off TV
+    </MoreMenuItem>
   )
 }
 
@@ -523,10 +460,10 @@ function CatalogRow({
         <div className="mt-1.5">{children}</div>
       </RowBody>
 
-      <RowMenu name={row.name}>
-        <RowMenuItem label="Move to Discover" onSelect={() => home.toggleShowInHome(row.id)} />
+      <MoreMenu label={row.name}>
+        <MoreMenuItem onSelect={() => home.toggleShowInHome(row.id)}>Move to Discover</MoreMenuItem>
         <TakeOffTVItem detached={detached} onSelect={() => home.removeCatalog(row.id)} />
-      </RowMenu>
+      </MoreMenu>
     </HomeRow>
   )
 }
@@ -574,9 +511,9 @@ function CollectionRow({
         <div className="mt-1.5">{children}</div>
       </RowBody>
 
-      <RowMenu name={collection.title}>
+      <MoreMenu label={collection.title}>
         <TakeOffTVItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
-      </RowMenu>
+      </MoreMenu>
     </HomeRow>
   )
 }

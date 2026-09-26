@@ -1,21 +1,25 @@
-import type { ReactNode } from 'react'
+import { TriangleAlert } from 'lucide-react'
+import { Icon } from '@/components/Icon'
+import { pluralCount } from '@/lib/plural'
 
 /**
  * The band an editor ends on: what is stopping the save, the way out, and the
  * save itself — DESIGN.md's save bar, shared by both builders.
  *
- * Both builders end the same way, so what varies is the noun, the `status`
- * line, and the labels; `cancelLabel` falls back to "Cancel". The Save button
- * takes the editor's region colour from the `tone-*` class `EditorShell` sets
- * around it.
+ * Both builders end the same way, so what varies is the noun, what the status
+ * line names, and the labels; `cancelLabel` falls back to "Cancel". The Save
+ * button takes the editor's region colour from the `tone-*` class
+ * `EditorShell` sets around it.
  */
 export function EditorFooter({
   noun,
   saving,
   errorCount,
+  errorLabels,
+  dirty,
+  notes = [],
   onCancel,
   onSubmit,
-  status,
   saveLabel,
   cancelLabel,
   saveError,
@@ -24,11 +28,15 @@ export function EditorFooter({
   noun: string
   saving: boolean
   errorCount: number
+  /** Where the errors are, named in the status line — empty until errors are
+   *  on show. */
+  errorLabels: string[]
+  dirty: boolean
+  /** What else the next save does, as dim clauses after the status — "2
+   *  folders will be deleted". */
+  notes?: string[]
   onCancel: () => void
   onSubmit: () => void
-  /** DESIGN.md's status text: "No changes yet" / "Unsaved changes" / "N
-   *  things need fixing: …". */
-  status: ReactNode
   /** DESIGN.md's Save bar reads "Save" (or "Save collection"). */
   saveLabel: string
   /** Overrides the quiet button's label — the collection editor's own save bar
@@ -54,7 +62,25 @@ export function EditorFooter({
           Couldn't save this {noun}: {saveError}
         </p>
       )}
-      {status}
+      {/* DESIGN.md's status text: "N things need fixing: …", else "Unsaved
+          changes" or "No changes yet". */}
+      {errorCount > 0 ? (
+        <span className="ed-status is-error">
+          <Icon icon={TriangleAlert} size={16} />
+          {pluralCount(errorCount, 'thing')} {errorCount === 1 ? 'needs' : 'need'} fixing:{' '}
+          {errorLabels.join(', ')}
+        </span>
+      ) : (
+        <span className={dirty ? 'ed-status' : 'ed-status is-muted'}>
+          {dirty ? 'Unsaved changes' : 'No changes yet'}
+          {notes.map((note) => (
+            <span key={note} className="text-dim">
+              {' '}
+              · {note}
+            </span>
+          ))}
+        </span>
+      )}
       <button type="button" onClick={onCancel} className="btn-ghost">
         {cancelLabel ?? 'Cancel'}
       </button>

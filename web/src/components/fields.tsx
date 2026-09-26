@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CircleHelp, X } from 'lucide-react'
+import { CircleHelp, TriangleAlert, X } from 'lucide-react'
 import { Popover, Slider } from 'radix-ui'
 import { Icon } from './Icon'
 
@@ -106,6 +106,32 @@ export function FieldNote({
       }`}
     >
       {children}
+    </p>
+  )
+}
+
+/**
+ * DESIGN.md's field error line, directly under its control: a warning icon
+ * column, then the words that say what to do. `caution` is the same line with
+ * a dim icon, for a consequence worth reading that doesn't stop the save.
+ */
+export function FieldError({
+  id,
+  role,
+  tone = 'danger',
+  children,
+}: {
+  /** For the control's `aria-describedby`. */
+  id?: string
+  /** `alert` where the line appears in answer to a submit. */
+  role?: 'alert'
+  tone?: 'danger' | 'caution'
+  children: ReactNode
+}) {
+  return (
+    <p id={id} role={role} className="field-error">
+      <Icon icon={TriangleAlert} size={16} className={tone === 'danger' ? 'text-danger' : 'text-dim'} />
+      <span>{children}</span>
     </p>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, Tag, TriangleAlert } from 'lucide-react'
+import { ChevronDown, Tag } from 'lucide-react'
 import { fetchCollection, queryKeys } from '@/api'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
 import { Icon } from '@/components/Icon'
@@ -10,7 +10,6 @@ import { ConfirmUnlink, LinkedBanner } from '@/features/builder/LinkedCopy'
 import { useEditorForm } from '@/features/builder/useEditorForm'
 import { buildGenreLookup, recipeSentence, typeLabel } from '@/features/library/recipe'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
-import { pluralCount } from '@/lib/plural'
 import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
@@ -50,6 +49,7 @@ import { TMDBEntityPicker } from './TMDBEntityPicker'
 import { WatchProviderPicker } from './WatchProviderPicker'
 import {
   CertificationPicker,
+  FieldError,
   FieldNote,
   GenreCycler,
   RangeField,
@@ -128,12 +128,11 @@ export function CatalogEditor({
   linked?: boolean
 }) {
   const baseline = initial
-  const { state, setState, showErrors, revealErrors, submit } = useEditorForm(
+  const { state, setState, dirty, showErrors, revealErrors, submit } = useEditorForm(
     baseline,
     isSameCatalog,
     onDirtyChange,
   )
-  const dirty = !isSameCatalog(baseline, state)
 
   // One section open at a time: each folds open in place under its own head.
   // Every body stays mounted regardless — toggled with
@@ -309,19 +308,6 @@ export function CatalogEditor({
       )
     : []
 
-  const status =
-    errorCount > 0 ? (
-      <span className="ed-status is-error">
-        <Icon icon={TriangleAlert} size={16} />
-        {pluralCount(errorCount, 'thing')} {errorCount === 1 ? 'needs' : 'need'} fixing:{' '}
-        {roleLabels.join(', ')}
-      </span>
-    ) : dirty ? (
-      <span className="ed-status">Unsaved changes</span>
-    ) : (
-      <span className="ed-status is-muted">No changes yet</span>
-    )
-
   return (
     <EditorShell
       purpose="Edit catalog"
@@ -342,9 +328,10 @@ export function CatalogEditor({
           noun="catalog"
           saving={saving}
           errorCount={errorCount}
+          errorLabels={roleLabels}
+          dirty={dirty}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
-          status={status}
           saveLabel="Save"
           saveError={serverError}
         />
@@ -373,12 +360,7 @@ export function CatalogEditor({
                   invalid={Boolean(errorFor('name'))}
                   width="100%"
                 />
-                {errorFor('name') && (
-                  <p className="field-error">
-                    <Icon icon={TriangleAlert} size={16} className="text-danger" />
-                    <span>{errorFor('name')}</span>
-                  </p>
-                )}
+                {errorFor('name') && <FieldError>{errorFor('name')}</FieldError>}
               </div>
             </div>
 

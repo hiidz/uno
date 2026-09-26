@@ -2,10 +2,8 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Location } from 'react-router-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { TriangleAlert } from 'lucide-react'
-import { Fascia } from '@/components/Fascia'
-import { Icon } from '@/components/Icon'
-import { Wordmark } from '@/components/Wordmark'
+import { EntryPage } from '@/components/EntryPage'
+import { FieldError } from '@/components/fields'
 import { NuvioAuthError, loginWithBypassToken, useAuth } from '@/auth'
 
 // Gated on import.meta.env.DEV so the whole bypass branch is statically dead
@@ -65,107 +63,84 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-svh">
-      <Fascia className="h-2" />
-      <main className="mx-auto w-full max-w-[480px] px-4 pt-[14vh] pb-16 max-sm:pt-[9vh] max-sm:pb-40">
-        <header className="mb-8 grid gap-5">
-          <h1 className="m-0 justify-self-start">
-            <Wordmark className="text-ink block h-[26px] w-auto max-sm:h-[20px]" />
-          </h1>
-          <h2 className="type-sign m-0 text-[34px] leading-[1.05] max-sm:text-[25px]">
-            Build your Nuvio home screen
-          </h2>
-          <p className="text-dim m-0 max-w-[44ch] text-[16px] leading-[1.5]">
-            Sign in with the account you use on your TV. There&rsquo;s no separate Uno account.
-          </p>
-        </header>
-
-        <form onSubmit={handleSubmit} noValidate className="bg-raised rounded-2xl px-5 pt-3 pb-5">
-          <div className="setting">
-            <label htmlFor="login-email" className="setting-label type-label">
-              Email
-            </label>
-            <div className="setting-value">
-              <input
-                id="login-email"
-                type="email"
-                autoComplete="username"
-                aria-invalid={Boolean(fieldErrors.email) || undefined}
-                aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value)
-                  setFieldErrors((prev) => ({ ...prev, email: undefined }))
-                  setNetworkError(null)
-                }}
-                className={`field w-full ${fieldErrors.email ? 'border-danger' : ''}`}
-              />
-              {fieldErrors.email && (
-                <p id="login-email-error" className="field-error">
-                  <Icon icon={TriangleAlert} className="text-danger" />
-                  <span>{fieldErrors.email}</span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="setting">
-            <label htmlFor="login-password" className="setting-label type-label">
-              Password
-            </label>
-            <div className="setting-value">
-              <input
-                id="login-password"
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={Boolean(fieldErrors.password) || undefined}
-                aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
-                value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value)
-                  setFieldErrors((prev) => ({ ...prev, password: undefined }))
-                  setNetworkError(null)
-                }}
-                className={`field w-full ${fieldErrors.password ? 'border-danger' : ''}`}
-              />
-              {fieldErrors.password && (
-                <p id="login-password-error" className="field-error">
-                  <Icon icon={TriangleAlert} className="text-danger" />
-                  <span>{fieldErrors.password}</span>
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid justify-items-start gap-3 pt-4 max-sm:justify-items-stretch">
-            <button
-              type="submit"
-              disabled={submitting}
-              aria-busy={submitting || undefined}
-              className="btn-primary max-sm:w-full"
-            >
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </button>
-            {networkError && (
-              <p role="alert" className="field-error">
-                <Icon icon={TriangleAlert} className="text-danger" />
-                <span>{networkError}</span>
-              </p>
+    <EntryPage
+      title="Build your Nuvio home screen"
+      intro={<>Sign in with the account you use on your TV. There&rsquo;s no separate Uno account.</>}
+    >
+      <form onSubmit={handleSubmit} noValidate className="bg-raised rounded-2xl px-5 pt-3 pb-5">
+        <div className="setting">
+          <label htmlFor="login-email" className="setting-label type-label">
+            Email
+          </label>
+          <div className="setting-value">
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="username"
+              aria-invalid={Boolean(fieldErrors.email) || undefined}
+              aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value)
+                setFieldErrors((prev) => ({ ...prev, email: undefined }))
+                setNetworkError(null)
+              }}
+              className={`field w-full ${fieldErrors.email ? 'border-danger' : ''}`}
+            />
+            {fieldErrors.email && (
+              <FieldError id="login-email-error">{fieldErrors.email}</FieldError>
             )}
           </div>
-        </form>
+        </div>
 
-        {devBypassToken && (
-          <div className="border-line mt-8 flex flex-col gap-2 border-t pt-4">
-            <button type="button" onClick={handleDevBypass} className="btn-ghost -ml-3 self-start">
-              Dev bypass login
-            </button>
-            <p className="type-data text-dimmer m-0 text-[13px]">
-              Local dev only — signs in as the server&rsquo;s fake account.
-            </p>
+        <div className="setting">
+          <label htmlFor="login-password" className="setting-label type-label">
+            Password
+          </label>
+          <div className="setting-value">
+            <input
+              id="login-password"
+              type="password"
+              autoComplete="current-password"
+              aria-invalid={Boolean(fieldErrors.password) || undefined}
+              aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value)
+                setFieldErrors((prev) => ({ ...prev, password: undefined }))
+                setNetworkError(null)
+              }}
+              className={`field w-full ${fieldErrors.password ? 'border-danger' : ''}`}
+            />
+            {fieldErrors.password && (
+              <FieldError id="login-password-error">{fieldErrors.password}</FieldError>
+            )}
           </div>
-        )}
-      </main>
-    </div>
+        </div>
+
+        <div className="grid justify-items-start gap-3 pt-4 max-sm:justify-items-stretch">
+          <button
+            type="submit"
+            disabled={submitting}
+            aria-busy={submitting || undefined}
+            className="btn-primary max-sm:w-full"
+          >
+            {submitting ? 'Signing in…' : 'Sign in'}
+          </button>
+          {networkError && <FieldError role="alert">{networkError}</FieldError>}
+        </div>
+      </form>
+
+      {devBypassToken && (
+        <div className="border-line mt-8 flex flex-col gap-2 border-t pt-4">
+          <button type="button" onClick={handleDevBypass} className="btn-ghost -ml-3 self-start">
+            Dev bypass login
+          </button>
+          <p className="type-data text-dimmer m-0 text-[13px]">
+            Local dev only — signs in as the server&rsquo;s fake account.
+          </p>
+        </div>
+      )}
+    </EntryPage>
   )
 }
