@@ -228,7 +228,7 @@ func TestExportBundleWireForm(t *testing.T) {
 	}
 	assertStrings(t, "catalog keys", sortedKeys(wire.Catalogs[0]), []string{"key", "name", "params", "provider", "type"})
 	assertStrings(t, "collection keys", sortedKeys(wire.Collections[0]), []string{
-		"backdrop_image_url", "catalogs", "focus_glow_enabled", "folders", "pin_to_top", "show_all_tab", "title", "view_mode"})
+		"backdrop_image_url", "catalogs", "focus_glow_enabled", "folders", "show_all_tab", "title", "view_mode"})
 	assertStrings(t, "folder keys", sortedKeys(folders[0]), []string{
 		"cover_emoji", "cover_image_url", "focus_gif_enabled", "focus_gif_url", "hero_backdrop_url", "hero_video_url",
 		"hide_title", "refs", "tile_shape", "title", "title_logo_url"})
@@ -320,7 +320,7 @@ func TestImportBundleWritesNewRows(t *testing.T) {
 	}
 	halloween := collections[0]
 	if halloween.Title != "Halloween" || halloween.IsPublic || halloween.Version != 1 || halloween.PushedVersion != nil ||
-		halloween.HomeSortOrder != nil || halloween.TakenFrom != nil || !halloween.PinToTop || halloween.BackdropImageURL == "" {
+		halloween.HomeSortOrder != nil || halloween.TakenFrom != nil || halloween.PinToTop || halloween.BackdropImageURL == "" {
 		t.Errorf("collection = %+v, want the file's fields on a private, unlinked, never-pushed row off Home", halloween.Collection)
 	}
 	slashers := halloween.Catalogs[slices.IndexFunc(halloween.Catalogs, func(c Catalog) bool { return c.Name == "Slashers" })]

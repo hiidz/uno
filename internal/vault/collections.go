@@ -401,9 +401,9 @@ type collectionSave struct {
 // decides the collection's link: a linked collection stays linked only
 // while its content still hashes to taken_hash and no catalog edit moves a
 // catalog to the library. Anything else unlinks it, in the same transaction.
-// A save that changes only is_public keeps the link, since the hash leaves
-// it out. Update writes through updateCollectionTx directly, since it
-// refreshes the link rather than judging it.
+// A save that changes only is_public or pin_to_top keeps the link, since the
+// hash leaves them out. Update writes through updateCollectionTx directly,
+// since it refreshes the link rather than judging it.
 func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, form CollectionForm, before collectionUpdateState, nowStr string) (collectionSave, error) {
 	folders, catalogIDs, err := updateCollectionTx(ctx, tx, profileID, collectionID, form, nowStr)
 	if err != nil {

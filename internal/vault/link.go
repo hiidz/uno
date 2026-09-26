@@ -95,10 +95,10 @@ func rewriteTakenCatalog(ctx context.Context, tx *sql.Tx, linkedCopy, original C
 // collection owned by someone else, up to date with it, through the same
 // update core a collection save uses:
 //
-//   - the collection's own fields come from the original, except is_public,
-//     which stays the copy's; home_sort_order and pushed_version are left as
-//     they are, and version goes up by one, so Home shows the update as an
-//     unpushed change;
+//   - the collection's own fields come from the original, except is_public
+//     and pin_to_top, which stay the copy's; home_sort_order and
+//     pushed_version are left as they are, and version goes up by one, so
+//     Home shows the update as an unpushed change;
 //   - the original's folders are written over the copy's by position,
 //     keeping the id of each of the copy's folders that has a counterpart;
 //     the copy's folders past the original's last are removed;
@@ -212,6 +212,7 @@ func updateFormFromBundle(original BundleCollection, linkedCopy CollectionWithFo
 	original.Catalogs = unmatched
 	form := collectionFormFromBundle(original, counterparts, true)
 	form.IsPublic = linkedCopy.IsPublic
+	form.PinToTop = linkedCopy.PinToTop
 	form.CatalogEdits = edits
 	for i := range min(len(form.Folders), len(linkedCopy.Folders)) {
 		form.Folders[i].ID = &linkedCopy.Folders[i].ID

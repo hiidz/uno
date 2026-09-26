@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// linkFixture is a public collection of owner's and taker's linked copy of
-// it. The source holds a listed catalog in both of its folders and a scoped
+// linkFixture is a public collection of owner's, shown first on Home, and
+// taker's linked copy of it, which is not. The source holds a listed catalog in both of its folders and a scoped
 // catalog under a genre in the first.
 type linkFixture struct {
 	db             *DB
@@ -32,7 +32,7 @@ func newLinkFixture(t *testing.T) linkFixture {
 	}
 	scoped := &NewScopedCatalog{Key: "scoped", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}", Fingerprint: "fp-scoped"}
 	f.source, err = db.CreateUserCollection(ctx, f.owner, CollectionForm{
-		Title: "Source", IsPublic: true, ViewMode: "TABBED_GRID",
+		Title: "Source", IsPublic: true, PinToTop: true, ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{Title: "Folder 1", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}, {New: scoped, Genre: "Drama"}}},
 			{Title: "Folder 2", Catalogs: CatalogRefs(listed.ID)},
@@ -51,6 +51,9 @@ func newLinkFixture(t *testing.T) linkFixture {
 	f.taken, err = db.TakeCollection(ctx, f.taker, f.source.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("TakeCollection: %v", err)
+	}
+	if f.taken.PinToTop {
+		t.Fatal("taken copy pin_to_top = true, want false: Show first is the taker's own")
 	}
 	return f
 }
@@ -133,7 +136,7 @@ func TestCommunityCollectionOffersUpdateAfterOwnerEdit(t *testing.T) {
 }
 
 // Update rewrites the copy with the original's content while keeping what is
-// the taker's own: the collection's id and is_public, its home placement and
+// the taker's own: the collection's id, is_public and pin_to_top, its home placement and
 // pushed_version, the ids of folders by position and of catalogs by source.
 // Version goes up by one. A catalog the original dropped is removed, and one
 // it added becomes a new scoped catalog linked to its source.
@@ -178,8 +181,9 @@ func TestUpdateTakenCollectionRewritesCopy(t *testing.T) {
 		t.Fatalf("UpdateTakenCollection: %v", err)
 	}
 
-	if updated.ID != f.taken.ID || !updated.IsPublic || !updated.Linked {
-		t.Fatalf("updated copy id = %s, public = %v, linked = %v, want %s, true, true", updated.ID, updated.IsPublic, updated.Linked, f.taken.ID)
+	if updated.ID != f.taken.ID || !updated.IsPublic || updated.PinToTop || !updated.Linked {
+		t.Fatalf("updated copy id = %s, public = %v, pinned = %v, linked = %v, want %s, true, false, true",
+			updated.ID, updated.IsPublic, updated.PinToTop, updated.Linked, f.taken.ID)
 	}
 	if updated.Version != copyBefore.Version+1 || updated.PushedVersion == nil || *updated.PushedVersion != copyBefore.Version {
 		t.Fatalf("updated copy version = %d, pushed_version = %v, want %d, %d", updated.Version, updated.PushedVersion, copyBefore.Version+1, copyBefore.Version)
@@ -228,7 +232,8 @@ func TestUpdateTakenCollectionRewritesCopy(t *testing.T) {
 }
 
 // A save of a linked collection keeps the link while the content is
-// unchanged — an unchanged save, a Public toggle, a Home change — and a real
+// unchanged — an unchanged save, a Public and Show first toggle, a Home
+// change — and a real
 // edit unlinks it, after which the source can be taken again.
 func TestCollectionSaveKeepsOrClearsLink(t *testing.T) {
 	ctx := context.Background()
@@ -239,10 +244,10 @@ func TestCollectionSaveKeepsOrClearsLink(t *testing.T) {
 		t.Fatalf("unchanged save linked = %v, %v, want still linked", unchanged.Linked, err)
 	}
 	public := saveFormOf(f.taken)
-	public.IsPublic = true
+	public.IsPublic, public.PinToTop = true, true
 	toggled, err := f.db.UpdateUserCollection(ctx, f.taker, f.taken.ID, public)
 	if err != nil || !toggled.Linked {
-		t.Fatalf("Public toggle linked = %v, %v, want still linked", toggled.Linked, err)
+		t.Fatalf("Public and Show first toggle linked = %v, %v, want still linked", toggled.Linked, err)
 	}
 	if err := f.db.SaveSelectionsForPush(ctx, f.taker, CatalogSelectionForm{}, CollectionSelectionForm{CollectionIDs: []uuid.UUID{f.taken.ID}},
 		map[uuid.UUID]int{f.taken.ID: toggled.Version}); err != nil {

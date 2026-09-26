@@ -54,7 +54,6 @@ type BundleCatalog struct {
 // row it was extracted from and is not part of the format.
 type BundleCollection struct {
 	Title            string          `json:"title"`
-	PinToTop         bool            `json:"pin_to_top"`
 	ViewMode         string          `json:"view_mode"`
 	ShowAllTab       bool            `json:"show_all_tab"`
 	BackdropImageURL string          `json:"backdrop_image_url"`
@@ -284,7 +283,6 @@ func (x *bundleExtractor) collection(tree CollectionWithFolders) BundleCollectio
 	sourceID := tree.ID
 	return BundleCollection{
 		Title:            tree.Title,
-		PinToTop:         tree.PinToTop,
 		ViewMode:         tree.ViewMode,
 		ShowAllTab:       tree.ShowAllTab,
 		BackdropImageURL: tree.BackdropImageURL,
@@ -372,7 +370,7 @@ func bundleCatalogFrom(key string, c Catalog) BundleCatalog {
 // that catalog's spec and stored fingerprint, plus its SourceID as TakenFrom
 // when link is set; every ref to one key shares one spec. A ref to a
 // top-level key becomes a CatalogID ref to topIDs[key]. Folder IDs are nil
-// and the collection is private.
+// and the collection is private and not shown first.
 func collectionFormFromBundle(bc BundleCollection, topIDs map[string]uuid.UUID, link bool) CollectionForm {
 	specs := newSpecsByKey(bc.Catalogs, link)
 	folders := make([]FolderData, len(bc.Folders))
@@ -381,7 +379,6 @@ func collectionFormFromBundle(bc BundleCollection, topIDs map[string]uuid.UUID, 
 	}
 	return CollectionForm{
 		Title:            bc.Title,
-		PinToTop:         bc.PinToTop,
 		ViewMode:         bc.ViewMode,
 		ShowAllTab:       bc.ShowAllTab,
 		BackdropImageURL: bc.BackdropImageURL,
@@ -455,7 +452,7 @@ func collectionHash(tree CollectionWithFolders) (string, error) {
 // form, with each catalog's params replaced by that catalog's stored
 // fingerprint. A copy carries its original's fingerprints unchanged, so the
 // two hash alike whatever their params bytes. Whatever the bundle form
-// leaves out — ids, scope, is_public, the home fields, version and
+// leaves out — ids, scope, is_public, pin_to_top, the home fields, version and
 // timestamps — the hash leaves out too. A content field added to the form
 // is hashed with no change here, and that changes every collection's hash,
 // so each linked copy's stored taken_hash stops matching and its next save

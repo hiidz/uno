@@ -183,7 +183,7 @@ write credential.
   - **The hashes** (`internal/vault/bundle.go`). `catalogHash` is a sha256 of the name and stored
     fingerprint. `collectionHash` is a sha256 of the collection's bundle form (`extractBundle`,
     every referenced catalog in the collection's own list), with each catalog's params replaced
-    by its stored fingerprint. Whatever the bundle form leaves out — ids, scope, `is_public`, the
+    by its stored fingerprint. Whatever the bundle form leaves out — ids, scope, `is_public`, `pin_to_top`, the
     home fields, `version`, timestamps — the hash leaves out too. A content field added to the
     bundle form is hashed with no other change, which also shifts every stored `taken_hash` once:
     Community then offers each linked copy an Update that changes nothing but `taken_hash`, and
@@ -197,14 +197,14 @@ write credential.
     saved name and fingerprint no longer hash to `taken_hash`, or the catalog moves into a
     collection. `UpdateUserCollection` clears them when the saved tree no longer hashes to
     `taken_hash`, or any catalog edit moves a catalog to the library. A moved catalog's own
-    `taken_from` is cleared too, so it never reads as a Take of its own. Toggling `is_public` and
+    `taken_from` is cleared too, so it never reads as a Take of its own. Toggling `is_public` or `pin_to_top` and
     the selection writes of push never unlink.
   - **Update** (`internal/vault/link.go`) compares the original's hash now, the copy's hash now,
     and `taken_hash`. A copy equal to its original only has `taken_hash` rewritten. A copy that
     no longer matches `taken_hash` was changed some way a save didn't unlink, so Update unlinks
     it, commits that, and returns `ErrConflict` rather than overwrite it. Anything else is
     rewritten through the same update core a save uses: the original's content, with the copy's
-    `is_public`, home placement and `pushed_version` kept, folders matched by position and
+    `is_public`, `pin_to_top`, home placement and `pushed_version` kept, folders matched by position and
     catalogs by `taken_from`, and `version` bumped by one. An original made private is not found
     (404), and a deleted one unlinks its copies (`taken_from` is `ON DELETE SET NULL`).
   - **Community Duplicate** is a Take without the link: no `taken_from` anywhere in the copy, the
@@ -540,7 +540,7 @@ Version 1:
 { "format": "uno", "version": 1,
   "catalogs": [ { "key": "c1", "name": "80s Horror", "type": "movie", "provider": "tmdb", "params": { } } ],
   "collections": [ {
-    "title": "Halloween", "pin_to_top": false, "view_mode": "TABBED_GRID", "show_all_tab": true,
+    "title": "Halloween", "view_mode": "TABBED_GRID", "show_all_tab": true,
     "backdrop_image_url": "", "focus_glow_enabled": true,
     "catalogs": [ { "key": "c2", "name": "Slashers", "type": "movie", "provider": "tmdb", "params": { } } ],
     "folders": [ { "title": "Classics", "tile_shape": "POSTER", "hide_title": false, "cover_emoji": "",
@@ -551,7 +551,7 @@ Version 1:
 
 - **Two kinds of catalog list.** The top-level `catalogs` are listed catalogs. A collection's own
   `catalogs` are scoped to it; one that no ref uses is ignored on import.
-- **Never in the bundle:** row ids, `owner_id`, `is_public`, `collection_id`, timestamps,
+- **Never in the bundle:** row ids, `owner_id`, `is_public`, `pin_to_top`, `collection_id`, timestamps,
   `home_sort_order`, `show_in_home`, `taken_from`, `taken_hash`, `fingerprint`, `version` and
   `pushed_version`.
 - **Export writes every field.** Booleans are plain bools, and an empty list is `[]`. `params` is

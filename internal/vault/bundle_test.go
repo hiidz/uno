@@ -416,7 +416,7 @@ func TestLinkHashesArePinned(t *testing.T) {
 		if err != nil {
 			t.Fatalf("bundleCollectionHash: %v", err)
 		}
-		check(t, "bundleCollectionHash", got, "56a6918d719f8f1f7531a73a01ac8c6aadb2163360f96279aa4de70ae0e3b144")
+		check(t, "bundleCollectionHash", got, "366557de5592e438a80f3a08ce54c7b514045bce4f8c90525455f2654e37f1ba")
 	})
 
 	t.Run("collectionHash of the fixture once stored", func(t *testing.T) {
@@ -429,6 +429,6 @@ func TestLinkHashesArePinned(t *testing.T) {
 		if err != nil {
 			t.Fatalf("collectionHash: %v", err)
 		}
-		check(t, "collectionHash", got, "43643471282b12e7b8b4fb5d2b30c4eac495eb31312dd7c152259276d8649351")
+		check(t, "collectionHash", got, "2ea2d61a83deaef7e099eb79f8c8becdec6723546df4a1f9554b195ac2473248")
 	})
 }
