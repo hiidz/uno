@@ -188,7 +188,7 @@ function HomeList({ compact }: { compact: boolean }) {
   if (preview.isEmpty) {
     return (
       <p className="text-dim m-0 max-w-[48ch] py-2 text-[15px] leading-[1.5]">
-        Nothing on your TV yet. Tap the empty circle beside a catalog or collection in the sidebar
+        Nothing on your TV yet. Tap the empty circle beside a catalog or collection in the Library
         to put it here.
       </p>
     )

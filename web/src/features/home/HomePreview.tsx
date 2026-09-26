@@ -378,7 +378,7 @@ function EmptyHomeScreen() {
         </div>
       </div>
       <p className="text-dim m-0 text-[12px] leading-[17px]">
-        Add catalogs and collections from the sidebar, then push.
+        Add catalogs and collections from the Library, then push.
       </p>
     </div>
   )

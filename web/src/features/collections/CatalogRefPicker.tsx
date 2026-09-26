@@ -63,7 +63,7 @@ export function CatalogRefPicker({
       {matches.length === 0 ? (
         <p className="ed-note m-0">
           {options.length === 0
-            ? 'No catalogs yet. Create one in the sidebar first.'
+            ? 'No catalogs yet. Create one in the Library first.'
             : query.trim()
               ? 'No catalogs match this search.'
               : 'Everything available is already in this folder.'}

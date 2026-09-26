@@ -67,8 +67,8 @@ export function EditorFooter({
       {errorCount > 0 ? (
         <span className="ed-status is-error">
           <Icon icon={TriangleAlert} size={16} />
-          {pluralCount(errorCount, 'thing')} {errorCount === 1 ? 'needs' : 'need'} fixing:{' '}
-          {errorLabels.join(', ')}
+          {pluralCount(errorCount, 'thing')} {errorCount === 1 ? 'needs' : 'need'} fixing
+          {errorLabels.length > 0 && `: ${errorLabels.join(', ')}`}
         </span>
       ) : (
         <span className={dirty ? 'ed-status' : 'ed-status is-muted'}>
