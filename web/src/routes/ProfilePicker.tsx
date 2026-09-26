@@ -5,7 +5,9 @@ import { ArrowRight, TriangleAlert } from 'lucide-react'
 import { ApiError, fetchProfiles, queryKeys, selectProfile } from '@/api'
 import type { NuvioProfile } from '@/api'
 import { logout } from '@/auth'
+import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
+import { Wordmark } from '@/components/Wordmark'
 
 export function ProfilePicker() {
   const navigate = useNavigate()
@@ -61,12 +63,17 @@ export function ProfilePicker() {
   const isChoosing = selecting !== null
 
   return (
-    <div className="min-h-svh px-4">
-      <main className="mx-auto w-full max-w-[560px] pt-[18vh] pb-16 max-sm:pt-[12vh] max-sm:pb-40">
-        <header className="border-line mb-8 grid gap-4 border-b pb-8">
-          <h1 className="type-wordmark m-0 text-[40px] leading-none max-sm:text-[28px]">Uno</h1>
-          <h2 className="type-display m-0 text-[20px] leading-[28px]">Who&rsquo;s watching?</h2>
-          <p className="text-dim m-0 max-w-[44ch] text-[15px] leading-[22px]">
+    <div className="min-h-svh">
+      <Fascia className="h-2" />
+      <main className="mx-auto w-full max-w-[640px] px-4 pt-[14vh] pb-16 max-sm:pt-[9vh] max-sm:pb-40">
+        <header className="mb-9 grid gap-5">
+          <h1 className="m-0 justify-self-start">
+            <Wordmark className="text-ink block h-[26px] w-auto max-sm:h-[20px]" />
+          </h1>
+          <h2 className="type-sign m-0 text-[38px] leading-[1.05] max-sm:text-[27px]">
+            Who&rsquo;s watching?
+          </h2>
+          <p className="text-dim m-0 max-w-[44ch] text-[16px] leading-[1.5]">
             Each profile has its own home screen. Pick yours to start building it.
           </p>
         </header>
@@ -78,35 +85,41 @@ export function ProfilePicker() {
           </p>
         )}
 
-        <div className="-mt-8">
+        <div>
           {profiles.isPending && (
             <>
-              <ul aria-busy="true" aria-label="Loading your profiles" className="m-0 list-none p-0">
-                {[0, 1, 2, 3].map((i) => (
+              <ul
+                aria-busy="true"
+                aria-label="Loading your profiles"
+                className="m-0 grid list-none grid-cols-2 gap-4 p-0 max-sm:grid-cols-1"
+              >
+                {[0, 1].map((i) => (
                   <li
                     key={i}
                     aria-hidden="true"
-                    className="border-line grid min-h-14 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-8 border-b py-3 pr-3 max-sm:grid-cols-[88px_minmax(0,1fr)] max-sm:gap-x-3"
+                    className="bg-raised flex h-[168px] flex-col overflow-hidden rounded-2xl"
                   >
-                    <span className="bg-line ml-auto h-3.5 w-11" />
-                    <span className="bg-line h-3.5 w-2/5" />
+                    <span className="bg-line h-2.5" />
+                    <span className="bg-line mt-auto mb-5 ml-4 h-6 w-2/5 rounded-full" />
                   </li>
                 ))}
               </ul>
-              <p className="text-dim pt-4 text-[13px]">Getting your profiles from Nuvio…</p>
+              <p className="text-dim pt-4 text-[14px]">Getting your profiles from Nuvio…</p>
             </>
           )}
 
           {profiles.data?.length === 0 && (
-            <div className="border-line grid gap-3 border-b pb-6">
-              <p className="m-0 text-[16px] font-medium">This account has no profiles yet.</p>
-              <p className="text-dim m-0 max-w-[46ch]">Add one in Nuvio on your TV, then come back.</p>
+            <div className="bg-raised grid gap-2 rounded-2xl p-5">
+              <p className="m-0 text-[17px] font-bold">This account has no profiles yet.</p>
+              <p className="text-dim m-0 max-w-[46ch] text-[15px]">
+                Add one in Nuvio on your TV, then come back.
+              </p>
             </div>
           )}
 
           {profiles.data && profiles.data.length > 0 && (
             <>
-              <ul className="m-0 list-none p-0">
+              <ul className="m-0 grid list-none grid-cols-2 gap-4 p-0 max-sm:grid-cols-1">
                 {profiles.data.map((profile) => {
                   const isC = selecting === profile.profile_index
                   const isOff = isChoosing && !isC
@@ -119,28 +132,36 @@ export function ProfilePicker() {
                         aria-describedby={isChoosing ? noteId : undefined}
                         aria-label={`Profile ${profile.profile_index}, ${profile.name}${isC ? ', signing in' : ''}`}
                         onClick={() => choose(profile)}
-                        className={`group grid w-full min-h-14 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-8 border-b py-3 pr-3 text-left transition-colors max-sm:grid-cols-[88px_minmax(0,1fr)] max-sm:gap-x-3 ${
-                          isC ? 'bg-raised border-line' : 'border-line hover:bg-raised disabled:hover:bg-transparent'
+                        className={`group flex h-[168px] w-full flex-col overflow-hidden rounded-2xl text-left transition-[background-color,opacity] duration-200 ease-[var(--uno-ease)] ${
+                          isC
+                            ? 'bg-line-hi'
+                            : isOff
+                              ? 'bg-raised opacity-45'
+                              : 'bg-raised-hi hover:bg-line-hi'
                         }`}
                       >
-                        <span
-                          className={`type-eyebrow text-right ${isOff ? 'text-dimmer' : ''}`}
-                        >
-                          Profile
-                          <b className={`type-data ml-1.5 text-[15px] font-medium tracking-normal normal-case ${isOff ? 'text-dimmer' : 'text-ink'}`}>
-                            {profile.profile_index}
-                          </b>
-                        </span>
-                        <span className="flex min-w-0 items-center justify-between gap-3">
-                          <span className={`text-[16px] leading-[22px] font-medium ${isOff ? 'text-dimmer' : ''}`}>
+                        {/* A membership card: the shop's fascia across the top,
+                            the slot the TV shows it in, the member's name. */}
+                        <Fascia className="h-2.5 shrink-0" />
+                        <span className="flex min-h-0 flex-1 flex-col px-4 pt-3.5 pb-4">
+                          <span className="flex items-center justify-between gap-3">
+                            <Wordmark className="text-dim h-[11px] w-auto" />
+                            <span className="type-sign text-dim text-[11px]">
+                              Profile {profile.profile_index}
+                            </span>
+                          </span>
+                          <span className="mt-auto truncate text-[28px] leading-tight font-bold">
                             {profile.name}
                           </span>
-                          <span
-                            className={`inline-flex items-center gap-2 text-[13px] ${
-                              isC ? 'text-ink' : 'text-dim group-hover:text-ink'
-                            }`}
-                          >
-                            {isC ? 'Signing in…' : isOff ? '' : <Icon icon={ArrowRight} />}
+                          <span className="mt-2 flex items-center justify-between gap-3 text-[14px]">
+                            <span className={isC ? 'text-ink' : 'text-dim'}>
+                              {isC ? 'Signing in…' : 'Open its home screen'}
+                            </span>
+                            {!isOff && (
+                              <span className="bg-ink text-sign-ink grid size-8 shrink-0 place-items-center rounded-full">
+                                <Icon icon={ArrowRight} />
+                              </span>
+                            )}
                           </span>
                         </span>
                       </button>
@@ -148,7 +169,7 @@ export function ProfilePicker() {
                   )
                 })}
               </ul>
-              <p id={noteId} className="text-dim pt-4 text-[13px]">
+              <p id={noteId} className="text-dim pt-5 text-[14px]">
                 {isChoosing
                   ? `Signing in as ${choosingName}. The other profiles wait until that’s done.`
                   : 'Slot numbers match your TV.'}
@@ -164,7 +185,7 @@ export function ProfilePicker() {
             disabled={isChoosing}
             aria-disabled={isChoosing || undefined}
             aria-describedby={isChoosing ? noteId : undefined}
-            className="btn-quiet px-0"
+            className="btn-quiet -ml-3"
           >
             Sign in with a different account
           </button>

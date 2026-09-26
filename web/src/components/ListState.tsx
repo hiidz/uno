@@ -31,10 +31,10 @@ export function ListState({
   if (error) {
     return (
       <div className="flex flex-col items-start gap-2 py-2">
-        <p className="type-data text-danger m-0 text-[11px]">{errorLabel}</p>
+        <p className="type-data text-danger m-0 text-[12.5px]">{errorLabel}</p>
         {/* The server's plain-text body is usually more specific than
             anything we'd synthesise, so surface it under the headline. */}
-        <p className="type-data text-dimmer m-0 text-[10.5px]">{error.message}</p>
+        <p className="type-data text-dimmer m-0 text-[12.5px]">{error.message}</p>
         {onRetry && (
           <button type="button" onClick={onRetry} className="btn-ghost">
             Retry
@@ -45,11 +45,11 @@ export function ListState({
   }
 
   if (isLoading) {
-    return <p className="type-data text-dimmer m-0 py-2 text-[11px]">{loadingLabel}</p>
+    return <p className="type-data text-dimmer m-0 py-2 text-[12.5px]">{loadingLabel}</p>
   }
 
   if (isEmpty) {
-    return <div className="type-data text-dimmer py-2 text-[11px]">{emptyLabel}</div>
+    return <div className="type-data text-dimmer py-2 text-[12.5px]">{emptyLabel}</div>
   }
 
   return <>{children}</>

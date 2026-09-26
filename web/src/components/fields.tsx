@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import { CircleHelp, X } from 'lucide-react'
 import { Popover, Slider } from 'radix-ui'
+import { Icon } from './Icon'
 
 /**
  * The form primitives shared by both builders. Nothing here is
@@ -37,7 +39,7 @@ export function Field({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1.5">
-        <label htmlFor={htmlFor} className="type-eyebrow">
+        <label htmlFor={htmlFor} className="type-label">
           {label}
         </label>
         {tip && <InfoTip label={label} text={tip} />}
@@ -71,9 +73,9 @@ export function InfoTip({ label, text }: { label: string; text: string }) {
         <button
           type="button"
           aria-label={`About ${label.toLowerCase()}`}
-          className="tap border-line-hi text-dimmer hover:border-dim hover:text-dim grid h-[13px] w-[13px] shrink-0 place-items-center rounded-full border text-[8px] leading-none transition-colors"
+          className="tap text-dimmer hover:text-ink grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full transition-colors"
         >
-          <span aria-hidden="true">?</span>
+          <Icon icon={CircleHelp} size={16} />
         </button>
       </Popover.Trigger>
       <Popover.Portal>
@@ -82,7 +84,7 @@ export function InfoTip({ label, text }: { label: string; text: string }) {
           align="start"
           sideOffset={5}
           collisionPadding={12}
-          className="type-data bg-raised-hi border-line-hi text-dim z-50 max-w-[15rem] rounded-[2px] border px-2.5 py-1.5 text-[10.5px] leading-[1.45]"
+          className="type-data bg-raised-hi border-line-hi text-ink z-50 max-w-[17rem] rounded-xl border px-3 py-2 text-[13px] leading-[1.45]"
         >
           {text}
         </Popover.Content>
@@ -105,7 +107,7 @@ export function FieldNote({
 }) {
   return (
     <p
-      className={`type-data m-0 max-w-[var(--w-entry)] text-[11px] leading-[1.45] ${
+      className={`type-data m-0 max-w-[var(--w-entry)] text-[13px] leading-[1.45] ${
         tone === 'danger' ? 'text-danger' : 'text-dimmer'
       }`}
     >
@@ -134,7 +136,7 @@ export function TextInput({
   /** For inputs inside a row that carries its own label elsewhere — a folder
    *  title next to its controls, say — where a `<label>` would be redundant. */
   ariaLabel?: string
-  /** Pairs this input with an external `<label htmlFor>` — a credit row's
+  /** Pairs this input with an external `<label htmlFor>` — a setting's
    *  role, which sits outside this component's own markup. */
   id?: string
   /** How much room the content actually needs. Omitted for the genuinely
@@ -242,9 +244,9 @@ export function Select({
           type="button"
           aria-label={`Clear ${clearLabel}`}
           onClick={() => onChange('')}
-          className="text-dimmer hover:text-ink absolute top-1/2 right-[27px] grid h-4 w-4 -translate-y-1/2 place-items-center text-[13px] leading-none transition-colors pointer-coarse:h-9 pointer-coarse:w-9"
+          className="text-dimmer hover:text-ink absolute top-1/2 right-[27px] grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full transition-colors pointer-coarse:h-9 pointer-coarse:w-9"
         >
-          <span aria-hidden="true">&times;</span>
+          <Icon icon={X} size={14} />
         </button>
       )}
     </div>
@@ -273,7 +275,7 @@ export function Segmented<T extends string>({
 }: {
   value: T
   onChange: (value: T) => void
-  options: { value: T; label: string }[]
+  options: { value: T; label: ReactNode }[]
   ariaLabel: string
   /** Greyed as a whole while the control can't do anything — the "All" tab
    *  segmented control outside Tabbed Grids. Keeps its value: the selected
@@ -288,7 +290,7 @@ export function Segmented<T extends string>({
       role="group"
       aria-label={ariaLabel}
       aria-disabled={disabled || undefined}
-      className="border-line-hi flex w-fit max-w-full shrink-0 flex-wrap overflow-hidden rounded-[2px] border"
+      className="bg-raised flex w-fit max-w-full shrink-0 flex-wrap gap-0.5 rounded-[19px] p-[3px] shadow-[inset_0_0_0_1px_var(--uno-line-hi)]"
     >
       {options.map((option) => (
         <button
@@ -297,10 +299,12 @@ export function Segmented<T extends string>({
           onClick={() => !disabled && onChange(option.value)}
           aria-pressed={value === option.value}
           aria-disabled={disabled || undefined}
-          className={`border-line-hi flex-1 border-r px-3 py-1.5 text-[10.5px] tracking-[0.08em] whitespace-nowrap uppercase transition-colors last:border-r-0 pointer-coarse:py-2.5 ${
+          className={`flex-1 rounded-full px-3.5 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors pointer-coarse:py-2.5 ${
             disabled
               ? `text-dimmer cursor-not-allowed ${value === option.value ? 'underline decoration-1 underline-offset-[0.3em]' : ''}`
-              : `hover:text-ink ${value === option.value ? 'bg-raised-hi text-ink' : 'text-dim'}`
+              : value === option.value
+                ? 'bg-ink text-sign-ink'
+                : 'text-dim hover:text-ink'
           }`}
         >
           {option.label}
@@ -360,7 +364,7 @@ export function DualRangeSlider({
     // you cannot put a finger on, and for the age-rating scale the slider is
     // the only control there is. The root grows with it so the taller thumb
     // has room and the whole band is grabbable, not just the 3px track.
-    <div className="flex max-w-[var(--w-track)] flex-col gap-1.5 [--thumb:13px] pointer-coarse:[--thumb:24px]">
+    <div className="flex max-w-[var(--w-track)] flex-col gap-2 [--thumb:18px] pointer-coarse:[--thumb:26px]">
       <Slider.Root
         className="relative flex h-4 w-full touch-none items-center select-none pointer-coarse:h-11"
         min={min}
@@ -372,20 +376,20 @@ export function DualRangeSlider({
           onChange(nextLow <= min ? undefined : nextLow, nextHigh >= max ? undefined : nextHigh)
         }
       >
-        <Slider.Track className="bg-line-hi relative h-[3px] grow rounded-full">
-          <Slider.Range className="bg-dim absolute h-full rounded-full" />
+        <Slider.Track className="bg-line-hi relative h-[4px] grow rounded-full">
+          <Slider.Range className="absolute h-full rounded-full bg-[var(--accent)]" />
         </Slider.Track>
         {/* `aria-valuetext` because the position isn't always the value: the
             age-rating slider moves over indexes, and "3" is not "PG-13". */}
         <Slider.Thumb
           aria-label={`Minimum ${label}`}
           aria-valuetext={formatValue(lowValue)}
-          className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border shadow-sm outline-none focus-visible:ring-2"
+          className="bg-ink focus-visible:outline-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border-[3px] border-[var(--accent)] transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2"
         />
         <Slider.Thumb
           aria-label={`Maximum ${label}`}
           aria-valuetext={formatValue(highValue)}
-          className="border-dim bg-raised-hi hover:border-ink focus-visible:ring-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border shadow-sm outline-none focus-visible:ring-2"
+          className="bg-ink focus-visible:outline-ink block h-[var(--thumb)] w-[var(--thumb)] rounded-full border-[3px] border-[var(--accent)] transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2"
         />
       </Slider.Root>
       {/* Each value sits under its own thumb rather than at the track's end.
@@ -394,7 +398,7 @@ export function DualRangeSlider({
           coincidence, and "140" at the far right, where the track means 300,
           is simply wrong. */}
       {showValues && (
-        <div className="relative h-[11px]">
+        <div className="relative h-[13px]">
           <ThumbValue fraction={fractionOf(lowValue, min, max)} label={formatValue(lowValue)} />
           <ThumbValue fraction={fractionOf(highValue, min, max)} label={formatValue(highValue)} />
         </div>
@@ -423,7 +427,7 @@ function ThumbValue({ fraction, label }: { fraction: number; label: string }) {
   return (
     <span
       style={{ left: `calc(${fraction * 100}% + ${0.5 - fraction} * var(--thumb))` }}
-      className="type-data text-dimmer absolute top-0 -translate-x-1/2 text-[10.5px] leading-none whitespace-nowrap"
+      className="type-data text-dim absolute top-0 -translate-x-1/2 text-[13px] leading-none whitespace-nowrap"
     >
       {label}
     </span>
@@ -504,12 +508,12 @@ export function Checkbox({
       />
       <span className="flex flex-col gap-1">
         <span
-          className={`text-[12.5px] transition-colors ${disabled ? '' : 'group-hover:text-ink'}`}
+          className={`text-[14.5px] transition-colors ${disabled ? '' : 'group-hover:text-ink'}`}
         >
           {label}
         </span>
         {hint && (
-          <span className="type-data text-dimmer text-[11px] leading-[1.45]">{hint}</span>
+          <span className="type-data text-dimmer text-[13px] leading-[1.45]">{hint}</span>
         )}
       </span>
     </label>

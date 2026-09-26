@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { MoreHorizontal } from 'lucide-react'
+import { ArrowUp, MoreHorizontal, Tv } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { tmdbKind } from '@/api'
 import { Grip, MoveDownButton, MoveUpButton } from '@/components/dnd'
@@ -10,7 +10,7 @@ import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
 import { describeCollection } from '@/features/library/collection'
-import { describeRecipe } from '@/features/library/recipe'
+import { recipeLine } from '@/features/library/recipe'
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
 import { noTiles, TileRun, TILE_ASPECT } from '@/features/preview/tiles'
 import { ordinal } from '@/lib/ordinal'
@@ -45,10 +45,13 @@ export type HomeView = 'list' | 'preview'
  * back. Closing an editor should return the screen you left.
  */
 export function HomePane({
+  profileLabel,
   view,
   onViewChange,
   onShowLibrary,
 }: {
+  /** Which profile's TV this is — "Profile 1 · Dev" — named in the intro. */
+  profileLabel: string
   view: HomeView
   onViewChange: (view: HomeView) => void
   /** Scroll back up to the rail. Below `lg` only, where the two are stacked
@@ -63,29 +66,69 @@ export function HomePane({
   const isEmpty = home.catalogs.length === 0 && home.collections.length === 0
 
   return (
-    <main className="flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
+    <main className="tone-tv flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
       {/* Pinned under the app header below `lg`, for the same reason the
           editors' header is: it names the region the page has just scrolled to
           and carries the way back up out of it. The padding is split between
           this band and the content below rather than sitting on `main`, because
           a sticky child of a padded parent leaves a gap above it that the
-          content then scrolls through. Above `lg` the two halves add back up to
-          the `p-6` and `gap-8` that were here before. */}
-      <div className="border-line bg-ground sticky top-[var(--app-h)] z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-3 lg:static lg:items-baseline lg:border-0 lg:bg-transparent lg:px-6 lg:pt-6 lg:pb-0">
+          content then scrolls through.
+
+          It is the home screen's sign: TV yellow, because everything under it
+          is what the TV shows. */}
+      <div className="sign sticky top-[var(--app-h)] z-20 flex-wrap gap-x-4 gap-y-2 px-4 py-2.5 lg:static lg:min-h-[80px] lg:px-6 lg:py-4">
+        <Icon icon={Tv} size={24} className="hidden shrink-0 lg:block" />
         {/* Where focus lands when the page scrolls here — see `stacked.ts`. */}
         <h1
           tabIndex={-1}
           data-landing
-          className="type-display m-0 text-[17px] outline-none lg:text-[21px]"
+          className="type-sign m-0 text-[16px] leading-tight outline-none lg:text-[25px]"
         >
           Your home screen
         </h1>
-        <ViewSwitch view={view} onChange={onViewChange} />
-        {/* Only on the Home screen tab, and only once there's something to
-            show strips for — DESIGN.md's Home-screen pane spec. */}
+        {/* On the sign above `lg`. Below it the sign is pinned and has room for
+            one line, so the switch moves to the row underneath. */}
+        <div className="hidden lg:block">
+          <ViewSwitch view={view} onChange={onViewChange} />
+        </div>
+        <button
+          type="button"
+          onClick={onShowLibrary}
+          title="Back up to the library"
+          className="tap sign-btn-outline ml-auto lg:hidden"
+        >
+          <Icon icon={ArrowUp} size={15} />
+          Library
+        </button>
+      </div>
+
+      <div
+        className={`flex max-w-[calc(var(--w-home)+3rem)] flex-wrap items-center gap-x-5 gap-y-3 px-4 pt-5 lg:px-6 ${
+          view === 'list' ? '' : 'lg:hidden'
+        }`}
+      >
+        <div className="lg:hidden">
+          <Segmented
+            ariaLabel="Home screen view"
+            value={view}
+            onChange={onViewChange}
+            options={[
+              { value: 'list', label: 'List' },
+              { value: 'preview', label: 'Preview' },
+            ]}
+          />
+        </div>
+        {view === 'list' && (
+          <p className="m-0 min-w-[16rem] flex-1 text-[15px] leading-[1.5]">
+            What {profileLabel} shows on the TV, top to bottom. Drag a row or use its arrows to
+            reorder, then push.
+          </p>
+        )}
+        {/* Only once there's something to show strips for — DESIGN.md's
+            Home-screen pane spec. */}
         {view === 'list' && !isEmpty && (
-          <div className="flex items-center gap-2">
-            <span className="type-eyebrow">Rows</span>
+          <div className="flex items-center gap-2.5">
+            <span className="type-label">Rows</span>
             <Segmented
               ariaLabel="Row display"
               value={compact ? 'compact' : 'strips'}
@@ -97,20 +140,9 @@ export function HomePane({
             />
           </div>
         )}
-        <button
-          type="button"
-          onClick={onShowLibrary}
-          title="Back up to the library"
-          className="tap type-data border-line-hi text-dim hover:text-ink hover:border-dim ml-auto flex h-7 shrink-0 items-center gap-1 rounded-[2px] border px-2 text-[10px] tracking-[0.06em] uppercase transition-colors lg:hidden"
-        >
-          <span aria-hidden="true" className="text-[11px] leading-none">
-            ↑
-          </span>
-          Library
-        </button>
       </div>
 
-      <div className="flex flex-col px-4 py-4 lg:px-6 lg:pt-8 lg:pb-6">
+      <div className="flex flex-col px-4 py-5 lg:px-6 lg:pt-6 lg:pb-8">
         {/* Loading and error are shared — both views need the same state before
             they can render anything. Empty is *not* shared: List's empty state
             is an instruction to go add something, Preview's is the screen a TV
@@ -133,15 +165,17 @@ export function HomePane({
 
 function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeView) => void }) {
   return (
-    <div className="border-line-hi flex overflow-hidden rounded-[2px] border">
+    <div className="flex gap-0.5 rounded-full p-[3px] shadow-[inset_0_0_0_1.5px_var(--uno-sign-ink)]">
       {(['list', 'preview'] as const).map((option) => (
         <button
           key={option}
           type="button"
           onClick={() => onChange(option)}
           aria-pressed={view === option}
-          className={`type-data px-3 py-1.5 text-[10.5px] tracking-[0.08em] uppercase transition-colors pointer-coarse:py-2.5 ${
-            view === option ? 'bg-raised-hi text-ink' : 'text-dim hover:text-ink'
+          className={`rounded-full px-3.5 py-1 text-[13px] font-bold capitalize transition-colors pointer-coarse:py-2.5 ${
+            view === option
+              ? 'bg-sign-ink text-tv-yellow'
+              : 'text-sign-ink hover:bg-sign-ink/12'
           }`}
         >
           {option}
@@ -177,8 +211,9 @@ function HomeList({ compact }: { compact: boolean }) {
 
   if (preview.isEmpty) {
     return (
-      <p className="type-data text-dimmer m-0 py-2 text-[11px]">
-        Nothing here yet. Add catalogs and collections from the sidebar.
+      <p className="text-dim m-0 max-w-[48ch] py-2 text-[15px] leading-[1.5]">
+        Nothing on your TV yet. Tap the empty circle beside a catalog or collection in the sidebar
+        to put it here.
       </p>
     )
   }
@@ -193,7 +228,7 @@ function HomeList({ compact }: { compact: boolean }) {
     order.indexOf(`${kind}:${id}`) + 1
 
   return (
-    <div className="flex max-w-[var(--w-form)] flex-col gap-8">
+    <div className="flex max-w-[var(--w-home)] flex-col gap-8">
       {preview.pinnedCollections.length > 0 && (
         <Group
           label="Shown first"
@@ -241,8 +276,8 @@ function HomeList({ compact }: { compact: boolean }) {
                   {!compact && (
                     <TileRun
                       tiles={tiles.get(row.id) ?? noTiles()}
-                      width={64}
-                      height={96}
+                      width={84}
+                      height={126}
                       wrap={false}
                     />
                   )}
@@ -288,10 +323,10 @@ function HomeList({ compact }: { compact: boolean }) {
 
 function Group({ label, note, children }: { label: string; note: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
-      <div className="border-line-hi flex flex-col gap-0.5 border-b pb-2">
-        <span className="type-eyebrow">{label}</span>
-        <p className="type-data text-dimmer m-0 text-[10.5px]">{note}</p>
+    <section className="flex flex-col gap-1">
+      <div className="border-line-hi flex flex-col gap-1 border-b pb-2.5">
+        <h2 className="text-ink m-0 text-[16px] font-bold">{label}</h2>
+        <p className="text-dim m-0 text-[13.5px]">{note}</p>
       </div>
       {children}
     </section>
@@ -299,14 +334,14 @@ function Group({ label, note, children }: { label: string; note: string; childre
 }
 
 /* -------------------------------------------------------------------------- */
-/* The running-order row (signature)                                          */
+/* The running-order row                                                      */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Grip, ↑, ↓, the position against the name, a credit line, a strip of whole
- * tiles, then ⋯ — DESIGN.md's "Running-order row (signature)". The frame draws
- * the grip, the ↑/↓ pair and the position; a catalog or collection row composes
- * the rest into its four-column grid as a `RowBody` and a `RowMenu`.
+ * Grip, ↑, ↓, the position as a yellow sticker, the name and its summary line, a
+ * strip of whole tiles, then ⋯. The frame draws the grip, the ↑/↓ pair and the
+ * position; a catalog or collection row composes the rest into its four-column
+ * grid as a `RowBody` and a `RowMenu`.
  */
 function HomeRow({
   id,
@@ -339,7 +374,7 @@ function HomeRow({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`border-line grid grid-cols-[32px_40px_minmax(0,1fr)_32px] items-start gap-x-3 border-b py-4 pr-3 pl-1 transition-colors ${
+      className={`border-line grid grid-cols-[32px_32px_minmax(0,1fr)_34px] items-start gap-x-3 border-b py-4 pr-1 pl-0 transition-colors ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >
@@ -357,8 +392,11 @@ function HomeRow({
         />
       </div>
 
-      <span className="type-data text-dim pt-2 text-right text-[11px] tabular-nums">
-        {ordinal(position)}
+      <span className="relative mt-1">
+        <span aria-hidden="true" className="pos-sticker">
+          {position}
+        </span>
+        <span className="sr-only">{ordinal(position)} on your TV</span>
       </span>
 
       {children}
@@ -366,10 +404,10 @@ function HomeRow({
   )
 }
 
-/** The row's third grid column: the name, the credit line, and the strip when
+/** The row's third grid column: the name, the summary line, and the strip when
  *  one is composed in. */
 function RowBody({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-col gap-1">{children}</div>
+  return <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">{children}</div>
 }
 
 /** The row's ⋯ menu: the trigger and the popover, holding whichever items the
@@ -379,7 +417,7 @@ function RowMenu({ name, children }: { name: string; children: ReactNode }) {
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger
         aria-label={`More for ${name}`}
-        className="tap text-dimmer hover:bg-line hover:text-ink grid h-8 w-8 place-items-center rounded-[2px] transition-colors"
+        className="tap text-dim hover:bg-raised-hi hover:text-ink grid h-8 w-8 place-items-center rounded-full transition-colors"
       >
         <Icon icon={MoreHorizontal} size={16} />
       </DropdownMenu.Trigger>
@@ -387,7 +425,7 @@ function RowMenu({ name, children }: { name: string; children: ReactNode }) {
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="bg-raised-hi border-line-hi z-40 flex w-60 flex-col gap-0.5 rounded-[2px] border p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
+          className="bg-raised-hi border-line-hi z-40 flex w-60 flex-col gap-0.5 rounded-xl border p-1.5"
         >
           {children}
         </DropdownMenu.Content>
@@ -424,12 +462,12 @@ function RowMenuItem({
   return (
     <DropdownMenu.Item
       onSelect={onSelect}
-      className={`hover:bg-line focus-visible:bg-line flex items-center justify-between gap-2 rounded-[2px] px-2 py-2 text-left text-[12px] transition-colors ${
+      className={`hover:bg-line focus-visible:bg-line flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[14px] font-medium transition-colors ${
         danger ? 'text-danger' : 'text-ink'
       }`}
     >
       <span>{label}</span>
-      {reason && <span className="type-data text-dimmer text-[10px]">{reason}</span>}
+      {reason && <span className="text-dimmer text-[12.5px]">{reason}</span>}
     </DropdownMenu.Item>
   )
 }
@@ -437,10 +475,10 @@ function RowMenuItem({
 function DetachedTag() {
   return (
     <span
-      className="text-series shrink-0"
+      className="stk stk-danger shrink-0"
       title="Deleted. It still works here, but you can't edit it."
     >
-      · unavailable
+      Unavailable
     </span>
   )
 }
@@ -471,7 +509,7 @@ function CatalogRow({
   const catalog = home.catalogById.get(row.id)
   const detached = home.isDetached(row.id)
   const detail = catalog
-    ? describeRecipe(catalog, home.genres[tmdbKind(catalog.type)]).join(' · ')
+    ? recipeLine(catalog, home.genres[tmdbKind(catalog.type)])
     : ''
 
   return (
@@ -486,12 +524,17 @@ function CatalogRow({
       onMoveDown={() => onMove(1)}
     >
       <RowBody>
-        <span className="truncate text-[13px] font-medium">{row.name}</span>
-        <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
-          <span className="truncate">{detail || 'no filters'}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[16.5px] font-bold">{row.name}</span>
+          {catalog && (
+            <span className="stk stk-kind shrink-0">
+              {catalog.type === 'movie' ? 'Movies' : 'Series'}
+            </span>
+          )}
           {detached && <DetachedTag />}
         </span>
-        {children}
+        <span className="text-dim truncate text-[13.5px]">{detail || 'No filters'}</span>
+        <div className="mt-1.5">{children}</div>
       </RowBody>
 
       <RowMenu name={row.name}>
@@ -536,12 +579,13 @@ function CollectionRow({
       onMoveDown={() => onMove(1)}
     >
       <RowBody>
-        <span className="truncate text-[13px] font-medium">{collection.title}</span>
-        <span className="type-data text-dimmer flex min-w-0 items-baseline gap-1.5 text-[10.5px]">
-          <span className="truncate">{detail}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[16.5px] font-bold">{collection.title}</span>
+          <span className="stk stk-kind shrink-0">Collection</span>
           {detached && <DetachedTag />}
         </span>
-        {children}
+        <span className="text-dim truncate text-[13.5px]">{detail}</span>
+        <div className="mt-1.5">{children}</div>
       </RowBody>
 
       <RowMenu name={collection.title}>
@@ -551,8 +595,8 @@ function CollectionRow({
   )
 }
 
-/** A collection's strip: its folders, at the 64–171×96 sizes DESIGN.md's
- *  running-order row spec gives each shape — narrower than `FolderTile`'s own
+/** A collection's strip: its folders at the catalog rows' 126px poster height,
+ *  each as wide as its own tile shape — taller than `FolderTile`'s own
  *  92px-high preview tile, so this draws its own box rather than reusing it. */
 function FolderStrip({ folders }: { folders: PreviewFolder[] }) {
   if (folders.length === 0) return null
@@ -566,7 +610,7 @@ function FolderStrip({ folders }: { folders: PreviewFolder[] }) {
 }
 
 function FolderStripTile({ folder }: { folder: PreviewFolder }) {
-  const height = 96
+  const height = 126
   const width = height * TILE_ASPECT[folder.tileShape]
   const name = folder.title || 'Untitled folder'
 
@@ -574,14 +618,14 @@ function FolderStripTile({ folder }: { folder: PreviewFolder }) {
     <span
       style={{ width: `${width}px`, height: `${height}px` }}
       title={name}
-      className="bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border px-1"
+      className="bg-raised-hi relative grid shrink-0 place-items-center overflow-hidden rounded-md px-1"
     >
       {folder.coverEmoji ? (
         <span aria-hidden="true" className="text-[18px] leading-none">
           {folder.coverEmoji}
         </span>
       ) : (
-        <span aria-hidden="true" className="type-data text-dimmer text-center text-[8px] leading-tight">
+        <span aria-hidden="true" className="type-data text-dimmer text-center text-[10px] leading-tight">
           {name}
         </span>
       )}
@@ -612,9 +656,9 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
 
   return (
     <section className="flex flex-col gap-2">
-      <div className="border-line-hi flex flex-col gap-0.5 border-b pb-2">
-        <span className="type-eyebrow">Not on home</span>
-        <p className="type-data text-dimmer m-0 text-[10.5px]">
+      <div className="border-line-hi flex flex-col gap-1 border-b pb-2.5">
+        <h2 className="text-ink m-0 text-[16px] font-bold">Not on home</h2>
+        <p className="text-dim m-0 text-[13.5px]">
           In Discover only. Still reachable on your TV, just not as a home row.
         </p>
       </div>
@@ -627,7 +671,7 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
               className="border-line flex items-center justify-between gap-3 border-b py-3"
             >
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-[12.5px]">{row.name}</span>
+                <span className="truncate text-[15px] font-semibold">{row.name}</span>
                 {detached && <DetachedTag />}
               </div>
               <button
@@ -646,5 +690,5 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
 }
 
 function EmptyBlock({ children }: { children: ReactNode }) {
-  return <p className="type-data text-dimmer m-0 py-3 text-[11px]">{children}</p>
+  return <p className="text-dim m-0 py-3 text-[14px]">{children}</p>
 }

@@ -100,7 +100,7 @@ export function RangeField({
           so they belong beside the name of the thing they bound rather than
           stacked below it as a second, wider control. */}
       <div className="flex items-center gap-2">
-        <label className="type-eyebrow mr-1 min-w-0 flex-1 leading-[1.3]">
+        <label className="type-label mr-1 min-w-0 flex-1 leading-[1.3]">
           {label}
           {unit && <span className="text-dimmer normal-case"> ({unit})</span>}
         </label>
@@ -221,7 +221,7 @@ export function GenreCycler({
       </div>
       {withIds.length >= 2 && (
         <div className="ed-line">
-          <span className="cr-role type-eyebrow">Included genres</span>
+          <span className="setting-label type-label">Included genres</span>
           <Segmented
             ariaLabel="How to combine included genres"
             value={withJoin}

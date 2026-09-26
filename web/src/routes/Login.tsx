@@ -3,7 +3,9 @@ import type { FormEvent } from 'react'
 import type { Location } from 'react-router-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { TriangleAlert } from 'lucide-react'
+import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
+import { Wordmark } from '@/components/Wordmark'
 import { NuvioAuthError, loginWithBypassToken, useAuth } from '@/auth'
 
 // Gated on import.meta.env.DEV so the whole bypass branch is statically dead
@@ -63,24 +65,27 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-svh px-4">
-      <main className="mx-auto w-full max-w-[560px] pt-[18vh] pb-16 max-sm:pt-[12vh] max-sm:pb-40">
-        <header className="border-line mb-8 grid gap-4 border-b pb-8">
-          <h1 className="type-wordmark m-0 text-[40px] leading-none max-sm:text-[28px]">Uno</h1>
-          <h2 className="type-display m-0 text-[20px] leading-[28px]">
-            Build your Nuvio home screen.
+    <div className="min-h-svh">
+      <Fascia className="h-2" />
+      <main className="mx-auto w-full max-w-[480px] px-4 pt-[14vh] pb-16 max-sm:pt-[9vh] max-sm:pb-40">
+        <header className="mb-8 grid gap-5">
+          <h1 className="m-0 justify-self-start">
+            <Wordmark className="text-ink block h-[26px] w-auto max-sm:h-[20px]" />
+          </h1>
+          <h2 className="type-sign m-0 text-[34px] leading-[1.05] max-sm:text-[25px]">
+            Build your Nuvio home screen
           </h2>
-          <p className="text-dim m-0 max-w-[44ch] text-[15px] leading-[22px]">
+          <p className="text-dim m-0 max-w-[44ch] text-[16px] leading-[1.5]">
             Sign in with the account you use on your TV. There&rsquo;s no separate Uno account.
           </p>
         </header>
 
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="cr is-field">
-            <label htmlFor="login-email" className="cr-role type-eyebrow">
+        <form onSubmit={handleSubmit} noValidate className="bg-raised rounded-2xl px-5 pt-3 pb-5">
+          <div className="setting">
+            <label htmlFor="login-email" className="setting-label type-label">
               Email
             </label>
-            <div className="cr-val">
+            <div className="setting-value">
               <input
                 id="login-email"
                 type="email"
@@ -104,11 +109,11 @@ export function Login() {
             </div>
           </div>
 
-          <div className="cr is-field">
-            <label htmlFor="login-password" className="cr-role type-eyebrow">
+          <div className="setting">
+            <label htmlFor="login-password" className="setting-label type-label">
               Password
             </label>
-            <div className="cr-val">
+            <div className="setting-value">
               <input
                 id="login-password"
                 type="password"
@@ -132,7 +137,7 @@ export function Login() {
             </div>
           </div>
 
-          <div className="grid justify-items-start gap-3 pt-4 pl-[200px] max-sm:justify-items-stretch max-sm:pl-0">
+          <div className="grid justify-items-start gap-3 pt-4 max-sm:justify-items-stretch">
             <button
               type="submit"
               disabled={submitting}
@@ -152,10 +157,10 @@ export function Login() {
 
         {devBypassToken && (
           <div className="border-line mt-8 flex flex-col gap-2 border-t pt-4">
-            <button type="button" onClick={handleDevBypass} className="btn-quiet self-start px-0">
+            <button type="button" onClick={handleDevBypass} className="btn-quiet -ml-3 self-start">
               Dev bypass login
             </button>
-            <p className="type-data text-dimmer m-0 text-[11.5px]">
+            <p className="type-data text-dimmer m-0 text-[13px]">
               Local dev only — signs in as the server&rsquo;s fake account.
             </p>
           </div>

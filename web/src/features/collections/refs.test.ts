@@ -22,7 +22,7 @@ const options = buildRefOptions(
 
 describe('buildRefOptions', () => {
   it('describes each recipe with the genre names of its own type', () => {
-    expect(options.map((option) => option.recipe)).toEqual(['Horror', 'Drama', 'no filters'])
+    expect(options.map((option) => option.recipe)).toEqual(['Horror', 'Drama', 'No filters'])
   })
 })
 

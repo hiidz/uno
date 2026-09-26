@@ -75,7 +75,7 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
   return (
     <div className="ed-pv">
       <div className="ed-pv-head">
-        <span className="type-eyebrow">On your TV</span>
+        <span className="type-label">On your TV</span>
       </div>
 
       <div className="tv-bezel tv-crop">

@@ -30,7 +30,7 @@ while `web/src/features/catalogs/fields.tsx` re-exports them and keeps `NumberIn
 `RangeField`, `GenrePicker`, which are catalog-shaped. `EditorShell` + `EditorFooter` +
 `useEditorForm` under `web/src/features/builder/` are the scaffolding both editors sit in, so a
 catalog and a collection get the same header, dirty state, footer, and save/discard behaviour
-from one place. `web/src/features/preview/` holds the Jost-styled tile rendering shared by the
+from one place. `web/src/features/preview/` holds the Figtree-styled tile rendering shared by the
 collection editor's own preview panel and the catalog editor's Run button. The Home pane's
 Preview on TV tab is a separate tree, `web/src/features/home/tv.tsx` — Roboto inside a real
 framed bezel, not a restyle of `features/preview/` — because `cqw` sizing only means anything
@@ -103,7 +103,8 @@ naming the pending count when edits are pending; `useUnloadGuard` covers reload 
 
 `web/src/routes/Builder.tsx` renders one top-level `Segmented` switch, Workspace / Community
 (its own row below `lg`, matching DESIGN.md's two-row phone top bar) — everything below is one
-of the two. Push, the pending indicator, and the profile chip sit in the header outside both:
+of the two. Push and the profile chip sit in the header outside both, and so does the pending
+indicator (beside Push from `lg` up, in the tab row below it):
 Home's state and its commit don't belong to either tab. Switching tabs goes through the same
 `EditorGuard` an in-app exit already does, since it unmounts `Workspace` (and any editor mid-edit
 inside it) the same way leaving `/configure` would; unlike leaving the page, it also resets
@@ -655,24 +656,23 @@ button.
   in `components/dnd.tsx` the Home pane's rows use). A folder's own catalogs are running-order
   rows (`.run-row`) that number in plain figures ("1", "2") and carry only the grip inline — see
   the "⋯" note below.
-- **Folders are a tile strip, the way the TV draws them.** Under the "Folders" `.cr.is-head` row
+- **Folders are a tile strip, the way the TV draws them.** Under the "Folders" `.setting.is-head`
+  heading
   (holding "Add folder"), `FolderTiles` draws each folder at its own `tile_shape` with its cover,
   name and catalog count — the editor's list and the "On your TV" row are the same picture. One
   folder is always selected (the one picked, else the first), and `FolderDetail` shows it below
   the strip as one raised panel: a heading with its name, "1st of 2" and an appearance summary,
-  ←/→ and Remove; then its title, then its catalogs (a `.cr.is-head` row with "New catalog" and
+  ←/→ and Remove; then its title, then its catalogs (a `.setting.is-head` heading with "New catalog" and
   "Add catalogs"), then an "Appearance" `.sec-head` that folds away hide-title, tile shape,
   cover, the focus GIF (URL plus an on/off) and the three Modern Home hero URLs (backdrop, video,
   title logo). Preview renders none of the focus or hero fields; they only reach the TV through
-  push. Catalogs come before appearance because they're what a folder is opened for. Inside the
-  panel the credit grid narrows to a 128px role column, so the folder's settings read as inside
-  the folder rather than as more of the collection's; fields drop to `ground` so they don't
-  vanish into the `raised` panel. A failed Save selects the first folder with errors, and every
-  other folder with errors shows a danger triangle on its tile. Anything without a role of its
-  own — the empty state, the picker, errors — takes `.cr-indent`. Below 640px the panel's grid
-  collapses the same way `.cr` does; on touch the tile grip is always visible (there's no hover
-  to reveal it) and the heading's ←/→/Remove spread apart so their 44px `.tap` boxes don't
-  overlap.
+  push. Catalogs come before appearance because they're what a folder is opened for. The panel is
+  a shelf of its own, so the folder's settings read as inside the folder rather than as more of
+  the collection's; its fields and folding sections step to `ground` and `raised-hi` so they
+  don't vanish into it. A failed Save selects the first folder with errors, and every other
+  folder with errors shows a danger triangle on its tile. On touch the tile grip is always
+  visible (there's no hover to reveal it) and the heading's ←/→/Remove spread apart so their
+  44px `.tap` boxes don't overlap.
 - **The catalog-ref picker is inline under the Catalogs head**, not a dialog — a scrim would hide the
   folder being filled. It stays open across picks and drops each chosen row out of the list, so
   what remains is always exactly what can still be added.
@@ -850,7 +850,7 @@ does, Update brings it in line with the owner's changes on request.
 
 ## Push UI
 
-Header button beside the pending indicator. **One call**, one indeterminate in-flight state — no
+Header button, beside the pending indicator from `lg` up. **One call**, one indeterminate in-flight state — no
 staged progress, because it is one HTTP call from the frontend's perspective and animating
 through fake stages ("Saving…", "Installing addon…") would be fabricated.
 
@@ -905,44 +905,68 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 
 ## Visual direction
 
-Dark-only, single-theme, deliberate: every reference client (Stremio, Nuvio, Plex, Jellyfin) is
-dark, and this app configures a TV. Nothing here is a stock default.
+Dark-only, single theme: the builder is used at a desk and on the couch beside a TV in the
+evening, and a light theme is ruled out. `DESIGN.md` holds the full system —
+tokens, components, rules; this section says what the frontend implements and where.
 
-**The constraint that drives it:** in a *list* there is no artwork to carry the UI, so the
-**summary line is the content**, and the list is designed to make standing queries scannable
-rather than to frame posters. The rail, both editors, and the List view stay artwork-free by
-choice. Preview is the one place posters land, which makes the `List | Preview` switch a payoff
-rather than a mode change.
+**Video Store, after hours.** The builder reads like a neighbourhood video shop after closing:
+each region is announced by a sign in its own colour, every catalog carries a plain-words line
+saying what it returns, and the home screen is the front shelf, in TV order.
 
-**Palette — derived from SMPTE colour bars**, desaturated into a working set. Television's own
-artifact for "nothing to show", which is exactly this page's condition. Near-black ground
-(`#0B0B0C`); two working hues — cyan `#4EA8B8` for movie, amber `#C39A3E` for series — violet
-`#8E7BC4` for collections, red `#E0594E` reserved for destructive. Tokens live in
-`web/src/index.css` as `--uno-*` custom properties, exposed to Tailwind via `@theme inline`.
+**Colour holds one meaning per hue.** A night-navy ground and its shelves (`--uno-ground`,
+`--uno-raised`, `--uno-raised-hi`) carry the layout. Three hues name the regions — catalog
+tangerine, collection green, community pink — and TV yellow means "bound for the TV" and nothing
+else: Push, what is on the home screen, what is not on the TV yet. Danger red marks what can't be
+undone, always beside words. A region's colour reaches its primary button and headings through
+`--accent`, set by the `.tone-*` classes: `EditorShell` sets `tone-catalog` or `tone-collection`,
+the Home pane `tone-tv`, Community `tone-community`. Tokens live in `web/src/index.css` as
+`--uno-*` custom properties, exposed to Tailwind via `@theme inline`.
 
-**Type — one family everywhere except the TV screen.** Jost Variable, at two weights (400 body,
-500 label/button/heading) via its `wght` axis, carries every word Uno says, including recipes,
-ids, and numbers — there is no separate mono face. Roboto is the TV's own face, the Two Faces
-Rule, loaded only inside `.tv-screen`, never elsewhere. `@fontsource-variable/jost/wght.css` and
-`@fontsource/roboto` ship both. Fontsource packages, not
-the Google Fonts CDN, because the build is `go:embed`'d and must not carry a runtime font
-dependency.
+**Signs.** `.sign` is a flat band in its region's colour across the full width of what it names —
+the rail's Catalogs and Collections, the Home pane, each editor's header, Community — lettered in
+`.type-sign`.
 
-**Signature — the type bar.** Every row carries a 3px full-height colour bar at its left edge,
-hue by type. Read down a list, the column of bars is a test pattern. Applies everywhere a
-catalog or collection is listed. It is `aria-hidden`, so anywhere ownership matters the row
-states it in text too — every row in the library and its editors is the caller's own, so there
-is no ownership distinction left to encode in the bar itself.
+**Type — two faces for Uno, one for the TV.** Figtree carries every word Uno says; Archivo at its
+widest and heaviest is sign lettering only. Roboto is the TV's own face, loaded only inside
+`.tv-screen`. All three ship as Fontsource packages (`@fontsource-variable/figtree/wght.css`,
+`@fontsource-variable/archivo/wdth.css` — the file that carries Archivo's width axis — and
+`@fontsource/roboto`), not the Google Fonts CDN: the build is `go:embed`'d, and the CSP allows
+fonts only from `'self'` and `data:`.
 
-**The one loud moment: an empty home screen renders full-saturation colour bars** with a caption
-slug across them. It is the only place the `--smpte-*` tokens fire at full amplitude, it is
-literally correct (no content, so the screen shows bars), and it is first-run-only in practice.
-Everything else stays quiet so it lands. In the Preview view only — List's empty state stays a
-plain instruction, because there the user is being told what to do next rather than shown what
-their screen looks like.
+**Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Shared
+(`.stk-shared`, community pink, because Community is where a shared row turns up), and
+Unavailable (`.stk-danger`). A library row's home-screen toggle is `.tv-sticker`: a dashed empty
+circle while it's off the TV, a yellow ON TV price sticker once it's on. A home row's position is
+a yellow `.pos-sticker`, read out as "3rd on your TV"; the pending count and a profile's slot
+number are `.count-sticker`s.
 
-**Motion — one orchestrated moment.** Type bars scale in staggered on mount, the rundown signing
-on. Everything else is 120ms hover/focus. `prefers-reduced-motion` respected.
+**Settings — label above control.** Every editor setting is a `.setting`: its label
+(`.setting-label`) above the control, on the form's one left edge. Folding sections (`.sec-head`
+and `.sec-body`) are shelves that open in place; a heading inside a form (`.setting.is-head`) is
+sign lettering in the region's colour over a rule of the same colour. The catalog editor opens
+with a `.talker`: the recipe as a sentence (`recipeSentence`, `web/src/features/library/recipe.ts`),
+kept current as the settings below it change. The rail, the Home rows and a folder's catalog
+picker show the same recipe as one line (`recipeLine`, or `catalogListing` where the list is also
+searched).
+
+**Shapes and depth.** Buttons, stickers and segmented controls are pills; fields are
+10px-rounded wells; shelves, panels and dialogs round at 14–20px. Depth is tonal — ground, then
+raised, then raised-hi — and nothing casts a drop shadow: menus, popovers and dialogs separate by
+a lighter fill and a `line-hi` edge, over the scrim where they block.
+
+**Motion — the sticker moment.** Putting a row on the TV from the rail slaps the ON TV sticker on
+(`uno-slap` in `index.css`), and a successful push counts the pending number down to zero
+(`useCountDown`) before the clean state shows. Everything else is a 160ms colour or background
+transition on the one easing curve, `--uno-ease`. `prefers-reduced-motion` turns both off.
+
+**The TV preview keeps its own look.** Inside `.tv-bezel` everything is the reference client's:
+Roboto, its own greys, and — when nothing is on the home screen — full-amplitude SMPTE colour
+bars (`--smpte-*`), television's own picture for "nothing to show", in the Preview view only.
+Uno's words about the picture sit outside the frame.
+
+**The way in.** The sign-in page and the profile picker carry the shop's fascia — the four hues
+side by side (`web/src/components/Fascia.tsx`) — and each profile is a membership card. The
+fascia appears nowhere inside the builder, where each hue stands for its own region.
 
 **Copy — written for someone who has never heard of TMDB, Stremio, or an addon manifest.** The
 user signs into Nuvio and builds rows for their TV; that is the whole of what they are assumed

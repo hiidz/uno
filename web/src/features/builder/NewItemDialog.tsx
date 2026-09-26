@@ -46,7 +46,7 @@ export function NewItemDialog({
   return (
     <Modal open={open} onClose={onClose} labelledBy={`new-${noun}-title`} width="440px">
       <ModalHeader>
-        <h2 id={`new-${noun}-title`} className="type-display m-0 text-[15px]">
+        <h2 id={`new-${noun}-title`} className="type-display m-0 text-[18px]">
           New {noun}
         </h2>
       </ModalHeader>
@@ -124,14 +124,14 @@ function NewItemForm({
           {extra}
 
           {serverError && (
-            <p className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px]">
+            <p className="callout-danger type-data">
               Couldn't create this {noun}: {serverError}
             </p>
           )}
         </div>
       </ModalBody>
 
-      <ModalFooter>
+      <ModalFooter tone={noun === 'collection' ? 'collection' : 'catalog'}>
         <button type="button" onClick={onClose} className="btn-ghost">
           Cancel
         </button>

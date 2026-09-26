@@ -160,7 +160,7 @@ export function WatchProviderPicker({
               the page is one document and a short fixed box inside it is a box
               a thumb gets caught in; half the viewport is still one scroll
               region, sized to the screen it is actually on. */}
-          <div className="border-line flex max-h-[50svh] flex-wrap gap-1.5 overflow-y-auto overscroll-contain rounded-[2px] border p-2 lg:max-h-[13rem]">
+          <div className="border-line flex max-h-[50svh] flex-wrap gap-1.5 overflow-y-auto overscroll-contain rounded-xl border p-2 lg:max-h-[13rem]">
             {shown.map((service) => {
               const selected = selectedIDs.includes(service.id)
               return (
@@ -169,7 +169,7 @@ export function WatchProviderPicker({
                   type="button"
                   onClick={() => toggle(service.id)}
                   aria-pressed={selected}
-                  className={`rounded-[2px] border px-2 py-1 text-[11px] transition-colors pointer-coarse:py-3 ${
+                  className={`rounded-full border px-2 py-1 text-[12.5px] transition-colors pointer-coarse:py-3 ${
                     selected
                       ? 'bg-raised-hi border-dim text-ink'
                       : 'border-line text-dim hover:border-dim hover:text-ink'

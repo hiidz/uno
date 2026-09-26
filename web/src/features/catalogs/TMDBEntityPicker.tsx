@@ -285,7 +285,7 @@ export function TMDBEntityPicker({
             return (
               <li
                 key={id}
-                className={`inline-flex items-center rounded-[2px] border pl-2 text-[11px] ${
+                className={`inline-flex items-center rounded-full border pl-2 text-[12.5px] ${
                   missing ? 'border-danger text-danger' : 'bg-raised-hi border-dim text-ink'
                 }`}
               >
@@ -339,7 +339,7 @@ export function TMDBEntityPicker({
           ref={resultsRef}
           aria-label={`Matching ${plural}`}
           onKeyDown={onResultsKeyDown}
-          className="border-line m-0 flex max-h-[50svh] w-full max-w-[var(--w-entry)] list-none flex-col overflow-y-auto overscroll-contain rounded-[2px] border p-1 lg:max-h-[13rem]"
+          className="border-line m-0 flex max-h-[50svh] w-full max-w-[var(--w-entry)] list-none flex-col overflow-y-auto overscroll-contain rounded-xl border p-1 lg:max-h-[13rem]"
         >
           {matches.map((entity) => (
             <li key={entity.id}>
@@ -347,7 +347,7 @@ export function TMDBEntityPicker({
                 type="button"
                 onClick={() => add(entity)}
                 aria-label={`Add ${entity.name}`}
-                className="text-dim hover:bg-raised-hi hover:text-ink focus-visible:bg-raised-hi focus-visible:text-ink w-full rounded-[2px] px-2 py-1.5 text-left text-[12.5px] transition-colors pointer-coarse:py-3"
+                className="text-dim hover:bg-raised-hi hover:text-ink focus-visible:bg-raised-hi focus-visible:text-ink w-full rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors pointer-coarse:py-3"
               >
                 {entity.name}
                 {source.rowDetail && (

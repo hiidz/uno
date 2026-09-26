@@ -36,7 +36,7 @@ export function ImportDialog({
   return (
     <Modal open={open} onClose={onClose} labelledBy="import-title" width="560px">
       <ModalHeader>
-        <h2 id="import-title" className="type-display m-0 text-[15px]">
+        <h2 id="import-title" className="type-display m-0 text-[18px]">
           Import
         </h2>
       </ModalHeader>
@@ -116,7 +116,7 @@ function ImportFlow({
         {importing.error && (
           <p
             role="alert"
-            className="type-data text-danger border-danger mt-4 mb-0 border-l-2 pl-3 text-[11px]"
+            className="callout-danger type-data mt-4"
           >
             Couldn't import: {importing.error.message}
           </p>
@@ -177,7 +177,7 @@ function PickStep({
       {error && (
         <p
           role="alert"
-          className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45] break-words"
+          className="callout-danger type-data break-words"
         >
           {error}
         </p>
@@ -267,7 +267,7 @@ function MatchRow({
     <li className="border-line flex min-w-0 flex-col gap-2 border-t py-3">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="text-ink text-[13px] break-words">{match.name}</span>
-        <span className="type-data text-dimmer text-[11px] break-words">
+        <span className="type-data text-dimmer text-[12.5px] break-words">
           {scoped ? `${kind} · in the collection ${match.collection}` : kind}
         </span>
       </div>
@@ -289,12 +289,12 @@ function MatchRow({
             options={match.existing.map((e) => ({ value: e.id, label: e.name }))}
           />
         ) : (
-          <span className="type-data text-dim text-[11px] break-words">
+          <span className="type-data text-dim text-[12.5px] break-words">
             Uses {match.existing[0].name} from your library
           </span>
         ))}
       {choice.useExisting && scoped && (
-        <span className="type-data text-dimmer text-[11px] leading-[1.45]">
+        <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
           The collection will share your library catalog, so later edits to it show up there
           too.
         </span>

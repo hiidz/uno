@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Download, Plus, Search, Upload } from 'lucide-react'
 import { tmdbKind } from '@/api'
+import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { describeCollection } from './collection'
 import { LibraryItem } from './LibraryItem'
-import { catalogSearchText } from './recipe'
+import { catalogListing } from './recipe'
 import type { Library, LibraryCatalog, LibraryCollection } from './useLibrary'
 
 /**
@@ -53,17 +55,16 @@ export function LibrarySection({
 
   const query = search.trim().toLowerCase()
 
-  // `catalogSearchText` still parses each catalog's params JSON so genre names
-  // remain searchable, even though the rail no longer displays the recipe.
+  // One pass over each catalog's recipe gives both the summary line a row
+  // shows and the text the filter matches, genre names included.
   const catalogRows = useMemo(
     () =>
       library.catalogs.map((catalog) => {
-        const lookup = library.genres[tmdbKind(catalog.type)]
-        return {
+        const { line, searchText } = catalogListing(
           catalog,
-          summary: catalog.type === 'movie' ? 'Movies' : 'Series',
-          searchText: catalogSearchText(catalog, lookup),
-        }
+          library.genres[tmdbKind(catalog.type)],
+        )
+        return { catalog, summary: line, searchText }
       }),
     [library.catalogs, library.genres],
   )
@@ -90,24 +91,33 @@ export function LibrarySection({
 
   return (
     <section className="border-line flex flex-col gap-2.5 border-b p-4 last:border-b-0 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-      <div className="flex items-center justify-between gap-2">
-        <span className="type-eyebrow flex-1">Mine</span>
-        <button type="button" className="btn-ghost" onClick={onImport}>
+      <div className="flex items-center justify-between gap-1">
+        <h2 className="text-ink m-0 flex-1 text-[16px] font-bold">Mine</h2>
+        <button type="button" className="btn-ghost btn-sm" onClick={onImport}>
+          <Icon icon={Download} size={15} />
           Import
         </button>
-        <button type="button" className="btn-ghost" onClick={onExport}>
+        <button type="button" className="btn-ghost btn-sm" onClick={onExport}>
+          <Icon icon={Upload} size={15} />
           Export
         </button>
       </div>
       {notice}
-      <input
-        type="search"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder="Filter by name or genre…"
-        aria-label="Filter your library"
-        className="field type-data w-full text-[12px] pointer-coarse:text-[16px]"
-      />
+      <div className="relative">
+        <Icon
+          icon={Search}
+          size={16}
+          className="text-dimmer pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2"
+        />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Filter by name or genre"
+          aria-label="Filter your library"
+          className="field h-10 w-full pl-10 text-[14px] pointer-coarse:text-[16px]"
+        />
+      </div>
 
       {/* One error and one Retry for the whole library: both lists come from
           the same kind of request, and a single refetch reloads whichever
@@ -126,9 +136,16 @@ export function LibrarySection({
 
       <LibraryGroup
         label="Catalogs"
+        tone="catalog"
         action={
           onNewCatalog && (
-            <button type="button" className="btn-ghost" onClick={onNewCatalog}>
+            <button
+              type="button"
+              className="sign-btn"
+              onClick={onNewCatalog}
+              aria-label="New catalog"
+            >
+              <Icon icon={Plus} size={14} />
               New
             </button>
           )
@@ -165,9 +182,16 @@ export function LibrarySection({
 
       <LibraryGroup
         label="Collections"
+        tone="collection"
         action={
           onNewCollection && (
-            <button type="button" className="btn-ghost" onClick={onNewCollection}>
+            <button
+              type="button"
+              className="sign-btn"
+              onClick={onNewCollection}
+              aria-label="New collection"
+            >
+              <Icon icon={Plus} size={14} />
               New
             </button>
           )
@@ -207,6 +231,7 @@ export function LibrarySection({
 
 function LibraryGroup({
   label,
+  tone,
   action,
   count,
   isLoading,
@@ -215,6 +240,8 @@ function LibraryGroup({
   children,
 }: {
   label: string
+  /** The region's colour: its sign. */
+  tone: 'catalog' | 'collection'
   action?: React.ReactNode
   count: number
   isLoading: boolean
@@ -228,11 +255,13 @@ function LibraryGroup({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="border-line mb-1 flex items-center gap-2 border-b pb-2">
-        <span className="type-eyebrow flex-1">{label}</span>
-        {!isLoading && (
-          <span className="type-data text-dimmer text-[10px]">{count}</span>
-        )}
+      {/* The sign spans the rail edge to edge, out through the section's own
+          padding; the rows sit 8px in from it. */}
+      <div className={`sign tone-${tone} -mx-4 mt-1.5 mb-1`}>
+        <h3 className="type-sign m-0 flex flex-1 items-center gap-2.5">
+          {label}
+          {!isLoading && <span className="sign-count">{count}</span>}
+        </h3>
         {action}
       </div>
       <ListState
@@ -243,7 +272,7 @@ function LibraryGroup({
         errorLabel=""
         emptyLabel={emptyLabel}
       >
-        {children}
+        <div className="-mx-2 flex flex-col gap-0.5">{children}</div>
       </ListState>
     </div>
   )

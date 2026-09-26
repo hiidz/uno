@@ -88,14 +88,14 @@ export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
     >
       <span
         style={{ width: `${width}px`, height: `${height}px` }}
-        className="bg-raised border-line group-hover:border-line-hi relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border px-1 transition-colors"
+        className="bg-raised border-line group-hover:border-line-hi relative grid shrink-0 place-items-center overflow-hidden rounded-md border px-1 transition-colors"
       >
         {folder.coverEmoji ? (
           <span aria-hidden="true" className="text-[22px] leading-none">
             {folder.coverEmoji}
           </span>
         ) : (
-          <span aria-hidden="true" className="type-data text-dimmer text-center text-[9px] leading-tight">
+          <span aria-hidden="true" className="type-data text-dimmer text-center text-[11px] leading-tight">
             {name}
           </span>
         )}
@@ -113,7 +113,7 @@ export function FolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
 
       <span
         style={{ maxWidth: `${width}px` }}
-        className="type-data text-dim truncate text-[10px]"
+        className="type-data text-dim truncate text-[12px]"
         aria-hidden="true"
       >
         {/* `hide_title` hides the tile's title text on the TV, so preview hides
@@ -200,7 +200,17 @@ export function TileRun({
   wrap: boolean
   kind?: TileKind
 }) {
-  const className = `flex gap-2 overflow-hidden ${wrap ? 'flex-wrap' : ''}`
+  // A strip (`wrap` off) is one row of whole tiles: fixed-width columns fill
+  // the row only as far as a tile fits entire, and the tiles past them fall to
+  // rows the strip's own height clips away — never a poster cut at the edge.
+  const className = wrap ? 'flex flex-wrap gap-2 overflow-hidden' : 'grid gap-x-2 overflow-hidden'
+  const style = wrap
+    ? undefined
+    : {
+        gridTemplateColumns: `repeat(auto-fill, ${width}px)`,
+        gridAutoRows: `${height}px`,
+        height: `${height}px`,
+      }
 
   // A settled, empty result draws nothing at all — placeholders there would
   // read as perpetual loading, and the caller's own note has already said why
@@ -209,7 +219,7 @@ export function TileRun({
 
   if (tiles.items.length === 0) {
     return (
-      <div aria-hidden="true" className={className}>
+      <div aria-hidden="true" className={className} style={style}>
         {Array.from({ length: TILES_PER_PAGE }, (_, i) => (
           <PlaceholderTile key={i} width={width} height={height} />
         ))}
@@ -218,7 +228,7 @@ export function TileRun({
   }
 
   return (
-    <div className={className}>
+    <div className={className} style={style}>
       {tiles.items.map((item) => (
         // TMDB numbers movies and TV separately, so the "All" tab can hold
         // two tiles with one id.
@@ -260,7 +270,7 @@ export function ContentTile({
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>
-      <span className="type-data text-dimmer px-1 text-center text-[9px] leading-tight">
+      <span className="type-data text-dimmer px-1 text-center text-[11px] leading-tight">
         {item.title}
       </span>
       {item.poster && (
@@ -273,7 +283,7 @@ export function ContentTile({
       )}
     </>
   )
-  const box = 'bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-[2px] border'
+  const box = 'bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-md border'
   const style = { width: `${width}px`, height: `${height}px` }
 
   if (!resolvedKind) {
@@ -301,7 +311,7 @@ export function ContentTile({
 export function PlaceholderTile({ width, height }: { width: number; height: number }) {
   return (
     <span
-      className="bg-raised border-line shrink-0 rounded-[2px] border"
+      className="bg-raised border-line shrink-0 rounded-md border"
       style={{ width: `${width}px`, height: `${height}px` }}
     />
   )
@@ -314,7 +324,7 @@ export function PlaceholderTile({ width, height }: { width: number; height: numb
  * side by side read as one clause rather than two independent sentences.
  */
 export function Note({ children }: { children: ReactNode }) {
-  return <span className="type-data text-dimmer shrink-0 text-[10px]">· {children}</span>
+  return <span className="type-data text-dimmer shrink-0 text-[12px]">· {children}</span>
 }
 
 /**
@@ -333,7 +343,7 @@ export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
   if (tiles.isError) {
     return (
       <span
-        className="type-data text-dimmer shrink-0 text-[10px]"
+        className="type-data text-dimmer shrink-0 text-[12px]"
         title="The catalog itself is fine — only this preview failed to load."
       >
         · couldn't load titles — showing layout only
@@ -342,7 +352,7 @@ export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
   }
 
   if (tiles.items.length === 0) {
-    return <span className="type-data text-dimmer shrink-0 text-[10px]">· nothing matches these filters right now</span>
+    return <span className="type-data text-dimmer shrink-0 text-[12px]">· nothing matches these filters right now</span>
   }
 
   if (tiles.randomized) {
@@ -350,7 +360,7 @@ export function TilesNote({ tiles }: { tiles: CatalogTiles }) {
     // these specific titles are not what the TV will show.
     return (
       <span
-        className="type-data text-dimmer shrink-0 text-[10px]"
+        className="type-data text-dimmer shrink-0 text-[12px]"
         title="This catalog shuffles, so your TV gets a different set each time. These are a sample, not a prediction."
       >
         · shuffles — your TV will show a different set

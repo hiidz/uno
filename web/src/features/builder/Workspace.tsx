@@ -3,8 +3,10 @@ import type { ComponentProps } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
 import type { CatalogType, CollectionPayload, ImportResult } from '@/api'
+import { ArrowDown } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Field, Segmented } from '@/components/fields'
+import { Icon } from '@/components/Icon'
 import { Toast } from '@/components/Toast'
 import { useToast } from '@/components/useToast'
 import { ExportDialog } from '@/features/bundle/ExportDialog'
@@ -90,7 +92,13 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  * viewport and nothing else: the editor stays mounted and stays dirty, exactly
  * as it does above `lg` while the rail sits beside it.
  */
-export function Workspace({ profileIndex }: { profileIndex: number }) {
+export function Workspace({
+  profileIndex,
+  profileName,
+}: {
+  profileIndex: number
+  profileName: string
+}) {
   const library = useLibrary(profileIndex)
   // Edits only: reading the selection here would re-render the whole
   // workspace, open editor included, on every change to the home screen.
@@ -645,10 +653,8 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               target === null ? 'bg-raised-hi' : ''
             }`}
           >
-            <span className="type-display flex-1 text-[12px]">Your home screen</span>
-            <span aria-hidden="true" className="type-data text-dimmer text-[13px] leading-none">
-              ↓
-            </span>
+            <span className="type-display flex-1 text-[15px]">Your home screen</span>
+            <Icon icon={ArrowDown} size={16} className="text-dim" />
           </button>
 
           <LibrarySection
@@ -689,6 +695,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         >
           {target === null ? (
             <HomePane
+              profileLabel={`Profile ${profileIndex} · ${profileName}`}
               view={homeView}
               onViewChange={setHomeView}
               onShowLibrary={showLibraryFromHome}

@@ -3,13 +3,13 @@ import type { CountryLookup } from './countries'
 import { countryName } from './countries'
 import type { GenreJoin } from './catalogForm'
 import { SORT_FIELDS, parseGenreList } from './catalogForm'
+import { capitalize } from '@/lib/capitalize'
 import { plural, pluralCount } from '@/lib/plural'
 
 /**
- * Plain-English summaries for the catalog editor's closed collapsible
- * sections — DESIGN.md's "Collapsible sections as credit-row buttons": each
- * head keeps its summary while closed, so the whole query reads down the
- * page without opening anything.
+ * Plain-English summaries for the catalog editor's closed folding sections:
+ * each head keeps its summary while closed, so the whole query reads down
+ * the page without opening anything.
  *
  * A close cousin of `features/library/recipe.ts`'s `describeRecipe`, not a
  * duplicate of it: that one renders a *saved* catalog's stored params for the
@@ -89,10 +89,6 @@ function runtimePhrase(low: number | undefined, high: number | undefined): strin
   return `up to ${fmtRuntime(high!)}`
 }
 
-function cap1(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
-}
-
 export function sumRatings(
   ratingLow: number | undefined,
   ratingHigh: number | undefined,
@@ -101,7 +97,7 @@ export function sumRatings(
   runtimeLow: number | undefined,
   runtimeHigh: number | undefined,
 ): string {
-  return cap1(
+  return capitalize(
     [
       ratingPhrase(ratingLow, ratingHigh),
       votesPhrase(votesLow, votesHigh),
@@ -162,7 +158,7 @@ export function sumDate(
     days === UPCOMING_DAYS
       ? `${verb.toLowerCase() === 'released' ? 'released' : 'airing'} from today on, updated daily`
       : `${verb.toLowerCase()} since ${formatWindowStart(days)}, updated daily`
-  return `${cap1(recentLabel(days))} · ${line}`
+  return `${capitalize(recentLabel(days))} · ${line}`
 }
 
 /** A picked date is a calendar day with no zone, which `new Date` reads as UTC

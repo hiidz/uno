@@ -42,7 +42,7 @@ export function RecipePreview({
   return (
     <aside className="ed-pv" aria-label="Results">
       <div className="ed-pv-head">
-        <span className="type-eyebrow">One page of results</span>
+        <span className="type-label">One page of results</span>
         <button type="button" onClick={onRun} disabled={preview.tiles.isLoading} className="btn-secondary btn-sm">
           {preview.tiles.isLoading ? 'Running…' : preview.idle ? 'Run preview' : 'Run again'}
         </button>
@@ -90,9 +90,9 @@ function Body({
 
   return (
     <>
-      {/* The filters have moved on since these tiles were fetched — Warm
-       *  White, never amber (DESIGN.md's Words Beside Colour Rule): nothing
-       *  here is waiting for the TV the way an unpushed change is. */}
+      {/* The filters have moved on since these tiles were fetched — in ink,
+       *  never TV yellow (DESIGN.md's Words Beside Colour Rule): nothing here
+       *  is waiting for the TV the way an unpushed change is. */}
       {preview.isStale && (
         <p className="pv-stale">Your filters changed since this ran. Run it again to see the new results.</p>
       )}

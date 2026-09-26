@@ -7,9 +7,9 @@ type LinkedNoun = 'catalog' | 'collection'
  *  also covers the catalogs edited inside it, which have no link of their own. */
 export function LinkedBanner({ noun }: { noun: LinkedNoun }) {
   return (
-    <div className="cr" role="note">
-      <span className="cr-role type-eyebrow">Linked</span>
-      <p className="cr-val m-0 text-[14px] leading-[20px]">
+    <div className="setting" role="note">
+      <span className="setting-label type-label">Linked</span>
+      <p className="setting-value m-0 text-[14px] leading-[20px]">
         Linked to a community {noun}. Saving changes unlinks it, and you'll stop getting the
         owner's updates.
       </p>

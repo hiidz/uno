@@ -13,7 +13,7 @@ export function MoreMenu({ label, children }: { label: string; children: ReactNo
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger
         aria-label={`More for ${label}`}
-        className="tap text-dimmer hover:bg-line hover:text-ink grid h-8 w-8 shrink-0 place-items-center rounded-[2px] transition-colors"
+        className="tap text-dimmer hover:bg-line hover:text-ink grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors"
       >
         <Icon icon={MoreHorizontal} size={16} />
       </DropdownMenu.Trigger>
@@ -21,7 +21,7 @@ export function MoreMenu({ label, children }: { label: string; children: ReactNo
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="bg-raised-hi border-line-hi z-40 flex w-56 flex-col gap-0.5 rounded-[2px] border p-1.5"
+          className="bg-raised-hi border-line-hi z-40 flex w-56 flex-col gap-0.5 rounded-xl border p-1.5"
         >
           {children}
         </DropdownMenu.Content>
@@ -34,7 +34,7 @@ export function MoreMenuItem(props: Omit<ComponentProps<typeof DropdownMenu.Item
   return (
     <DropdownMenu.Item
       {...props}
-      className="hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent text-ink flex items-center rounded-[2px] px-2 py-2 text-left text-[12px] transition-colors"
+      className="hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent text-ink flex items-center rounded-lg px-2.5 py-2 text-left text-[14px] font-medium transition-colors"
     />
   )
 }

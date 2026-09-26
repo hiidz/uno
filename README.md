@@ -10,8 +10,8 @@ the result straight into your Nuvio profile — so it shows up as rows on your T
 ## What it does
 
 - Sign in with your existing Nuvio account — no separate account to create.
-- Browse a shared library of catalogs and collections other users on your Nuvio account have
-  made public, or build your own from TMDB filters (genre, rating, release window, watch
+- Browse a shared library of catalogs and collections other Uno users have made public, or
+  build your own from TMDB filters (genre, rating, release window, watch
   provider, age rating, and more).
 - Group catalogs into collections and folders, and arrange everything into one home screen.
 - Preview what a catalog or your whole home screen will look like before committing to it.

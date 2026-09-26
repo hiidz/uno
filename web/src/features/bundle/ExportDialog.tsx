@@ -31,7 +31,7 @@ export function ExportDialog({
   return (
     <Modal open={open} onClose={onClose} labelledBy="export-title" width="480px">
       <ModalHeader>
-        <h2 id="export-title" className="type-display m-0 text-[15px]">
+        <h2 id="export-title" className="type-display m-0 text-[18px]">
           Export
         </h2>
       </ModalHeader>
@@ -107,13 +107,13 @@ function ExportForm({
             picked={picked}
             onPick={pick}
           />
-          <p className="type-data text-dimmer m-0 text-[11px]">
+          <p className="type-data text-dimmer m-0 text-[12.5px]">
             Collections include the catalogs they use.
           </p>
           {exporting.error && (
             <p
               role="alert"
-              className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px]"
+              className="callout-danger type-data"
             >
               Couldn't export: {exporting.error.message}
             </p>
@@ -155,10 +155,10 @@ function PickGroup({
   return (
     <div role="group" aria-labelledby={labelID} className="flex min-w-0 flex-col gap-2">
       <div className="border-line flex items-center gap-2 border-b pb-2">
-        <span id={labelID} className="type-eyebrow flex-1">
+        <span id={labelID} className="type-label flex-1">
           {label}
         </span>
-        <span className="type-data text-dimmer text-[10px]">
+        <span className="type-data text-dimmer text-[12px]">
           {count} of {rows.length}
         </span>
         <button type="button" className="btn-ghost" onClick={() => onPick(ids, true)}>
@@ -169,7 +169,7 @@ function PickGroup({
         </button>
       </div>
       {rows.length === 0 ? (
-        <p className="type-data text-dimmer m-0 text-[11px]">None in your library.</p>
+        <p className="type-data text-dimmer m-0 text-[12.5px]">None in your library.</p>
       ) : (
         rows.map((row) => (
           <Checkbox

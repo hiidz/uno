@@ -32,7 +32,7 @@ export function Modal({
           <Dialog.Content
             aria-labelledby={labelledBy}
             style={{ width: `min(${width}, 100%)` }}
-            className="bg-raised border-line-hi flex max-h-full flex-col overflow-hidden border outline-none"
+            className="bg-raised border-line-hi flex max-h-full flex-col overflow-hidden rounded-[20px] border outline-none"
           >
             {children}
           </Dialog.Content>
@@ -44,7 +44,7 @@ export function Modal({
 
 export function ModalHeader({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-raised border-line flex shrink-0 items-center gap-3 border-b px-5 py-3.5">
+    <div className="border-line flex shrink-0 items-center gap-3 border-b px-6 py-4">
       {children}
     </div>
   )
@@ -52,13 +52,26 @@ export function ModalHeader({ children }: { children: ReactNode }) {
 
 export function ModalBody({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
   )
 }
 
-export function ModalFooter({ children }: { children: ReactNode }) {
+/** The dialog's buttons. `tone` gives its primary button a region's colour
+ *  when the dialog belongs to one — creating a catalog, creating a
+ *  collection. */
+export function ModalFooter({
+  tone,
+  children,
+}: {
+  tone?: 'catalog' | 'collection'
+  children: ReactNode
+}) {
   return (
-    <div className="border-line flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3.5">
+    <div
+      className={`border-line flex shrink-0 items-center justify-end gap-2 border-t px-6 py-4 ${
+        tone ? `tone-${tone}` : ''
+      }`}
+    >
       {children}
     </div>
   )

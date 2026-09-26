@@ -1,23 +1,26 @@
+import type { LucideIcon } from 'lucide-react'
+import { Icon } from './Icon'
+
 /**
- * A small button naming itself by a single glyph (⧉ duplicate, 🗑 delete),
- * in the two shapes this app draws one at: icon-only, or icon plus the
- * first word of its label.
+ * A small button naming itself by an icon (copy for duplicate, a bin for
+ * delete), in the two shapes this app draws one at: icon-only, or icon plus
+ * the first word of its label.
  */
 export function GlyphButton({
   label,
-  glyph,
+  icon,
   onClick,
   destructive,
   variant,
 }: {
   label: string
-  glyph: string
+  icon: LucideIcon
   onClick: () => void
   destructive?: boolean
-  /** `'icon'`: a glyph-only square — the editor header's own duplicate and
-   *  delete, below `lg`, where the row is one compact line. `'labeled'`: the
-   *  glyph plus the label's first word — the library rail's own row actions,
-   *  above `lg`, where a selected row has room to spend. */
+  /** `'icon'`: an icon-only circle printed on a sign — the editor header's own
+   *  duplicate and delete, below `lg`, where the header is one compact line.
+   *  `'labeled'`: the icon plus the label's first word — the library rail's
+   *  own row actions, above `lg`, where a selected row has room to spend. */
   variant: 'icon' | 'labeled'
 }) {
   return (
@@ -34,28 +37,18 @@ export function GlyphButton({
       title={label}
       className={
         variant === 'icon'
-          ? `tap border-line-hi text-dim grid h-7 w-7 shrink-0 place-items-center rounded-[2px] border text-[12px] leading-none transition-colors ${
-              destructive
-                ? 'hover:border-danger hover:text-danger'
-                : 'hover:border-dim hover:text-ink'
+          ? `tap grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors ${
+              destructive ? 'hover:bg-sign-ink hover:text-danger' : 'hover:bg-sign-ink/15'
             }`
-          : `type-data flex h-6 items-center gap-1 rounded-[2px] border px-2 text-[10px] tracking-[0.06em] uppercase transition-colors pointer-coarse:h-9 ${
+          : `flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-[color,box-shadow] pointer-coarse:h-11 ${
               destructive
-                ? 'border-line-hi text-dim hover:border-danger hover:text-danger'
-                : 'border-line-hi text-dim hover:border-dim hover:text-ink'
+                ? 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] hover:text-danger hover:shadow-[inset_0_0_0_1.5px_var(--uno-danger)]'
+                : 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--uno-dim)]'
             }`
       }
     >
-      {variant === 'icon' ? (
-        <span aria-hidden="true">{glyph}</span>
-      ) : (
-        <>
-          <span aria-hidden="true" className="text-[11px] leading-none">
-            {glyph}
-          </span>
-          {label.split(' ')[0]}
-        </>
-      )}
+      <Icon icon={icon} size={variant === 'icon' ? 17 : 15} />
+      {variant === 'labeled' && label.split(' ')[0]}
     </button>
   )
 }

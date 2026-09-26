@@ -1,5 +1,5 @@
 import { tmdbKind } from '@/api'
-import { catalogSearchText, describeRecipe } from '@/features/library/recipe'
+import { catalogListing } from '@/features/library/recipe'
 import type { GenreLookups, LibraryCatalog } from '@/features/library/useLibrary'
 
 /**
@@ -27,14 +27,8 @@ export function buildRefOptions(
   genres: GenreLookups,
 ): RefOption[] {
   return catalogs.map((catalog) => {
-    const lookup = genres[tmdbKind(catalog.type)]
-    return {
-      id: catalog.id,
-      name: catalog.name,
-      catalog,
-      recipe: describeRecipe(catalog, lookup).join(' · ') || 'no filters',
-      searchText: catalogSearchText(catalog, lookup),
-    }
+    const { line, searchText } = catalogListing(catalog, genres[tmdbKind(catalog.type)])
+    return { id: catalog.id, name: catalog.name, catalog, recipe: line || 'No filters', searchText }
   })
 }
 

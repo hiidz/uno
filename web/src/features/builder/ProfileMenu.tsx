@@ -1,4 +1,6 @@
+import { ArrowLeftRight, ChevronDown } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
+import { Icon } from '@/components/Icon'
 import { useCopy } from '@/features/push/useCopy'
 import { useStackedLayout } from './stacked'
 
@@ -73,9 +75,12 @@ export function ProfileMenu({
         type="button"
         onClick={onSwitchProfile}
         title="Switch profile"
-        className={`type-data border-line-hi text-dim hover:text-ink hover:border-dim shrink-0 rounded-[2px] border px-2 py-[3px] text-[11px] whitespace-nowrap transition-colors ${className}`}
+        aria-label={`Profile ${profileIndex}, ${profileName}. Switch profile`}
+        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] shrink-0 items-center gap-2 rounded-full pr-3.5 pl-1 text-[14px] font-semibold whitespace-nowrap transition-colors ${className}`}
       >
-        profile {profileIndex} · {profileName}
+        <SlotSticker index={profileIndex} />
+        {profileName}
+        <Icon icon={ArrowLeftRight} size={14} className="text-dim" />
       </button>
     )
   }
@@ -89,19 +94,16 @@ export function ProfileMenu({
         aria-label={`Profile menu — profile ${profileIndex}, ${profileName}`}
         // `max-w-full` is load-bearing: a button sizes to its own content even
         // as a flex container, so without it this keeps its full width and
-        // spills out of the wrapper the row has already squeezed — over the
-        // pending badge — instead of truncating inside it.
-        className={`type-data border-line-hi text-dim hover:text-ink hover:border-dim flex min-w-0 max-w-full items-center gap-1 rounded-[2px] border px-2 py-[3px] text-[11px] transition-colors ${className}`}
+        // spills out of the wrapper the row has already squeezed — under Push
+        // — instead of truncating inside it.
+        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] min-w-0 max-w-full items-center gap-2 rounded-full pr-3 pl-1 text-[14px] font-semibold transition-colors ${className}`}
       >
+        <SlotSticker index={profileIndex} />
         {/* The word "profile" is dropped here and kept in the menu below: it is
             52.9px of a row that has none to spare, and the chip's position and
             the menu it opens both already say what it is. */}
-        <span className="truncate">
-          {profileIndex} · {profileName}
-        </span>
-        <span aria-hidden="true" className="shrink-0 text-[9px] leading-none">
-          ▾
-        </span>
+        <span className="truncate">{profileName}</span>
+        <Icon icon={ChevronDown} size={14} className="text-dim shrink-0" />
       </DropdownMenu.Trigger>
 
       {/* No `Portal`: see the module comment. `avoidCollisions` is on — an
@@ -113,16 +115,16 @@ export function ProfileMenu({
         align="start"
         sideOffset={6}
         avoidCollisions
-        className="bg-raised-hi border-line-hi z-40 flex w-[14rem] max-w-[calc(100vw-2rem)] flex-col gap-0.5 rounded-[2px] border p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.55)]"
+        className="bg-raised-hi border-line-hi z-40 flex w-[15rem] max-w-[calc(100vw-2rem)] flex-col gap-0.5 rounded-xl border p-1.5"
       >
         {/* The name in full, which the chip itself may have truncated.
             `aria-hidden` because the trigger's label already carries it and a
             menu should read as its items. */}
         <p
           aria-hidden="true"
-          className="type-data text-dimmer border-line m-0 truncate border-b px-2 py-2 text-[10px]"
+          className="text-dim border-line m-0 truncate border-b px-2.5 py-2 text-[13px] font-semibold"
         >
-          profile {profileIndex} · {profileName}
+          Profile {profileIndex} · {profileName}
         </p>
 
         {/* Straight through to the header's own guard — unchanged, including
@@ -137,7 +139,7 @@ export function ProfileMenu({
 
         {manifestURL && (
           <MenuItem
-            label={copied ? 'Copied' : 'Copy addon url'}
+            label={copied ? 'Copied' : 'Copy addon URL'}
             detail="Install this in Nuvio to get your home screen."
             // Stays open on copy. The confirmation is this item's own label,
             // and closing would take it off screen before it could be read —
@@ -166,13 +168,25 @@ function MenuItem({
   return (
     <DropdownMenu.Item
       onSelect={onSelect}
-      className="hover:bg-line focus-visible:bg-line flex min-h-[44px] flex-col justify-center gap-0.5 rounded-[2px] px-2 py-2 text-left transition-colors"
+      className="hover:bg-line focus-visible:bg-line flex min-h-[44px] flex-col justify-center gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors"
     >
-      <span className="type-data text-ink text-[11.5px]">{label}</span>
+      <span className="text-ink text-[14px] font-semibold">{label}</span>
       {/* What the desktop button says in its `title`. Kept as text because
           `title` never surfaces on touch, which is the only pointer that
           reaches this menu. */}
-      <span className="type-data text-dimmer text-[10px] leading-snug">{detail}</span>
+      <span className="text-dim text-[13px] leading-snug">{detail}</span>
     </DropdownMenu.Item>
+  )
+}
+
+/** The profile's slot number, as the round sticker a membership card carries. */
+function SlotSticker({ index }: { index: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="count-sticker bg-ink"
+    >
+      {index}
+    </span>
   )
 }

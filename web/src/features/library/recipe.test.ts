@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog } from '@/api'
 import { catalog as row } from '@/test/fixtures'
-import { describeRecipe } from './recipe'
+import { describeRecipe, recipeSentence } from './recipe'
 
 function catalog(type: Catalog['type'], params: object): Catalog {
   return row({ type, params: JSON.stringify(params) })
@@ -45,5 +45,50 @@ describe('describeRecipe', () => {
       'from a movie collection',
       'shuffled',
     ])
+  })
+})
+
+describe('recipeSentence', () => {
+  const lookup = new Map<number, string>([[27, 'Horror']])
+
+  it('makes the genres the subject and the sort the first clause', () => {
+    const params = { sort_by: 'vote_average.desc', with_genres: '27' }
+    expect(recipeSentence(catalog('movie', params), lookup)).toBe(
+      'Shows horror movies, highest rated.',
+    )
+  })
+
+  it('names the kind alone when no genre is picked, keeping A-Z in capitals', () => {
+    expect(recipeSentence(catalog('series', { sort_by: 'title.asc' }), lookup)).toBe(
+      'Shows series, A-Z.',
+    )
+    expect(recipeSentence(catalog('movie', { sort_by: 'original_title.desc' }), lookup)).toBe(
+      'Shows movies, Z-A by original title.',
+    )
+  })
+
+  it('leaves out a genre the lookup cannot name rather than reading its id as a count', () => {
+    const params = { sort_by: 'vote_average.desc', with_genres: '27' }
+    expect(recipeSentence(catalog('movie', params), new Map())).toBe(
+      'Shows movies, highest rated.',
+    )
+    const mixed = { with_genres: '27,99999', randomized: true }
+    expect(recipeSentence(catalog('movie', mixed), lookup)).toBe('Shows horror movies, shuffled.')
+  })
+
+  it('carries the remaining segments as clauses', () => {
+    const params = { with_genres: '27', randomized: true }
+    expect(recipeSentence(catalog('movie', params), lookup)).toBe('Shows horror movies, shuffled.')
+  })
+
+  it('describes a collection row by its collection', () => {
+    const params = { with_collection: '10', randomized: true }
+    expect(recipeSentence(catalog('movie', params), lookup)).toBe(
+      'Shows the films in one movie collection, shuffled.',
+    )
+  })
+
+  it('is empty for a catalog with no filters', () => {
+    expect(recipeSentence(catalog('movie', {}), lookup)).toBe('')
   })
 })

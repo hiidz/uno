@@ -287,7 +287,7 @@ function FolderTileItem({
               {folder.coverEmoji}
             </span>
           ) : (
-            <span aria-hidden="true" className="text-dimmer line-clamp-2 px-2 text-center text-[11px] leading-tight">
+            <span aria-hidden="true" className="text-dimmer line-clamp-2 px-2 text-center text-[12.5px] leading-tight">
               {name}
             </span>
           )}
@@ -301,7 +301,7 @@ function FolderTileItem({
           {hasError && <Icon icon={TriangleAlert} size={12} className="text-danger shrink-0" />}
           <span className="truncate">{name}</span>
         </span>
-        <span className="type-data text-dimmer text-[11px] tabular-nums">
+        <span className="type-data text-dimmer text-[12.5px] tabular-nums">
           {pluralCount(folder.refs.length, 'catalog')}
         </span>
       </button>
@@ -375,11 +375,11 @@ export function FolderDetail({
         </div>
       </header>
 
-      <div className="cr is-field">
-        <label htmlFor={`${idBase}-title`} className="cr-role type-eyebrow">
+      <div className="setting">
+        <label htmlFor={`${idBase}-title`} className="setting-label type-label">
           Folder title
         </label>
-        <div className="cr-val">
+        <div className="setting-value">
           <TextInput
             id={`${idBase}-title`}
             value={folder.title}
@@ -400,16 +400,16 @@ export function FolderDetail({
         aria-expanded={appearanceOpen}
         onClick={() => setAppearanceOpen((current) => !current)}
       >
-        <span className="cr-role type-eyebrow">Appearance</span>
+        <span className="setting-label type-label">Appearance</span>
         <span className="sec-sum text-dim text-[14px]">{appearanceSummary(folder)}</span>
         <Icon icon={ChevronDown} size={16} className="ico" />
       </button>
 
       {appearanceOpen && (
         <>
-          <div className="cr">
-            <span className="cr-role type-eyebrow">Hide the title</span>
-            <div className="cr-val ed-line">
+          <div className="setting">
+            <span className="setting-label type-label">Hide the title</span>
+            <div className="setting-value ed-line">
               <Segmented
                 ariaLabel={`Hide the title above ${label}'s tiles`}
                 value={folder.hideTitle ? 'hide' : 'show'}
@@ -423,9 +423,9 @@ export function FolderDetail({
             </div>
           </div>
 
-          <div className="cr">
-            <span className="cr-role type-eyebrow">Tile shape</span>
-            <div className="cr-val choices" role="group" aria-label={`Tile shape for ${label}`}>
+          <div className="setting">
+            <span className="setting-label type-label">Tile shape</span>
+            <div className="setting-value choices" role="group" aria-label={`Tile shape for ${label}`}>
               {TILE_SHAPES.map((shape) => (
                 <button
                   key={shape}
@@ -440,11 +440,11 @@ export function FolderDetail({
             </div>
           </div>
 
-          <div className="cr is-field">
-            <label htmlFor={`${idBase}-emoji`} className="cr-role type-eyebrow">
+          <div className="setting">
+            <label htmlFor={`${idBase}-emoji`} className="setting-label type-label">
               Cover
             </label>
-            <div className="cr-val flex max-w-[360px] gap-2">
+            <div className="setting-value flex max-w-[360px] gap-2">
               <div className="w-[var(--w-code)] shrink-0">
                 <TextInput
                   id={`${idBase}-emoji`}
@@ -466,11 +466,11 @@ export function FolderDetail({
             </div>
           </div>
 
-          <div className="cr is-field">
-            <label htmlFor={`${idBase}-gif`} className="cr-role type-eyebrow">
+          <div className="setting">
+            <label htmlFor={`${idBase}-gif`} className="setting-label type-label">
               Focus GIF
             </label>
-            <div className="cr-val flex max-w-[360px] flex-col gap-2">
+            <div className="setting-value flex max-w-[360px] flex-col gap-2">
               <TextInput
                 id={`${idBase}-gif`}
                 value={folder.focusGIFURL}
@@ -544,11 +544,11 @@ function HeroURLRow({
   note?: string
 }) {
   return (
-    <div className="cr is-field">
-      <label htmlFor={id} className="cr-role type-eyebrow">
+    <div className="setting">
+      <label htmlFor={id} className="setting-label type-label">
         {role}
       </label>
-      <div className="cr-val flex max-w-[360px] flex-col gap-2">
+      <div className="setting-value flex max-w-[360px] flex-col gap-2">
         <TextInput id={id} value={value} onChange={onChange} placeholder={placeholder} ariaLabel={ariaLabel} />
         {note && <span className="ed-note">{note}</span>}
       </div>
@@ -622,11 +622,11 @@ function FolderCatalogs({
 
   return (
     <>
-      <div className="cr is-head">
-        <span className="cr-role type-eyebrow">
+      <div className="setting is-head">
+        <span className="setting-label type-label">
           Catalogs <span className="text-dimmer tabular-nums">{folder.refs.length}</span>
         </span>
-        <div className="cr-val flex flex-wrap items-center justify-end gap-2">
+        <div className="setting-value flex flex-wrap items-center justify-end gap-2">
           {!picking && (
             <>
               {collectionID && (
@@ -643,7 +643,7 @@ function FolderCatalogs({
       </div>
 
       {picking && (
-        <div className="cr-indent flex flex-col gap-2 pt-3">
+        <div className="setting-indent flex flex-col gap-2 pt-3">
           <p className="ed-note m-0">
             <Icon icon={Plus} size={12} className="mb-px inline" /> links a catalog, so edits to it
             show up everywhere it's used.
@@ -674,13 +674,13 @@ function FolderCatalogs({
       )}
 
       {errors?.catalogIDs && (
-        <div className="cr-indent">
+        <div className="setting-indent">
           <FolderError>{errors.catalogIDs}</FolderError>
         </div>
       )}
 
       {folder.refs.length === 0 ? (
-        <div className="cr-indent py-3">
+        <div className="setting-indent py-3">
           <p className="ed-note m-0">This folder needs at least one catalog to show anything on your TV.</p>
         </div>
       ) : (
@@ -801,7 +801,7 @@ function RefRow({
     >
       <div className="run-ctl">
         <Grip label={`Reorder ${option?.name ?? 'unavailable catalog'}`} sortable={{ attributes, listeners }} />
-        <span className="type-data text-dimmer w-8 shrink-0 text-right text-[11px] tabular-nums">
+        <span className="type-data text-dimmer w-8 shrink-0 text-right text-[12.5px] tabular-nums">
           {position + 1}
         </span>
       </div>
@@ -814,7 +814,7 @@ function RefRow({
         {option ? (
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-[13px] font-medium">{option.name}</span>
-            <span className="type-data text-dimmer text-[11px] leading-[1.45]">
+            <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
               {option.recipe} · {kind}
               {!isScoped && ` · used in ${pluralCount(places, 'place')}`}
             </span>
@@ -829,7 +829,7 @@ function RefRow({
         ) : (
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="text-danger truncate text-[13px]">Unavailable catalog</span>
-            <span className="type-data text-dimmer truncate text-[11px]">Deleted</span>
+            <span className="type-data text-dimmer truncate text-[12.5px]">Deleted</span>
           </span>
         )}
 
@@ -925,12 +925,12 @@ function RefGenrePicker({
         ariaLabel={`Genre shown from ${name}`}
       />
       {stale && (
-        <span className="type-data text-danger text-[11px] leading-[1.45]">
+        <span className="type-data text-danger text-[12.5px] leading-[1.45]">
           This catalog's filters no longer allow {genre}, so your TV shows it unfiltered.
         </span>
       )}
       {query.isError && (
-        <span className="type-data text-dimmer text-[11px] leading-[1.45]">
+        <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
           Couldn't load this catalog's genres.
         </span>
       )}

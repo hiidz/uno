@@ -57,7 +57,7 @@ export function Grip({
 }
 
 /** A 32px grey icon button for a row's ↑/↓ (or any other single-icon action),
- *  greying to Unavailable Grey with no hover response when `disabled` — the
+ *  greying to the dimmest text colour with no hover response when `disabled` — the
  *  first row's ↑ and the last row's ↓ in any reorderable list. Shared by the
  *  Home pane's running-order rows and the collection editor's folder and
  *  folder-catalog rows, which all reorder the same way. */
@@ -79,7 +79,7 @@ export function RowIconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`tap grid h-8 w-8 place-items-center rounded-[2px] transition-colors ${
+      className={`tap grid h-8 w-8 place-items-center rounded-full transition-colors ${
         disabled
           ? 'text-dimmer cursor-not-allowed'
           : 'text-dim hover:bg-line hover:text-ink active:bg-line-hi'

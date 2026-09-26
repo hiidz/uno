@@ -25,9 +25,9 @@ import type { FolderPageTarget, PreviewRow } from './preview'
 
 /**
  * The Home pane's TV preview: a framed 16:9 picture in Roboto, DESIGN.md's
- * "TV preview (signature)". Deliberately its own component tree, not a
- * restyle of `features/preview/tiles.tsx`/`FolderPage.tsx` — those stay on
- * Jost for their unframed consumers, and `cqw` sizing only means anything
+ * "TV preview". Deliberately its own component tree, not a restyle of
+ * `features/preview/tiles.tsx`/`FolderPage.tsx` — those stay in Uno's own
+ * Figtree for their unframed consumers, and `cqw` sizing only means anything
  * against `.tv-bezel`'s own `container-type`, so sharing the classes across a
  * non-framed consumer would silently fall back to viewport units there. The
  * collection editor's docked row is framed, so it draws with these.
@@ -495,9 +495,9 @@ function TVFolderSourceRow({
   )
 }
 
-/** The Jost caption above the frame, and the layout name beside it —
- *  DESIGN.md's "Uno's bar, above the frame". Outside the screen, so it's
- *  Uno's own words about the picture, not pinned onto it. */
+/** The caption above the frame, in Uno's own Figtree, and the layout name
+ *  beside it. Outside the screen, so it's Uno's own words about the
+ *  picture, not pinned onto it. */
 export const FOLDER_LAYOUT_LABEL: Record<PreviewCollection['viewMode'], string> = {
   TABBED_GRID: 'Tabbed grids, one tab per catalog',
   ROWS: 'Rows, one per catalog',

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import type { PreviewItem, TMDBKind } from '@/api'
+import { Icon } from '@/components/Icon'
 import { plural } from '@/lib/plural'
 import {
   ALL_TAB,
@@ -43,7 +45,7 @@ export function FolderPage({
   tiles,
   chrome,
   onBack,
-  backLabel = '← Home',
+  backLabel = 'Home',
 }: {
   collection: PreviewCollection
   folder: PreviewFolder
@@ -62,11 +64,12 @@ export function FolderPage({
         <button
           type="button"
           onClick={onBack}
-          className="type-data border-line-hi text-dim hover:text-ink hover:border-dim rounded-[2px] border px-2.5 py-1 text-[10px] tracking-[0.05em] uppercase transition-colors pointer-coarse:py-2"
+          className="text-dim hover:text-ink flex items-center gap-1.5 rounded-full py-1 pr-3 pl-2 text-[13px] font-semibold shadow-[inset_0_0_0_1px_var(--uno-line-hi)] transition-colors hover:shadow-[inset_0_0_0_1px_var(--uno-dim)] pointer-coarse:py-2"
         >
+          <Icon icon={ArrowLeft} size={14} />
           {backLabel}
         </button>
-        <span className="type-data text-dimmer text-[10px]">
+        <span className="type-data text-dimmer text-[12px]">
           {collection.title || 'Untitled collection'} /{' '}
           <span className="text-dim">{folder.title || 'Untitled folder'}</span>
         </span>
@@ -74,7 +77,7 @@ export function FolderPage({
       </div>
 
       {folder.sources.length === 0 ? (
-        <p className="type-data text-dimmer m-0 text-[11px]">
+        <p className="type-data text-dimmer m-0 text-[12.5px]">
           This folder has no catalogs, so it opens empty.
         </p>
       ) : collection.viewMode === 'TABBED_GRID' ? (
@@ -89,7 +92,7 @@ export function FolderPage({
       )}
 
       {collection.viewModeAssumed && folder.sources.length > 0 && (
-        <p className="type-data text-dimmer m-0 text-[10px]">
+        <p className="type-data text-dimmer m-0 text-[12px]">
           Shown as rows — the app decides the real layout.
         </p>
       )}
@@ -183,7 +186,7 @@ function TabbedCatalogs({
               sits above the grid — otherwise a folder whose sources all return
               nothing renders as unexplained blank space. */}
           <div className="flex items-center gap-2.5">
-            <span className="type-eyebrow">Everything in this folder</span>
+            <span className="type-label">Everything in this folder</span>
             <TilesNote tiles={allTiles} />
           </div>
           {/* The merge interleaves sources that can be a mix of movies and
@@ -197,7 +200,7 @@ function TabbedCatalogs({
           {/* The one place in the preview that merges more than one catalog,
               and Nuvio's merge order for a folder is unspecified (folders
               aren't an addon concept), so the caveat is stated outright. */}
-          <p className="type-data text-dimmer m-0 text-[10px]">
+          <p className="type-data text-dimmer m-0 text-[12px]">
             A sample from {folder.sources.length} {plural(folder.sources.length, 'catalog')}
             {folder.unresolved > 0 && `, ${folder.unresolved} of them unavailable`} · your TV may
             order these differently
@@ -267,7 +270,7 @@ function SourceHeading({
  *  matching how the List view draws a detached row. */
 function UnresolvedSource({ all }: { all?: boolean }) {
   return (
-    <p className="type-data text-dimmer m-0 text-[10px]">
+    <p className="type-data text-dimmer m-0 text-[12px]">
       {all
         ? 'Every catalog in this folder was deleted, so there is nothing to show. They stay in the folder until they are removed.'
         : 'This catalog was deleted. It stays in the folder until it is removed.'}
@@ -290,7 +293,7 @@ function Tab({
       onClick={onClick}
       aria-pressed={active}
       title={label}
-      className={`type-data flex shrink-0 items-center gap-1.5 rounded-[2px] border px-2.5 py-1 text-[11px] transition-colors pointer-coarse:py-2 ${
+      className={`type-data flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] transition-colors pointer-coarse:py-2 ${
         active ? 'border-line-hi bg-raised-hi text-ink' : 'text-dim hover:text-ink border-transparent'
       }`}
     >

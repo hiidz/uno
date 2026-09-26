@@ -1,3 +1,5 @@
+import { Check, Copy, Link, TriangleAlert, Tv, X } from 'lucide-react'
+import { Icon } from '@/components/Icon'
 import type { HomeChange } from '@/features/home/changes'
 import type { Push } from './usePush'
 import { useCopy } from './useCopy'
@@ -26,9 +28,18 @@ export function PushButton({ push, ready, pushing }: Push) {
       // push is in flight, and in a header that no longer wraps the extra width
       // comes out of the profile chip beside it, which re-truncates as it goes.
       // Above `lg` the row is far from full and the button keeps its own width.
-      className="btn-primary min-w-[78px] lg:min-w-[auto]"
+      className="btn-tv min-w-[88px] lg:min-w-[auto]"
     >
-      {pushing ? 'Pushing…' : 'Push'}
+      <Icon icon={Tv} size={16} />
+      <span>
+        {pushing ? (
+          'Pushing…'
+        ) : (
+          <>
+            Push<span className="hidden lg:inline"> to TV</span>
+          </>
+        )}
+      </span>
     </button>
   )
 }
@@ -77,22 +88,20 @@ export function ChangesStrip({
   if (!open || changes.length === 0) return null
 
   return (
-    <div className="bg-raised border-line flex flex-col gap-1.5 border-b px-4 py-2.5 lg:px-5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="type-data text-dim m-0 text-[10.5px] tracking-[0.06em] uppercase">
-          What's not on your TV yet
-        </p>
-        <button
-          type="button"
-          onClick={onHide}
-          className="type-data text-dim decoration-line-hi hover:text-ink shrink-0 text-[10.5px] underline underline-offset-[0.3em] transition-colors"
-        >
+    <div className="bg-raised border-line flex flex-col gap-2 border-b px-4 py-3 lg:px-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-pending m-0 text-[14px] font-bold">What's not on your TV yet</p>
+        <button type="button" onClick={onHide} className="btn-quiet btn-sm shrink-0">
           Hide
         </button>
       </div>
-      <ul className="flex flex-col gap-1">
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
         {changes.map((change) => (
-          <li key={change.key} className="type-data text-dim text-[11px] leading-[1.5]">
+          <li
+            key={change.key}
+            className="text-ink flex items-baseline gap-2.5 text-[14px] leading-[1.45]"
+          >
+            <span aria-hidden="true" className="bg-pending size-1.5 shrink-0 translate-y-[-2px] rounded-full" />
             {change.text}
           </li>
         ))}
@@ -112,18 +121,21 @@ export function ChangesStrip({
  */
 function SuccessBanner({ manifestURL, dismiss }: { manifestURL?: string; dismiss: () => void }) {
   return (
-    <div className="bg-raised border-line flex shrink-0 items-center gap-3 border-b px-4 py-2 lg:items-start lg:px-5 lg:py-2.5">
-      <span aria-hidden="true" className="text-movie type-data text-[11px] lg:mt-[1px]">
-        ✓
+    <div className="bg-raised border-line flex shrink-0 items-center gap-3 border-b px-4 py-2.5 lg:items-start lg:px-5 lg:py-3">
+      <span
+        aria-hidden="true"
+        className="bg-tv-yellow text-sign-ink grid size-6 shrink-0 place-items-center rounded-full"
+      >
+        <Icon icon={Check} size={14} />
       </span>
 
-      <div className="flex min-w-0 flex-1 flex-col lg:gap-1.5">
-        <p className="type-data text-movie m-0 text-[11px]">{HEADLINE.success}</p>
-        <p className="type-data text-dim m-0 hidden text-[10.5px] lg:block">{DETAIL.success}</p>
+      <div className="flex min-w-0 flex-1 flex-col lg:gap-1">
+        <p className="text-tv-yellow m-0 text-[14px] font-bold">{HEADLINE.success}</p>
+        <p className="text-dim m-0 hidden text-[13.5px] lg:block">{DETAIL.success}</p>
         {manifestURL && <ManifestURL url={manifestURL} className="hidden lg:flex" />}
       </div>
 
-      {manifestURL && <CopyButton url={manifestURL} label="copy url" className="lg:hidden" />}
+      {manifestURL && <CopyButton url={manifestURL} label="Copy URL" className="lg:hidden" />}
 
       <DismissButton onClick={dismiss} />
     </div>
@@ -143,14 +155,17 @@ function ProblemBanner({
   dismiss: () => void
 }) {
   return (
-    <div className="bg-raised border-line flex shrink-0 items-start gap-3 border-b px-4 py-2.5 lg:px-5">
-      <span aria-hidden="true" className="text-danger type-data mt-[1px] text-[11px]">
-        !
+    <div className="bg-raised border-line flex shrink-0 items-start gap-3 border-b px-4 py-3 lg:px-5">
+      <span
+        aria-hidden="true"
+        className="bg-danger text-danger-ink grid size-6 shrink-0 place-items-center rounded-full"
+      >
+        <Icon icon={TriangleAlert} size={14} />
       </span>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <p className="type-data text-danger m-0 text-[11px]">{HEADLINE[kind]}</p>
-        <p className="type-data text-dim m-0 text-[10.5px]">{DETAIL[kind]}</p>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <p className="text-danger m-0 text-[14px] font-bold">{HEADLINE[kind]}</p>
+        <p className="text-dim m-0 text-[13.5px]">{DETAIL[kind]}</p>
       </div>
 
       <DismissButton onClick={dismiss} />
@@ -164,9 +179,9 @@ function DismissButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label="Dismiss"
-      className="tap text-dimmer hover:text-ink grid h-5 w-5 shrink-0 place-items-center leading-none transition-colors"
+      className="tap text-dim hover:text-ink hover:bg-raised-hi grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors"
     >
-      ×
+      <Icon icon={X} size={16} />
     </button>
   )
 }
@@ -200,8 +215,9 @@ function CopyButton({
   const { copied, copy } = useCopy(url)
 
   return (
-    <button type="button" onClick={copy} className={`btn-ghost shrink-0 ${className}`}>
-      {copied ? 'copied' : label}
+    <button type="button" onClick={copy} className={`btn-ghost btn-sm shrink-0 ${className}`}>
+      <Icon icon={copied ? Check : Copy} size={14} />
+      {copied ? 'Copied' : label}
     </button>
   )
 }
@@ -214,8 +230,8 @@ function CopyButton({
 function ManifestURL({ url, className = '' }: { url: string; className?: string }) {
   return (
     <div className={`flex min-w-0 items-center gap-2 ${className}`}>
-      <code className="type-data text-dimmer min-w-0 truncate text-[10.5px]">{url}</code>
-      <CopyButton url={url} label="copy" />
+      <code className="type-data text-dim min-w-0 truncate text-[13px]">{url}</code>
+      <CopyButton url={url} label="Copy" />
     </div>
   )
 }
@@ -240,7 +256,8 @@ export function AddonURLButton({ url, className = '' }: { url: string; className
       title={`Install this in Nuvio to get your home screen:\n${url}`}
       className={`btn-ghost ${className}`}
     >
-      {copied ? 'copied' : 'addon url'}
+      <Icon icon={copied ? Check : Link} size={16} />
+      {copied ? 'Copied' : 'Addon URL'}
     </button>
   )
 }

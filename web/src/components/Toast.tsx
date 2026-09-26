@@ -6,8 +6,8 @@ export function Toast({ toast }: { toast: ToastMessage | null }) {
   return (
     <div
       role="status"
-      className={`bg-raised type-data border px-3 py-2 text-[11px] ${
-        toast.tone === 'danger' ? 'border-danger text-danger' : 'border-line text-ink'
+      className={`bg-raised-hi type-data rounded-full px-4 py-2 text-[13.5px] font-semibold shadow-[inset_0_0_0_1px_var(--uno-line-hi)] ${
+        toast.tone === 'danger' ? 'text-danger' : 'text-ink'
       }`}
     >
       {toast.text}

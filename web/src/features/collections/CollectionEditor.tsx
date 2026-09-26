@@ -609,7 +609,9 @@ export function CollectionEditor({
 
   return (
     <EditorShell
-      eyebrow="Edit collection"
+      purpose="Edit collection"
+      tone="collection"
+      badges={state.isPublic ? <span className="stk stk-shared">Shared</span> : undefined}
       title={state.title.trim() || 'Untitled collection'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
@@ -635,11 +637,11 @@ export function CollectionEditor({
         <div className="ed ed-tv">
           <div className="ed-form">
             {linked && <LinkedBanner noun="collection" />}
-            <div className="cr is-field">
-              <label htmlFor="col-title" className="cr-role type-eyebrow">
+            <div className="setting">
+              <label htmlFor="col-title" className="setting-label type-label">
                 Title
               </label>
-              <div className="cr-val">
+              <div className="setting-value">
                 <TextInput
                   id="col-title"
                   value={state.title}
@@ -656,9 +658,9 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="cr is-switch">
-              <span className="cr-role type-eyebrow">Sharing</span>
-              <div className="cr-val">
+            <div className="setting">
+              <span className="setting-label type-label">Sharing</span>
+              <div className="setting-value">
                 <Switch
                   checked={state.isPublic}
                   onChange={(isPublic) => patch({ isPublic })}
@@ -683,9 +685,9 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="cr">
-              <span className="cr-role type-eyebrow">Show first</span>
-              <div className="cr-val ed-line">
+            <div className="setting">
+              <span className="setting-label type-label">Show first</span>
+              <div className="setting-value ed-line">
                 <Segmented
                   ariaLabel="Show first on the home screen"
                   value={state.pinToTop ? 'yes' : 'no'}
@@ -703,9 +705,9 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="cr">
-              <span className="cr-role type-eyebrow">How folders open</span>
-              <div className="cr-val">
+            <div className="setting">
+              <span className="setting-label type-label">How folders open</span>
+              <div className="setting-value">
                 <div className="choices" role="group" aria-label="How folders open">
                   {VIEW_MODES.map((viewMode) => (
                     <button
@@ -722,9 +724,9 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="cr">
-              <span className="cr-role type-eyebrow">“All” tab</span>
-              <div className="cr-val ed-line">
+            <div className="setting">
+              <span className="setting-label type-label">“All” tab</span>
+              <div className="setting-value ed-line">
                 {/* Only Tabbed Grids has tabs to add one to. The value is left
                     alone while it's greyed — it's still what this collection
                     is set to, and applies again the moment the view mode goes
@@ -747,9 +749,9 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="cr">
-              <span className="cr-role type-eyebrow">Background image</span>
-              <div className="cr-val">
+            <div className="setting">
+              <span className="setting-label type-label">Background image</span>
+              <div className="setting-value">
                 <TextInput
                   value={state.backdropImageURL}
                   onChange={(backdropImageURL) => patch({ backdropImageURL })}
@@ -758,9 +760,9 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="cr">
-              <span className="cr-role type-eyebrow">Focus glow</span>
-              <div className="cr-val ed-line">
+            <div className="setting">
+              <span className="setting-label type-label">Focus glow</span>
+              <div className="setting-value ed-line">
                 <Segmented
                   ariaLabel="Focus glow"
                   value={state.focusGlowEnabled ? 'on' : 'off'}
@@ -774,9 +776,9 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="cr is-head">
-              <h2 className="cr-role type-eyebrow">Folders</h2>
-              <div className="cr-val flex justify-end">
+            <div className="setting is-head">
+              <h2 className="setting-label type-label">Folders</h2>
+              <div className="setting-value flex justify-end">
                 <button
                   type="button"
                   className="btn-secondary btn-sm"
@@ -808,7 +810,7 @@ export function CollectionEditor({
             ))}
 
             {selectedFolder === undefined ? (
-              <div className="cr-indent py-4">
+              <div className="setting-indent py-4">
                 <p className="ed-note m-0">No folders yet. Add one, then put catalogs in it.</p>
               </div>
             ) : (
@@ -987,8 +989,8 @@ function StagedNote({
   children: ReactNode
 }) {
   return (
-    <div className="cr">
-      <span className="cr-role flex self-start justify-end pt-0.5 max-[640px]:justify-start">
+    <div className="setting flex-row gap-3">
+      <span className="shrink-0 pt-0.5">
         <Icon icon={TriangleAlert} size={16} className={tone === 'danger' ? 'text-danger' : 'text-dim'} />
       </span>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

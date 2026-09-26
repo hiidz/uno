@@ -86,106 +86,108 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-[900px] flex-col gap-4 p-4 lg:p-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="type-display m-0 text-[17px] lg:text-[21px]">Community</h1>
-        <p className="type-data text-dimmer m-0 text-[11px]">
-          Take a copy of anything shared here. Nothing you do to it reaches the original. When
-          the owner changes theirs, Update brings your copy in line, as long as you haven't
-          edited it.
-        </p>
+    <div className="tone-community flex w-full flex-col">
+      <div className="sign min-h-[64px] px-4 py-3 lg:min-h-[80px] lg:px-6">
+        <h1 className="type-sign m-0 text-[18px] leading-tight lg:text-[25px]">Community</h1>
       </div>
+      <section className="mx-auto flex w-full max-w-[900px] flex-col gap-4 p-4 lg:p-6">
+        <p className="m-0 max-w-[68ch] text-[15px] leading-[1.5]">
+          What other people using Uno have shared. Take a copy of anything here; nothing you
+          do to it reaches the original. When the owner changes theirs, Update brings your copy
+          in line, as long as you haven&rsquo;t edited it.
+        </p>
 
-      <Toast toast={toast} />
+        <Toast toast={toast} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Segmented
-          ariaLabel="Community kind"
-          value={kind}
-          onChange={setKind}
-          options={[
-            { value: 'catalogs', label: 'Catalogs' },
-            { value: 'collections', label: 'Collections' },
-          ]}
-        />
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by name…"
-          aria-label="Search the community"
-          className="field type-data min-w-[200px] flex-1 text-[12px] pointer-coarse:text-[16px]"
-        />
-        <div className="flex items-center gap-2">
-          <span className="type-eyebrow">Sort</span>
+        <div className="flex flex-wrap items-center gap-3">
           <Segmented
-            ariaLabel="Sort community results"
-            value={sort}
-            onChange={setSort}
+            ariaLabel="Community kind"
+            value={kind}
+            onChange={setKind}
             options={[
-              { value: 'name', label: 'Name' },
-              { value: 'newest', label: 'Newest' },
+              { value: 'catalogs', label: 'Catalogs' },
+              { value: 'collections', label: 'Collections' },
             ]}
           />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by name"
+            aria-label="Search the community"
+            className="field h-10 min-w-[200px] flex-1 text-[14px] pointer-coarse:text-[16px]"
+          />
+          <div className="flex items-center gap-2">
+            <span className="type-label">Sort</span>
+            <Segmented
+              ariaLabel="Sort community results"
+              value={sort}
+              onChange={setSort}
+              options={[
+                { value: 'name', label: 'Name' },
+                { value: 'newest', label: 'Newest' },
+              ]}
+            />
+          </div>
         </div>
-      </div>
 
-      {query && (activeQuery.data?.length ?? 0) > 0 && (
-        <p className="type-data text-dimmer m-0 text-[11px]">
-          {activeCount} of {activeQuery.data?.length} {kind}
-        </p>
-      )}
+        {query && (activeQuery.data?.length ?? 0) > 0 && (
+          <p className="type-data text-dim m-0 text-[13.5px]">
+            {activeCount} of {activeQuery.data?.length} {kind}
+          </p>
+        )}
 
-      <ListState
-        isLoading={activeQuery.isPending}
-        error={activeQuery.error as Error | null}
-        isEmpty={activeCount === 0}
-        loadingLabel={`Loading community ${kind}…`}
-        errorLabel={`Couldn't load community ${kind}.`}
-        onRetry={activeQuery.refetch}
-        emptyLabel={
-          query
-            ? `No ${kind} match this search.`
-            : kind === 'catalogs'
-              ? 'Nobody has shared a catalog yet.'
-              : 'Nobody has shared a collection yet.'
-        }
-      >
-        {kind === 'catalogs'
-          ? catalogs.map((catalog) => (
-              <CommunityRow
-                key={catalog.id}
-                name={catalog.name}
-                summary={catalogSummary(catalog)}
-                taken={catalog.taken}
-                updateAvailable={catalog.update_available}
-                pending={pending.get(catalog.id)}
-                previewOpen={previewID === catalog.id}
-                onTogglePreview={() => togglePreview(catalog.id)}
-                onTake={() => run('catalogs', catalog.id, 'take')}
-                onUpdate={() => run('catalogs', catalog.id, 'update')}
-                onDuplicate={() => run('catalogs', catalog.id, 'duplicate')}
-                preview={<CommunityCatalogPreview catalog={catalog} />}
-              />
-            ))
-          : collections.map((collection) => (
-              <CommunityRow
-                key={collection.id}
-                name={collection.title}
-                summary={collectionSummary(collection)}
-                taken={collection.taken}
-                updateAvailable={collection.update_available}
-                pending={pending.get(collection.id)}
-                previewOpen={previewID === collection.id}
-                onTogglePreview={() => togglePreview(collection.id)}
-                onTake={() => run('collections', collection.id, 'take')}
-                onUpdate={() => run('collections', collection.id, 'update')}
-                onDuplicate={() => run('collections', collection.id, 'duplicate')}
-                preview={<CommunityCollectionPreview collection={collection} />}
-              />
-            ))}
-      </ListState>
-    </section>
+        <ListState
+          isLoading={activeQuery.isPending}
+          error={activeQuery.error as Error | null}
+          isEmpty={activeCount === 0}
+          loadingLabel={`Loading community ${kind}…`}
+          errorLabel={`Couldn't load community ${kind}.`}
+          onRetry={activeQuery.refetch}
+          emptyLabel={
+            query
+              ? `No ${kind} match this search.`
+              : kind === 'catalogs'
+                ? 'Nobody has shared a catalog yet.'
+                : 'Nobody has shared a collection yet.'
+          }
+        >
+          {kind === 'catalogs'
+            ? catalogs.map((catalog) => (
+                <CommunityRow
+                  key={catalog.id}
+                  name={catalog.name}
+                  summary={catalogSummary(catalog)}
+                  taken={catalog.taken}
+                  updateAvailable={catalog.update_available}
+                  pending={pending.get(catalog.id)}
+                  previewOpen={previewID === catalog.id}
+                  onTogglePreview={() => togglePreview(catalog.id)}
+                  onTake={() => run('catalogs', catalog.id, 'take')}
+                  onUpdate={() => run('catalogs', catalog.id, 'update')}
+                  onDuplicate={() => run('catalogs', catalog.id, 'duplicate')}
+                  preview={<CommunityCatalogPreview catalog={catalog} />}
+                />
+              ))
+            : collections.map((collection) => (
+                <CommunityRow
+                  key={collection.id}
+                  name={collection.title}
+                  summary={collectionSummary(collection)}
+                  taken={collection.taken}
+                  updateAvailable={collection.update_available}
+                  pending={pending.get(collection.id)}
+                  previewOpen={previewID === collection.id}
+                  onTogglePreview={() => togglePreview(collection.id)}
+                  onTake={() => run('collections', collection.id, 'take')}
+                  onUpdate={() => run('collections', collection.id, 'update')}
+                  onDuplicate={() => run('collections', collection.id, 'duplicate')}
+                  preview={<CommunityCollectionPreview collection={collection} />}
+                />
+              ))}
+        </ListState>
+      </section>
+    </div>
   )
 }
 

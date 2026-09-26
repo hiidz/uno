@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useState, useSyncExternalStore, type RefObject } from 'react'
 import { LG_MEDIA_QUERY } from '@/lib/breakpoints'
+import { prefersReducedMotion } from '@/lib/motion'
 
 /**
  * The one-column builder, and the scrolling that makes it usable.
@@ -163,9 +164,7 @@ function land(region: HTMLElement) {
   target?.focus({ preventScroll: true })
 }
 
-/** Smooth by default; instant for anyone who has asked for less motion. Read
- *  per scroll rather than cached, so changing the OS setting takes effect
- *  without a reload. */
+/** Smooth by default; instant for anyone who has asked for less motion. */
 function scrollBehavior(): ScrollBehavior {
-  return media('(prefers-reduced-motion: reduce)')?.matches ? 'auto' : 'smooth'
+  return prefersReducedMotion() ? 'auto' : 'smooth'
 }

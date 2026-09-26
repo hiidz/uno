@@ -1,19 +1,21 @@
 @import "tailwindcss";
 
-/* Jost carries every word Uno says, at two weights (400 body, 500 label/
-   button/heading) — see docs/frontend.md and web/_incoming-design/DESIGN.md.
-   Roboto (the TV's own face) is loaded separately, only where the TV preview
-   needs it, never here. */
-@import "@fontsource-variable/jost/wght.css";
+/* Figtree carries every word Uno says. Archivo, at its widest and heaviest, is
+   the sign lettering over each region — see docs/frontend.md and DESIGN.md.
+   Archivo's `wdth` file is the one that carries the width axis. Roboto is the
+   TV's own face, used only inside the TV preview. */
+@import "@fontsource-variable/figtree/wght.css";
+@import "@fontsource-variable/archivo/wdth.css";
 @import "@fontsource/roboto/400.css";
 @import "@fontsource/roboto/500.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-sans: 'Jost Variable', Futura, 'Century Gothic', ui-sans-serif, sans-serif;
+    --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
     --font-mono: var(--font-sans);
     --font-heading: var(--font-sans);
+    --font-sign: 'Archivo Variable', 'Figtree Variable', ui-sans-serif, sans-serif;
 
     /* Tailwind's own default for `lg` — asserted explicitly, rather than left
        implicit, because `src/lib/breakpoints.ts` mirrors this same value for
@@ -24,6 +26,7 @@
 
     /* Uno palette, exposed as utilities: bg-raised, text-dim, border-line… */
     --color-ground: var(--uno-ground);
+    --color-rail: var(--uno-rail);
     --color-raised: var(--uno-raised);
     --color-raised-hi: var(--uno-raised-hi);
     --color-line: var(--uno-line);
@@ -31,17 +34,17 @@
     --color-ink: var(--uno-ink);
     --color-dim: var(--uno-dim);
     --color-dimmer: var(--uno-dimmer);
-    --color-movie: var(--uno-movie);
-    --color-series: var(--uno-series);
+    --color-sign-ink: var(--uno-sign-ink);
+    --color-catalog: var(--uno-catalog);
     --color-collection: var(--uno-collection);
+    --color-community: var(--uno-community);
+    --color-tv-yellow: var(--uno-tv-yellow);
     --color-danger: var(--uno-danger);
     --color-danger-hover: var(--uno-danger-hover);
     --color-danger-pressed: var(--uno-danger-pressed);
     --color-danger-text-hover: var(--uno-danger-text-hover);
     --color-danger-ink: var(--uno-danger-ink);
     --color-pending: var(--uno-pending);
-    --color-primary-hover: var(--uno-primary-hover);
-    --color-primary-pressed: var(--uno-primary-pressed);
 
     /* The TV's own colours — used only inside the frame and on the screen. */
     --color-tv-bezel: var(--uno-tv-bezel);
@@ -63,36 +66,64 @@
     --color-background: var(--background);
 }
 
-/* Single-theme by design, not by omission: this configures a television,
-   and every reference client in the space (Stremio, Nuvio, Plex) is dark.
-   There is no light palette to fall back to.
+/* Single-theme: the builder is used at a desk and on the couch beside a TV
+   in the evening, and it is dark.
 
-   "End Credits": pure type on near-black, credited like a film's end roll —
-   see DESIGN.md. A warm neutral ramp carries almost everything; amber
-   (pending) and red (danger) each hold exactly one meaning. */
+   "Video Store, after hours" — see DESIGN.md. A night-navy ground and its
+   shelves carry the layout; each region is announced by a sign in its own
+   colour at full strength. The colours hold one meaning each:
+     - catalog tangerine, collection green, community pink name the regions;
+     - TV yellow means "bound for the TV" and nothing else: Push, what is on
+       the home screen, and what is not on the TV yet;
+     - danger red marks what can't be undone, always beside words. */
 :root,
 .dark {
-    --uno-ground: #0B0B0C;
-    --uno-raised: #151516;
-    --uno-raised-hi: var(--uno-raised);
-    --uno-line: #262627;
-    --uno-line-hi: #3A3A3C;
-    --uno-ink: #F2F1EE;
-    --uno-dim: #9A9996;
-    --uno-dimmer: #62615E;
+    --uno-ground: #10132B;
+    --uno-rail: #141836;
+    --uno-raised: #1A1F40;
+    --uno-raised-hi: #232A55;
+    --uno-line: #2A3060;
+    --uno-line-hi: #3B4380;
+    --uno-ink: #FFF7EA;
+    --uno-dim: #B7B3CC;
+    --uno-dimmer: #8A87A8;
 
-    --uno-primary-hover: #FAF8F4;
-    --uno-primary-pressed: #D8D6D1;
+    /* The dark lettering every sign and sticker is printed in. */
+    --uno-sign-ink: #16193A;
 
-    --uno-pending: #E3A63B;
+    --uno-catalog: #F2762E;
+    --uno-collection: #35B26F;
+    --uno-community: #E0529C;
 
-    --uno-danger: #E0594E;
-    --uno-danger-hover: #E86E64;
-    --uno-danger-pressed: #C94B41;
-    --uno-danger-text-hover: #EA766C;
-    --uno-danger-ink: #140605;
+    --uno-tv-yellow: #FFC93C;
+    --uno-tv-yellow-hover: #FFD666;
+    --uno-tv-yellow-pressed: #F0B82A;
+    --uno-pending: var(--uno-tv-yellow);
 
-    --uno-scrim: rgba(0, 0, 0, 0.66);
+    --uno-danger: #EA5157;
+    --uno-danger-hover: #F06A70;
+    --uno-danger-pressed: #D9434A;
+    --uno-danger-text-hover: #F2787D;
+    --uno-danger-ink: var(--uno-sign-ink);
+
+    --uno-scrim: rgba(6, 8, 22, 0.74);
+
+    /* The one easing curve: fast out, long settle. */
+    --uno-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+    /* A region's own colour, which its primary button and headings take. Set
+       per region by `.tone-*`; outside one, the primary is sticker white. */
+    --accent: var(--uno-ink);
+
+    /* Full-amplitude colour bars: the TV preview's own "no signal" picture
+       when nothing is on the home screen. Used there and nowhere else. */
+    --smpte-white: #C0C0C0;
+    --smpte-yellow: #C0C000;
+    --smpte-cyan: #00C0C0;
+    --smpte-green: #00C000;
+    --smpte-magenta: #C000C0;
+    --smpte-red: #C00000;
+    --smpte-blue: #0000C0;
 
     /* The TV's own colours: a lifted, cooler black than the workspace's. */
     --uno-tv-bezel: #000000;
@@ -105,24 +136,6 @@
     --uno-tile-b: #1B1E22;
     --uno-tile-c: #292D33;
 
-    /* Working hues for catalog/collection kind, unrelated to DESIGN.md's
-       "End Credits" system — still consumed by screens this migration
-       hasn't reached yet (features/push, features/home, features/catalogs).
-       Left as-is until each consumer is restyled in its own phase. */
-    --uno-movie: #4EA8B8;
-    --uno-series: #C39A3E;
-    --uno-collection: #8E7BC4;
-
-    /* Full-amplitude bars. Used in exactly one place — the empty home
-       screen — and nowhere else. Resist reaching for these. */
-    --smpte-white: #C0C0C0;
-    --smpte-yellow: #C0C000;
-    --smpte-cyan: #00C0C0;
-    --smpte-green: #00C000;
-    --smpte-magenta: #C000C0;
-    --smpte-red: #C00000;
-    --smpte-blue: #0000C0;
-
     --background: var(--uno-ground);
     --foreground: var(--uno-ink);
     --border: var(--uno-line);
@@ -130,9 +143,7 @@
 
     /* Tells the browser to draw its own chrome dark: the option list a
        `<select>` drops, `input[type=date]`'s calendar and picker, the number
-       spinners, and the scrollbars. Without it those arrive white on a
-       near-black page — the single loudest way this design reads as
-       unfinished. */
+       spinners, and the scrollbars. */
     color-scheme: dark;
 
     /* Field widths, named for what a field holds rather than for the space
@@ -150,7 +161,14 @@
     /* The form's own column. The editors fill a pane that is as wide as the
        window allows, and a row of controls spread across 1100px stops being a
        row you can read across. */
-    --w-form: 54rem;
+    --w-form: 44rem;
+    /* The Home list's own column: wider than a form, because its rows are
+       poster strips and the front shelf should fill the pane rather than end
+       a third of the way across it. */
+    --w-home: 68rem;
+    /* The TV preview's picture: past this it stops reading as a TV on a
+       desktop pane. */
+    --w-tv: 54rem;
     /* The catalog editor: the form's column, the 40px gutter, and a docked
        results column up to 360px beside it. */
     --w-editor-results: calc(var(--w-form) + 40px + 360px);
@@ -164,15 +182,14 @@
        banner mounts and unmounts under the header — so this value only has to
        hold for the first paint.
 
-       58.4px is that header on a touch device, measured: `.btn-primary` at the
-       coarse-pointer padding below is 41.6px tall, plus the header's own 8px
-       above and below and its 1px bottom border. A fine pointer gets the 53px
-       the header is otherwise sized to, so this errs 5.4px large there — which
+       61px is that header on a touch device: a 44px button, the header's own
+       8px above and below, and its 1px bottom border. A fine pointer gets a
+       38px button and a 55px header, so this errs 6px large there — which
        leaves a hairline gap under the header for one frame rather than putting
        content beneath it. */
-    --app-h: 58.4px;
+    --app-h: 61px;
 
-    --sidebar: var(--uno-ground);
+    --sidebar: var(--uno-rail);
 }
 
 /* Keyed on the input device, not the screen: a field a finger reaches is the
@@ -195,58 +212,304 @@
 @layer base {
     * {
         @apply border-border outline-ring/50;
+        scrollbar-color: var(--uno-line-hi) transparent;
     }
     body {
         @apply bg-background text-foreground;
         -webkit-font-smoothing: antialiased;
+        caret-color: var(--uno-ink);
     }
     html {
         @apply font-sans;
     }
+    ::selection {
+        background: color-mix(in srgb, var(--uno-catalog) 55%, transparent);
+        color: var(--uno-ink);
+    }
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: var(--uno-line-hi);
+        border-radius: 999px;
+        border: 3px solid transparent;
+        background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
 }
 
 @layer components {
-    /* A heading: Jost 500, mixed case, brighter than the body around it — the
-       Credit Roll Rule's "names outshine the words around them" applied to
-       page and dialog titles. Callers set their own size and line-height. */
+    /* A region's colour: its sign, its headings, and its primary button. */
+    .tone-catalog {
+        --accent: var(--uno-catalog);
+    }
+    .tone-collection {
+        --accent: var(--uno-collection);
+    }
+    .tone-community {
+        --accent: var(--uno-community);
+    }
+    .tone-tv {
+        --accent: var(--uno-tv-yellow);
+    }
+
+    /* A heading: Figtree bold, mixed case. Callers set their own size and
+       line-height. */
     .type-display {
-        font-weight: 500;
-        letter-spacing: 0.005em;
+        font-weight: 750;
+        letter-spacing: -0.005em;
     }
 
-    /* The "UNO" wordmark: tracked capitals, the one place in the app that
-       still shouts. */
-    .type-wordmark {
-        font-weight: 500;
-        letter-spacing: 0.24em;
+    /* Sign lettering: Archivo at its widest and heaviest, in capitals. Only on
+       signs and the handful of headings that name a whole region. */
+    .type-sign {
+        font-family: var(--font-sign);
+        font-stretch: 125%;
+        font-weight: 800;
+        letter-spacing: 0.05em;
         text-transform: uppercase;
     }
 
-    /* Roles: small, grey, tracked capitals — the left half of every credit
-       pair (a field's label, a group heading, a role column entry). Never a
-       heading in its own right. */
-    .type-eyebrow {
-        font-size: 11.5px;
-        font-weight: 500;
-        line-height: 1;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
+    /* A field's label, a group's name, the small heading over a list. Sentence
+       case, set in the body face. */
+    .type-label {
+        font-size: 13.5px;
+        font-weight: 650;
+        line-height: 1.3;
         color: var(--uno-dim);
     }
 
     /* Values that read as data: counts, positions, recipe params, range
        readouts. Tabular by default — these line up in columns often enough
-       that opting in per-use would just get forgotten. Jost, same as every
-       other word in the app (the Two Faces Rule reserves a second family for
-       the TV screen only). */
+       that opting in per-use would just get forgotten. */
     .type-data {
         font-variant-numeric: tabular-nums;
     }
 
-    /* The app's four button weights (DESIGN.md, "Buttons"). Square, 40px on
-       desktop; `pointer: coarse` grows standalone ones toward the phone's
-       44/48px targets. */
+    /* A sign: a flat band in its region's colour across the full width of the
+       region it names, lettered in sign ink. The band's height comes from its
+       padding, so a sign holding a control grows around it. */
+    .sign {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 36px;
+        padding: 9px 12px 9px 16px;
+        background: var(--accent);
+        color: var(--uno-sign-ink);
+    }
+    .sign .type-sign {
+        font-size: 12.5px;
+        line-height: 1;
+    }
+    .sign .sign-count {
+        font-size: 12px;
+        font-weight: 700;
+        opacity: 0.72;
+        font-variant-numeric: tabular-nums;
+    }
+    /* The small action a sign carries, like New: a sign-ink pill lettered in
+       the sign's own colour. */
+    .sign-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 26px;
+        padding: 0 11px;
+        border-radius: 999px;
+        background: var(--uno-sign-ink);
+        color: var(--accent);
+        font-size: 12.5px;
+        font-weight: 700;
+        transition: background-color 160ms ease;
+    }
+    .sign-btn:hover {
+        background: color-mix(in srgb, var(--uno-sign-ink) 82%, black);
+    }
+    /* A way back out of a region, drawn on its sign: an outlined pill in sign
+       ink — the Library button over the Home pane and an editor. */
+    .sign-btn-outline {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        gap: 6px;
+        height: 36px;
+        padding: 0 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        box-shadow: inset 0 0 0 1.5px var(--uno-sign-ink);
+        transition: background-color 160ms ease;
+    }
+    .sign-btn-outline:hover {
+        background: color-mix(in srgb, var(--uno-sign-ink) 15%, transparent);
+    }
+    .sign-btn:focus-visible,
+    .sign :focus-visible {
+        outline: 2px solid var(--uno-sign-ink);
+        outline-offset: 2px;
+    }
+    @media (pointer: coarse) {
+        .sign-btn {
+            height: 36px;
+            padding: 0 14px;
+        }
+    }
+
+    /* Stickers: the small printed labels on a row. Kind is an outline in the
+       shelf's own line; Shared is Community pink, because that is where a
+       shared row turns up; Unavailable is outlined in danger red. */
+    .stk {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 20px;
+        padding: 0 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    /* On a sign, a sticker is printed in sign ink, lettered in the sign's
+       own colour (Shared keeps its Community pink). */
+    .sign .stk {
+        background: var(--uno-sign-ink);
+        color: var(--accent);
+        box-shadow: none;
+    }
+    .sign .stk-shared {
+        color: var(--uno-community);
+    }
+    .stk-kind {
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+        color: var(--uno-dim);
+    }
+    .stk-shared {
+        background: var(--uno-community);
+        color: var(--uno-sign-ink);
+    }
+    .stk-danger {
+        box-shadow: inset 0 0 0 1.5px var(--uno-danger);
+        color: var(--uno-danger);
+    }
+
+    /* The home-screen toggle on a row. On the TV it is a yellow price sticker,
+       slapped on slightly askew; off, a dashed empty circle waiting for one. */
+    .tv-sticker {
+        position: relative;
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        transition: color 160ms ease;
+    }
+    .tv-sticker[aria-pressed='false'] {
+        color: var(--uno-dim);
+    }
+    .tv-sticker[aria-pressed='false']::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1.5px dashed var(--uno-dimmer);
+        transition: border-color 160ms ease;
+    }
+    .tv-sticker[aria-pressed='false']:hover {
+        color: var(--uno-tv-yellow);
+    }
+    .tv-sticker[aria-pressed='false']:hover::before {
+        border-color: var(--uno-tv-yellow);
+    }
+    .tv-sticker[aria-pressed='true'] {
+        background: var(--uno-tv-yellow);
+        color: var(--uno-sign-ink);
+        transform: rotate(-9deg);
+        font-family: var(--font-sign);
+        font-size: 9.5px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        line-height: 1;
+    }
+    .tv-sticker[aria-pressed='true']:hover {
+        background: var(--uno-tv-yellow-hover);
+    }
+    .tv-sticker[data-slap] {
+        animation: uno-slap 420ms var(--uno-ease);
+    }
+    @keyframes uno-slap {
+        0% {
+            transform: scale(1.7) rotate(-26deg);
+            opacity: 0;
+        }
+        55% {
+            transform: scale(0.9) rotate(-6deg);
+            opacity: 1;
+        }
+        100% {
+            transform: scale(1) rotate(-9deg);
+        }
+    }
+    @media (pointer: coarse) {
+        .tv-sticker {
+            width: 44px;
+            height: 44px;
+        }
+    }
+
+    /* A small round sticker holding a number — the pending count, a
+       profile's slot — lettered in sign ink over the caller's fill. */
+    .count-sticker {
+        flex: none;
+        display: grid;
+        place-items: center;
+        min-width: 26px;
+        height: 26px;
+        padding: 0 6px;
+        border-radius: 999px;
+        color: var(--uno-sign-ink);
+        font-family: var(--font-sign);
+        font-size: 13px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+    }
+
+    /* A row's place on the home screen, as a yellow price sticker. */
+    .pos-sticker {
+        flex: none;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--uno-tv-yellow);
+        color: var(--uno-sign-ink);
+        transform: rotate(-7deg);
+        font-family: var(--font-sign);
+        font-size: 14px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .tv-sticker[data-slap] {
+            animation: none;
+        }
+    }
+
+    /* Buttons (DESIGN.md, "Buttons"): pills, 38px on desktop; `pointer:
+       coarse` grows standalone ones toward the phone's 44px targets. */
     .btn-primary,
+    .btn-tv,
     .btn-secondary,
     .btn-quiet,
     .btn-danger,
@@ -256,30 +519,34 @@
         align-items: center;
         justify-content: center;
         gap: 0.5em;
-        border-radius: 0;
+        border-radius: 999px;
         font-size: 14px;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        height: 40px;
-        padding: 0 20px;
-        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        font-weight: 650;
+        white-space: nowrap;
+        height: 38px;
+        padding: 0 18px;
+        transition:
+            background-color 160ms ease,
+            box-shadow 160ms ease,
+            color 160ms ease;
     }
 
-    /* Primary: Warm White fill, ground label. One per screen. */
+    /* Primary: filled in the region's colour (`--accent`), sign-ink label.
+       One per screen. */
     .btn-primary {
-        background: var(--uno-ink);
-        color: var(--uno-ground);
-        border: none;
+        background: var(--accent);
+        color: var(--uno-sign-ink);
+        font-weight: 750;
     }
-    .btn-primary:hover:not(:disabled) {
-        background: var(--uno-primary-hover);
+    .btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
+        background: color-mix(in srgb, var(--accent) 86%, white);
     }
-    .btn-primary:active:not(:disabled) {
-        background: var(--uno-primary-pressed);
+    .btn-primary:active:not(:disabled):not([aria-disabled='true']) {
+        background: color-mix(in srgb, var(--accent) 88%, black);
     }
     .btn-primary:disabled {
-        background: var(--uno-dimmer);
-        color: var(--uno-ground);
+        background: var(--uno-line-hi);
+        color: var(--uno-dim);
         cursor: default;
     }
     /* Greyed but still pressable (DESIGN.md, "Greyed"): Save while the form
@@ -287,63 +554,79 @@
        and focuses what needs fixing — so this is a visual state, not
        `disabled`. */
     .btn-primary[aria-disabled='true'] {
-        background: var(--uno-dimmer);
-        color: var(--uno-ground);
+        background: var(--uno-line-hi);
+        color: var(--uno-dim);
         cursor: not-allowed;
+    }
+
+    /* The TV action: Push. TV yellow, and the only yellow button on a screen. */
+    .btn-tv {
+        background: var(--uno-tv-yellow);
+        color: var(--uno-sign-ink);
+        font-weight: 750;
+    }
+    .btn-tv:hover:not(:disabled) {
+        background: var(--uno-tv-yellow-hover);
+    }
+    .btn-tv:active:not(:disabled) {
+        background: var(--uno-tv-yellow-pressed);
+    }
+    .btn-tv:disabled {
+        background: var(--uno-line-hi);
+        color: var(--uno-dim);
+        cursor: default;
     }
 
     /* Small size: actions inside panes, rows and empty states (DESIGN.md,
        "Buttons") — combine with a weight class, e.g. `.btn-secondary.btn-sm`. */
     .btn-sm {
-        height: 32px;
-        padding: 0 12px;
-        font-size: 13.5px;
+        height: 30px;
+        padding: 0 13px;
+        font-size: 13px;
     }
 
-    /* Secondary: outlined, warm-white label. A real action that isn't the
-       screen's main one. */
+    /* Secondary: outlined, ink label. A real action that isn't the screen's
+       main one. */
     .btn-secondary {
         background: transparent;
         color: var(--uno-ink);
-        border: 1px solid var(--uno-dim);
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
     }
     .btn-secondary:hover:not(:disabled) {
-        border-color: var(--uno-ink);
+        box-shadow: inset 0 0 0 1px var(--uno-dim);
     }
     .btn-secondary:active:not(:disabled) {
         background: var(--uno-raised);
     }
+    .btn-secondary:disabled {
+        color: var(--uno-dimmer);
+        cursor: default;
+    }
 
-    /* Quiet: grey label, underlined — Cancel, Stay, Hide, Undo. `.btn-ghost`
-       is this same weight under its earlier name; existing call sites keep
-       working until each is restyled in its own phase. */
+    /* Quiet: dim label, no outline until the pointer is over it — Cancel,
+       Stay, Hide, Undo, Import. `.btn-ghost` is the same weight. */
     .btn-quiet,
     .btn-ghost {
         background: transparent;
         color: var(--uno-dim);
-        border: none;
         padding: 0 12px;
-        text-decoration: underline;
-        text-decoration-color: var(--uno-line-hi);
-        text-underline-offset: 0.3em;
     }
     .btn-quiet:hover:not(:disabled),
     .btn-ghost:hover:not(:disabled) {
         color: var(--uno-ink);
-        text-decoration-color: var(--uno-dim);
+        background: var(--uno-raised-hi);
     }
     .btn-quiet:disabled,
     .btn-ghost:disabled {
         color: var(--uno-dimmer);
-        text-decoration-color: var(--uno-line);
     }
 
-    /* Destructive: Signal Red fill, red-ink label. Only for actions that
-       can't be taken back. */
+    /* Destructive: danger fill, sign-ink label. Only for actions that can't
+       be taken back. */
     .btn-danger {
         background: var(--uno-danger);
         color: var(--uno-danger-ink);
-        border: none;
+        font-weight: 750;
     }
     .btn-danger:hover:not(:disabled) {
         background: var(--uno-danger-hover);
@@ -357,49 +640,72 @@
         cursor: default;
     }
 
-    /* Red text button: the quiet weight in Signal Red, for a destructive
-       action that opens its own confirmation ("Delete this catalog"). */
+    /* Red text button: danger red, underlined, for a destructive action that
+       opens its own confirmation ("Delete catalog"). */
     .btn-danger-text {
         background: transparent;
         color: var(--uno-danger);
-        border: none;
         padding: 0;
+        height: auto;
+        min-height: 30px;
         text-decoration: underline;
-        text-decoration-color: color-mix(in srgb, var(--uno-danger) 50%, transparent);
-        text-underline-offset: 0.3em;
+        text-decoration-thickness: 1.5px;
+        text-decoration-color: color-mix(in srgb, var(--uno-danger) 55%, transparent);
+        text-underline-offset: 4px;
     }
     .btn-danger-text:hover:not(:disabled) {
         color: var(--uno-danger-text-hover);
         text-decoration-color: var(--uno-danger-text-hover);
     }
 
-    /* Both buttons are drawn to sit quietly in a header or a footer, which at
-       10.5px and 12px puts them around 24px and 33px tall — under what a finger
-       can aim at. The padding grows rather than the type: the label is the size
-       it is for the same reason the eyebrows are. */
+    .btn-primary:focus-visible,
+    .btn-tv:focus-visible,
+    .btn-secondary:focus-visible,
+    .btn-quiet:focus-visible,
+    .btn-ghost:focus-visible,
+    .btn-danger:focus-visible,
+    .btn-danger-text:focus-visible {
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 2px;
+    }
+
     @media (pointer: coarse) {
-        .btn-quiet,
-        .btn-ghost {
-            padding: 0 12px;
-            height: 44px;
-        }
         .btn-primary,
+        .btn-tv,
         .btn-secondary,
+        .btn-quiet,
+        .btn-ghost,
         .btn-danger {
             height: 44px;
         }
+        .btn-danger-text {
+            min-height: 44px;
+        }
     }
 
-    /* Text inputs and selects. Raised Black, Strong Hairline, square. */
+    /* What went wrong, in words, on a red-tinted panel. */
+    .callout-danger {
+        margin: 0;
+        padding: 9px 12px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--uno-danger) 13%, transparent);
+        color: var(--uno-danger-text-hover);
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    /* Text inputs and selects: a shelf-coloured well with a rounded edge. */
     .field {
         background: var(--uno-raised);
         border: 1px solid var(--uno-line-hi);
         color: var(--uno-ink);
-        border-radius: 0;
+        border-radius: 10px;
         padding: 0 14px;
         height: 44px;
         font-size: 15px;
-        transition: border-color 120ms ease;
+        transition:
+            border-color 160ms ease,
+            box-shadow 160ms ease;
     }
     .field::placeholder {
         color: var(--uno-dimmer);
@@ -411,6 +717,13 @@
         border-color: var(--uno-dim);
         outline: 2px solid var(--uno-ink);
         outline-offset: 2px;
+    }
+    .field[aria-invalid='true'] {
+        border-color: var(--uno-danger);
+    }
+    .field[type='search'] {
+        border-radius: 999px;
+        padding: 0 16px;
     }
 
     /* 16px is the threshold under which Safari zooms the page to the focused
@@ -427,12 +740,11 @@
 
     /* A select's closed state is what is on screen almost all the time, so it
        is drawn rather than inherited: the platform's arrow is replaced by a
-       chevron in the palette's own dim, at the same 11px inset as the text on
-       the other side. The open list stays native — `color-scheme: dark` is
-       what makes that legible. */
+       chevron in the palette's own dim. The open list stays native —
+       `color-scheme: dark` is what makes that legible. */
     select.field {
         appearance: none;
-        padding-right: 28px;
+        padding-right: 32px;
         background-image: linear-gradient(
                 45deg,
                 transparent 50%,
@@ -440,11 +752,11 @@
             ),
             linear-gradient(135deg, var(--uno-dim) 50%, transparent 50%);
         background-position:
-            right 15px top 55%,
-            right 11px top 55%;
+            right 18px top 55%,
+            right 13px top 55%;
         background-size:
-            4px 4px,
-            4px 4px;
+            5px 5px,
+            5px 5px;
         background-repeat: no-repeat;
     }
 
@@ -452,7 +764,7 @@
        room for it is held whether or not the X is there — reserved only while
        a value is set, the text would shift sideways as you pick and clear. */
     select.field--clearable {
-        padding-right: 46px;
+        padding-right: 50px;
     }
 
     /* On touch the X grows leftward from the same right edge — see `Select` in
@@ -465,20 +777,19 @@
         }
     }
 
-    /* The palette's own checkbox: square, per the Square Corner Rule.
-       `accent-color` only tints the platform's box, which keeps the
-       platform's own radius and border — no good in a design with none. */
+    /* The palette's own checkbox. `accent-color` only tints the platform's
+       box, which keeps the platform's own border and radius. */
     .checkbox {
         appearance: none;
         flex: none;
-        width: 16px;
-        height: 16px;
-        border: 1px solid var(--uno-dim);
-        border-radius: 0;
+        width: 18px;
+        height: 18px;
+        border: 1.5px solid var(--uno-dim);
+        border-radius: 5px;
         background: var(--uno-raised);
         transition:
-            background 120ms ease,
-            border-color 120ms ease;
+            background-color 160ms ease,
+            border-color 160ms ease;
     }
     .checkbox:hover:not(:checked) {
         border-color: var(--uno-ink);
@@ -487,9 +798,9 @@
         background: var(--uno-ink);
         border-color: var(--uno-ink);
         /* The tick as a path rather than a glyph: a font's ✓ carries its own
-           side bearings and sits off-centre in a 16px box. */
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 4.8 8.5 9.5 3.8' fill='none' stroke='%230B0B0C' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
-        background-size: 65% 65%;
+           side bearings and sits off-centre in a small box. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 4.8 8.5 9.5 3.8' fill='none' stroke='%2316193A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-size: 70% 70%;
         background-position: center;
         background-repeat: no-repeat;
     }
@@ -499,14 +810,14 @@
     }
     @media (pointer: coarse) {
         .checkbox {
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
         }
     }
 
     /* A hit area for a control that is drawn too small to hit. The glyph
-       buttons in the rows — remove, dismiss, close, the drag grips — are 20px
-       to 28px because that is what reads as a quiet affordance beside a name;
+       buttons in the rows — remove, dismiss, close, the drag grips — are 28px
+       to 34px because that is what reads as a quiet affordance beside a name;
        a finger needs 44px. The pseudo-element carries the target and nothing
        drawn changes, so the row looks the same and stops missing.
 
@@ -530,18 +841,17 @@
     }
 
     /* The TV preview: a framed 16:9 picture, not a panel — DESIGN.md's "TV
-       preview (signature)". `container-type` on the bezel is why every size
-       below is `cqw`: the picture scales like a picture, against its own
-       frame, not the viewport. Roboto only inside `.tv-screen` — the Two
-       Faces Rule (`.type-data` above) — everything Uno itself says around the
-       frame stays Jost. */
+       preview". `container-type` on the bezel is why every size below is
+       `cqw`: the picture scales like a picture, against its own frame, not the
+       viewport. Roboto only inside `.tv-screen`, because it renders what the
+       reference client shows; everything Uno itself says around the frame is
+       Figtree. */
     .tv-bezel {
         container-type: inline-size;
-        /* Capped at the same width the List view's rows read at
-           (`--w-form`) — without this the picture keeps growing with the
-           pane on a wide screen, and every `cqw` measurement inside it
+        /* Capped at `--w-tv` — without this the picture keeps growing with
+           the pane on a wide screen, and every `cqw` measurement inside it
            (tiles included) scales up past the point of reading as a TV. */
-        max-width: var(--w-form);
+        max-width: var(--w-tv);
         background: var(--uno-tv-bezel);
         border: 1px solid var(--uno-line-hi);
         padding: 10px;
@@ -999,15 +1309,15 @@
         }
     }
 
-    /* ---------- The catalog editor (DESIGN.md, "Catalog editor (signature)") ---------- */
+
+    /* ---------- The editors (DESIGN.md, "Editor") ---------- */
 
     /* The two-column layout's own container: the results panel undocks under
        the form once the *pane* — not the viewport — gets too narrow for both,
        which is a `@container` question, not a media query. The builder's pane
        is the viewport minus a library rail whose own width changes at its own
-       breakpoints (400px, 340px below 1100px), so a `min-width` media query
-       would undock the panel at the wrong pane width whenever the rail's width
-       changes underneath it. */
+       breakpoints, so a `min-width` media query would undock the panel at the
+       wrong pane width whenever the rail's width changes underneath it. */
     .ed-container {
         container-type: inline-size;
     }
@@ -1039,37 +1349,59 @@
         grid-column: 2;
         grid-row: 1 / span 2;
     }
-    /* Every setting is a credit: role right-aligned, value left-aligned across
-       the gutter. */
-    .cr {
+
+    /* What a catalog returns, in one sentence, at the top of its editor — the
+       card a shop hangs off a shelf to say what is on it. */
+    .talker {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin: 0 0 22px;
+        padding: 15px 18px;
+        border-radius: 14px;
+        background: var(--uno-raised-hi);
+        font-size: 16.5px;
+        font-weight: 550;
+        line-height: 1.45;
+    }
+    .talker svg {
+        flex: none;
+        margin-top: 3px;
+        color: var(--accent);
+    }
+
+    /* Every setting: its label above, the control below, on the form's one
+       left edge. */
+    .setting {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 11px 0;
+    }
+    .setting > .setting-label {
+        color: var(--uno-ink);
+    }
+    /* Two short settings side by side, until the pane is too narrow for a
+       pair. */
+    .setting-pair {
         display: grid;
-        grid-template-columns: 168px minmax(0, 1fr);
-        column-gap: 32px;
-        align-items: baseline;
-        padding: 14px 0;
-        border-bottom: 1px solid var(--uno-line);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 24px;
     }
-    .cr > .cr-role {
-        text-align: right;
-        color: var(--uno-dim);
+    @container (max-width: 520px) {
+        .setting-pair {
+            grid-template-columns: minmax(0, 1fr);
+        }
     }
-    .cr-val {
+    .setting-value {
         min-width: 0;
+        max-width: 100%;
+        align-self: stretch;
     }
-    .cr-val .aside {
-        color: var(--uno-dim);
+    .setting-value .aside {
+        color: var(--uno-dimmer);
         font-size: 13px;
-    }
-    .cr.is-field {
-        align-items: start;
-    }
-    .cr.is-field > .cr-role {
-        padding-top: 14px;
-    }
-    /* The sharing switch has no text baseline of its own, so its row centres
-       instead of sharing one with the value column. */
-    .cr.is-switch {
-        align-items: center;
     }
     .ed .field {
         max-width: 360px;
@@ -1086,54 +1418,110 @@
         color: var(--uno-ink);
     }
 
+    /* A heading inside the form (What the row shows, Folders, a folder's
+       Catalogs): sign lettering in the region's colour over a rule of the
+       same colour, with the section's own actions at the right. */
+    .setting.is-head {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        margin-top: 26px;
+        padding: 0 0 10px;
+        border-bottom: 1.5px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    }
+    .setting.is-head > .setting-label {
+        flex: 1;
+        font-family: var(--font-sign);
+        font-stretch: 125%;
+        font-weight: 800;
+        font-size: 12.5px;
+        letter-spacing: 0.05em;
+        line-height: 1.2;
+        text-transform: uppercase;
+        color: var(--accent);
+    }
+    .setting.is-head > .setting-value {
+        flex: none;
+        align-self: center;
+    }
+    /* Anything that belongs under a setting without a label of its own. */
+    .setting-indent {
+        padding-left: 0;
+    }
+
+    /* A section of settings that folds: a shelf with its name and a summary of
+       what it's set to, opening in place into its settings. */
     .sec-head {
         display: grid;
-        grid-template-columns: 168px minmax(0, 1fr) 16px;
-        column-gap: 32px;
-        align-items: baseline;
+        grid-template-columns: minmax(0, 1fr) 30px;
+        column-gap: 14px;
+        row-gap: 3px;
+        align-items: center;
         width: 100%;
-        padding: 14px 0;
+        margin-top: 8px;
+        padding: 13px 14px 13px 18px;
         text-align: left;
-        border-bottom: 1px solid var(--uno-line);
-        transition: background-color 120ms ease;
+        background: var(--uno-raised);
+        border-radius: 14px;
+        transition: background-color 160ms ease;
     }
     button.sec-head:hover {
-        background: var(--uno-raised);
+        background: var(--uno-raised-hi);
     }
-    .sec-head > .cr-role {
-        text-align: right;
-        color: var(--uno-dim);
-    }
-    .sec-sum {
+    .sec-head > .setting-label {
+        grid-column: 1;
         font-size: 15px;
-        line-height: 22px;
-        min-width: 0;
+        font-weight: 700;
         color: var(--uno-ink);
     }
-    .sec-head .ico {
-        align-self: center;
+    .sec-sum {
+        grid-column: 1;
+        font-size: 14px;
+        line-height: 20px;
+        min-width: 0;
         color: var(--uno-dim);
-        transition: transform 120ms ease;
+    }
+    .sec-head .ico {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        box-sizing: content-box;
+        padding: 7px;
+        border-radius: 50%;
+        background: var(--uno-ground);
+        color: var(--uno-dim);
+        transition:
+            transform 280ms var(--uno-ease),
+            color 160ms ease;
+    }
+    .sec-head[aria-expanded='true'] {
+        border-radius: 14px 14px 0 0;
+    }
+    .sec-head[aria-expanded='true'] > .setting-label {
+        color: var(--accent);
     }
     .sec-head[aria-expanded='true'] .ico {
         transform: rotate(180deg);
-        color: var(--uno-ink);
-    }
-    .sec-head[aria-expanded='true'] {
-        border-bottom-color: transparent;
+        color: var(--accent);
     }
     .sec-body {
-        padding: 4px 0 24px calc(168px + 32px);
-        border-bottom: 1px solid var(--uno-line);
         display: grid;
         gap: 16px;
         justify-items: start;
+        padding: 6px 18px 20px;
+        background: var(--uno-raised);
+        border-radius: 0 0 14px 14px;
     }
     .sec-body[hidden] {
         display: none;
     }
     .sec-body > * {
         max-width: 100%;
+    }
+    /* Fields step down to ground so they don't vanish into the shelf they sit
+       on. */
+    .sec-body .field {
+        background: var(--uno-ground);
     }
     .ed-dateline {
         font-size: 15px;
@@ -1142,7 +1530,7 @@
     .ed-note {
         font-size: 13px;
         line-height: 18px;
-        color: var(--uno-dim);
+        color: var(--uno-dimmer);
         max-width: 52ch;
     }
     .ed-line {
@@ -1165,42 +1553,46 @@
         align-items: center;
         gap: 6px;
         height: 32px;
-        padding: 0 12px;
+        padding: 0 13px;
         font-size: 13.5px;
-        font-weight: 500;
-        letter-spacing: 0.02em;
+        font-weight: 600;
         white-space: nowrap;
         color: var(--uno-dim);
-        border: 1px solid var(--uno-line-hi);
-        border-radius: 0;
+        border-radius: 999px;
         background: transparent;
-        transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+        transition:
+            background-color 160ms ease,
+            box-shadow 160ms ease,
+            color 160ms ease;
     }
     .choice:hover,
     .gchip:hover {
         color: var(--uno-ink);
-        border-color: var(--uno-dim);
+        box-shadow: inset 0 0 0 1px var(--uno-dim);
     }
-    .choice[aria-pressed='true'] {
-        background: var(--uno-raised);
-        color: var(--uno-ink);
-        border-color: var(--uno-dim);
-    }
+    .choice[aria-pressed='true'],
     .gchip[data-g='inc'] {
-        color: var(--uno-ink);
-        border-color: var(--uno-dim);
-        background: var(--uno-raised);
+        background: var(--uno-ink);
+        color: var(--uno-sign-ink);
+        box-shadow: none;
     }
     .gchip[data-g='exc'] {
-        color: var(--uno-dim);
+        color: var(--uno-danger);
+        box-shadow: inset 0 0 0 1.5px var(--uno-danger);
     }
     .gchip[data-g='exc'] .gname {
         text-decoration: line-through;
-        text-decoration-thickness: 1px;
+        text-decoration-thickness: 1.5px;
     }
     .choice:active,
     .gchip:active {
-        background: var(--uno-line);
+        background: var(--uno-raised-hi);
+    }
+    .choice:focus-visible,
+    .gchip:focus-visible {
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 2px;
     }
     /* On a phone the genre cycler and the date presets are nothing but chips,
        so they grow to the same 44px as every other touch target. */
@@ -1211,7 +1603,8 @@
         }
     }
 
-    /* The app's one switch, scoped to sharing. */
+    /* The app's one switch, scoped to sharing. On, it turns Community pink,
+       because that is where a shared row shows up. */
     .switch {
         display: inline-flex;
         align-items: center;
@@ -1225,32 +1618,42 @@
     }
     .switch-track {
         position: relative;
-        width: 36px;
-        height: 20px;
-        border: 1px solid var(--uno-dim);
-        border-radius: 0;
+        width: 42px;
+        height: 24px;
+        border-radius: 999px;
+        background: var(--uno-line-hi);
         flex: none;
-        transition: border-color 120ms ease;
+        transition: background-color 200ms ease;
     }
     .switch-knob {
         position: absolute;
         top: 3px;
         left: 3px;
-        width: 12px;
-        height: 12px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
         background: var(--uno-dim);
-        border-radius: 0;
-        transition: transform 120ms ease, background-color 120ms ease;
+        transition:
+            transform 260ms var(--uno-ease),
+            background-color 200ms ease;
     }
     .switch[aria-checked='true'] .switch-track {
-        border-color: var(--uno-ink);
+        background: var(--uno-community);
     }
     .switch[aria-checked='true'] .switch-knob {
-        transform: translateX(16px);
+        transform: translateX(18px);
+        background: var(--uno-sign-ink);
+    }
+    .switch:hover .switch-knob {
         background: var(--uno-ink);
     }
-    .switch:hover .switch-track {
-        border-color: var(--uno-ink);
+    .switch[aria-checked='true']:hover .switch-knob {
+        background: var(--uno-sign-ink);
+    }
+    .switch:focus-visible {
+        outline: 2px solid var(--uno-ink);
+        outline-offset: 4px;
+        border-radius: 999px;
     }
 
     .ed select.select {
@@ -1273,13 +1676,15 @@
         gap: 8px 12px;
     }
 
-    /* Results, docked right, run on request. */
+    /* Results, docked right, run on request: a shelf of their own. */
     .ed-pv {
         position: sticky;
         top: 0;
         display: grid;
         gap: 12px;
-        padding-top: 14px;
+        padding: 18px;
+        border-radius: 16px;
+        background: var(--uno-raised);
     }
     .ed-pv-head {
         display: flex;
@@ -1300,16 +1705,26 @@
 
     /* The catalog/collection editors' shared save bar, sticky at the pane's
        foot — `EditorShell`'s own footer band already supplies the sticky
-       position, the ground fill and the Hairline above. */
+       position, the ground fill and the line above. */
     .ed-status {
         font-size: 14px;
         display: inline-flex;
         align-items: center;
         gap: 8px;
+        margin-right: auto;
         color: var(--uno-ink);
     }
-    .ed-status.is-error {
-        color: var(--uno-ink);
+    .ed-status::before {
+        content: '';
+        flex: none;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+    }
+    .ed-status.is-error::before,
+    .ed-status.is-muted::before {
+        display: none;
     }
     .ed-status.is-error svg {
         color: var(--uno-danger);
@@ -1322,37 +1737,24 @@
        results list, so it takes a share of the pane (380–620px) instead of a
        fixed 290px, and the form keeps its own `--w-form` cap beside it. The
        TV undocks earlier than the catalog editor's panel, under 960px of
-       pane, where a 380px frame would squeeze the form's credit rows. */
+       pane, where a 380px frame would squeeze the form. */
     .ed.ed-tv {
         grid-template-columns: minmax(0, 1fr) clamp(380px, 42cqw, 620px);
     }
     .ed-tv .ed-form {
         max-width: var(--w-form);
     }
-
-    /* A section inside the form (Folders, a folder's Catalogs): a credit row
-       whose role is set in ink, so it ranks above the settings around it. */
-    .cr.is-head {
-        align-items: center;
-        padding: 12px 0;
-        margin-top: 32px;
-        border-bottom-color: var(--uno-line-hi);
-    }
-    .cr.is-head > .cr-role {
-        color: var(--uno-ink);
-    }
-    /* Anything that belongs to the value column without a role of its own. */
-    .cr-indent {
-        padding-left: calc(168px + 32px);
+    .ed-tv .ed-pv {
+        padding: 0;
+        background: transparent;
     }
 
-    /* A running-order row on the credit grid: the order controls fill the
-       role column, right-aligned, so what's being ordered starts on the same
-       edge as every value above it. A folder's catalogs are drawn this way. */
+    /* A running-order row: the order controls lead, then what's being
+       ordered. A folder's catalogs are drawn this way. */
     .run-row {
         display: grid;
-        grid-template-columns: 168px minmax(0, 1fr);
-        column-gap: 32px;
+        grid-template-columns: auto minmax(0, 1fr);
+        column-gap: 12px;
         align-items: center;
         padding: 8px 0;
         border-bottom: 1px solid var(--uno-line);
@@ -1360,12 +1762,12 @@
     .run-ctl {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
         gap: 4px;
     }
 
     /* The folder strip: every folder drawn at its own tile shape, the way the
-       TV draws the collection's row, with the selected one outlined in ink. */
+       TV draws the collection's row, with the selected one ringed in the
+       collection's green. */
     .fold-tiles {
         display: flex;
         flex-wrap: wrap;
@@ -1393,25 +1795,25 @@
         width: 100%;
         margin-bottom: 4px;
         overflow: hidden;
-        background: var(--uno-tile-c);
-        border: 1px solid var(--uno-line);
-        outline: 1px solid transparent;
-        transition: border-color 120ms ease, outline-color 120ms ease;
+        border-radius: 10px;
+        background: var(--uno-raised-hi);
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+        transition: box-shadow 160ms ease;
     }
     .fold-tile-btn:hover .fold-tile-face {
-        border-color: var(--uno-dim);
+        box-shadow: inset 0 0 0 1px var(--uno-dim);
     }
     .fold-tile.is-selected .fold-tile-face {
-        border-color: var(--uno-ink);
-        outline-color: var(--uno-ink);
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
     }
     .fold-tile-name {
         display: flex;
         align-items: center;
         gap: 4px;
         min-width: 0;
-        font-size: 13px;
-        font-weight: 500;
+        font-size: 13.5px;
+        font-weight: 600;
         line-height: 18px;
         color: var(--uno-dim);
     }
@@ -1424,9 +1826,10 @@
         position: absolute;
         top: 4px;
         left: 4px;
+        border-radius: 999px;
         background: color-mix(in srgb, var(--uno-ground) 80%, transparent);
         opacity: 0;
-        transition: opacity 120ms ease;
+        transition: opacity 160ms ease;
     }
     .fold-tile:hover .fold-tile-grip,
     .fold-tile:focus-within .fold-tile-grip {
@@ -1438,14 +1841,13 @@
         }
     }
 
-    /* The selected folder, one raised panel under the strip. Its settings and
-       catalogs sit on a narrower credit grid of their own, so they read as
-       inside the folder rather than as more of the collection's settings. */
+    /* The selected folder, one shelf under the strip, so its settings and
+       catalogs read as inside the folder rather than as more of the
+       collection's settings. */
     .fold-detail {
         padding: 16px 20px 20px;
+        border-radius: 16px;
         background: var(--uno-raised);
-        outline: 1px solid var(--uno-line-hi);
-        outline-offset: -1px;
     }
     .fold-detail-head {
         display: flex;
@@ -1468,36 +1870,24 @@
         .fold-detail-actions {
             gap: 12px;
         }
-        .fold-detail-actions .btn-danger-text {
-            height: 44px;
-        }
     }
-    /* Fields step back down to ground so they don't vanish into the raised
-       panel they sit on. */
+    /* Fields step back down to ground so they don't vanish into the shelf
+       they sit on. */
     .fold-detail .field {
         background: var(--uno-ground);
     }
-    .fold-detail .cr,
-    .fold-detail .run-row {
-        grid-template-columns: 128px minmax(0, 1fr);
-        column-gap: 24px;
+    .fold-detail .sec-head,
+    .fold-detail .sec-body {
+        background: var(--uno-raised-hi);
     }
-    .fold-detail .sec-head {
-        grid-template-columns: 128px minmax(0, 1fr) 16px;
-        column-gap: 24px;
-    }
-    .fold-detail .sec-head:hover {
+    .fold-detail button.sec-head:hover {
         background: var(--uno-line);
     }
-    .fold-detail .cr.is-head {
+    .fold-detail .setting.is-head {
         margin-top: 16px;
     }
     .fold-detail .fold-appearance {
         margin-top: 16px;
-        border-top: 1px solid var(--uno-line-hi);
-    }
-    .fold-detail .cr-indent {
-        padding-left: calc(128px + 24px);
     }
     @container (max-width: 960px) {
         .ed.ed-tv {
@@ -1506,14 +1896,13 @@
         .ed-tv .ed-pv {
             position: static;
             order: 2;
-            border-top: 1px solid var(--uno-line);
             margin-top: 24px;
         }
     }
-    /* Undocked once the form beside a 290px column would drop under 570px —
-       a value column under ~370px, where section summaries start wrapping and
-       a `--w-track` slider no longer fits. Source order is already form,
-       results, delete, so nothing is reordered. */
+    /* Undocked once the form beside a 290px column would drop under 570px,
+       where section summaries start wrapping and a `--w-track` slider no
+       longer fits. Source order is already form, results, delete, so nothing
+       is reordered. */
     @container (max-width: 900px) {
         .ed.ed-results {
             grid-template-columns: minmax(0, 1fr);
@@ -1523,59 +1912,18 @@
             grid-column: auto;
             grid-row: auto;
             position: static;
-            border-top: 1px solid var(--uno-line);
             margin-top: 24px;
         }
     }
     @media (max-width: 640px) {
-        .cr,
-        .sec-head {
-            grid-template-columns: minmax(0, 1fr);
-            row-gap: 4px;
-        }
-        .sec-head {
-            grid-template-columns: minmax(0, 1fr) 16px;
-        }
-        .cr > .cr-role,
-        .sec-head > .cr-role {
-            text-align: left;
-        }
-        .sec-head .sec-sum {
-            grid-column: 1;
-        }
-        .sec-head .ico {
-            grid-column: 2;
-            grid-row: 1 / span 2;
-        }
-        .cr.is-field > .cr-role {
-            padding-top: 0;
-        }
-        .sec-body,
-        .cr-indent {
-            padding-left: 0;
-        }
-        .run-row,
-        .cr.is-head {
-            grid-template-columns: auto minmax(0, 1fr);
-            column-gap: 12px;
-        }
         .fold-detail {
             padding: 12px;
         }
-        .fold-detail .cr {
-            grid-template-columns: minmax(0, 1fr);
+        .sec-head {
+            padding-left: 14px;
         }
-        .fold-detail .cr.is-head,
-        .fold-detail .run-row {
-            grid-template-columns: auto minmax(0, 1fr);
-            column-gap: 12px;
-        }
-        .fold-detail .sec-head {
-            grid-template-columns: minmax(0, 1fr) 16px;
-        }
-        .fold-detail .cr-indent {
-            padding-left: 0;
+        .sec-body {
+            padding: 6px 14px 16px;
         }
     }
-
 }

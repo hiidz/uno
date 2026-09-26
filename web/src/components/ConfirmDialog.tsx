@@ -57,18 +57,18 @@ export function ConfirmDialog({
               event.preventDefault()
               confirmRef.current?.focus()
             }}
-            className="bg-raised border-line-hi flex max-h-full w-full max-w-[420px] flex-col gap-5 overflow-y-auto overscroll-contain border p-6 outline-none"
+            className="bg-raised border-line-hi flex max-h-full w-full max-w-[440px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-[20px] border p-6 outline-none"
           >
-            <Dialog.Title className="type-display m-0 text-[20px] leading-[28px]">
+            <Dialog.Title className="type-display m-0 text-[21px] leading-[28px]">
               {title}
             </Dialog.Title>
             <Dialog.Description asChild>
-              <div className="text-dim text-[13px] leading-relaxed">{body}</div>
+              <div className="text-dim text-[14.5px] leading-relaxed">{body}</div>
             </Dialog.Description>
             {error && (
               <p
                 role="alert"
-                className="type-data text-danger border-danger m-0 border-l-2 pl-3 text-[11px] leading-[1.45]"
+                className="callout-danger type-data"
               >
                 {error}
               </p>

@@ -5,11 +5,11 @@ import { plural } from '@/lib/plural'
  * The band an editor ends on: what is stopping the save, the way out, and the
  * save itself — DESIGN.md's save bar, shared by both builders.
  *
- * Both builders end the same way, so what varies is the noun and (for the
- * catalog editor's own credit-row status line) the `status` slot. `status`
- * and `saveLabel` are additive and optional: omitted, this renders exactly as
- * it did before either builder was restyled to DESIGN.md — the collection
- * editor keeps that default until its own phase.
+ * Both builders end the same way, so what varies is the noun, the `status`
+ * line, and the labels. `status`, `saveLabel` and `cancelLabel` are optional;
+ * omitted, the band falls back to a plain error count, "Cancel", and a label
+ * built from the noun. The Save button takes the editor's region colour from
+ * the `tone-*` class `EditorShell` sets around it.
  */
 export function EditorFooter({
   mode,
@@ -62,14 +62,14 @@ export function EditorFooter({
       {saveError && (
         <p
           role="alert"
-          className="type-data text-danger border-danger m-0 basis-full border-l-2 pl-3 text-[11px] leading-[1.45]"
+          className="callout-danger type-data basis-full"
         >
           Couldn't save this {noun}: {saveError}
         </p>
       )}
       {status ??
         (showErrors && errorCount > 0 && (
-          <span className="type-data text-danger mr-auto text-[10.5px]">
+          <span className="type-data text-danger mr-auto text-[12.5px]">
             Fix the highlighted {plural(errorCount, 'field')}.
           </span>
         ))}

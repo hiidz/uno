@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { ArrowUp, Copy, Trash2, X } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
+import { Icon } from '@/components/Icon'
 import { useStackedLayout } from './stacked'
 
 /**
@@ -30,7 +32,9 @@ import { useStackedLayout } from './stacked'
  * deselecting below `lg` and scrolling to the rail happen to land together.
  */
 export function EditorShell({
-  eyebrow,
+  purpose,
+  tone,
+  badges,
   title,
   onRequestClose,
   onDuplicate,
@@ -39,10 +43,15 @@ export function EditorShell({
   docked,
   children,
 }: {
-  /** What kind of edit this is — "Edit catalog", "New collection". The title
-   *  below it is the subject's own name, which is what the eye lands on.
-   *  Dropped below `lg`, where the header is one compact line. */
-  eyebrow: string
+  /** What kind of edit this is — "Edit catalog", "New collection". Read out
+   *  ahead of the title; on screen the sign's own colour says it. */
+  purpose: string
+  /** The region this editor belongs to: its header is that region's sign,
+   *  and its Save and headings take that region's colour. */
+  tone: 'catalog' | 'collection'
+  /** Stickers stating facts about the subject — its kind, whether it's
+   *  shared — beside the title on the sign. From `sm` up only. */
+  badges?: ReactNode
   title: string
   /** Above `lg` this is the × in this header and Escape. Below it, it's also
    *  the mobile Library button — there is no separate scroll-only path back to
@@ -90,32 +99,33 @@ export function EditorShell({
   }, [onRequestClose, stacked])
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col lg:h-full lg:min-h-0">
+    <main className={`tone-${tone} flex min-w-0 flex-1 flex-col lg:h-full lg:min-h-0`}>
       {/* Pinned under the app header below `lg` — `--app-h` is that header
           measured, not assumed, because the push banner mounts and unmounts
           beneath it. Above `lg` the flex column already holds this in place and
           `static` restores exactly what was here before. */}
-      <header className="border-line bg-ground sticky top-[var(--app-h)] z-20 flex shrink-0 items-center gap-3 border-b px-4 py-3 lg:static lg:bg-transparent lg:px-6 lg:py-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="type-eyebrow hidden lg:block">{eyebrow}</span>
+      <header className="sign sticky top-[var(--app-h)] z-20 shrink-0 gap-3 px-4 py-2.5 lg:static lg:min-h-[80px] lg:px-6 lg:py-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* Where focus lands when the page scrolls here. A scroll moves the
               viewport and nothing else, so without this a keyboard or
               screen-reader user is left behind in the rail. */}
           <h1
             tabIndex={-1}
             data-landing
-            className="type-display m-0 truncate text-[15px] outline-none lg:text-[17px]"
+            className="m-0 truncate font-[family-name:var(--font-sign)] text-[18px] leading-tight font-extrabold [font-stretch:112%] outline-none lg:text-[25px]"
           >
+            <span className="sr-only">{purpose}: </span>
             {title}
           </h1>
+          {badges && <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{badges}</div>}
         </div>
 
         {/* The row's actions and the way out, below `lg` only. */}
-        <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
+        <div className="flex shrink-0 items-center gap-1 lg:hidden">
           {onDuplicate && (
             <GlyphButton
               label={`Duplicate ${title}`}
-              glyph="⧉"
+              icon={Copy}
               onClick={onDuplicate}
               variant="icon"
             />
@@ -123,7 +133,7 @@ export function EditorShell({
           {onDelete && (
             <GlyphButton
               label={`Delete ${title}`}
-              glyph="🗑"
+              icon={Trash2}
               onClick={onDelete}
               destructive
               variant="icon"
@@ -136,11 +146,9 @@ export function EditorShell({
             type="button"
             onClick={onRequestClose}
             title="Close editor (back to the library)"
-            className="tap type-data border-line-hi text-dim hover:text-ink hover:border-dim flex h-7 shrink-0 items-center gap-1 rounded-[2px] border px-2 text-[10px] tracking-[0.06em] uppercase transition-colors"
+            className="tap sign-btn-outline ml-1"
           >
-            <span aria-hidden="true" className="text-[11px] leading-none">
-              ↑
-            </span>
+            <Icon icon={ArrowUp} size={15} />
             Library
           </button>
         </div>
@@ -150,9 +158,9 @@ export function EditorShell({
           onClick={onRequestClose}
           aria-label="Close editor and go back to your home screen"
           title="Close editor (Esc)"
-          className="tap text-dim hover:text-ink hover:border-dim ml-auto hidden h-7 w-7 shrink-0 place-items-center rounded-[2px] border border-transparent text-[15px] leading-none transition-colors lg:grid"
+          className="tap hover:bg-sign-ink/15 ml-auto hidden h-10 w-10 shrink-0 place-items-center rounded-full transition-colors lg:grid"
         >
-          ×
+          <Icon icon={X} size={20} />
         </button>
       </header>
 
@@ -163,10 +171,10 @@ export function EditorShell({
           each side of a 375px screen is 13% of it.
 
           `--w-form` caps the form itself, not the pane. The pane is as wide as
-          the window allows and the editors are two columns of short controls —
-          past about 860px a row stops being something you read across, and
-          every field in it starts looking stretched. */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6">
+          the window allows and a setting is a label over a control — past
+          about 700px a form stops being something you read down, and every
+          field in it starts looking stretched. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
         <div
           className={`w-full ${docked === 'tv' ? 'max-w-[var(--w-editor-tv)]' : 'max-w-[var(--w-editor-results)]'}`}
         >

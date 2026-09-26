@@ -15,8 +15,8 @@ import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from
 
 /**
  * The Home pane's second view: the same pending state, drawn as the framed
- * 16:9 picture DESIGN.md's "TV preview (signature)" specs — Roboto inside
- * the frame, Jost around it. Reorder in List, flip to here, see it move.
+ * 16:9 picture DESIGN.md's "TV preview" specs — Roboto inside the frame,
+ * Figtree around it. Reorder in List, flip to here, see it move.
  *
  * **Two levels, matching the real screen.** Home is one page — pinned
  * collections, then catalog rows, then the rest of the collections. A
@@ -29,7 +29,7 @@ import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from
  *
  * **Uno pins nothing onto the screen — the Clean Preview amendment.** Every
  * caveat this view has to state (the pending count, how to get back to home)
- * is Uno's own words *around* the frame, in Jost; the picture itself carries
+ * is Uno's own words *around* the frame, in Figtree; the picture itself carries
  * only what the real TV would show. See `tv.tsx` for what that drops.
  */
 export function HomePreview() {
@@ -324,7 +324,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
   return (
     <section className="border-line flex flex-col gap-2 border-t pt-4">
       <div className="flex items-baseline gap-3">
-        <span className="type-eyebrow">Not on home</span>
+        <span className="type-label">Not on home</span>
       </div>
       <div className="flex flex-col gap-1">
         {rows.map((row) => (
@@ -335,7 +335,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
             </span>
             {home.isDetached(row.id) && (
               <span
-                className="text-series text-[12px]"
+                className="text-danger text-[12.5px]"
                 title="Deleted. It still works on your home screen, but removing it here can't be undone."
               >
                 · not in library

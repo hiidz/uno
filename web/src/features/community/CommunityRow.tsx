@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, type ReactNode } from 'react'
+import { Check } from 'lucide-react'
 import type { CommunityCatalog, CommunityCollection } from '@/api'
 import { tmdbKind } from '@/api'
 import { InfoTip } from '@/components/fields'
+import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { RecipePreview } from '@/features/catalogs/RecipePreview'
 import { CollectionPreview } from '@/features/collections/CollectionPreview'
@@ -56,20 +58,25 @@ export function CommunityRow({
   preview: ReactNode
 }) {
   const previewPanelID = useId()
-  const label = pending
-    ? PENDING_LABEL[pending]
-    : updateAvailable
-      ? 'Update'
-      : taken
-        ? '✓ Taken'
-        : 'Take'
+  const label = pending ? (
+    PENDING_LABEL[pending]
+  ) : updateAvailable ? (
+    'Update'
+  ) : taken ? (
+    <>
+      <Icon icon={Check} size={14} />
+      Taken
+    </>
+  ) : (
+    'Take'
+  )
 
   return (
-    <div className="border-line border-b py-2.5">
+    <div className="border-line border-b py-3.5">
       <div className="flex items-center gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-          <span className="truncate text-[13px] font-medium">{name}</span>
-          <span className="type-data text-dimmer truncate text-[10.5px]">{summary}</span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="truncate text-[16px] font-bold">{name}</span>
+          <span className="text-dim truncate text-[13.5px]">{summary}</span>
         </div>
 
         <button
@@ -77,7 +84,7 @@ export function CommunityRow({
           onClick={onTogglePreview}
           aria-expanded={previewOpen}
           aria-controls={previewPanelID}
-          className="btn-ghost shrink-0"
+          className="btn-ghost btn-sm shrink-0"
         >
           {previewOpen ? 'Hide preview' : 'Preview'}
         </button>

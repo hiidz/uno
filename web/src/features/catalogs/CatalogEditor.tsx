@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, TriangleAlert } from 'lucide-react'
+import { ChevronDown, Tag, TriangleAlert } from 'lucide-react'
 import { fetchCollection, queryKeys } from '@/api'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
 import { Icon } from '@/components/Icon'
@@ -8,6 +8,7 @@ import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { ConfirmUnlink, LinkedBanner } from '@/features/builder/LinkedCopy'
 import { useEditorForm } from '@/features/builder/useEditorForm'
+import { buildGenreLookup, recipeSentence } from '@/features/library/recipe'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import { pluralCount } from '@/lib/plural'
 import type { CountryLookup } from './countries'
@@ -131,8 +132,8 @@ export function CatalogEditor({
   )
   const dirty = !isSameCatalog(baseline, state)
 
-  // One section open at a time (DESIGN.md's "Collapsible sections as
-  // credit-row buttons"). Every body stays mounted regardless — toggled with
+  // One section open at a time: each folds open in place under its own head.
+  // Every body stays mounted regardless — toggled with
   // `hidden`, not unmounted — because `WatchProviderPicker` and
   // `TMDBEntityPicker` keep their own region/search state locally and losing
   // it every time the section closes would mean re-picking a region on every
@@ -156,7 +157,8 @@ export function CatalogEditor({
   // preview block's button is pressed — see `useRecipeTiles`. `name` and
   // `is_public` aren't part of a recipe, so renaming a catalog doesn't make
   // its preview stale.
-  const preview = useRecipeTiles(state.type, paramsString(state))
+  const params = paramsString(state)
+  const preview = useRecipeTiles(state.type, params)
   const resetPreview = preview.reset
 
   // Seeding a different catalog means the tiles on screen belong to the
@@ -184,6 +186,11 @@ export function CatalogEditor({
   // different (or nothing) in the other space. Only reachable while creating;
   // `type` is locked once a catalog exists.
   const activeGenres = state.type === 'movie' ? genres.movie : genres.tv
+  const genreLookup = useMemo(() => buildGenreLookup(activeGenres), [activeGenres])
+  const recipeWords = useMemo(
+    () => recipeSentence({ type: state.type, params }, genreLookup),
+    [state.type, params, genreLookup],
+  )
   const withGenres = parseGenreList(state.params.with_genres)
   const withoutGenres = parseGenreList(state.params.without_genres)
 
@@ -318,7 +325,14 @@ export function CatalogEditor({
 
   return (
     <EditorShell
-      eyebrow="Edit catalog"
+      purpose="Edit catalog"
+      tone="catalog"
+      badges={
+        <>
+          <span className="stk">{isMovie ? 'Movies' : 'Series'}</span>
+          {state.isPublic && <span className="stk stk-shared">Shared</span>}
+        </>
+      }
       title={state.name.trim() || 'Untitled catalog'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
@@ -342,18 +356,25 @@ export function CatalogEditor({
       <div className="ed-container">
         <div className="ed ed-results">
           <div className="ed-form">
+            {/* What this row puts on the TV, in the same words the rail and the
+                home screen use, kept current as the settings below change. */}
+            <p className="talker">
+              <Icon icon={Tag} size={20} />
+              <span>{recipeWords || 'No filters yet. Set what this row shows below.'}</span>
+            </p>
             {linked && <LinkedBanner noun="catalog" />}
-            <div className="cr is-field">
-              <label htmlFor="cat-name" className="cr-role type-eyebrow">
+            <div className="setting">
+              <label htmlFor="cat-name" className="setting-label type-label">
                 Name
               </label>
-              <div className="cr-val">
+              <div className="setting-value">
                 <TextInput
                   id="cat-name"
                   value={state.name}
                   onChange={(name) => patch({ name })}
                   placeholder="Trending Sci-Fi"
                   invalid={Boolean(errorFor('name'))}
+                  width="100%"
                 />
                 {errorFor('name') && (
                   <p className="field-error">
@@ -364,37 +385,40 @@ export function CatalogEditor({
               </div>
             </div>
 
-            <div className="cr">
-              <span className="cr-role type-eyebrow">Movies or series</span>
-              <div className="cr-val">
-                <span className="type-data text-[15px]">
-                  {state.type === 'movie' ? 'Movie' : 'Series'}{' '}
-                  <span className="aside">· locked, can't be changed once created.</span>
-                </span>
-              </div>
-            </div>
-
-            {isMovie && (
-              <div className="cr">
-                <span className="cr-role type-eyebrow">Mode</span>
-                <div className="cr-val">
-                  <Segmented<SourceMode>
-                    ariaLabel="Mode"
-                    value={state.sourceMode}
-                    onChange={switchSourceMode}
-                    options={[
-                      { value: 'filters', label: 'Filters' },
-                      { value: 'collection', label: 'Collection' },
-                    ]}
-                  />
+            {/* Two short settings side by side. */}
+            <div className="setting-pair">
+              <div className="setting">
+                <span className="setting-label type-label">Movies or series</span>
+                <div className="setting-value">
+                  <span className="type-data text-[15px]">
+                    {state.type === 'movie' ? 'Movie' : 'Series'}{' '}
+                    <span className="aside">· locked, can't be changed once created.</span>
+                  </span>
                 </div>
               </div>
-            )}
+
+              {isMovie && (
+                <div className="setting">
+                  <span className="setting-label type-label">Mode</span>
+                  <div className="setting-value">
+                    <Segmented<SourceMode>
+                      ariaLabel="Mode"
+                      value={state.sourceMode}
+                      onChange={switchSourceMode}
+                      options={[
+                        { value: 'filters', label: 'Filters' },
+                        { value: 'collection', label: 'Collection' },
+                      ]}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {state.collectionID !== null ? (
-              <div className="cr">
-                <span className="cr-role type-eyebrow">Scope</span>
-                <div className="cr-val ed-line">
+              <div className="setting">
+                <span className="setting-label type-label">Scope</span>
+                <div className="setting-value ed-line">
                   <span className="type-data text-[13px]">Only inside this collection</span>
                   {canMoveToLibrary && (
                     <button
@@ -406,16 +430,16 @@ export function CatalogEditor({
                     </button>
                   )}
                 </div>
-                <p className="type-data text-dimmer m-0 pt-1 text-[11px] leading-[1.45]">
+                <p className="type-data text-dimmer m-0 pt-1 text-[12.5px] leading-[1.45]">
                   {canMoveToLibrary
                     ? "Scoped catalogs can't be shared. Moving it to your library makes it usable from any of your folders and lets it join the community list — takes effect when you save the collection."
                     : "Scoped catalogs can't be shared. Save the collection first, then this catalog can be moved to your library."}
                 </p>
               </div>
             ) : (
-              <div className="cr is-switch">
-                <span className="cr-role type-eyebrow">Sharing</span>
-                <div className="cr-val">
+              <div className="setting">
+                <span className="setting-label type-label">Sharing</span>
+                <div className="setting-value">
                   <Switch
                     checked={state.isPublic}
                     onChange={(isPublic) => patch({ isPublic })}
@@ -429,6 +453,10 @@ export function CatalogEditor({
               </div>
             )}
 
+            <div className="setting is-head">
+              <h2 className="setting-label m-0">What the row shows</h2>
+            </div>
+
             {sections.map((section) => (
               <div key={section.key}>
                 <button
@@ -441,7 +469,7 @@ export function CatalogEditor({
                     setOpenSection((current) => (current === section.key ? null : section.key))
                   }
                 >
-                  <span className="cr-role type-eyebrow">{section.role}</span>
+                  <span className="setting-label type-label">{section.role}</span>
                   <span className="sec-sum">{section.summary}</span>
                   <Icon icon={ChevronDown} size={16} className="ico" />
                 </button>
@@ -455,9 +483,9 @@ export function CatalogEditor({
               </div>
             ))}
 
-            <div className="cr">
-              <span className="cr-role type-eyebrow">Shuffle the results</span>
-              <div className="cr-val ed-line">
+            <div className="setting">
+              <span className="setting-label type-label">Shuffle the results</span>
+              <div className="setting-value ed-line">
                 <Segmented<'off' | 'on'>
                   ariaLabel="Shuffle the results"
                   value={state.params.randomized ? 'on' : 'off'}
@@ -914,7 +942,7 @@ function EntityLists({
   return (
     <>
       <div className="flex w-full flex-col gap-2">
-        <label className="cr-role type-eyebrow" htmlFor={`cat-${kind}-with`}>
+        <label className="setting-label type-label" htmlFor={`cat-${kind}-with`}>
           Include
         </label>
         <TMDBEntityPicker
@@ -928,7 +956,7 @@ function EntityLists({
         {withError && <FieldNote tone="danger">{withError}</FieldNote>}
       </div>
       <div className="flex w-full flex-col gap-2">
-        <label className="cr-role type-eyebrow" htmlFor={`cat-${kind}-without`}>
+        <label className="setting-label type-label" htmlFor={`cat-${kind}-without`}>
           Leave out
         </label>
         <TMDBEntityPicker
@@ -981,7 +1009,7 @@ function DateWindow({
 
       {state.dateMode === 'fixed' && (
         <div className="ed-dates">
-          <label className="cr-role type-eyebrow" htmlFor="ed-from">
+          <label className="setting-label type-label" htmlFor="ed-from">
             From
           </label>
           <input
@@ -997,7 +1025,7 @@ function DateWindow({
             }
             className="field type-data"
           />
-          <label className="cr-role type-eyebrow" htmlFor="ed-to">
+          <label className="setting-label type-label" htmlFor="ed-to">
             To
           </label>
           <input
@@ -1107,7 +1135,7 @@ function RollingWindow({
       </div>
 
       <div className="ed-line">
-        <label className="cr-role type-eyebrow" htmlFor="ed-years">
+        <label className="setting-label type-label" htmlFor="ed-years">
           Last
         </label>
         <input

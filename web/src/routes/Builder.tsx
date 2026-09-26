@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Segmented } from '@/components/fields'
+import { Wordmark } from '@/components/Wordmark'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
@@ -12,6 +13,7 @@ import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { useUnloadGuard } from '@/features/home/useUnloadGuard'
 import { AddonURLButton, ChangesStrip, PushBanner, PushButton } from '@/features/push/PushControls'
 import { usePush } from '@/features/push/usePush'
+import { useCountDown } from '@/lib/useCountDown'
 import { pluralCount } from '@/lib/plural'
 
 export interface BuilderProfile {
@@ -61,7 +63,7 @@ export function Builder() {
         <div className="flex min-h-svh flex-col lg:h-svh">
           <BuilderHeader profile={profile} tab={tab} onTabChange={setTab} />
           {tab === 'workspace' ? (
-            <Workspace profileIndex={profile.profileIndex} />
+            <Workspace profileIndex={profile.profileIndex} profileName={profile.profileName} />
           ) : (
             <CommunityView profileIndex={profile.profileIndex} />
           )}
@@ -84,6 +86,12 @@ function BuilderHeader({
   const home = useHomeSelection()
   const editor = useEditorGuard()
   const push = usePush(profile.profileIndex)
+  // One count for both copies of the pending indicator (the header's and the
+  // phone tab row's): it rings down only as a push succeeds.
+  const pendingShown = useCountDown(
+    home.pendingCount,
+    push.outcome?.kind === 'success' ? push.outcome : null,
+  )
   const [confirmingLeave, setConfirmingLeave] = useState(false)
   const [changesOpen, setChangesOpen] = useState(false)
   const stickyRef = useRef<HTMLDivElement>(null)
@@ -151,12 +159,13 @@ function BuilderHeader({
           than the header's, and it mounts and unmounts while the page is open —
           so the band's height still moves and is still read from the DOM. */}
       <div ref={stickyRef} className="sticky top-0 z-30 shrink-0 lg:static">
-        {/* One row that never wraps, at every width, so the header's height
-            stays fixed regardless of the pending count — the only label here
-            whose text length follows the data. The profile chip truncates
-            instead of letting the row wrap. */}
-        <header className="bg-raised border-line flex min-h-[53px] items-center gap-3 border-b px-4 py-2 lg:h-[53px] lg:gap-4 lg:px-5 lg:py-0">
-          <span className="type-wordmark shrink-0 text-[14px]">Uno</span>
+        {/* One row that never wraps, at every width: the profile chip
+            truncates instead. Below `lg` the pending count sits in the tab row
+            underneath, which does wrap when its words don't fit beside the
+            tabs — one more reason the band's height is measured rather than
+            assumed. */}
+        <header className="bg-ground border-line flex min-h-[55px] items-center gap-3 border-b px-4 py-2 lg:h-[60px] lg:gap-4 lg:px-5 lg:py-0">
+          <Wordmark className="text-ink h-[14px] w-auto shrink-0 lg:h-[16px]" />
 
           {/* Switching profiles means going back through the picker —
               /configure is only reachable via navigation state, so there's
@@ -190,16 +199,31 @@ function BuilderHeader({
               of room for is absorbed by the chip, not taken out of the status
               and the action. */}
           <div className="ml-auto flex shrink-0 items-center gap-3 lg:gap-4">
-            <PendingIndicator open={changesOpen} onToggle={() => setChangesOpen((o) => !o)} />
+            {/* Below `lg` the header has no room for it in words; it moves to the
+                tab row underneath. */}
+            <div className="hidden lg:block">
+              <PendingIndicator
+                count={pendingShown}
+                open={changesOpen}
+                onToggle={() => setChangesOpen((o) => !o)}
+              />
+            </div>
             {profile.manifestURL && (
-              <AddonURLButton url={profile.manifestURL} className="hidden lg:block" />
+              <AddonURLButton url={profile.manifestURL} className="hidden lg:inline-flex" />
             )}
             <PushButton {...push} />
           </div>
         </header>
 
-        <div className="border-line bg-raised border-b px-4 py-2 lg:hidden">
+        {/* Wraps: on a narrow phone the tabs and a pending count in words don't
+            fit on one line together. */}
+        <div className="border-line bg-ground flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b px-4 py-2 lg:hidden">
           <BuilderTabs tab={tab} onChange={requestTabChange} />
+          <PendingIndicator
+            count={pendingShown}
+            open={changesOpen}
+            onToggle={() => setChangesOpen((o) => !o)}
+          />
         </div>
 
         <ChangesStrip
@@ -232,12 +256,14 @@ function BuilderHeader({
 
 /**
  * Pending edits live only in browser memory, so without this the user has no
- * way to tell that what's on screen isn't what's on their TV. Sits beside the
- * Push button: information next to the action that resolves it.
+ * way to tell that what's on screen isn't what's on their TV. From `lg` up it
+ * sits beside the Push button, information next to the action that resolves
+ * it; below `lg` the header has no room for its words, so it sits in the tab
+ * row underneath.
  *
- * Below `lg` it is a dot and a count — 25px against the sentence's 139px, in a
- * row that has to fit five things. The dot alone is what a clean home screen
- * gets, and it is drawn rather than dropped: this returns `null` until
+ * It reads as the count and "not on TV yet" while anything is pending, and as
+ * "Everything is on the TV" ("All on TV" below `lg`) once nothing is. The
+ * clean state is drawn rather than dropped: this returns `null` until
  * `home.ready`, so rendering nothing already means "not loaded yet", and a
  * silent clean state would be indistinguishable from one still loading.
  *
@@ -246,21 +272,39 @@ function BuilderHeader({
  * so the one control that states the count is also the one that opens the
  * list behind it. Clean, there's nothing to open, so it stays a plain,
  * unclickable span.
+ *
+ * **A push counts it down.** `count` is the pending count as the header passes
+ * it through `useCountDown`: when a push succeeds it rings down to zero over a
+ * moment before the clean state takes over.
  */
-function PendingIndicator({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+function PendingIndicator({
+  count,
+  open,
+  onToggle,
+}: {
+  count: number
+  open: boolean
+  onToggle: () => void
+}) {
   const home = useHomeSelection()
   if (!home.ready) return null
 
-  const sentence = home.isDirty
-    ? `${countLabel(home.pendingCount)} unpushed`
-    : 'no unpushed changes'
+  // Still showing the yellow count while it rings down after the home screen
+  // went clean.
+  const dirty = home.isDirty || count > 0
+
+  const sentence = dirty ? `${countLabel(count)} not on TV yet` : 'Everything is on the TV'
 
   const content = (
     <>
-      <span
-        aria-hidden="true"
-        className={`h-[6px] w-[6px] ${home.isDirty ? 'bg-pending' : 'bg-dimmer'}`}
-      />
+      {dirty && (
+        <span
+          aria-hidden="true"
+          className="count-sticker bg-pending"
+        >
+          {count}
+        </span>
+      )}
 
       {/* The words, for a screen reader, on the screens where they aren't
           drawn. Not `aria-label` on this span — a span is `role="generic"`,
@@ -272,17 +316,17 @@ function PendingIndicator({ open, onToggle }: { open: boolean; onToggle: () => v
           each one interrupts the work that caused it. It is readable on
           request, not broadcast. */}
       <span className="sr-only lg:hidden">{sentence}</span>
-      {home.isDirty && (
-        <span aria-hidden="true" className="lg:hidden">
-          {home.pendingCount}
-        </span>
-      )}
+      <span aria-hidden="true" className="lg:hidden">
+        {dirty ? 'not on TV yet' : 'All on TV'}
+      </span>
       <span className="hidden lg:inline">{sentence}</span>
     </>
   )
 
-  const className = `type-data flex shrink-0 items-center gap-1.5 text-[11px] whitespace-nowrap transition-colors lg:gap-2 ${
-    home.isDirty ? 'text-dim' : 'text-dimmer'
+  const className = `type-data flex h-[34px] shrink-0 items-center gap-2 rounded-full text-[13.5px] font-semibold whitespace-nowrap transition-colors ${
+    dirty
+      ? 'text-pending pr-3.5 pl-1 shadow-[inset_0_0_0_1.5px_var(--uno-pending)]'
+      : 'text-dim px-3.5 shadow-[inset_0_0_0_1px_var(--uno-line-hi)]'
   }`
 
   if (!home.isDirty) {
@@ -300,7 +344,7 @@ function PendingIndicator({ open, onToggle }: { open: boolean; onToggle: () => v
       aria-expanded={open}
       aria-label={`${sentence}. ${open ? 'Hide' : 'Show'} the list of changes.`}
       title="These changes only exist in this tab until you push."
-      className={`${className} hover:text-ink`}
+      className={`${className} hover:bg-[color-mix(in_srgb,var(--uno-pending)_12%,transparent)]`}
     >
       {content}
     </button>
@@ -321,7 +365,16 @@ function BuilderTabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void
       onChange={onChange}
       options={[
         { value: 'workspace', label: 'Workspace' },
-        { value: 'community', label: 'Community' },
+        {
+          value: 'community',
+          label: (
+            <span className="inline-flex items-center gap-2">
+              {/* Community's own pink, the colour of its sign. */}
+              <span aria-hidden="true" className="bg-community size-2 rounded-full" />
+              Community
+            </span>
+          ),
+        },
       ]}
     />
   )

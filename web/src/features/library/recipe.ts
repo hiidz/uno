@@ -1,4 +1,5 @@
 import type { Catalog, Genre, TMDBParams } from '@/api'
+import { capitalize } from '@/lib/capitalize'
 import { plural, pluralCount } from '@/lib/plural'
 
 /**
@@ -167,15 +168,20 @@ function dateWindow(
  * separate id spaces on TMDB, so passing the wrong one silently mislabels
  * genres rather than failing.
  */
-export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] {
-  const p = parseParams(catalog.params)
+export function describeRecipe(catalog: Pick<Catalog, 'type' | 'params'>, lookup: GenreLookup): string[] {
+  return describeParams(catalog.type, parseParams(catalog.params), lookup)
+}
+
+/** `describeRecipe` over params already parsed, for a caller that reads them
+ *  itself too. */
+function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLookup): string[] {
   const out: string[] = []
 
   // A collection row lists one TMDB collection's films and applies no other
   // filter, so the collection is the whole recipe. Unnamed, since naming it
   // needs a TMDB lookup, and called a movie collection so it can't read as
   // one of Uno's own collections; movie params only.
-  if (catalog.type === 'movie' && countIDs(p.with_collection)) {
+  if (type === 'movie' && countIDs(p.with_collection)) {
     out.push('from a movie collection')
     if (p.randomized) out.push('shuffled')
     return out
@@ -203,7 +209,7 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
   }
 
   const window =
-    catalog.type === 'movie'
+    type === 'movie'
       ? dateWindow(
           p.primary_release_date_gte,
           p.primary_release_date_lte,
@@ -245,7 +251,7 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
   const notKeywords = countIDs(p.without_keywords)
   if (notKeywords) out.push(`not tagged with ${pluralCount(notKeywords, 'keyword')}`)
   // Series params only, like the collection above is movie params only.
-  const networks = catalog.type === 'series' ? countIDs(p.with_networks) : 0
+  const networks = type === 'series' ? countIDs(p.with_networks) : 0
   if (networks) out.push(`on ${pluralCount(networks, 'network')}`)
 
   // "shuffled", not "random": the backend picks a random TMDB page in [1,20],
@@ -255,13 +261,71 @@ export function describeRecipe(catalog: Catalog, lookup: GenreLookup): string[] 
   return out
 }
 
+/** `raw`'s genre ids that `lookup` can name, kept in its own comma (AND) or
+ *  pipe (OR) form. */
+function knownGenres(raw: string, lookup: GenreLookup): string {
+  return raw
+    .split(/[,|]/)
+    .map((id) => id.trim())
+    .filter((id) => id && lookup.has(Number(id)))
+    .join(raw.includes('|') ? '|' : ',')
+}
+
 function countIDs(raw: string | undefined): number {
   return raw ? raw.split(/[,|]/).filter((part) => part.trim()).length : 0
 }
 
-/** Everything the rail's search should match on for a catalog: its name and
- *  its rendered summary, so "horror" finds a catalog filtered to that genre
- *  and "japanese" finds one filtered to that language. */
-export function catalogSearchText(catalog: Catalog, lookup: GenreLookup): string {
-  return `${catalog.name} ${describeRecipe(catalog, lookup).join(' ')}`.toLowerCase()
+/** A recipe's segments as one line of plain words, capitalised to start a
+ *  line — the form the rail and the home screen's rows show. */
+export function recipeLine(catalog: Pick<Catalog, 'type' | 'params'>, lookup: GenreLookup): string {
+  return capitalize(describeRecipe(catalog, lookup).join(' · '))
+}
+
+/**
+ * The recipe as one sentence — "Shows horror movies, highest rated, 30 or more
+ * ratings." — for the top of the catalog editor. Built from `describeRecipe`'s
+ * own segments, which lead with the sort phrase and then the genres whenever
+ * each is set; those two become the sentence's subject and first clause.
+ * Empty when the catalog has no filters at all.
+ */
+export function recipeSentence(
+  catalog: Pick<Catalog, 'type' | 'params'>,
+  lookup: GenreLookup,
+): string {
+  const p = parseParams(catalog.params)
+  const rest = describeParams(catalog.type, p, lookup)
+  if (rest.length === 0) return ''
+  if (catalog.type === 'movie' && countIDs(p.with_collection)) {
+    return `Shows the films in one movie collection${p.randomized ? ', shuffled' : ''}.`
+  }
+
+  const sort = p.sort_by ? rest.shift() : undefined
+  if (joinGenres(p.with_genres, lookup)) rest.shift()
+  // Only the genres the lookup can name. An id standing in for a name — the
+  // genre list still loading, or an id TMDB has retired — would read as a
+  // count of titles as the subject ("27 movies"), so it is left out instead.
+  const genres = p.with_genres ? joinGenres(knownGenres(p.with_genres, lookup), lookup) : null
+  const noun = catalog.type === 'movie' ? 'movies' : 'series'
+  const subject = genres ? `${genres.toLowerCase()} ${noun}` : noun
+  // "A-Z" and "Z-A" keep their capitals, with or without "by original
+  // title"; every other sort phrase reads mid-sentence.
+  const order = sort && !/^[A-Z]-[A-Z]\b/.test(sort) ? sort.toLowerCase() : sort
+  return `Shows ${[subject, order, ...rest].filter(Boolean).join(', ')}.`
+}
+
+/**
+ * What a list of catalogs shows and searches on for one catalog, from a single
+ * pass over its recipe: the summary line (`recipeLine`'s form) and the search
+ * text — its name and its rendered summary, so "horror" finds a catalog
+ * filtered to that genre and "japanese" one filtered to that language.
+ */
+export function catalogListing(
+  catalog: Catalog,
+  lookup: GenreLookup,
+): { line: string; searchText: string } {
+  const segments = describeRecipe(catalog, lookup)
+  return {
+    line: capitalize(segments.join(' · ')),
+    searchText: `${catalog.name} ${segments.join(' ')}`.toLowerCase(),
+  }
 }
