@@ -97,16 +97,6 @@
        per region by `.tone-*`; outside one, the primary is sticker white. */
     --accent: var(--uno-ink);
 
-    /* Full-amplitude colour bars: Home Preview's "no signal" picture when
-       nothing is on the home screen. Used there and nowhere else. */
-    --smpte-white: #C0C0C0;
-    --smpte-yellow: #C0C000;
-    --smpte-cyan: #00C0C0;
-    --smpte-green: #00C000;
-    --smpte-magenta: #C000C0;
-    --smpte-red: #C00000;
-    --smpte-blue: #0000C0;
-
     --background: var(--uno-ground);
     --foreground: var(--uno-ink);
     --border: var(--uno-line);
@@ -137,14 +127,11 @@
        poster strips and the front shelf should fill the pane rather than end
        a third of the way across it. */
     --w-home: 68rem;
-    /* Home Preview's no-signal card: past this the colour bars stop reading
-       as a picture on a desktop pane. */
-    --w-tv: 54rem;
     /* The catalog editor: the form's column, the 40px gutter, and a docked
        results column up to 360px beside it. */
     --w-editor-results: calc(var(--w-form) + 40px + 360px);
     /* The collection editor: the form's column, the 40px gutter, and a docked
-       "On your TV" panel up to 620px beside it. */
+       Preview panel up to 620px beside it. */
     --w-editor-tv: calc(var(--w-form) + 40px + 620px);
 
     /* The sticky app header's height, below `lg`, where the builder is one
@@ -1110,14 +1097,74 @@
         width: 100%;
     }
 
-    /* Home's first-run picture: full-amplitude colour bars, television's own
-       "nothing to show", on a rounded card. */
-    .pv-nosignal {
+    /* Home's first-run picture: a test card in Uno's own colours inside the
+       preview panel real rows use. The one place the region hues stand side by
+       side inside the builder — there is no content on screen for them to name. */
+    .pv-panel.pv-nosignal {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-right: var(--pv-edge);
+    }
+    .pv-nosignal-card {
         position: relative;
-        max-width: var(--w-tv);
-        aspect-ratio: 16 / 9;
+        margin-bottom: 16px;
+    }
+    .pv-nosignal-bars,
+    .pv-nosignal-castellation {
+        display: flex;
         overflow: hidden;
-        border-radius: 16px;
+    }
+    .pv-nosignal-bars > span,
+    .pv-nosignal-castellation > span {
+        flex: 1;
+    }
+    .pv-nosignal-bars {
+        height: 120px;
+        border-radius: 10px 10px 0 0;
+    }
+    .pv-nosignal-castellation {
+        height: 18px;
+        border-radius: 0 0 10px 10px;
+    }
+    /* Sticker white, not yellow: yellow means bound for Nuvio. Tilted like the
+       ON NUVIO sticker, over the dark end of the bars. */
+    .pv-nosignal-sticker {
+        position: absolute;
+        top: 60px;
+        right: calc(100% / 7 - 26px);
+        display: grid;
+        place-items: center;
+        align-content: center;
+        gap: 2px;
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: var(--uno-ink);
+        color: var(--uno-sign-ink);
+        transform: translateY(-50%) rotate(-9deg);
+        font-family: var(--font-sign);
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        line-height: 1;
+    }
+    .pv-nosignal-sticker > span:last-child {
+        font-size: 10px;
+    }
+    @media (width < 40rem) {
+        .pv-nosignal-bars {
+            height: 88px;
+        }
+        .pv-nosignal-sticker {
+            top: 44px;
+            width: 56px;
+            height: 56px;
+            font-size: 12px;
+        }
+        .pv-nosignal-sticker > span:last-child {
+            font-size: 9px;
+        }
     }
 
 

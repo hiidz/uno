@@ -961,9 +961,11 @@ transition on the one easing curve, `--uno-ease`. `prefers-reduced-motion` turns
 
 **Previews wear the shop's look.** The preview rows follow Nuvio's layout but sit on the app's
 own surfaces: Home's in a raised `.pv-panel`, the editors' and Community's in the docked `.ed-pv`,
-with tiles on raised-hi and Figtree captions. The one TV artifact kept is the full-amplitude SMPTE
-colour bars (`--smpte-*`, on the `.pv-nosignal` card), television's own picture for "nothing to
-show", in Home's Preview view only. Uno's words about the rows sit above and below the panel.
+with tiles on raised-hi and Figtree captions. With nothing on the home screen, Home's Preview
+panel holds a test card in the palette's own colours (`.pv-nosignal`): seven bars bright to dark
+over a castellated strip, with a sticker-white NO SIGNAL sticker. It is the one place the region
+hues stand side by side inside the builder (DESIGN.md's One Meaning Rule names the exception).
+Uno's words about the rows sit above and below the panel.
 
 **The way in.** The sign-in page and the profile picker carry the shop's fascia — the four hues
 side by side (`web/src/components/Fascia.tsx`) — and each profile is a membership card. The

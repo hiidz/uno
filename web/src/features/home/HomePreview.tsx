@@ -301,43 +301,48 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
   )
 }
 
+/** The test card's bars, bright to dark the way broadcast colour bars run, in
+ *  Uno's own colours. */
+const NO_SIGNAL_BARS = [
+  '--uno-ink',
+  '--uno-tv-yellow',
+  '--uno-collection',
+  '--uno-catalog',
+  '--uno-community',
+  '--uno-line-hi',
+  '--uno-ground',
+]
+
 /**
  * First run, nothing selected anywhere — not merely "no rows on home", which
- * `HomeScreenView`'s own empty case reports. The tab still works and shows
- * its own picture, per DESIGN.md's empty-state list: SMPTE colour bars,
- * television's own artifact for "nothing to show", on a rounded card.
- * `docs/frontend.md`'s Visual direction section has the rationale.
+ * `HomeScreenView`'s own empty case reports. The preview panel still draws,
+ * holding a test card: the bars over a castellated strip that mirrors them
+ * with a dark gap between each, and a NO SIGNAL sticker slapped on. DESIGN.md's
+ * No signal section is the spec.
  */
 function EmptyHomeScreen() {
-  const bars = [
-    'var(--smpte-white)',
-    'var(--smpte-yellow)',
-    'var(--smpte-cyan)',
-    'var(--smpte-green)',
-    'var(--smpte-magenta)',
-    'var(--smpte-red)',
-    'var(--smpte-blue)',
-  ]
+  const castellation = [...NO_SIGNAL_BARS].reverse().map((token, i) => (i % 2 ? '--uno-ground' : token))
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-dim m-0 max-w-[72ch] text-[13px] leading-[18px]">
-        Nothing is on your home screen yet, so there's nothing to show. Add rows and they appear
-        here the way your TV shows them.
-      </p>
-      <div className="pv-nosignal" role="img" aria-label="Home screen preview, with no rows yet">
-        <div aria-hidden="true" className="absolute inset-0 flex">
-          {bars.map((color) => (
-            <span key={color} className="flex-1" style={{ background: color }} />
+    <section className="pv-panel pv-nosignal" aria-label="Home screen preview">
+      <div aria-hidden="true" className="pv-nosignal-card">
+        <div className="pv-nosignal-bars">
+          {NO_SIGNAL_BARS.map((token) => (
+            <span key={token} style={{ background: `var(${token})` }} />
           ))}
         </div>
-        <p className="type-display bg-ground text-ink absolute inset-x-0 top-1/2 m-0 -translate-y-1/2 px-5 py-3 text-center text-[13px]">
-          No signal — nothing on your home screen yet
-        </p>
+        <div className="pv-nosignal-castellation">
+          {castellation.map((token, i) => (
+            <span key={i} style={{ background: `var(${token})` }} />
+          ))}
+        </div>
+        <span className="pv-nosignal-sticker">
+          <span>NO</span>
+          <span>SIGNAL</span>
+        </span>
       </div>
-      <p className="text-dim m-0 text-[12px] leading-[17px]">
-        Add catalogs and collections from the Library, then push.
-      </p>
-    </div>
+      <p className="text-ink m-0 text-[15px] font-semibold">Nothing on your home screen yet.</p>
+      <p className="text-dim m-0 text-[13.5px]">Add from the Library, then push.</p>
+    </section>
   )
 }
