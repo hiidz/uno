@@ -1,5 +1,6 @@
-// Package vault owns Uno's local SQLite database: schema, and the
-// catalogs, collections, and profiles stored against it.
+// Package vault owns Uno's local SQLite database: its schema, migrated by
+// the migrations package, and the catalogs, collections, and profiles
+// stored against it.
 package vault
 
 import (
@@ -7,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/hiidz/uno/internal/vault/migrations"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,9 +22,14 @@ func (db *DB) Close() error {
 	return db.conn.Close()
 }
 
-// InitDB opens (creating if necessary) the SQLite database at path, applies
-// the schema, and returns a ready-to-use DB.
+// InitDB opens (creating if necessary) the SQLite database at path, migrates
+// it to the latest schema version, and returns a ready-to-use DB. A database
+// that can't be migrated, or is newer than this build knows, is an error.
 func InitDB(path string) (*DB, error) {
+	if err := migrate(context.Background(), path, migrations.All()); err != nil {
+		return nil, fmt.Errorf("failed to migrate database: %w", err)
+	}
+
 	dsn := "file:" + path +
 		"?_pragma=journal_mode(WAL)" +
 		"&_pragma=busy_timeout(5000)" +
@@ -32,12 +39,6 @@ func InitDB(path string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-
-	// Create tables
-	if _, err := d.Exec(schema); err != nil {
-		return nil, fmt.Errorf("failed to create schema: %w", err)
-	}
-
 	return &DB{conn: d}, nil
 }
 

@@ -1,0 +1,395 @@
+package vault
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"log"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/hiidz/uno/internal/vault/migrations"
+)
+
+// AppliedMigration is one migration a run applied, with the notes it
+// returned.
+type AppliedMigration struct {
+	Version int
+	Name    string
+	Notes   []string
+}
+
+// MigrationReport is what DryRun found: the schema version before and after,
+// the migrations applied between them, and each table's row count before and
+// after, keyed by table name.
+type MigrationReport struct {
+	From, To   int
+	Applied    []AppliedMigration
+	RowsBefore map[string]int
+	RowsAfter  map[string]int
+}
+
+// migrate brings the database at path up to the last version in list, on a
+// connection of its own with foreign keys off, before InitDB opens the pool.
+// With migrations pending it first writes a backup beside path, then runs
+// each migration in its own transaction. A migration that fails, or leaves a
+// foreign key broken, rolls back, and the ones before it stay applied.
+func migrate(ctx context.Context, path string, list []migrations.Migration) error {
+	d, err := openMigrationDB(path, "")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	return migrateOpen(ctx, d, path, list)
+}
+
+// migrateOpen is migrate over the connection d has open to path.
+func migrateOpen(ctx context.Context, d *sql.DB, path string, list []migrations.Migration) error {
+	_, pending, err := pendingMigrations(ctx, d, list)
+	if err != nil || len(pending) == 0 {
+		return err
+	}
+	backup, err := backUp(ctx, d, path, list[len(list)-1].Version)
+	if err != nil {
+		return err
+	}
+	applied, err := applyMigrations(ctx, d, pending)
+	logMigrated(backup, applied)
+	return err
+}
+
+// openMigrationDB opens the database at path for migrating. It sets no
+// foreign_keys pragma, so foreign keys stay off, as a table rebuild needs;
+// the runner checks them itself before each commit. Its transactions begin
+// IMMEDIATE, taking the write lock before they read the schema version, so
+// two processes starting together can't both apply one migration. query is
+// appended to the DSN's own parameters.
+func openMigrationDB(path, query string) (*sql.DB, error) {
+	d, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_txlock=immediate"+query)
+	if err != nil {
+		return nil, fmt.Errorf("opening the database to migrate: %w", err)
+	}
+	return d, nil
+}
+
+// schemaVersion reads the user_version q sees.
+func schemaVersion(ctx context.Context, q queryRower) (int, error) {
+	var version int
+	if err := q.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return 0, fmt.Errorf("reading the schema version: %w", err)
+	}
+	return version, nil
+}
+
+// pendingMigrations reads the schema version d is at and returns it with the
+// migrations in list still to run. A version outside 0 to len(list) is an
+// error: this build can't know that schema.
+func pendingMigrations(ctx context.Context, d *sql.DB, list []migrations.Migration) (int, []migrations.Migration, error) {
+	version, err := schemaVersion(ctx, d)
+	if err != nil {
+		return 0, nil, err
+	}
+	if version < 0 || version > len(list) {
+		return version, nil, fmt.Errorf("the database is at schema version %d, which this build (versions 0 to %d) cannot read: run the build that wrote it, or restore the backup taken before the upgrade", version, len(list))
+	}
+	return version, list[version:], nil
+}
+
+// backUp copies the database to <path>.pre-v<version>-<UTC time>.bak, where
+// version is the one about to be migrated to, and returns the copy's path.
+// VACUUM INTO writes the same bytes for the same content, so a start that
+// fails the same way as the one before finds its copy identical to the
+// newest earlier backup for version; the new copy is then dropped and that
+// backup's path returned, and a restart loop keeps one copy, not one each.
+func backUp(ctx context.Context, d *sql.DB, path string, version int) (string, error) {
+	// A path Glob can't read as a pattern has no earlier backups to compare.
+	earlier, _ := filepath.Glob(fmt.Sprintf("%s.pre-v%d-*.bak", path, version))
+	backup := fmt.Sprintf("%s.pre-v%d-%s.bak", path, version, time.Now().UTC().Format("20060102T150405.000Z"))
+	if _, err := d.ExecContext(ctx, `VACUUM INTO ?`, backup); err != nil {
+		return "", fmt.Errorf("backing up the database before migrating: %w", err)
+	}
+	return dropRepeatBackup(backup, earlier), nil
+}
+
+// dropRepeatBackup removes backup and returns the newest of earlier instead
+// when the two hold the same bytes; otherwise it returns backup. Backup names
+// sort by the time they were written.
+func dropRepeatBackup(backup string, earlier []string) string {
+	if len(earlier) == 0 {
+		return backup
+	}
+	newest := slices.Max(earlier)
+	if sameBytes(newest, backup) && os.Remove(backup) == nil {
+		return newest
+	}
+	return backup
+}
+
+// sameBytes reports whether files a and b hold the same bytes. A file that
+// can't be read matches nothing.
+func sameBytes(a, b string) bool {
+	hashA, errA := fileHash(a)
+	hashB, errB := fileHash(b)
+	return errA == nil && errB == nil && hashA == hashB
+}
+
+// fileHash is the hex sha256 of the file at path, read as a stream.
+func fileHash(path string) (string, error) {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// applyMigrations runs each of pending in order, stopping at the first that
+// fails, and returns the ones that were applied.
+func applyMigrations(ctx context.Context, d *sql.DB, pending []migrations.Migration) ([]AppliedMigration, error) {
+	applied := make([]AppliedMigration, 0, len(pending))
+	for _, m := range pending {
+		notes, err := applyMigration(ctx, d, m)
+		if err != nil {
+			return applied, fmt.Errorf("migration %d (%s): %w", m.Version, m.Name, err)
+		}
+		applied = append(applied, AppliedMigration{Version: m.Version, Name: m.Name, Notes: notes})
+	}
+	return applied, nil
+}
+
+// applyMigration runs m in one transaction that also sets user_version to
+// m.Version, and commits it only if every foreign key still holds.
+func applyMigration(ctx context.Context, d *sql.DB, m migrations.Migration) ([]string, error) {
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
+
+	if err := requireVersion(ctx, tx, m.Version-1); err != nil {
+		return nil, err
+	}
+	notes, err := m.Up(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return notes, commitVersion(ctx, tx, m.Version)
+}
+
+// requireVersion fails unless tx, holding the write lock, sees the database
+// at schema version want. Any other version means another process migrated
+// it after pendingMigrations looked.
+func requireVersion(ctx context.Context, tx *sql.Tx, want int) error {
+	version, err := schemaVersion(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if version != want {
+		return fmt.Errorf("the database is at schema version %d, not %d: another process migrated it meanwhile; start again", version, want)
+	}
+	return nil
+}
+
+// commitVersion checks foreign keys, sets user_version to version and
+// commits tx.
+func commitVersion(ctx context.Context, tx *sql.Tx, version int) error {
+	if err := checkForeignKeys(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", version)); err != nil {
+		return fmt.Errorf("setting the schema version: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing: %w", err)
+	}
+	return nil
+}
+
+// checkForeignKeys fails if foreign_key_check reports any row, naming the
+// first ten.
+func checkForeignKeys(ctx context.Context, tx *sql.Tx) error {
+	violations, err := foreignKeyViolations(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if len(violations) > 0 {
+		return fmt.Errorf("foreign_key_check found %d broken references: %s", len(violations), strings.Join(violations[:min(len(violations), 10)], "; "))
+	}
+	return nil
+}
+
+// foreignKeyViolations lists every row foreign_key_check reports, as
+// "<table> row <rowid> → <parent>".
+func foreignKeyViolations(ctx context.Context, tx *sql.Tx) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return nil, fmt.Errorf("checking foreign keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var violations []string
+	for rows.Next() {
+		var table, parent string
+		var rowid sql.NullInt64
+		var fkid int
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			return nil, fmt.Errorf("checking foreign keys: %w", err)
+		}
+		violations = append(violations, fmt.Sprintf("%s row %d → %s", table, rowid.Int64, parent))
+	}
+	return violations, rows.Err()
+}
+
+// logMigrated logs the backup a startup migration wrote and each migration
+// it applied, with its notes.
+func logMigrated(backup string, applied []AppliedMigration) {
+	log.Printf("Backed up the database to %s", backup)
+	for _, m := range applied {
+		log.Printf("Migrated the database to schema version %d (%s)", m.Version, m.Name)
+		for _, note := range m.Notes {
+			log.Printf("  %s", note)
+		}
+	}
+}
+
+// DryRun reports what migrating the database at path would do, without
+// writing to it: the file is opened read-only and copied to a temporary
+// directory, and every pending migration runs on the copy, which is then
+// deleted.
+func DryRun(ctx context.Context, path string) (MigrationReport, error) {
+	return dryRun(ctx, path, migrations.All())
+}
+
+// dryRun is DryRun over list.
+func dryRun(ctx context.Context, path string, list []migrations.Migration) (MigrationReport, error) {
+	dir, err := os.MkdirTemp("", "uno-migrate-")
+	if err != nil {
+		return MigrationReport{}, fmt.Errorf("creating a directory for the copy: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	copyPath := filepath.Join(dir, "vault.db")
+	if err := copyReadOnly(ctx, path, copyPath); err != nil {
+		return MigrationReport{}, err
+	}
+	return migrateCopy(ctx, copyPath, list)
+}
+
+// copyReadOnly writes a copy of the database at src to dst, opening src
+// read-only. A read-only open of a WAL database creates its -wal and -shm
+// files when they're missing, so any that weren't there before are removed
+// again once src is closed.
+func copyReadOnly(ctx context.Context, src, dst string) error {
+	if _, err := os.Stat(src); err != nil {
+		return fmt.Errorf("reading the database: %w", err)
+	}
+	created := absentSidecars(src)
+	defer removeFiles(created)
+
+	d, err := openMigrationDB(src, "&mode=ro")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	if _, err := d.ExecContext(ctx, `VACUUM INTO ?`, dst); err != nil {
+		return fmt.Errorf("copying the database: %w", err)
+	}
+	return nil
+}
+
+// absentSidecars returns the -wal and -shm paths beside path that don't
+// exist.
+func absentSidecars(path string) []string {
+	var absent []string
+	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
+		if _, err := os.Stat(sidecar); errors.Is(err, fs.ErrNotExist) {
+			absent = append(absent, sidecar)
+		}
+	}
+	return absent
+}
+
+// removeFiles removes each of paths, ignoring any already gone.
+func removeFiles(paths []string) {
+	for _, path := range paths {
+		_ = os.Remove(path)
+	}
+}
+
+// migrateCopy migrates the throwaway copy at path through list, counting
+// every table's rows before and after.
+func migrateCopy(ctx context.Context, path string, list []migrations.Migration) (MigrationReport, error) {
+	d, err := openMigrationDB(path, "")
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	defer func() { _ = d.Close() }()
+	return migrateCopyOpen(ctx, d, list)
+}
+
+// migrateCopyOpen is migrateCopy over the connection d has open to the copy.
+// When a migration fails, the report still covers the ones applied before it,
+// with the row counts the copy holds after them, alongside the error.
+func migrateCopyOpen(ctx context.Context, d *sql.DB, list []migrations.Migration) (MigrationReport, error) {
+	var report MigrationReport
+	var err error
+	if report.RowsBefore, err = countRows(ctx, d); err != nil {
+		return report, err
+	}
+	var pending []migrations.Migration
+	if report.From, pending, err = pendingMigrations(ctx, d, list); err != nil {
+		return report, err
+	}
+	report.Applied, err = applyMigrations(ctx, d, pending)
+	report.To = report.From + len(report.Applied)
+	var countErr error
+	report.RowsAfter, countErr = countRows(ctx, d)
+	return report, errors.Join(err, countErr)
+}
+
+// countRows counts the rows of every table in d, keyed by table name.
+func countRows(ctx context.Context, d *sql.DB) (map[string]int, error) {
+	tables, err := tableNames(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int, len(tables))
+	for _, table := range tables {
+		var n int
+		//nolint:gosec // G202: table is a name read from sqlite_master, quoted as an identifier.
+		if err := d.QueryRowContext(ctx, `SELECT count(*) FROM "`+strings.ReplaceAll(table, `"`, `""`)+`"`).Scan(&n); err != nil {
+			return nil, fmt.Errorf("counting %s's rows: %w", table, err)
+		}
+		counts[table] = n
+	}
+	return counts, nil
+}
+
+// tableNames lists d's tables, SQLite's own aside.
+func tableNames(ctx context.Context, d *sql.DB) ([]string, error) {
+	rows, err := d.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("listing tables: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("listing tables: %w", err)
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}

@@ -108,15 +108,57 @@ service already running there rather than being the one bare-`systemd` outlier.
 
 ## Database lifecycle
 
-There are no migrations. On every start, `vault.InitDB` runs the whole schema once. Its
-`CREATE TABLE IF NOT EXISTS` never alters an existing table; its `CREATE INDEX IF NOT EXISTS`
-does create an index that is new since the database was made. A database whose tables predate
-the current schema fails hard on the affected reads and writes rather than degrading silently.
-So a schema change needs one of two steps:
+The schema is versioned. `PRAGMA user_version` records how far a database has been migrated, and
+the migrations live one file each in `internal/vault/migrations/`. On every start, before it
+opens the connection pool, `vault.InitDB` runs the runner in `internal/vault/migrate.go`:
 
-- **Local dev:** delete `vault.db`.
-- **The deployed `uno-data` volume:** it holds real data, so never `docker compose down -v` it.
-  Stop the app, back up the database, and run the change's upgrade SQL against it once
-  (`ALTER TABLE … ADD COLUMN`, plus whatever data fix a new constraint needs). Then start the new
-  build, which creates any new index on its first start. If an index can't be created (a new
-  unique index over rows that break it), `InitDB` fails and the app won't start.
+1. It opens a connection of its own with foreign keys off and reads `user_version`. A version
+   this build doesn't know (newer than its last migration, or negative) stops the start.
+2. With nothing pending it does nothing more. Otherwise it writes a backup beside the database
+   with `VACUUM INTO`, named `<db>.pre-v<N>-<UTC time>.bak`, where `N` is the version it is
+   about to migrate to (`/data/vault.db.pre-v1-20260928T101500.123Z.bak` on the volume). The
+   backup is taken even of an empty new file.
+   - `VACUUM INTO` writes the same bytes for the same content. So when a restart fails the same
+     way as the start before it, the new copy matches the newest earlier backup for `N`. It is
+     dropped, and a restart loop keeps one copy.
+   - Backups are otherwise never pruned.
+3. It runs each pending migration in its own `BEGIN IMMEDIATE` transaction.
+   - The transaction first re-reads `user_version` under the write lock. If another process has
+     migrated the database in the meantime, the start fails instead of applying the migration a
+     second time.
+   - The transaction also sets `user_version`, and commits only if `PRAGMA foreign_key_check`
+     finds nothing.
+   - A failing migration rolls back, and the ones before it stay applied. `InitDB` then returns
+     the error, and the server exits without serving.
+
+The log names the backup and every migration applied, with its notes.
+
+**Local dev:** deleting `vault.db` is still fine; the next start migrates an empty file.
+
+**The rehearsal.** `migrate --dry-run --db <path>` is a subcommand of the same binary. Locally,
+run `go run ./cmd/server migrate --dry-run --db <path>`; in the image, pass `migrate --dry-run
+--db …` to `docker run`, since the binary is the entrypoint. It needs no `.env`. It:
+
+- opens the file read-only and never writes to it. A read-only open of a WAL database creates
+  `-wal` and `-shm` files, and it removes any it created;
+- copies the database into a temporary directory with `VACUUM INTO`;
+- runs every pending migration on the copy;
+- prints the versions, each migration's notes, and every table's row count before and after.
+  When a migration fails, it prints the report up to that point, then the error.
+
+**Upgrading the deployed `uno-data` volume.** The volume holds real data, so never
+`docker compose down -v` it.
+
+1. Stop the app with `docker compose stop uno`. Copy the volume with
+   `docker run --rm -v <vol>:/data -v "$PWD":/backup alpine cp -a /data/. /backup/uno-<date>/`.
+   `docker volume ls | grep uno-data` gives `<vol>`.
+2. Rehearse on the copy:
+   `docker run --rm -v "$PWD/uno-<date>":/data <new-image> migrate --dry-run --db /data/vault.db`.
+   The row counts should reconcile and every note should be one you expect. If you also run
+   the new build locally against the copy, never push from it: that would add a localhost addon
+   to the real Nuvio profile.
+3. Deploy. The server writes its backup, migrates, and only then serves.
+4. Roll back by restoring the backup and redeploying the previous image. Always restore first.
+   A build with migrations refuses a database newer than it knows. The build from before
+   migrations existed never reads `user_version`, and would start on the migrated file without
+   complaint.

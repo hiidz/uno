@@ -1,18 +1,31 @@
 # Data model
 
-SQLite, defined in `internal/vault/schema.go`. Row structs and wire DTOs are in
+SQLite. The migrations in `internal/vault/migrations/` build the schema, one frozen file per
+version. `internal/vault/testdata/schema_latest.sql` is the resulting schema as SQLite stores it,
+and a test holds it to a database migrated from empty. Row structs and wire DTOs are in
 `internal/vault/models.go`, all with explicit `snake_case` JSON tags. `internal/vault/db.go`
-opens the database in WAL mode with a 5s `busy_timeout` and foreign keys on.
+opens the database in WAL mode with a 5s `busy_timeout` and foreign keys on, after migrating it.
 
-There are no migrations. On every start, `InitDB` runs the whole `schema` string once. Its
-`CREATE TABLE IF NOT EXISTS` never alters an existing table; its `CREATE INDEX IF NOT EXISTS`
-does create an index that is new since the database was made. A schema change therefore reaches
-an existing database one of two ways:
+**Migrations.** `PRAGMA user_version` is the schema version. On every start, `InitDB` first backs
+the database up, then applies each pending migration in its own transaction on a connection with
+foreign keys off. Each transaction also sets `user_version` and commits only if
+`PRAGMA foreign_key_check` is clean. The runner, the backup and the `migrate --dry-run`
+rehearsal are described in `docs/configuration.md` → *Database lifecycle*.
 
-- **Local dev:** delete `vault.db` and let `InitDB` recreate it.
-- **The deployed database:** it holds real data. Upgrade it by hand, with SQL run once, with the
-  app stopped, before starting the new build: `ALTER TABLE … ADD COLUMN` for a new column, plus
-  whatever data fix a new constraint needs. The new indexes are then created on the first start.
+- **A migration is frozen once it ships.** A schema change is a new file, never an edit to an
+  old one. It imports only the standard library, never live Uno code, so what it does can't
+  drift when that code changes (`TestMigrationsImportOnlyTheStandardLibrary`). A check that needs
+  live code belongs in the dry run and the tests.
+- **A migration makes no network calls, and keeps every id and version.** Catalog, collection
+  and folder ids, profile tokens, and every `version` and `pushed_version` are what Nuvio holds
+  (see *Push wire shape*). A migration that changed them would force a re-push.
+- **Migration 1 (`0001_baseline.go`) is the schema from before versioning, with `IF NOT EXISTS`
+  throughout.** A database created before migrations (version 0, tables present) and an empty
+  one take the same path. It then compares every table's columns with the baseline by name, in
+  any order, since a column added by hand-run `ALTER TABLE` sits last. It fails naming every
+  difference, apart from the legacy `is_default` columns. Its test fixture,
+  `internal/vault/testdata/schema_v1.sql`, is a database shaped like prod's before migrations,
+  with seed rows written by live vault code.
 
 ```mermaid
 erDiagram
@@ -303,11 +316,11 @@ write credential.
   `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
   the wire. Every insert sets both to the same instant; every update rewrites only `updated_at`.
 - **Legacy `is_default` columns.** `catalogs.is_default` and `collections.is_default`
-  (`INTEGER NOT NULL DEFAULT 0`) were removed from `schema.go` and are named nowhere in Go.
-  Databases created before that removal still carry them. Every insert omits the column, so the
-  default satisfies `NOT NULL`. New databases don't have them. Dropping them from an existing
-  database is optional: `ALTER TABLE catalogs DROP COLUMN is_default;
-  ALTER TABLE collections DROP COLUMN is_default;`, run once with the app stopped.
+  (`INTEGER NOT NULL DEFAULT 0`) are not in the baseline schema and are named nowhere in Go.
+  Prod's database, created before they were removed, still carries them. Migration 1 accepts them
+  with that exact definition and notes them. Every insert omits the column, so the default
+  satisfies `NOT NULL`. Databases created since don't have them. Dropping them takes a
+  migration.
 - **Nuvio appearance fields.** `collections.focus_glow_enabled` (the TV's focus glow on the
   collection's home-screen folder cards), `folders.focus_gif_url`/`focus_gif_enabled` (an
   animated GIF played over a folder tile while it's focused), and

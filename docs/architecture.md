@@ -31,7 +31,7 @@ embedded frontend build.
 
 | Package | Owns |
 | --- | --- |
-| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). The only leaf — imports no other Uno package |
+| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Imports only `jsonwire` and its own `vault/migrations` (the frozen schema migrations, standard library only) |
 | `internal/addon` | Stremio-protocol manifest + catalog responses, `/u/{token}/...` |
 | `internal/api` | Bearer-token auth, CRUD orchestration, push, the route table |
 | `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |

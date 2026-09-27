@@ -9,6 +9,8 @@ lcov.info
 *.db
 *.db-shm
 *.db-wal
+# The backup a migration writes beside the database, vault.db.pre-v<N>-<time>.bak
+*.bak
 
 # Web
 /web/node_modules/
