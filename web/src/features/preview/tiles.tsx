@@ -5,8 +5,8 @@ import type { PreviewItem, TileShape, TMDBKind } from '@/api'
  * shapes they're drawn at.
  *
  * Shared by the Home pane's List strips and the catalog editor's results
- * panel, which is why it lives outside `features/home`. The TV preview draws
- * its own tiles (`features/home/tv.tsx`). Everything here is presentational
+ * panel, which is why it lives outside `features/home`. The preview rows draw
+ * their own captioned tiles (`features/home/tv.tsx`). Everything here is presentational
  * and takes `CatalogTiles` — how those tiles were fetched (for a saved
  * catalog, or for a recipe still being typed) is the caller's problem.
  */

@@ -18,21 +18,20 @@ import { TILES_PER_PAGE, noTiles, type CatalogTiles } from '@/features/preview/t
 import type { FolderPageTarget, PreviewRow } from './preview'
 
 /**
- * The Home pane's TV preview: a framed 16:9 picture in Roboto, DESIGN.md's
- * "TV preview". Deliberately its own component tree, not a restyle of
- * `features/preview/tiles.tsx` — that stays in Uno's own Figtree for its
- * unframed consumers, and `cqw` sizing only means anything against
- * `.tv-bezel`'s own `container-type`, so sharing the classes across a
- * non-framed consumer would silently fall back to viewport units there. The
- * collection editor's docked row is framed, so it draws with these.
+ * The preview rows, DESIGN.md's "Preview rows": the TV's layout — rows with
+ * "see more" chevrons, folder tiles that open folder pages, tabs or rows per
+ * `view_mode` — drawn in Uno's own look. Home Preview, the collection
+ * editor's "On your TV" panel and Community's collection preview all draw
+ * with these. `features/preview/tiles.tsx` is the Results panel's and the
+ * Home list's grid; these add captions, row scrolling and folders.
  *
- * **Uno pins nothing onto the screen — the Clean Preview amendment.** No
+ * **Uno puts nothing between the rows — the Clean Preview rule.** No
  * shuffled-row note, no stopped-sharing note (that warning stays in the
  * library), no All-tab merge-order caveat, no "follows the app" caveat. An
  * unresolved source or an empty result just renders as an empty row, the way
- * the real TV would show it, rather than an explanation Uno pins onto the
- * picture. The one caveat kept — placeholder tiles behind a poster that
- * hasn't loaded yet, or is missing — is the tone cycle below, not text.
+ * the real TV would show it; Uno's words about the rows sit above and below
+ * them. The one caveat kept — a blank tile face behind a poster that hasn't
+ * loaded yet, or is missing — is the tile itself, not text.
  */
 
 /** A fixed kind for every tile in the run, or a per-item lookup for a run
@@ -45,34 +44,19 @@ function resolveTileKind(kind: TileKind | undefined, item: PreviewItem): TMDBKin
   return typeof kind === 'function' ? kind(item) : kind
 }
 
-const TILE_TONES = ['bg-tile-a', 'bg-tile-b', 'bg-tile-c'] as const
-
-function tone(index: number): string {
-  return TILE_TONES[index % TILE_TONES.length]
-}
-
 /**
- * One real title. A flat tone (cycled a/b/c along the strip) shows through
- * until the poster loads, or in its place if there is none — DESIGN.md's
- * accepted placeholder treatment, not a Uno note.
+ * One real title. The blank tile face shows through until the poster loads,
+ * or in its place if there is none.
  *
  * Linked when the caller knows the kind, exactly like `tiles.tsx`'s own
  * content tile — opens in a new tab so it doesn't discard the pane's state.
  */
-function TVPosterTile({
-  item,
-  kind,
-  toneIndex,
-}: {
-  item: PreviewItem
-  kind?: TileKind
-  toneIndex: number
-}) {
+function TVPosterTile({ item, kind }: { item: PreviewItem; kind?: TileKind }) {
   const resolvedKind = resolveTileKind(kind, item)
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>
-      <span className={`art ${tone(toneIndex)}`}>
+      <span className="art">
         {item.poster && <img src={item.poster} alt="" loading="lazy" />}
       </span>
       <span className="cap">{item.title}</span>
@@ -101,12 +85,12 @@ function TVPosterTile({
   )
 }
 
-/** The loading placeholder — a bare toned tile, no caption. Count matches one
+/** The loading placeholder — a blank tile face, no caption. Count matches one
  *  TMDB page so the row doesn't reflow when real tiles land. */
-function TVPlaceholderTile({ toneIndex }: { toneIndex: number }) {
+function TVPlaceholderTile() {
   return (
     <span className="tv-tile tv-poster">
-      <span className={`art ${tone(toneIndex)}`} />
+      <span className="art" />
     </span>
   )
 }
@@ -116,7 +100,7 @@ function TVPlaceholderTile({ toneIndex }: { toneIndex: number }) {
  * more" affordance a real row carries, not a Uno addition. A whole TMDB page
  * is fetched either way (`useCatalogTiles`); this is what makes every one of
  * those tiles reachable instead of the row silently clipping whatever didn't
- * fit the frame.
+ * fit the panel.
  *
  * **Swiping is touch-only, and native.** `overflow-x` on `.tv-strip` is the
  * whole of it: a finger swipes the row like any native scroller. A mouse gets
@@ -208,7 +192,7 @@ function RowNav({
 }
 
 /**
- * The shared body of a strip or grid: real tiles once they land, toned
+ * The shared body of a strip or grid: real tiles once they land, blank
  * placeholders until then. A settled, empty result draws nothing at all — on
  * the real TV an empty catalog is an empty row, not an explanation.
  */
@@ -234,7 +218,7 @@ function TVTiles({
     return (
       <div ref={scroll?.stripRef} aria-hidden="true" className={className}>
         {Array.from({ length: TILES_PER_PAGE }, (_, i) => (
-          <TVPlaceholderTile key={i} toneIndex={i} />
+          <TVPlaceholderTile key={i} />
         ))}
       </div>
     )
@@ -242,13 +226,8 @@ function TVTiles({
 
   return (
     <div ref={scroll?.stripRef} className={className}>
-      {tiles.items.map((item, i) => (
-        <TVPosterTile
-          key={`${resolveTileKind(kind, item)}:${item.tmdb_id}`}
-          item={item}
-          kind={kind}
-          toneIndex={i}
-        />
+      {tiles.items.map((item) => (
+        <TVPosterTile key={`${resolveTileKind(kind, item)}:${item.tmdb_id}`} item={item} kind={kind} />
       ))}
     </div>
   )
@@ -256,9 +235,8 @@ function TVTiles({
 
 /**
  * A folder, drawn as a tile in its collection's row — cover emoji, then the
- * folder's cover art over it once loaded, in its own `tile_shape`. Always
- * Placeholder Tile C underneath, per DESIGN.md's `tv-folder-tile` token —
- * unlike a poster strip, a folder tile's tone isn't cycled.
+ * folder's cover art over it once loaded, in its own `tile_shape`, on the
+ * same face the collection editor's folder strip draws.
  */
 function TVFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () => void }) {
   const shapeClass =
@@ -341,14 +319,14 @@ export function TVCatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTi
 }
 
 /**
- * A folder's page, opened from its tile — DESIGN.md's "TV folder page
- * (signature)". `view_mode` decides the body: `TABBED_GRID` and
- * `FOLLOW_LAYOUT` both render as tabs (the latter forcing the "All" tab
- * first, Nuvio's own default, per the Follows the app's layout amendment);
- * `ROWS` stacks every catalog as its own row.
+ * A folder's page, opened from its tile — DESIGN.md's "Preview folder page".
+ * `view_mode` decides the body: `TABBED_GRID` and `FOLLOW_LAYOUT` both render
+ * as tabs (the latter forcing the "All" tab first, Nuvio's own default, per
+ * the Follows the app's layout amendment); `ROWS` stacks every catalog as its
+ * own row. The tabs are the app's own `.choice` pills.
  *
- * The back arrow lives beside the folder's own title, inside the screen —
- * the Back Like the Remote amendment. `onBack` is the one way this asks to
+ * The back button lives beside the folder's own title — the Back Like the
+ * Remote rule. `onBack` is the one way this asks to
  * close; Escape and the browser's own Back are wired by the caller, which
  * also owns the history entry that makes Back work at all.
  */
@@ -435,7 +413,7 @@ function TVTabbedCatalogs({
       {tabs.length > 1 && (
         <Tabs.List className="fp-tabs" aria-label={`Tabs in ${folder.title || 'this folder'}`}>
           {tabs.map((tab) => (
-            <Tabs.Trigger key={tab.key} value={tab.key} className="fp-tab">
+            <Tabs.Trigger key={tab.key} value={tab.key} className="choice">
               {tab.label}
             </Tabs.Trigger>
           ))}
@@ -494,9 +472,8 @@ function TVFolderSourceRow({
   )
 }
 
-/** The caption above the frame, in Uno's own Figtree, and the layout name
- *  beside it. Outside the screen, so it's Uno's own words about the
- *  picture, not pinned onto it. */
+/** The layout name in the caption above or below the rows — Uno's own words
+ *  about the folder page, not pinned between its rows. */
 export const FOLDER_LAYOUT_LABEL: Record<PreviewCollection['viewMode'], string> = {
   TABBED_GRID: 'Tabbed grids, one tab per catalog',
   ROWS: 'Rows, one per catalog',

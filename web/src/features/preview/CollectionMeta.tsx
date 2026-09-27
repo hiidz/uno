@@ -24,7 +24,7 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
 
   if (collection.folders.length > 0) {
     if (collection.viewModeAssumed) {
-      // `FOLLOW_LAYOUT` names no layout Uno can honour, so the TV preview
+      // `FOLLOW_LAYOUT` names no layout Uno can honour, so the preview
       // draws the app's own default — tabs, All first — and the note says
       // that's a stand-in.
       notes.push("folders follow the app's layout — shown as tabs with an All tab")

@@ -14,9 +14,11 @@ import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
  * the open folder page is found by folder id and its tiles by the folder's
  * sources.
  *
- * **A crop of a real-scale TV** (`.tv-crop`): tiles are the Home preview's
- * size however narrow the column, rows run off the frame's edge and scroll,
- * and a folder page's grid reflows to the frame.
+ * **Rows in the raised panel** (`.pv-rows`): tiles are the Home preview's
+ * size however narrow the column, rows run off the panel's edge and scroll,
+ * and a folder page's grid reflows to the panel. Docked beside the editor's
+ * form, the rows scroll inside the panel; anywhere else they flow with the
+ * page.
  *
  * **Folders open, exactly as on Home.** A folder tile opens `TVFolderPage` —
  * tabs or rows per the draft's `view_mode`, real titles per catalog. Tiles
@@ -70,43 +72,37 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
         <span className="type-label">On your TV</span>
       </div>
 
-      <div className="tv-bezel tv-crop">
-        <div
-          ref={screenRef}
-          className="tv-screen"
-          tabIndex={0}
-          role="region"
-          onKeyDown={onScreenKeyDown}
-          aria-label={
-            folder
-              ? `${folder.title || 'Untitled folder'}, a folder in ${title}, as your TV shows it`
-              : empty
-                ? `${title}, an empty row on your TV`
-                : `${title}, a row of ${pluralCount(collection.folders.length, 'folder')} on your TV`
-          }
-        >
-          <div className="tv-crop-stage">
-            <div className="tv-crop-view">
-              {folder ? (
-                <TVFolderPage
-                  collection={shown}
-                  folder={folder}
-                  tiles={tiles}
-                  onBack={() => setOpenKey(null)}
-                  backLabel={`Back to the ${title} row`}
-                />
-              ) : (
-                <TVCollectionRow
-                  collection={shown}
-                  onOpenFolder={({ folderId }) => {
-                    openedFrom.current = collection.folders.findIndex((f) => f.id === folderId)
-                    setOpenKey(folderId)
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        </div>
+      <div
+        ref={screenRef}
+        className="pv-rows"
+        tabIndex={0}
+        role="region"
+        onKeyDown={onScreenKeyDown}
+        aria-label={
+          folder
+            ? `${folder.title || 'Untitled folder'}, a folder in ${title}, as your TV shows it`
+            : empty
+              ? `${title}, an empty row on your TV`
+              : `${title}, a row of ${pluralCount(collection.folders.length, 'folder')} on your TV`
+        }
+      >
+        {folder ? (
+          <TVFolderPage
+            collection={shown}
+            folder={folder}
+            tiles={tiles}
+            onBack={() => setOpenKey(null)}
+            backLabel={`Back to the ${title} row`}
+          />
+        ) : (
+          <TVCollectionRow
+            collection={shown}
+            onOpenFolder={({ folderId }) => {
+              openedFrom.current = collection.folders.findIndex((f) => f.id === folderId)
+              setOpenKey(folderId)
+            }}
+          />
+        )}
       </div>
 
       <p>

@@ -14,9 +14,9 @@ import type { FolderPageTarget, HomeScreenPreview, PreviewRow } from './preview'
 import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from './tv'
 
 /**
- * The Home pane's second view: the same pending state, drawn as the framed
- * 16:9 picture DESIGN.md's "TV preview" specs — Roboto inside the frame,
- * Figtree around it. Reorder in List, flip to here, see it move.
+ * The Home pane's second view: the same pending state, drawn as the TV lays
+ * it out — DESIGN.md's "Preview rows", in one raised panel. Reorder in List,
+ * flip to here, see it move.
  *
  * **Two levels, matching the real screen.** Home is one page — pinned
  * collections, then catalog rows, then the rest of the collections. A
@@ -27,10 +27,10 @@ import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from
  * **Read-only by construction.** The one interaction — opening a folder — is
  * navigation within the mock, not an edit. Every edit lives in the List view.
  *
- * **Uno pins nothing onto the screen — the Clean Preview amendment.** Every
+ * **Uno puts nothing between the rows — the Clean Preview rule.** Every
  * caveat this view has to state (the pending count, how to get back to home)
- * is Uno's own words *around* the frame, in Figtree; the picture itself carries
- * only what the real TV would show. See `tv.tsx` for what that drops.
+ * is Uno's own words above and below the panel; the panel itself carries only
+ * what the real TV would show. See `tv.tsx` for what that drops.
  */
 export function HomePreview() {
   const home = useHomeSelection()
@@ -173,15 +173,12 @@ function FolderPageView({
         <RefreshPreviewButton />
       </div>
 
-      <div className="tv-bezel">
-        <div
-          className="tv-screen"
-          tabIndex={0}
-          role="region"
-          aria-label={`${folder.title || 'Untitled folder'}, a folder in ${collection.title || 'Untitled collection'}, as your TV shows it`}
-        >
-          <TVFolderPage collection={collection} folder={folder} tiles={tiles} onBack={onBack} />
-        </div>
+      <div
+        className="pv-panel"
+        role="region"
+        aria-label={`${folder.title || 'Untitled folder'}, a folder in ${collection.title || 'Untitled collection'}, as your TV shows it`}
+      >
+        <TVFolderPage collection={collection} folder={folder} tiles={tiles} onBack={onBack} />
       </div>
 
       <p className="text-dim m-0 max-w-[72ch] text-[12px] leading-[17px] pointer-coarse:hidden">
@@ -234,26 +231,12 @@ function HomeScreenView({
       </div>
 
       {nothingOnHome ? (
-        <>
-          <p className="text-dim m-0 text-[13px] leading-[18px]">
-            Nothing on home — every selected catalog is set to Discover only.
-          </p>
-          <div className="tv-bezel">
-            <div
-              className="tv-screen"
-              role="img"
-              aria-label="Preview of your TV home screen, with no rows yet"
-            />
-          </div>
-        </>
+        <p className="text-dim m-0 text-[13px] leading-[18px]">
+          Nothing on home — every selected catalog is set to Discover only.
+        </p>
       ) : (
-        <div className="tv-bezel">
-          <div
-            className="tv-screen"
-            tabIndex={0}
-            role="region"
-            aria-label="Preview of your TV home screen. Scroll inside it to see every row."
-          >
+        <>
+          <div className="pv-panel" role="region" aria-label="Preview of your TV home screen">
             {preview.pinnedCollections.map((collection) => (
               <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
             ))}
@@ -264,13 +247,13 @@ function HomeScreenView({
               <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
             ))}
           </div>
-        </div>
-      )}
 
-      <p className="text-dim m-0 max-w-[72ch] text-[12px] leading-[17px]">
-        The screen scrolls, like your TV — sideways within a row, up and down between them. A flat
-        tone shows behind a tile until its poster loads, or in place of one it doesn't have.
-      </p>
+          <p className="text-dim m-0 max-w-[72ch] text-[12px] leading-[17px]">
+            Each row scrolls sideways, like your TV. A blank tile stands in until its poster loads,
+            or for one it doesn't have.
+          </p>
+        </>
+      )}
 
       {preview.discoverOnly.length > 0 && <DiscoverOnly rows={preview.discoverOnly} />}
     </div>
@@ -304,7 +287,7 @@ function RefreshPreviewButton() {
  * `buildManifest` (`internal/addon/addon.go`) enforces this by marking the
  * catalog's genre filter `isRequired`, so these rows are a genuine omission
  * from the home screen, not just from this preview. Listed beneath the
- * frame, never drawn as a TV row.
+ * panel, never drawn as a row.
  */
 function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
   const home = useHomeSelection()
@@ -339,7 +322,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
  * First run, nothing selected anywhere — not merely "no rows on home", which
  * `HomeScreenView`'s own empty case reports. The tab still works and shows
  * its own picture, per DESIGN.md's empty-state list: SMPTE colour bars,
- * television's own artifact for "nothing to show", filling the TV screen.
+ * television's own artifact for "nothing to show", on a rounded card.
  * `docs/frontend.md`'s Visual direction section has the rationale.
  */
 function EmptyHomeScreen() {
@@ -359,21 +342,15 @@ function EmptyHomeScreen() {
         Nothing is on your home screen yet, so there's nothing to show. Add rows and they appear
         here the way your TV shows them.
       </p>
-      <div className="tv-bezel">
-        <div
-          className="tv-screen relative"
-          role="img"
-          aria-label="Preview of your TV home screen, with no rows yet"
-        >
-          <div aria-hidden="true" className="absolute inset-0 flex">
-            {bars.map((color) => (
-              <span key={color} className="flex-1" style={{ background: color }} />
-            ))}
-          </div>
-          <p className="type-display bg-ground text-ink absolute inset-x-0 top-1/2 m-0 -translate-y-1/2 px-5 py-3 text-center text-[13px]">
-            No signal — nothing on your home screen yet
-          </p>
+      <div className="pv-nosignal" role="img" aria-label="Preview of your TV home screen, with no rows yet">
+        <div aria-hidden="true" className="absolute inset-0 flex">
+          {bars.map((color) => (
+            <span key={color} className="flex-1" style={{ background: color }} />
+          ))}
         </div>
+        <p className="type-display bg-ground text-ink absolute inset-x-0 top-1/2 m-0 -translate-y-1/2 px-5 py-3 text-center text-[13px]">
+          No signal — nothing on your home screen yet
+        </p>
       </div>
       <p className="text-dim m-0 text-[12px] leading-[17px]">
         Add catalogs and collections from the Library, then push.

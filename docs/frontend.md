@@ -15,7 +15,7 @@ is gitignored except for the committed `.gitkeep`, which keeps the embed target 
 | Router | React Router. Four routes total: `/login`, `/` (redirects to `/profiles`), `/profiles`, `/configure` |
 | Server state | TanStack Query, keys scoped by profile under `['p', i, …]` so switching slots invalidates cleanly with no manual cache wipe |
 | Drag-and-drop | dnd-kit — `PointerSensor` (covers touch and mouse) + `KeyboardSensor`, so every reorderable list is operable with no pointer at all |
-| Components | Hand-written, on Radix UI primitives wherever a control needs real accessible behaviour: `Dialog` under `Modal` and `ConfirmDialog`, `Popover`, `Slider`, `DropdownMenu`, and `Tabs` on the TV folder page. The rest — `Toast`, `ListState`, `fields.tsx`, `GlyphButton` — is plain local markup. Styling is Tailwind v4 against Uno's own `--uno-*` tokens in `web/src/index.css`; a small base set (`--background`, `--foreground`, `--border`, `--ring`, `--sidebar`) is aliased onto the Uno palette |
+| Components | Hand-written, on Radix UI primitives wherever a control needs real accessible behaviour: `Dialog` under `Modal` and `ConfirmDialog`, `Popover`, `Slider`, `DropdownMenu`, and `Tabs` on the preview's folder page. The rest — `Toast`, `ListState`, `fields.tsx`, `GlyphButton` — is plain local markup. Styling is Tailwind v4 against Uno's own `--uno-*` tokens in `web/src/index.css`; a small base set (`--background`, `--foreground`, `--border`, `--ring`, `--sidebar`) is aliased onto the Uno palette |
 | Types | **Hand-written per endpoint, no codegen.** For a one-person team on both ends, drift surfaces immediately in the browser rather than silently in production. If drift pain ever shows up, a lightweight generator reading the Go structs (`tygo`-style) is the first upgrade to reach for, not a full OpenAPI pipeline |
 
 Because there is no codegen, **`"strict": true` must stay on in `web/tsconfig.app.json`.** The
@@ -32,11 +32,11 @@ while `web/src/features/catalogs/fields.tsx` re-exports them and keeps `NumberIn
 editors sit in, so a catalog and a collection get the same header, dirty state, footer, and
 save/discard behaviour from one place. `web/src/features/preview/` holds the preview model
 (`model.ts`), the tile queries, and the Figtree-styled tiles the catalog editor's results panel
-and the Home list's strips draw. The TV picture — the Home pane's Preview tab and the collection
-editor's "On your TV" panel — is a separate tree, `web/src/features/home/tv.tsx`: Roboto inside a
-real framed bezel, not a restyle of `features/preview/`, because `cqw` sizing only means anything
-against that frame's own `container-type`, and the TV picture never pins a note onto itself (see
-"Home pane — Preview view" below). Nothing under `features/` is a separate URL; `Builder`
+and the Home list's strips draw. The preview rows — the Home pane's Preview tab, the collection
+editor's "On your TV" panel and Community's collection preview — are `web/src/features/home/tv.tsx`:
+the TV's layout (scrolling rows, captions, folder tiles that open folder pages) in the same Figtree
+and tonal steps as the rest of the app, with no note pinned between the rows (see "Home pane —
+Preview view" below). Nothing under `features/` is a separate URL; `Builder`
 composes all of it.
 
 Every row either editor opens is a saved one, and `EditorTarget`
@@ -482,7 +482,7 @@ applied to every folder in it, and it governs this page only:
 | --- | --- |
 | `TABBED_GRID` | One tab per **catalog in the folder** (plus "All" when `show_all_tab`), over a grid of that catalog's content |
 | `ROWS` | One row per catalog in the folder, stacked — the same shape home uses |
-| `FOLLOW_LAYOUT` | Drawn as tabs with the "All" tab first, the app's own default (`TVFolderPage` in `features/home/tv.tsx`); the caption outside the frame reads "Follows the app's layout" |
+| `FOLLOW_LAYOUT` | Drawn as tabs with the "All" tab first, the app's own default (`TVFolderPage` in `features/home/tv.tsx`); the caption above the panel reads "Follows the app's layout" |
 | `''` / unknown | Drawn as `TABBED_GRID`, which is how every Nuvio client reads it |
 
 Corroborating details from Nuvio's own field descriptions: `hideTitle` is "Hide the **tile**
@@ -508,11 +508,11 @@ Decisions that shape the code:
   them is a real bug. `catalogById`/`collectionById` are assembled from the selection response
   *as well as* the library, so a row deleted after selection still resolves through the selection
   response even once it's gone from the library. Per DESIGN.md's Clean Preview Rule,
-  `isDetached` marks nothing *inside* the TV
-  frame — the real TV shows a detached row plainly, with no note pinned onto it — but the
-  Discover-only list beneath the frame still names it, in List's own wording, because that list is
-  Uno's own words about the picture, not the picture itself. Unresolvability still degrades a row
-  inside the frame to an empty strip, no explanation, matching how the TV would show it.
+  `isDetached` marks nothing *inside* the preview
+  panel — the real TV shows a detached row plainly, with no note pinned onto it — but the
+  Discover-only list beneath the panel still names it, in List's own wording, because that list is
+  Uno's own words about the rows, not the rows themselves. Unresolvability still degrades a row
+  inside the panel to an empty strip, no explanation, matching how the TV would show it.
 - **Slack wire values are handled, not cast away.** An older row's `tile_shape` can be `''`
   (falls back to `POSTER`, and says so on screen; Nuvio does the same with a pushed `''` — see
   `docs/data-model.md`). `view_mode` is a bare `string`: `FOLLOW_LAYOUT` lands in a branch that
@@ -546,7 +546,7 @@ complexity. The catalog editor's Run button is the one place a preview fetch is 
 gated on a keypress, not on visibility.
 
 Two fidelity limits exist and are silently absorbed rather than named in the UI, per DESIGN.md's
-Clean Preview spec and the owner's instruction that Uno pin nothing onto the TV picture anywhere:
+Clean Preview spec and the owner's instruction that Uno pin nothing between the preview rows anywhere:
 
 - **Merged catalogs.** Nuvio merges N catalogs into one view and **its merge rule is
   unspecified** — folders aren't an addon concept, so nothing in the addon protocol or Nuvio's
@@ -556,12 +556,12 @@ Clean Preview spec and the owner's instruction that Uno pin nothing onto the TV 
   same TV components). The TV's own "All" tab just shows the merged tiles, with no caption saying
   the order is a guess.
 - **`randomized` catalogs** take a random TMDB page per call on both the addon path and the
-  preview, independently, so the TV preview genuinely won't match the TV. A collection row shuffles
+  preview, independently, so the preview genuinely won't match the TV. A collection row shuffles
   its film list instead, with the same independent-per-call mismatch. Not flagged inline; the
-  placeholder-tone tile behind a poster is the only visual difference, and it isn't specific to
+  blank tile face behind a poster is the only visual difference, and it isn't specific to
   this case.
 
-**The folder page's back arrow lives inside the TV frame, beside the folder's own title**, per
+**The folder page's back arrow lives in the preview panel, beside the folder's own title**, per
 DESIGN.md's Back Like the Remote spec, not as a button in Uno's own chrome above it. Escape and the
 browser's own Back do the same thing. `HomePreview.tsx`'s `useFolderPage` hook owns this: opening
 a folder pushes one `history.pushState({unoFolder: true}, '')` entry (a `try`/`catch` — a
@@ -769,15 +769,16 @@ button.
   isn't Tabbed Grids, keeping its value for when it switches back.
 - **The "On your TV" panel is a working TV, docked beside the form.** The collection editor has
   its own layout (`.ed.ed-tv`, `EditorShell`'s `docked="tv"`, capped at `--w-editor-tv`): the form keeps
-  its `--w-form` column and the TV takes `clamp(380px, 42cqw, 620px)` beside it, undocking under
+  its `--w-form` column and the panel takes `clamp(380px, 42cqw, 620px)` beside it, undocking under
   the form below 960px of pane. It draws the live draft with the Home Preview's own components
   (`TVCollectionRow`, `TVFolderPage` from `features/home/tv.tsx`), so a folder tile opens the same
-  folder page Home does — tabs or rows per `view_mode`, real titles per catalog. `.tv-crop` sizes
-  every `cqw` against a stage at least 800px wide, so tiles match the Home Preview's size in any
-  column width and the frame shows a crop: rows bleed off its edge and scroll, a folder grid
-  reflows to it. Tiles come from each source's recipe (`useRecipesTiles`), not its id, so an
+  folder page Home does — tabs or rows per `view_mode`, real titles per catalog. The rows sit in
+  `.pv-rows` inside the raised `.ed-pv` panel the catalog editor's results use: tiles are the
+  same fixed pixel sizes as Home's, rows run off the panel's edge and scroll, and a folder grid
+  reflows to the column. Docked, the panel is sticky, so the rows scroll inside it at a height
+  that fits beside the form; undocked (and in Community) they flow with the page. Tiles come from each source's recipe (`useRecipesTiles`), not its id, so an
   unsaved draft and a Community collection both preview, and only the open folder's catalogs are
-  fetched. The back arrow and Escape return to the row — Escape is stopped inside the screen so it
+  fetched. The back arrow and Escape return to the row — Escape is stopped inside the panel so it
   never reaches the editor's own Escape-to-close — and there is no history entry.
 
 ## Community tab
@@ -926,11 +927,10 @@ the Home pane `tone-tv`, Community `tone-community`. Tokens live in `web/src/ind
 the rail's Catalogs and Collections, the Home pane, each editor's header, Community — lettered in
 `.type-sign`.
 
-**Type — two faces for Uno, one for the TV.** Figtree carries every word Uno says; Archivo at its
-widest and heaviest is sign lettering only. Roboto is the TV's own face, loaded only inside
-`.tv-screen`. All three ship as Fontsource packages (`@fontsource-variable/figtree/wght.css`,
-`@fontsource-variable/archivo/wdth.css` — the file that carries Archivo's width axis — and
-`@fontsource/roboto`), not the Google Fonts CDN: the build is `go:embed`'d, and the CSP allows
+**Type — two faces.** Figtree carries every word Uno says, previews included; Archivo at its
+widest and heaviest is sign lettering only. Both ship as Fontsource packages
+(`@fontsource-variable/figtree/wght.css`, and `@fontsource-variable/archivo/wdth.css` — the file
+that carries Archivo's width axis), not the Google Fonts CDN: the build is `go:embed`'d, and the CSP allows
 fonts only from `'self'` and `data:`.
 
 **Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Shared
@@ -959,10 +959,11 @@ a lighter fill and a `line-hi` edge, over the scrim where they block.
 (`useCountDown`) before the clean state shows. Everything else is a 160ms colour or background
 transition on the one easing curve, `--uno-ease`. `prefers-reduced-motion` turns both off.
 
-**The TV preview keeps its own look.** Inside `.tv-bezel` everything is the reference client's:
-Roboto, its own greys, and — when nothing is on the home screen — full-amplitude SMPTE colour
-bars (`--smpte-*`), television's own picture for "nothing to show", in the Preview view only.
-Uno's words about the picture sit outside the frame.
+**Previews wear the shop's look.** The preview rows follow the TV's layout but sit on the app's
+own surfaces: Home's in a raised `.pv-panel`, the editors' and Community's in the docked `.ed-pv`,
+with tiles on raised-hi and Figtree captions. The one TV artifact kept is the full-amplitude SMPTE
+colour bars (`--smpte-*`, on the `.pv-nosignal` card), television's own picture for "nothing to
+show", in Home's Preview view only. Uno's words about the rows sit above and below the panel.
 
 **The way in.** The sign-in page and the profile picker carry the shop's fascia — the four hues
 side by side (`web/src/components/Fascia.tsx`) — and each profile is a membership card. The
