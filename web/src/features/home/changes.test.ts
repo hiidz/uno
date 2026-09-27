@@ -50,7 +50,7 @@ describe('computeHomeChanges', () => {
   })
 
   it('reports a removal', () => {
-    expect(changes(home(shown('a', 'b')), home(shown('b')))).toEqual(['Took “Alpha” off your TV'])
+    expect(changes(home(shown('a', 'b')), home(shown('b')))).toEqual(['Removed “Alpha” from home screen'])
   })
 
   it('reports one drag as one move, not a move for every row it shifted', () => {
@@ -66,7 +66,7 @@ describe('computeHomeChanges', () => {
   })
 
   it('reports a row that moves up only because another left as no move', () => {
-    expect(changes(home(shown('a', 'b', 'c')), home(shown('b', 'c')))).toEqual(['Took “Alpha” off your TV'])
+    expect(changes(home(shown('a', 'b', 'c')), home(shown('b', 'c')))).toEqual(['Removed “Alpha” from home screen'])
   })
 
   describe('Discover', () => {
@@ -87,7 +87,7 @@ describe('computeHomeChanges', () => {
     })
 
     it('reports a Discover row taken off', () => {
-      expect(changes(home(discover('a')), home([]))).toEqual(['Took “Alpha” off your TV'])
+      expect(changes(home(discover('a')), home([]))).toEqual(['Removed “Alpha” from home screen'])
     })
   })
 

@@ -1,9 +1,9 @@
 import { useId, useMemo, useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { ChevronDown, ChevronLeft, ChevronRight, Copy, Plus } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TileShape } from '@/api'
 import { RowIconButton } from '@/components/dnd'
-import { FieldError, Segmented, TextInput } from '@/components/fields'
+import { FieldError, InfoTip, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { ordinal } from '@/lib/ordinal'
 import { CatalogRefPicker } from './CatalogRefPicker'
@@ -137,7 +137,6 @@ export function FolderDetail({
                   { value: 'hide', label: 'Hide it' },
                 ]}
               />
-              <span className="ed-note">The tab itself still shows the name.</span>
             </div>
           </div>
 
@@ -206,7 +205,7 @@ export function FolderDetail({
                     { value: 'on', label: 'On' },
                   ]}
                 />
-                <span className="ed-note">Plays over the tile while it's focused.</span>
+                <InfoTip label="Focus GIF" text="Plays over the tile while it's selected." />
               </div>
             </div>
           </div>
@@ -218,6 +217,7 @@ export function FolderDetail({
             onChange={(heroBackdropURL) => onChange({ heroBackdropURL })}
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home hero backdrop URL for ${label}`}
+            note="Hero backdrop, hero video and title logo are used by Nuvio's Modern Home layout."
           />
           <HeroURLRow
             id={`${idBase}-hero-video`}
@@ -234,7 +234,6 @@ export function FolderDetail({
             onChange={(titleLogoURL) => onChange({ titleLogoURL })}
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home title logo URL for ${label}`}
-            note="These three are for Nuvio's Modern Home layout."
           />
         </>
       )}
@@ -263,12 +262,14 @@ function HeroURLRow({
 }) {
   return (
     <div className="setting">
-      <label htmlFor={id} className="setting-label type-label">
-        {role}
-      </label>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={id} className="setting-label type-label text-ink">
+          {role}
+        </label>
+        {note && <InfoTip label="Modern Home" text={note} />}
+      </div>
       <div className="setting-value flex max-w-[360px] flex-col gap-2">
         <TextInput id={id} value={value} onChange={onChange} placeholder={placeholder} ariaLabel={ariaLabel} />
-        {note && <span className="ed-note">{note}</span>}
       </div>
     </div>
   )
@@ -356,12 +357,6 @@ function FolderCatalogs({
 
       {picking && (
         <div className="flex flex-col gap-2 pt-3">
-          <p className="ed-note m-0">
-            <Icon icon={Plus} size={12} className="mb-px inline" /> links a catalog, so edits to it
-            show up everywhere it's used.{' '}
-            <Icon icon={Copy} size={12} className="mb-px inline" /> copies it into this collection
-            only.
-          </p>
           <CatalogRefPicker
             options={options}
             exclude={unfilteredInFolder}
@@ -376,7 +371,7 @@ function FolderCatalogs({
 
       {folder.refs.length === 0 ? (
         <div className="py-3">
-          <p className="ed-note m-0">This folder needs at least one catalog to show anything on your TV.</p>
+          <p className="ed-note m-0">Empty folder — add a catalog.</p>
         </div>
       ) : (
         <SortableContext

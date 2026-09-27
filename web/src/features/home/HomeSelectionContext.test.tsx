@@ -77,13 +77,13 @@ describe('HomeSelectionProvider', () => {
   it('keeps pending edits through a refetch that brings different data', async () => {
     const { result } = await renderLoaded()
     act(() => result.current.removeCatalog('a'))
-    expect(result.current.changes.map((c) => c.text)).toEqual(['Took “Alpha” off your TV'])
+    expect(result.current.changes.map((c) => c.text)).toEqual(['Removed “Alpha” from home screen'])
 
     api.fetchCatalogSelection.mockResolvedValue([selectedCatalog({ id: 'c', name: 'Charlie' })])
     await act(() => queryClient.refetchQueries())
     expect(api.fetchCatalogSelection).toHaveBeenCalledTimes(2)
     expect(result.current.catalogs.map((c) => c.id)).toEqual(['b'])
-    expect(result.current.changes.map((c) => c.text)).toEqual(['Took “Alpha” off your TV'])
+    expect(result.current.changes.map((c) => c.text)).toEqual(['Removed “Alpha” from home screen'])
   })
 
   it('keeps an edit made while a push was in flight pending once it lands', async () => {

@@ -47,12 +47,10 @@ export function Field({
 }
 
 /**
- * A control's secondary explanation, behind an icon beside it — Community's
- * Take button is the one control that carries one.
+ * A control's secondary explanation, behind an icon beside it.
  *
- * **Not a place to move hints to.** A hint that survives "does the user need
- * this before they can use the control" stays on the page as a `FieldNote`;
- * one that doesn't survive "is this needed at all" is deleted. This is for the
+ * **Not a place to move hints to.** A sentence that doesn't survive "is this
+ * needed at all" is deleted, not moved here. This is for the
  * narrow middle: a control whose behaviour is genuinely worth a sentence,
  * where that sentence on the page would crowd everything beside it.
  *

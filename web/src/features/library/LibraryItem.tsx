@@ -18,10 +18,10 @@ const KIND_LABEL: Record<RowKind, string> = {
  *
  * **The row body opens it in the pane** for editing. Selecting also reveals
  * the row's actions — duplicating and deleting — so they belong to whichever
- * single row the pane is showing. **The ON TV sticker** puts it on the home
+ * single row the pane is showing. **The ON NUVIO sticker** puts it on the home
  * screen or takes it off; it stops the click from reaching the row, because
  * adding something to home is not a request to edit it. Putting a row on the
- * TV from here slaps the sticker on (`data-slap`, `uno-slap` in `index.css`),
+ * home screen from here slaps the sticker on (`data-slap`, `uno-slap` in `index.css`),
  * unless the viewer has asked for less motion; a row that arrives on the home
  * screen some other way just shows it.
  *
@@ -134,10 +134,17 @@ export function LibraryItem({
           aria-label={
             onHome ? `Take ${name} off your home screen` : `Put ${name} on your home screen`
           }
-          title={onHome ? 'On your TV — click to take it off' : 'Put it on your TV'}
+          title={onHome ? 'On your home screen — click to remove' : 'Add to home screen'}
           className="tv-sticker"
         >
-          {onHome ? <span aria-hidden="true">ON TV</span> : <Icon icon={Plus} size={18} />}
+          {onHome ? (
+            <span aria-hidden="true" className="tv-sticker-words">
+              <span>ON</span>
+              <span>NUVIO</span>
+            </span>
+          ) : (
+            <Icon icon={Plus} size={18} />
+          )}
         </button>
       </div>
 

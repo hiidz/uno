@@ -205,16 +205,10 @@ export function sumCollection(raw: string | undefined, name: string | undefined)
   return name ?? `Collection ${id}`
 }
 
-/** A collection row always holds the same films, so shuffling it only
- *  changes their order. */
-export const sumShuffle = (randomized: boolean, collectionRow = false): string =>
-  collectionRow
-    ? randomized
-      ? 'On, a new order each time the row opens'
-      : 'Off, in release order'
-    : randomized
-      ? 'On, a different set each time the row opens'
-      : 'Off, the same set every time'
+/** What shuffle does once it's on. A collection row always holds the same
+ *  films, so shuffling it only changes their order. */
+export const sumShuffle = (collectionRow = false): string =>
+  collectionRow ? 'New order each time' : 'New set each time'
 
 /** The detail a company or network search result shows after its name —
  *  "US · 176 films" — counted for the catalog's type. */

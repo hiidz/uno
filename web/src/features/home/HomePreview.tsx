@@ -49,7 +49,7 @@ export function HomePreview() {
 /**
  * Which folder page is open, and the browser history entry that makes the
  * back arrow, Escape and the browser's own Back all do the same thing — the
- * Back Like the Remote amendment. Held as ids, not indices, so removing the
+ * One Way Back rule in DESIGN.md. Held as ids, not indices, so removing the
  * collection or folder in the List view falls back to home rather than
  * pointing at whatever now sits in the same slot.
  */
@@ -176,19 +176,11 @@ function FolderPageView({
       <div
         className="pv-panel"
         role="region"
-        aria-label={`${folder.title || 'Untitled folder'}, a folder in ${collection.title || 'Untitled collection'}, as your TV shows it`}
+        aria-label={`${folder.title || 'Untitled folder'}, a folder in ${collection.title || 'Untitled collection'}`}
       >
         <TVFolderPage collection={collection} folder={folder} tiles={tiles} onBack={onBack} />
       </div>
 
-      <p className="text-dim m-0 max-w-[72ch] text-[12px] leading-[17px] pointer-coarse:hidden">
-        The arrow beside the folder name goes back to the home screen, like Back on the remote. So
-        do Esc and your browser's Back.
-      </p>
-      <p className="text-dim m-0 hidden max-w-[72ch] text-[12px] leading-[17px] pointer-coarse:block">
-        The arrow beside the folder name goes back to the home screen, like Back on the remote. So
-        does your phone's Back.
-      </p>
     </div>
   )
 }
@@ -216,14 +208,10 @@ function HomeScreenView({
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <p className="text-dim m-0 max-w-[72ch] text-[13px] leading-[18px]">
-            Your TV shows pinned collections first, then catalog rows, then your other collections.
-            Nothing here can be changed; open a folder to look inside it.
-          </p>
           {pendingCount > 0 && (
             <p className="text-pending m-0 flex items-center gap-2 text-[13px] leading-[18px]">
               <span aria-hidden="true" className="bg-pending size-1.5 shrink-0" />
-              Includes the {pendingCount} {plural(pendingCount, 'change')} not on your TV yet.
+              Includes {pendingCount} unpushed {plural(pendingCount, 'change')}.
             </p>
           )}
         </div>
@@ -236,7 +224,7 @@ function HomeScreenView({
         </p>
       ) : (
         <>
-          <div className="pv-panel" role="region" aria-label="Preview of your TV home screen">
+          <div className="pv-panel" role="region" aria-label="Home screen preview">
             {preview.pinnedCollections.map((collection) => (
               <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
             ))}
@@ -247,11 +235,6 @@ function HomeScreenView({
               <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
             ))}
           </div>
-
-          <p className="text-dim m-0 max-w-[72ch] text-[12px] leading-[17px]">
-            Each row scrolls sideways, like your TV. A blank tile stands in until its poster loads,
-            or for one it doesn't have.
-          </p>
         </>
       )}
 
@@ -301,7 +284,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
           <div key={row.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-ink truncate text-[13px]">{row.name}</span>
             <span className="text-dim text-[12px]">
-              · in Discover only, so not a row on the home screen
+              · Discover only
             </span>
             {home.isDetached(row.id) && (
               <span
@@ -342,7 +325,7 @@ function EmptyHomeScreen() {
         Nothing is on your home screen yet, so there's nothing to show. Add rows and they appear
         here the way your TV shows them.
       </p>
-      <div className="pv-nosignal" role="img" aria-label="Preview of your TV home screen, with no rows yet">
+      <div className="pv-nosignal" role="img" aria-label="Home screen preview, with no rows yet">
         <div aria-hidden="true" className="absolute inset-0 flex">
           {bars.map((color) => (
             <span key={color} className="flex-1" style={{ background: color }} />

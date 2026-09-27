@@ -36,7 +36,7 @@ export function PushButton({ push, ready, pushing, className = '' }: Push & { cl
           'Pushing…'
         ) : (
           <>
-            Push<span className="hidden lg:inline"> to TV</span>
+            Push<span className="hidden lg:inline"> to Nuvio</span>
           </>
         )}
       </span>
@@ -90,7 +90,7 @@ export function ChangesStrip({
   return (
     <div className="bg-raised border-line flex flex-col gap-2 border-b px-4 py-3 lg:px-5">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-pending m-0 text-[14px] font-bold">What's not on your TV yet</p>
+        <p className="text-pending m-0 text-[14px] font-bold">Unpushed changes</p>
         <button type="button" onClick={onHide} className="btn-ghost btn-sm shrink-0">
           Hide
         </button>

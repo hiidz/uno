@@ -50,7 +50,7 @@ export function Login() {
       if (err instanceof NuvioAuthError) {
         setFieldErrors({ password: err.message })
       } else {
-        setNetworkError("Couldn't reach Nuvio. Nothing was sent. Try again in a moment.")
+        setNetworkError("Couldn't reach Nuvio. Try again in a moment.")
       }
       setSubmitting(false)
     }
@@ -65,7 +65,7 @@ export function Login() {
   return (
     <EntryPage
       title="Build your Nuvio home screen"
-      intro={<>Sign in with the account you use on your TV. There&rsquo;s no separate Uno account.</>}
+      intro="Sign in with your Nuvio account."
     >
       <form onSubmit={handleSubmit} noValidate className="bg-raised rounded-2xl px-5 pt-3 pb-5">
         <div className="setting">

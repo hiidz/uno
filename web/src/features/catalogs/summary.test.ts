@@ -185,11 +185,9 @@ describe('sumCollection', () => {
 })
 
 describe('sumShuffle', () => {
-  it('words shuffling by what it changes on a collection row and on a filtered one', () => {
-    expect(sumShuffle(true)).toBe('On, a different set each time the row opens')
-    expect(sumShuffle(false)).toBe('Off, the same set every time')
-    expect(sumShuffle(true, true)).toBe('On, a new order each time the row opens')
-    expect(sumShuffle(false, true)).toBe('Off, in release order')
+  it('words what shuffling changes on a collection row and on a filtered one', () => {
+    expect(sumShuffle()).toBe('New set each time')
+    expect(sumShuffle(true)).toBe('New order each time')
   })
 })
 

@@ -45,13 +45,10 @@ export type HomeView = 'list' | 'preview'
  * back. Closing an editor should return the screen you left.
  */
 export function HomePane({
-  profileLabel,
   view,
   onViewChange,
   onShowLibrary,
 }: {
-  /** Which profile's TV this is — "Profile 1 · Dev" — named in the intro. */
-  profileLabel: string
   view: HomeView
   onViewChange: (view: HomeView) => void
   /** Scroll back up to the rail. Below `lg` only, where the two are stacked
@@ -107,12 +104,6 @@ export function HomePane({
             ]}
           />
         </div>
-        {view === 'list' && (
-          <p className="m-0 min-w-[16rem] flex-1 text-[15px] leading-[1.5]">
-            What {profileLabel} shows on the TV, top to bottom. Drag a row or use its arrows to
-            reorder, then push.
-          </p>
-        )}
         {/* Only once there's something to show strips for — DESIGN.md's
             Home-screen pane spec. */}
         {view === 'list' && !isEmpty && (
@@ -188,8 +179,7 @@ function HomeList({ compact }: { compact: boolean }) {
   if (preview.isEmpty) {
     return (
       <p className="text-dim m-0 max-w-[48ch] py-2 text-[15px] leading-[1.5]">
-        Nothing on your TV yet. Tap the empty circle beside a catalog or collection in the Library
-        to put it here.
+        Nothing on your home screen yet. Tap + beside anything in the Library.
       </p>
     )
   }
@@ -206,10 +196,7 @@ function HomeList({ compact }: { compact: boolean }) {
   return (
     <div className="flex max-w-[var(--w-home)] flex-col gap-8">
       {preview.pinnedCollections.length > 0 && (
-        <Group
-          label="Shown first"
-          note="Pinned collections. Your TV puts them above every other row."
-        >
+        <Group label="Shown first">
           <SortableList
             ids={preview.pinnedCollections.map((c) => c.id)}
             onReorder={(ids) => home.reorderCollections('pinned', ids)}
@@ -233,7 +220,7 @@ function HomeList({ compact }: { compact: boolean }) {
         </Group>
       )}
 
-      <Group label="Catalogs" note="Rows of posters.">
+      <Group label="Catalogs">
         {preview.rows.length === 0 ? (
           <EmptyBlock>No catalogs on your home screen.</EmptyBlock>
         ) : (
@@ -265,10 +252,7 @@ function HomeList({ compact }: { compact: boolean }) {
       </Group>
 
       {preview.unpinnedCollections.length > 0 && (
-        <Group
-          label="After the catalogs"
-          note="Collections that aren’t pinned. Your TV puts them below your catalog rows."
-        >
+        <Group label="After the catalogs">
           <SortableList
             ids={preview.unpinnedCollections.map((c) => c.id)}
             onReorder={(ids) => home.reorderCollections('unpinned', ids)}
@@ -297,12 +281,11 @@ function HomeList({ compact }: { compact: boolean }) {
   )
 }
 
-function Group({ label, note, children }: { label: string; note: string; children: ReactNode }) {
+function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-1">
-      <div className="border-line-hi flex flex-col gap-1 border-b pb-2.5">
+      <div className="border-line-hi border-b pb-2.5">
         <h2 className="text-ink m-0 text-[16px] font-bold">{label}</h2>
-        <p className="text-dim m-0 text-[13.5px]">{note}</p>
       </div>
       {children}
     </section>
@@ -355,7 +338,7 @@ function HomeRow({
       }`}
     >
       <div className="flex flex-col gap-0.5">
-        <Grip label={`Reorder ${name}, ${ordinal(position)} on your TV`} sortable={{ attributes, listeners }} />
+        <Grip label={`Reorder ${name}, ${ordinal(position)} on your home screen`} sortable={{ attributes, listeners }} />
         <MoveUpButton
           label={`Move ${name} up${first ? `, already first of ${groupWord}` : ''}`}
           disabled={first}
@@ -372,7 +355,7 @@ function HomeRow({
         <span aria-hidden="true" className="pos-sticker">
           {position}
         </span>
-        <span className="sr-only">{ordinal(position)} on your TV</span>
+        <span className="sr-only">{ordinal(position)} on your home screen</span>
       </span>
 
       {children}
@@ -386,13 +369,13 @@ function RowBody({ children }: { children: ReactNode }) {
   return <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">{children}</div>
 }
 
-/** One name for the action everywhere, matching the add button's own "Take off
- *  TV" (see DESIGN.md's add button spec). Danger-styled when the item is
+/** One name for the action everywhere, matching the add button's own "Remove
+ *  from home" (see DESIGN.md's add button spec). Danger-styled when the item is
  *  detached, since removing it there can't be undone. */
-function TakeOffTVItem({ detached, onSelect }: { detached: boolean; onSelect: () => void }) {
+function RemoveFromHomeItem({ detached, onSelect }: { detached: boolean; onSelect: () => void }) {
   return (
     <MoreMenuItem danger={detached} reason={detached ? "can't be undone" : undefined} onSelect={onSelect}>
-      Take off TV
+      Remove from home
     </MoreMenuItem>
   )
 }
@@ -462,7 +445,7 @@ function CatalogRow({
 
       <MoreMenu label={row.name}>
         <MoreMenuItem onSelect={() => home.toggleShowInHome(row.id)}>Move to Discover</MoreMenuItem>
-        <TakeOffTVItem detached={detached} onSelect={() => home.removeCatalog(row.id)} />
+        <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCatalog(row.id)} />
       </MoreMenu>
     </HomeRow>
   )
@@ -512,7 +495,7 @@ function CollectionRow({
       </RowBody>
 
       <MoreMenu label={collection.title}>
-        <TakeOffTVItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
+        <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
       </MoreMenu>
     </HomeRow>
   )
@@ -578,11 +561,8 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
 
   return (
     <section className="flex flex-col gap-2">
-      <div className="border-line-hi flex flex-col gap-1 border-b pb-2.5">
+      <div className="border-line-hi border-b pb-2.5">
         <h2 className="text-ink m-0 text-[16px] font-bold">Not on home</h2>
-        <p className="text-dim m-0 text-[13.5px]">
-          In Discover only. Still reachable on your TV, just not as a home row.
-        </p>
       </div>
       <ul className="flex flex-col">
         {rows.map((row) => {

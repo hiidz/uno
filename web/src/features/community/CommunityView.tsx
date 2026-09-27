@@ -87,12 +87,6 @@ export function CommunityView({ profileIndex }: { profileIndex: number }) {
         <h1 className="type-sign m-0 text-[18px] leading-tight lg:text-[25px]">Community</h1>
       </div>
       <section className="mx-auto flex w-full max-w-[900px] flex-col gap-4 p-4 lg:p-6">
-        <p className="m-0 max-w-[68ch] text-[15px] leading-[1.5]">
-          What other people using Uno have shared. Take a copy of anything here; nothing you
-          do to it reaches the original. When the owner changes theirs, Update brings your copy
-          in line, as long as you haven&rsquo;t edited it.
-        </p>
-
         <Toast toast={toast} />
 
         <div className="flex flex-wrap items-center gap-3">

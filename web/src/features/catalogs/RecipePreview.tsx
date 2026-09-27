@@ -67,7 +67,7 @@ function Body({
   }
 
   if (preview.idle) {
-    return <p>Run it to see one page of what this row shows on your TV. It doesn't run as you type.</p>
+    return null
   }
 
   // Unlike the Home pane, someone is standing here waiting for a result they
@@ -103,7 +103,6 @@ function Body({
         </p>
       )}
       <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
-      <p>Open a poster to see its details.</p>
     </>
   )
 }

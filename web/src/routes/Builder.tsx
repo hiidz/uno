@@ -16,7 +16,7 @@ import { useUnloadGuard } from '@/features/home/useUnloadGuard'
 import { AddonURLButton, ChangesStrip, PushBanner, PushButton } from '@/features/push/PushControls'
 import { usePush } from '@/features/push/usePush'
 import { useCountDown } from '@/lib/useCountDown'
-import { pluralCount } from '@/lib/plural'
+import { plural, pluralCount } from '@/lib/plural'
 
 export interface BuilderProfile {
   profileIndex: number
@@ -65,7 +65,7 @@ export function Builder() {
         <div className="flex min-h-svh flex-col lg:h-svh">
           <BuilderHeader profile={profile} tab={tab} onTabChange={setTab} />
           {tab === 'workspace' ? (
-            <Workspace profileIndex={profile.profileIndex} profileName={profile.profileName} />
+            <Workspace profileIndex={profile.profileIndex} />
           ) : (
             <CommunityView profileIndex={profile.profileIndex} />
           )}
@@ -259,8 +259,8 @@ function BuilderHeader({
  * them as the left half of one pill with Push: the count alone while anything
  * is pending, a check once nothing is.
  *
- * It reads as the count and "not on TV yet" while anything is pending, and as
- * "Everything is on the TV" once nothing is. The
+ * It reads as "3 unpushed changes" while anything is pending, and as
+ * "All pushed" once nothing is. The
  * clean state is drawn rather than dropped: this returns `null` until
  * `home.ready`, so rendering nothing already means "not loaded yet", and a
  * silent clean state would be indistinguishable from one still loading.
@@ -291,7 +291,7 @@ function PendingIndicator({
   // went clean.
   const dirty = home.isDirty || count > 0
 
-  const sentence = dirty ? `${countLabel(count)} not on TV yet` : 'Everything is on the TV'
+  const sentence = dirty ? `${count} unpushed ${plural(count, 'change')}` : 'All pushed'
 
   const content = (
     <>

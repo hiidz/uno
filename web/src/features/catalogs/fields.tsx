@@ -1,6 +1,6 @@
 import { Check, X } from 'lucide-react'
 import type { CatalogType, Certification, CertificationsByCountry, Genre } from '@/api'
-import { DualRangeSlider, Field, FieldNote, Segmented, Select } from '@/components/fields'
+import { DualRangeSlider, Field, FieldNote, InfoTip, Segmented, Select } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import type { IdJoin } from './params'
 import { countryName, type CountryLookup } from './countries'
@@ -213,7 +213,6 @@ export function GenreCycler({
 
   return (
     <>
-      <p className="ed-note">Press once to include, twice to leave out, again to ignore.</p>
       <div className="choices" role="group" aria-label="Genres">
         {genres.map((genre) => {
           const state = withIds.includes(genre.id)
@@ -239,6 +238,9 @@ export function GenreCycler({
             </button>
           )
         })}
+        <span className="self-center">
+          <InfoTip label="Genres" text="Press once to include, twice to leave out, again to ignore." />
+        </span>
       </div>
       {withIds.length >= 2 && (
         <div className="ed-line">

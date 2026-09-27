@@ -413,6 +413,17 @@
         letter-spacing: 0.02em;
         line-height: 1;
     }
+    /* Two lines, like a price sticker: "NUVIO" is too wide to sit beside
+       "ON" inside the circle. */
+    .tv-sticker-words {
+        display: grid;
+        justify-items: center;
+        gap: 1px;
+    }
+    .tv-sticker-words > span:last-child {
+        font-size: 8.5px;
+        letter-spacing: 0.01em;
+    }
     .tv-sticker[aria-pressed='true']:hover {
         background: var(--uno-tv-yellow-hover);
     }

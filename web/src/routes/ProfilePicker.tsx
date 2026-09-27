@@ -65,7 +65,6 @@ export function ProfilePicker() {
     <EntryPage
       wide
       title={<>Who&rsquo;s watching?</>}
-      intro="Each profile has its own home screen. Pick yours to start building it."
     >
       {error && (
         <p role="alert" className="mb-4 grid grid-cols-[16px_minmax(0,1fr)] gap-x-2 text-[14px] leading-[20px]">
@@ -101,7 +100,7 @@ export function ProfilePicker() {
           <div className="bg-raised grid gap-2 rounded-2xl p-5">
             <p className="m-0 text-[17px] font-bold">This account has no profiles yet.</p>
             <p className="text-dim m-0 max-w-[46ch] text-[15px]">
-              Add one in Nuvio on your TV, then come back.
+              Add one in Nuvio, then come back.
             </p>
           </div>
         )}
@@ -158,11 +157,11 @@ export function ProfilePicker() {
                 )
               })}
             </ul>
-            <p id={noteId} className="text-dim pt-5 text-[14px]">
-              {isChoosing
-                ? `Signing in as ${choosingName}. The other profiles wait until that’s done.`
-                : 'Slot numbers match your TV.'}
-            </p>
+            {isChoosing && (
+              <p id={noteId} className="text-dim pt-5 text-[14px]">
+                Signing in as {choosingName}…
+              </p>
+            )}
           </>
         )}
       </div>

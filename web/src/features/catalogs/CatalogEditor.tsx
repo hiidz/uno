@@ -370,8 +370,7 @@ export function CatalogEditor({
                 <span className="setting-label type-label">Movies or series</span>
                 <div className="setting-value">
                   <span className="type-data text-[15px]">
-                    {state.type === 'movie' ? 'Movie' : 'Series'}{' '}
-                    <span className="aside">· locked, can't be changed once created.</span>
+                    {state.type === 'movie' ? 'Movie' : 'Series'}
                   </span>
                 </div>
               </div>
@@ -411,8 +410,8 @@ export function CatalogEditor({
                 </div>
                 <p className="type-data text-dimmer m-0 pt-1 text-[12.5px] leading-[1.45]">
                   {canMoveToLibrary
-                    ? "Scoped catalogs can't be shared. Moving it to your library makes it usable from any of your folders and lets it join the community list — takes effect when you save the collection."
-                    : "Scoped catalogs can't be shared. Save the collection first, then this catalog can be moved to your library."}
+                    ? 'Move to library to reuse or share it. Applies when you save the collection.'
+                    : 'Save the collection first to move this to your library.'}
                 </p>
               </div>
             ) : (
@@ -422,11 +421,7 @@ export function CatalogEditor({
                   <Switch
                     checked={state.isPublic}
                     onChange={(isPublic) => patch({ isPublic })}
-                    label={
-                      state.isPublic
-                        ? 'Shared, so anyone can import it'
-                        : 'Not shared, only you can use it'
-                    }
+                    label={state.isPublic ? 'Shared' : 'Private'}
                   />
                 </div>
               </div>
@@ -474,9 +469,9 @@ export function CatalogEditor({
                     { value: 'on', label: 'On' },
                   ]}
                 />
-                <span className="ed-note">
-                  {sumShuffle(Boolean(state.params.randomized), isCollectionRow(state))}
-                </span>
+                {state.params.randomized && (
+                  <span className="ed-note">{sumShuffle(isCollectionRow(state))}</span>
+                )}
               </div>
             </div>
           </div>
@@ -650,7 +645,6 @@ function buildSections(args: {
               { value: 'asc', label: 'Low to high' },
             ]}
           />
-          <p className="ed-note">Orders titles inside the row, not the row on your home screen.</p>
           {errorFor('sort_by') && <FieldNote tone="danger">{errorFor('sort_by')}</FieldNote>}
         </>
       ),

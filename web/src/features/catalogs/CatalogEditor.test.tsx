@@ -63,7 +63,7 @@ describe('CatalogEditor', () => {
 
     it('asks before a save that would unlink it, and saves once confirmed', () => {
       const { onSave } = renderEditor(linked)
-      expect(screen.getByRole('note')).toHaveTextContent('Linked to a community catalog')
+      expect(screen.getByRole('note')).toHaveTextContent('Editing unlinks it from the community catalog')
       fireEvent.change(nameInput(), { target: { value: 'Renamed' } })
 
       save()

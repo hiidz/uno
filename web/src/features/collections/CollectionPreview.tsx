@@ -69,7 +69,7 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
   return (
     <div className="ed-pv">
       <div className="ed-pv-head">
-        <span className="type-label">On your TV</span>
+        <span className="type-label">Preview</span>
       </div>
 
       <div
@@ -80,10 +80,10 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
         onKeyDown={onScreenKeyDown}
         aria-label={
           folder
-            ? `${folder.title || 'Untitled folder'}, a folder in ${title}, as your TV shows it`
+            ? `${folder.title || 'Untitled folder'}, a folder in ${title}`
             : empty
-              ? `${title}, an empty row on your TV`
-              : `${title}, a row of ${pluralCount(collection.folders.length, 'folder')} on your TV`
+              ? `${title}, an empty row`
+              : `${title}, a row of ${pluralCount(collection.folders.length, 'folder')}`
         }
       >
         {folder ? (
@@ -105,13 +105,7 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
         )}
       </div>
 
-      <p>
-        {folder
-          ? `${FOLDER_LAYOUT_LABEL[collection.viewMode]}. The arrow beside the folder name goes back to the row, and so does Esc.`
-          : empty
-            ? 'No folders yet, so this row is empty.'
-            : 'Open a folder to see its catalogs the way your TV shows them.'}
-      </p>
+      {folder ? <p>{FOLDER_LAYOUT_LABEL[collection.viewMode]}</p> : empty && <p>No folders yet.</p>}
 
       <CollectionMeta collection={collection} />
     </div>

@@ -131,7 +131,6 @@ export function ProfileMenu({
             behaviour applies here. */}
         <MenuItem
           label="Switch profile"
-          detail="Goes back to the picker. Warns first if anything is unpushed."
           onSelect={onSwitchProfile}
         />
 
@@ -160,7 +159,7 @@ function MenuItem({
   onSelect,
 }: {
   label: string
-  detail: string
+  detail?: string
   onSelect: (event: Event) => void
 }) {
   return (
@@ -172,7 +171,7 @@ function MenuItem({
       {/* What the desktop button says in its `title`. Kept as text because
           `title` never surfaces on touch, which is the only pointer that
           reaches this menu. */}
-      <span className="text-dim text-[13px] leading-snug">{detail}</span>
+      {detail && <span className="text-dim text-[13px] leading-snug">{detail}</span>}
     </DropdownMenu.Item>
   )
 }

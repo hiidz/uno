@@ -5,7 +5,7 @@ import { Wordmark } from './Wordmark'
 /**
  * The way in — the sign-in page and the profile picker: the shop's fascia
  * across the top, then the wordmark, the page's question in sign lettering,
- * and one line of intro above whatever the page asks for. `wide` is the
+ * and an optional line of intro above whatever the page asks for. `wide` is the
  * picker's, whose membership cards sit two across.
  */
 export function EntryPage({
@@ -15,7 +15,7 @@ export function EntryPage({
   children,
 }: {
   title: ReactNode
-  intro: ReactNode
+  intro?: ReactNode
   wide?: boolean
   children: ReactNode
 }) {
@@ -38,7 +38,7 @@ export function EntryPage({
           >
             {title}
           </h2>
-          <p className="text-dim m-0 max-w-[44ch] text-[16px] leading-[1.5]">{intro}</p>
+          {intro && <p className="text-dim m-0 max-w-[44ch] text-[16px] leading-[1.5]">{intro}</p>}
         </header>
         {children}
       </main>

@@ -33,7 +33,7 @@ editors sit in, so a catalog and a collection get the same header, dirty state, 
 save/discard behaviour from one place. `web/src/features/preview/` holds the preview model
 (`model.ts`), the tile queries, and the Figtree-styled tiles the catalog editor's results panel
 and the Home list's strips draw. The preview rows — the Home pane's Preview tab, the collection
-editor's "On your TV" panel and Community's collection preview — are `web/src/features/home/tv.tsx`:
+editor's Preview panel and Community's collection preview — are `web/src/features/home/tv.tsx`:
 the TV's layout (scrolling rows, captions, folder tiles that open folder pages) in the same Figtree
 and tonal steps as the rest of the app, with no note pinned between the rows (see "Home pane —
 Preview view" below). Nothing under `features/` is a separate URL; `Builder`
@@ -552,7 +552,7 @@ Clean Preview spec and the owner's instruction that Uno pin nothing between the 
   unspecified** — folders aren't an addon concept, so nothing in the addon protocol or Nuvio's
   docs specifies the order, and Uno cannot derive it. This applies to **exactly one view**: the
   `show_all_tab` "All" tab on a `TABBED_GRID` folder page (`interleaveTiles` in
-  `features/preview/model.ts`, which the collection editor's "On your TV" panel draws through the
+  `features/preview/model.ts`, which the collection editor's Preview panel draws through the
   same TV components). The TV's own "All" tab just shows the merged tiles, with no caption saying
   the order is a guess.
 - **`randomized` catalogs** take a random TMDB page per call on both the addon path and the
@@ -562,7 +562,7 @@ Clean Preview spec and the owner's instruction that Uno pin nothing between the 
   this case.
 
 **The folder page's back arrow lives in the preview panel, beside the folder's own title**, per
-DESIGN.md's Back Like the Remote spec, not as a button in Uno's own chrome above it. Escape and the
+DESIGN.md's One Way Back rule, not as a button in Uno's own chrome above it. Escape and the
 browser's own Back do the same thing. `HomePreview.tsx`'s `useFolderPage` hook owns this: opening
 a folder pushes one `history.pushState({unoFolder: true}, '')` entry (a `try`/`catch` — a
 sandboxed frame can throw, and Escape/the arrow still work without it, only the browser's own
@@ -660,7 +660,7 @@ button.
 - **Folders are a tile strip, the way the TV draws them.** Under the "Folders" `.setting.is-head`
   heading
   (holding "Add folder"), `FolderTiles` draws each folder at its own `tile_shape` with its cover,
-  name and catalog count — the editor's list and the "On your TV" row are the same picture. One
+  name and catalog count — the editor's list and the Preview panel's row are the same picture. One
   folder is always selected (the one picked, else the first), and `FolderDetail` shows it below
   the strip as one raised panel: a heading with its name, "1st of 2" and an appearance summary,
   ←/→ and Remove; then its title, then its catalogs (a `.setting.is-head` heading with "New catalog" and
@@ -742,7 +742,7 @@ button.
   unfiltered. The genre lives on the ref, so removing a ref takes its genre with it, and
   "Copy into this collection" swaps only that ref's catalog for the copy, keeping its genre.
   The options query lives in `RefRow` (`useGenreOptions`), so the picker and "Add another
-  genre" share one list. The "On your TV" panel and Home's folder pages fetch each source's
+  genre" share one list. The Preview panel and Home's folder pages fetch each source's
   tiles with its genre (`queryKeys.catalogPreview` includes it), so they show the filtered row
   the TV will.
 - **A folder page names each source the way Nuvio does**, as a tab and as a row title alike:
@@ -761,13 +761,12 @@ button.
   `scopedCatalogCount`: it names how many of the collection's own scoped catalogs (which have no
   life outside it) go with it, distinct from any listed catalog it merely references and which
   survives.
-- **Sharing is the shared `Switch` component here too**, same as the catalog editor, its label
-  saying what shares along with the collection: "along with every
-  catalog inside it" — sharing a collection shares the recipes inside it, so the switch has
-  to say so. Show first and the "All" tab are `Segmented`, the latter greyed (DESIGN.md's
+- **Sharing is the shared `Switch` component here too**, same as the catalog editor, labelled
+  Shared or Private. Sharing a collection shares the recipes inside it; when any of them is
+  private on its own, a caution under the switch names them. Show first and the "All" tab are `Segmented`, the latter greyed (DESIGN.md's
   "Greyed" segmented state, `Segmented`'s `disabled` prop) rather than hidden while the view mode
   isn't Tabbed Grids, keeping its value for when it switches back.
-- **The "On your TV" panel is a working TV, docked beside the form.** The collection editor has
+- **The Preview panel is a working client screen, docked beside the form.** The collection editor has
   its own layout (`.ed.ed-tv`, `EditorShell`'s `docked="tv"`, capped at `--w-editor-tv`): the form keeps
   its `--w-form` column and the panel takes `clamp(380px, 42cqw, 620px)` beside it, undocking under
   the form below 960px of pane. It draws the live draft with the Home Preview's own components
@@ -810,7 +809,7 @@ does, Update brings it in line with the owner's changes on request.
   `type`/`params` via `useRecipeTiles` — the same on-request, one-TMDB-page component the catalog
   editor's results panel uses, never `invalid` since a community row is always a saved catalog the
   server already accepted. A collection row's Preview mounts `CommunityCollectionPreview`, which
-  is the collection editor's own "On your TV" panel (`CollectionPreview`) fed a
+  is the collection editor's own Preview panel (`CollectionPreview`) fed a
   `PreviewCollection` built by Home's `toPreviewCollection` (`features/home/preview.ts`) over the
   row's own `catalogs` array rather than the library — the community row already carries every
   catalog its folders reference, listed or scoped on the source side, so nothing resolves as
@@ -906,18 +905,18 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 
 ## Visual direction
 
-Dark-only, single theme: the builder is used at a desk and on the couch beside a TV in the
+Dark-only, single theme: the builder is used at a desk and on the couch in the
 evening, and a light theme is ruled out. `DESIGN.md` holds the full system —
 tokens, components, rules; this section says what the frontend implements and where.
 
 **Video Store, after hours.** The builder reads like a neighbourhood video shop after closing:
 each region is announced by a sign in its own colour, every catalog carries a plain-words line
-saying what it returns, and the home screen is the front shelf, in TV order.
+saying what it returns, and the home screen is the front shelf, in Nuvio's order.
 
 **Colour holds one meaning per hue.** A night-navy ground and its shelves (`--uno-ground`,
 `--uno-raised`, `--uno-raised-hi`) carry the layout. Three hues name the regions — catalog
-tangerine, collection green, community pink — and TV yellow means "bound for the TV" and nothing
-else: Push, what is on the home screen, what is not on the TV yet. Danger red marks what can't be
+tangerine, collection green, community pink — and TV yellow means "bound for Nuvio" and nothing
+else: Push, what is on the home screen, what is not pushed yet. Danger red marks what can't be
 undone, always beside words. A region's colour reaches its primary button and headings through
 `--accent`, set by the `.tone-*` classes: `EditorShell` sets `tone-catalog` or `tone-collection`,
 the Home pane `tone-tv`, Community `tone-community`. Tokens live in `web/src/index.css` as
@@ -936,8 +935,9 @@ fonts only from `'self'` and `data:`.
 **Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Shared
 (`.stk-shared`, community pink, because Community is where a shared row turns up), Linked
 (`.stk-linked`, outlined in community pink: a Take still linked to its original), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.tv-sticker`: a dashed empty
-circle while it's off the TV, a yellow ON TV price sticker once it's on. A home row's position is
-a yellow `.pos-sticker`, read out as "3rd on your TV"; the pending count and a profile's slot
+circle while it's off the home screen, a yellow ON NUVIO price sticker (two lines, ON over NUVIO)
+once it's on. A home row's position is a yellow `.pos-sticker`, read out as "3rd on your home
+screen"; the pending count and a profile's slot
 number are `.count-sticker`s.
 
 **Settings — label above control.** Every editor setting is a `.setting`: its label
@@ -954,12 +954,12 @@ searched).
 raised, then raised-hi — and nothing casts a drop shadow: menus, popovers and dialogs separate by
 a lighter fill and a `line-hi` edge, over the scrim where they block.
 
-**Motion — the sticker moment.** Putting a row on the TV from the rail slaps the ON TV sticker on
+**Motion — the sticker moment.** Putting a row on the home screen from the rail slaps the ON NUVIO sticker on
 (`uno-slap` in `index.css`), and a successful push counts the pending number down to zero
 (`useCountDown`) before the clean state shows. Everything else is a 160ms colour or background
 transition on the one easing curve, `--uno-ease`. `prefers-reduced-motion` turns both off.
 
-**Previews wear the shop's look.** The preview rows follow the TV's layout but sit on the app's
+**Previews wear the shop's look.** The preview rows follow Nuvio's layout but sit on the app's
 own surfaces: Home's in a raised `.pv-panel`, the editors' and Community's in the docked `.ed-pv`,
 with tiles on raised-hi and Figtree captions. The one TV artifact kept is the full-amplitude SMPTE
 colour bars (`--smpte-*`, on the `.pv-nosignal` card), television's own picture for "nothing to
@@ -970,27 +970,31 @@ side by side (`web/src/components/Fascia.tsx`) — and each profile is a members
 fascia appears nowhere inside the builder, where each hue stands for its own region.
 
 **Copy — written for someone who has never heard of TMDB, Stremio, or an addon manifest.** The
-user signs into Nuvio and builds rows for their TV; that is the whole of what they are assumed
-to know. Three rules, in order:
+user signs into Nuvio and builds rows for their home screen, on whatever device they watch on —
+TV, phone or desktop. That is the whole of what they are assumed to know. Four rules, in order:
 
-1. **Prefer a control that needs no explanation to a control plus a sentence.** A hint that
+1. **No sentence the control already says.** A greyed control needs no "only applies to…", a
+   value shown as plain text needs no "can't be changed", a labelled group needs no caption
+   restating its label, and a preview needs no paragraph on how to scroll it or go back. Words
+   earn a place on the page only in empty states, errors, and confirmations that say what an
+   action will cost.
+2. **Prefer a control that needs no explanation to a control plus a sentence.** A hint that
    exists to compensate for an unreadable input is a bug report about the input. The
    watch-provider field is a named, searchable picker and carries no hint text at all, rather
    than a box for TMDB's numeric ids beside "find IDs in the TMDB documentation". `vote_count`
    reads "Number of ratings" and needs no hint either.
-2. **Never print the provider's vocabulary.** `describeRecipe`
+3. **Never print the provider's vocabulary.** `describeRecipe`
    (`web/src/features/library/recipe.ts`) returns plain English — "Most popular · Action and
    Comedy · rated 7.0+ · in Japanese", not `popularity.desc · Action + Comedy · ★7.0+ · lang
    ja`. Language, country and region codes resolve through `Intl.DisplayNames`. This is the
    app's highest-volume text: it renders on every Home row and every row of the folder picker.
-3. **Say what the user sees, not why the code can't do better.** "Shown as rows — the app
+4. **Say what the user sees, not why the code can't do better.** "Shown as rows — the app
    decides the real layout", not "Uno can't read the app's layout setting". Errors name the
    failure and the next action without naming the machinery: "Couldn't load the preview. Your
    filters are fine — try again."
 
-**`InfoTip` is not a place to move hints to.** A hint the user needs *before* filling a field in
-stays on the page as a `FieldNote`; one that doesn't survive "is this needed at all" is deleted.
-The icon is for the narrow middle — a control genuinely worth a sentence, where that sentence
-on the page would crowd everything beside it. One control carries one: Community's Take button,
-whose linked-copy behaviour the row has no room to explain. Adding a second means rule 1 is
-being skipped.
+**`InfoTip` is for the narrow middle.** A sentence that doesn't survive "is this needed at all"
+is deleted, not moved. The icon holds one a control genuinely needs but that would crowd the page:
+Community's Take button (linked copies), the collection's Focus glow, a folder's Focus GIF and
+Modern Home fields, the catalog picker's link-versus-copy, and the genre chips' three-state cycle.
+It opens on click rather than hover, so it works on touch.

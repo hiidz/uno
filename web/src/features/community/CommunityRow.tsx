@@ -98,7 +98,7 @@ export function CommunityRow({
           </button>
           <InfoTip
             label="Take"
-            text="Taking makes a copy that stays linked to this one: when its owner changes it, Update brings your copy in line. Editing your copy unlinks it. Nothing you do to your copy reaches this one. Duplicate, under ⋯, makes a copy that is never linked."
+            text="Your copy gets the owner's updates until you edit it. Duplicate (⋯) makes an unlinked copy."
           />
           <MoreMenu label={name}>
             <MoreMenuItem disabled={pending !== undefined} onSelect={onDuplicate}>

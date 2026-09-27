@@ -123,7 +123,7 @@ export function computeHomeChanges({
     const key = keyOf(row)
     if (curKeys.includes(key)) return
     if (row.kind === 'catalog' && curDiscover.has(row.id)) return // reported below, as a move to Discover
-    list.push({ key: `remove:${key}`, text: `Took ${quoted(row)} off your TV` })
+    list.push({ key: `remove:${key}`, text: `Removed ${quoted(row)} from home screen` })
   })
 
   for (const group of ['first', 'catalogs', 'after'] as const) {
@@ -153,7 +153,7 @@ export function computeHomeChanges({
   baseDiscover.forEach((id) => {
     const isShownNow = current.catalogs.some((c) => c.id === id && c.showInHome)
     if (!curDiscover.has(id) && !isShownNow) {
-      list.push({ key: `discover-remove:${id}`, text: `Took ${quoted({ kind: 'catalog', id })} off your TV` })
+      list.push({ key: `discover-remove:${id}`, text: `Removed ${quoted({ kind: 'catalog', id })} from home screen` })
     }
   })
 

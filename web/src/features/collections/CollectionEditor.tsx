@@ -11,7 +11,7 @@ import type {
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { FieldError, Segmented, Switch, TextInput } from '@/components/fields'
+import { FieldError, InfoTip, Segmented, Switch, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Modal } from '@/components/Modal'
 import { EditorFooter } from '@/features/builder/EditorFooter'
@@ -620,11 +620,7 @@ export function CollectionEditor({
                 <Switch
                   checked={state.isPublic}
                   onChange={(isPublic) => patch({ isPublic })}
-                  label={
-                    state.isPublic
-                      ? 'Shared, so anyone can import it — along with every catalog inside it'
-                      : 'Not shared, only you can use it'
-                  }
+                  label={state.isPublic ? 'Shared' : 'Private'}
                 />
                 {state.isPublic && privateReferencedCatalogs.length > 0 && (
                   <FieldError tone="caution">
@@ -650,11 +646,6 @@ export function CollectionEditor({
                     { value: 'yes', label: 'Yes' },
                   ]}
                 />
-                <span className="ed-note">
-                  {state.pinToTop
-                    ? 'Pinned above every other row on your TV.'
-                    : 'Sits after your catalog rows on your TV.'}
-                </span>
               </div>
             </div>
 
@@ -694,11 +685,6 @@ export function CollectionEditor({
                     { value: 'on', label: 'On' },
                   ]}
                 />
-                <span className="ed-note">
-                  {state.viewMode === 'TABBED_GRID'
-                    ? 'Adds a first tab holding every catalog in a folder at once.'
-                    : 'Only applies to tabbed grids.'}
-                </span>
               </div>
             </div>
 
@@ -725,7 +711,7 @@ export function CollectionEditor({
                     { value: 'on', label: 'On' },
                   ]}
                 />
-                <span className="ed-note">Your TV's glow around a folder tile while it's focused.</span>
+                <InfoTip label="Focus glow" text="Glow around a folder tile while it's selected." />
               </div>
             </div>
 

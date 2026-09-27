@@ -22,24 +22,9 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
 
   const notes: string[] = []
 
-  if (collection.folders.length > 0) {
-    if (collection.viewModeAssumed) {
-      // `FOLLOW_LAYOUT` names no layout Uno can honour, so the preview
-      // draws the app's own default — tabs, All first — and the note says
-      // that's a stand-in.
-      notes.push("folders follow the app's layout — shown as tabs with an All tab")
-    } else if (collection.viewMode === 'TABBED_GRID') {
-      notes.push(
-        collection.showAllTab
-          ? 'folders open as a tabbed grid, with an All tab'
-          : 'folders open as a tabbed grid',
-      )
-    } else {
-      notes.push('folders open as rows')
-    }
-  }
-
-  if (collection.hasBackdrop) notes.push('has a background image')
+  // `FOLLOW_LAYOUT` names no layout Uno can honour, so the preview draws the
+  // app's own default — tabs, All first — and the note says that's a stand-in.
+  if (collection.folders.length > 0 && collection.viewModeAssumed) notes.push('previewed as tabs')
 
   // Summed over the row rather than stated per tile: the tiles sit side by side
   // and a caption under each one saying "2 unavailable" would be the same

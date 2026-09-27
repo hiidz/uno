@@ -93,13 +93,7 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  * viewport and nothing else: the editor stays mounted and stays dirty, exactly
  * as it does above `lg` while the rail sits beside it.
  */
-export function Workspace({
-  profileIndex,
-  profileName,
-}: {
-  profileIndex: number
-  profileName: string
-}) {
+export function Workspace({ profileIndex }: { profileIndex: number }) {
   const library = useLibrary(profileIndex)
   // Edits only: reading the selection here would re-render the whole
   // workspace, open editor included, on every change to the home screen.
@@ -497,8 +491,7 @@ export function Workspace({
           title: 'Duplicate this catalog?',
           body: (
             <>
-              Creates a new, editable copy of{' '}
-              <strong className="text-ink">{catalog.name}</strong>. The original is left untouched.
+              Creates a copy of <strong className="text-ink">{catalog.name}</strong>.
             </>
           ),
           confirmLabel: catalogMutations.create.isPending ? 'Duplicating…' : 'Duplicate catalog',
@@ -652,7 +645,6 @@ export function Workspace({
         >
           {target === null ? (
             <HomePane
-              profileLabel={`Profile ${profileIndex} · ${profileName}`}
               view={homeView}
               onViewChange={setHomeView}
               onShowLibrary={showLibraryFromHome}

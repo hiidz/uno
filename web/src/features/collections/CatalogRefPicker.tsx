@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Copy, Plus } from 'lucide-react'
+import { InfoTip } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { filterRefOptions, type RefOption } from './refs'
 
@@ -54,6 +55,10 @@ export function CatalogRefPicker({
           placeholder="Search catalogs…"
           aria-label="Search catalogs to add to this folder"
           className="field w-full min-w-0"
+        />
+        <InfoTip
+          label="Adding catalogs"
+          text="+ links a catalog, so edits to it show up everywhere it's used. The copy button puts a copy in this collection only."
         />
         <button type="button" onClick={onClose} className="btn-ghost shrink-0">
           Done

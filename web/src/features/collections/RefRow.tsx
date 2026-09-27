@@ -219,7 +219,7 @@ function RefGenrePicker({
       />
       {stale && (
         <span className="type-data text-danger text-[12.5px] leading-[1.45]">
-          This catalog's filters no longer allow {genre}, so your TV shows it unfiltered.
+          This catalog's filters no longer allow {genre}, so Nuvio shows it unfiltered.
         </span>
       )}
       {query.isError && (
