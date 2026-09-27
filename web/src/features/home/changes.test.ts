@@ -43,7 +43,7 @@ describe('computeHomeChanges', () => {
     expect(changes(state, { ...state })).toEqual([])
   })
 
-  it('reports an addition at its place in the TV order, counting pinned collections first', () => {
+  it('reports an addition at its place in the running order, counting pinned collections first', () => {
     expect(changes(home([], ['p']), home(shown('a'), ['p']))).toEqual([
       'Added “Alpha”, 2nd on your home screen',
     ])
@@ -92,12 +92,12 @@ describe('computeHomeChanges', () => {
   })
 
   describe('collections changed since their last push', () => {
-    it('reports one still on the TV', () => {
+    it('reports one still on the home screen', () => {
       const state = home([], ['stale'])
       expect(changes(state, { ...state })).toEqual(['“Stale” changed since it was last pushed'])
     })
 
-    it('reports one put back on the TV only as added', () => {
+    it('reports one put back on the home screen only as added', () => {
       expect(changes(home([]), home([], ['stale']))).toEqual(['Added “Stale”, 1st on your home screen'])
     })
 

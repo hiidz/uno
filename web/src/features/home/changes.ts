@@ -4,7 +4,7 @@
  * count beside Push — the two must never disagree, so `pendingCount` in
  * `HomeSelectionContext` is this list's length, not a separate tally.
  *
- * Positions in the sentences ("3rd", "5th") are the row's place in the TV's
+ * Positions in the sentences ("3rd", "5th") are the row's place in Nuvio's
  * own order — the same three-band order `preview.ts` draws — so a line here
  * reads exactly like the running-order row it describes.
  */
@@ -22,10 +22,10 @@ function keyOf(row: RowKey): string {
   return `${row.kind}:${row.id}`
 }
 
-/** The TV's own order: pinned collections, then home-shown catalogs, then the
+/** Nuvio's own order: pinned collections, then home-shown catalogs, then the
  *  remaining collections. Discover-only catalogs never appear here — they are
  *  precisely the rows with no place in this order. */
-function tvRows(state: HomeState, isPinned: (id: string) => boolean): RowKey[] {
+function orderedRows(state: HomeState, isPinned: (id: string) => boolean): RowKey[] {
   const pinned = state.collections.filter(isPinned)
   const unpinned = state.collections.filter((id) => !isPinned(id))
   const shown = state.catalogs.filter((c) => c.showInHome)
@@ -96,8 +96,8 @@ export function computeHomeChanges({
       : (collectionById.get(row.id)?.title ?? 'Unavailable collection')
   const quoted = (row: RowKey) => `“${nameOf(row)}”`
 
-  const cur = tvRows(current, isPinned)
-  const was = tvRows(baseline, isPinned)
+  const cur = orderedRows(current, isPinned)
+  const was = orderedRows(baseline, isPinned)
   const curKeys = cur.map(keyOf)
   const wasKeys = was.map(keyOf)
 
@@ -157,10 +157,10 @@ export function computeHomeChanges({
     }
   })
 
-  // A collection on the TV whose content moved on since the push that put it
+  // A collection in Nuvio whose content moved on since the push that put it
   // there — the folder sources Nuvio has are stale until the next push, even
   // though nothing about *this* selection changed. Restricted to collections
-  // present in *both* baseline and current: a collection taken off the TV,
+  // present in *both* baseline and current: a collection taken off the home screen,
   // pushed, edited, then put back would otherwise show both "Added …" and
   // "changed since …" today, when only "Added …" should fire.
   const baseSet = new Set(baseline.collections)

@@ -340,7 +340,7 @@ export function CatalogEditor({
       <div className="ed-container">
         <div className="ed ed-results">
           <div className="ed-form">
-            {/* What this row puts on the TV, in the same words the rail and the
+            {/* What this row puts in Nuvio, in the same words the rail and the
                 home screen use, kept current as the settings below change. */}
             <p className="talker">
               <Icon icon={Tag} size={20} />

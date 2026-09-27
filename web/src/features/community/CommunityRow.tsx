@@ -134,7 +134,7 @@ export function CommunityCatalogPreview({ catalog }: { catalog: CommunityCatalog
   return <RecipePreview preview={preview} type={catalog.type} invalid={false} onRun={preview.run} />
 }
 
-/** "On your TV" over a community collection's own tree — the same component
+/** The Preview panel over a community collection's own tree — the same component
  *  the collection editor's docked panel uses, fed from the row's own
  *  `catalogs` rather than the library, so every folder resolves regardless of
  *  what this profile owns. */

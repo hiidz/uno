@@ -45,7 +45,7 @@ export function toPushPayload(state: HomeState): PushRequest {
  * unaffected. The reordered band is always placed first in the result — the
  * one canonical order every band-aware edit here agrees on. Where the band
  * lands in this flat array is otherwise meaningless: `computeHomeChanges`'s
- * TV order is built by filtering on the same predicate, never by position
+ * Nuvio's order is built by filtering on the same predicate, never by position
  * here.
  */
 export function reorderWithinBand<T extends { id: string }>(

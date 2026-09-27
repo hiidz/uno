@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { pluralCount } from '@/lib/plural'
-import { FOLDER_LAYOUT_LABEL, TVCollectionRow, TVFolderPage } from '@/features/home/tv'
+import { FOLDER_LAYOUT_LABEL, PreviewCollectionRow, PreviewFolderPage } from '@/features/home/previewScreen'
 import { CollectionMeta } from '@/features/preview/CollectionMeta'
 import { folderRecipes, type PreviewCollection } from '@/features/preview/model'
 import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
 
 /**
- * "On your TV" — DESIGN.md's docked panel beside the collection form: the
- * collection's row, drawn with the Home preview's own TV components, and the
+ * The Preview panel — DESIGN.md's docked panel beside the collection form: the
+ * collection's row, drawn with the Home preview's own components, and the
  * folder pages it opens. The editor passes its live draft (`previewFromForm`),
  * Community a saved collection (`toPreviewCollection`); both memoise it, since
  * the open folder page is found by folder id and its tiles by the folder's
@@ -20,7 +20,7 @@ import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
  * form, the rows scroll inside the panel; anywhere else they flow with the
  * page.
  *
- * **Folders open, exactly as on Home.** A folder tile opens `TVFolderPage` —
+ * **Folders open, exactly as on Home.** A folder tile opens `PreviewFolderPage` —
  * tabs or rows per the draft's `view_mode`, real titles per catalog. Tiles
  * are fetched from each catalog's recipe (`useRecipesTiles`), not its id, so
  * an unsaved draft and a Community collection both preview, and only the
@@ -53,7 +53,7 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
     if (isOpen) {
       screen.querySelector<HTMLElement>('.fp-back')?.focus({ preventScroll: true })
     } else if (openedFrom.current !== null) {
-      screen.querySelectorAll<HTMLElement>('.tv-folder')[openedFrom.current]?.focus({ preventScroll: true })
+      screen.querySelectorAll<HTMLElement>('.pv-folder')[openedFrom.current]?.focus({ preventScroll: true })
       openedFrom.current = null
     }
   }, [isOpen])
@@ -87,7 +87,7 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
         }
       >
         {folder ? (
-          <TVFolderPage
+          <PreviewFolderPage
             collection={shown}
             folder={folder}
             tiles={tiles}
@@ -95,7 +95,7 @@ export function CollectionPreview({ collection }: { collection: PreviewCollectio
             backLabel={`Back to the ${title} row`}
           />
         ) : (
-          <TVCollectionRow
+          <PreviewCollectionRow
             collection={shown}
             onOpenFolder={({ folderId }) => {
               openedFrom.current = collection.folders.findIndex((f) => f.id === folderId)

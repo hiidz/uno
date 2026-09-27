@@ -116,7 +116,7 @@ export function FolderTreeDnd({
 }
 
 /**
- * The folder strip: each folder drawn at its own `tile_shape`, the way the TV
+ * The folder strip: each folder drawn at its own `tile_shape`, the way Nuvio
  * draws the collection's row. One is always selected, and its contents open
  * beneath the strip in `FolderDetail`.
  */

@@ -269,7 +269,7 @@ export function CollectionEditor({
   )
 
   // Legal to save — the server accepts a folder with no catalog refs — but it
-  // shows nothing on the real TV, so it's surfaced as a standing warning
+  // shows nothing in Nuvio, so it's surfaced as a standing warning
   // alongside the deletion counts rather than left to the folder's own,
   // possibly-never-opened panel note.
   const emptyFolders = useMemo(() => state.folders.filter((f) => f.refs.length === 0), [state.folders])
@@ -592,10 +592,10 @@ export function CollectionEditor({
           saveError={serverError}
         />
       }
-      docked="tv"
+      docked="preview"
     >
       <div className="ed-container">
-        <div className="ed ed-tv">
+        <div className="ed ed-preview">
           <div className="ed-form">
             {linked && <LinkedBanner noun="collection" />}
             <div className="setting">

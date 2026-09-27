@@ -80,7 +80,7 @@ export interface Collection {
   view_mode: string
   show_all_tab: boolean
   backdrop_image_url: string
-  /** Nuvio's TV focus glow on this collection's home-screen folder cards. */
+  /** Nuvio's focus glow on this collection's home-screen folder cards. */
   focus_glow_enabled: boolean
   created_at: string
   updated_at: string
@@ -278,7 +278,7 @@ export interface PreviewItem {
 
 export interface CatalogPreview {
   /** The recipe shuffles: the addon path picks a random TMDB page per call
-   *  while preview always fetches page 1, so these titles won't match the TV.
+   *  while preview always fetches page 1, so these titles won't match Nuvio.
    *  Surfaced so the UI can say so rather than implying a prediction. */
   randomized: boolean
   items: PreviewItem[]
@@ -296,7 +296,7 @@ export interface PreviewRequest {
   /** The JSON-encoded params string, exactly as `Catalog.params` carries it. */
   params: string
   /** A genre name from the recipe's genre options, narrowing the result the way
-   *  a folder reference's genre narrows that row on the TV. */
+   *  a folder reference's genre narrows that row in Nuvio. */
   genre?: string
 }
 

@@ -28,7 +28,7 @@ export function PushButton({ push, ready, pushing, className = '' }: Push & { cl
       // push is in flight, and in a header that no longer wraps the extra width
       // comes out of the profile chip beside it, which re-truncates as it goes.
       // Above `lg` the row is far from full and the button keeps its own width.
-      className={`btn-tv min-w-[88px] lg:min-w-[auto] ${className}`}
+      className={`btn-push min-w-[88px] lg:min-w-[auto] ${className}`}
     >
       <Icon icon={Tv} size={16} />
       <span>
@@ -124,13 +124,13 @@ function SuccessBanner({ manifestURL, dismiss }: { manifestURL?: string; dismiss
     <div className="bg-raised border-line flex shrink-0 items-center gap-3 border-b px-4 py-2.5 lg:items-start lg:px-5 lg:py-3">
       <span
         aria-hidden="true"
-        className="bg-tv-yellow text-sign-ink grid size-6 shrink-0 place-items-center rounded-full"
+        className="bg-nuvio-yellow text-sign-ink grid size-6 shrink-0 place-items-center rounded-full"
       >
         <Icon icon={Check} size={14} />
       </span>
 
       <div className="flex min-w-0 flex-1 flex-col lg:gap-1">
-        <p className="text-tv-yellow m-0 text-[14px] font-bold">{HEADLINE.success}</p>
+        <p className="text-nuvio-yellow m-0 text-[14px] font-bold">{HEADLINE.success}</p>
         <p className="text-dim m-0 hidden text-[13.5px] lg:block">{DETAIL.success}</p>
         {manifestURL && <ManifestURL url={manifestURL} className="hidden lg:flex" />}
       </div>

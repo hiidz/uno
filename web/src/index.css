@@ -33,7 +33,7 @@
     --color-catalog: var(--uno-catalog);
     --color-collection: var(--uno-collection);
     --color-community: var(--uno-community);
-    --color-tv-yellow: var(--uno-tv-yellow);
+    --color-nuvio-yellow: var(--uno-nuvio-yellow);
     --color-danger: var(--uno-danger);
     --color-danger-ink: var(--uno-danger-ink);
     --color-pending: var(--uno-pending);
@@ -49,15 +49,15 @@
     --color-background: var(--background);
 }
 
-/* Single-theme: the builder is used at a desk and on the couch beside a TV
+/* Single-theme: the builder is used at a desk and on the couch
    in the evening, and it is dark.
 
    "Video Store, after hours" — see DESIGN.md. A night-navy ground and its
    shelves carry the layout; each region is announced by a sign in its own
    colour at full strength. The colours hold one meaning each:
      - catalog tangerine, collection green, community pink name the regions;
-     - TV yellow means "bound for the TV" and nothing else: Push, what is on
-       the home screen, and what is not on the TV yet;
+     - Nuvio yellow means "bound for Nuvio" and nothing else: Push, what is on
+       the home screen, and what is not in Nuvio yet;
      - danger red marks what can't be undone, always beside words. */
 :root {
     --uno-ground: #10132B;
@@ -77,10 +77,10 @@
     --uno-collection: #35B26F;
     --uno-community: #E0529C;
 
-    --uno-tv-yellow: #FFC93C;
-    --uno-tv-yellow-hover: #FFD666;
-    --uno-tv-yellow-pressed: #F0B82A;
-    --uno-pending: var(--uno-tv-yellow);
+    --uno-nuvio-yellow: #FFC93C;
+    --uno-nuvio-yellow-hover: #FFD666;
+    --uno-nuvio-yellow-pressed: #F0B82A;
+    --uno-pending: var(--uno-nuvio-yellow);
 
     --uno-danger: #EA5157;
     --uno-danger-hover: #F06A70;
@@ -132,7 +132,7 @@
     --w-editor-results: calc(var(--w-form) + 40px + 360px);
     /* The collection editor: the form's column, the 40px gutter, and a docked
        Preview panel up to 620px beside it. */
-    --w-editor-tv: calc(var(--w-form) + 40px + 620px);
+    --w-editor-preview: calc(var(--w-form) + 40px + 620px);
 
     /* The sticky app header's height, below `lg`, where the builder is one
        scrolling document and every offset is measured from under it. Overwritten
@@ -209,8 +209,8 @@
     .tone-community {
         --accent: var(--uno-community);
     }
-    .tone-tv {
-        --accent: var(--uno-tv-yellow);
+    .tone-home {
+        --accent: var(--uno-nuvio-yellow);
     }
 
     /* A heading: Figtree bold, mixed case. Callers set their own size and
@@ -361,9 +361,9 @@
         color: var(--uno-danger);
     }
 
-    /* The home-screen toggle on a row. On the TV it is a yellow price sticker,
+    /* The home-screen toggle on a row. On the home screen it is a yellow price sticker,
        slapped on slightly askew; off, a dashed empty circle waiting for one. */
-    .tv-sticker {
+    .home-sticker {
         position: relative;
         flex: none;
         display: grid;
@@ -373,10 +373,10 @@
         border-radius: 50%;
         transition: color 160ms ease;
     }
-    .tv-sticker[aria-pressed='false'] {
+    .home-sticker[aria-pressed='false'] {
         color: var(--uno-dim);
     }
-    .tv-sticker[aria-pressed='false']::before {
+    .home-sticker[aria-pressed='false']::before {
         content: '';
         position: absolute;
         inset: 0;
@@ -384,14 +384,14 @@
         border: 1.5px dashed var(--uno-dimmer);
         transition: border-color 160ms ease;
     }
-    .tv-sticker[aria-pressed='false']:hover {
-        color: var(--uno-tv-yellow);
+    .home-sticker[aria-pressed='false']:hover {
+        color: var(--uno-nuvio-yellow);
     }
-    .tv-sticker[aria-pressed='false']:hover::before {
-        border-color: var(--uno-tv-yellow);
+    .home-sticker[aria-pressed='false']:hover::before {
+        border-color: var(--uno-nuvio-yellow);
     }
-    .tv-sticker[aria-pressed='true'] {
-        background: var(--uno-tv-yellow);
+    .home-sticker[aria-pressed='true'] {
+        background: var(--uno-nuvio-yellow);
         color: var(--uno-sign-ink);
         transform: rotate(-9deg);
         font-family: var(--font-sign);
@@ -402,19 +402,19 @@
     }
     /* Two lines, like a price sticker: "NUVIO" is too wide to sit beside
        "ON" inside the circle. */
-    .tv-sticker-words {
+    .home-sticker-words {
         display: grid;
         justify-items: center;
         gap: 1px;
     }
-    .tv-sticker-words > span:last-child {
+    .home-sticker-words > span:last-child {
         font-size: 8.5px;
         letter-spacing: 0.01em;
     }
-    .tv-sticker[aria-pressed='true']:hover {
-        background: var(--uno-tv-yellow-hover);
+    .home-sticker[aria-pressed='true']:hover {
+        background: var(--uno-nuvio-yellow-hover);
     }
-    .tv-sticker[data-slap] {
+    .home-sticker[data-slap] {
         animation: uno-slap 420ms var(--uno-ease);
     }
     @keyframes uno-slap {
@@ -431,7 +431,7 @@
         }
     }
     @media (pointer: coarse) {
-        .tv-sticker {
+        .home-sticker {
             width: 44px;
             height: 44px;
         }
@@ -463,7 +463,7 @@
         width: 30px;
         height: 30px;
         border-radius: 50%;
-        background: var(--uno-tv-yellow);
+        background: var(--uno-nuvio-yellow);
         color: var(--uno-sign-ink);
         transform: rotate(-7deg);
         font-family: var(--font-sign);
@@ -474,7 +474,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .tv-sticker[data-slap] {
+        .home-sticker[data-slap] {
             animation: none;
         }
     }
@@ -482,7 +482,7 @@
     /* Buttons (DESIGN.md, "Buttons"): pills, 38px on desktop; `pointer:
        coarse` grows standalone ones toward the phone's 44px targets. */
     .btn-primary,
-    .btn-tv,
+    .btn-push,
     .btn-secondary,
     .btn-ghost,
     .btn-danger,
@@ -531,19 +531,19 @@
         cursor: not-allowed;
     }
 
-    /* The TV action: Push. TV yellow, and the only yellow button on a screen. */
-    .btn-tv {
-        background: var(--uno-tv-yellow);
+    /* The push action. Nuvio yellow, and the only yellow button on a screen. */
+    .btn-push {
+        background: var(--uno-nuvio-yellow);
         color: var(--uno-sign-ink);
         font-weight: 750;
     }
-    .btn-tv:hover:not(:disabled) {
-        background: var(--uno-tv-yellow-hover);
+    .btn-push:hover:not(:disabled) {
+        background: var(--uno-nuvio-yellow-hover);
     }
-    .btn-tv:active:not(:disabled) {
-        background: var(--uno-tv-yellow-pressed);
+    .btn-push:active:not(:disabled) {
+        background: var(--uno-nuvio-yellow-pressed);
     }
-    .btn-tv:disabled {
+    .btn-push:disabled {
         background: var(--uno-line-hi);
         color: var(--uno-dim);
         cursor: default;
@@ -629,7 +629,7 @@
     }
 
     .btn-primary:focus-visible,
-    .btn-tv:focus-visible,
+    .btn-push:focus-visible,
     .btn-secondary:focus-visible,
     .btn-ghost:focus-visible,
     .btn-danger:focus-visible,
@@ -640,7 +640,7 @@
 
     @media (pointer: coarse) {
         .btn-primary,
-        .btn-tv,
+        .btn-push,
         .btn-secondary,
         .btn-ghost,
         .btn-danger {
@@ -808,7 +808,7 @@
         }
     }
 
-    /* The preview rows: what the TV lays out, drawn in Uno's own look —
+    /* The preview rows: what Nuvio lays out, drawn in Uno's own look —
        DESIGN.md's "Preview rows". Home draws them in `.pv-panel`; the
        collection editor and Community draw them in `.pv-rows` inside the
        raised `.ed-pv` panel. Strips run to the panel's right edge and scroll
@@ -833,7 +833,7 @@
        scroll inside it at a height that fits the pane; a folder page's grid
        would otherwise run past the viewport where nothing can reach it.
        Undocked (the 960px container query below), they flow with the page. */
-    .ed-tv .pv-rows {
+    .ed-preview .pv-rows {
         max-height: clamp(280px, calc(100dvh - 360px), 560px);
         overflow-y: auto;
         overscroll-behavior: contain;
@@ -841,12 +841,12 @@
         scrollbar-color: var(--uno-line-hi) transparent;
     }
 
-    .tv-band + .tv-band {
+    .pv-band + .pv-band {
         margin-top: 26px;
     }
     /* The row's title and its "see more" chevrons. `margin-bottom` lives here
-       rather than on `.tv-row-title`, because the chevrons share the line. */
-    .tv-row-head {
+       rather than on `.pv-row-title`, because the chevrons share the line. */
+    .pv-row-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -855,7 +855,7 @@
         margin-bottom: 10px;
         padding-right: var(--pv-edge, 0px);
     }
-    .tv-row-title {
+    .pv-row-title {
         margin: 0;
         font-size: 15px;
         font-weight: 600;
@@ -863,15 +863,15 @@
         color: var(--uno-ink);
     }
     /* The pair of scroll buttons beside a row's title — only the ones that
-       currently do something render (`canPrev`/`canNext` in `tv.tsx`), so a
+       currently do something render (`canPrev`/`canNext` in `previewScreen.tsx`), so a
        row at its start never shows a dead "back" button. */
-    .tv-row-nav {
+    .pv-row-nav {
         flex: none;
         display: flex;
         align-items: center;
         gap: 6px;
     }
-    .tv-row-btn,
+    .pv-row-btn,
     .fp-back {
         position: relative;
         flex: none;
@@ -890,24 +890,24 @@
             background-color 160ms ease,
             color 160ms ease;
     }
-    .tv-row-btn:hover,
+    .pv-row-btn:hover,
     .fp-back:hover {
         color: var(--uno-ink);
         background: var(--uno-raised-hi);
     }
-    .tv-row-btn:focus-visible,
+    .pv-row-btn:focus-visible,
     .fp-back:focus-visible {
         outline: 2px solid var(--uno-ink);
         outline-offset: 2px;
     }
-    .tv-row-btn svg,
+    .pv-row-btn svg,
     .fp-back svg {
         width: 16px;
         height: 16px;
     }
     @media (pointer: coarse) {
         /* The 44px touch reach beyond the drawn 32px circle. */
-        .tv-row-btn::before,
+        .pv-row-btn::before,
         .fp-back::before {
             content: '';
             position: absolute;
@@ -916,7 +916,7 @@
     }
     /* Rows scroll sideways, like the real app's — a full TMDB page (up to
        `TILES_PER_PAGE`) is reachable by a finger swipe, the row's own
-       chevrons, or a horizontal wheel. There is no mouse drag (`tv.tsx`'s
+       chevrons, or a horizontal wheel. There is no mouse drag (`previewScreen.tsx`'s
        `useRowScroll`). `touch-action` stays at its default so the browser
        locks each swipe to one axis: sideways scrolls the row, up and down
        scrolls the page, wherever the finger starts.
@@ -924,7 +924,7 @@
        turning into the browser's back/forward gesture. The native scrollbar
        is hidden because the chevrons already say the row scrolls; the row is
        still keyboard- and wheel-scrollable without it. */
-    .tv-strip {
+    .pv-strip {
         display: flex;
         gap: 8px;
         align-items: flex-end;
@@ -934,10 +934,10 @@
         scroll-snap-type: x proximity;
         scrollbar-width: none;
     }
-    .tv-strip::-webkit-scrollbar {
+    .pv-strip::-webkit-scrollbar {
         display: none;
     }
-    .tv-tile {
+    .pv-tile {
         flex: none;
         display: grid;
         gap: 4px;
@@ -949,7 +949,7 @@
         padding: 0;
         scroll-snap-align: start;
     }
-    .tv-tile .cap {
+    .pv-tile .cap {
         /* `width: 0; min-width: 100%` — not plain `min-width: 0` — because a
            `nowrap` caption's own max-content size (its full, un-truncated
            text) is what an `auto` grid track sizes itself to, and `min-width`
@@ -967,7 +967,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .tv-tile .cap-year {
+    .pv-tile .cap-year {
         font-size: 11px;
         color: var(--uno-dimmer);
         font-variant-numeric: tabular-nums;
@@ -975,7 +975,7 @@
     /* A tile's face: a raised-hi card with a line-hi edge, the poster or
        cover over it once loaded. The card alone is the placeholder while it
        loads, or where there is no art. */
-    .tv-tile .art {
+    .pv-tile .art {
         position: relative;
         display: grid;
         place-items: center;
@@ -983,47 +983,47 @@
         background: var(--uno-raised-hi);
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
     }
-    .tv-tile .art img {
+    .pv-tile .art img {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;
     }
-    .tv-poster .art {
+    .pv-poster .art {
         width: 104px;
         aspect-ratio: 2 / 3;
         border-radius: 6px;
     }
 
     /* A folder's own tile, the collection editor's folder-strip face. */
-    .tv-folder {
+    .pv-folder {
         cursor: pointer;
     }
-    .tv-folder .art {
+    .pv-folder .art {
         border-radius: 10px;
     }
-    .tv-folder .art span {
+    .pv-folder .art span {
         font-size: 28px;
         line-height: 1;
     }
-    .tv-folder .cap {
+    .pv-folder .cap {
         font-size: 13.5px;
         font-weight: 600;
         line-height: 18px;
     }
-    .tv-folder .cap.is-hidden {
+    .pv-folder .cap.is-hidden {
         visibility: hidden;
     }
-    .tv-folder.poster .art {
+    .pv-folder.poster .art {
         width: 104px;
         aspect-ratio: 2 / 3;
     }
-    .tv-folder.landscape .art {
+    .pv-folder.landscape .art {
         width: 230px;
         aspect-ratio: 16 / 9;
     }
-    .tv-folder.square .art {
+    .pv-folder.square .art {
         width: 150px;
         aspect-ratio: 1;
     }
@@ -1033,7 +1033,7 @@
        over the next tile. The overlay stays inside the tile's own edge,
        follows `.art`'s `border-radius`, and paints above the poster or cover
        image — an inset shadow on `.art` itself would sit under the `<img>`. */
-    .tv-tile .art::after {
+    .pv-tile .art::after {
         content: '';
         position: absolute;
         inset: 0;
@@ -1041,14 +1041,14 @@
         pointer-events: none;
         transition: box-shadow 160ms ease;
     }
-    .tv-tile:focus-visible {
+    .pv-tile:focus-visible {
         outline: none;
     }
-    a.tv-tile:hover .art::after,
-    button.tv-tile:hover .art::after {
+    a.pv-tile:hover .art::after,
+    button.pv-tile:hover .art::after {
         box-shadow: inset 0 0 0 1px var(--uno-ink);
     }
-    .tv-tile:focus-visible .art::after {
+    .pv-tile:focus-visible .art::after {
         box-shadow: inset 0 0 0 2px var(--uno-ink);
     }
 
@@ -1093,7 +1093,7 @@
         gap: 14px 8px;
         padding-right: var(--pv-edge, 0px);
     }
-    .fp-grid .tv-poster .art {
+    .fp-grid .pv-poster .art {
         width: 100%;
     }
 
@@ -1583,13 +1583,13 @@
        keeps its own `--w-form` cap beside it. It undocks earlier than the
        catalog editor's panel, under 960px of pane, where a 380px column would
        squeeze the form. */
-    .ed.ed-tv {
+    .ed.ed-preview {
         grid-template-columns: minmax(0, 1fr) clamp(380px, 42cqw, 620px);
     }
-    .ed-tv .ed-form {
+    .ed-preview .ed-form {
         max-width: var(--w-form);
     }
-    .ed-tv .ed-pv {
+    .ed-preview .ed-pv {
         min-width: 0;
     }
 
@@ -1609,8 +1609,8 @@
         gap: 4px;
     }
 
-    /* The folder strip: every folder drawn at its own tile shape, the way the
-       TV draws the collection's row, with the selected one ringed in the
+    /* The folder strip: every folder drawn at its own tile shape, the way
+       Nuvio draws the collection's row, with the selected one ringed in the
        collection's green. */
     .fold-tiles {
         display: flex;
@@ -1733,15 +1733,15 @@
         margin-top: 16px;
     }
     @container (max-width: 960px) {
-        .ed.ed-tv {
+        .ed.ed-preview {
             grid-template-columns: minmax(0, 1fr);
         }
-        .ed-tv .ed-pv {
+        .ed-preview .ed-pv {
             position: static;
             order: 2;
             margin-top: 24px;
         }
-        .ed-tv .pv-rows {
+        .ed-preview .pv-rows {
             max-height: none;
             overflow-y: visible;
         }

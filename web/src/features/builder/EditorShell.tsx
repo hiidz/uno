@@ -68,8 +68,8 @@ export function EditorShell({
   /** What docks beside the form, which decides the content cap: the form
    *  keeps its own `--w-form` column and the extra width goes to that column —
    *  the catalog editor's results (`--w-editor-results`) or the collection
-   *  editor's TV (`--w-editor-tv`). */
-  docked: 'results' | 'tv'
+   *  editor's preview (`--w-editor-preview`). */
+  docked: 'results' | 'preview'
   children: ReactNode
 }) {
   const stacked = useStackedLayout()
@@ -165,7 +165,7 @@ export function EditorShell({
           field in it starts looking stretched. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
         <div
-          className={`w-full ${docked === 'tv' ? 'max-w-[var(--w-editor-tv)]' : 'max-w-[var(--w-editor-results)]'}`}
+          className={`w-full ${docked === 'preview' ? 'max-w-[var(--w-editor-preview)]' : 'max-w-[var(--w-editor-results)]'}`}
         >
           {children}
         </div>

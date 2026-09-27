@@ -43,7 +43,7 @@ type Tab = 'workspace' | 'community'
  * lives where Home's state is, regardless of which tab is open.
  *
  * **Two kinds of unsaved work, deliberately separate.** An editor's changes are
- * saved to the server; Home's are pushed to your TV. They're lost in different
+ * saved to the server; Home's are pushed to Nuvio. They're lost in different
  * ways, warn separately, and the header shows only Home's — an editor states
  * its own in the pane.
  */
@@ -253,7 +253,7 @@ function BuilderHeader({
 
 /**
  * Pending edits live only in browser memory, so without this the user has no
- * way to tell that what's on screen isn't what's on their TV. From `lg` up it
+ * way to tell that what's on screen isn't what's in Nuvio. From `lg` up it
  * sits beside the Push button, information next to the action that resolves
  * it. Below `lg` the header has no room for its words, so it is drawn without
  * them as the left half of one pill with Push: the count alone while anything

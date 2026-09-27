@@ -135,10 +135,10 @@ export function LibraryItem({
             onHome ? `Take ${name} off your home screen` : `Put ${name} on your home screen`
           }
           title={onHome ? 'On your home screen — click to remove' : 'Add to home screen'}
-          className="tv-sticker"
+          className="home-sticker"
         >
           {onHome ? (
-            <span aria-hidden="true" className="tv-sticker-words">
+            <span aria-hidden="true" className="home-sticker-words">
               <span>ON</span>
               <span>NUVIO</span>
             </span>

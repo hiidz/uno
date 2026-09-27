@@ -28,7 +28,7 @@ export type HomeView = 'list' | 'preview'
  * row whose tiles are its folders) and selected catalogs (each a row of
  * content), both ordered. Collections with `pin_to_top` sit above the catalog
  * rows, the rest below — Preview is where that order is visible. This view
- * groups by the TV's own three bands too — see `HomeList` — because the
+ * groups by Nuvio's own three bands too — see `HomeList` — because the
  * running order's numbering only makes sense in that order.
  *
  * Called "your home screen", never "selection" — that's the schema's word.
@@ -63,13 +63,13 @@ export function HomePane({
   const isEmpty = home.catalogs.length === 0 && home.collections.length === 0
 
   return (
-    <main className="tone-tv flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
+    <main className="tone-home flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
       {/* The padding is split between this band and the content below rather
           than sitting on `main`, because a sticky child of a padded parent
           leaves a gap above it that the content then scrolls through.
 
-          It is the home screen's sign: TV yellow, because everything under it
-          is what the TV shows. */}
+          It is the home screen's sign: Nuvio yellow, because everything under it
+          is what Nuvio shows. */}
       <PaneSign className="flex-wrap gap-x-4 gap-y-2">
         <Icon icon={Tv} size={24} className="hidden shrink-0 lg:block" />
         {/* Where focus lands when the page scrolls here — see `stacked.ts`. */}
@@ -125,7 +125,7 @@ export function HomePane({
       <div className="flex flex-col px-4 py-5 lg:px-6 lg:pt-6 lg:pb-8">
         {/* Loading and error are shared — both views need the same state before
             they can render anything. Empty is *not* shared: List's empty state
-            is an instruction to go add something, Preview's is the screen a TV
+            is an instruction to go add something, Preview's is the screen Nuvio
             shows when there's nothing to show. So each branch owns it. */}
         <ListState
           isLoading={home.isLoading || !home.ready}
@@ -152,7 +152,7 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
           aria-pressed={view === option}
           className={`rounded-full px-3.5 py-1 text-[13px] font-bold capitalize transition-colors pointer-coarse:py-2.5 ${
             view === option
-              ? 'bg-sign-ink text-tv-yellow'
+              ? 'bg-sign-ink text-nuvio-yellow'
               : 'text-sign-ink hover:bg-sign-ink/12'
           }`}
         >
@@ -164,9 +164,9 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
 }
 
 /**
- * The running order, in the TV's own three groups: pinned collections, then
+ * The running order, in Nuvio's own three groups: pinned collections, then
  * catalog rows, then the remaining collections. Positions count straight
- * through all three, so a row's number is its place on the TV — the same rule
+ * through all three, so a row's number is its place in Nuvio — the same rule
  * `preview.ts` draws and `changes.ts` speaks in. A row moves only within its
  * own group: reordering hands `HomeSelectionContext` only that group's ids,
  * which reconstructs the full list itself (see `reorderWithinBand`).
@@ -184,7 +184,7 @@ function HomeList({ compact }: { compact: boolean }) {
     )
   }
 
-  // The TV's own order, for continuous numbering — see the module comment.
+  // Nuvio's own order, for continuous numbering — see the module comment.
   const order = [
     ...preview.pinnedCollections.map((c) => `collection:${c.id}`),
     ...preview.rows.map((r) => `catalog:${r.id}`),
@@ -551,7 +551,7 @@ function FolderStripTile({ folder }: { folder: PreviewFolder }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * `show_in_home = false` catalogs: reachable on the TV from Discover, but no
+ * `show_in_home = false` catalogs: reachable in Nuvio from Discover, but no
  * home row — so they sit outside the numbered running order entirely, never
  * as a fourth group. See `internal/addon/addon.go`'s `buildManifest`, which
  * enforces this by marking the catalog's genre filter `isRequired`.

@@ -448,8 +448,8 @@ export function changesContent(baseline: CollectionFormState, state: CollectionF
 }
 
 /**
- * The form's own state as a previewable collection, for the editor's "On your
- * TV" panel.
+ * The form's own state as a previewable collection, for the editor's Preview
+ * panel.
  *
  * A folder's identity here is its form `key`, not its server `id`: a folder
  * that hasn't been saved yet has no id, and `CollectionMeta` still has to be

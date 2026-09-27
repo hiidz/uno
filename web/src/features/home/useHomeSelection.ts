@@ -19,7 +19,7 @@ export function useHomeEdits(): HomeEdits {
   return value
 }
 
-/** The pending home screen in the TV's own three bands — what both the List
+/** The pending home screen in Nuvio's own three bands — what both the List
  *  and the Preview view draw, so they can't disagree about the order. */
 export function useHomePreview(): HomeScreenPreview {
   const { catalogs, collections, catalogById, collectionById } = useHomeSelection()

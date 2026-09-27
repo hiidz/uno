@@ -11,10 +11,10 @@ import { useHomePreview, useHomeSelection } from './useHomeSelection'
 import { useCatalogTiles } from './useCatalogTiles'
 import { findFolderPage } from './preview'
 import type { FolderPageTarget, HomeScreenPreview, PreviewRow } from './preview'
-import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from './tv'
+import { FOLDER_LAYOUT_LABEL, PreviewCatalogRow, PreviewCollectionRow, PreviewFolderPage } from './previewScreen'
 
 /**
- * The Home pane's second view: the same pending state, drawn as the TV lays
+ * The Home pane's second view: the same pending state, drawn as Nuvio lays
  * it out — DESIGN.md's "Preview rows", in one raised panel. Reorder in List,
  * flip to here, see it move.
  *
@@ -30,7 +30,7 @@ import { FOLDER_LAYOUT_LABEL, TVCatalogRow, TVCollectionRow, TVFolderPage } from
  * **Uno puts nothing between the rows — the Clean Preview rule.** Every
  * caveat this view has to state (the pending count, how to get back to home)
  * is Uno's own words above and below the panel; the panel itself carries only
- * what the real TV would show. See `tv.tsx` for what that drops.
+ * what Nuvio would show. See `previewScreen.tsx` for what that drops.
  */
 export function HomePreview() {
   const home = useHomeSelection()
@@ -178,7 +178,7 @@ function FolderPageView({
         role="region"
         aria-label={`${folder.title || 'Untitled folder'}, a folder in ${collection.title || 'Untitled collection'}`}
       >
-        <TVFolderPage collection={collection} folder={folder} tiles={tiles} onBack={onBack} />
+        <PreviewFolderPage collection={collection} folder={folder} tiles={tiles} onBack={onBack} />
       </div>
 
     </div>
@@ -226,13 +226,13 @@ function HomeScreenView({
         <>
           <div className="pv-panel" role="region" aria-label="Home screen preview">
             {preview.pinnedCollections.map((collection) => (
-              <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
+              <PreviewCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
             ))}
             {preview.rows.map((row) => (
-              <TVCatalogRow key={row.id} row={row} tiles={tiles.get(row.id) ?? noTiles()} />
+              <PreviewCatalogRow key={row.id} row={row} tiles={tiles.get(row.id) ?? noTiles()} />
             ))}
             {preview.unpinnedCollections.map((collection) => (
-              <TVCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
+              <PreviewCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
             ))}
           </div>
         </>
@@ -305,7 +305,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
  *  Uno's own colours. */
 const NO_SIGNAL_BARS = [
   '--uno-ink',
-  '--uno-tv-yellow',
+  '--uno-nuvio-yellow',
   '--uno-collection',
   '--uno-catalog',
   '--uno-community',

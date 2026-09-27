@@ -184,7 +184,7 @@ export const ALL_TAB_TILE_CAP = 20
  * cap of 20, concatenating would show source 1 and nothing else.
  *
  * This ordering is Uno's own guess: folders aren't an addon concept, so nothing
- * specifies how Nuvio merges a folder's sources. The TV picture shows the
+ * specifies how Nuvio merges a folder's sources. Nuvio shows the
  * merge without saying so, per DESIGN.md's Clean Preview rule.
  *
  * De-duplicates on kind and `tmdb_id` together: two catalogs in one folder can

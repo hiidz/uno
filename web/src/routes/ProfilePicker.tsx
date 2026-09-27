@@ -129,7 +129,7 @@ export function ProfilePicker() {
                       }`}
                     >
                       {/* A membership card: the shop's fascia across the top,
-                          the slot the TV shows it in, the member's name. */}
+                          the slot Nuvio shows it in, the member's name. */}
                       <Fascia className="h-2.5 shrink-0" />
                       <span className="flex min-h-0 flex-1 flex-col px-4 pt-3.5 pb-4">
                         <span className="flex items-center justify-between gap-3">

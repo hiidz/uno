@@ -46,7 +46,7 @@ export function fetchCommunityCollections(profileIndex: number): Promise<Communi
 }
 
 /**
- * The profile's current selection — what is live on the TV right now, and the
+ * The profile's current selection — what is live in Nuvio right now, and the
  * baseline the Home pane's pending edits are diffed against. Both are ordered
  * by `sort_order`; that order is the value, so preserve it.
  *

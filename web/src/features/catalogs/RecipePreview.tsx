@@ -15,7 +15,7 @@ import { plural } from '@/lib/plural'
  *
  * The whole block is one TMDB page — the same page the row itself is, so this
  * is the row, not a sample of it. A shuffling recipe takes a random page per
- * run, as the row does on the TV.
+ * run, as the row does in Nuvio.
  *
  * Every tile links to its TMDB page, which is where the question a preview
  * raises — "what *is* that one?" — gets answered.
@@ -91,8 +91,8 @@ function Body({
   return (
     <>
       {/* The filters have moved on since these tiles were fetched — in ink,
-       *  never TV yellow (DESIGN.md's Words Beside Colour Rule): nothing here
-       *  is waiting for the TV the way an unpushed change is. */}
+       *  never Nuvio yellow (DESIGN.md's Words Beside Colour Rule): nothing here
+       *  is waiting for Nuvio the way an unpushed change is. */}
       {preview.isStale && (
         <p className="pv-stale">Your filters changed since this ran. Run it again to see the new results.</p>
       )}

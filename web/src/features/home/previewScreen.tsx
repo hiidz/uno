@@ -18,10 +18,10 @@ import { TILES_PER_PAGE, noTiles, type CatalogTiles } from '@/features/preview/t
 import type { FolderPageTarget, PreviewRow } from './preview'
 
 /**
- * The preview rows, DESIGN.md's "Preview rows": the TV's layout — rows with
+ * The preview rows, DESIGN.md's "Preview rows": Nuvio's layout — rows with
  * "see more" chevrons, folder tiles that open folder pages, tabs or rows per
  * `view_mode` — drawn in Uno's own look. Home Preview, the collection
- * editor's "On your TV" panel and Community's collection preview all draw
+ * editor's Preview panel and Community's collection preview all draw
  * with these. `features/preview/tiles.tsx` is the Results panel's and the
  * Home list's grid; these add captions, row scrolling and folders.
  *
@@ -29,7 +29,7 @@ import type { FolderPageTarget, PreviewRow } from './preview'
  * shuffled-row note, no stopped-sharing note (that warning stays in the
  * library), no All-tab merge-order caveat, no "follows the app" caveat. An
  * unresolved source or an empty result just renders as an empty row, the way
- * the real TV would show it; Uno's words about the rows sit above and below
+ * Nuvio would show it; Uno's words about the rows sit above and below
  * them. The one caveat kept — a blank tile face behind a poster that hasn't
  * loaded yet, or is missing — is the tile itself, not text.
  */
@@ -51,7 +51,7 @@ function resolveTileKind(kind: TileKind | undefined, item: PreviewItem): TMDBKin
  * Linked when the caller knows the kind, exactly like `tiles.tsx`'s own
  * content tile — opens in a new tab so it doesn't discard the pane's state.
  */
-function TVPosterTile({ item, kind }: { item: PreviewItem; kind?: TileKind }) {
+function PreviewPosterTile({ item, kind }: { item: PreviewItem; kind?: TileKind }) {
   const resolvedKind = resolveTileKind(kind, item)
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
@@ -66,7 +66,7 @@ function TVPosterTile({ item, kind }: { item: PreviewItem; kind?: TileKind }) {
 
   if (!resolvedKind) {
     return (
-      <span title={name} className="tv-tile tv-poster">
+      <span title={name} className="pv-tile pv-poster">
         {face}
       </span>
     )
@@ -78,7 +78,7 @@ function TVPosterTile({ item, kind }: { item: PreviewItem; kind?: TileKind }) {
       target="_blank"
       rel="noopener noreferrer"
       title={`${name} — open on TMDB`}
-      className="tv-tile tv-poster"
+      className="pv-tile pv-poster"
     >
       {face}
     </a>
@@ -87,9 +87,9 @@ function TVPosterTile({ item, kind }: { item: PreviewItem; kind?: TileKind }) {
 
 /** The loading placeholder — a blank tile face, no caption. Count matches one
  *  TMDB page so the row doesn't reflow when real tiles land. */
-function TVPlaceholderTile() {
+function PreviewPlaceholderTile() {
   return (
-    <span className="tv-tile tv-poster">
+    <span className="pv-tile pv-poster">
       <span className="art" />
     </span>
   )
@@ -102,7 +102,7 @@ function TVPlaceholderTile() {
  * those tiles reachable instead of the row silently clipping whatever didn't
  * fit the panel.
  *
- * **Swiping is touch-only, and native.** `overflow-x` on `.tv-strip` is the
+ * **Swiping is touch-only, and native.** `overflow-x` on `.pv-strip` is the
  * whole of it: a finger swipes the row like any native scroller. A mouse gets
  * no drag gesture — pressing on a poster link or cover image starts the
  * browser's own drag of that link or image — so a mouse scrolls a row with
@@ -162,7 +162,7 @@ function RowButton({
   label: string
 }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} className="tv-row-btn">
+    <button type="button" onClick={onClick} aria-label={label} className="pv-row-btn">
       <Icon icon={direction === 1 ? ChevronRight : ChevronLeft} />
     </button>
   )
@@ -184,7 +184,7 @@ function RowNav({
 }) {
   if (!canPrev && !canNext) return null
   return (
-    <div className="tv-row-nav">
+    <div className="pv-row-nav">
       {canPrev && <RowButton direction={-1} onClick={() => onScroll(-1)} label={`Scroll ${name} back`} />}
       {canNext && <RowButton direction={1} onClick={() => onScroll(1)} label={`See more of ${name}`} />}
     </div>
@@ -194,9 +194,9 @@ function RowNav({
 /**
  * The shared body of a strip or grid: real tiles once they land, blank
  * placeholders until then. A settled, empty result draws nothing at all — on
- * the real TV an empty catalog is an empty row, not an explanation.
+ * Nuvio an empty catalog is an empty row, not an explanation.
  */
-function TVTiles({
+function PreviewTiles({
   tiles,
   kind,
   gridClassName,
@@ -210,7 +210,7 @@ function TVTiles({
    *  alongside a strip — a grid doesn't scroll sideways. */
   scroll?: ReturnType<typeof useRowScroll>
 }) {
-  const className = gridClassName ?? 'tv-strip'
+  const className = gridClassName ?? 'pv-strip'
 
   if (!tiles.isLoading && !tiles.isError && tiles.items.length === 0) return null
 
@@ -218,7 +218,7 @@ function TVTiles({
     return (
       <div ref={scroll?.stripRef} aria-hidden="true" className={className}>
         {Array.from({ length: TILES_PER_PAGE }, (_, i) => (
-          <TVPlaceholderTile key={i} />
+          <PreviewPlaceholderTile key={i} />
         ))}
       </div>
     )
@@ -227,7 +227,7 @@ function TVTiles({
   return (
     <div ref={scroll?.stripRef} className={className}>
       {tiles.items.map((item) => (
-        <TVPosterTile key={`${resolveTileKind(kind, item)}:${item.tmdb_id}`} item={item} kind={kind} />
+        <PreviewPosterTile key={`${resolveTileKind(kind, item)}:${item.tmdb_id}`} item={item} kind={kind} />
       ))}
     </div>
   )
@@ -238,7 +238,7 @@ function TVTiles({
  * folder's cover art over it once loaded, in its own `tile_shape`, on the
  * same face the collection editor's folder strip draws.
  */
-function TVFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () => void }) {
+function PreviewFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () => void }) {
   const shapeClass =
     folder.tileShape === 'LANDSCAPE' ? 'landscape' : folder.tileShape === 'SQUARE' ? 'square' : 'poster'
   const name = folder.title || 'Untitled folder'
@@ -249,7 +249,7 @@ function TVFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () =>
         {folder.coverEmoji && <span aria-hidden="true">{folder.coverEmoji}</span>}
         {folder.coverImageUrl && <img src={folder.coverImageUrl} alt="" loading="lazy" />}
       </span>
-      {/* `hide_title` hides the tile's own caption on the real TV too — the
+      {/* `hide_title` hides the tile's own caption on Nuvio too — the
           slot stays, empty, so the row's baseline doesn't jump between
           folders that hide their title and folders that don't. */}
       {folder.hideTitle ? (
@@ -267,18 +267,18 @@ function TVFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: () =>
       type="button"
       onClick={onOpen}
       aria-label={`Open ${name}`}
-      className={`tv-tile tv-folder ${shapeClass}`}
+      className={`pv-tile pv-folder ${shapeClass}`}
     >
       {face}
     </button>
   )
 }
 
-/** A collection's row on the TV: its tiles are its folders, never catalog
+/** A collection's row in Nuvio: its tiles are its folders, never catalog
  *  content — a folder with no catalogs, or a collection with no folders,
  *  simply draws an empty strip, matching a real empty row rather than
  *  explaining itself. */
-export function TVCollectionRow({
+export function PreviewCollectionRow({
   collection,
   onOpenFolder,
 }: {
@@ -287,14 +287,14 @@ export function TVCollectionRow({
 }) {
   const { stripRef, canPrev, canNext, scrollBy } = useRowScroll()
   return (
-    <div className="tv-band">
-      <div className="tv-row-head">
-        <p className="tv-row-title">{collection.title}</p>
+    <div className="pv-band">
+      <div className="pv-row-head">
+        <p className="pv-row-title">{collection.title}</p>
         <RowNav canPrev={canPrev} canNext={canNext} onScroll={scrollBy} name={collection.title} />
       </div>
-      <div ref={stripRef} className="tv-strip">
+      <div ref={stripRef} className="pv-strip">
         {collection.folders.map((folder) => (
-          <TVFolderTile
+          <PreviewFolderTile
             key={folder.id}
             folder={folder}
             onOpen={() => onOpenFolder({ collectionId: collection.id, folderId: folder.id })}
@@ -305,15 +305,15 @@ export function TVCollectionRow({
   )
 }
 
-export function TVCatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTiles }) {
+export function PreviewCatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTiles }) {
   const scroll = useRowScroll()
   return (
-    <div className="tv-band">
-      <div className="tv-row-head">
-        <p className="tv-row-title">{row.name}</p>
+    <div className="pv-band">
+      <div className="pv-row-head">
+        <p className="pv-row-title">{row.name}</p>
         <RowNav canPrev={scroll.canPrev} canNext={scroll.canNext} onScroll={scroll.scrollBy} name={row.name} />
       </div>
-      <TVTiles tiles={tiles} kind={tmdbKind(row.type)} scroll={scroll} />
+      <PreviewTiles tiles={tiles} kind={tmdbKind(row.type)} scroll={scroll} />
     </div>
   )
 }
@@ -330,7 +330,7 @@ export function TVCatalogRow({ row, tiles }: { row: PreviewRow; tiles: CatalogTi
  * close; Escape and the browser's own Back are wired by the caller, which
  * also owns the history entry that makes Back work at all.
  */
-export function TVFolderPage({
+export function PreviewFolderPage({
   collection,
   folder,
   tiles,
@@ -363,19 +363,19 @@ export function TVFolderPage({
       </p>
       {folder.sources.length > 0 &&
         (tabbed ? (
-          <TVTabbedCatalogs
+          <PreviewTabbedCatalogs
             folder={folder}
             showAllTab={collection.viewMode === 'FOLLOW_LAYOUT' ? true : collection.showAllTab}
             tiles={tiles}
           />
         ) : (
-          <TVRowsInFolder folder={folder} tiles={tiles} />
+          <PreviewRowsInFolder folder={folder} tiles={tiles} />
         ))}
     </>
   )
 }
 
-function TVTabbedCatalogs({
+function PreviewTabbedCatalogs({
   folder,
   showAllTab,
   tiles,
@@ -420,13 +420,13 @@ function TVTabbedCatalogs({
         </Tabs.List>
       )}
       {source ? (
-        <TVTiles
+        <PreviewTiles
           tiles={tiles.get(source.key) ?? noTiles()}
           kind={source.type ? tmdbKind(source.type) : undefined}
           gridClassName="fp-grid"
         />
       ) : (
-        <TVTiles
+        <PreviewTiles
           tiles={allTiles}
           kind={(item) => allKinds.get(item)}
           gridClassName="fp-grid"
@@ -436,7 +436,7 @@ function TVTabbedCatalogs({
   )
 }
 
-function TVRowsInFolder({
+function PreviewRowsInFolder({
   folder,
   tiles,
 }: {
@@ -446,13 +446,13 @@ function TVRowsInFolder({
   return (
     <>
       {folder.sources.map((source) => (
-        <TVFolderSourceRow key={source.key} source={source} tiles={tiles.get(source.key) ?? noTiles()} />
+        <PreviewFolderSourceRow key={source.key} source={source} tiles={tiles.get(source.key) ?? noTiles()} />
       ))}
     </>
   )
 }
 
-function TVFolderSourceRow({
+function PreviewFolderSourceRow({
   source,
   tiles,
 }: {
@@ -462,12 +462,12 @@ function TVFolderSourceRow({
   const scroll = useRowScroll()
   const name = sourceLabel(source)
   return (
-    <div className="tv-band">
-      <div className="tv-row-head">
-        <p className="tv-row-title">{name}</p>
+    <div className="pv-band">
+      <div className="pv-row-head">
+        <p className="pv-row-title">{name}</p>
         <RowNav canPrev={scroll.canPrev} canNext={scroll.canNext} onScroll={scroll.scrollBy} name={name} />
       </div>
-      <TVTiles tiles={tiles} kind={source.type ? tmdbKind(source.type) : undefined} scroll={scroll} />
+      <PreviewTiles tiles={tiles} kind={source.type ? tmdbKind(source.type) : undefined} scroll={scroll} />
     </div>
   )
 }

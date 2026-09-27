@@ -33,8 +33,8 @@ editors sit in, so a catalog and a collection get the same header, dirty state, 
 save/discard behaviour from one place. `web/src/features/preview/` holds the preview model
 (`model.ts`), the tile queries, and the Figtree-styled tiles the catalog editor's results panel
 and the Home list's strips draw. The preview rows — the Home pane's Preview tab, the collection
-editor's Preview panel and Community's collection preview — are `web/src/features/home/tv.tsx`:
-the TV's layout (scrolling rows, captions, folder tiles that open folder pages) in the same Figtree
+editor's Preview panel and Community's collection preview — are `web/src/features/home/previewScreen.tsx`:
+Nuvio's layout (scrolling rows, captions, folder tiles that open folder pages) in the same Figtree
 and tonal steps as the rest of the app, with no note pinned between the rows (see "Home pane —
 Preview view" below). Nothing under `features/` is a separate URL; `Builder`
 composes all of it.
@@ -141,7 +141,7 @@ query and Tailwind's CSS output doesn't expose it to JS. Change one and you must
 other; each side carries a comment pointing at its twin.
 
 **Two kinds of unsaved work, deliberately separate.** An editor's changes are saved to the
-server; Home's are pushed to the TV. They are lost in different ways, they warn separately, and
+server; Home's are pushed to Nuvio. They are lost in different ways, they warn separately, and
 the header shows only Home's — an editor states its own inside the pane. `EditorGuard` is what
 stops a rail click from discarding an editor mid-edit.
 
@@ -389,12 +389,12 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   refetch must not move the baseline under the user and silently change the diff.
 - **Selected rows render from the selection response, not by library lookup** — a selected row
   can be deleted after selection, and the selection response still returns it until the next
-  push clears it from the TV. Rendering by library lookup would make those rows vanish from
-  the page while still being live on the user's TV. Such rows are marked "not in library": they
+  push clears it from Nuvio. Rendering by library lookup would make those rows vanish from
+  the page while still being live in the user's Nuvio. Such rows are marked "not in library": they
   work, but removing them is one-way.
-- **List groups in the same three TV bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
+- **List groups in the same three bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
   a separate derivation): pinned collections, then home-shown catalogs, then unpinned collections,
-  numbered with one ordinal straight through all three — a row's number is its place on the TV. A
+  numbered with one ordinal straight through all three — a row's number is its place in Nuvio. A
   reorder (drag, keyboard, or a row's own ↑/↓) only ever moves a row within its own band;
   `HomeSelectionContext`'s `reorderCollections`/`reorderCatalogs`/`moveCollection`/`moveCatalog`
   reconstruct the *complete* underlying list on every edit (`pending.ts`'s `reorderWithinBand` /
@@ -403,7 +403,7 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
 - **`show_in_home` toggles whether the catalog gets a home row** — off keeps it in Discover only,
   via a required `genre` extra `buildManifest` adds to that catalog's manifest entry. Off-catalogs
   render outside the numbered bands entirely, in their own "Not on home" tray (no drag, no
-  ordinal — they have no place in the TV's order); the flip itself is a row's ⋯ menu
+  ordinal — they have no place in Nuvio's order); the flip itself is a row's ⋯ menu
   ("Move to Discover" / the tray's "Move to home"), not a dedicated toggle control.
 - **The pending count is the list of changes' length, not a separate tally.** `changes.ts`'s
   `computeHomeChanges` diffs `baseline` against `current` into named, per-row sentences ("Moved
@@ -412,7 +412,7 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   header's pending indicator and the navigation guard's dialog both read it, and the indicator
   doubles as the toggle that opens the list itself (`ChangesStrip` in `PushControls.tsx`) — the
   count and the sentences behind it must never disagree, which is why there is only one number.
-- **A collection already on the TV can itself be a pending change**, with no selection edit at
+- **A collection already in Nuvio can itself be a pending change**, with no selection edit at
   all: `computeHomeChanges` adds a line for any collection present in *both* `baseline.collections`
   and `current.collections` whose `version !== pushed_version` — a save to a collection's folders
   changes the derived manifest immediately, but Nuvio's own folder sources stay stale until the next
@@ -421,7 +421,7 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   read and sent, so the compare is exact rather than a clock — an earlier timestamp-based version
   missed a Save landing inside the same second as a push, or between push's read and its local write, and
   the integer version has no such gap. Restricted to collections in both sets: a collection taken
-  off the TV, pushed, edited, then put back would otherwise show both "Added …" and "changed
+  off the home screen, pushed, edited, then put back would otherwise show both "Added …" and "changed
   since …" for the same collection; only "Added …" should fire.
 
 **Selection is client state until Push, and the one thing enforcing that is the one-shot
@@ -482,7 +482,7 @@ applied to every folder in it, and it governs this page only:
 | --- | --- |
 | `TABBED_GRID` | One tab per **catalog in the folder** (plus "All" when `show_all_tab`), over a grid of that catalog's content |
 | `ROWS` | One row per catalog in the folder, stacked — the same shape home uses |
-| `FOLLOW_LAYOUT` | Drawn as tabs with the "All" tab first, the app's own default (`TVFolderPage` in `features/home/tv.tsx`); the caption above the panel reads "Follows the app's layout" |
+| `FOLLOW_LAYOUT` | Drawn as tabs with the "All" tab first, the app's own default (`PreviewFolderPage` in `features/home/previewScreen.tsx`); the caption above the panel reads "Follows the app's layout" |
 | `''` / unknown | Drawn as `TABBED_GRID`, which is how every Nuvio client reads it |
 
 Corroborating details from Nuvio's own field descriptions: `hideTitle` is "Hide the **tile**
@@ -509,10 +509,10 @@ Decisions that shape the code:
   *as well as* the library, so a row deleted after selection still resolves through the selection
   response even once it's gone from the library. Per DESIGN.md's Clean Preview Rule,
   `isDetached` marks nothing *inside* the preview
-  panel — the real TV shows a detached row plainly, with no note pinned onto it — but the
+  panel — Nuvio shows a detached row plainly, with no note pinned onto it — but the
   Discover-only list beneath the panel still names it, in List's own wording, because that list is
   Uno's own words about the rows, not the rows themselves. Unresolvability still degrades a row
-  inside the panel to an empty strip, no explanation, matching how the TV would show it.
+  inside the panel to an empty strip, no explanation, matching how Nuvio would show it.
 - **Slack wire values are handled, not cast away.** An older row's `tile_shape` can be `''`
   (falls back to `POSTER`, and says so on screen; Nuvio does the same with a pushed `''` — see
   `docs/data-model.md`). `view_mode` is a bare `string`: `FOLLOW_LAYOUT` lands in a branch that
@@ -553,10 +553,10 @@ Clean Preview spec and the owner's instruction that Uno pin nothing between the 
   docs specifies the order, and Uno cannot derive it. This applies to **exactly one view**: the
   `show_all_tab` "All" tab on a `TABBED_GRID` folder page (`interleaveTiles` in
   `features/preview/model.ts`, which the collection editor's Preview panel draws through the
-  same TV components). The TV's own "All" tab just shows the merged tiles, with no caption saying
+  same preview components). Nuvio's own "All" tab just shows the merged tiles, with no caption saying
   the order is a guess.
 - **`randomized` catalogs** take a random TMDB page per call on both the addon path and the
-  preview, independently, so the preview genuinely won't match the TV. A collection row shuffles
+  preview, independently, so the preview genuinely won't match Nuvio. A collection row shuffles
   its film list instead, with the same independent-per-call mismatch. Not flagged inline; the
   blank tile face behind a poster is the only visual difference, and it isn't specific to
   this case.
@@ -657,7 +657,7 @@ button.
   `moveByOne` from `lib/order.ts` — the same shared pieces the Home pane's rows use). A folder's own catalogs are running-order
   rows (`.run-row`) that number in plain figures ("1", "2") and carry only the grip inline — see
   the "⋯" note below.
-- **Folders are a tile strip, the way the TV draws them.** Under the "Folders" `.setting.is-head`
+- **Folders are a tile strip, the way Nuvio draws them.** Under the "Folders" `.setting.is-head`
   heading
   (holding "Add folder"), `FolderTiles` draws each folder at its own `tile_shape` with its cover,
   name and catalog count — the editor's list and the Preview panel's row are the same picture. One
@@ -666,7 +666,7 @@ button.
   ←/→ and Remove; then its title, then its catalogs (a `.setting.is-head` heading with "New catalog" and
   "Add catalogs"), then an "Appearance" `.sec-head` that folds away hide-title, tile shape,
   cover, the focus GIF (URL plus an on/off) and the three Modern Home hero URLs (backdrop, video,
-  title logo). Preview renders none of the focus or hero fields; they only reach the TV through
+  title logo). Preview renders none of the focus or hero fields; they only reach Nuvio through
   push. Catalogs come before appearance because they're what a folder is opened for. The panel is
   a shelf of its own, so the folder's settings read as inside the folder rather than as more of
   the collection's; its fields and folding sections step to `ground` and `raised-hi` so they
@@ -738,13 +738,13 @@ button.
   `POST /api/catalogs/genre-options` for the catalog's own recipe, not the whole TMDB list, so
   every choice actually narrows the row. It is keyed on the recipe, so editing a scoped catalog's
   filters in the nested editor refreshes them. A stored genre that the recipe no longer allows is
-  kept, labelled "(no longer applies)", with a danger note saying the TV shows that row
+  kept, labelled "(no longer applies)", with a danger note saying Nuvio shows that row
   unfiltered. The genre lives on the ref, so removing a ref takes its genre with it, and
   "Copy into this collection" swaps only that ref's catalog for the copy, keeping its genre.
   The options query lives in `RefRow` (`useGenreOptions`), so the picker and "Add another
   genre" share one list. The Preview panel and Home's folder pages fetch each source's
   tiles with its genre (`queryKeys.catalogPreview` includes it), so they show the filtered row
-  the TV will.
+  Nuvio will.
 - **A folder page names each source the way Nuvio does**, as a tab and as a row title alike:
   `<Catalog name> (<Kind>)`, plus ` • <Genre>` when the ref is narrowed, e.g.
   "Popular (Movie) • Western" (`sourceLabel`, `features/preview/model.ts`). The genre suffix is
@@ -767,10 +767,10 @@ button.
   "Greyed" segmented state, `Segmented`'s `disabled` prop) rather than hidden while the view mode
   isn't Tabbed Grids, keeping its value for when it switches back.
 - **The Preview panel is a working client screen, docked beside the form.** The collection editor has
-  its own layout (`.ed.ed-tv`, `EditorShell`'s `docked="tv"`, capped at `--w-editor-tv`): the form keeps
+  its own layout (`.ed.ed-preview`, `EditorShell`'s `docked="preview"`, capped at `--w-editor-preview`): the form keeps
   its `--w-form` column and the panel takes `clamp(380px, 42cqw, 620px)` beside it, undocking under
   the form below 960px of pane. It draws the live draft with the Home Preview's own components
-  (`TVCollectionRow`, `TVFolderPage` from `features/home/tv.tsx`), so a folder tile opens the same
+  (`PreviewCollectionRow`, `PreviewFolderPage` from `features/home/previewScreen.tsx`), so a folder tile opens the same
   folder page Home does — tabs or rows per `view_mode`, real titles per catalog. The rows sit in
   `.pv-rows` inside the raised `.ed-pv` panel the catalog editor's results use: tiles are the
   same fixed pixel sizes as Home's, rows run off the panel's edge and scroll, and a folder grid
@@ -915,11 +915,11 @@ saying what it returns, and the home screen is the front shelf, in Nuvio's order
 
 **Colour holds one meaning per hue.** A night-navy ground and its shelves (`--uno-ground`,
 `--uno-raised`, `--uno-raised-hi`) carry the layout. Three hues name the regions — catalog
-tangerine, collection green, community pink — and TV yellow means "bound for Nuvio" and nothing
+tangerine, collection green, community pink — and Nuvio yellow means "bound for Nuvio" and nothing
 else: Push, what is on the home screen, what is not pushed yet. Danger red marks what can't be
 undone, always beside words. A region's colour reaches its primary button and headings through
 `--accent`, set by the `.tone-*` classes: `EditorShell` sets `tone-catalog` or `tone-collection`,
-the Home pane `tone-tv`, Community `tone-community`. Tokens live in `web/src/index.css` as
+the Home pane `tone-home`, Community `tone-community`. Tokens live in `web/src/index.css` as
 `--uno-*` custom properties, exposed to Tailwind via `@theme inline`.
 
 **Signs.** `.sign` is a flat band in its region's colour across the full width of what it names —
@@ -934,7 +934,7 @@ fonts only from `'self'` and `data:`.
 
 **Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Shared
 (`.stk-shared`, community pink, because Community is where a shared row turns up), Linked
-(`.stk-linked`, outlined in community pink: a Take still linked to its original), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.tv-sticker`: a dashed empty
+(`.stk-linked`, outlined in community pink: a Take still linked to its original), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.home-sticker`: a dashed empty
 circle while it's off the home screen, a yellow ON NUVIO price sticker (two lines, ON over NUVIO)
 once it's on. A home row's position is a yellow `.pos-sticker`, read out as "3rd on your home
 screen"; the pending count and a profile's slot
