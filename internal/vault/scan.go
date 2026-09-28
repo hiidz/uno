@@ -79,8 +79,9 @@ func nullableInt(n sql.NullInt64) *int {
 	return &v
 }
 
-// scanCatalog reads one catalog row: the fifteen catalog columns, in the
-// order every catalog SELECT in this package lists them, followed by
+// scanCatalog reads one catalog row: the fifteen catalog columns, its
+// recipe's type, provider and params among them, in the order every catalog
+// SELECT in this package lists them (catalogColumns), followed by
 // extraDests — destinations for any further columns the caller's own query
 // appended (see GetPublishedCatalogs' ordering columns).
 func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
@@ -94,7 +95,7 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	dests := append([]any{
 		&idStr, &c.Type, &c.Name, &c.Provider,
 		&c.Params, &ownerIDStr, &isPublic,
-		&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &takenHash, &c.Fingerprint,
+		&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &takenHash, &c.RecipeHash,
 		&createdAtStr, &updatedAtStr,
 	}, extraDests...)
 	if err := rows.Scan(dests...); err != nil {

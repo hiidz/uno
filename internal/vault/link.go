@@ -24,8 +24,8 @@ import (
 
 // UpdateTakenCatalog brings profileID's linked copy of sourceID, a public
 // catalog owned by someone else, up to date with it: the copy takes the
-// original's name, params and stored fingerprint, and its taken_hash moves
-// to match. Returns the copy, unchanged when it already matches. Returns
+// original's name and recipe, and its taken_hash moves to match. Returns the
+// copy, unchanged when it already matches. Returns
 // ErrCatalogNotFound if sourceID isn't public and someone else's, or
 // profileID holds no linked copy of it, and ErrConflict, after unlinking
 // the copy, if the copy no longer matches its taken_hash. validateParams is
@@ -46,8 +46,8 @@ func updateTakenCatalogTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, 
 	if err != nil {
 		return Catalog{}, err
 	}
-	originalHash := catalogHash(original.Name, original.Fingerprint)
-	switch catalogHash(linkedCopy.Name, linkedCopy.Fingerprint) {
+	originalHash := catalogHash(original.Name, original.RecipeHash)
+	switch catalogHash(linkedCopy.Name, linkedCopy.RecipeHash) {
 	case originalHash:
 		linkedCopy.TakenHash = originalHash
 		return linkedCopy, writeCatalogTakenHash(ctx, tx, linkedCopy.ID, originalHash)
@@ -61,7 +61,7 @@ func updateTakenCatalogTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, 
 // linkedCatalogCopy reads profileID's linked copy of sourceID through tx.
 // Returns ErrCatalogNotFound if there is none.
 func linkedCatalogCopy(ctx context.Context, tx *sql.Tx, profileID, sourceID uuid.UUID) (Catalog, error) {
-	copies, err := selectCatalogs(ctx, tx, "owner_id = ? AND taken_from = ? AND collection_id IS NULL", profileID.String(), sourceID.String())
+	copies, err := selectCatalogs(ctx, tx, "c.owner_id = ? AND c.taken_from = ? AND c.collection_id IS NULL", profileID.String(), sourceID.String())
 	if err != nil {
 		return Catalog{}, err
 	}
@@ -71,22 +71,24 @@ func linkedCatalogCopy(ctx context.Context, tx *sql.Tx, profileID, sourceID uuid
 	return copies[0], nil
 }
 
-// rewriteTakenCatalog writes original's name, params and stored fingerprint
-// over linkedCopy, with taken_hash set to originalHash. A catalog's type never
-// changes, so an original whose type differs from its copy's is refused
-// rather than written.
+// rewriteTakenCatalog writes original's name and recipe over linkedCopy, with
+// taken_hash set to originalHash. The copy points at the recipe original
+// does: original's row is still there in tx, since the copy's taken_from
+// names it, so its recipe is too. A catalog's type never changes, so an
+// original whose type differs from its copy's is refused rather than
+// written.
 func rewriteTakenCatalog(ctx context.Context, tx *sql.Tx, linkedCopy, original Catalog, originalHash string) (Catalog, error) {
 	if original.Type != linkedCopy.Type {
 		return Catalog{}, fmt.Errorf("%w: the original's type no longer matches your copy's", ErrInvalidInput)
 	}
 	now := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE catalogs SET name = ?, params = ?, fingerprint = ?, taken_hash = ?, updated_at = ?
+		UPDATE catalogs SET name = ?, recipe_hash = ?, taken_hash = ?, updated_at = ?
 		WHERE id = ?
-	`, original.Name, original.Params, original.Fingerprint, originalHash, now.Format(time.RFC3339), linkedCopy.ID.String()); err != nil {
+	`, original.Name, original.RecipeHash, originalHash, now.Format(time.RFC3339), linkedCopy.ID.String()); err != nil {
 		return Catalog{}, fmt.Errorf("updating taken catalog: %w", err)
 	}
-	linkedCopy.Name, linkedCopy.Params, linkedCopy.Fingerprint = original.Name, original.Params, original.Fingerprint
+	linkedCopy.Name, linkedCopy.Params, linkedCopy.RecipeHash = original.Name, original.Params, original.RecipeHash
 	linkedCopy.TakenHash, linkedCopy.UpdatedAt = originalHash, now
 	return linkedCopy, nil
 }
@@ -103,10 +105,10 @@ func rewriteTakenCatalog(ctx context.Context, tx *sql.Tx, linkedCopy, original C
 //     keeping the id of each of the copy's folders that has a counterpart;
 //     the copy's folders past the original's last are removed;
 //   - a catalog of the copy's whose taken_from is one of the original's
-//     catalogs keeps its id and takes that catalog's name, params and stored
-//     fingerprint, as a catalog edit; any other of the original's catalogs
-//     becomes a new scoped catalog linked to it, and a copy catalog no folder
-//     references any more is removed.
+//     catalogs keeps its id and takes that catalog's name and recipe, as a
+//     catalog edit; any other of the original's catalogs becomes a new
+//     scoped catalog linked to it, and a copy catalog no folder references
+//     any more is removed.
 //
 // Returns the copy as stored, unchanged when it already matches. Returns
 // ErrCollectionNotFound if sourceID isn't public and someone else's, or
@@ -249,7 +251,7 @@ func matchCopyCatalogs(catalogs []BundleCatalog, bySource map[uuid.UUID]uuid.UUI
 		}
 		counterparts[c.Key] = id
 		edits = append(edits, ScopedCatalogEdit{
-			ID: id, Type: c.Type, Provider: c.Provider, Name: c.Name, Params: string(c.Params), Fingerprint: c.Fingerprint,
+			ID: id, Type: c.Type, Provider: c.Provider, Name: c.Name, Params: string(c.Params),
 		})
 	}
 	return counterparts, edits, unmatched

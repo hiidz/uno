@@ -181,7 +181,7 @@ func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UU
 // inside a taken collection also carries taken_from, but the collection
 // holds that link.
 func (db *DB) linkedCatalogSources(ctx context.Context, profileID uuid.UUID) (map[uuid.UUID]string, error) {
-	copies, err := db.queryCatalogs(ctx, "owner_id = ? AND taken_from IS NOT NULL AND collection_id IS NULL", profileID.String())
+	copies, err := db.queryCatalogs(ctx, "c.owner_id = ? AND c.taken_from IS NOT NULL AND c.collection_id IS NULL", profileID.String())
 	if err != nil {
 		return nil, err
 	}

@@ -12,8 +12,8 @@ import (
 // folder's New catalog spec and each catalog edit — through checkRecipe, the
 // same check a direct POST or PUT /catalogs goes through, so a bad inline
 // recipe 400s the same way a standalone one would instead of failing deep
-// inside the vault transaction with a less specific error. Sets each spec's
-// Fingerprint.
+// inside the vault transaction with a less specific error. Replaces each
+// spec's Params with their canonical form.
 func (s *Server) validateInlineCatalogs(ctx context.Context, input *vault.CollectionForm) error {
 	if err := s.checkNewCatalogs(ctx, input.Folders); err != nil {
 		return err
@@ -29,11 +29,11 @@ func (s *Server) checkNewCatalogs(ctx context.Context, folders []vault.FolderDat
 			if spec == nil {
 				continue
 			}
-			fingerprint, err := s.checkRecipe(ctx, spec.Type, spec.Provider, spec.Params)
+			params, err := s.checkRecipe(ctx, spec.Type, spec.Provider, spec.Params)
 			if err != nil {
 				return err
 			}
-			spec.Fingerprint = fingerprint
+			spec.Params = params
 		}
 	}
 	return nil
@@ -42,11 +42,11 @@ func (s *Server) checkNewCatalogs(ctx context.Context, folders []vault.FolderDat
 // checkCatalogEdits is validateInlineCatalogs for the catalog edits.
 func (s *Server) checkCatalogEdits(ctx context.Context, edits []vault.ScopedCatalogEdit) error {
 	for i := range edits {
-		fingerprint, err := s.checkRecipe(ctx, edits[i].Type, edits[i].Provider, edits[i].Params)
+		params, err := s.checkRecipe(ctx, edits[i].Type, edits[i].Provider, edits[i].Params)
 		if err != nil {
 			return err
 		}
-		edits[i].Fingerprint = fingerprint
+		edits[i].Params = params
 	}
 	return nil
 }

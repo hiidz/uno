@@ -131,7 +131,7 @@ func newRouteFixture(t *testing.T) routeFixture {
 	}
 	library := func(p vault.Profile, name string) (vault.Catalog, vault.CollectionWithFolders) {
 		c, err := f.db.CreateUserCatalog(ctx, p.ID, vault.CatalogForm{
-			Type: "movie", Name: name, Provider: "tmdb", Params: popular, Fingerprint: fingerprintOf(t, popular),
+			Type: "movie", Name: name, Provider: "tmdb", Params: popular,
 		})
 		if err != nil {
 			t.Fatalf("create catalog %s: %v", name, err)
@@ -161,14 +161,14 @@ func noTMDB(t *testing.T) {
 }
 
 // TestCatalogRoutes drives the catalog CRUD routes: a create stores the
-// recipe's fingerprint, a bad body or recipe is a 400, and another profile's
-// catalog answers exactly like one that doesn't exist.
+// recipe in canonical form, a bad body or recipe is a 400, and another
+// profile's catalog answers exactly like one that doesn't exist.
 func TestCatalogRoutes(t *testing.T) {
 	f := newRouteFixture(t)
 	noTMDB(t)
 
-	t.Run("create stores the fingerprint", func(t *testing.T) {
-		body := `{"type":"movie","name":"New","provider":"tmdb","params":"{\"sort_by\":\"vote_average.desc\"}"}`
+	t.Run("create stores the canonical recipe", func(t *testing.T) {
+		body := `{"type":"movie","name":"New","provider":"tmdb","params":"{\"vote_count_gte\":0,\"sort_by\":\"vote_average.desc\"}"}`
 		var created vault.Catalog
 		w := serve(t, f.s, http.MethodPost, "/api/p/1/catalogs", body, false)
 		if w.Code != http.StatusCreated {
@@ -181,8 +181,12 @@ func TestCatalogRoutes(t *testing.T) {
 		if err != nil || len(rows) != 1 {
 			t.Fatalf("GetCatalogsByIDs = %d rows (%v)", len(rows), err)
 		}
-		if want := fingerprintOf(t, `{"sort_by":"vote_average.desc"}`); rows[0].Fingerprint != want {
-			t.Fatalf("stored fingerprint = %q, want %q", rows[0].Fingerprint, want)
+		const canonical = `{"sort_by":"vote_average.desc"}`
+		if created.Params != canonical || rows[0].Params != canonical {
+			t.Fatalf("params answered %s and stored %s, want %s", created.Params, rows[0].Params, canonical)
+		}
+		if want := recipeHashOf(t, canonical); rows[0].RecipeHash != want {
+			t.Fatalf("stored recipe hash = %q, want %q", rows[0].RecipeHash, want)
 		}
 	})
 

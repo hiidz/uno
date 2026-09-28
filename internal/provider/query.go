@@ -77,18 +77,28 @@ const GenreExtraAll = "All"
 // FetchCatalogPage resolves a picked name back to its id through the same
 // list.
 func (c *TMDBClient) GenreExtraOptions(ctx context.Context, catalogType, paramsJSON string) ([]Genre, error) {
-	var p struct {
-		WithGenres    string `json:"with_genres"`
-		WithoutGenres string `json:"without_genres"`
-	}
-	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
-		return nil, fmt.Errorf("provider: decode genre filters: %w", err)
+	withGenres, withoutGenres, err := genreFilters(paramsJSON)
+	if err != nil {
+		return nil, err
 	}
 	genres, err := c.Genres(ctx, catalogType)
 	if err != nil {
 		return nil, err
 	}
-	return genreChoices(genres, p.WithGenres, p.WithoutGenres), nil
+	return genreChoices(genres, withGenres, withoutGenres), nil
+}
+
+// genreFilters decodes a recipe's with_genres and without_genres, the two
+// fields its genre options depend on.
+func genreFilters(paramsJSON string) (withGenres, withoutGenres string, err error) {
+	var p struct {
+		WithGenres    string `json:"with_genres"`
+		WithoutGenres string `json:"without_genres"`
+	}
+	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
+		return "", "", fmt.Errorf("provider: decode genre filters: %w", err)
+	}
+	return p.WithGenres, p.WithoutGenres, nil
 }
 
 // genreChoices filters genres down to the ones a pick narrows the recipe by.

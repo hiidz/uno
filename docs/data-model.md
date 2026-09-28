@@ -26,6 +26,25 @@ rehearsal are described in `docs/configuration.md` → *Database lifecycle*.
   difference, apart from the legacy `is_default` columns. Its test fixture,
   `internal/vault/testdata/schema_v1.sql`, is a database shaped like prod's before migrations,
   with seed rows written by live vault code.
+- **Migration 2 (`0002_recipes.go`) moves each catalog's recipe into `recipes`** (see *Recipes*
+  below).
+  - It puts every catalog's params in canonical form with frozen copies of the params structs,
+    and stores one `recipes` row per distinct recipe. `catalogs.recipe_hash` points at it.
+  - It drops `type`, `provider`, `params` and `fingerprint` from `catalogs`, and adds the index
+    and triggers that delete an unused recipe.
+  - Params that don't decode, and any provider but `tmdb`, fail it, naming the catalog. Its
+    notes count the recipes and rewritten params, and name every unknown params key it
+    dropped.
+  - It rewrites every linked copy's `taken_hash`, a link hash over fingerprints, as the same
+    link hash over recipe hashes. A `taken_hash` that matched the copy now matches the copy's new
+    hash, and one that matched the source matches the source's. One that matched neither is
+    kept. So every link compares in Update and Community as it did, and the notes count each
+    case.
+  - `recipe_hash` is nullable in the schema, since `ADD COLUMN` can't add a `NOT NULL` column
+    to a table with rows. The migration fails if any catalog is left without one, and every
+    write sets it.
+  - The dry run checks every catalog's params before migrating against its recipe after
+    (`docs/configuration.md`, *Database lifecycle*).
 
 ```mermaid
 erDiagram
@@ -35,7 +54,15 @@ erDiagram
   COLLECTIONS ||--o{ CATALOGS : scopes
   FOLDERS ||--o{ FOLDER_CATALOGS : contains
   CATALOGS ||--o{ FOLDER_CATALOGS : "referenced via"
+  RECIPES ||--o{ CATALOGS : "asked for by"
 
+  RECIPES {
+    string hash PK "sha256 hex of uno-recipe/1, type, provider and params"
+    string type "movie | series"
+    string provider "tmdb"
+    json params "canonical form"
+    string created_at
+  }
   PROFILES {
     uuid id PK
     string token UK
@@ -45,10 +72,8 @@ erDiagram
   }
   CATALOGS {
     uuid id PK
-    string type
     string name
-    string provider
-    json params
+    string recipe_hash FK "its recipe: type, provider and params"
     uuid owner_id FK
     bool is_public
     uuid collection_id FK "nullable — NULL means listed"
@@ -56,7 +81,6 @@ erDiagram
     bool show_in_home
     uuid taken_from FK "nullable — the catalog a Take copied this from; NULL once unlinked"
     string taken_hash "nullable — listed copies only: the original's catalogHash when last in step"
-    string fingerprint "sha256 hex of type+provider+canonical params"
     string created_at
     string updated_at
   }
@@ -156,9 +180,9 @@ write credential.
   catalogs already scoped to the collection being saved, and `applyCatalogEdits` writes them
   inside `UpdateUserCollection`'s transaction, after the collection row and before the folder
   rewrite and its orphan cleanup. Each edit's catalog must be owned by the caller and scoped to
-  this same collection, with the stored type and provider. An edit whose name, params and
-  fingerprint all match the row, with `move_to_library` unset, is skipped, so `updated_at` stays
-  put. `move_to_library` also clears `collection_id`. `CreateUserCollection` refuses any edit,
+  this same collection, with the stored type and provider. An edit whose name and recipe
+  (`recipe_hash`) both match the row, with `move_to_library` unset, is skipped, so `updated_at`
+  stays put. `move_to_library` also clears `collection_id`. `CreateUserCollection` refuses any edit,
   since a new collection has no scoped catalogs. So an edit made in the collection editor lands
   with the rest of the collection, and a discarded one never wrote anything.
 - **A profile's data graph is closed: references never cross an owner boundary.** A folder may
@@ -177,11 +201,12 @@ write credential.
   by that collection's folders `)`. This is also what catches a scoped catalog created via
   `POST .../catalogs` and abandoned before Save — it has no folder ref yet, so the next Save (or
   the collection's own deletion, by cascade) removes it.
-- **`catalogs.fingerprint` identifies a recipe.** It is a sha256 hex of the catalog's type,
-  provider and canonically re-marshaled params (`provider.Fingerprint`), computed by the
-  create/update handlers before every insert or update. `GetCommunityCatalogs` collapses rows
-  that share one, and it never reaches the wire. A copy keeps its source's stored fingerprint
-  and never computes its own, so an original and its copy always hash on the same terms.
+- **`catalogs.recipe_hash` names the catalog's recipe.** Its type, provider and params live in
+  `recipes`, one row per distinct recipe (see *Recipes* below). Every catalog read joins its
+  recipe in, so each catalog still carries `type` and `params` on the wire, and `recipe_hash`
+  never reaches it. `GetCommunityCatalogs` collapses rows that share one, and the import check
+  offers the caller's listed catalogs with the same one. A copy shares its source's recipe, so
+  an original and its copy always hash on the same terms.
 - **A Take is a linked copy.** `taken_from` names the original, and `taken_hash` is the
   original's content hash from when the copy was last in step with it. Both are `json:"-"`, and
   neither is rendered as attribution. The wire carries `linked` instead: a collection is linked
@@ -193,21 +218,23 @@ write credential.
     rows) and `collections_one_link` (unique on `(owner_id, taken_from)`) are the only check. A
     second Take hits one of them, and `takeConflict` turns the unique violation into
     `ErrConflict` (409).
-  - **The hashes** (`internal/vault/bundle.go`). `catalogHash` is a sha256 of the name and stored
-    fingerprint. `collectionHash` is a sha256 of the collection's bundle form (`extractBundle`,
+  - **The hashes** (`internal/vault/bundle.go`). `catalogHash` is a sha256 of the name and
+    recipe hash. `collectionHash` is a sha256 of the collection's bundle form (`extractBundle`,
     every referenced catalog in the collection's own list), with each catalog's params replaced
-    by its stored fingerprint. Whatever the bundle form leaves out — ids, scope, `is_public`, `pin_to_top`, the
-    home fields, `version`, timestamps — the hash leaves out too. A content field added to the
-    bundle form is hashed with no other change, which also shifts every stored `taken_hash` once:
-    Community then offers each linked copy an Update that changes nothing but `taken_hash`, and
-    any save of a copy before that Update — even one that only toggles `is_public` — unlinks it.
-    `TestLinkHashesArePinned` (`bundle_test.go`) holds all three hashes to literal values, so
-    such a change fails a test rather than landing silently.
+    by its recipe hash. Whatever the bundle form leaves out — ids, scope, `is_public`,
+    `pin_to_top`, the home fields, `version`, timestamps — the hash leaves out too. A content
+    field added to the bundle form is hashed with no other change, which also shifts every
+    stored `taken_hash` once: Community then offers each linked copy an Update that changes
+    nothing but `taken_hash`, and any save of a copy before that Update — even one that only
+    toggles `is_public` — unlinks it. `TestLinkHashesArePinned` (`bundle_test.go`) holds all
+    three hashes to literal values, so such a change fails a test rather than landing silently.
+    Migration 2 holds frozen copies of both, over fingerprints and over recipe hashes, and
+    rewrites every `taken_hash` with them (its bullet at the top of this file).
   - **Community flags.** `taken` means the caller holds a linked copy. `update_available` means
     that copy's `taken_hash` differs from the original's hash now. Among community catalogs that
-    share a fingerprint, the row shown is the one the caller is linked to, otherwise the oldest.
+    share a recipe, the row shown is the one the caller is linked to, otherwise the oldest.
   - **A save that changes content unlinks.** `UpdateUserCatalog` clears both columns when the
-    saved name and fingerprint no longer hash to `taken_hash`, or the catalog moves into a
+    saved name and recipe no longer hash to `taken_hash`, or the catalog moves into a
     collection. `UpdateUserCollection` clears them when the saved tree no longer hashes to
     `taken_hash`, or any catalog edit moves a catalog to the library. A moved catalog's own
     `taken_from` is cleared too, so it never reads as a Take of its own. Toggling `is_public` or `pin_to_top` and
@@ -224,21 +251,24 @@ write credential.
     original's title kept, and any number of them beside a Take.
 - **`catalogs.id` is permanent once created** — never rename or recycle it. It is baked into
   `addon.ManifestID` and therefore into Nuvio's `catalogSources[].catalogId`.
-- **`catalogs.params` is opaque `TEXT` at the schema level.** For `provider = 'tmdb'` there is an
+- **`recipes.params` is opaque `TEXT` at the schema level.** For `provider = 'tmdb'` there is an
   app-level shape in `internal/provider` (`TMDBMovieParams` / `TMDBTVParams` on
   `TMDBCommonParams` + `BaseParams`), with `Validate()` covering cross-field rules, dispatched by
   `validateCatalogParams` from the create/update handlers. It crosses the wire as a JSON-encoded
-  **string**, not a nested object.
-- **`catalogs.type` is immutable once the row exists.** `UpdateUserCatalog` reads the stored
-  `type` in its own opening `SELECT` and rejects the write with `ErrInvalidInput` if the incoming
-  form's `type` differs — a catalog's type is baked into the pushed collections blob (each folder
-  source names its catalog's type), so changing it would alter what Nuvio should have without
-  bumping any collection's `version`. The catalog editor already locks the field once a row
-  exists; this is the write path enforcing the same rule server-side. Duplicate is the supported
-  way to get a different-typed copy.
+  **string**, not a nested object, in its canonical form.
+- **A catalog's `type` is immutable once the row exists.** It is the type of the catalog's
+  recipe, and every write that repoints a catalog at another recipe keeps it. `UpdateUserCatalog`
+  reads the stored type in its own opening `SELECT` and rejects the write with
+  `ErrInvalidInput` if the incoming form's `type` differs; a collection's catalog edit and a
+  linked copy's Update refuse a different type the same way. A catalog's type is baked into the
+  pushed collections blob (each folder source names its catalog's type), so changing it would
+  alter what Nuvio should have without bumping any collection's `version`. The catalog editor
+  already locks the field once a row exists; this is the write path enforcing the same rule
+  server-side. Duplicate is the supported way to get a different-typed copy.
 - **Two distinct removal mechanisms — don't conflate them.**
   - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped single `DELETE`,
-    all downstream cleanup via `ON DELETE CASCADE`. A public row leaves Community, but every copy
+    all downstream cleanup via `ON DELETE CASCADE`, and a recipe the delete leaves unused goes
+    with it (*Recipes*, below). A public row leaves Community, but every copy
     another profile already took survives: those copies are independent rows whose `taken_from`
     is `ON DELETE SET NULL`, so the delete only unlinks them.
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
@@ -374,6 +404,52 @@ write credential.
   `web/src/features/collections/collectionForm.ts`) assert the no-`null` rule unconditionally,
   and one nil slice on the wire makes all four wrong.
 
+## Recipes
+
+**A recipe is what a catalog asks its provider for: its type, provider and params.** `recipes`
+holds each distinct recipe once, addressed by a hash of its content, and every catalog that
+asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes.go`).
+
+- **The canonical form** is per provider and type. `provider.CanonicalParams` decodes params as
+  that recipe's params struct and encodes it again, then sorts the keys:
+  - keys the type doesn't know are dropped;
+  - zero values are dropped too, since zero means unset for every field;
+  - the result is compact, with numbers written the way Go writes them.
+
+  Two encodings of one recipe give the same bytes, so the SPA's key order or a `0` it sends for
+  an empty field never makes a second recipe. `recipes.params` is always canonical, and the wire
+  carries it back as each catalog's `params`. The editor's dirty check compares re-serialized
+  form state, not the params string, so that needs nothing on the SPA side.
+- **Checked first, then made canonical.** `api.checkRecipe`, which every client-supplied recipe
+  goes through (a catalog save, a collection save's new entries and catalog edits, and each
+  catalog of an import), validates the params as sent and only then canonicalizes them. The
+  canonical form drops unknown keys, so this order is what keeps a key the check rejects, such as
+  `with_networks` on a movie recipe, a 400 rather than silently dropped. The vault stores the
+  params it is given.
+- **The hash.** `vault.RecipeHash` is sha256 hex over `uno-recipe/1`, the type, the provider and
+  the canonical params, separated by newlines. The vault computes it from the bytes it stores and
+  never takes one from a caller, so a hash never names content other than its own.
+  - `TestRecipeHashIsPinned` holds it to a literal, and migration 2 holds a frozen copy of it
+    and of the canonical form.
+  - Changing either changes every stored `recipe_hash`, and every `taken_hash` built over them.
+    So it needs a migration that rewrites both.
+- **Stored with the write that uses it.** `ensureRecipe` inserts a recipe unless it is stored
+  already, in the same transaction as the catalog write that points at it:
+  - `insertCatalog`, which a catalog save, a Take and a collection save's new entries all go
+    through;
+  - `UpdateUserCatalog`;
+  - a collection save's catalog edit.
+
+  A linked copy's Update points the copy at the recipe its original already holds.
+- **Deleted once unused.** Two triggers delete a recipe as soon as no catalog references it, in
+  the transaction of the change that left it unused. `recipes_drop_unused_on_delete` covers a
+  deleted catalog, cascades included: a collection's delete, and the orphan cleanup of a
+  collection save. `recipes_drop_unused_on_repoint` covers a catalog repointed at another
+  recipe. The `catalogs_by_recipe` index keeps their check cheap.
+- **Copies share.** A Take, a Duplicate and a linked copy's Update point the copy at its
+  source's recipe. `changesNothing`, the Community collapse and the import check's matches all
+  compare `recipe_hash`.
+
 ## Recipe params (TMDB)
 
 The provider is read-only and sessionless: a live TMDB HTTP client plus typed "recipe" structs
@@ -492,8 +568,8 @@ describing what a TMDB-backed catalog may ask for.
   the catalog rows those refs name — through the pool, and extracts and validates it as above.
   Only then does the write transaction open, and `createCollectionTx`, the same core
   `CreateUserCollection` runs, writes the copy, holding SQLite's write lock for inserts alone.
-  Each scoped catalog copy is one of the form's `new` entries, carrying the source's stored
-  fingerprint and, for a Take, `taken_from` naming the catalog it was copied from. A Take then
+  Each scoped catalog copy is one of the form's `new` entries, carrying the source's recipe
+  and, for a Take, `taken_from` naming the catalog it was copied from. A Take then
   sets the new collection's `taken_hash` from the copy as written, before committing. The params
   check reaches TMDB, and stalling every other writer for the length of a cold-cache network
   call is the cost this ordering avoids; it is the same read-then-validate-then-insert order
@@ -529,17 +605,28 @@ describing what a TMDB-backed catalog may ask for.
   honestly in UI ("shuffle"), not "true random". Preview always asks page 1 and returns the flag
   instead. A collection recipe (`with_collection`) has no pages to pick from: `randomized` shuffles
   its film list instead of sorting it by release date.
-- **A second provider needs two places updated, not one.** `validProviders` in
-  `vault.CatalogForm.Validate()` (`internal/vault/validation.go`) *and* the provider check at the
-  top of `validateCatalogParams` (`internal/api/provider.go`), plus its own recipe type and a
-  case in `provider.DecodeParams`' dispatch (`internal/provider/models.go`), which is where a
-  catalog type becomes a concrete params struct for validation, query building and
-  fingerprinting alike. Miss either and its rows are silently rejected everywhere. The `api`
-  check is the one that actually parses `params`, so it must reject early rather than rely on
-  the vault check alone. `catalogs.provider` is free text at the schema level (`TEXT`, no
-  `CHECK`); the constraint is app-level only. There is no `Provider` interface, deliberately —
-  deferred until a second provider is real enough to show what the interface should abstract
-  over.
+- **A second provider touches only the code that runs a recipe.**
+  - **Storage is provider-neutral.** `recipes` keys a recipe by its type, provider and params
+    together, so another provider's recipes never collide with TMDB's. Catalogs, links,
+    bundles, Community and push carry the provider string without reading it.
+  - **What runs a recipe is TMDB's alone.** There is no `Provider` interface, deliberately —
+    deferred until a second provider is real enough to show what it should abstract over.
+  - **A new provider needs:**
+    - its name in `validProviders` (`vault.CatalogForm.Validate()`,
+      `internal/vault/validation.go`) *and* past the provider check at the top of
+      `validateCatalogParams` (`internal/api/provider.go`). Miss either and its rows are
+      silently rejected everywhere. The `api` check is the one that actually parses `params`,
+      so it must reject early rather than rely on the vault check alone;
+    - its own params type and canonical form, reached by provider in `provider.decodeRecipe`,
+      which `CanonicalParams` and `SameRecipe` go through. `DecodeParams` maps a catalog type to
+      TMDB's params struct only;
+    - its own way to fetch a page, preview a recipe and offer genre options. The addon's
+      `CatalogHandler` and `buildManifest` and the preview routes call the TMDB client
+      directly;
+    - its own editor in the SPA, whose catalog editor and `TMDBParams` type are TMDB's.
+  - `recipes.provider` is free text at the schema level (`TEXT`, no `CHECK`); the constraint is
+    app-level only. Migration 2 refuses any provider but `tmdb`, the only one there was when it
+    ran.
 
 ## Bundle format
 
@@ -565,7 +652,7 @@ Version 1:
 - **Two kinds of catalog list.** The top-level `catalogs` are listed catalogs. A collection's own
   `catalogs` are scoped to it; one that no ref uses is ignored on import.
 - **Never in the bundle:** row ids, `owner_id`, `is_public`, `pin_to_top`, `collection_id`, timestamps,
-  `home_sort_order`, `show_in_home`, `taken_from`, `taken_hash`, `fingerprint`, `version` and
+  `home_sort_order`, `show_in_home`, `taken_from`, `taken_hash`, `recipe_hash`, `version` and
   `pushed_version`.
 - **Export writes every field.** Booleans are plain bools, and an empty list is `[]`. `params` is
   the stored recipe as a JSON object.
@@ -578,7 +665,8 @@ Version 1:
   most 64 bytes, and unique across the whole bundle; `params` a JSON object; a ref names a
   top-level key or one of its own collection's keys, never another collection's; at most 200
   catalogs (top-level and in collections together) and 50 collections. Every problem is listed in
-  one 400. Decoding compacts `params`, so an imported recipe is stored the way a saved one is.
+  one 400. Decoding compacts `params`, and `checkRecipe` puts them in canonical form, so an
+  imported recipe is stored the way a saved one is.
   Everything else is bounded by the form validators the rows are written through:
   `CatalogForm`'s rules for each new listed catalog, `CollectionForm.Validate` for each
   collection, and `checkRecipe` for every recipe (see `docs/architecture.md`).
@@ -591,7 +679,7 @@ Version 1:
   `pushed_version` NULL. Titles are kept as they are, with no "(copy)" suffix. Imports never link.
 - **Optional reuse.** `reuse` maps a bundle catalog key, top-level or a collection's own, to one
   of the importer's own *listed* catalogs; its refs then point at that row and no new row is
-  written for it. The import check offers the listed catalogs whose fingerprint matches. A reuse
+  written for it. The import check offers the listed catalogs whose recipe matches. A reuse
   target owned by someone else, or scoped to one of the importer's collections, fails the import.
   Reuse can map two bundle catalogs onto one row, so within a folder a repeated (catalog, trimmed
   genre) ref is dropped, keeping the first.

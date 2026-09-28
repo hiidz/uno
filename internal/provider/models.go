@@ -14,9 +14,9 @@ import (
 // TMDBMovieParams and TMDBTVParams are the implementations.
 //
 // This interface plus paramsFor is what keeps the movie/series split in one
-// place. Validation, query building and fingerprinting each used to switch on
-// catalogType and spell out both arms, so a third catalog type meant three
-// parallel edits; now it means one case in paramsFor.
+// place. Validation, query building and the canonical form all reach the
+// concrete struct through it, so a third catalog type means one case in
+// paramsFor.
 type CatalogParams interface {
 	// Validate checks the cross-field rules a single JSON field can't express.
 	Validate() error
@@ -286,8 +286,8 @@ func (p TMDBCommonParams) validate() error {
 
 // Validate checks cross-field rules that a single JSON field can't express
 // on its own. Intended to run once, at catalog create/update time in the
-// Builder API, before params are persisted — downstream consumers (Media
-// adapter, addon server) trust that anything in catalogs.params already
+// Builder API, before params are persisted — downstream consumers (the
+// addon server, preview) trust that anything in recipes.params already
 // passed this check.
 func (p TMDBMovieParams) Validate() error {
 	if p.SortBy != "" && !validMovieSortValues[p.SortBy] {

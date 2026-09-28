@@ -17,19 +17,26 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 	return selectCatalogs(ctx, db.conn, where, args...)
 }
 
-// selectCatalogs runs a SELECT over catalogs through q with the given WHERE
-// clause and args, parsing the result rows. where is built from this
-// package's own literals and buildInClause placeholders — never from client
-// input, which reaches the query only as a bound arg.
+// catalogColumns are the fifteen columns scanCatalog reads, in its order,
+// from catalogsWithRecipes.
+const catalogColumns = `c.id, r.type, c.name, r.provider, r.params, c.owner_id, c.is_public,
+	c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.taken_hash, c.recipe_hash,
+	c.created_at, c.updated_at`
+
+// catalogsWithRecipes is every catalog joined to its recipe, which holds its
+// type, provider and params.
+const catalogsWithRecipes = `catalogs c JOIN recipes r ON r.hash = c.recipe_hash`
+
+// selectCatalogs runs a SELECT over catalogs, joined to their recipes,
+// through q with the given WHERE clause and args, parsing the result rows.
+// where is built from this package's own literals and buildInClause
+// placeholders — never from client input, which reaches the query only as a
+// bound arg — and names every column through its table's alias, c for
+// catalogs and r for recipes, since the two tables share column names.
 //
 //nolint:gosec // G202: see above — the concatenated where is an internal literal.
 func selectCatalogs(ctx context.Context, q querier, where string, args ...any) ([]Catalog, error) {
-	rows, err := q.QueryContext(ctx, `
-		SELECT id, type, name, provider, params, owner_id, is_public,
-		       collection_id, home_sort_order, show_in_home, taken_from, taken_hash, fingerprint,
-		       created_at, updated_at
-		FROM catalogs
-		WHERE `+where, args...)
+	rows, err := q.QueryContext(ctx, `SELECT `+catalogColumns+` FROM `+catalogsWithRecipes+` WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying catalogs: %w", err)
 	}
@@ -42,17 +49,17 @@ func selectCatalogs(ctx context.Context, q querier, where string, args ...any) (
 // scoped to a collection are excluded; they're reached through the owning
 // collection's own response instead.
 func (db *DB) GetUserCatalogs(ctx context.Context, profileID uuid.UUID) ([]Catalog, error) {
-	return db.queryCatalogs(ctx, "owner_id = ? AND collection_id IS NULL", profileID.String())
+	return db.queryCatalogs(ctx, "c.owner_id = ? AND c.collection_id IS NULL", profileID.String())
 }
 
 // GetCommunityCatalogs returns the community catalog list for profileID: a
-// public catalog owned by someone else, collapsed to one row per fingerprint
-// (see fingerprintGroup.with for which row is shown), sorted by name, then
+// public catalog owned by someone else, collapsed to one row per recipe
+// (see recipeGroup.with for which row is shown), sorted by name, then
 // created_at, then id so equal names don't swap between requests. A row is
 // Taken when profileID holds a linked copy of it, and UpdateAvailable when
 // that copy's taken_hash no longer matches the row's catalogHash.
 func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]CommunityCatalog, error) {
-	catalogs, err := db.queryCatalogs(ctx, "is_public = TRUE AND owner_id != ?", profileID.String())
+	catalogs, err := db.queryCatalogs(ctx, "c.is_public = TRUE AND c.owner_id != ?", profileID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -62,15 +69,15 @@ func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 		return nil, err
 	}
 
-	byFingerprint := make(map[string]fingerprintGroup, len(catalogs))
+	byRecipe := make(map[string]recipeGroup, len(catalogs))
 	for _, c := range catalogs {
-		byFingerprint[c.Fingerprint] = byFingerprint[c.Fingerprint].with(c, linked)
+		byRecipe[c.RecipeHash] = byRecipe[c.RecipeHash].with(c, linked)
 	}
-	collapsed := make([]fingerprintGroup, 0, len(byFingerprint))
-	for _, g := range byFingerprint {
+	collapsed := make([]recipeGroup, 0, len(byRecipe))
+	for _, g := range byRecipe {
 		collapsed = append(collapsed, g)
 	}
-	slices.SortFunc(collapsed, func(x, y fingerprintGroup) int {
+	slices.SortFunc(collapsed, func(x, y recipeGroup) int {
 		a, b := x.shown, y.shown
 		if c := cmp.Compare(a.Name, b.Name); c != 0 {
 			return c
@@ -85,10 +92,10 @@ func (db *DB) GetCommunityCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 	return out, nil
 }
 
-// fingerprintGroup is one fingerprint's community catalogs, collapsed to the
-// row shown for them. linked is whether profileID holds a linked copy of the
-// shown row, and takenHash that copy's taken_hash. The zero group is empty.
-type fingerprintGroup struct {
+// recipeGroup is one recipe's community catalogs, collapsed to the row shown
+// for them. linked is whether profileID holds a linked copy of the shown
+// row, and takenHash that copy's taken_hash. The zero group is empty.
+type recipeGroup struct {
 	shown     Catalog
 	linked    bool
 	takenHash string
@@ -99,17 +106,17 @@ type fingerprintGroup struct {
 // other, since that is the one their Update follows; otherwise the oldest
 // created_at is shown, ties broken by the smallest id, both fully
 // deterministic rather than left to the query's row order.
-func (g fingerprintGroup) with(c Catalog, linked map[uuid.UUID]string) fingerprintGroup {
+func (g recipeGroup) with(c Catalog, linked map[uuid.UUID]string) recipeGroup {
 	takenHash, isLinked := linked[c.ID]
 	if g.shown.ID != uuid.Nil && !g.showsBefore(c, isLinked) {
 		return g
 	}
-	return fingerprintGroup{shown: c, linked: isLinked, takenHash: takenHash}
+	return recipeGroup{shown: c, linked: isLinked, takenHash: takenHash}
 }
 
 // showsBefore reports whether c, linked or not, should be shown in place of
 // g's current row; see with.
-func (g fingerprintGroup) showsBefore(c Catalog, isLinked bool) bool {
+func (g recipeGroup) showsBefore(c Catalog, isLinked bool) bool {
 	if isLinked != g.linked {
 		return isLinked
 	}
@@ -117,11 +124,11 @@ func (g fingerprintGroup) showsBefore(c Catalog, isLinked bool) bool {
 }
 
 // row is g as its community list row.
-func (g fingerprintGroup) row() CommunityCatalog {
+func (g recipeGroup) row() CommunityCatalog {
 	return CommunityCatalog{
 		Catalog:         g.shown,
 		Taken:           g.linked,
-		UpdateAvailable: g.linked && catalogHash(g.shown.Name, g.shown.Fingerprint) != g.takenHash,
+		UpdateAvailable: g.linked && catalogHash(g.shown.Name, g.shown.RecipeHash) != g.takenHash,
 	}
 }
 
@@ -143,7 +150,7 @@ func compareByHomeSortOrder(a, b Catalog) int {
 }
 
 // isOlderCatalog reads compareCreatedThenID as the "a comes first" test
-// GetCommunityCatalogs' fingerprint collapse asks of a candidate survivor.
+// GetCommunityCatalogs' recipe collapse asks of a candidate survivor.
 func isOlderCatalog(a, b Catalog) bool {
 	return compareCreatedThenID(a.CreatedAt, b.CreatedAt, a.ID, b.ID) < 0
 }
@@ -176,8 +183,7 @@ func (db *DB) DuplicateCommunityCatalog(ctx context.Context, profileID uuid.UUID
 
 // copyCommunityCatalog copies sourceID, a public catalog owned by someone
 // else, into a new listed catalog owned by profileID, linked to the source
-// when link is set. The copy keeps the source's stored fingerprint rather
-// than computing its own, so the two hash on the same terms.
+// when link is set. The copy shares the source's recipe.
 func (db *DB) copyCommunityCatalog(ctx context.Context, profileID, sourceID uuid.UUID, validateParams CatalogParamsValidator, link bool) (Catalog, error) {
 	source, err := db.loadCommunityCatalog(ctx, profileID, sourceID, validateParams)
 	if err != nil {
@@ -185,23 +191,20 @@ func (db *DB) copyCommunityCatalog(ctx context.Context, profileID, sourceID uuid
 	}
 	now := time.Now().UTC()
 	c := Catalog{
-		ID:          uuid.New(),
-		Type:        source.Type,
-		Name:        source.Name,
-		Provider:    source.Provider,
-		Params:      source.Params,
-		OwnerID:     profileID,
-		Fingerprint: source.Fingerprint,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:        uuid.New(),
+		Type:      source.Type,
+		Name:      source.Name,
+		Provider:  source.Provider,
+		Params:    source.Params,
+		OwnerID:   profileID,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	if link {
-		c.TakenFrom, c.TakenHash, c.Linked = &source.ID, catalogHash(source.Name, source.Fingerprint), true
+		c.TakenFrom, c.TakenHash, c.Linked = &source.ID, catalogHash(source.Name, source.RecipeHash), true
 	}
-	if err := insertCatalog(ctx, db.conn, c); err != nil {
-		return Catalog{}, takeConflict(err)
-	}
-	return c, nil
+	c, err = db.insertCatalogTx(ctx, c)
+	return c, takeConflict(err)
 }
 
 // loadCommunityCatalog reads sourceID, which must be public and not owned by
@@ -221,7 +224,7 @@ func (db *DB) loadCommunityCatalog(ctx context.Context, profileID, sourceID uuid
 	if validateParams == nil {
 		return Catalog{}, errors.New("vault: reading a community catalog requires a params validator")
 	}
-	source, err := db.queryCatalogs(ctx, "id = ? AND is_public = TRUE AND owner_id != ?", sourceID.String(), profileID.String())
+	source, err := db.queryCatalogs(ctx, "c.id = ? AND c.is_public = TRUE AND c.owner_id != ?", sourceID.String(), profileID.String())
 	if err != nil {
 		return Catalog{}, err
 	}
@@ -243,7 +246,7 @@ func (c Catalog) checkAsCopySource(validateParams CatalogParamsValidator) error 
 
 // takeConflict turns the unique-index violation a second Take of one source
 // hits (catalogs_one_link or collections_one_link) into ErrConflict, and
-// passes any other error through.
+// passes any other error, or nil, through.
 func takeConflict(err error) error {
 	if isUniqueConstraintErr(err) {
 		return fmt.Errorf("%w: already taken", ErrConflict)
@@ -251,31 +254,55 @@ func takeConflict(err error) error {
 	return err
 }
 
-// execer is the common subset of *sql.DB and *sql.Tx a single write needs, so
-// insertCatalog can run straight against the pool or inside a caller's
-// transaction — the ExecContext counterpart to scan.go's querier.
+// execer is the common subset of *sql.DB and *sql.Tx a single write needs —
+// the ExecContext counterpart to scan.go's querier.
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-// insertCatalog writes c as a new catalogs row. It is the one catalog INSERT
-// in this package: a catalog save, a catalog Take and a collection save's New
-// entries all go through it. home_sort_order and show_in_home are left to
+// insertCatalog writes c as a new catalogs row, storing its recipe first, and
+// returns c with its RecipeHash. It is the one catalog INSERT in this
+// package: a catalog save, a catalog Take and a collection save's New entries
+// all go through it, each inside a transaction, so a recipe it stores never
+// outlives a failed insert. home_sort_order and show_in_home are left to
 // their column defaults, since no catalog is born on the home screen. An
 // empty TakenHash is stored as NULL.
-func insertCatalog(ctx context.Context, e execer, c Catalog) error {
-	_, err := e.ExecContext(ctx, `
-		INSERT INTO catalogs (id, type, name, provider, params, owner_id, is_public,
-		                       collection_id, taken_from, taken_hash, fingerprint, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Type, c.Name, c.Provider, c.Params, c.OwnerID.String(), c.IsPublic,
-		nullableUUIDString(c.CollectionID), nullableUUIDString(c.TakenFrom),
-		sql.NullString{String: c.TakenHash, Valid: c.TakenHash != ""}, c.Fingerprint,
-		c.CreatedAt.Format(time.RFC3339), c.UpdatedAt.Format(time.RFC3339))
+func insertCatalog(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) {
+	hash, err := ensureRecipe(ctx, tx, c.Type, c.Provider, c.Params, c.CreatedAt.Format(time.RFC3339))
 	if err != nil {
+		return Catalog{}, err
+	}
+	c.RecipeHash = hash
+	return c, insertCatalogRow(ctx, tx, c)
+}
+
+// insertCatalogRow writes c's catalogs row, pointing at the recipe
+// c.RecipeHash names; see insertCatalog.
+func insertCatalogRow(ctx context.Context, tx *sql.Tx, c Catalog) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO catalogs (id, name, recipe_hash, owner_id, is_public,
+		                       collection_id, taken_from, taken_hash, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Name, c.RecipeHash, c.OwnerID.String(), c.IsPublic,
+		nullableUUIDString(c.CollectionID), nullableUUIDString(c.TakenFrom),
+		sql.NullString{String: c.TakenHash, Valid: c.TakenHash != ""},
+		c.CreatedAt.Format(time.RFC3339), c.UpdatedAt.Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("inserting catalog: %w", err)
 	}
 	return nil
+}
+
+// insertCatalogTx is insertCatalog in a transaction of its own.
+func (db *DB) insertCatalogTx(ctx context.Context, c Catalog) (Catalog, error) {
+	err := db.inTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		c, err = insertCatalog(ctx, tx, c)
+		return err
+	})
+	if err != nil {
+		return Catalog{}, err
+	}
+	return c, nil
 }
 
 // GetCatalogsByIDs batch-loads catalogs by id, no ownership check — push
@@ -291,7 +318,7 @@ func catalogsByIDs(ctx context.Context, q querier, ids []uuid.UUID) ([]Catalog, 
 		return nil, nil
 	}
 	placeholders, args := buildInClause(ids)
-	return selectCatalogs(ctx, q, fmt.Sprintf("id IN (%s)", placeholders), args...)
+	return selectCatalogs(ctx, q, fmt.Sprintf("c.id IN (%s)", placeholders), args...)
 }
 
 // CreateUserCatalog validates input and inserts a new catalog owned by
@@ -313,7 +340,7 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	}
 
 	now := time.Now().UTC()
-	c := Catalog{
+	return db.insertCatalogTx(ctx, Catalog{
 		ID:           uuid.New(),
 		Type:         input.Type,
 		Name:         input.Name,
@@ -322,15 +349,9 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 		OwnerID:      profileID,
 		IsPublic:     input.IsPublic,
 		CollectionID: input.CollectionID,
-		Fingerprint:  input.Fingerprint,
 		CreatedAt:    now,
 		UpdatedAt:    now,
-	}
-	if err := insertCatalog(ctx, db.conn, c); err != nil {
-		return Catalog{}, err
-	}
-
-	return c, nil
+	})
 }
 
 // UpdateUserCatalog validates input and updates the listed catalog
@@ -364,8 +385,8 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 	var showInHome int
 	var existingCollectionID, takenFrom, takenHash sql.NullString
 	err = tx.QueryRowContext(ctx, `
-		SELECT created_at, home_sort_order, show_in_home, type, collection_id, taken_from, taken_hash
-		FROM catalogs WHERE id = ? AND owner_id = ?
+		SELECT c.created_at, c.home_sort_order, c.show_in_home, r.type, c.collection_id, c.taken_from, c.taken_hash
+		FROM `+catalogsWithRecipes+` WHERE c.id = ? AND c.owner_id = ?
 	`, catalogID.String(), profileID.String()).Scan(&createdAtStr, &homeSortOrder, &showInHome, &existingType, &existingCollectionID, &takenFrom, &takenHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Catalog{}, ErrCatalogNotFound
@@ -377,33 +398,23 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 	if err := checkCatalogRewrite(existingType, existingCollectionID, input); err != nil {
 		return Catalog{}, err
 	}
-
-	if input.CollectionID != nil {
-		if input.IsPublic {
-			return Catalog{}, fmt.Errorf("%w: a catalog scoped to a collection cannot be public", ErrInvalidInput)
-		}
-		if err := requireOwnedCollection(ctx, tx, profileID, *input.CollectionID); err != nil {
-			return Catalog{}, err
-		}
-		if err := requireNotOnHome(ctx, tx, profileID, catalogID); err != nil {
-			return Catalog{}, err
-		}
-		if err := requireFolderRefsWithinCollection(ctx, tx, catalogID, *input.CollectionID); err != nil {
-			return Catalog{}, err
-		}
+	if err := checkCatalogDemotion(ctx, tx, profileID, catalogID, input); err != nil {
+		return Catalog{}, err
 	}
 
 	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
-	takenFrom, takenHash = catalogLinkAfterSave(takenFrom, takenHash, input)
+	saved, err := storeCatalogRecipe(ctx, tx, input, takenFrom, takenHash, now)
+	if err != nil {
+		return Catalog{}, err
+	}
 
 	result, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
-		SET type = ?, name = ?, provider = ?, params = ?, is_public = ?,
-		    collection_id = ?, fingerprint = ?, taken_from = ?, taken_hash = ?, updated_at = ?
+		SET name = ?, recipe_hash = ?, is_public = ?,
+		    collection_id = ?, taken_from = ?, taken_hash = ?, updated_at = ?
 		WHERE id = ? AND owner_id = ?
-	`, input.Type, input.Name, input.Provider, input.Params, input.IsPublic,
-		nullableUUIDString(input.CollectionID), input.Fingerprint, takenFrom, takenHash, nowStr,
+	`, input.Name, saved.recipeHash, input.IsPublic,
+		nullableUUIDString(input.CollectionID), saved.takenFrom, saved.takenHash, now.Format(time.RFC3339),
 		catalogID.String(), profileID.String())
 	if err != nil {
 		return Catalog{}, fmt.Errorf("updating catalog: %w", err)
@@ -437,21 +448,62 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 		CollectionID:  input.CollectionID,
 		HomeSortOrder: nullableInt(homeSortOrder), // unchanged by this update, read back for an accurate response
 		ShowInHome:    showInHome != 0,
-		TakenHash:     takenHash.String,
-		Linked:        takenFrom.Valid,
-		Fingerprint:   input.Fingerprint,
+		TakenHash:     saved.takenHash.String,
+		Linked:        saved.takenFrom.Valid,
+		RecipeHash:    saved.recipeHash,
 		CreatedAt:     createdAt,
 		UpdatedAt:     now,
 	}, nil
 }
 
+// checkCatalogDemotion refuses an UpdateUserCatalog that moves the catalog
+// into a collection (input.CollectionID set) unless the catalog stays
+// private, the collection is profileID's, the catalog is off the home
+// screen, and no folder outside that collection references it.
+func checkCatalogDemotion(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
+	if input.CollectionID == nil {
+		return nil
+	}
+	if input.IsPublic {
+		return fmt.Errorf("%w: a catalog scoped to a collection cannot be public", ErrInvalidInput)
+	}
+	if err := requireOwnedCollection(ctx, tx, profileID, *input.CollectionID); err != nil {
+		return err
+	}
+	if err := requireNotOnHome(ctx, tx, profileID, catalogID); err != nil {
+		return err
+	}
+	return requireFolderRefsWithinCollection(ctx, tx, catalogID, *input.CollectionID)
+}
+
+// catalogSave is what an UpdateUserCatalog writes beyond its form: the hash
+// of the recipe the catalog now points at, and its link after the save.
+type catalogSave struct {
+	recipeHash           string
+	takenFrom, takenHash sql.NullString
+}
+
+// storeCatalogRecipe stores input's recipe inside tx, unless it is stored
+// already, and works out the catalog's link after the save from the link it
+// had; see catalogLinkAfterSave.
+func storeCatalogRecipe(ctx context.Context, tx *sql.Tx, input CatalogForm, takenFrom, takenHash sql.NullString, now time.Time) (catalogSave, error) {
+	hash, err := ensureRecipe(ctx, tx, input.Type, input.Provider, input.Params, now.Format(time.RFC3339))
+	if err != nil {
+		return catalogSave{}, err
+	}
+	saved := catalogSave{recipeHash: hash}
+	saved.takenFrom, saved.takenHash = catalogLinkAfterSave(takenFrom, takenHash, input.CollectionID != nil, catalogHash(input.Name, hash))
+	return saved, nil
+}
+
 // catalogLinkAfterSave is what a catalog save leaves in taken_from and
-// taken_hash. The link stands while the catalog stays listed and the saved
-// name and fingerprint still hash to taken_hash, so a save that changes only
-// is_public keeps it. Any other save clears both: the copy no longer holds
-// what was taken, and Update would otherwise overwrite the change.
-func catalogLinkAfterSave(takenFrom, takenHash sql.NullString, input CatalogForm) (sql.NullString, sql.NullString) {
-	if input.CollectionID != nil || catalogHash(input.Name, input.Fingerprint) != takenHash.String {
+// taken_hash, given whether it moves the catalog into a collection and the
+// saved catalog's catalogHash. The link stands while the catalog stays listed
+// and its name and recipe still hash to taken_hash, so a save that changes
+// only is_public keeps it. Any other save clears both: the copy no longer
+// holds what was taken, and Update would otherwise overwrite the change.
+func catalogLinkAfterSave(takenFrom, takenHash sql.NullString, moves bool, savedHash string) (sql.NullString, sql.NullString) {
+	if moves || savedHash != takenHash.String {
 		return sql.NullString{}, sql.NullString{}
 	}
 	return takenFrom, takenHash
@@ -522,7 +574,7 @@ func (db *DB) catalogNotDeleted(ctx context.Context, profileID, catalogID uuid.U
 // GetCurrentCatalogSelection returns profileID's active catalog selection —
 // every owned catalog with a non-nil home_sort_order — ordered by it.
 func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
-	catalogs, err := db.queryCatalogs(ctx, "owner_id = ? AND home_sort_order IS NOT NULL", profileID.String())
+	catalogs, err := db.queryCatalogs(ctx, "c.owner_id = ? AND c.home_sort_order IS NOT NULL", profileID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -546,18 +598,14 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 // sitting in more than one folder would otherwise appear once per folder.
 func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
 	rows, err := db.conn.QueryContext(ctx, `
-		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public,
-		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.taken_hash, c.fingerprint,
-		       c.created_at, c.updated_at,
+		SELECT `+catalogColumns+`,
 		       c.show_in_home AS derived_show_in_home, 0 AS rank, c.home_sort_order AS o1, 0 AS o2, 0 AS o3
-		FROM catalogs c
+		FROM `+catalogsWithRecipes+`
 		WHERE c.owner_id = ? AND c.home_sort_order IS NOT NULL
 		UNION
-		SELECT c.id, c.type, c.name, c.provider, c.params, c.owner_id, c.is_public,
-		       c.collection_id, c.home_sort_order, c.show_in_home, c.taken_from, c.taken_hash, c.fingerprint,
-		       c.created_at, c.updated_at,
+		SELECT `+catalogColumns+`,
 		       0 AS derived_show_in_home, 1 AS rank, col.home_sort_order AS o1, f.sort_order AS o2, fc.sort_order AS o3
-		FROM catalogs c
+		FROM `+catalogsWithRecipes+`
 		JOIN folder_catalogs fc ON fc.catalog_id = c.id
 		JOIN folders f          ON f.id = fc.folder_id
 		JOIN collections col    ON col.id = f.collection_id

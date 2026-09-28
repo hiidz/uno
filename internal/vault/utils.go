@@ -34,7 +34,7 @@ func buildInClause(ids []uuid.UUID) (string, []any) {
 
 // compareCreatedThenID orders two rows by created_at, then by id — the
 // deterministic tie-break both community lists use, for the catalog
-// fingerprint-collapse survivor and for either list's final ordering, so
+// recipe-collapse survivor and for either list's final ordering, so
 // rows with equal names or titles don't swap between requests.
 func compareCreatedThenID(aCreatedAt, bCreatedAt time.Time, aID, bID uuid.UUID) int {
 	if c := aCreatedAt.Compare(bCreatedAt); c != 0 {

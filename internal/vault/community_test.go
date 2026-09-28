@@ -76,9 +76,9 @@ func TestGetCommunityCatalogsExcludesScoped(t *testing.T) {
 	}
 }
 
-// Two public catalogs sharing a fingerprint collapse to one row: the oldest
+// Two public catalogs sharing a recipe collapse to one row: the oldest
 // by created_at.
-func TestGetCommunityCatalogsCollapsesEqualFingerprints(t *testing.T) {
+func TestGetCommunityCatalogsCollapsesEqualRecipes(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 
@@ -94,8 +94,8 @@ func TestGetCommunityCatalogsCollapsesEqualFingerprints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create newer catalog: %v", err)
 	}
-	if older.Fingerprint != newer.Fingerprint {
-		t.Fatalf("test setup: expected identical recipes to share a fingerprint, got %q and %q", older.Fingerprint, newer.Fingerprint)
+	if older.RecipeHash != newer.RecipeHash {
+		t.Fatalf("test setup: expected identical recipes to share a hash, got %q and %q", older.RecipeHash, newer.RecipeHash)
 	}
 
 	// Force a deterministic created_at order — both rows landed in the same
@@ -117,7 +117,7 @@ func TestGetCommunityCatalogsCollapsesEqualFingerprints(t *testing.T) {
 	}
 }
 
-// The fingerprint collapse's survivor tie-break is oldest created_at, then
+// The recipe collapse's survivor tie-break is oldest created_at, then
 // smallest id — deterministic even when two rows share a created_at second,
 // not left to the query's own row order.
 func TestGetCommunityCatalogsCollapseTieBreaksByID(t *testing.T) {
@@ -136,8 +136,8 @@ func TestGetCommunityCatalogsCollapseTieBreaksByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create catalog b: %v", err)
 	}
-	if a.Fingerprint != b.Fingerprint {
-		t.Fatalf("test setup: expected identical recipes to share a fingerprint, got %q and %q", a.Fingerprint, b.Fingerprint)
+	if a.RecipeHash != b.RecipeHash {
+		t.Fatalf("test setup: expected identical recipes to share a hash, got %q and %q", a.RecipeHash, b.RecipeHash)
 	}
 
 	// Force an identical created_at so the tie-break falls entirely to id.
@@ -163,7 +163,7 @@ func TestGetCommunityCatalogsCollapseTieBreaksByID(t *testing.T) {
 // A collapsed row shows the member the caller is linked to, not the oldest:
 // taking the newer duplicate shows that one, flagged Taken, since it is the
 // row the caller's Update follows.
-func TestGetCommunityCatalogsTakenAppliesToWholeFingerprintGroup(t *testing.T) {
+func TestGetCommunityCatalogsTakenAppliesToWholeRecipeGroup(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 
@@ -283,8 +283,8 @@ func TestTakeCatalog(t *testing.T) {
 	if takenCopy.TakenFrom == nil || *takenCopy.TakenFrom != source.ID {
 		t.Fatalf("taken copy taken_from = %v, want %s", takenCopy.TakenFrom, source.ID)
 	}
-	if takenCopy.Fingerprint != source.Fingerprint {
-		t.Fatalf("taken copy fingerprint = %q, want %q", takenCopy.Fingerprint, source.Fingerprint)
+	if takenCopy.RecipeHash != source.RecipeHash {
+		t.Fatalf("taken copy recipe hash = %q, want %q", takenCopy.RecipeHash, source.RecipeHash)
 	}
 }
 
@@ -338,7 +338,7 @@ func TestTakeCatalogSurvivesSourceDeletion(t *testing.T) {
 		t.Fatalf("deleting source catalog: %v", err)
 	}
 
-	remaining, err := db.queryCatalogs(ctx, "id = ?", takenCopy.ID.String())
+	remaining, err := db.queryCatalogs(ctx, "c.id = ?", takenCopy.ID.String())
 	if err != nil {
 		t.Fatalf("querying for taken copy: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestTakeCatalogSurvivesSourceDeletion(t *testing.T) {
 }
 
 // GetCommunityCollections excludes the caller's own rows, even when public,
-// and applies no fingerprint collapse.
+// and applies no recipe collapse.
 func TestGetCommunityCollectionsExcludesOwn(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -676,7 +676,6 @@ func newLinkSourceCollection(t *testing.T, db *DB, owner uuid.UUID) uuid.UUID {
 	ctx := context.Background()
 
 	listedForm := listedCatalogForm("Listed")
-	listedForm.Fingerprint = "fp-listed"
 	listed, err := db.CreateUserCatalog(ctx, owner, listedForm)
 	if err != nil {
 		t.Fatalf("create listed catalog: %v", err)
@@ -687,7 +686,7 @@ func newLinkSourceCollection(t *testing.T, db *DB, owner uuid.UUID) uuid.UUID {
 	}
 	scoped := &NewScopedCatalog{
 		Key: "scoped", Type: "movie", Name: "Scoped", Provider: "tmdb",
-		Params: `{"sort_by":"vote_average.desc"}`, Fingerprint: "fp-scoped",
+		Params: `{"sort_by":"vote_average.desc"}`,
 	}
 
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
@@ -808,7 +807,6 @@ func TestTakenCatalogIsCurrent(t *testing.T) {
 	taker := newTestProfile(t, db, "taker")
 
 	form := publicCatalogForm("Source")
-	form.Fingerprint = "fp-source"
 	source, err := db.CreateUserCatalog(ctx, owner, form)
 	if err != nil {
 		t.Fatalf("create source catalog: %v", err)

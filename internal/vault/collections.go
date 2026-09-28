@@ -52,7 +52,7 @@ func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]Co
 // GetCommunityCollections returns the community collection list for
 // profileID: every collection marked public and owned by someone else, each
 // with its folders assembled, sorted by title, then created_at, then id so
-// equal titles don't swap between requests (no fingerprint collapse —
+// equal titles don't swap between requests (no recipe collapse —
 // that's a catalog-only concept). A row is Taken when profileID holds a
 // linked copy of it, and UpdateAvailable when that copy's taken_hash no
 // longer matches the row's collectionHash.
@@ -292,12 +292,12 @@ func applyCatalogEdits(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 	return nil
 }
 
-// applyCatalogEdit writes one ScopedCatalogEdit: the new name, params and
-// fingerprint and, for MoveToLibrary, a cleared collection_id, which makes the
-// catalog listed, and a cleared taken_from: a listed catalog carrying the
-// taken_from of a catalog copied inside a taken collection would read as a
-// Take of its own. An edit that changes nothing is skipped, so the row's
-// updated_at stays put.
+// applyCatalogEdit writes one ScopedCatalogEdit: the new name and recipe
+// and, for MoveToLibrary, a cleared collection_id, which makes the catalog
+// listed, and a cleared taken_from: a listed catalog carrying the taken_from
+// of a catalog copied inside a taken collection would read as a Take of its
+// own. An edit that changes nothing is skipped, so the row's updated_at
+// stays put.
 func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
 	stored, err := loadEditedCatalog(ctx, tx, profileID, collectionID, e)
 	if err != nil {
@@ -306,13 +306,23 @@ func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 	if e.changesNothing(stored) {
 		return nil
 	}
+	return writeCatalogEdit(ctx, tx, profileID, e, nowStr)
+}
+
+// writeCatalogEdit stores e's recipe, unless it is stored already, and
+// writes e over its catalog; see applyCatalogEdit.
+func writeCatalogEdit(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
+	hash, err := ensureRecipe(ctx, tx, e.Type, e.Provider, e.Params, nowStr)
+	if err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
-		SET name = ?, params = ?, fingerprint = ?, updated_at = ?,
+		SET name = ?, recipe_hash = ?, updated_at = ?,
 		    collection_id = CASE WHEN ? THEN NULL ELSE collection_id END,
 		    taken_from = CASE WHEN ? THEN NULL ELSE taken_from END
 		WHERE id = ? AND owner_id = ?
-	`, e.Name, e.Params, e.Fingerprint, nowStr, e.MoveToLibrary, e.MoveToLibrary, e.ID.String(), profileID.String()); err != nil {
+	`, e.Name, hash, nowStr, e.MoveToLibrary, e.MoveToLibrary, e.ID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating edited catalog: %w", err)
 	}
 	return nil
@@ -321,7 +331,7 @@ func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 // storedRecipe is the part of a catalog row a ScopedCatalogEdit rewrites,
 // read back to tell a real edit from one that changes nothing.
 type storedRecipe struct {
-	name, params, fingerprint string
+	name, recipeHash string
 }
 
 // loadEditedCatalog reads the row e rewrites, confirming it is owned by
@@ -332,9 +342,9 @@ func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 	var s storedRecipe
 	var catalogType, catalogProvider string
 	err := tx.QueryRowContext(ctx, `
-		SELECT type, provider, name, params, fingerprint FROM catalogs
-		WHERE id = ? AND owner_id = ? AND collection_id = ?
-	`, e.ID.String(), profileID.String(), collectionID.String()).Scan(&catalogType, &catalogProvider, &s.name, &s.params, &s.fingerprint)
+		SELECT r.type, r.provider, c.name, c.recipe_hash FROM `+catalogsWithRecipes+`
+		WHERE c.id = ? AND c.owner_id = ? AND c.collection_id = ?
+	`, e.ID.String(), profileID.String(), collectionID.String()).Scan(&catalogType, &catalogProvider, &s.name, &s.recipeHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storedRecipe{}, fmt.Errorf("%w: catalog %s is not inside this collection", ErrInvalidInput, e.ID)
 	}
@@ -347,11 +357,10 @@ func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 	return s, nil
 }
 
-// changesNothing reports whether e would leave stored exactly as it is. The
-// fingerprint counts too: an edit that only brings a stale fingerprint up to
-// date still writes.
+// changesNothing reports whether e would leave stored exactly as it is: the
+// same name and the same recipe, and no move to the library.
 func (e ScopedCatalogEdit) changesNothing(stored storedRecipe) bool {
-	return !e.MoveToLibrary && e.Name == stored.name && e.Params == stored.params && e.Fingerprint == stored.fingerprint
+	return !e.MoveToLibrary && e.Name == stored.name && e.recipeHash() == stored.recipeHash
 }
 
 // deleteOrphanedScopedCatalogs removes every catalog scoped to collectionID

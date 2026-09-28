@@ -21,7 +21,7 @@ func bundleTestCatalog(name string, collectionID *uuid.UUID) Catalog {
 		Provider:     "tmdb",
 		Params:       `{"sort_by":"` + name + `"}`,
 		CollectionID: collectionID,
-		Fingerprint:  "fp-" + name,
+		RecipeHash:   "fp-" + name,
 	}
 }
 
@@ -93,7 +93,7 @@ func TestExtractBundleListsCatalogsByScope(t *testing.T) {
 
 // With scopeAll, every catalog a collection references goes into its own
 // list, so a listed catalog two collections share is emitted into each, and
-// nothing is top-level. Each catalog remembers its row and fingerprint.
+// nothing is top-level. Each catalog remembers its row and recipe hash.
 func TestExtractBundleScopeAllKeepsEveryCatalogInItsCollection(t *testing.T) {
 	aID, bID := uuid.New(), uuid.New()
 	shared := bundleTestCatalog("Shared", nil)
@@ -115,8 +115,8 @@ func TestExtractBundleScopeAllKeepsEveryCatalogInItsCollection(t *testing.T) {
 		if c.SourceID == nil || *c.SourceID != shared.ID {
 			t.Errorf("%s SourceID = %v, want %s", c.Key, c.SourceID, shared.ID)
 		}
-		if c.Fingerprint != shared.Fingerprint || string(c.Params) != shared.Params {
-			t.Errorf("%s fingerprint, params = %q, %s, want %q, %s", c.Key, c.Fingerprint, c.Params, shared.Fingerprint, shared.Params)
+		if c.RecipeHash != shared.RecipeHash || string(c.Params) != shared.Params {
+			t.Errorf("%s recipe hash, params = %q, %s, want %q, %s", c.Key, c.RecipeHash, c.Params, shared.RecipeHash, shared.Params)
 		}
 	}
 }
@@ -212,14 +212,13 @@ func TestBundleRoundTripsThroughCreate(t *testing.T) {
 
 	listedForm := listedCatalogForm("Listed")
 	listedForm.Params = `{"sort_by":"popularity.desc","with_genres":"27"}`
-	listedForm.Fingerprint = "fp-listed"
 	listed, err := db.CreateUserCatalog(ctx, owner, listedForm)
 	if err != nil {
 		t.Fatalf("create listed catalog: %v", err)
 	}
 	scoped := &NewScopedCatalog{
 		Key: "draft:scoped", Type: "series", Name: "Scoped", Provider: "tmdb",
-		Params: `{"with_networks":"213"}`, Fingerprint: "fp-scoped",
+		Params: `{"with_networks":"213"}`,
 	}
 	folder := func(title, shape string, refs ...FolderCatalogRef) FolderData {
 		return FolderData{
@@ -320,8 +319,8 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 	}{
 		{"blank name", `UPDATE catalogs SET name = ? WHERE id = ?`, " "},
 		{"overlong name", `UPDATE catalogs SET name = ? WHERE id = ?`, strings.Repeat("n", maxNameLen+1)},
-		{"unknown type", `UPDATE catalogs SET type = ? WHERE id = ?`, "anime"},
-		{"unknown provider", `UPDATE catalogs SET provider = ? WHERE id = ?`, "mdblist"},
+		{"unknown type", `UPDATE recipes SET type = ? WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)`, "anime"},
+		{"unknown provider", `UPDATE recipes SET provider = ? WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)`, "mdblist"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			corrupt := func(id uuid.UUID, name string) {
@@ -330,10 +329,13 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 					t.Fatalf("writing the stale row: %v", err)
 				}
 				t.Cleanup(func() {
-					if _, err := db.conn.ExecContext(ctx, `
-						UPDATE catalogs SET name = ?, type = 'movie', provider = 'tmdb' WHERE id = ?
-					`, name, id.String()); err != nil {
+					if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = ? WHERE id = ?`, name, id.String()); err != nil {
 						t.Errorf("restoring the catalog row: %v", err)
+					}
+					if _, err := db.conn.ExecContext(ctx, `
+						UPDATE recipes SET type = 'movie', provider = 'tmdb' WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)
+					`, id.String()); err != nil {
+						t.Errorf("restoring the recipe row: %v", err)
 					}
 				})
 			}
@@ -412,7 +414,7 @@ func TestLinkHashesArePinned(t *testing.T) {
 	})
 
 	t.Run("bundleCollectionHash of the fixture", func(t *testing.T) {
-		got, err := bundleCollectionHash(stampFingerprints(readTestBundle(t)).Collections[0])
+		got, err := bundleCollectionHash(stampRecipeHashes(readTestBundle(t)).Collections[0])
 		if err != nil {
 			t.Fatalf("bundleCollectionHash: %v", err)
 		}
@@ -421,7 +423,7 @@ func TestLinkHashesArePinned(t *testing.T) {
 
 	t.Run("collectionHash of the fixture once stored", func(t *testing.T) {
 		db := newTestDB(t)
-		_, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), stampFingerprints(readTestBundle(t)), nil)
+		_, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), readTestBundle(t), nil)
 		if err != nil {
 			t.Fatalf("ImportBundle: %v", err)
 		}
@@ -429,6 +431,6 @@ func TestLinkHashesArePinned(t *testing.T) {
 		if err != nil {
 			t.Fatalf("collectionHash: %v", err)
 		}
-		check(t, "collectionHash", got, "2ea2d61a83deaef7e099eb79f8c8becdec6723546df4a1f9554b195ac2473248")
+		check(t, "collectionHash", got, "3b5582c44e2bd369d276149819c8143f9dc7339bcedcf3884e76278c471d3663")
 	})
 }

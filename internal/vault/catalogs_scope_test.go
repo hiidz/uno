@@ -234,7 +234,7 @@ func TestUpdateAndDeleteUserCatalogRefuseScoped(t *testing.T) {
 		t.Errorf("DELETE on an unknown catalog = %v, want ErrCatalogNotFound", err)
 	}
 
-	remaining, err := db.queryCatalogs(ctx, "id = ?", scoped.ID.String())
+	remaining, err := db.queryCatalogs(ctx, "c.id = ?", scoped.ID.String())
 	if err != nil {
 		t.Fatalf("querying for scoped catalog: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestDeleteCollectionCascadesScopedCatalogs(t *testing.T) {
 		t.Fatalf("deleting collection: %v", err)
 	}
 
-	remaining, err := db.queryCatalogs(ctx, "id = ?", scoped.ID.String())
+	remaining, err := db.queryCatalogs(ctx, "c.id = ?", scoped.ID.String())
 	if err != nil {
 		t.Fatalf("querying for scoped catalog after collection delete: %v", err)
 	}

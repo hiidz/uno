@@ -25,12 +25,11 @@ func newLinkFixture(t *testing.T) linkFixture {
 	f := linkFixture{db: db, owner: newTestProfile(t, db, "owner"), taker: newTestProfile(t, db, "taker")}
 
 	listedForm := listedCatalogForm("Listed")
-	listedForm.Fingerprint = "fp-listed"
 	listed, err := db.CreateUserCatalog(ctx, f.owner, listedForm)
 	if err != nil {
 		t.Fatalf("create listed catalog: %v", err)
 	}
-	scoped := &NewScopedCatalog{Key: "scoped", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}", Fingerprint: "fp-scoped"}
+	scoped := &NewScopedCatalog{Key: "scoped", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}"}
 	f.source, err = db.CreateUserCollection(ctx, f.owner, CollectionForm{
 		Title: "Source", IsPublic: true, PinToTop: true, ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
@@ -103,7 +102,7 @@ func (f linkFixture) requireCommunityCollection(t *testing.T, taken, updateAvail
 // reloadCatalog reads catalog id back, listed or scoped.
 func reloadCatalog(t *testing.T, db *DB, id uuid.UUID) Catalog {
 	t.Helper()
-	rows, err := db.queryCatalogs(context.Background(), "id = ?", id.String())
+	rows, err := db.queryCatalogs(context.Background(), "c.id = ?", id.String())
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("loading catalog %s = %+v, %v, want one row", id, rows, err)
 	}
@@ -163,7 +162,7 @@ func TestUpdateTakenCollectionRewritesCopy(t *testing.T) {
 		t.Fatalf("create added catalog: %v", err)
 	}
 	edit := editOf(f.scoped)
-	edit.Name, edit.Fingerprint = "Scoped, renamed", "fp-scoped-2"
+	edit.Name, edit.Params = "Scoped, renamed", `{"sort_by":"revenue.desc"}`
 	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.source.ID, CollectionForm{
 		Title: "Source", IsPublic: true, ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
@@ -213,13 +212,13 @@ func TestUpdateTakenCollectionRewritesCopy(t *testing.T) {
 	for _, c := range updated.Catalogs {
 		byID[c.ID] = c
 	}
-	if len(updated.Catalogs) != 2 || byID[scopedCopy].Name != "Scoped, renamed" || byID[scopedCopy].Fingerprint != "fp-scoped-2" {
+	if len(updated.Catalogs) != 2 || byID[scopedCopy].Name != "Scoped, renamed" || byID[scopedCopy].Params != `{"sort_by":"revenue.desc"}` {
 		t.Fatalf("updated catalogs = %+v, want the scoped copy %s renamed in place plus one new catalog", updated.Catalogs, scopedCopy)
 	}
 	if _, kept := byID[listedCopy]; kept {
 		t.Fatalf("the copy of the dropped listed catalog %s is still referenced", listedCopy)
 	}
-	if rows, _ := f.db.queryCatalogs(ctx, "id = ?", listedCopy.String()); len(rows) != 0 {
+	if rows, _ := f.db.queryCatalogs(ctx, "c.id = ?", listedCopy.String()); len(rows) != 0 {
 		t.Fatalf("the copy of the dropped listed catalog %s still exists", listedCopy)
 	}
 	for id, c := range byID {
@@ -302,7 +301,6 @@ func TestCommunityCatalogOffersUpdateAfterOwnerEdit(t *testing.T) {
 	taker := newTestProfile(t, db, "taker")
 
 	form := publicCatalogForm("Source")
-	form.Fingerprint = "fp-source"
 	source, err := db.CreateUserCatalog(ctx, owner, form)
 	if err != nil {
 		t.Fatalf("create source: %v", err)
@@ -311,7 +309,7 @@ func TestCommunityCatalogOffersUpdateAfterOwnerEdit(t *testing.T) {
 		t.Fatalf("TakeCatalog: %v", err)
 	}
 
-	form.Name, form.Params, form.Fingerprint = "Source, renamed", `{"sort_by":"popularity.desc"}`, "fp-source-2"
+	form.Name, form.Params = "Source, renamed", `{"sort_by":"revenue.desc"}`
 	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, form); err != nil {
 		t.Fatalf("owner edit: %v", err)
 	}
@@ -323,8 +321,8 @@ func TestCommunityCatalogOffersUpdateAfterOwnerEdit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateTakenCatalog: %v", err)
 	}
-	if updated.Name != form.Name || updated.Params != form.Params || updated.Fingerprint != form.Fingerprint || !updated.Linked {
-		t.Fatalf("updated copy = %+v, want the owner's name, params and fingerprint, still linked", updated)
+	if updated.Name != form.Name || updated.Params != form.Params || updated.RecipeHash != RecipeHash(form.Type, form.Provider, form.Params) || !updated.Linked {
+		t.Fatalf("updated copy = %+v, want the owner's name and recipe, still linked", updated)
 	}
 	if row := communityCatalogRow(t, db, taker, source.ID); !row.Taken || row.UpdateAvailable {
 		t.Fatalf("community row after Update = %+v, want taken with no update", row)
@@ -341,7 +339,6 @@ func TestCatalogSaveKeepsOrClearsLink(t *testing.T) {
 	taker := newTestProfile(t, db, "taker")
 
 	sourceForm := publicCatalogForm("Source")
-	sourceForm.Fingerprint = "fp-source"
 	source, err := db.CreateUserCatalog(ctx, owner, sourceForm)
 	if err != nil {
 		t.Fatalf("create source: %v", err)
@@ -356,7 +353,7 @@ func TestCatalogSaveKeepsOrClearsLink(t *testing.T) {
 	}
 
 	linked := takeCopy()
-	public := CatalogForm{Type: linked.Type, Name: linked.Name, Provider: linked.Provider, Params: linked.Params, IsPublic: true, Fingerprint: linked.Fingerprint}
+	public := CatalogForm{Type: linked.Type, Name: linked.Name, Provider: linked.Provider, Params: linked.Params, IsPublic: true}
 	if saved, err := db.UpdateUserCatalog(ctx, taker, linked.ID, public); err != nil || !saved.Linked {
 		t.Fatalf("Public toggle linked = %v, %v, want still linked", saved.Linked, err)
 	}
@@ -375,7 +372,7 @@ func TestCatalogSaveKeepsOrClearsLink(t *testing.T) {
 
 	again := takeCopy()
 	collectionID := newTestCollection(t, db, taker, "Taker's")
-	scoped := CatalogForm{Type: again.Type, Name: again.Name, Provider: again.Provider, Params: again.Params, CollectionID: &collectionID, Fingerprint: again.Fingerprint}
+	scoped := CatalogForm{Type: again.Type, Name: again.Name, Provider: again.Provider, Params: again.Params, CollectionID: &collectionID}
 	if saved, err := db.UpdateUserCatalog(ctx, taker, again.ID, scoped); err != nil || saved.Linked {
 		t.Fatalf("move into a collection linked = %v, %v, want unlinked", saved.Linked, err)
 	}
@@ -436,7 +433,6 @@ func TestUpdateTakenCatalogConflictUnlinks(t *testing.T) {
 	taker := newTestProfile(t, db, "taker")
 
 	form := publicCatalogForm("Source")
-	form.Fingerprint = "fp-source"
 	source, err := db.CreateUserCatalog(ctx, owner, form)
 	if err != nil {
 		t.Fatalf("create source: %v", err)

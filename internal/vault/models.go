@@ -20,6 +20,8 @@ type Profile struct {
 
 // Catalog is a stored addon catalog: a named request recipe (Provider,
 // Params) against a content Type, owned by a profile or shared publicly.
+// Type, Provider and Params are its recipe's, read from the recipes row
+// RecipeHash names.
 type Catalog struct {
 	ID       uuid.UUID `json:"id"`
 	Type     string    `json:"type"`
@@ -53,9 +55,10 @@ type Catalog struct {
 	// catalog it was taken from (see linkedCopy): the one kind of catalog
 	// Update reaches and a save can unlink.
 	Linked bool `json:"linked"`
-	// Fingerprint collapses duplicate community catalogs by recipe; never on
-	// the wire.
-	Fingerprint string `json:"-"`
+	// RecipeHash names this catalog's recipes row (see RecipeHash). Catalogs
+	// with the same recipe share it, which is what collapses duplicate
+	// community catalogs; never on the wire.
+	RecipeHash string `json:"-"`
 }
 
 // linkedCopy reports whether c is a listed catalog linked to the community
@@ -134,7 +137,10 @@ type FolderCatalog struct {
 
 // HTTP Inbound Model-------------------------
 
-// CatalogForm is the create/update request body for a Catalog.
+// CatalogForm is the create/update request body for a Catalog. Params reach
+// the vault in canonical form: the API checks a client's recipe and replaces
+// its params with provider.CanonicalParams before writing it, and the vault
+// stores them as they come.
 type CatalogForm struct {
 	Type     string `json:"type"`
 	Name     string `json:"name"`
@@ -145,9 +151,6 @@ type CatalogForm struct {
 	// the wire) means listed. On update, setting it demotes a listed catalog
 	// into that collection — see CreateUserCatalog/UpdateUserCatalog.
 	CollectionID *uuid.UUID `json:"collection_id"`
-	// Fingerprint is computed server-side after validation, never accepted
-	// from the client.
-	Fingerprint string `json:"-"`
 }
 
 // CollectionForm is the create/update request body for a Collection,
@@ -182,9 +185,11 @@ type ScopedCatalogEdit struct {
 	Name          string    `json:"name"`
 	Params        string    `json:"params"`
 	MoveToLibrary bool      `json:"move_to_library"`
-	// Fingerprint is computed server-side after validation, never accepted
-	// from the client — same rule as CatalogForm.Fingerprint.
-	Fingerprint string `json:"-"`
+}
+
+// recipeHash is the hash of the recipe e writes.
+func (e ScopedCatalogEdit) recipeHash() string {
+	return RecipeHash(e.Type, e.Provider, e.Params)
 }
 
 // FolderData is one folder within a CollectionForm.
@@ -255,9 +260,6 @@ type NewScopedCatalog struct {
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
 	Params   string `json:"params"`
-	// Fingerprint is computed server-side after validation, never accepted
-	// from the client — same rule as CatalogForm.Fingerprint.
-	Fingerprint string `json:"-"`
 	// TakenFrom is the catalog this one is copied from, written to the new
 	// row's taken_from. Only a collection Take sets it; never accepted from
 	// the client.
@@ -326,7 +328,7 @@ type SelectedCatalog struct {
 }
 
 // CommunityCatalog is a Catalog as it appears in the community list: public,
-// owned by someone else, collapsed to one row per fingerprint, plus whether
+// owned by someone else, collapsed to one row per recipe, plus whether
 // the caller holds a linked copy of it and whether that copy is behind it.
 type CommunityCatalog struct {
 	Catalog
@@ -337,7 +339,7 @@ type CommunityCatalog struct {
 // CommunityCollection is a CollectionWithFolders as it appears in the
 // community list: public, owned by someone else, plus whether the caller
 // holds a linked copy of it and whether that copy is behind it. Unlike
-// CommunityCatalog there is no fingerprint collapse — that's a catalog-only
+// CommunityCatalog there is no recipe collapse — that's a catalog-only
 // concept.
 type CommunityCollection struct {
 	CollectionWithFolders

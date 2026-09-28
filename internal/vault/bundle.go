@@ -36,17 +36,17 @@ type Bundle struct {
 }
 
 // BundleCatalog is one catalog of a Bundle. Params is the stored recipe
-// string, carried byte for byte. SourceID and Fingerprint remember the row it
-// was extracted from and that row's stored fingerprint; neither is part of
-// the format.
+// string, carried byte for byte. SourceID and RecipeHash remember the row it
+// was extracted from and that row's recipe hash; neither is part of the
+// format.
 type BundleCatalog struct {
-	Key         string          `json:"key"`
-	Name        string          `json:"name"`
-	Type        string          `json:"type"`
-	Provider    string          `json:"provider"`
-	Params      json.RawMessage `json:"params"`
-	SourceID    *uuid.UUID      `json:"-"`
-	Fingerprint string          `json:"-"`
+	Key        string          `json:"key"`
+	Name       string          `json:"name"`
+	Type       string          `json:"type"`
+	Provider   string          `json:"provider"`
+	Params     json.RawMessage `json:"params"`
+	SourceID   *uuid.UUID      `json:"-"`
+	RecipeHash string          `json:"-"`
 }
 
 // BundleCollection is one collection of a Bundle: its own fields, the
@@ -78,9 +78,10 @@ type BundleFolder struct {
 	Refs            []BundleRef `json:"refs"`
 }
 
-// UnmarshalJSON decodes c with its params compacted, so an imported recipe is
-// stored in the same form a saved one is. Params that don't compact are kept
-// as they came, for Bundle.Validate to report.
+// UnmarshalJSON decodes c with its params compacted, so they carry none of
+// the file's layout. Params that don't compact are kept as they came, for
+// Bundle.Validate to report. An import stores neither form: the API replaces
+// every catalog's params with their canonical form first (api.prepareBundle).
 func (c *BundleCatalog) UnmarshalJSON(data []byte) error {
 	type plain BundleCatalog
 	var p plain
@@ -355,20 +356,20 @@ func (cx *collectionExtractor) ownKey(c Catalog) string {
 func bundleCatalogFrom(key string, c Catalog) BundleCatalog {
 	sourceID := c.ID
 	return BundleCatalog{
-		Key:         key,
-		Name:        c.Name,
-		Type:        c.Type,
-		Provider:    c.Provider,
-		Params:      json.RawMessage(c.Params),
-		SourceID:    &sourceID,
-		Fingerprint: c.Fingerprint,
+		Key:        key,
+		Name:       c.Name,
+		Type:       c.Type,
+		Provider:   c.Provider,
+		Params:     json.RawMessage(c.Params),
+		SourceID:   &sourceID,
+		RecipeHash: c.RecipeHash,
 	}
 }
 
 // collectionFormFromBundle builds the CollectionForm that writes bc as a new
 // collection. A ref to one of bc's own catalogs becomes a New entry carrying
-// that catalog's spec and stored fingerprint, plus its SourceID as TakenFrom
-// when link is set; every ref to one key shares one spec. A ref to a
+// that catalog's spec, plus its SourceID as TakenFrom when link is set;
+// every ref to one key shares one spec. A ref to a
 // top-level key becomes a CatalogID ref to topIDs[key]. Folder IDs are nil
 // and the collection is private and not shown first.
 func collectionFormFromBundle(bc BundleCollection, topIDs map[string]uuid.UUID, link bool) CollectionForm {
@@ -393,12 +394,11 @@ func newSpecsByKey(catalogs []BundleCatalog, link bool) map[string]*NewScopedCat
 	specs := make(map[string]*NewScopedCatalog, len(catalogs))
 	for _, c := range catalogs {
 		spec := &NewScopedCatalog{
-			Key:         c.Key,
-			Type:        c.Type,
-			Name:        c.Name,
-			Provider:    c.Provider,
-			Params:      string(c.Params),
-			Fingerprint: c.Fingerprint,
+			Key:      c.Key,
+			Type:     c.Type,
+			Name:     c.Name,
+			Provider: c.Provider,
+			Params:   string(c.Params),
 		}
 		if link {
 			spec.TakenFrom = c.SourceID
@@ -435,11 +435,11 @@ func folderDataFromBundle(f BundleFolder, specs map[string]*NewScopedCatalog, to
 	}
 }
 
-// catalogHash is the content hash of a listed catalog: its name and stored
-// fingerprint, the two things a catalog save or Update can change. The name
-// is length-prefixed, so no two (name, fingerprint) pairs share an input.
-func catalogHash(name, fingerprint string) string {
-	return sha256Hex([]byte(strconv.Itoa(len(name)) + ":" + name + fingerprint))
+// catalogHash is the content hash of a listed catalog: its name and recipe
+// hash, the two things a catalog save or Update can change. The name is
+// length-prefixed, so no two (name, recipe hash) pairs share an input.
+func catalogHash(name, recipeHash string) string {
+	return sha256Hex([]byte(strconv.Itoa(len(name)) + ":" + name + recipeHash))
 }
 
 // collectionHash is bundleCollectionHash over tree's bundle form, with every
@@ -449,22 +449,23 @@ func collectionHash(tree CollectionWithFolders) (string, error) {
 }
 
 // bundleCollectionHash is the content hash of bc: sha256 hex over its JSON
-// form, with each catalog's params replaced by that catalog's stored
-// fingerprint. A copy carries its original's fingerprints unchanged, so the
-// two hash alike whatever their params bytes. Whatever the bundle form
-// leaves out — ids, scope, is_public, pin_to_top, the home fields, version and
-// timestamps — the hash leaves out too. A content field added to the form
-// is hashed with no change here, and that changes every collection's hash,
-// so each linked copy's stored taken_hash stops matching and its next save
-// unlinks it. TestLinkHashesArePinned holds the hashes to literal values.
+// form, with each catalog's params replaced by that catalog's recipe hash. A
+// copy shares its original's recipes, so the two hash alike. Whatever the
+// bundle form leaves out — ids, scope, is_public, pin_to_top, the home
+// fields, version and timestamps — the hash leaves out too. A content field
+// added to the form is hashed with no change here, and that changes every
+// collection's hash, so each linked copy's stored taken_hash stops matching
+// and its next save unlinks it. TestLinkHashesArePinned holds the hashes to
+// literal values. migrations/0002_recipes.go holds a frozen copy of this
+// and catalogHash.
 func bundleCollectionHash(bc BundleCollection) (string, error) {
 	catalogs := make([]BundleCatalog, len(bc.Catalogs))
 	for i, c := range bc.Catalogs {
-		fingerprint, err := json.Marshal(c.Fingerprint)
+		recipeHash, err := json.Marshal(c.RecipeHash)
 		if err != nil {
 			return "", fmt.Errorf("hashing collection: %w", err)
 		}
-		c.Params = fingerprint
+		c.Params = recipeHash
 		catalogs[i] = c
 	}
 	bc.Catalogs = catalogs

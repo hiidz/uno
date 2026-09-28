@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/hiidz/uno/internal/vault"
 )
 
 // prodDB writes the vault's prod-shaped fixture to a fresh database file and
@@ -36,12 +38,20 @@ func TestMigrateCommandPrintsTheDryRun(t *testing.T) {
 	if err := command([]string{"migrate", "--dry-run", "--db", path}, &out); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	want := "Dry run of " + path + ". Nothing was written to it.\n" + `Schema version 0 -> 1
+	want := "Dry run of " + path + ". Nothing was written to it.\n" + `Schema version 0 -> 2
 
 Migration 1 (baseline)
   found 5 of 5 baseline tables already present; checked their columns
   collections: kept the legacy column is_default
   catalogs: kept the legacy column is_default
+
+Migration 2 (recipes)
+  stored 9 recipes for 20 catalogs
+  rewrote the params of 0 catalogs in canonical form
+  remapped catalog links: 3 in step, 1 behind their source, 0 edited since taken, 0 matching neither hash (left as they were)
+  remapped collection links: 2 in step, 1 behind their source, 0 edited since taken, 0 matching neither hash (left as they were)
+
+Recipe check: 20 catalogs, 0 whose params before and after migrating would fetch different titles
 
 Rows                       before    after
 catalogs                       20       20
@@ -49,9 +59,23 @@ collections                     6        6
 folder_catalogs                18       18
 folders                        11       11
 profiles                        3        3
+recipes                         -        9
 `
 	if out.String() != want {
 		t.Errorf("output:\n%s\nwant:\n%s", out.String(), want)
+	}
+}
+
+// The recipe check lists every mismatch it found under its count.
+func TestReportTextListsRecipeMismatches(t *testing.T) {
+	got := reportText("vault.db", vault.MigrationReport{
+		From: 1, To: 2, RecipesChecked: 2,
+		RecipeMismatches: []string{"catalog c1 (Popular): discover query differs"},
+		RowsBefore:       map[string]int{}, RowsAfter: map[string]int{},
+	})
+	want := "Recipe check: 2 catalogs, 1 whose params before and after migrating would fetch different titles\n  catalog c1 (Popular): discover query differs\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("report:\n%s\nwant it to contain:\n%s", got, want)
 	}
 }
 

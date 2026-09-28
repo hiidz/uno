@@ -3,6 +3,7 @@ package api
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -24,8 +25,9 @@ const maxBundleBodyBytes = 4 << 20 // 4 MiB
 
 // prepareBundle runs the file-level checks on b, then checks every catalog
 // recipe it carries with checkRecipe — the check a catalog save runs, since a
-// bundle is client input like any other — and stamps each catalog with the
-// fingerprint its row will store. A recipe error names the catalog's key.
+// bundle is client input like any other — and replaces each catalog's params
+// with the canonical form its row will store. A recipe error names the
+// catalog's key.
 func (s *Server) prepareBundle(ctx context.Context, b *vault.Bundle) error {
 	if err := b.Validate(); err != nil {
 		return err
@@ -45,11 +47,11 @@ func (s *Server) prepareBundle(ctx context.Context, b *vault.Bundle) error {
 func (s *Server) checkBundleCatalogs(ctx context.Context, catalogs []vault.BundleCatalog) error {
 	for i := range catalogs {
 		c := &catalogs[i]
-		fingerprint, err := s.checkRecipe(ctx, c.Type, c.Provider, string(c.Params))
+		params, err := s.checkRecipe(ctx, c.Type, c.Provider, string(c.Params))
 		if err != nil {
 			return fmt.Errorf("catalog %s: %w", c.Key, err)
 		}
-		c.Fingerprint = fingerprint
+		c.Params = json.RawMessage(params)
 	}
 	return nil
 }
@@ -91,9 +93,9 @@ type importCheck struct {
 	Matches     []importMatch `json:"matches"`
 }
 
-// importMatch is one bundle catalog whose recipe fingerprint equals that of
-// one or more of the caller's listed catalogs, which are the rows the import
-// may reuse for it. Scope is "listed" for a top-level catalog, with an empty
+// importMatch is one bundle catalog whose recipe equals that of one or more
+// of the caller's listed catalogs, which are the rows the import may reuse
+// for it. Scope is "listed" for a top-level catalog, with an empty
 // Collection, or "scoped" for one of a collection's own, with Collection
 // that collection's title.
 type importMatch struct {
@@ -132,29 +134,29 @@ func (s *Server) checkImport(w http.ResponseWriter, r *http.Request) {
 }
 
 // importCheckOf is the import check of b against own, the caller's listed
-// catalogs. b's catalogs carry their fingerprints (prepareBundle). Matches
+// catalogs. b's params are in canonical form (prepareBundle). Matches
 // follow bundle order, and each match's existing catalogs are sorted by
 // name, then id.
 func importCheckOf(b vault.Bundle, own []vault.Catalog) importCheck {
-	byFingerprint := existingByFingerprint(own)
+	byRecipe := existingByRecipe(own)
 	check := importCheck{
 		Catalogs:    len(b.Catalogs),
 		Collections: len(b.Collections),
-		Matches:     appendMatches([]importMatch{}, b.Catalogs, "listed", "", byFingerprint),
+		Matches:     appendMatches([]importMatch{}, b.Catalogs, "listed", "", byRecipe),
 	}
 	for _, bc := range b.Collections {
 		check.Catalogs += len(bc.Catalogs)
 		check.Folders += len(bc.Folders)
-		check.Matches = appendMatches(check.Matches, bc.Catalogs, "scoped", bc.Title, byFingerprint)
+		check.Matches = appendMatches(check.Matches, bc.Catalogs, "scoped", bc.Title, byRecipe)
 	}
 	return check
 }
 
 // appendMatches appends an importMatch for each of catalogs that has an
 // existing catalog.
-func appendMatches(matches []importMatch, catalogs []vault.BundleCatalog, scope, collection string, byFingerprint map[string][]existingCatalog) []importMatch {
+func appendMatches(matches []importMatch, catalogs []vault.BundleCatalog, scope, collection string, byRecipe map[string][]existingCatalog) []importMatch {
 	for _, c := range catalogs {
-		if existing := byFingerprint[c.Fingerprint]; len(existing) > 0 {
+		if existing := byRecipe[vault.RecipeHash(c.Type, c.Provider, string(c.Params))]; len(existing) > 0 {
 			matches = append(matches, importMatch{
 				Key: c.Key, Name: c.Name, Type: c.Type, Scope: scope, Collection: collection, Existing: existing,
 			})
@@ -163,12 +165,12 @@ func appendMatches(matches []importMatch, catalogs []vault.BundleCatalog, scope,
 	return matches
 }
 
-// existingByFingerprint groups own by fingerprint, each group sorted by
+// existingByRecipe groups own by recipe hash, each group sorted by
 // name, then id.
-func existingByFingerprint(own []vault.Catalog) map[string][]existingCatalog {
+func existingByRecipe(own []vault.Catalog) map[string][]existingCatalog {
 	groups := make(map[string][]existingCatalog, len(own))
 	for _, c := range own {
-		groups[c.Fingerprint] = append(groups[c.Fingerprint], existingCatalog{ID: c.ID, Name: c.Name})
+		groups[c.RecipeHash] = append(groups[c.RecipeHash], existingCatalog{ID: c.ID, Name: c.Name})
 	}
 	for _, group := range groups {
 		slices.SortFunc(group, func(a, b existingCatalog) int {
@@ -182,7 +184,7 @@ func existingByFingerprint(own []vault.Catalog) map[string][]existingCatalog {
 // catalog keys to point at one of the caller's listed catalogs instead of
 // importing (see vault.DB.ImportBundle).
 type importRequest struct {
-	Bundle vault.Bundle          `json:"bundle"`
+	Bundle vault.Bundle         `json:"bundle"`
 	Reuse  map[string]uuid.UUID `json:"reuse"`
 }
 

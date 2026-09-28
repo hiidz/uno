@@ -28,5 +28,6 @@ type Migration struct {
 func All() []Migration {
 	return []Migration{
 		{Version: 1, Name: "baseline", Up: baseline},
+		{Version: 2, Name: "recipes", Up: recipes},
 	}
 }

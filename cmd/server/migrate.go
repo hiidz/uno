@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -31,11 +32,12 @@ func runMigrate(args []string, stdout io.Writer) error {
 	return rehearse(*path, stdout)
 }
 
-// rehearse dry-runs the migrations on the database at path and prints the
-// report. A migration that fails still gets the report of what ran before
-// it, printed ahead of the error.
+// rehearse dry-runs the migrations on the database at path, checking every
+// catalog's recipe with provider.SameRecipe, and prints the report. A
+// migration that fails still gets the report of what ran before it, printed
+// ahead of the error.
 func rehearse(path string, stdout io.Writer) error {
-	report, err := vault.DryRun(context.Background(), path)
+	report, err := vault.DryRun(context.Background(), path, provider.SameRecipe)
 	if report.RowsAfter != nil {
 		if _, writeErr := io.WriteString(stdout, reportText(path, report)); writeErr != nil {
 			return writeErr
@@ -48,7 +50,8 @@ func rehearse(path string, stdout io.Writer) error {
 }
 
 // reportText is a dry run's report: the schema versions, each migration with
-// its notes, then every table's row count before and after.
+// its notes, the recipe check, then every table's row count before and
+// after.
 func reportText(path string, r vault.MigrationReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Dry run of %s. Nothing was written to it.\n", path)
@@ -59,6 +62,7 @@ func reportText(path string, r vault.MigrationReport) string {
 			fmt.Fprintf(&b, "  %s\n", note)
 		}
 	}
+	writeRecipeCheck(&b, r)
 	tables := maps.Clone(r.RowsBefore)
 	maps.Copy(tables, r.RowsAfter)
 	fmt.Fprintf(&b, "\n%-24s %8s %8s\n", "Rows", "before", "after")
@@ -66,6 +70,20 @@ func reportText(path string, r vault.MigrationReport) string {
 		fmt.Fprintf(&b, "%-24s %8s %8s\n", table, countCell(r.RowsBefore, table), countCell(r.RowsAfter, table))
 	}
 	return b.String()
+}
+
+// writeRecipeCheck writes how many catalogs' params the dry run compared
+// before and after migrating and every mismatch, or nothing when it
+// compared none.
+func writeRecipeCheck(b *strings.Builder, r vault.MigrationReport) {
+	if r.RecipesChecked == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\nRecipe check: %d catalogs, %d whose params before and after migrating would fetch different titles\n",
+		r.RecipesChecked, len(r.RecipeMismatches))
+	for _, mismatch := range r.RecipeMismatches {
+		fmt.Fprintf(b, "  %s\n", mismatch)
+	}
 }
 
 // countCell is table's row count in counts, or "-" where the table doesn't

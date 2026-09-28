@@ -28,12 +28,12 @@ func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fingerprint, err := s.checkRecipe(r.Context(), input.Type, input.Provider, input.Params)
+	params, err := s.checkRecipe(r.Context(), input.Type, input.Provider, input.Params)
 	if err != nil {
 		writeVaultError(w, "createUserCatalog", err, nil, "", "failed to create catalog")
 		return
 	}
-	input.Fingerprint = fingerprint
+	input.Params = params
 
 	catalog, err := s.vault.CreateUserCatalog(r.Context(), profileID, input)
 	if err != nil {
@@ -56,12 +56,12 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fingerprint, err := s.checkRecipe(r.Context(), input.Type, input.Provider, input.Params)
+	params, err := s.checkRecipe(r.Context(), input.Type, input.Provider, input.Params)
 	if err != nil {
 		writeVaultError(w, "updateUserCatalog", err, nil, "", "failed to update catalog")
 		return
 	}
-	input.Fingerprint = fingerprint
+	input.Params = params
 
 	catalog, err := s.vault.UpdateUserCatalog(r.Context(), profileID, catalogID, input)
 	if err != nil {

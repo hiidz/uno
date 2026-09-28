@@ -98,8 +98,8 @@ func indexByID[T any](items []T, idOf func(T) uuid.UUID) map[uuid.UUID]int {
 // each collection starts at version 1, never pushed. Titles are kept as
 // they are. Importing one file twice gives two independent sets.
 //
-// b carries the fingerprint of each catalog, which the caller computes when
-// it checks the recipes (api.prepareBundle). Every check that needs no
+// b's params are in canonical form, which the caller puts them in when it
+// checks the recipes (api.prepareBundle). Every check that needs no
 // database runs before the transaction: Bundle.Validate, the reuse keys, and
 // each row's form validator. Inside it, each reuse target must be one of
 // profileID's listed catalogs. Any failure writes nothing.
@@ -212,15 +212,14 @@ func mintListed(profileID uuid.UUID, catalogs []BundleCatalog, reuse map[string]
 func importedCatalog(profileID uuid.UUID, c BundleCatalog) Catalog {
 	now := time.Now().UTC()
 	return Catalog{
-		ID:          uuid.New(),
-		Type:        c.Type,
-		Name:        strings.TrimSpace(c.Name),
-		Provider:    c.Provider,
-		Params:      string(c.Params),
-		OwnerID:     profileID,
-		Fingerprint: c.Fingerprint,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:        uuid.New(),
+		Type:      c.Type,
+		Name:      strings.TrimSpace(c.Name),
+		Provider:  c.Provider,
+		Params:    string(c.Params),
+		OwnerID:   profileID,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -297,9 +296,9 @@ func (p importPlan) write(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) 
 }
 
 // insertCatalogs inserts each of catalogs in turn.
-func insertCatalogs(ctx context.Context, e execer, catalogs []Catalog) error {
+func insertCatalogs(ctx context.Context, tx *sql.Tx, catalogs []Catalog) error {
 	for _, c := range catalogs {
-		if err := insertCatalog(ctx, e, c); err != nil {
+		if _, err := insertCatalog(ctx, tx, c); err != nil {
 			return err
 		}
 	}

@@ -128,8 +128,8 @@ Six route-semantics facts the client has to honour:
   (`GetCommunityCatalogs`/`GetCommunityCollections`) are `is_public = TRUE AND owner_id != ?`,
   so — unlike the pre-closed-graph community routes — there is no merge or dedup left for the
   frontend to do: a row you own never appears there. Catalogs additionally collapse to one row
-  per fingerprint: the row shown is the one the caller holds a linked copy of, if any, and
-  otherwise the oldest `created_at`, ties broken by the smallest id — a fully deterministic rule,
+  per recipe (`recipe_hash`): the row shown is the one the caller holds a linked copy of, if
+  any, and otherwise the oldest `created_at`, ties broken by the smallest id — a fully deterministic rule,
   not the query's own row order — and the final list is sorted name/title, then `created_at`,
   then id, so equal names never swap between requests. Both responses carry per-row
   `taken: bool` (the caller holds a linked copy) and `update_available: bool` (that copy's
@@ -188,7 +188,7 @@ Six route-semantics facts the client has to honour:
     `{catalogs, collections, folders, matches}`. The first three are counts: `catalogs` covers
     top-level and collection catalogs together. Each match is
     `{key, name, type, scope, collection, existing: [{id, name}]}`, one for every bundle catalog
-    whose recipe fingerprint equals one of the caller's listed catalogs. `scope` is `"listed"`
+    whose recipe (`recipe_hash`) equals one of the caller's listed catalogs. `scope` is `"listed"`
     (top-level, `collection` empty) or `"scoped"` (a collection's own, `collection` its title).
     `existing` is sorted by name, then id, and `matches` is `[]` when nothing matches.
   - `POST /api/p/{i}/import`, body `{bundle, reuse}`, answers 201 with `{catalogs, collections}`
@@ -197,12 +197,12 @@ Six route-semantics facts the client has to honour:
     point at; a reused catalog gets no new row and is not in `catalogs`.
 
   Both import routes run `prepareBundle` first: `Bundle.Validate`, then `checkRecipe` on every
-  catalog, which stamps the fingerprint its row stores. So a bad file or recipe is a 400 (a recipe
-  error names the catalog's key), and a TMDB outage a 502. Import runs all of that again rather
-  than relying on an earlier check, then every form check before its transaction opens; the reuse
-  targets are checked inside it, and any failure writes nothing. The two import routes take a body
-  up to `maxBundleBodyBytes` (4 MiB, `decodeJSONLimit`); every other route keeps the 1 MiB
-  `maxRequestBodyBytes`, and either limit exceeded is a 413.
+  catalog, which replaces its params with the canonical form its row stores. So a bad file or
+  recipe is a 400 (a recipe error names the catalog's key), and a TMDB outage a 502. Import runs
+  all of that again rather than relying on an earlier check, then every form check before its
+  transaction opens; the reuse targets are checked inside it, and any failure writes nothing. The
+  two import routes take a body up to `maxBundleBodyBytes` (4 MiB, `decodeJSONLimit`); every
+  other route keeps the 1 MiB `maxRequestBodyBytes`, and either limit exceeded is a 413.
 - **Selection lives on the rows themselves, not a join table.** `catalogs.home_sort_order`/
   `show_in_home` and `collections.home_sort_order` are columns on the owning row; the selection
   endpoints are `owner_id = ? AND home_sort_order IS NOT

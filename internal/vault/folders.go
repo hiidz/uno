@@ -152,11 +152,10 @@ func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collect
 		OwnerID:      profileID,
 		CollectionID: &collectionID,
 		TakenFrom:    spec.TakenFrom,
-		Fingerprint:  spec.Fingerprint,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if err := insertCatalog(ctx, tx, c); err != nil {
+	if _, err := insertCatalog(ctx, tx, c); err != nil {
 		return uuid.Nil, err
 	}
 	created[spec.Key] = c.ID

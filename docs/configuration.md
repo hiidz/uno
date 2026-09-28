@@ -143,8 +143,13 @@ run `go run ./cmd/server migrate --dry-run --db <path>`; in the image, pass `mig
   `-wal` and `-shm` files, and it removes any it created;
 - copies the database into a temporary directory with `VACUUM INTO`;
 - runs every pending migration on the copy;
-- prints the versions, each migration's notes, and every table's row count before and after.
-  When a migration fails, it prints the report up to that point, then the error.
+- checks recipes while the copy's catalogs still hold their own params (a database before
+  migration 2). It reads each catalog's params before migrating, and after it compares them with
+  the catalog's recipe through the live `provider.SameRecipe`: the same discover query, shuffle,
+  TMDB collection and genre options. It makes no TMDB call;
+- prints the versions, each migration's notes, the recipe check's count and every mismatch, and
+  every table's row count before and after. When a migration fails, it prints the report up to
+  that point, then the error.
 
 **Upgrading the deployed `uno-data` volume.** The volume holds real data, so never
 `docker compose down -v` it.
@@ -154,9 +159,9 @@ run `go run ./cmd/server migrate --dry-run --db <path>`; in the image, pass `mig
    `docker volume ls | grep uno-data` gives `<vol>`.
 2. Rehearse on the copy:
    `docker run --rm -v "$PWD/uno-<date>":/data <new-image> migrate --dry-run --db /data/vault.db`.
-   The row counts should reconcile and every note should be one you expect. If you also run
-   the new build locally against the copy, never push from it: that would add a localhost addon
-   to the real Nuvio profile.
+   The row counts should reconcile, every note should be one you expect, and the recipe check
+   should find no mismatch. If you also run the new build locally against the copy, never push
+   from it: that would add a localhost addon to the real Nuvio profile.
 3. Deploy. The server writes its backup, migrates, and only then serves.
 4. Roll back by restoring the backup and redeploying the previous image. Always restore first.
    A build with migrations refuses a database newer than it knows. The build from before

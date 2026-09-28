@@ -177,7 +177,7 @@ func TestTakeCatalogRejectsStaleSourceRows(t *testing.T) {
 		arg   string
 	}{
 		{"overlong name", `UPDATE catalogs SET name = ? WHERE id = ?`, strings.Repeat("n", maxNameLen+1)},
-		{"overlong params", `UPDATE catalogs SET params = ? WHERE id = ?`, strings.Repeat("p", maxParamsLen+1)},
+		{"overlong params", `UPDATE recipes SET params = ? WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)`, strings.Repeat("p", maxParamsLen+1)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := db.conn.ExecContext(ctx, tt.query, tt.arg, source.ID.String()); err != nil {
@@ -185,9 +185,11 @@ func TestTakeCatalogRejectsStaleSourceRows(t *testing.T) {
 			}
 			// Restored before the next case runs, so each one tests its field alone.
 			t.Cleanup(func() {
-				if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = 'Source', params = '{}' WHERE id = ?`,
-					source.ID.String()); err != nil {
+				if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = 'Source' WHERE id = ?`, source.ID.String()); err != nil {
 					t.Errorf("restoring the catalog row: %v", err)
+				}
+				if _, err := db.conn.ExecContext(ctx, `UPDATE recipes SET params = '{}' WHERE hash = ?`, source.RecipeHash); err != nil {
+					t.Errorf("restoring the recipe row: %v", err)
 				}
 			})
 
@@ -392,7 +394,7 @@ func TestImportBundleStoresNormalizedValues(t *testing.T) {
 	f := &bc.Folders[0]
 	f.Title, f.TileShape, f.CoverEmoji, f.CoverImageURL = " Folder ", "", " 🎃 ", " https://example.com/cover.jpg "
 
-	catalogs, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), stampFingerprints(b), nil)
+	catalogs, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), b, nil)
 	if err != nil {
 		t.Fatalf("ImportBundle: %v", err)
 	}
@@ -409,7 +411,7 @@ func TestTakeCopiesStoredValuesAsTheyAre(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, taker := newTestProfile(t, db, "owner"), newTestProfile(t, db, "taker")
-	scoped := &NewScopedCatalog{Key: "k", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}", Fingerprint: "fp"}
+	scoped := &NewScopedCatalog{Key: "k", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}"}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
 		Title: "Source", IsPublic: true, Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: scoped}}}},
 	})

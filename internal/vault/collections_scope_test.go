@@ -126,7 +126,7 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("saving with one ref remaining: %v", err)
 	}
-	remaining, err := db.queryCatalogs(ctx, "id = ?", scoped.ID.String())
+	remaining, err := db.queryCatalogs(ctx, "c.id = ?", scoped.ID.String())
 	if err != nil {
 		t.Fatalf("querying for scoped catalog: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("saving with no refs: %v", err)
 	}
-	remaining, err = db.queryCatalogs(ctx, "id = ?", scoped.ID.String())
+	remaining, err = db.queryCatalogs(ctx, "c.id = ?", scoped.ID.String())
 	if err != nil {
 		t.Fatalf("querying for scoped catalog after last ref dropped: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestUpdateUserCollectionRollsBackNewCatalogOnLaterFolderFailure(t *testing.
 		t.Fatalf("expected the duplicate ref in folder 2 to fail the save")
 	}
 
-	remaining, err := db.queryCatalogs(ctx, "name = ?", "New Scoped")
+	remaining, err := db.queryCatalogs(ctx, "c.name = ?", "New Scoped")
 	if err != nil {
 		t.Fatalf("querying for the new catalog: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestUpdateUserCollectionResolvesSharedNewKeyToOneCatalog(t *testing.T) {
 	}
 
 	for name, want := range map[string]int{"Shared": 1, "Twin": 2} {
-		got, err := db.queryCatalogs(ctx, "name = ?", name)
+		got, err := db.queryCatalogs(ctx, "c.name = ?", name)
 		if err != nil {
 			t.Fatalf("querying catalogs named %q: %v", name, err)
 		}

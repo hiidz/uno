@@ -30,19 +30,13 @@ func readTestBundle(t *testing.T) Bundle {
 	return b
 }
 
-// testFingerprint stands in for provider.Fingerprint, which vault can't
-// import: the fingerprint api.prepareBundle stamps on each bundle catalog
-// before an import, and the one the test rows are stored with.
-func testFingerprint(catalogType, params string) string {
-	return "fp:" + catalogType + ":" + params
-}
-
-// stampFingerprints sets every catalog's fingerprint in b the way
-// api.prepareBundle does.
-func stampFingerprints(b Bundle) Bundle {
+// stampRecipeHashes sets every catalog's RecipeHash in b to a stand-in
+// naming its type and params, the field extractBundle fills from a stored
+// row, so bundleCollectionHash can hash a bundle read from a file.
+func stampRecipeHashes(b Bundle) Bundle {
 	stamp := func(catalogs []BundleCatalog) {
 		for i := range catalogs {
-			catalogs[i].Fingerprint = testFingerprint(catalogs[i].Type, string(catalogs[i].Params))
+			catalogs[i].RecipeHash = "fp:" + catalogs[i].Type + ":" + string(catalogs[i].Params)
 		}
 	}
 	stamp(b.Catalogs)
@@ -148,8 +142,7 @@ func newExportFixture(t *testing.T) exportFixture {
 	x, err := db.CreateUserCollection(ctx, f.owner, CollectionForm{
 		Title: "X", ViewMode: "ROWS",
 		Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{
-			{New: &NewScopedCatalog{Key: "s", Type: "movie", Name: f.scopedName, Provider: "tmdb", Params: `{"sort_by":"s"}`,
-				Fingerprint: testFingerprint("movie", `{"sort_by":"s"}`)}},
+			{New: &NewScopedCatalog{Key: "s", Type: "movie", Name: f.scopedName, Provider: "tmdb", Params: `{"sort_by":"s"}`}},
 			{CatalogID: &f.c.ID, Genre: "Drama"},
 			{CatalogID: &f.a.ID},
 		}}},
@@ -165,13 +158,12 @@ func newExportFixture(t *testing.T) exportFixture {
 	return f
 }
 
-// createListed creates a listed movie catalog named name, stored with its
-// testFingerprint.
+// createListed creates a listed movie catalog named name.
 func createListed(t *testing.T, db *DB, owner uuid.UUID, name string) Catalog {
 	t.Helper()
 	params := `{"sort_by":"` + name + `"}`
 	c, err := db.CreateUserCatalog(context.Background(), owner, CatalogForm{
-		Type: "movie", Name: name, Provider: "tmdb", Params: params, Fingerprint: testFingerprint("movie", params),
+		Type: "movie", Name: name, Provider: "tmdb", Params: params,
 	})
 	if err != nil {
 		t.Fatalf("create %s: %v", name, err)
@@ -289,13 +281,13 @@ func TestExportBundleRejectsIDs(t *testing.T) {
 
 // Import writes the fixture as new rows: private, listed or scoped as the
 // file places them, never linked, off the home screen, version 1 and never
-// pushed, with the titles and fingerprints it was given and compacted params.
+// pushed, with the titles it was given, compacted params, and their recipes.
 func TestImportBundleWritesNewRows(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 	importer := newTestProfile(t, db, "importer")
 
-	catalogs, collections, err := db.ImportBundle(ctx, importer, stampFingerprints(readTestBundle(t)), nil)
+	catalogs, collections, err := db.ImportBundle(ctx, importer, readTestBundle(t), nil)
 	if err != nil {
 		t.Fatalf("ImportBundle: %v", err)
 	}
@@ -307,8 +299,8 @@ func TestImportBundleWritesNewRows(t *testing.T) {
 		if c.OwnerID != importer || c.IsPublic || c.CollectionID != nil || c.TakenFrom != nil || c.Linked || c.HomeSortOrder != nil {
 			t.Errorf("listed %q = %+v, want a private, unlinked, listed row off Home", c.Name, c)
 		}
-		if want := testFingerprint(c.Type, c.Params); c.Fingerprint != want {
-			t.Errorf("listed %q fingerprint = %q, want %q", c.Name, c.Fingerprint, want)
+		if want := RecipeHash(c.Type, c.Provider, c.Params); c.RecipeHash != want {
+			t.Errorf("listed %q recipe hash = %q, want %q", c.Name, c.RecipeHash, want)
 		}
 	}
 	if got := catalogs[0].Params; got != `{"sort_by":"popularity.desc"}` {
@@ -327,8 +319,8 @@ func TestImportBundleWritesNewRows(t *testing.T) {
 	if slashers.CollectionID == nil || *slashers.CollectionID != halloween.ID || slashers.TakenFrom != nil {
 		t.Errorf("Slashers = %+v, want it scoped to the new collection, unlinked", slashers)
 	}
-	if want := testFingerprint("movie", `{"sort_by":"revenue.desc"}`); slashers.Fingerprint != want {
-		t.Errorf("Slashers fingerprint = %q, want %q", slashers.Fingerprint, want)
+	if want := RecipeHash("movie", "tmdb", `{"sort_by":"revenue.desc"}`); slashers.RecipeHash != want {
+		t.Errorf("Slashers recipe hash = %q, want %q", slashers.RecipeHash, want)
 	}
 	requireRefs(t, halloween, 0, []FolderRef{{catalogs[0].ID, ""}, {slashers.ID, "Horror"}})
 	requireRefs(t, halloween, 1, []FolderRef{{slashers.ID, ""}})
@@ -359,7 +351,7 @@ func TestImportBundleTwiceGivesTwoSets(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 	importer := newTestProfile(t, db, "importer")
-	b := stampFingerprints(readTestBundle(t))
+	b := readTestBundle(t)
 
 	firstCatalogs, firstCollections, err := db.ImportBundle(ctx, importer, b, nil)
 	if err != nil {
@@ -406,7 +398,7 @@ func TestImportBundleReuse(t *testing.T) {
 			db := newTestDB(t)
 			importer := newTestProfile(t, db, "importer")
 			mine := createListed(t, db, importer, "Mine")
-			b := stampFingerprints(readTestBundle(t))
+			b := readTestBundle(t)
 			if tc.sameGenre {
 				b.Collections[0].Folders[0].Refs[1].Genre = ""
 			}
@@ -491,7 +483,7 @@ func TestImportBundleFailsWhole(t *testing.T) {
 			db := newTestDB(t)
 			importer := newTestProfile(t, db, "importer")
 			b, reuse := tc.setup(t, db, importer)
-			before, err := db.queryCatalogs(ctx, "owner_id = ?", importer.String())
+			before, err := db.queryCatalogs(ctx, "c.owner_id = ?", importer.String())
 			if err != nil {
 				t.Fatalf("queryCatalogs: %v", err)
 			}
@@ -500,10 +492,10 @@ func TestImportBundleFailsWhole(t *testing.T) {
 				t.Fatalf("GetUserCollections: %v", err)
 			}
 
-			_, _, err = db.ImportBundle(ctx, importer, stampFingerprints(b), reuse)
+			_, _, err = db.ImportBundle(ctx, importer, b, reuse)
 			requireInvalid(t, err, tc.want)
 
-			after, err := db.queryCatalogs(ctx, "owner_id = ?", importer.String())
+			after, err := db.queryCatalogs(ctx, "c.owner_id = ?", importer.String())
 			if err != nil {
 				t.Fatalf("queryCatalogs: %v", err)
 			}
@@ -539,7 +531,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 	}
 
 	importer := newTestProfile(t, f.db, "importer")
-	_, collections, err := f.db.ImportBundle(ctx, importer, stampFingerprints(decoded), nil)
+	_, collections, err := f.db.ImportBundle(ctx, importer, decoded, nil)
 	if err != nil {
 		t.Fatalf("ImportBundle: %v", err)
 	}
@@ -598,10 +590,10 @@ func TestImportBundleRollsBackWrittenRows(t *testing.T) {
 		Folders: []BundleFolder{{Title: "F", Refs: []BundleRef{{Catalog: "c2"}}}},
 	})
 
-	if _, _, err := db.ImportBundle(ctx, importer, stampFingerprints(b), nil); err == nil || !strings.Contains(err.Error(), "boom") {
+	if _, _, err := db.ImportBundle(ctx, importer, b, nil); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v, want the trigger's abort", err)
 	}
-	all, err := db.queryCatalogs(ctx, "owner_id = ?", importer.String())
+	all, err := db.queryCatalogs(ctx, "c.owner_id = ?", importer.String())
 	if err != nil {
 		t.Fatalf("queryCatalogs: %v", err)
 	}

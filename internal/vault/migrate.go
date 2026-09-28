@@ -29,13 +29,25 @@ type AppliedMigration struct {
 
 // MigrationReport is what DryRun found: the schema version before and after,
 // the migrations applied between them, and each table's row count before and
-// after, keyed by table name.
+// after, keyed by table name. When the copy's catalogs still had their own
+// params before migrating, RecipesChecked is how many catalogs the recipe
+// check compared before and after, and RecipeMismatches names each one it
+// found different, with the difference.
 type MigrationReport struct {
-	From, To   int
-	Applied    []AppliedMigration
-	RowsBefore map[string]int
-	RowsAfter  map[string]int
+	From, To         int
+	Applied          []AppliedMigration
+	RowsBefore       map[string]int
+	RowsAfter        map[string]int
+	RecipesChecked   int
+	RecipeMismatches []string
 }
+
+// RecipeCheck reports how before and after, one catalog's params before and
+// after migrating, would fetch different titles as a recipe of catalogType
+// and catalogProvider, or returns nil when they fetch the same ones. It is live code, which a
+// migration can't run, so DryRun takes it from its caller:
+// provider.SameRecipe, which this package can't import.
+type RecipeCheck func(catalogType, catalogProvider, before, after string) error
 
 // migrate brings the database at path up to the last version in list, on a
 // connection of its own with foreign keys off, before InitDB opens the pool.
@@ -266,13 +278,15 @@ func logMigrated(backup string, applied []AppliedMigration) {
 // DryRun reports what migrating the database at path would do, without
 // writing to it: the file is opened read-only and copied to a temporary
 // directory, and every pending migration runs on the copy, which is then
-// deleted.
-func DryRun(ctx context.Context, path string) (MigrationReport, error) {
-	return dryRun(ctx, path, migrations.All())
+// deleted. While the copy's catalogs hold their own params, sameRecipe,
+// which is required, compares each catalog's params from before migrating
+// with its recipe's after.
+func DryRun(ctx context.Context, path string, sameRecipe RecipeCheck) (MigrationReport, error) {
+	return dryRun(ctx, path, migrations.All(), sameRecipe)
 }
 
 // dryRun is DryRun over list.
-func dryRun(ctx context.Context, path string, list []migrations.Migration) (MigrationReport, error) {
+func dryRun(ctx context.Context, path string, list []migrations.Migration, sameRecipe RecipeCheck) (MigrationReport, error) {
 	dir, err := os.MkdirTemp("", "uno-migrate-")
 	if err != nil {
 		return MigrationReport{}, fmt.Errorf("creating a directory for the copy: %w", err)
@@ -283,7 +297,7 @@ func dryRun(ctx context.Context, path string, list []migrations.Migration) (Migr
 	if err := copyReadOnly(ctx, path, copyPath); err != nil {
 		return MigrationReport{}, err
 	}
-	return migrateCopy(ctx, copyPath, list)
+	return migrateCopy(ctx, copyPath, list, sameRecipe)
 }
 
 // copyReadOnly writes a copy of the database at src to dst, opening src
@@ -328,14 +342,110 @@ func removeFiles(paths []string) {
 }
 
 // migrateCopy migrates the throwaway copy at path through list, counting
-// every table's rows before and after.
-func migrateCopy(ctx context.Context, path string, list []migrations.Migration) (MigrationReport, error) {
+// every table's rows before and after, and checks its recipes with
+// sameRecipe (checkRecipes).
+func migrateCopy(ctx context.Context, path string, list []migrations.Migration, sameRecipe RecipeCheck) (MigrationReport, error) {
 	d, err := openMigrationDB(path, "")
 	if err != nil {
 		return MigrationReport{}, err
 	}
 	defer func() { _ = d.Close() }()
-	return migrateCopyOpen(ctx, d, list)
+	return checkRecipes(ctx, d, sameRecipe, func() (MigrationReport, error) {
+		return migrateCopyOpen(ctx, d, list)
+	})
+}
+
+// checkRecipes reads every catalog's params from d, runs migrate, then
+// compares each with its recipe's params after, through sameRecipe, adding
+// what it found to migrate's report. It checks nothing when d's catalogs
+// hold no params of their own beforehand, a database already past
+// migration 2 or an empty one, or when migrate fails.
+func checkRecipes(ctx context.Context, d *sql.DB, sameRecipe RecipeCheck, migrate func() (MigrationReport, error)) (MigrationReport, error) {
+	before, err := catalogParamsBefore(ctx, d)
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	report, err := migrate()
+	if err != nil || len(before) == 0 {
+		return report, err
+	}
+	report.RecipesChecked = len(before)
+	report.RecipeMismatches, err = recipeMismatches(ctx, d, before, sameRecipe)
+	return report, err
+}
+
+// paramsBefore is one catalog as it was before migrating: its name, type,
+// provider and own params.
+type paramsBefore struct {
+	id, name, catalogType, provider, params string
+}
+
+// catalogParamsBefore reads every catalog's own params from d, in id order,
+// or nothing when catalogs has no params column.
+func catalogParamsBefore(ctx context.Context, d *sql.DB) ([]paramsBefore, error) {
+	var hasParams bool
+	err := d.QueryRowContext(ctx, `SELECT count(*) > 0 FROM pragma_table_info('catalogs') WHERE name = 'params'`).Scan(&hasParams)
+	if err != nil || !hasParams {
+		return nil, err
+	}
+	return readParamsBefore(ctx, d)
+}
+
+// readParamsBefore reads every catalog's own params from d, in id order.
+func readParamsBefore(ctx context.Context, d *sql.DB) ([]paramsBefore, error) {
+	rows, err := d.QueryContext(ctx, `SELECT id, name, type, provider, params FROM catalogs ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("reading catalogs' params: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var catalogs []paramsBefore
+	for rows.Next() {
+		var c paramsBefore
+		if err := rows.Scan(&c.id, &c.name, &c.catalogType, &c.provider, &c.params); err != nil {
+			return nil, fmt.Errorf("reading catalogs' params: %w", err)
+		}
+		catalogs = append(catalogs, c)
+	}
+	return catalogs, rows.Err()
+}
+
+// recipeMismatches compares each of before with its catalog's recipe params
+// in d through sameRecipe, and describes each catalog that differs or has no
+// recipe.
+func recipeMismatches(ctx context.Context, d *sql.DB, before []paramsBefore, sameRecipe RecipeCheck) ([]string, error) {
+	after, err := recipeParamsByCatalog(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	var mismatches []string
+	for _, c := range before {
+		params, ok := after[c.id]
+		if !ok {
+			mismatches = append(mismatches, fmt.Sprintf("catalog %s (%s): no recipe after migrating", c.id, c.name))
+		} else if err := sameRecipe(c.catalogType, c.provider, c.params, params); err != nil {
+			mismatches = append(mismatches, fmt.Sprintf("catalog %s (%s): %v", c.id, c.name, err))
+		}
+	}
+	return mismatches, nil
+}
+
+// recipeParamsByCatalog reads each catalog's recipe params from d, keyed by
+// catalog id.
+func recipeParamsByCatalog(ctx context.Context, d *sql.DB) (map[string]string, error) {
+	rows, err := d.QueryContext(ctx, `SELECT c.id, r.params FROM `+catalogsWithRecipes)
+	if err != nil {
+		return nil, fmt.Errorf("reading recipes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	params := map[string]string{}
+	for rows.Next() {
+		var id, p string
+		if err := rows.Scan(&id, &p); err != nil {
+			return nil, fmt.Errorf("reading recipes: %w", err)
+		}
+		params[id] = p
+	}
+	return params, rows.Err()
 }
 
 // migrateCopyOpen is migrateCopy over the connection d has open to the copy.

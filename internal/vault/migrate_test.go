@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault/migrations"
 )
 
@@ -237,12 +239,12 @@ func TestMigrateRollsBackABrokenForeignKey(t *testing.T) {
 // A database at a version this build doesn't know — a newer build's, or a
 // negative one set by hand — is refused before anything is written.
 func TestInitDBRefusesAnUnknownVersion(t *testing.T) {
-	for _, version := range []string{"2", "-1"} {
+	for _, version := range []string{"3", "-1"} {
 		t.Run(version, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "vault.db")
 			execSQL(t, path, `PRAGMA user_version = `+version)
 			_, err := InitDB(path)
-			if err == nil || !strings.Contains(err.Error(), "schema version "+version+", which this build (versions 0 to 1) cannot read") {
+			if err == nil || !strings.Contains(err.Error(), "schema version "+version+", which this build (versions 0 to 2) cannot read") {
 				t.Fatalf("InitDB = %v, want the unknown-version refusal", err)
 			}
 			if got := backupsOf(t, path); len(got) != 0 {
@@ -303,17 +305,14 @@ func TestApplyMigrationRefusesAVersionMovedMeanwhile(t *testing.T) {
 }
 
 // Prod's database adopts migration 1 with every row as it was — ids,
-// versions and pushed versions included — and the pool reads it.
-func TestInitDBAdoptsAProdDatabaseUnchanged(t *testing.T) {
-	ctx := context.Background()
+// versions and pushed versions included.
+func TestMigrationOneAdoptsAProdDatabaseUnchanged(t *testing.T) {
 	path := fixtureDB(t)
 	before := dumpRows(t, path)
 
-	db, err := InitDB(path)
-	if err != nil {
-		t.Fatalf("InitDB: %v", err)
+	if err := migrate(context.Background(), path, migrations.All()[:1]); err != nil {
+		t.Fatalf("migrate to 1: %v", err)
 	}
-	defer db.Close()
 
 	if got := userVersionOf(t, path); got != "1" {
 		t.Errorf("user_version = %s, want 1", got)
@@ -324,60 +323,234 @@ func TestInitDBAdoptsAProdDatabaseUnchanged(t *testing.T) {
 	if got := backupsOf(t, path); len(got) != 1 {
 		t.Errorf("backups = %q, want one", got)
 	}
+}
+
+// fixtureAtV1 is the fixture migrated to schema version 1, then changed by
+// statements, which may be empty.
+func fixtureAtV1(t *testing.T, statements string) string {
+	t.Helper()
+	path := fixtureDB(t)
+	if err := migrate(context.Background(), path, migrations.All()[:1]); err != nil {
+		t.Fatalf("migrate to 1: %v", err)
+	}
+	if statements != "" {
+		execSQL(t, path, statements)
+	}
+	return path
+}
+
+// keptColumns lists the columns of each table that migration 2 must leave
+// exactly as they were: every one but the catalog columns recipes replace
+// and taken_hash, which it remaps.
+var keptColumns = map[string]string{
+	"profiles": `id, token, nuvio_user_id, nuvio_profile_index, nuvio_profile_uuid`,
+	"folders": `id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
+		focus_gif_url, focus_gif_enabled, hero_video_url, hero_backdrop_url, title_logo_url`,
+	"folder_catalogs": `folder_id, catalog_id, sort_order, genre`,
+	"collections": `id, title, owner_id, is_public, pin_to_top, view_mode, show_all_tab, backdrop_image_url,
+		focus_glow_enabled, home_sort_order, version, pushed_version, taken_from, created_at, updated_at`,
+	"catalogs": `id, name, owner_id, is_public, collection_id, home_sort_order, show_in_home, taken_from,
+		created_at, updated_at`,
+}
+
+// dumpKept returns keptColumns of every row of each table, in rowid order.
+func dumpKept(t *testing.T, path string) map[string][]string {
+	t.Helper()
+	dump := map[string][]string{}
+	for table, columns := range keptColumns {
+		dump[table] = queryColumn(t, path, `SELECT json_array(`+columns+`) FROM `+table+` ORDER BY rowid`)
+	}
+	return dump
+}
+
+// Migration 2 over prod's database, odd params included, keeps every id,
+// version and placement, gives each catalog the recipe the live
+// canonicalizer and RecipeHash make of its params, one per distinct recipe,
+// and the pool reads the result.
+func TestInitDBMovesTheFixtureToRecipes(t *testing.T) {
+	ctx := context.Background()
+	path := fixtureAtV1(t, oddParams)
+	before := dumpKept(t, path)
+	oldParams := queryPairs(t, path, `SELECT id, type || char(9) || params FROM catalogs`)
+
+	db, err := InitDB(path)
+	if err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer db.Close()
+
+	if got := userVersionOf(t, path); got != "2" {
+		t.Errorf("user_version = %s, want 2", got)
+	}
+	if after := dumpKept(t, path); !reflect.DeepEqual(after, before) {
+		t.Errorf("rows changed by migration 2:\nbefore %q\nafter  %q", before, after)
+	}
+	if got := queryColumn(t, path, `SELECT name FROM pragma_table_info('catalogs') WHERE name IN ('type', 'provider', 'params', 'fingerprint')`); len(got) != 0 {
+		t.Errorf("catalogs still has %q", got)
+	}
+	if got := queryColumn(t, path, `SELECT count(*) FROM recipes`); !slices.Equal(got, []string{"9"}) {
+		t.Errorf("recipes = %s, want 9", got)
+	}
+	for id, recipe := range queryPairs(t, path, `SELECT c.id, r.type || char(9) || r.provider || char(9) || r.params || char(9) || c.recipe_hash FROM catalogs c JOIN recipes r ON r.hash = c.recipe_hash`) {
+		catalogType, params, _ := strings.Cut(oldParams[id], "\t")
+		canonical, err := provider.CanonicalParams(catalogType, "tmdb", params)
+		if err != nil {
+			t.Fatalf("catalog %s: %v", id, err)
+		}
+		want := strings.Join([]string{catalogType, "tmdb", canonical, RecipeHash(catalogType, "tmdb", canonical)}, "\t")
+		if recipe != want {
+			t.Errorf("catalog %s's recipe = %q, want %q", id, recipe, want)
+		}
+	}
 
 	alice := uuid.MustParse("aaaaaaaa-0000-4000-8000-000000000001")
 	bob := uuid.MustParse("aaaaaaaa-0000-4000-8000-000000000002")
-	if catalogs, err := db.GetUserCatalogs(ctx, alice); err != nil || len(catalogs) != 4 {
-		t.Errorf("GetUserCatalogs(alice) = %d catalogs, %v; want 4", len(catalogs), err)
+	if catalogs, err := db.GetUserCatalogs(ctx, alice); err != nil || len(catalogs) != 4 || catalogs[0].Params == "" {
+		t.Errorf("GetUserCatalogs(alice) = %+v, %v; want 4 with their recipes", catalogs, err)
 	}
 	if collections, err := db.GetUserCollections(ctx, bob); err != nil || len(collections) != 2 {
 		t.Errorf("GetUserCollections(bob) = %d collections, %v; want 2", len(collections), err)
 	}
 }
 
-// The fixture's linked copies are in or out of step as its header says, by
-// the link hashes the code computes today.
-func TestFixtureLinksMatchTheirLabels(t *testing.T) {
-	ctx := context.Background()
-	db, err := InitDB(fixtureDB(t))
+// queryPairs runs a query of two TEXT columns against the database at path
+// and returns the rows as a map from the first to the second.
+func queryPairs(t *testing.T, path, query string) map[string]string {
+	t.Helper()
+	d, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
-		t.Fatalf("InitDB: %v", err)
+		t.Fatal(err)
 	}
-	defer db.Close()
+	defer d.Close()
+	rows, err := d.Query(query)
+	if err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+	defer rows.Close()
+	pairs := map[string]string{}
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			t.Fatal(err)
+		}
+		pairs[key] = value
+	}
+	return pairs
+}
 
-	for id, inStep := range map[string]bool{
-		"cacacaca-0000-4000-8000-000000000009": true,
-		"cacacaca-0000-4000-8000-000000000010": false,
-		"cacacaca-0000-4000-8000-000000000011": true,
-		"cacacaca-0000-4000-8000-000000000017": true,
-	} {
-		var takenHash, name, fingerprint string
-		err := db.conn.QueryRowContext(ctx, `
-			SELECT c.taken_hash, s.name, s.fingerprint FROM catalogs c JOIN catalogs s ON s.id = c.taken_from WHERE c.id = ?
-		`, id).Scan(&takenHash, &name, &fingerprint)
+// linkState is whether a linked copy's taken_hash is its own link hash now,
+// and its source's.
+type linkState struct{ matchesCopy, matchesSource bool }
+
+// catalogLinkStates reads each of ids' link state in db, by the link hashes
+// the code computes over recipe hashes.
+func catalogLinkStates(t *testing.T, db *DB, ids ...string) map[string]linkState {
+	t.Helper()
+	states := map[string]linkState{}
+	for _, id := range ids {
+		var takenHash, name, recipeHash, sourceName, sourceRecipe string
+		err := db.conn.QueryRowContext(context.Background(), `
+			SELECT c.taken_hash, c.name, c.recipe_hash, s.name, s.recipe_hash
+			FROM catalogs c JOIN catalogs s ON s.id = c.taken_from WHERE c.id = ?
+		`, id).Scan(&takenHash, &name, &recipeHash, &sourceName, &sourceRecipe)
 		if err != nil {
 			t.Fatalf("catalog %s: %v", id, err)
 		}
-		if got := catalogHash(name, fingerprint) == takenHash; got != inStep {
-			t.Errorf("catalog %s in step = %t, want %t", id, got, inStep)
-		}
+		states[id] = linkState{catalogHash(name, recipeHash) == takenHash, catalogHash(sourceName, sourceRecipe) == takenHash}
 	}
-	for id, inStep := range map[string]bool{
-		"cccccccc-0000-4000-8000-000000000004": true,
-		"cccccccc-0000-4000-8000-000000000005": false,
-		"cccccccc-0000-4000-8000-000000000006": true,
-	} {
+	return states
+}
+
+// collectionLinkStates is catalogLinkStates for linked collections.
+func collectionLinkStates(t *testing.T, db *DB, ids ...string) map[string]linkState {
+	t.Helper()
+	ctx := context.Background()
+	states := map[string]linkState{}
+	for _, id := range ids {
 		var takenFrom, takenHash string
 		if err := db.conn.QueryRowContext(ctx, `SELECT taken_from, taken_hash FROM collections WHERE id = ?`, id).Scan(&takenFrom, &takenHash); err != nil {
+			t.Fatalf("collection %s: %v", id, err)
+		}
+		copyHash, err := storedCollectionHash(ctx, db.conn, uuid.MustParse(id))
+		if err != nil {
 			t.Fatalf("collection %s: %v", id, err)
 		}
 		sourceHash, err := storedCollectionHash(ctx, db.conn, uuid.MustParse(takenFrom))
 		if err != nil {
 			t.Fatalf("collection %s's source: %v", id, err)
 		}
-		if got := sourceHash == takenHash; got != inStep {
-			t.Errorf("collection %s in step = %t, want %t", id, got, inStep)
+		states[id] = linkState{copyHash == takenHash, sourceHash == takenHash}
+	}
+	return states
+}
+
+const (
+	inStep = "in step"
+	behind = "behind"
+)
+
+// Migration 2 remaps every taken_hash onto the link hashes over recipe
+// hashes, so the fixture's linked copies are in or out of step exactly as
+// its header says, and each copy, untouched since it was taken, still
+// matches its taken_hash.
+func TestFixtureLinksMatchTheirLabels(t *testing.T) {
+	db, err := InitDB(fixtureDB(t))
+	if err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer db.Close()
+
+	labels := map[string]string{
+		"cacacaca-0000-4000-8000-000000000009": inStep,
+		"cacacaca-0000-4000-8000-000000000010": behind,
+		"cacacaca-0000-4000-8000-000000000011": inStep,
+		"cacacaca-0000-4000-8000-000000000017": inStep,
+		"cccccccc-0000-4000-8000-000000000004": inStep,
+		"cccccccc-0000-4000-8000-000000000005": behind,
+		"cccccccc-0000-4000-8000-000000000006": inStep,
+	}
+	states := catalogLinkStates(t, db, "cacacaca-0000-4000-8000-000000000009", "cacacaca-0000-4000-8000-000000000010",
+		"cacacaca-0000-4000-8000-000000000011", "cacacaca-0000-4000-8000-000000000017")
+	maps.Copy(states, collectionLinkStates(t, db, "cccccccc-0000-4000-8000-000000000004", "cccccccc-0000-4000-8000-000000000005",
+		"cccccccc-0000-4000-8000-000000000006"))
+	for id, label := range labels {
+		if want := (linkState{matchesCopy: true, matchesSource: label == inStep}); states[id] != want {
+			t.Errorf("%s (%s): %+v, want %+v", id, label, states[id], want)
 		}
+	}
+}
+
+// A copy edited without being unlinked keeps pointing at its source's hash
+// by the live link hashes, so Update and Community judge it as they did
+// before migration 2.
+func TestMigrationTwoKeepsAnEditedCopyOnItsSource(t *testing.T) {
+	const edited = "cacacaca-0000-4000-8000-000000000011"
+	db, err := InitDB(fixtureAtV1(t, `UPDATE catalogs SET name = 'Renamed without unlinking' WHERE id = '`+edited+`'`))
+	if err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer db.Close()
+	if got, want := catalogLinkStates(t, db, edited)[edited], (linkState{matchesSource: true}); got != want {
+		t.Errorf("edited copy: %+v, want %+v", got, want)
+	}
+}
+
+// oddParams gives two of the fixture's catalogs params in forms the builder
+// never wrote: unknown keys, a zero value, unsorted keys, a trailing zero.
+const oddParams = `
+	UPDATE catalogs SET params = '{"vote_count_gte":0,"legacy_sort":"x","sort_by":"popularity.desc"}' WHERE id = 'cacacaca-0000-4000-8000-000000000001';
+	UPDATE catalogs SET params = '{"vote_average_gte":7.50,"sort_by":"first_air_date.desc","endpoint":"/discover/tv"}' WHERE id = 'cacacaca-0000-4000-8000-000000000008';
+`
+
+// The dry run's recipe check finds that every catalog's params, odd forms
+// included, fetch the same titles once canonical.
+func TestDryRunFindsCanonicalParamsFetchTheSameTitles(t *testing.T) {
+	report, err := DryRun(context.Background(), fixtureAtV1(t, oddParams), provider.SameRecipe)
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if report.RecipesChecked != 20 || len(report.RecipeMismatches) != 0 {
+		t.Errorf("recipe check: %d checked, mismatches %q; want 20 and none", report.RecipesChecked, report.RecipeMismatches)
 	}
 }
 
@@ -435,8 +608,9 @@ func listDir(t *testing.T, dir string) []string {
 	return names
 }
 
-// A dry run reports migration 1 over prod's database and leaves the file,
-// and the directory it sits in, exactly as they were.
+// A dry run reports both migrations over prod's database, with the recipe
+// check over every catalog, and leaves the file, and the directory it sits
+// in, exactly as they were.
 func TestDryRunWritesNothing(t *testing.T) {
 	path := fixtureDB(t)
 	dir := filepath.Dir(path)
@@ -446,21 +620,30 @@ func TestDryRunWritesNothing(t *testing.T) {
 	}
 	filesBefore := listDir(t, dir)
 
-	report, err := DryRun(context.Background(), path)
+	report, err := DryRun(context.Background(), path, provider.SameRecipe)
 	if err != nil {
 		t.Fatalf("DryRun: %v", err)
 	}
 
 	want := MigrationReport{
-		From: 0, To: 1,
-		Applied: []AppliedMigration{{Version: 1, Name: "baseline", Notes: []string{
-			"found 5 of 5 baseline tables already present; checked their columns",
-			"collections: kept the legacy column is_default",
-			"catalogs: kept the legacy column is_default",
-		}}},
-		RowsBefore: map[string]int{"profiles": 3, "collections": 6, "catalogs": 20, "folders": 11, "folder_catalogs": 18},
+		From: 0, To: 2,
+		Applied: []AppliedMigration{
+			{Version: 1, Name: "baseline", Notes: []string{
+				"found 5 of 5 baseline tables already present; checked their columns",
+				"collections: kept the legacy column is_default",
+				"catalogs: kept the legacy column is_default",
+			}},
+			{Version: 2, Name: "recipes", Notes: []string{
+				"stored 9 recipes for 20 catalogs",
+				"rewrote the params of 0 catalogs in canonical form",
+				"remapped catalog links: 3 in step, 1 behind their source, 0 edited since taken, 0 matching neither hash (left as they were)",
+				"remapped collection links: 2 in step, 1 behind their source, 0 edited since taken, 0 matching neither hash (left as they were)",
+			}},
+		},
+		RowsBefore:     map[string]int{"profiles": 3, "collections": 6, "catalogs": 20, "folders": 11, "folder_catalogs": 18},
+		RowsAfter:      map[string]int{"profiles": 3, "collections": 6, "catalogs": 20, "folders": 11, "folder_catalogs": 18, "recipes": 9},
+		RecipesChecked: 20,
 	}
-	want.RowsAfter = want.RowsBefore
 	if !reflect.DeepEqual(report, want) {
 		t.Errorf("report = %+v\nwant %+v", report, want)
 	}
@@ -469,6 +652,36 @@ func TestDryRunWritesNothing(t *testing.T) {
 	}
 	if filesAfter := listDir(t, dir); !slices.Equal(filesAfter, filesBefore) {
 		t.Errorf("directory = %q after the dry run, want %q", filesAfter, filesBefore)
+	}
+}
+
+// The recipe check names each catalog whose params before and after differ
+// by its lights, and checks nothing once the database is past migration 2.
+func TestDryRunReportsRecipeMismatches(t *testing.T) {
+	const odd = "cacacaca-0000-4000-8000-000000000008"
+	path := fixtureDB(t)
+	report, err := DryRun(context.Background(), path, func(catalogType, _, before, after string) error {
+		if catalogType == "series" && strings.Contains(before, "first_air_date") {
+			return errors.New("boom")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if want := []string{"catalog " + odd + " (Idea Board): boom"}; report.RecipesChecked != 20 || !slices.Equal(report.RecipeMismatches, want) {
+		t.Errorf("recipe check: %d checked, mismatches %q; want 20 and %q", report.RecipesChecked, report.RecipeMismatches, want)
+	}
+
+	if err := migrate(context.Background(), path, migrations.All()); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	report, err = DryRun(context.Background(), path, func(string, string, string, string) error {
+		t.Error("the recipe check ran on a database past migration 2")
+		return nil
+	})
+	if err != nil || report.RecipesChecked != 0 || report.From != 2 || report.To != 2 {
+		t.Errorf("dry run past migration 2 = %+v, %v; want nothing applied or checked", report, err)
 	}
 }
 
@@ -485,7 +698,7 @@ func TestDryRunKeepsSidecarsItDidNotCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := DryRun(context.Background(), path); err != nil {
+	if _, err := DryRun(context.Background(), path, provider.SameRecipe); err != nil {
 		t.Fatalf("DryRun: %v", err)
 	}
 	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
@@ -531,7 +744,7 @@ func TestDryRunFailures(t *testing.T) {
 				execSQL(t, path, tc.setup)
 			}
 			filesBefore := listDir(t, filepath.Dir(path))
-			report, err := dryRun(ctx, path, tc.list)
+			report, err := dryRun(ctx, path, tc.list, provider.SameRecipe)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("dryRun = %v, want an error containing %q", err, tc.want)
 			}

@@ -29,7 +29,7 @@ func TestCommunityRoutes(t *testing.T) {
 		t.Fatalf("ResolveOrCreateProfile (owner): %v", err)
 	}
 	catalog, err := db.CreateUserCatalog(ctx, owner.ID, vault.CatalogForm{
-		Type: "movie", Name: "Theirs", Provider: "tmdb", Params: `{"sort_by":"popularity.desc"}`, IsPublic: true, Fingerprint: "fp-theirs",
+		Type: "movie", Name: "Theirs", Provider: "tmdb", Params: `{"sort_by":"popularity.desc"}`, IsPublic: true,
 	})
 	if err != nil {
 		t.Fatalf("create public catalog: %v", err)

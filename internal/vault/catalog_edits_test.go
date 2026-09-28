@@ -33,7 +33,7 @@ func scopedCatalogInFolder(t *testing.T, db *DB, owner, collectionID uuid.UUID, 
 // editOf is an edit that leaves c exactly as it is — the starting point each
 // test changes one field of.
 func editOf(c Catalog) ScopedCatalogEdit {
-	return ScopedCatalogEdit{ID: c.ID, Type: c.Type, Provider: c.Provider, Name: c.Name, Params: c.Params, Fingerprint: c.Fingerprint}
+	return ScopedCatalogEdit{ID: c.ID, Type: c.Type, Provider: c.Provider, Name: c.Name, Params: c.Params}
 }
 
 // sameFolders is a save form that keeps saved's folders and refs as they are.
@@ -57,7 +57,6 @@ func TestUpdateUserCollectionAppliesCatalogEdits(t *testing.T) {
 	edit := editOf(catalog)
 	edit.Name = "After"
 	edit.Params = `{"sort_by":"popularity.desc"}`
-	edit.Fingerprint = "new-fingerprint"
 	got, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
 		Title:        "Renamed",
 		Folders:      sameFolders(saved),
@@ -73,12 +72,12 @@ func TestUpdateUserCollectionAppliesCatalogEdits(t *testing.T) {
 		t.Fatalf("response catalogs = %+v, want the edited catalog", got.Catalogs)
 	}
 
-	stored, err := db.queryCatalogs(ctx, "id = ?", catalog.ID.String())
+	stored, err := db.queryCatalogs(ctx, "c.id = ?", catalog.ID.String())
 	if err != nil {
 		t.Fatalf("querying edited catalog: %v", err)
 	}
-	if stored[0].Fingerprint != "new-fingerprint" || stored[0].CollectionID == nil {
-		t.Fatalf("stored catalog = %+v, want the new fingerprint and still scoped", stored[0])
+	if stored[0].RecipeHash != edit.recipeHash() || stored[0].CollectionID == nil {
+		t.Fatalf("stored catalog = %+v, want the new recipe and still scoped", stored[0])
 	}
 }
 
@@ -174,7 +173,7 @@ func TestUpdateUserCollectionMovesCatalogToLibrary(t *testing.T) {
 }
 
 // An edit that changes nothing is skipped, so the row's updated_at stays put;
-// an edit that only brings the fingerprint up to date still writes.
+// an edit that changes only the recipe still writes.
 func TestUpdateUserCollectionSkipsNoOpCatalogEdit(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -210,11 +209,11 @@ func TestUpdateUserCollectionSkipsNoOpCatalogEdit(t *testing.T) {
 		t.Fatalf("updated_at after a no-op edit = %s, want %s", got, past)
 	}
 
-	refingerprinted := editOf(catalog)
-	refingerprinted.Fingerprint = "recomputed"
-	save(refingerprinted)
+	recipeOnly := editOf(catalog)
+	recipeOnly.Params = `{"sort_by":"revenue.desc"}`
+	save(recipeOnly)
 	if got := updatedAt(); got == past {
-		t.Fatalf("updated_at after a fingerprint-only edit = %s, want it rewritten", got)
+		t.Fatalf("updated_at after a recipe-only edit = %s, want it rewritten", got)
 	}
 }
 

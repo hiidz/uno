@@ -40,7 +40,7 @@ func newBundleRouteFixture(t *testing.T) bundleRouteFixture {
 	}
 	listed := func(name, params string) vault.Catalog {
 		c, err := db.CreateUserCatalog(ctx, caller.ID, vault.CatalogForm{
-			Type: "movie", Name: name, Provider: "tmdb", Params: params, Fingerprint: fingerprintOf(t, params),
+			Type: "movie", Name: name, Provider: "tmdb", Params: params,
 		})
 		if err != nil {
 			t.Fatalf("create %s: %v", name, err)
@@ -51,7 +51,7 @@ func newBundleRouteFixture(t *testing.T) bundleRouteFixture {
 	f.x, err = db.CreateUserCollection(ctx, caller.ID, vault.CollectionForm{
 		Title: "X", ViewMode: "ROWS",
 		Folders: []vault.FolderData{{Title: "F", Catalogs: []vault.FolderCatalogRef{
-			{New: &vault.NewScopedCatalog{Key: "s", Type: "movie", Name: "S", Provider: "tmdb", Params: f.rich, Fingerprint: fingerprintOf(t, f.rich)}},
+			{New: &vault.NewScopedCatalog{Key: "s", Type: "movie", Name: "S", Provider: "tmdb", Params: f.rich}},
 			{CatalogID: &f.b.ID},
 		}}},
 	})
@@ -61,13 +61,15 @@ func newBundleRouteFixture(t *testing.T) bundleRouteFixture {
 	return f
 }
 
-func fingerprintOf(t *testing.T, params string) string {
+// recipeHashOf is the hash of the recipe a TMDB movie catalog with params is
+// stored under.
+func recipeHashOf(t *testing.T, params string) string {
 	t.Helper()
-	fingerprint, err := provider.Fingerprint("movie", "tmdb", params)
+	canonical, err := provider.CanonicalParams("movie", "tmdb", params)
 	if err != nil {
-		t.Fatalf("Fingerprint: %v", err)
+		t.Fatalf("CanonicalParams: %v", err)
 	}
-	return fingerprint
+	return vault.RecipeHash("movie", "tmdb", canonical)
 }
 
 // post sends body to path as the authenticated caller.
@@ -100,20 +102,20 @@ func requireAnswer(t *testing.T, w *httptest.ResponseRecorder, status int, fragm
 	}
 }
 
-// storedFingerprint is the fingerprint stored for catalog id.
-func (f bundleRouteFixture) storedFingerprint(t *testing.T, id uuid.UUID) string {
+// storedRecipeHash is the recipe hash stored for catalog id.
+func (f bundleRouteFixture) storedRecipeHash(t *testing.T, id uuid.UUID) string {
 	t.Helper()
 	rows, err := f.db.GetCatalogsByIDs(context.Background(), []uuid.UUID{id})
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("GetCatalogsByIDs(%s) = %d rows (%v)", id, len(rows), err)
 	}
-	return rows[0].Fingerprint
+	return rows[0].RecipeHash
 }
 
 // Export, check and import through the router: the export of A and X
 // carries A and B top-level and S inside X; the check matches each against
 // the caller's catalogs of the same recipe; a plain import writes new rows
-// stamped with their fingerprints, and one reusing B points X's ref at B.
+// stored under their recipes, and one reusing B points X's ref at B.
 func TestBundleRoutes(t *testing.T) {
 	f := newBundleRouteFixture(t)
 
@@ -144,12 +146,12 @@ func TestBundleRoutes(t *testing.T) {
 	if len(imported.Catalogs) != 2 || len(imported.Collections) != 1 {
 		t.Fatalf("imported %d catalogs and %d collections, want 2 and 1", len(imported.Catalogs), len(imported.Collections))
 	}
-	if got := f.storedFingerprint(t, imported.Catalogs[0].ID); got != fingerprintOf(t, f.popular) {
-		t.Errorf("imported A's fingerprint = %q", got)
+	if got := f.storedRecipeHash(t, imported.Catalogs[0].ID); got != recipeHashOf(t, f.popular) {
+		t.Errorf("imported A's recipe hash = %q", got)
 	}
 	scoped := imported.Collections[0].Folders[0].Refs[0].CatalogID
-	if got := f.storedFingerprint(t, scoped); got != fingerprintOf(t, f.rich) {
-		t.Errorf("imported S's fingerprint = %q", got)
+	if got := f.storedRecipeHash(t, scoped); got != recipeHashOf(t, f.rich) {
+		t.Errorf("imported S's recipe hash = %q", got)
 	}
 
 	var reused importResult
