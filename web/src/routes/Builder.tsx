@@ -234,7 +234,7 @@ function BuilderHeader({
 
         <ChangesStrip
           changes={home.changes}
-          open={changesOpen && home.isDirty}
+          open={changesOpen && home.pendingCount > 0}
           onHide={() => setChangesOpen(false)}
         />
         <PushBanner {...push} />
@@ -255,9 +255,9 @@ function BuilderHeader({
         title="Discard unpushed changes?"
         body={
           <>
-            {countLabel(home.pendingCount)} to your home screen{' '}
-            {home.pendingCount === 1 ? "hasn't" : "haven't"} been pushed yet. Leaving discards{' '}
-            {home.pendingCount === 1 ? 'it' : 'them'}.
+            {countLabel(home.unsavedCount)} to your home screen{' '}
+            {home.unsavedCount === 1 ? "hasn't" : "haven't"} been pushed yet. Leaving discards{' '}
+            {home.unsavedCount === 1 ? 'it' : 'them'}.
           </>
         }
         confirmLabel="Discard and switch"
@@ -308,7 +308,7 @@ function PendingIndicator({
 
   // Still showing the yellow count while it rings down after the home screen
   // went clean.
-  const dirty = home.isDirty || count > 0
+  const dirty = home.pendingCount > 0 || count > 0
 
   const sentence = dirty ? `${count} unpushed ${plural(count, 'change')}` : 'All pushed'
 
@@ -344,7 +344,7 @@ function PendingIndicator({
       : 'text-dim pr-2.5 pl-3.5 shadow-[inset_0_0_0_1px_var(--uno-line-hi)] lg:px-3.5'
   }`
 
-  if (!home.isDirty) {
+  if (home.pendingCount === 0) {
     return (
       <span className={className} title="Your home screen matches what was last pushed.">
         {content}

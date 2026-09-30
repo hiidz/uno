@@ -4,7 +4,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { fetchCatalogSelection, fetchCollectionSelection, queryKeys } from '@/api'
 import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
-import { computeHomeChanges } from './changes'
+import { computeHomeChanges, countUnsaved } from './changes'
 import type { HomeChange } from './changes'
 import { deleteBlockersFor, pushedHome } from './deleteBlockers'
 import type { DeleteBlockers } from './deleteBlockers'
@@ -54,6 +54,11 @@ export interface HomeSelection extends HomeEdits {
    *  of changes it opens can never disagree about how many there are. */
   changes: HomeChange[]
   pendingCount: number
+  /** The changes that exist in this tab alone, the ones leaving the page
+   *  loses. A collection saved but not yet pushed is not one of them. */
+  unsavedCount: number
+  /** `unsavedCount > 0`: what the leave dialog and the page-close guard ask
+   *  about. */
   isDirty: boolean
 
   /** The exact state to send to Push, snapshotted by the caller so a later
@@ -207,6 +212,7 @@ export function HomeSelectionProvider({
     [baseline, state, catalogById, collectionById],
   )
   const pendingCount = changes.length
+  const unsavedCount = countUnsaved(changes)
 
   const edit = useCallback((update: (previous: HomeState) => HomeState) => {
     setCurrent((previous) => (previous === null ? previous : update(previous)))
@@ -228,8 +234,10 @@ export function HomeSelectionProvider({
 
       changes,
       pendingCount,
+      unsavedCount,
+      isDirty: unsavedCount > 0,
     }),
-    [catalogById, collectionById, libraryLoaded, libraryIds, library.genres, changes, pendingCount],
+    [catalogById, collectionById, libraryLoaded, libraryIds, library.genres, changes, pendingCount, unsavedCount],
   )
 
   // Every one of these only closes over `edit` — stable for the life of the
@@ -326,8 +334,6 @@ export function HomeSelectionProvider({
         collections: state.collections,
         ...readData,
 
-        isDirty: pendingCount > 0,
-
         snapshot: () => state,
         markPushed: (pushed) => setBaseline(pushed),
 
@@ -340,7 +346,6 @@ export function HomeSelectionProvider({
     [
       current,
       state,
-      pendingCount,
       library.isLoading,
       catalogSelection.isPending,
       catalogSelection.error,

@@ -101,6 +101,9 @@ The profile chip in the header *is* the switcher, and it navigates back to `/pro
 than offering an in-place dropdown — a second selection path would mean two ways to do the same
 thing, and `POST /api/profiles/select` needs calling either way. It confirms through a dialog
 naming the pending count when edits are pending; `useUnloadGuard` covers reload and tab-close.
+Both count only the edits that exist in the tab alone (`unsavedCount`, behind `isDirty`). A
+"changed since it was last pushed" line names a collection already saved in the vault, so it
+stays in the header count and the list of changes but arms neither guard.
 
 **A refused account.** When the server's access policy doesn't admit the signed-in Nuvio account
 (`UNO_ACCESS=allowlist`, `docs/configuration.md`), the profile calls answer 403, and the picker
@@ -522,7 +525,7 @@ context and couples `useLibrary` to a provider. Revisit when a second page needs
 
 **Pending selection is lost on a hard reload, and that is accepted.** There is no save button
 for the Home pane; selection lives in browser memory until Push. A `beforeunload` guard
-(`useUnloadGuard`) and a navigation confirm both fire with a pending count, which is the
+(`useUnloadGuard`) and a navigation confirm both fire with a count of those unsaved edits, which is the
 mitigation. Mirroring pending selection into `localStorage` is cheap but adds a "your local
 state disagrees with the server" case to handle on next load; not planned.
 

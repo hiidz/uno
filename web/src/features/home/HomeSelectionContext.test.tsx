@@ -99,6 +99,22 @@ describe('HomeSelectionProvider', () => {
     expect(result.current.isDirty).toBe(false)
   })
 
+  it('counts a saved but unpushed collection as pending, but not as dirty', async () => {
+    api.fetchCollectionSelection.mockResolvedValue([
+      collection({ id: 'stale', title: 'Stale', needs_push: true }),
+    ])
+    const { result } = await renderLoaded()
+    expect(result.current.changes.map((c) => c.text)).toEqual(['“Stale” changed since it was last pushed'])
+    expect(result.current.pendingCount).toBe(1)
+    expect(result.current.unsavedCount).toBe(0)
+    expect(result.current.isDirty).toBe(false)
+
+    act(() => result.current.removeCatalog('a'))
+    expect(result.current.pendingCount).toBe(2)
+    expect(result.current.unsavedCount).toBe(1)
+    expect(result.current.isDirty).toBe(true)
+  })
+
   it('reports a selection that never loaded, but not a refetch that fails later', async () => {
     api.fetchCatalogSelection.mockRejectedValueOnce(new Error('selection unavailable'))
     const failed = renderSelection()

@@ -76,6 +76,16 @@ function lisKeep(oldPositions: number[]): Set<number> {
 export interface HomeChange {
   key: string
   text: string
+  /** Already saved in the vault and waiting only on a push, so closing the
+   *  page doesn't lose it. Every other change exists in this tab alone. */
+  saved?: boolean
+}
+
+/** How many of `changes` exist in this tab alone — what leaving the page loses. */
+export function countUnsaved(changes: HomeChange[]): number {
+  let count = 0
+  for (const change of changes) if (!change.saved) count++
+  return count
 }
 
 /** How a change names a row: its catalog's name or its collection's title, in
@@ -244,6 +254,7 @@ export function computeHomeChanges({
         list.push({
           key: `stale:${id}`,
           text: `${quoted({ kind: 'collection', id })} changed since it was last pushed`,
+          saved: true,
         })
       }
     })
