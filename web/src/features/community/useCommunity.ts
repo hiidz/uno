@@ -1,27 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  fetchCommunityCatalogs,
-  fetchCommunityCollections,
-  queryKeys,
-} from '@/api'
-import type { CommunityCatalog, CommunityCollection } from '@/api'
+import { fetchCommunity, fetchPublication, queryKeys } from '@/api'
 
-/**
- * The two community lists — public rows owned by someone else, each already
- * excluding this profile's own and carrying `taken` server-side. No merge
- * with the library: under the closed-graph model these are a different set
- * entirely, browsed here and copied via Take, never referenced live.
- */
-export function useCommunityCatalogs(profileIndex: number) {
-  return useQuery<CommunityCatalog[]>({
-    queryKey: queryKeys.communityCatalogs(profileIndex),
-    queryFn: () => fetchCommunityCatalogs(profileIndex),
+/** Every live publication Community lists, in one call. */
+export function useCommunityList(profileIndex: number) {
+  return useQuery({
+    queryKey: queryKeys.communityList(profileIndex),
+    queryFn: () => fetchCommunity(profileIndex),
   })
 }
 
-export function useCommunityCollections(profileIndex: number) {
-  return useQuery<CommunityCollection[]>({
-    queryKey: queryKeys.communityCollections(profileIndex),
-    queryFn: () => fetchCommunityCollections(profileIndex),
+/** One publication with its snapshot, for its page. */
+export function usePublication(profileIndex: number, publicationID: string) {
+  return useQuery({
+    queryKey: queryKeys.publication(profileIndex, publicationID),
+    queryFn: () => fetchPublication(profileIndex, publicationID),
   })
 }

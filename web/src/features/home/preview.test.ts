@@ -14,9 +14,12 @@ const collectionById = new Map<string, Collection>([
   ['u1', collection({ id: 'u1', folders: [folder({ id: 'f1' })] })],
 ])
 
-function preview(catalogs: { id: string; showInHome: boolean }[], collections: string[]) {
+function preview(catalogs: { id: string; showInHome: boolean }[], collections: { id: string; pinToTop: boolean }[]) {
   return buildHomePreview({ catalogs, collections, catalogById, collectionById })
 }
+
+const pinned = (id: string) => ({ id, pinToTop: true })
+const unpinned = (id: string) => ({ id, pinToTop: false })
 
 describe('buildHomePreview', () => {
   it('puts pinned collections above the catalog rows and the rest below, each in selection order', () => {
@@ -25,12 +28,18 @@ describe('buildHomePreview', () => {
         { id: 'a', showInHome: true },
         { id: 'b', showInHome: false },
       ],
-      ['p2', 'u1', 'p1'],
+      [pinned('p2'), unpinned('u1'), pinned('p1')],
     )
     expect(screen.pinnedCollections.map((c) => c.id)).toEqual(['p2', 'p1'])
     expect(screen.rows.map((r) => r.id)).toEqual(['a'])
     expect(screen.unpinnedCollections.map((c) => c.id)).toEqual(['u1'])
     expect(screen.discoverOnly.map((r) => r.id)).toEqual(['b'])
+  })
+
+  it('draws the pending Show first, not the one last pushed', () => {
+    const screen = preview([], [unpinned('p1'), pinned('u1')])
+    expect(screen.pinnedCollections.map((c) => c.id)).toEqual(['u1'])
+    expect(screen.unpinnedCollections.map((c) => c.id)).toEqual(['p1'])
   })
 
   it('is empty only with nothing selected, a Discover-only catalog counting as content', () => {
@@ -91,7 +100,7 @@ describe('toPreviewCollection', () => {
 })
 
 describe('findFolderPage', () => {
-  const screen = preview([], ['p1', 'u1'])
+  const screen = preview([], [pinned('p1'), unpinned('u1')])
 
   it('finds an open folder by its ids', () => {
     expect(findFolderPage(screen, { collectionId: 'u1', folderId: 'f1' })?.folder.id).toBe('f1')

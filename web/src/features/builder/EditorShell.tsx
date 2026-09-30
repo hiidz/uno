@@ -4,6 +4,8 @@ import { Copy, Trash2, X } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
 import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
+import { deleteButton } from '@/features/home/deleteBlockers'
+import { DeleteBlockedNote } from '@/features/library/DeleteBlockedNote'
 import { useStackedLayout } from './stacked'
 
 /**
@@ -40,6 +42,7 @@ export function EditorShell({
   onRequestClose,
   onDuplicate,
   onDelete,
+  deleteBlocked = null,
   footer,
   docked,
   children,
@@ -64,6 +67,10 @@ export function EditorShell({
    *  that was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
+  /** Why the row's Delete is disabled — Nuvio may still hold it — or `null`.
+   *  Below `lg` it disables this header's delete, and says why at the top
+   *  of the form, since the header is one compact line. */
+  deleteBlocked?: string | null
   footer: ReactNode
   /** What docks beside the form, which decides the content cap: the form
    *  keeps its own `--w-form` column and the extra width goes to that column —
@@ -129,7 +136,7 @@ export function EditorShell({
           )}
           {onDelete && (
             <GlyphButton
-              label={`Delete ${title}`}
+              {...deleteButton(title, deleteBlocked)}
               icon={Trash2}
               onClick={onDelete}
               destructive
@@ -167,6 +174,7 @@ export function EditorShell({
         <div
           className={`w-full ${docked === 'preview' ? 'max-w-[var(--w-editor-preview)]' : 'max-w-[var(--w-editor-results)]'}`}
         >
+          <DeleteBlockedNote reason={deleteBlocked} className="mb-4 lg:hidden" />
           {children}
         </div>
       </div>

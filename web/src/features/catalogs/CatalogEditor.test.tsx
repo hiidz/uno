@@ -58,35 +58,16 @@ describe('CatalogEditor', () => {
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't save this catalog: name already taken")
   })
 
-  describe('on a linked copy', () => {
-    const linked = { initial: formFromCatalog(catalog({ name: 'Row', linked: true })), linked: true }
-
-    it('asks before a save that would unlink it, and saves once confirmed', () => {
-      const { onSave } = renderEditor(linked)
-      expect(screen.getByRole('note')).toHaveTextContent('Editing unlinks it from the community catalog')
-      fireEvent.change(nameInput(), { target: { value: 'Renamed' } })
-
-      save()
-      expect(onSave).not.toHaveBeenCalled()
-      fireEvent.click(screen.getByRole('button', { name: 'Save and unlink' }))
-      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Renamed' }))
+  it('shows the Sharing row and stickers the pane hands it, and saves without asking', () => {
+    const { onSave } = renderEditor({
+      initial: formFromCatalog(catalog({ name: 'Row' })),
+      sharingRow: <p>Sharing slot</p>,
+      sharingBadges: <span>Shared sticker</span>,
     })
-
-    it('keeps editing without saving when the unlink is declined', () => {
-      const { onSave } = renderEditor(linked)
-      fireEvent.change(nameInput(), { target: { value: 'Renamed' } })
-      save()
-      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
-      expect(onSave).not.toHaveBeenCalled()
-      expect(nameInput()).toHaveValue('Renamed')
-    })
-
-    it('saves a sharing change without asking, since it keeps the link', () => {
-      const { onSave } = renderEditor(linked)
-      fireEvent.click(screen.getByRole('switch'))
-      save()
-      expect(screen.queryByRole('button', { name: 'Save and unlink' })).not.toBeInTheDocument()
-      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isPublic: true }))
-    })
+    expect(screen.getByText('Sharing slot')).toBeInTheDocument()
+    expect(screen.getByText('Shared sticker')).toBeInTheDocument()
+    fireEvent.change(nameInput(), { target: { value: 'Renamed' } })
+    save()
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Renamed' }))
   })
 })

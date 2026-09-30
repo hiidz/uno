@@ -6,6 +6,7 @@ import (
 
 	"github.com/hiidz/uno/internal/nuvio"
 	"github.com/hiidz/uno/internal/provider"
+	"github.com/hiidz/uno/internal/tmdbkey"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -51,4 +52,10 @@ type Deps struct {
 	// lets it call, since login and refresh go from the browser straight to
 	// Nuvio. It must match the VITE_NUVIO_BASE_URL the SPA was built with.
 	NuvioBaseURL string
+	// Access says which Nuvio accounts may use the builder API; the zero
+	// value admits every account.
+	Access Access
+	// Keys gives each request its account's own TMDB key on a server in
+	// per-account key mode, and is nil on a server with one shared key.
+	Keys *tmdbkey.Keys
 }

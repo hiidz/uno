@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from './client'
-import { ApiError, ProfileNotSelectedError, getJSON, getList, sendJSON } from './http'
+import { ApiError, ProfileNotSelectedError, RateLimitedError, getJSON, getList, sendJSON } from './http'
 
 // The real `apiFetch` brings in the auth session and the router.
 vi.mock('./client', () => ({ apiFetch: vi.fn() }))
@@ -85,6 +85,22 @@ describe('failed responses', () => {
     const err = await rejection(getJSON('/api/profiles'))
     expect(err).toBeInstanceOf(ApiError)
     expect(err).not.toBeInstanceOf(ProfileNotSelectedError)
+  })
+
+  it('reads a 429 as rate limited, worded from Retry-After', async () => {
+    answer(new Response('too many requests', { status: 429, headers: { 'Retry-After': '10' } }))
+    const err = await rejection(sendJSON('POST', '/api/p/1/catalogs/c1/publish'))
+    expect(err).toBeInstanceOf(RateLimitedError)
+    expect(err).toMatchObject({ status: 429, message: 'Too many requests. Try again in 10 seconds.' })
+
+    answer(new Response('', { status: 429, headers: { 'Retry-After': '1' } }))
+    await expect(getJSON('/api/companies/search')).rejects.toMatchObject({ message: 'Too many requests. Try again in 1 second.' })
+  })
+
+  it.each([null, '', 'soon', '2.5', '0'])('words a Retry-After of %j as a moment', async (retryAfter) => {
+    const headers: Record<string, string> = retryAfter === null ? {} : { 'Retry-After': retryAfter }
+    answer(new Response('', { status: 429, headers }))
+    await expect(getJSON('/api/p/1/community')).rejects.toMatchObject({ message: 'Too many requests. Try again in a moment.' })
   })
 })
 

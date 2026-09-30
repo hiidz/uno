@@ -13,6 +13,7 @@ import (
 	"github.com/hiidz/uno/internal/addon"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/static"
+	"github.com/hiidz/uno/internal/tmdbkey"
 	"github.com/hiidz/uno/internal/vault"
 	unoweb "github.com/hiidz/uno/web"
 )
@@ -28,6 +29,12 @@ type Server struct {
 	addon        *addon.Server
 	siteBaseURL  string
 	nuvioBaseURL string
+	// admission is the access policy's allowlist, nil when every account is
+	// admitted.
+	admission *admission
+	// keys gives each request its account's own TMDB key, nil on a server
+	// with one shared key.
+	keys *tmdbkey.Keys
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +63,7 @@ func New(d Deps) (*Server, error) {
 		return nil, errors.New("api: Deps.SiteBaseURL is empty")
 	}
 
-	addonServer, err := addon.New(d.Vault, d.Provider)
+	addonServer, err := addon.New(d.Vault, d.Provider, d.Keys)
 	if err != nil {
 		return nil, fmt.Errorf("api: building addon server: %w", err)
 	}
@@ -70,6 +77,8 @@ func New(d Deps) (*Server, error) {
 		addon:        addonServer,
 		siteBaseURL:  d.SiteBaseURL,
 		nuvioBaseURL: d.NuvioBaseURL,
+		admission:    d.Access.admission(),
+		keys:         d.Keys,
 	}
 	if err := s.routes(); err != nil {
 		return nil, err
@@ -79,29 +88,33 @@ func New(d Deps) (*Server, error) {
 
 func (s *Server) routes() error {
 	// Not profile-scoped: previewing a recipe reads nothing from the vault, so
-	// there is no profile to resolve. Every other catalog route, including the
-	// community list, take, update and duplicate, lives under
-	// /api/p/{profileIndex}/.
+	// there is no profile to resolve. Every other catalog route, including
+	// publishing and Community, lives under /api/p/{profileIndex}/.
 	s.router.HandleFunc("POST /api/catalogs/preview", s.requireNuvioAuth(s.previewCatalog))
 	s.router.HandleFunc("POST /api/catalogs/genre-options", s.requireNuvioAuth(s.catalogGenreOptions))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.listUserCatalogs))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.createUserCatalog))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.updateUserCatalog))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community/catalogs", s.requireProfileAuth(s.listCommunityCatalogs))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/take", s.requireProfileAuth(s.takeCatalog))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/update", s.requireProfileAuth(s.updateTakenCatalog))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/catalogs/{catalogID}/duplicate", s.requireProfileAuth(s.duplicateCommunityCatalog))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/publish", s.requireProfileAuth(s.publishCatalog))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/withdraw", s.requireProfileAuth(s.withdrawCatalog))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/detach", s.requireProfileAuth(s.detachCatalog))
 
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireProfileAuth(s.listUserCollections))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/duplicate", s.requireProfileAuth(s.duplicateUserCollection))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.updateUserCollection))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.deleteUserCollection))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community/collections", s.requireProfileAuth(s.listCommunityCollections))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/take", s.requireProfileAuth(s.takeCollection))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/update", s.requireProfileAuth(s.updateTakenCollection))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/collections/{collectionID}/duplicate", s.requireProfileAuth(s.duplicateCommunityCollection))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/publish", s.requireProfileAuth(s.publishCollection))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/withdraw", s.requireProfileAuth(s.withdrawCollection))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/detach", s.requireProfileAuth(s.detachCollection))
+
+	// Community: other profiles' live publications, by publication id.
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.listCommunity))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}", s.requireProfileAuth(s.getPublication))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/subscribe", s.requireProfileAuth(s.subscribe))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/update", s.requireProfileAuth(s.updateSubscription))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/fork", s.requireProfileAuth(s.forkPublication))
 
 	s.router.HandleFunc("POST /api/p/{profileIndex}/export", s.requireProfileAuth(s.exportBundle))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/import/check", s.requireProfileAuth(s.checkImport))
@@ -130,6 +143,13 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /api/collections/{id}", s.requireNuvioAuth(s.getCollection))
 	s.router.HandleFunc("GET /api/networks/search", s.requireNuvioAuth(s.searchNetworks))
 	s.router.HandleFunc("GET /api/networks/{id}", s.requireNuvioAuth(s.getNetwork))
+
+	// The signed-in account's own TMDB key, on a server where each account
+	// brings one (perAccountKeys: a 404 otherwise).
+	s.router.HandleFunc("GET /api/config", s.config)
+	s.router.HandleFunc("GET /api/account/tmdb-key", s.requireNuvioAuth(s.perAccountKeys(s.getTMDBKey)))
+	s.router.HandleFunc("PUT /api/account/tmdb-key", s.requireNuvioAuth(s.perAccountKeys(s.putTMDBKey)))
+	s.router.HandleFunc("DELETE /api/account/tmdb-key", s.requireNuvioAuth(s.perAccountKeys(s.deleteTMDBKey)))
 
 	s.router.HandleFunc("GET /api/profiles", s.requireNuvioAuth(s.listProfiles))
 	s.router.HandleFunc("POST /api/profiles/select", s.requireNuvioAuth(s.selectProfile))

@@ -1,9 +1,8 @@
 package vault
 
 import (
-	"cmp"
+	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,27 +19,17 @@ func parseUUID(s, field string) (uuid.UUID, error) {
 	return id, nil
 }
 
-// buildInClause returns "?, ?, ?" for len(ids) placeholders and the
-// corresponding []any args (as strings, since UUIDs are stored as TEXT).
-func buildInClause(ids []uuid.UUID) (string, []any) {
-	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
+// idsJSON is ids as one JSON array of strings, the single argument an id
+// list binds as: every query over a list of ids reads it with
+// `IN (SELECT value FROM json_each(?))`, so a list of any length is one
+// parameter.
+func idsJSON(ids []uuid.UUID) string {
+	strs := make([]string, len(ids))
 	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id.String()
+		strs[i] = id.String()
 	}
-	return strings.Join(placeholders, ", "), args
-}
-
-// compareCreatedThenID orders two rows by created_at, then by id — the
-// deterministic tie-break both community lists use, for the catalog
-// recipe-collapse survivor and for either list's final ordering, so
-// rows with equal names or titles don't swap between requests.
-func compareCreatedThenID(aCreatedAt, bCreatedAt time.Time, aID, bID uuid.UUID) int {
-	if c := aCreatedAt.Compare(bCreatedAt); c != 0 {
-		return c
-	}
-	return cmp.Compare(aID.String(), bID.String())
+	b, _ := json.Marshal(strs) // a []string always encodes
+	return string(b)
 }
 
 // dedupeUUIDs returns ids with duplicates removed, preserving first-seen
@@ -64,4 +53,19 @@ func nullableUUIDString(id *uuid.UUID) any {
 		return nil
 	}
 	return id.String()
+}
+
+// nullableString returns s, or nil (a SQL NULL) when s is empty — for
+// writing an optional TEXT column such as sub_key.
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// utcTimestamp is t in the RFC3339 UTC form every stored timestamp takes,
+// so the two compare as strings.
+func utcTimestamp(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
 }

@@ -9,7 +9,7 @@ const fetchMock = vi.mocked(apiFetch)
 
 const body: PushRequest = {
   catalogs: { catalogs: [{ catalog_id: 'c1', show_in_home: true }] },
-  collections: { collection_ids: ['col1'] },
+  collections: { collections: [{ collection_id: 'col1', pin_to_top: true }] },
 }
 
 beforeEach(() => {

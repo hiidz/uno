@@ -87,24 +87,29 @@ func TestVerifyES256TokenAgainstJWKS(t *testing.T) {
 	x, y := jwkCoords(t, &priv.PublicKey)
 	srv := jwksServer(t, []testJWK{{Kid: "kid-1", Kty: "EC", Crv: "P-256", X: x, Y: y}})
 
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
-		"iss": srv.URL + "/auth/v1",
-		"sub": "nuvio-user-1",
-		"exp": jwt.NewNumericDate(time.Now().Add(time.Hour)),
-	})
-	token.Header["kid"] = "kid-1"
-	signed, err := token.SignedString(priv)
-	if err != nil {
-		t.Fatalf("signing token: %v", err)
+	sign := func(claims jwt.MapClaims) string {
+		t.Helper()
+		claims["iss"] = srv.URL + "/auth/v1"
+		claims["exp"] = jwt.NewNumericDate(time.Now().Add(time.Hour))
+		token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+		token.Header["kid"] = "kid-1"
+		signed, err := token.SignedString(priv)
+		if err != nil {
+			t.Fatalf("signing token: %v", err)
+		}
+		return signed
 	}
 
 	v := NewVerifier(srv.URL)
-	claims, err := v.Verify(context.Background(), signed)
+	claims, err := v.Verify(context.Background(), sign(jwt.MapClaims{"sub": "nuvio-user-1", "email": "Someone@Example.com"}))
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if claims.Sub != "nuvio-user-1" {
-		t.Errorf("Sub = %q, want %q", claims.Sub, "nuvio-user-1")
+	if claims.Sub != "nuvio-user-1" || claims.Email != "Someone@Example.com" {
+		t.Errorf("claims = %+v, want sub nuvio-user-1 and its email as signed", claims)
+	}
+	if claims, err := v.Verify(context.Background(), sign(jwt.MapClaims{"sub": "nuvio-user-2"})); err != nil || claims.Email != "" {
+		t.Errorf("a token without an email = %+v, %v; want it verified with no email", claims, err)
 	}
 
 	cached, ok := v.keys["kid-1"]

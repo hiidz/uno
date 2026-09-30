@@ -102,6 +102,49 @@ than offering an in-place dropdown — a second selection path would mean two wa
 thing, and `POST /api/profiles/select` needs calling either way. It confirms through a dialog
 naming the pending count when edits are pending; `useUnloadGuard` covers reload and tab-close.
 
+**A refused account.** When the server's access policy doesn't admit the signed-in Nuvio account
+(`UNO_ACCESS=allowlist`, `docs/configuration.md`), the profile calls answer 403, and the picker
+shows a plain card in place of the profiles ("This Nuvio account can't use this Uno.") rather
+than an alert (`pickerFailure`, `RefusedAccount` in `ProfilePicker.tsx`). "Sign in with a
+different account" below it is the way on. Any other failure still shows as the alert with the
+server's words.
+
+**The TMDB key** (`web/src/features/account/`). On a server in per-account key mode
+(`GET /api/config`, `docs/configuration.md` → *TMDB key modes*), the picker asks for the
+account's own TMDB key; in shared mode, or for a refused account, there is no key UI anywhere.
+`useKeyStep` reads the mode and `GET /api/account/tmdb-key` and puts the picker in one of these
+steps:
+
+- **Checking.** Until both answers are in, the profiles are held (`holdsProfiles`) with no card
+  shown, so a slow key status can't let a keyless account into the builder. A failed answer asks
+  nothing and holds nothing; the builder's banner covers that account.
+- **Needed.** `TMDBKeyGate` sits above the profiles: "Add your TMDB key to start", one sentence
+  on what TMDB is and where its API Key is (a link to TMDB's API settings page), the key field and
+  Save. It holds the profiles (`cardOff`, greyed and not pressable, each pointing at the gate's
+  heading through `cardNote`): without a key, neither the builder nor the account's home screen
+  rows can reach TMDB. This is the one screen that names TMDB, since the user has to go and get a
+  key there by name.
+- **Set.** `TMDBKeyShelf` sits under the profiles: TMDB key, a Set sticker (the dim outline;
+  pink would say Shared), "ends in" and the last four characters, Replace (the same form in place,
+  with Cancel) and Remove. Remove confirms first, saying the home screen can't load Uno's rows and
+  the builder can't preview or save catalogs until a key is back; it isn't red, since adding the
+  key again undoes it.
+- **Saving** asks TMDB, so Save reads "Checking…" while it runs. The server's refusal shows under
+  the field in its own words: a key of the wrong shape, TMDB's Read Access Token pasted instead
+  of the API Key, a key TMDB refuses, or TMDB unreachable. A save writes the new status straight
+  into the key query and clears the builder's key problem.
+
+**A key problem in the builder.** Any call that reaches TMDB can come back `422`: the account
+has no key, or TMDB no longer accepts it (revoked, or the server's `UNO_SECRET` changed). The
+query client offers every failed query and mutation to `keyProblem.ts`, which notes a `422` and
+holds it until a key is saved or the account changes. `KeyProblemBanner`, under the builder's
+header with the push banner, then says the key was refused (or is missing) and that the home
+screen can't load Uno's rows until it is replaced (or added), since the same key serves those
+rows. Its button, Replace key or Add key, goes back to the picker through the header's own
+guard, as switching profile does. If reading the key's status fails, the banner still shows, in
+words that fit either case ("Uno couldn't use your TMDB key", Check key). The call that failed
+shows its own error as usual.
+
 ## `/configure` — Workspace and Community
 
 `web/src/routes/Builder.tsx` renders one top-level `Segmented` switch, Workspace / Community
@@ -122,7 +165,7 @@ this is two regions rather than several co-equal panes.
 
 | Region | Holds |
 | --- | --- |
-| **Library** — left rail | Every catalog and collection you own, one labelled "Mine" group. One search box at the top of the rail narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — taking someone else's public catalog or collection is the separate Community tab's job, not a second group in this rail |
+| **Library** — left rail | Every catalog and collection you own, one labelled "Mine" group. One search box at the top of the rail narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — taking what someone else shares is the separate Community tab's job, not a second group in this rail. A copy taken from there is one of your rows, marked From Community |
 | **Pane** — right | One thing at a time: your home screen (with a `List \| Preview` switch), or the editor for whichever rail row is selected. The page's centre of gravity |
 | **Push** — header | Global action, beside a persistent unpushed-changes indicator. Not a section — it's the commit for Home, so it lives where Home is always visible, whether or not Home is the pane's current occupant |
 
@@ -156,11 +199,12 @@ schema's word and stays in code, types, and endpoint names; it does not appear o
 `GET /api/p/{i}/collections`.** There is no merge and no `owned` field on `LibraryCatalog`/
 `LibraryCollection`: under the closed-graph sharing model, a folder can
 only ever reference your own listed catalogs, so "the library" and "what you own" are one set by
-construction, not two sets reconciled in the frontend. Browsing and taking someone
-else's public rows is the separate Community tab's job, not this rail's (see "Community tab"
+construction, not two sets reconciled in the frontend. Browsing and taking what someone else
+shares is the separate Community tab's job, not this rail's (see "Community tab" below). A copy
+taken from Community is a library row like any other, marked by its stickers (see "Sharing"
 below).
 
-All list endpoints are unpaginated; assume small N. Filter and search are **pure client-side
+The library's list endpoints are unpaginated; assume small N. Filter and search are **pure client-side
 derivations** of `useLibrary`'s dataset, so typing in the rail's search box costs no network call.
 
 Two things established here that everything downstream depends on: **genre lookups are kept
@@ -206,20 +250,20 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
 The owned-list keys prefix the selection keys, so an import marks those stale too. An import
 doesn't change them, so the refetch returns what they already held. The Community keys sit beside
 the owned-list keys rather than under them (`['p', i, 'community', …]`), and an import leaves
-them alone: nothing it writes is public.
+them alone: nothing it writes is shared.
 
 The toast is `components/Toast.tsx` with `components/useToast.ts`, the same auto-dismissing
 message the Community tab shows its outcomes in.
 
 ## Catalog authoring
 
-Create is a three-field form — name, `type`, `is_public` — plus the TMDB params sub-form.
+Create is a two-field form — name and `type` — plus the TMDB params sub-form.
 `provider` is derived (`"tmdb"`) and never rendered. `type` renders
 read-only unconditionally — there is no path, here or anywhere else, that changes an existing
 row's type — and that's backed server-side too: `UpdateUserCatalog` reads the stored `type` and
 rejects a `PUT` that changes it with `ErrInvalidInput` — a catalog's type is part of the pushed
-collections blob, so changing it would alter what Nuvio should have without bumping any
-collection's `version`. `provider` is enforced server-side the same way, in both validation
+collections blob, so changing it would alter what Nuvio should have with no save of any
+collection. `provider` is enforced server-side the same way, in both validation
 places.
 
 **Duplicate is a first-class action on your own rows, not a hidden overflow item, and it's
@@ -229,21 +273,31 @@ atomic** — every row in the library is yours, so opening one always edits it; 
 params the instant the confirm dialog is accepted (`catalogForm.ts`'s `duplicatePayload` — no form
 to fill in first, unlike a bare "New catalog"), then opens the finished copy in this same editor
 like any other real row — the same atomic-then-open shape `confirmDuplicateCollection` already
-used for collections. Duplicates default to `is_public: false` regardless of source, because
-publishing is a deliberate act rather than something inherited from what was duplicated. There is
+used for collections. A duplicate is never shared, whatever its source, because sharing is a
+deliberate act rather than something inherited from what was duplicated. There is
 no longer any way to change a catalog's type: duplicate used to be that path (picking a different
 type before the row existed), traded away when duplicate became atomic — a type choice would have
 needed its own step ahead of the create firing, and the tradeoff was to drop the capability rather
-than add one. (Taking someone else's public catalog is a different action,
-`POST /api/p/{i}/community/catalogs/{id}/take` — a server-side deep copy with fresh ids, not this
-duplicate flow; its UI is the Community tab, below.)
+than add one. (Taking what someone else shares is a different action,
+`POST /api/p/{i}/community/{id}/subscribe`, whose UI is the Community tab, below.)
 
-**Delete's confirm copy states the real consequence under the closed-graph Take model**
-(`Workspace.tsx`). A shared catalog's confirm names the actual effect — a taker holds an
-independent copy (`taken_from` nulled on this delete), so nobody else's copy is touched; the row
-just disappears from the community list for future takers — rather than claiming deletion
-"removes it for everyone using it". The unshared-catalog branch states the folder-ref cascade
-within this profile.
+**Delete's confirm copy states the real consequence** (`Workspace.tsx`). Deleting a shared
+catalog withdraws its publication (Decision 5), so a shared row's confirm adds "It stops being
+shared, and copies people took stay theirs" (`STOPS_SHARING`, shown while `isShared`). Every
+confirm states the folder-ref cascade within this profile.
+
+**Delete is disabled while Nuvio may still hold the row, and says why**
+(`web/src/features/home/deleteBlockers.ts`), in the server's own words (`docs/architecture.md`,
+*Deletes refuse what Nuvio may still hold*). `catalogDeleteBlocker` and `collectionDeleteBlocker`
+read Home as the server holds it: the two selection responses (`pushedHome`), each collection
+through the library's row for a fresh `needs_push` — never the pending Home edits, which Nuvio
+doesn't have yet. `HomeEdits.deleteBlockers` carries them, so Workspace reads them without
+re-rendering on every pending edit. A held row's Delete is disabled with the reason as its title
+(`deleteButton`, `GlyphButton`'s `disabled`/`title`), and `DeleteBlockedNote` says it in words:
+under the selected rail row's actions above `lg`, and at the top of the editor's form below it,
+where the header's Delete is a bare icon. A tab behind the server can still send a delete and get
+the `409`: the confirm dialog shows its sentence (the mutation's error), and the `remove`
+mutations refetch the lists and selections on any error, which disables the Delete beside it.
 
 **Validation rules are enforced structurally where possible**, and this order of preference is
 the point:
@@ -353,10 +407,11 @@ Other decisions worth keeping:
   unpushed-changes count as a side effect of a save that already succeeded, blurring the two
   persistence models the page has to keep legible: authoring writes immediately, selection is
   pending until Push. Adding from the rail defaults `show_in_home: true`.
-- **Writes invalidate the owned catalog list** (`useCatalogMutations` also invalidates the
-  community query keys, which the Community tab now subscribes to — an `is_public` flip changes
-  what that tab shows) but deliberately **not** the selection queries, which would clobber
-  pending edits.
+- **Writes invalidate the owned catalog list** (`useCatalogMutations` also invalidates every
+  Community key, through `invalidateProfileLists` — a save can make a shared row changed since
+  publishing, and a delete withdraws its publication). The selection queries refetch with them,
+  since their keys sit under the owned lists'; `HomeSelectionContext`'s one-shot hydration keeps
+  that from clobbering pending edits.
 - **A collection save that moves a catalog to the library invalidates the catalog list**
   (`useCollectionMutations`' `update`, when any `catalog_edits` entry has `move_to_library`), so
   the moved catalog appears in the Library rail. It is the one collection write that adds a
@@ -365,9 +420,10 @@ Other decisions worth keeping:
   `DELETE FROM catalogs` cascades `folder_catalogs`, so a cached collection tree keeps a phantom
   ref: the overlay lists a folder member that no longer exists, and saving that collection
   `400`s.
-- **A scoped catalog's "Sharing" row becomes a "Scope" row** (`CatalogFormState.collectionID`):
-  it can't be shared while scoped (the schema's own CHECK), so the Switch is replaced by a note
-  and a "Move to library" button that clears `collectionID` — promote, always allowed, and like
+- **A scoped catalog shows a "Scope" row where a listed one shows Sharing**
+  (`CatalogFormState.collectionID`): a scoped catalog is shared only by sharing its collection, so
+  its nested editor gets no `sharingRow` and shows a note and a "Move to library" button that clears
+  `collectionID` instead — promote, always allowed, and like
   every edit made in this nested editor it takes effect when the collection is saved (a
   `catalog_edits` entry with `move_to_library`). Once staged, the catalog reads as listed in every
   folder, whose rows offer no Edit to reopen it, so `CollectionEditor` states each staged move as a
@@ -405,22 +461,33 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   render outside the numbered bands entirely, in their own "Not on home" tray (no drag, no
   ordinal — they have no place in Nuvio's order); the flip itself is a row's ⋯ menu
   ("Move to Discover" / the tray's "Move to home"), not a dedicated toggle control.
+- **Show first (`pin_to_top`) is a pending edit here, like Home or Discover**, and nowhere else:
+  a collection row's ⋯ menu offers "Show first" / "Don’t show first" (`showFirstAction`), which
+  flips the entry's `pinToTop` in `HomeState.collections` (`{id, pinToTop}`, as `catalogs` holds
+  `{id, showInHome}`) and moves the row to the other collection band at its place in the
+  selection order. The baseline takes each collection's stored pin, the one it was last pushed
+  with; a collection added to the home screen starts from its stored pin too. Push sends the pins
+  in its selection and is the only thing that writes them — the collection editor has no Show
+  first. The band-aware edits (`reorderCollectionBand`, `moveCollectionInBand`,
+  `togglePinToTop` in `pending.ts`) read each row's pin from the state they edit.
 - **The pending count is the list of changes' length, not a separate tally.** `changes.ts`'s
   `computeHomeChanges` diffs `baseline` against `current` into named, per-row sentences ("Moved
   “X” from 5th to 3rd"), using a longest-increasing-subsequence pass per band so a drag reports
-  only the row that actually moved. `HomeSelectionContext.pendingCount` is `changes.length`; the
+  only the row that actually moved. Each state carries its own pins, so a collection whose Show
+  first changed is reported once, as "Showing “X” first" or "No longer showing “X” first"
+  (`pinFlips`), and left out of the moves: it changed band, which a per-band pass would
+  otherwise read as moving it and every row it passed. `HomeSelectionContext.pendingCount` is `changes.length`; the
   header's pending indicator and the navigation guard's dialog both read it, and the indicator
   doubles as the toggle that opens the list itself (`ChangesStrip` in `PushControls.tsx`) — the
   count and the sentences behind it must never disagree, which is why there is only one number.
 - **A collection already in Nuvio can itself be a pending change**, with no selection edit at
   all: `computeHomeChanges` adds a line for any collection present in *both* `baseline.collections`
-  and `current.collections` whose `version !== pushed_version` — a save to a collection's folders
+  and `current.collections` that carries `needs_push` — a save to a collection's folders
   changes the derived manifest immediately, but Nuvio's own folder sources stay stale until the next
-  push (the "Save-to-Push window", accepted rather than closed). `version`
-  is an integer bumped on every content write and `pushed_version` is the version push actually
-  read and sent, so the compare is exact rather than a clock — an earlier timestamp-based version
-  missed a Save landing inside the same second as a push, or between push's read and its local write, and
-  the integer version has no such gap. Restricted to collections in both sets: a collection taken
+  push (the "Save-to-Push window", accepted rather than closed). The server sets `needs_push` when
+  the hash of what push would send for the collection now differs from the hash of what it last
+  sent (`docs/data-model.md`, *Key rules*), so it fires for exactly the edits that change what
+  Nuvio holds: a rename and back, or a recipe-only edit, adds no line. Restricted to collections in both sets: a collection taken
   off the home screen, pushed, edited, then put back would otherwise show both "Added …" and "changed
   since …" for the same collection; only "Added …" should fire.
 
@@ -435,7 +502,8 @@ collection write.
 
 **The provider publishes two contexts.** `useHomeSelection` returns everything, and its value
 changes on every edit; `useHomeEdits` returns only the edit functions, which change only with
-`isPinned`. `Workspace` reads `useHomeEdits`, so an edit to the home screen re-renders the
+the collections an added one reads its stored pin from (`storedPin`). `Workspace` reads
+`useHomeEdits`, so an edit to the home screen re-renders the
 components that show the selection — the rail, the Home pane, the header, a collection editor's
 "used in N places" rows — and not the workspace and the open editor under it.
 
@@ -467,10 +535,13 @@ come from `POST /api/catalogs/preview`. The derivation lives in
 **The model being previewed.** *Home* is **one page** in three bands:
 
 ```
-pinned collection rows      pin_to_top hoists above everything
+pinned collection rows      Show first (the pending pin) hoists above everything
 catalog rows                tiles = content
 unpinned collection rows    tiles = folders
 ```
+
+The bands follow the pending pins in `HomeState.collections`, not the pins last pushed, so a
+Show first flipped in the List view moves the row in Preview at once.
 
 A collection is **one row whose tiles are its folders**, drawn from folder metadata
 (`cover_emoji`, `cover_image_url`, `title`) at each folder's own `tile_shape`. No TMDB content is
@@ -608,8 +679,8 @@ button.
   the user never touched, so `validateCollectionForm` flags them instead ("Remove it to save").
 - **Duplicating a collection is one atomic server call, not a client-built clone.**
   `POST /api/p/{i}/collections/{id}/duplicate`
-  (`useCollectionMutations`'s `duplicate`) reuses `TakeCollection`'s own tree-copy logic
-  server-side: every folder ref survives, a listed source catalog stays a reference, and each
+  (`useCollectionMutations`'s `duplicate`) copies the tree server-side (`copyCollection`):
+  every folder ref survives, a listed source catalog stays a reference, and each
   distinct catalog scoped to the source collection becomes a fresh scoped copy in the new one.
   A collection's scoped catalogs can't be represented on the client without fetching them, so the
   copy happens server-side, which is what makes every scoped ref survive a duplicate (the
@@ -635,10 +706,9 @@ button.
   something that hasn't happened. Dropping a folder that was never saved is correctly silent.
   "Undo" reinserts the removed rows verbatim — they still carry their original form
   `key`, which is what makes putting them straight back into `state.folders` safe. Its body text
-  is unconditional ("Copies others have taken keep theirs"),
-  matching the closed-graph Take model: a taker holds an independent copy, so removing a folder
-  from your own collection never reaches theirs regardless of sharing. `Workspace.tsx`'s delete
-  confirms state the same fact.
+  is unconditional ("Copies others have taken keep theirs"): a copy someone took changes only when
+  its owner takes an Update of a publication, so removing a folder from your own collection never
+  reaches it. `Workspace.tsx`'s delete confirms state the same fact.
 - **The save bar's quiet button reads "Discard changes" here, "Cancel" in the catalog editor**
   (`EditorFooter`'s `cancelLabel`) — DESIGN.md's own wording for the heavier thing this editor can
   lose. Both route through the same call, this editor's own `onRequestClose`, and from there
@@ -755,17 +825,18 @@ button.
   scoped catalog this editor knows about would lose its last folder reference on Save — the exact
   condition `UpdateUserCollection`'s GC delete checks server-side, mirrored client-side the
   same way the folder-delete warning already was.
-- **Delete's confirm copy (`Workspace.tsx`) states the real consequence:** no
-  claim that removing a shared collection reaches "everyone using it" — a taker's copy is
-  independent — and "the catalogs referenced here are kept" is qualified by
+- **Delete's confirm copy (`Workspace.tsx`) states the real consequence:** a shared
+  collection's adds that it stops being shared and copies people took stay theirs, and "the
+  catalogs referenced here are kept" is qualified by
   `scopedCatalogCount`: it names how many of the collection's own scoped catalogs (which have no
   life outside it) go with it, distinct from any listed catalog it merely references and which
-  survives.
-- **Sharing is the shared `Switch` component here too**, same as the catalog editor, labelled
-  Shared or Private. Sharing a collection shares the recipes inside it; when any of them is
-  private on its own, a caution under the switch names them. Show first and the "All" tab are `Segmented`, the latter greyed (DESIGN.md's
-  "Greyed" segmented state, `Segmented`'s `disabled` prop) rather than hidden while the view mode
-  isn't Tabbed Grids, keeping its value for when it switches back.
+  survives. A collection on Home can't be deleted: its Delete is disabled, "Take it off Home and
+  push first." (see *Catalog authoring*).
+- **Sharing is the same `SharingRow` as the catalog editor's** (see "Sharing" below), after the
+  title. The "All" tab is a `Segmented`, greyed (DESIGN.md's "Greyed" segmented state,
+  `Segmented`'s `disabled` prop) rather than hidden while the view mode isn't Tabbed Grids,
+  keeping its value for when it switches back. There is no Show first here: it is the Home pane's
+  pending edit, which push writes (see "Home pane — List view").
 - **The Preview panel is a working client screen, docked beside the form.** The collection editor has
   its own layout (`.ed.ed-preview`, `EditorShell`'s `docked="preview"`, capped at `--w-editor-preview`): the form keeps
   its `--w-form` column and the panel takes `clamp(380px, 42cqw, 620px)` beside it, undocking under
@@ -780,68 +851,107 @@ button.
   fetched. The back arrow and Escape return to the row — Escape is stopped inside the panel so it
   never reaches the editor's own Escape-to-close — and there is no history entry.
 
+## Sharing
+
+What an owner shares is a **publication**: a snapshot of the row as it was saved when it was
+published, which Community lists and others take copies of. Live edits stay private until the owner
+publishes an update. A copy taken from Community is a **subscription**: it follows its owner's
+updates, applied when the taker chooses, until the taker saves a change to it, which makes it
+theirs. The model and the routes are
+`docs/data-model.md` ("Publications and subscriptions") and `docs/architecture.md`; the pieces here
+live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through one hook,
+`useWorkspaceSharing`.
+
+- **The Sharing row** (`SharingRow.tsx`) sits where a listed catalog's or a collection's editor
+  has its settings, after the name. It says where the row stands (`ownSharing` over the row's
+  `publication`): Private; Shared; "Shared. Your changes since aren't shared yet." once the saved
+  row differs from what was published (`changed_since_publish`); or "Not shared any more" after
+  Stop sharing. Its buttons are quiet — Save stays the editor's one primary: Share…, Publish
+  update… or Share again…, which open the publish dialog, and Stop sharing, which asks first.
+  Sharing publishes the saved row, so Share… is disabled while the form has unsaved changes, with
+  "Save first" beneath it (`sharingNote`).
+- **A collection that uses a catalog taken from Community can't be shared** (Decision 11), and the
+  row says so before anything is clicked: `subscribedCatalogsIn` finds the library catalogs its
+  folders use that carry a `subscription`, and `blockedReason` names them and says to detach them,
+  or duplicate them and use the copies — duplicating the collection doesn't help, since its
+  duplicate uses the same catalogs. A subscribed copy itself has the From Community row in its
+  place (below).
+- **The publish dialog** (`PublishDialog.tsx`) lists everything the publication will hold, each
+  catalog by name over its recipe line: for a collection, its own catalogs under "N folders, N
+  catalogs of its own", then the library catalogs it uses under "From your library, shared as they
+  are now" (`publishGroups`) — sharing a collection shares those as they stand, which is the
+  point to consent to. The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
+  shows in the dialog.
+- **Stickers** (`rowStickers`, drawn by `SharingStickers`) on the library row and the editor's
+  sign: Shared (pink fill) and Changed (dim outline) on an own row; From Community (pink outline)
+  on a copy, with Update (ink outline) while an update waits or No longer shared (dim outline)
+  once its owner stopped sharing it.
+- **A copy taken from Community opens in its ordinary editor.** In place of the Sharing row it
+  has the From Community row (`FromCommunityRow.tsx`, its words from `fromWords`): whether it
+  follows its owner's updates, has one waiting, or no longer gets any, with Update… (below),
+  Detach and Duplicate, all quiet like the Sharing row's. Its place on the home screen, Show
+  first included, is the Home pane's, as for any collection.
+  - **Saving asks first** ("Save and make it yours?"): `Workspace`'s saves go through
+    `useWorkspaceSharing`'s `confirmCopySave`, which saves an own row at once. Once confirmed the
+    ordinary save runs; the server detaches the copy in the same write, keeping its ids, and the
+    response comes back without its subscription, so its stickers become an own row's.
+  - **Detach** asks first, then makes the copy the profile's own without changing it, reopening
+    its editor from the row the detach returned (`onReopen`, `catalogTarget`/`collectionTarget`
+    in `target.ts`). It waits while the form has unsaved changes, since saving them detaches the
+    copy too, and says so under the buttons.
+  - **Duplicate** makes a separate own copy, which is how to share a version of it.
+- **Update… opens the publication's page**, which shows the new version before it is applied:
+  the page's Update does it (Community tab, below). A copy's own Update… leaves the Workspace
+  through the editor guard, like every other way out, and opens Community on that page:
+  `useWorkspaceSharing`'s `onOpenPublication` reaches `Builder`, which switches the tab and hands
+  `CommunityView` the publication (`initialOpen`) and its kind, so going back lands on that kind's
+  list. Switching tabs in the header opens Community on its list.
+- **Every sharing call refreshes the library and Community** (`invalidateProfileLists`) and
+  settles once they have refetched, so a row's stickers and state are current when its toast
+  ("Shared “X”", "Published your changes to “X”", "Stopped sharing “X”", "Detached “X”",
+  "Updated your copy") shows under the rail's "Mine" header.
+
 ## Community tab
 
-`web/src/features/community/` — everyone else's public catalogs and collections, browsed and
-copied rather than referenced. The closed-graph model's only path across an owner boundary:
-a folder can only ever reference your own listed catalogs (see
-"Library rail" above), so this tab never lets you *use* another owner's row live, only Take a
-private copy of it. A taken copy stays linked to its original until you edit it, and while it
-does, Update brings it in line with the owner's changes on request.
+`web/src/features/community/` — what other profiles share, loaded in one call
+(`GET /api/p/{i}/community`) and searched, filtered and sorted here. No owner, no handle, no
+"copied from" line appears anywhere here: Community never names who shared a row.
 
-- **`CommunityView.tsx`** owns the Catalogs / Collections `Segmented`, a name-only search field,
-  and a Name / Newest `Select` — pure client-side filtering and sorting over
-  `useCommunityCatalogs`/`useCommunityCollections` (`useCommunity.ts`), which are thin
-  `useQuery` wrappers over the community endpoints, keyed the same way the library's queries are
-  (`queryKeys.communityCatalogs`/`communityCollections`, both under the `['p', i, …]` prefix).
-- **No author, no handle, no "copied from" line anywhere here** —
-  that provenance is retired, not merely hidden. `taken_from` links a profile's copy to its
-  original (see "A Take is a linked copy" in `docs/data-model.md`), which surfaces here only
-  through the row's main button, driven by the server's own `taken` and `update_available`:
-  **Take**; a disabled **✓ Taken** while the profile holds a linked copy (the server refuses a
-  second Take with a 409); or **Update** while that copy is behind the original. **Duplicate** —
-  the same copy with no link, always allowed — waits behind a "⋯" menu, the same
-  `components/MoreMenu.tsx` (Radix `DropdownMenu`) the collection editor's `RefMenu` and the Home
-  list's rows are built on. While any of the three is in flight on a row, the
-  main button is disabled and says so ("Taking…", "Updating…", "Duplicating…").
-- **Preview reuses the editors' own preview components, not a new one.** A catalog row's Preview
-  mounts `CommunityCatalogPreview`, which is `RecipePreview` run over the row's own stored
-  `type`/`params` via `useRecipeTiles` — the same on-request, one-TMDB-page component the catalog
-  editor's results panel uses, never `invalid` since a community row is always a saved catalog the
-  server already accepted. A collection row's Preview mounts `CommunityCollectionPreview`, which
-  is the collection editor's own Preview panel (`CollectionPreview`) fed a
-  `PreviewCollection` built by Home's `toPreviewCollection` (`features/home/preview.ts`) over the
-  row's own `catalogs` array rather than the library — the community row already carries every
-  catalog its folders reference, listed or scoped on the source side, so nothing resolves as
-  unavailable the way a library-sourced ref picker's accessible set would for someone else's
-  catalog. The editor feeds the same panel its draft through `previewFromForm`
-  (`collectionForm.ts`).
-- **Take, Update and Duplicate refresh both the library and the community lists**
-  (`useCommunityMutations.ts`) — a copy appears or changes in "Mine" and the original's flags
-  flip, both from one mutation — and each mutation settles only once those refetches have landed,
-  so a row never offers Take again for a copy that already exists. The owned-list keys prefix the
-  selection keys, so the selections refetch too, which a collection Update needs because it bumps
-  `version`. A small auto-dismissing strip (2.5s) reports the outcome: "Added to your
-  catalogs"/"collections", "Updated your copy", "Duplicated to your catalogs"/"collections";
-  unlike the push outcome strip this never needs a decision, so nothing about it persists past
-  being read.
-- **A 404 or a 409 means the row was stale** (`isStale`): the original went private or was
-  deleted, a linked copy already exists, or the copy was unlinked by a save. The mutation
-  refreshes the same lists before it rejects, then the strip says what happened: a 409 from Take
-  is "Already taken"; a 409 from Update, which unlinked a copy it found edited, is "Your copy was
-  edited, so it's no longer linked. Take it again to get the latest"; and a 404 from Update, which
-  can't say whether the original went private or was deleted or the copy was already unlinked,
-  is "Couldn't update: the original is no longer available, or your copy is no longer linked."
-  Any other failure reads "Couldn't …" with the server's message.
-- **The editors mark a linked copy and ask before unlinking it.** `Workspace` passes the open
-  library row's `linked` to `CatalogEditor` and `CollectionEditor`, which then show a "Linked"
-  banner as their first row (`LinkedBanner`, `features/builder/LinkedCopy.tsx`) — the
-  collection's also covers the catalogs edited inside it, which have no link of their own. Saving
-  a linked copy with anything other than Public changed opens `ConfirmUnlink` ("Save and
-  unlink"); for a collection, pending `catalog_edits` count, a staged Move to library included
-  (`changesContent` in each form module). The client only decides whether to ask — which saves
-  unlink is the server's call. The save refetches the library and the community lists, so the
-  row's `linked` is current the next time an editor opens on it.
+- **`CommunityView.tsx`** holds Catalogs / Collections, the search box, and Sort: Name / Newest.
+  `useCommunityList` (`useCommunity.ts`) is one query for the whole list, and `visibleItems`
+  (`communityQuery.ts`) shows the rows of the chosen kind where every word of the search is in the
+  title or one of the catalog names (`catalog_names`), whatever the case and not necessarily all in
+  one name, sorted by name or newest first. While
+  a search narrows a kind it says "N of M catalogs". An empty list says whether nothing of that
+  kind is shared or nothing matches.
+- **A row** (`CommunityRow.tsx`) is its name with a kind sticker and, while an update waits for
+  this profile's copy, an Update sticker; a summary (a catalog's type and recipe line, a
+  collection's folders and catalogs — `itemSummary`); and "Taken by N · updated 2 days ago"
+  (`itemMeta`). Its main button is Take, a disabled ✓ Taken while the profile holds a copy, or
+  Update… while one waits, which opens the publication's page; Duplicate, a copy that is the
+  profile's own (`POST .../fork`), waits behind "⋯". While an action is in flight the button says
+  so.
+- **A row opens its publication's page in place of the list** (`PublicationPage.tsx`, DESIGN.md's
+  One Occupant Rule): the name beside a round back arrow (the One Way Back rule — the arrow and
+  Escape both leave), the row's own words and actions, then what it holds from the detail call
+  (`GET .../community/{id}`): a collection's folders and their catalogs beside its Preview panel
+  (`snapshotAsCollection`, the snapshot read as a `Collection` so `SavedCollectionPreview` draws
+  it), or a catalog's recipe sentence beside one page of its results (`SavedCatalogPreview`, which
+  runs as it mounts). While an update waits for this profile's copy, what the page holds is the
+  new version, and its main button is Update, which applies it (`POST .../update`) and leaves
+  the page on ✓ Taken. Going back restores the list's scroll and puts focus on the row's open
+  button (`scroll.ts`).
+- **Take, Update and Duplicate refresh the library and Community** (`useCommunityMutations.ts`);
+  each settles only once they have refetched, so a row never offers Take again for a copy that
+  already exists. Community reads only the genre lookups
+  of the library (`useGenreLookups`), for its recipe lines. The toast says what happened: "Added to your catalogs"/"collections",
+  "Duplicated to your …", "Updated your copy". A 404 or a 409 means the row was behind the server
+  (`isStale`), and the lists refresh before the toast: a 409 from Take is "Already taken", a 404
+  is "Its owner no longer shares it."
+- **A 404 inside Community is not "profile not selected".** `http.ts` turns every 404 under
+  `/api/p/{i}/` into `ProfileNotSelectedError`, and the list still sends the user back to the
+  picker on one; but a publication's page answers 404 once its owner stops sharing it, so it
+  reads that as "no longer shared" and stays put.
 - **The tab switch is a `Segmented` in `Builder.tsx`'s header**, not a route — `/configure` stays
   one URL. Above `lg` it sits inline in the header row; below `lg` it drops to its own row
   underneath, because the header row's height is measured to fit exactly what it holds at phone
@@ -864,6 +974,11 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
   failed, *and* the compensating undo also failed. The one case where "nothing changed" isn't
   true. Copy: "Push failed, and we couldn't fully undo it — your collections in Nuvio may be
   temporarily out of sync. Push again to reconcile."
+- **A 429 is an ordinary failure in its own words** (`RateLimitedError`, outcome `rate-limited`):
+  Uno's server answers none, but a proxy in front of it could, and one would have turned the
+  push away before running it, so nothing changed. Copy: "Too many pushes
+  — nothing changed. Your edits are still here. Wait a few seconds, then try again." Without it
+  a 429 would read as "Couldn't confirm what happened", the outcome for no usable answer at all.
 
 - **The Push button stays enabled with zero pending edits.** It is the only recovery path from
   that compound-failure case, and nothing else marks that state — graying it out on
@@ -881,12 +996,12 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
   otherwise leaves them holding pre-push data, so switching profile and returning inside that
   window re-hydrates the baseline from stale data and makes the pushed changes look undone.
 - **The owned-collections query is invalidated on success too** (found in a
-  dev-loop check). `pushed_version` lives on the `Collection` row from *both* `queryKeys.ownedCollections` and
+  dev-loop check). `needs_push` lives on the `Collection` row from *both* `queryKeys.ownedCollections` and
   `queryKeys.collectionSelection`, and `HomeSelectionContext`'s `collectionById` map is built by
   writing the selection response first and the owned list second — so on an id present in both
   (the ordinary case: a collection that's both owned and currently selected), the owned list's
   copy always wins. Invalidating only the selection query left `collectionById` holding the
-  owned list's pre-push `pushed_version` forever, so the "changed since it was last pushed"
+  owned list's pre-push `needs_push` forever, so the "changed since it was last pushed"
   line (`computeHomeChanges`, Home pane section above) never cleared after a successful push —
   it looked like every push silently failed to update anything.
 - **`ApiError` carries an optional `body`** (`web/src/api/http.ts`), best-effort JSON-parsed
@@ -901,7 +1016,16 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - `401` from any call → refresh + retry, then bounce to login.
 - `404` from any `/api/p/{i}/...` route → profile not selected → send back to the picker
   (`ProfileNotSelectedError`, `web/src/api/http.ts`).
-- All list endpoints are unpaginated; assume small N.
+- `429` from any call → `RateLimitedError` (`web/src/api/http.ts`), worded from `Retry-After`. Uno's
+  own server answers none, so only something in front of it can:
+  "Too many requests. Try again in 10 seconds.", or "in a moment" without a usable header. Nothing
+  retries it: `apiFetch` refreshes and retries only a 401, and `query-client.ts` never retries a
+  4xx. Every place that shows an error message shows this one as it is.
+- `403` is the server's access policy refusing the account, in its own words, shown like any
+  other error. The profile picker alone words it itself (below).
+- `422` from any call → the account's own TMDB key can't be used (per-account key mode only);
+  the builder's key banner (*Profile selection* → *A key problem in the builder*).
+- The library's list endpoints and Community's are unpaginated; assume small N.
 
 ## Visual direction
 
@@ -933,8 +1057,10 @@ that carries Archivo's width axis), not the Google Fonts CDN: the build is `go:e
 fonts only from `'self'` and `data:`.
 
 **Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Shared
-(`.stk-shared`, community pink, because Community is where a shared row turns up), Linked
-(`.stk-linked`, outlined in community pink: a Take still linked to its original), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.home-sticker`: a dashed empty
+(`.stk-shared`, community pink, because Community is where a shared row turns up), From Community
+(`.stk-from`, outlined in community pink: a copy taken from there), Update (`.stk-update`, outlined
+in ink: an update waits for that copy), Changed, No longer shared and the TMDB key's Set (the dim `.stk-kind`
+outline), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.home-sticker`: a dashed empty
 circle while it's off the home screen, a yellow ON NUVIO price sticker (two lines, ON over NUVIO)
 once it's on. A home row's position is a yellow `.pos-sticker`, read out as "3rd on your home
 screen"; the pending count and a profile's slot
@@ -997,6 +1123,6 @@ TV, phone or desktop. That is the whole of what they are assumed to know. Four r
 
 **`InfoTip` is for the narrow middle.** A sentence that doesn't survive "is this needed at all"
 is deleted, not moved. The icon holds one a control genuinely needs but that would crowd the page:
-Community's Take button (linked copies), the collection's Focus glow, a folder's Focus GIF and
+Community's Take button (Take versus Duplicate), a subscribed copy's Detach and Duplicate, the collection's Focus glow, a folder's Focus GIF and
 Modern Home fields, the catalog picker's link-versus-copy, and the genre chips' three-state cycle.
 It opens on click rather than hover, so it works on touch.

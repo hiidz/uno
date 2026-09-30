@@ -19,9 +19,8 @@ type Profile struct {
 }
 
 // Catalog is a stored addon catalog: a named request recipe (Provider,
-// Params) against a content Type, owned by a profile or shared publicly.
-// Type, Provider and Params are its recipe's, read from the recipes row
-// RecipeHash names.
+// Params) against a content Type, owned by a profile. Type, Provider and
+// Params are its recipe's, read from the recipes row RecipeHash names.
 type Catalog struct {
 	ID       uuid.UUID `json:"id"`
 	Type     string    `json:"type"`
@@ -29,7 +28,6 @@ type Catalog struct {
 	Provider string    `json:"provider"`
 	Params   string    `json:"params"`
 	OwnerID  uuid.UUID `json:"owner_id"`
-	IsPublic bool      `json:"is_public"`
 	// CollectionID scopes this catalog to one collection (hidden from the
 	// library, usable only in that collection's folders); nil means listed.
 	CollectionID *uuid.UUID `json:"collection_id"`
@@ -44,37 +42,47 @@ type Catalog struct {
 	// the manifest's per-catalog genre extra (see buildManifest). Never on
 	// the wire directly — SelectedCatalog carries its own copy for that.
 	ShowInHome bool `json:"-"`
-	// TakenFrom is the source catalog this row was copied from by a Take,
-	// directly or inside a taken collection; nil once unlinked. TakenHash is
-	// catalogHash of that source when this copy was last in step with it, set
-	// only on a listed copy. Neither is on the wire, and neither is rendered
-	// as attribution.
-	TakenFrom *uuid.UUID `json:"-"`
-	TakenHash string     `json:"-"`
-	// Linked is true for a listed catalog still linked to the community
-	// catalog it was taken from (see linkedCopy): the one kind of catalog
-	// Update reaches and a save can unlink.
-	Linked bool `json:"linked"`
-	// RecipeHash names this catalog's recipes row (see RecipeHash). Catalogs
-	// with the same recipe share it, which is what collapses duplicate
-	// community catalogs; never on the wire.
+	// RecipeHash names this catalog's recipes row (see RecipeHash), which
+	// every catalog with the same recipe shares; never on the wire.
 	RecipeHash string `json:"-"`
+	// SubKey is, for a catalog inside a subscribed collection, the key of the
+	// snapshot catalog it was written from, which Update pairs it by; empty
+	// otherwise. Never on the wire.
+	SubKey string `json:"-"`
+	// Publication is this catalog's own publication, and Subscription the
+	// publication this listed catalog is a subscribed copy of; each is nil
+	// when there is none.
+	Publication  *PublicationState  `json:"publication"`
+	Subscription *SubscriptionState `json:"subscription"`
 }
 
-// linkedCopy reports whether c is a listed catalog linked to the community
-// catalog it was taken from. A scoped catalog's TakenFrom only pairs it with
-// its source for its collection's Update; the collection holds the link.
-func (c Catalog) linkedCopy() bool {
-	return c.TakenFrom != nil && c.CollectionID == nil
+// PublicationState is what an owner's row shows of its publication: its id,
+// whether it is live or withdrawn, and whether the row has changed since it
+// was last published, which is a hint to the owner only.
+type PublicationState struct {
+	ID                  uuid.UUID `json:"id"`
+	Status              string    `json:"status"`
+	ChangedSincePublish bool      `json:"changed_since_publish"`
+	// contentHash is the publication's content hash, which the row's own
+	// snapshot is compared with.
+	contentHash string
+}
+
+// SubscriptionState is what a subscribed copy shows of the publication it
+// was taken from: its id, whether a newer snapshot is published, and whether
+// the publication has been withdrawn, which ends its updates.
+type SubscriptionState struct {
+	PublicationID   uuid.UUID `json:"publication_id"`
+	UpdateAvailable bool      `json:"update_available"`
+	Withdrawn       bool      `json:"withdrawn"`
 }
 
 // Collection is a Nuvio home-screen collection: a titled group of Folders,
-// owned by a profile or shared publicly.
+// owned by a profile.
 type Collection struct {
 	ID               uuid.UUID `json:"id"`
 	Title            string    `json:"title"`
 	OwnerID          uuid.UUID `json:"owner_id"`
-	IsPublic         bool      `json:"is_public"`
 	PinToTop         bool      `json:"pin_to_top"`
 	ViewMode         string    `json:"view_mode"`
 	ShowAllTab       bool      `json:"show_all_tab"`
@@ -84,26 +92,19 @@ type Collection struct {
 	FocusGlowEnabled bool      `json:"focus_glow_enabled"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
-	// Version increments on every content write (UpdateUserCollection) and
-	// starts at 1 on insert — never touched by push. PushedVersion is the
-	// Version push read and sent to Nuvio for this collection; nil means
-	// never pushed. The frontend flags a pending change when the two differ.
-	Version       int  `json:"version"`
-	PushedVersion *int `json:"pushed_version"`
+	// pushedHash is the hash of the push payload push last sent for this
+	// collection (PushHash), "" when push has never sent one. Never on the
+	// wire: CollectionWithFolders.NeedsPush is what it decides.
+	pushedHash string
 	// HomeSortOrder is this collection's position in its owner's home-screen
 	// selection; nil means it isn't on the TV. Never on the wire — the
 	// selection endpoint (GetCurrentCollectionSelection) returns collections
 	// already ordered by it.
 	HomeSortOrder *int `json:"-"`
-	// TakenFrom is the source collection a Take copied this row from; nil
-	// once unlinked. TakenHash is collectionHash of that source when this
-	// copy was last in step with it. Neither is on the wire, and neither is
-	// rendered as attribution.
-	TakenFrom *uuid.UUID `json:"-"`
-	TakenHash string     `json:"-"`
-	// Linked is true while TakenFrom is set: Community offers this copy
-	// Update, and a save that changes its content unlinks it.
-	Linked bool `json:"linked"`
+	// Publication is this collection's own publication, and Subscription the
+	// publication it is a subscribed copy of; each is nil when there is none.
+	Publication  *PublicationState  `json:"publication"`
+	Subscription *SubscriptionState `json:"subscription"`
 }
 
 // Folder is one tile row within a Collection.
@@ -125,6 +126,10 @@ type Folder struct {
 	HeroBackdropURL string `json:"hero_backdrop_url"`
 	HeroVideoURL    string `json:"hero_video_url"`
 	TitleLogoURL    string `json:"title_logo_url"`
+	// SubKey is, in a subscribed collection, the key of the snapshot folder
+	// this one was written from, which Update pairs it by; empty otherwise.
+	// Never on the wire.
+	SubKey string `json:"-"`
 }
 
 // FolderCatalog joins a Folder to one of its member Catalogs, in order.
@@ -146,7 +151,6 @@ type CatalogForm struct {
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
 	Params   string `json:"params"`
-	IsPublic bool   `json:"is_public"`
 	// CollectionID scopes the catalog to one collection; nil (or absent on
 	// the wire) means listed. On update, setting it demotes a listed catalog
 	// into that collection — see CreateUserCatalog/UpdateUserCatalog.
@@ -157,8 +161,6 @@ type CatalogForm struct {
 // including its full set of folders.
 type CollectionForm struct {
 	Title            string       `json:"title"`
-	IsPublic         bool         `json:"is_public"`
-	PinToTop         bool         `json:"pin_to_top"`
 	ViewMode         string       `json:"view_mode"`
 	ShowAllTab       bool         `json:"show_all_tab"`
 	BackdropImageURL string       `json:"backdrop_image_url"`
@@ -206,6 +208,9 @@ type FolderData struct {
 	HeroVideoURL    string             `json:"hero_video_url"`
 	TitleLogoURL    string             `json:"title_logo_url"`
 	Catalogs        []FolderCatalogRef `json:"catalogs"` // ordered — index gives folder_catalogs.sort_order
+	// SubKey is written to a new folder's sub_key. Only a subscribe or an
+	// Update sets it; never accepted from the client.
+	SubKey string `json:"-"`
 }
 
 // FolderCatalogRef is one ordered entry in a folder's catalog list: either a
@@ -219,10 +224,9 @@ type FolderData struct {
 // either kind of entry client-side with no request of its own, and the
 // catalog row (for a New entry) is only ever written here, inside the
 // transaction of the collection write that carries it — so discarding the
-// edit instead of saving leaves nothing behind. A Take or Duplicate of a
-// whole collection writes its scoped catalog copies as New entries too. See
-// docs/frontend.md's
-// "Three sources for a folder's catalog".
+// edit instead of saving leaves nothing behind. A subscribe, a fork or a
+// Duplicate of a whole collection writes its scoped catalog copies as New
+// entries too. See docs/frontend.md's "Three sources for a folder's catalog".
 //
 // Genre narrows this one reference to a genre, by name: pushed as the folder
 // source's "genre", which Nuvio sends back as the catalog's genre extra.
@@ -247,9 +251,8 @@ func CatalogRefs(ids ...uuid.UUID) []FolderCatalogRef {
 }
 
 // NewScopedCatalog is an inline catalog spec for FolderCatalogRef.New. Not
-// public and not home-eligible by construction — a scoped catalog can be
-// neither (schema.go's CHECK on catalogs) — so those fields aren't accepted
-// here at all.
+// home-eligible by construction — a scoped catalog never is (the CHECK on
+// catalogs) — so no placement fields are accepted here at all.
 type NewScopedCatalog struct {
 	// Key is the client's handle for one staged catalog, unique within a
 	// single save: every New entry carrying the same Key, in any folder and
@@ -260,10 +263,9 @@ type NewScopedCatalog struct {
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
 	Params   string `json:"params"`
-	// TakenFrom is the catalog this one is copied from, written to the new
-	// row's taken_from. Only a collection Take sets it; never accepted from
-	// the client.
-	TakenFrom *uuid.UUID `json:"-"`
+	// SubKey is written to the new row's sub_key. Only a subscribe or an
+	// Update sets it; never accepted from the client.
+	SubKey string `json:"-"`
 }
 
 // SelectedCatalogInput is one entry in a CatalogSelectionForm.
@@ -278,10 +280,28 @@ type CatalogSelectionForm struct {
 	Catalogs []SelectedCatalogInput `json:"catalogs"` // ordered — index gives catalogs.home_sort_order
 }
 
+// SelectedCollectionInput is one entry in a CollectionSelectionForm: the
+// collection, and whether Nuvio shows it first on the home screen. Push is
+// the only writer of a collection's pin_to_top, and this is where it comes
+// from.
+type SelectedCollectionInput struct {
+	CollectionID uuid.UUID `json:"collection_id"`
+	PinToTop     bool      `json:"pin_to_top"`
+}
+
 // CollectionSelectionForm is the request body for setting a profile's
 // active collection selection.
 type CollectionSelectionForm struct {
-	CollectionIDs []uuid.UUID `json:"collection_ids"` // ordered — index gives collections.home_sort_order
+	Collections []SelectedCollectionInput `json:"collections"` // ordered — index gives collections.home_sort_order
+}
+
+// CollectionIDs is the id of every collection in f, in order.
+func (f CollectionSelectionForm) CollectionIDs() []uuid.UUID {
+	ids := make([]uuid.UUID, len(f.Collections))
+	for i, c := range f.Collections {
+		ids[i] = c.CollectionID
+	}
+	return ids
 }
 
 // HTTP Outbound Model-------------------------
@@ -318,6 +338,10 @@ type CollectionWithFolders struct {
 	Collection
 	Folders  []FolderWithCatalogs `json:"folders"`
 	Catalogs []Catalog            `json:"catalogs"`
+	// NeedsPush is whether this collection is on Home and what push would
+	// send for it now differs from what push last sent: Nuvio holds a stale
+	// copy until the next push. Always false off Home.
+	NeedsPush bool `json:"needs_push"`
 }
 
 // SelectedCatalog is a Catalog as it appears in a profile's active
@@ -325,24 +349,4 @@ type CollectionWithFolders struct {
 type SelectedCatalog struct {
 	Catalog
 	ShowInHome bool `json:"show_in_home"`
-}
-
-// CommunityCatalog is a Catalog as it appears in the community list: public,
-// owned by someone else, collapsed to one row per recipe, plus whether
-// the caller holds a linked copy of it and whether that copy is behind it.
-type CommunityCatalog struct {
-	Catalog
-	Taken           bool `json:"taken"`
-	UpdateAvailable bool `json:"update_available"`
-}
-
-// CommunityCollection is a CollectionWithFolders as it appears in the
-// community list: public, owned by someone else, plus whether the caller
-// holds a linked copy of it and whether that copy is behind it. Unlike
-// CommunityCatalog there is no recipe collapse — that's a catalog-only
-// concept.
-type CommunityCollection struct {
-	CollectionWithFolders
-	Taken           bool `json:"taken"`
-	UpdateAvailable bool `json:"update_available"`
 }

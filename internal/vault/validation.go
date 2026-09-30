@@ -17,10 +17,14 @@ var (
 	ErrProfileNotFound    = errors.New("profile not found")
 	ErrCatalogNotFound    = errors.New("catalog not found")
 	ErrCollectionNotFound = errors.New("collection not found")
-	ErrInvalidInput       = errors.New("invalid input")
+	// ErrPublicationNotFound is a publication the caller can't see: none by
+	// that id, one withdrawn, their own for a subscribe or fork, or, for an
+	// Update, one they don't subscribe to.
+	ErrPublicationNotFound = errors.New("publication not found")
+	ErrInvalidInput        = errors.New("invalid input")
 	// ErrConflict is a request the caller's own current state rules out: a
-	// second Take of one source, or an Update onto a copy that no longer
-	// matches what was taken. Its message is safe to show the client.
+	// second subscription to one publication, or a publish racing an edit of
+	// its source. Its message is safe to show the client.
 	ErrConflict = errors.New("conflict")
 )
 
@@ -331,7 +335,7 @@ func (in CollectionForm) Validate() error {
 				seenNew[newKey] = true
 				if first, ok := specByKey[key]; !ok {
 					specByKey[key] = *ref.New
-				} else if !sameSpec(first, *ref.New) {
+				} else if first != *ref.New {
 					problems = append(problems, fmt.Sprintf("folder %d: new catalog %d: key is shared with a different catalog spec", i, j))
 				}
 			}
@@ -348,15 +352,6 @@ func (in CollectionForm) Validate() error {
 		return nil
 	}
 	return fmt.Errorf("%w: %s", ErrInvalidInput, strings.Join(problems, "; "))
-}
-
-// sameSpec reports whether a and b describe the same catalog. TakenFrom is
-// compared by the id it names, not by address, so two entries for one Key
-// agree whether or not they share a pointer.
-func sameSpec(a, b NewScopedCatalog) bool {
-	sameSource := nullableUUIDString(a.TakenFrom) == nullableUUIDString(b.TakenFrom)
-	a.TakenFrom, b.TakenFrom = nil, nil
-	return sameSource && a == b
 }
 
 // validateCreate is Validate plus the one rule that only applies to a

@@ -5,8 +5,7 @@ import type {
   CatalogType,
   CertificationsByCountry,
   Collection,
-  CommunityCatalog,
-  CommunityCollection,
+  CommunityItem,
   Company,
   CompanySearchResult,
   Country,
@@ -18,31 +17,38 @@ import type {
   NetworkSearchResult,
   NuvioProfile,
   PreviewRequest,
+  PublicationDetail,
   SelectedCatalog,
   SelectedProfile,
+  ServerConfig,
   TMDBCollection,
+  TMDBKeyStatus,
   WatchProvider,
   WatchRegion,
 } from './types'
 
-/** One function per endpoint. The community routes are profile-scoped: the
- *  closed graph means the server excludes the caller's own rows and computes
- *  `taken` server-side, so there is no merge to do on this side. */
+/** One function per endpoint. The Community routes are profile-scoped: the
+ *  server leaves out the caller's own publications and marks the ones it
+ *  subscribes to, so there is no merge to do on this side. */
 
 export function fetchOwnedCatalogs(profileIndex: number): Promise<Catalog[]> {
   return getList<Catalog>(`/api/p/${profileIndex}/catalogs`)
-}
-
-export function fetchCommunityCatalogs(profileIndex: number): Promise<CommunityCatalog[]> {
-  return getList<CommunityCatalog>(`/api/p/${profileIndex}/community/catalogs`)
 }
 
 export function fetchOwnedCollections(profileIndex: number): Promise<Collection[]> {
   return getList<Collection>(`/api/p/${profileIndex}/collections`)
 }
 
-export function fetchCommunityCollections(profileIndex: number): Promise<CommunityCollection[]> {
-  return getList<CommunityCollection>(`/api/p/${profileIndex}/community/collections`)
+/** Every live publication Community lists, in one call: the SPA searches,
+ *  filters and sorts them itself (`features/community/communityQuery.ts`). */
+export function fetchCommunity(profileIndex: number): Promise<CommunityItem[]> {
+  return getList<CommunityItem>(`/api/p/${profileIndex}/community`)
+}
+
+/** One publication with its snapshot. 404s for a withdrawn one this profile
+ *  doesn't subscribe to. */
+export function fetchPublication(profileIndex: number, publicationID: string): Promise<PublicationDetail> {
+  return getJSON<PublicationDetail>(`/api/p/${profileIndex}/community/${publicationID}`)
 }
 
 /**
@@ -194,4 +200,15 @@ export function fetchProfiles(): Promise<NuvioProfile[]> {
  */
 export function selectProfile(profileIndex: number): Promise<SelectedProfile> {
   return sendJSON<SelectedProfile>('POST', '/api/profiles/select', { profile_index: profileIndex })
+}
+
+/** How this server reaches TMDB. Needs no sign-in. */
+export function fetchServerConfig(): Promise<ServerConfig> {
+  return getJSON<ServerConfig>('/api/config')
+}
+
+/** Whether the signed-in account has saved a TMDB key, on a server where each
+ *  account brings one (a 404 anywhere else). */
+export function fetchTMDBKey(): Promise<TMDBKeyStatus> {
+  return getJSON<TMDBKeyStatus>('/api/account/tmdb-key')
 }

@@ -79,6 +79,30 @@ const NO_CATALOGS: LibraryCatalog[] = []
 const NO_GENRES: Genre[] = []
 const NO_LANGUAGES: Language[] = []
 
+/**
+ * Both types' TMDB genres, as lists and as id → name lookups. Genre lists are
+ * static and account-wide, so they're cached indefinitely and kept out of any
+ * loading or error state: a failed genre lookup degrades a recipe line to raw
+ * ids, it doesn't fail what shows it. Community reads these alone.
+ */
+export function useGenreLookups(): Pick<Library, 'genres' | 'genreLists'> {
+  const genreResults = useQueries({
+    queries: [
+      { queryKey: queryKeys.genres('movie'), queryFn: () => fetchGenres('movie'), staleTime: Infinity },
+      { queryKey: queryKeys.genres('series'), queryFn: () => fetchGenres('series'), staleTime: Infinity },
+    ],
+  })
+
+  const movieGenres = genreResults[0].data ?? NO_GENRES
+  const tvGenres = genreResults[1].data ?? NO_GENRES
+  const genreLists = useMemo(() => ({ movie: movieGenres, tv: tvGenres }), [movieGenres, tvGenres])
+  const genres = useMemo<GenreLookups>(
+    () => ({ movie: buildGenreLookup(movieGenres), tv: buildGenreLookup(tvGenres) }),
+    [movieGenres, tvGenres],
+  )
+  return { genres, genreLists }
+}
+
 export function useLibrary(profileIndex: number): Library {
   const results = useQueries({
     queries: [
@@ -95,23 +119,7 @@ export function useLibrary(profileIndex: number): Library {
 
   const [ownedCatalogs, ownedCollections] = results
 
-  // Genre lists are static and account-wide, so they're cached indefinitely and
-  // excluded from the loading/error state below: a failed genre lookup degrades
-  // the recipe line to raw ids, it doesn't fail a list.
-  const genreResults = useQueries({
-    queries: [
-      { queryKey: queryKeys.genres('movie'), queryFn: () => fetchGenres('movie'), staleTime: Infinity },
-      { queryKey: queryKeys.genres('series'), queryFn: () => fetchGenres('series'), staleTime: Infinity },
-    ],
-  })
-
-  const movieGenres = genreResults[0].data ?? NO_GENRES
-  const tvGenres = genreResults[1].data ?? NO_GENRES
-  const genreLists = useMemo(() => ({ movie: movieGenres, tv: tvGenres }), [movieGenres, tvGenres])
-  const genres = useMemo<GenreLookups>(
-    () => ({ movie: buildGenreLookup(movieGenres), tv: buildGenreLookup(tvGenres) }),
-    [movieGenres, tvGenres],
-  )
+  const { genres, genreLists } = useGenreLookups()
 
   const certificationResults = useQueries({
     queries: [

@@ -95,3 +95,23 @@ func TestGenreOptionIDs(t *testing.T) {
 		t.Errorf("genre options with and without an excluded genre both %s, want them to differ", genreOptionIDs(c, recipeFacts{}))
 	}
 }
+
+// ValidateRecipe runs the checks that need no network: a recipe that
+// decodes and whose params pass Validate is fine; an unknown provider, an
+// unknown type, params that don't decode and a rule Validate refuses are
+// not.
+func TestValidateRecipe(t *testing.T) {
+	if err := ValidateRecipe("movie", "tmdb", `{"sort_by":"popularity.desc"}`); err != nil {
+		t.Errorf("ValidateRecipe = %v, want nil", err)
+	}
+	for _, tc := range []struct{ catalogType, catalogProvider, params string }{
+		{"movie", "letterboxd", `{}`},
+		{"anime", "tmdb", `{}`},
+		{"movie", "tmdb", `[]`},
+		{"movie", "tmdb", `{"sort_by":"nonsense"}`},
+	} {
+		if err := ValidateRecipe(tc.catalogType, tc.catalogProvider, tc.params); err == nil {
+			t.Errorf("ValidateRecipe(%s, %s, %s) = nil, want an error", tc.catalogType, tc.catalogProvider, tc.params)
+		}
+	}
+}

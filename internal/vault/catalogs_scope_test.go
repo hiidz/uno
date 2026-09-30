@@ -32,7 +32,7 @@ func listedCatalogForm(name string) CatalogForm {
 }
 
 // A catalog created with collection_id set must belong to a collection the
-// caller owns, and cannot be public.
+// caller owns.
 func TestCreateScopedCatalogRequiresOwnedCollection(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -46,14 +46,6 @@ func TestCreateScopedCatalogRequiresOwnedCollection(t *testing.T) {
 	form.CollectionID = &collectionID
 	if _, err := db.CreateUserCatalog(ctx, other, form); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("create scoped to another owner's collection: got %v, want ErrInvalidInput", err)
-	}
-
-	// Scoping to your own collection while also public is rejected.
-	form = listedCatalogForm("Scoped and public")
-	form.CollectionID = &collectionID
-	form.IsPublic = true
-	if _, err := db.CreateUserCatalog(ctx, owner, form); !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("create scoped+public: got %v, want ErrInvalidInput", err)
 	}
 
 	// Scoping to your own collection, not public, succeeds.

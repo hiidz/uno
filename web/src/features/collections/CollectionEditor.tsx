@@ -11,12 +11,11 @@ import type {
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { FieldError, InfoTip, Segmented, Switch, TextInput } from '@/components/fields'
+import { FieldError, InfoTip, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Modal } from '@/components/Modal'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
-import { ConfirmUnlink, LinkedBanner } from '@/features/builder/LinkedCopy'
 import { NewItemDialog } from '@/features/builder/NewItemDialog'
 import { useEditorForm } from '@/features/builder/useEditorForm'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
@@ -39,7 +38,6 @@ import {
   DRAFT_ID_PREFIX,
   VIEW_MODES,
   VIEW_MODE_LABELS,
-  changesContent,
   countErrors,
   folderLabel,
   isDraftCatalogID,
@@ -56,6 +54,7 @@ import {
   type FolderFormState,
   type FolderRefState,
 } from './collectionForm'
+import { errorRoleLabels, nestedCatalogForm, withGenreRef, withRefs } from './folderEdits'
 import { buildRefOptions, indexRefOptions, type RefOption } from './refs'
 
 /** A catalog staged locally by "copy into this collection"/"new inside this
@@ -77,11 +76,11 @@ function draftCatalog(seed: {
     provider: CATALOG_PROVIDER,
     params: seed.params,
     owner_id: '',
-    is_public: false,
     collection_id: seed.collectionID,
     created_at: '',
     updated_at: '',
-    linked: false,
+    publication: null,
+    subscription: null,
   }
 }
 
@@ -128,13 +127,10 @@ function draftCatalog(seed: {
  * be a modal, not a stack. `CollectionEditor` stays mounted underneath, so
  * this editor's own unsaved folder edits survive the round trip.
  *
- * **There is no read-only "imported" view**, for the same reason the catalog
- * editor has none: the closed-graph sharing model has no such state — a
- * taken collection is a private copy, fully
- * yours from the moment it's created, folders and scoped catalogs included.
- * Every row this editor opens is yours. While a taken copy is still
- * `linked`, a banner says so, and a save that would unlink it — pending
- * catalog edits included — asks first.
+ * **Every row this editor opens is editable,** a collection taken from
+ * Community included. Its sharing setting is `sharingRow`, which the pane
+ * builds: an own collection's Sharing row, or a copy's From Community row,
+ * and the pane asks before a copy's save, which makes it the profile's own.
  *
  * **A staged Move to library has its own Undo.** Once staged, the catalog
  * reads as listed in every folder, which offers no Edit to reopen it, so the
@@ -151,6 +147,7 @@ export function CollectionEditor({
   onRequestClose,
   onDuplicate,
   onDelete,
+  deleteBlocked = null,
   onDirtyChange,
   collectionID,
   initialCatalogs,
@@ -160,7 +157,8 @@ export function CollectionEditor({
   countryNames,
   languages,
   usedInFolders,
-  linked = false,
+  sharingRow,
+  sharingBadges,
 }: {
   /** The form as the row stands. A new identity re-seeds the editor (see
    *  `useEditorForm`), so callers hand over a stable object. */
@@ -182,6 +180,9 @@ export function CollectionEditor({
    *  Absent until the library lists a row that was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
+  /** Why Delete is disabled — this collection is on Home — or `null`
+   *  (`EditorShell`). */
+  deleteBlocked?: string | null
   onDirtyChange: (dirty: boolean) => void
   /** This collection's own server id: what a copied or new catalog is scoped
    *  to. */
@@ -204,10 +205,10 @@ export function CollectionEditor({
    *  computed in `Workspace`, which is the level that has the whole library.
    *  Meaningful only for a listed catalog. */
   usedInFolders: (catalogID: string) => number
-  /** A collection still linked to the community collection it was taken
-   *  from: shows the linked banner, and a save that changes anything besides
-   *  Public asks first (`ConfirmUnlink`). */
-  linked?: boolean
+  /** Its sharing setting: its Sharing row, or a copy's From Community row. */
+  sharingRow?: ReactNode
+  /** Its sharing stickers, on the sign. */
+  sharingBadges?: ReactNode
 }) {
   const baseline = initial
   const { state, setState, dirty, showErrors, submit } = useEditorForm(
@@ -274,22 +275,6 @@ export function CollectionEditor({
   // possibly-never-opened panel note.
   const emptyFolders = useMemo(() => state.folders.filter((f) => f.refs.length === 0), [state.folders])
 
-  // Listed catalogs, kept private on purpose (`collection_id === null`, per
-  // `refs.ts`'s `accessibleIDs`), that a folder here references. A scoped
-  // catalog has no separate private life to expose — it only exists inside
-  // this collection — so it's excluded; this is only about a private catalog
-  // that lives elsewhere in the library too, whose recipe a public collection
-  // would hand to anyone who takes it.
-  const privateReferencedCatalogs = useMemo(() => {
-    const referencedIDs = new Set(state.folders.flatMap((f) => f.refs.map((ref) => ref.catalogID)))
-    const seen = new Map<string, Catalog>()
-    for (const id of referencedIDs) {
-      const catalog = mergedOptionByID.get(id)?.catalog
-      if (catalog && !catalog.is_public && catalog.collection_id === null) seen.set(id, catalog)
-    }
-    return [...seen.values()]
-  }, [state.folders, mergedOptionByID])
-
   // Catalogs the next Save moves out of this collection into the library.
   const movingToLibrary = Object.entries(state.catalogEdits)
     .filter(([, edit]) => edit.moveToLibrary)
@@ -314,7 +299,7 @@ export function CollectionEditor({
   // Keyed on the catalog object, which only changes when `rememberCatalog`
   // replaces it: a fresh form on every render of this editor would re-seed the
   // nested one (see `useEditorForm`) and drop its edits when a save fails.
-  const nestedInitial = useMemo(() => nestedCatalog && formFromCatalog(nestedCatalog), [nestedCatalog])
+  const nestedInitial = useMemo(() => nestedCatalogForm(nestedCatalog), [nestedCatalog])
   // "New inside this collection" is named first, same two-step as the main
   // library's own "New catalog" — see Workspace's `createBareCatalog`.
   const [namingNewFolderKey, setNamingNewFolderKey] = useState<string | null>(null)
@@ -469,19 +454,11 @@ export function CollectionEditor({
   /** "Add another genre" on a ref's own row: a second ref to the same catalog,
    *  under `genre`, directly below it. */
   function addGenreRef(folderKey: string, refKey: string, genre: string) {
-    patchFolders((folders) =>
-      folders.map((f) => {
-        const at = f.refs.findIndex((ref) => ref.key === refKey)
-        if (f.key !== folderKey || at === -1 || hasRef(f, f.refs[at].catalogID, genre)) return f
-        const refs = [...f.refs]
-        refs.splice(at + 1, 0, newRef(f.refs[at].catalogID, genre))
-        return { ...f, refs }
-      }),
-    )
+    patchFolders((folders) => folders.map((f) => withGenreRef(f, folderKey, refKey, genre)))
   }
 
   function patchRefs(folderKey: string, update: (refs: FolderRefState[]) => FolderRefState[]) {
-    patchFolders((folders) => folders.map((f) => (f.key === folderKey ? { ...f, refs: update(f.refs) } : f)))
+    patchFolders((folders) => folders.map((f) => withRefs(f, folderKey, update)))
   }
 
   function removeRef(folderKey: string, refKey: string) {
@@ -517,8 +494,6 @@ export function CollectionEditor({
     showErrors ? state.folders.filter((f) => errors.folders[f.key]).map((f) => f.key) : [],
   )
 
-  const [confirmingUnlink, setConfirmingUnlink] = useState(false)
-
   // Resolves every draft catalog into its inline `new` spec here, right
   // before it reaches the wire — `localCatalogs` is this editor's own
   // state, which `Workspace.tsx`'s `onSave` has no way to see.
@@ -531,29 +506,10 @@ export function CollectionEditor({
       const badFolder = state.folders.find((f) => errors.folders[f.key])
       if (badFolder) setSelectedFolderKey(badFolder.key)
     }
-    submit(errorCount, (finalState) => {
-      if (linked && changesContent(baseline, finalState)) setConfirmingUnlink(true)
-      else save(finalState)
-    })
+    submit(errorCount, save)
   }
 
-  function confirmUnlink() {
-    setConfirmingUnlink(false)
-    save(state)
-  }
-
-  const roleLabels = showErrors
-    ? (() => {
-        const labels: string[] = []
-        if (errors.title) labels.push('Title')
-        state.folders.forEach((folder, index) => {
-          const folderErrors = errors.folders[folder.key]
-          if (folderErrors?.title) labels.push(`folder ${index + 1}’s title`)
-          if (folderErrors?.catalogIDs) labels.push(`folder ${index + 1}’s catalogs`)
-        })
-        return labels
-      })()
-    : []
+  const roleLabels = showErrors ? errorRoleLabels(errors, state.folders) : []
 
   // What the save bar adds after its status: what the next Save deletes, and
   // folders that would show nothing — the last one whether or not anything
@@ -572,11 +528,12 @@ export function CollectionEditor({
     <EditorShell
       purpose="Edit collection"
       tone="collection"
-      badges={state.isPublic ? <span className="stk stk-shared">Shared</span> : undefined}
+      badges={sharingBadges}
       title={state.title.trim() || 'Untitled collection'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
+      deleteBlocked={deleteBlocked}
       footer={
         <EditorFooter
           noun="collection"
@@ -597,7 +554,6 @@ export function CollectionEditor({
       <div className="ed-container">
         <div className="ed ed-preview">
           <div className="ed-form">
-            {linked && <LinkedBanner noun="collection" />}
             <div className="setting">
               <label htmlFor="col-title" className="setting-label type-label">
                 Title
@@ -614,40 +570,7 @@ export function CollectionEditor({
               </div>
             </div>
 
-            <div className="setting">
-              <span className="setting-label type-label">Sharing</span>
-              <div className="setting-value">
-                <Switch
-                  checked={state.isPublic}
-                  onChange={(isPublic) => patch({ isPublic })}
-                  label={state.isPublic ? 'Shared' : 'Private'}
-                />
-                {state.isPublic && privateReferencedCatalogs.length > 0 && (
-                  <FieldError tone="caution">
-                    {pluralCount(privateReferencedCatalogs.length, 'catalog')} in here{' '}
-                    {privateReferencedCatalogs.length === 1 ? "isn't" : "aren't"} shared on{' '}
-                    {privateReferencedCatalogs.length === 1 ? 'its' : 'their'} own (
-                    {privateReferencedCatalogs.map((c) => c.name).join(', ')}) — sharing this
-                    collection shares its contents too.
-                  </FieldError>
-                )}
-              </div>
-            </div>
-
-            <div className="setting">
-              <span className="setting-label type-label">Show first</span>
-              <div className="setting-value ed-line">
-                <Segmented
-                  ariaLabel="Show first on the home screen"
-                  value={state.pinToTop ? 'yes' : 'no'}
-                  onChange={(value) => patch({ pinToTop: value === 'yes' })}
-                  options={[
-                    { value: 'no', label: 'No' },
-                    { value: 'yes', label: 'Yes' },
-                  ]}
-                />
-              </div>
-            </div>
+            {sharingRow}
 
             <div className="setting">
               <span className="setting-label type-label">How folders open</span>
@@ -883,14 +806,6 @@ export function CollectionEditor({
         extra={<CatalogTypeField value={newCatalogType} onChange={setNewCatalogType} />}
         onCreate={createNewInCollection}
         onClose={() => setNamingNewFolderKey(null)}
-      />
-
-      <ConfirmUnlink
-        open={confirmingUnlink}
-        noun="collection"
-        name={state.title.trim() || 'this collection'}
-        onConfirm={confirmUnlink}
-        onCancel={() => setConfirmingUnlink(false)}
       />
     </EditorShell>
   )

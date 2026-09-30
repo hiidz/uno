@@ -135,9 +135,9 @@ func TestUpdateUserCollectionRefusedCatalogEditWritesNothing(t *testing.T) {
 			if err != nil {
 				t.Fatalf("reloading collection: %v", err)
 			}
-			if trees[0].Title != "My Collection" || trees[0].Version != saved.Version {
-				t.Errorf("collection after refused save = %q v%d, want %q v%d",
-					trees[0].Title, trees[0].Version, "My Collection", saved.Version)
+			if trees[0].Title != "My Collection" || !trees[0].UpdatedAt.Equal(saved.UpdatedAt) {
+				t.Errorf("collection after refused save = %q updated %s, want %q updated %s",
+					trees[0].Title, trees[0].UpdatedAt, "My Collection", saved.UpdatedAt)
 			}
 			if len(trees[0].Catalogs) != 1 || trees[0].Catalogs[0].Name != "Mine" || trees[0].Catalogs[0].Type != "movie" {
 				t.Errorf("catalogs after refused save = %+v, want %q untouched", trees[0].Catalogs, "Mine")

@@ -104,14 +104,12 @@ func requireOwnedIDs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, ids [
 		return nil
 	}
 
-	placeholders, args := buildInClause(unique)
-	args = append(args, profileID.String())
-	args = append(args, q.extraArgs...)
+	args := append([]any{idsJSON(unique), profileID.String()}, q.extraArgs...)
 
 	got, err := queryUUIDs(ctx, tx, q.label+" id", fmt.Sprintf(`
 		SELECT id FROM %s
-		WHERE id IN (%s) AND owner_id = ?%s
-	`, q.table, placeholders, q.extraWhere), args...)
+		WHERE id IN (SELECT value FROM json_each(?)) AND owner_id = ?%s
+	`, q.table, q.extraWhere), args...)
 	if err != nil {
 		return err
 	}
@@ -175,34 +173,8 @@ func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UU
 	})
 }
 
-// linkedCatalogSources maps each community catalog profileID holds a linked
-// copy of to that copy's taken_hash: GetCommunityCatalogs' "taken" and
-// "update available" flags. Only listed copies count. A catalog copied
-// inside a taken collection also carries taken_from, but the collection
-// holds that link.
-func (db *DB) linkedCatalogSources(ctx context.Context, profileID uuid.UUID) (map[uuid.UUID]string, error) {
-	copies, err := db.queryCatalogs(ctx, "c.owner_id = ? AND c.taken_from IS NOT NULL AND c.collection_id IS NULL", profileID.String())
-	if err != nil {
-		return nil, err
-	}
-	linked := make(map[uuid.UUID]string, len(copies))
-	for _, c := range copies {
-		linked[*c.TakenFrom] = c.TakenHash
-	}
-	return linked, nil
-}
-
-// linkedCollectionSources maps each community collection profileID holds a
-// linked copy of to that copy's taken_hash: GetCommunityCollections' "taken"
-// and "update available" flags.
-func (db *DB) linkedCollectionSources(ctx context.Context, profileID uuid.UUID) (map[uuid.UUID]string, error) {
-	copies, err := db.queryCollections(ctx, "owner_id = ? AND taken_from IS NOT NULL", profileID.String())
-	if err != nil {
-		return nil, err
-	}
-	linked := make(map[uuid.UUID]string, len(copies))
-	for _, c := range copies {
-		linked[*c.TakenFrom] = c.TakenHash
-	}
-	return linked, nil
+// errSubscribedCopy is the ErrInvalidInput for publishing a subscribed copy
+// of kind: only its publisher shares it.
+func errSubscribedCopy(kind string) error {
+	return fmt.Errorf("%w: this %s is a copy taken from Community, which only its publisher can share; save a change to it or detach it to make it yours, or duplicate it to share your own version", ErrInvalidInput, kind)
 }

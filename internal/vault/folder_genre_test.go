@@ -106,8 +106,7 @@ func TestFolderRefGenreSurvivesDuplicateAndTake(t *testing.T) {
 		t.Fatalf("create catalog: %v", err)
 	}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:    "Source",
-		IsPublic: true,
+		Title: "Source",
 		Folders: []FolderData{{Title: "Mixed", Catalogs: []FolderCatalogRef{
 			{CatalogID: &catalog.ID, Genre: "Western"},
 			{CatalogID: &catalog.ID, Genre: "War"},
@@ -121,10 +120,7 @@ func TestFolderRefGenreSurvivesDuplicateAndTake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DuplicateCollection: %v", err)
 	}
-	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
-	if err != nil {
-		t.Fatalf("TakeCollection: %v", err)
-	}
+	taken := takeCollection(t, db, owner, taker, source.ID)
 
 	for name, c := range map[string]CollectionWithFolders{"duplicate": dup, "take": taken} {
 		refs := c.Folders[0].Refs
@@ -173,9 +169,8 @@ func TestCopiedFolderRefsStayGroupedPerFolder(t *testing.T) {
 	}
 
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:    "Interleaved",
-		IsPublic: true,
-		Folders:  folders,
+		Title:   "Interleaved",
+		Folders: folders,
 	})
 	if err != nil {
 		t.Fatalf("create source collection: %v", err)
@@ -189,10 +184,7 @@ func TestCopiedFolderRefsStayGroupedPerFolder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DuplicateCollection: %v", err)
 	}
-	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
-	if err != nil {
-		t.Fatalf("TakeCollection: %v", err)
-	}
+	taken := takeCollection(t, db, owner, taker, source.ID)
 
 	// A copy re-keys refs to its own catalog ids, so the genre — carried
 	// verbatim and unique per catalog here — is what identifies each ref.

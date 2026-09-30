@@ -1,52 +1,59 @@
 import { sendJSON } from './http'
-import type { Catalog, CatalogType, Collection, TileShape } from './types'
+import type { Catalog, CatalogType, Collection, CommunityCopy, TileShape, TMDBKeyStatus } from './types'
 
-/** Deep-copies a community catalog into a new, private, listed catalog owned
- *  by this profile and linked to the original —
- *  `POST .../community/catalogs/{id}/take`. 404s if the source isn't public or
- *  is already owned by this profile, and 409s if this profile already holds a
- *  linked copy of it. */
-export function takeCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
-  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/community/catalogs/${catalogID}/take`)
+/** Shares a listed catalog as it is saved now, or publishes its update —
+ *  `POST .../catalogs/{id}/publish`. Republishing keeps the publication's id,
+ *  and so does publishing a withdrawn one again. 400s for a subscribed copy,
+ *  and 502s when TMDB can't be reached to check the recipe. */
+export function publishCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/publish`)
 }
 
-/** Deep-copies a community collection — its folders and every catalog they
- *  reference — into a new collection owned by this profile and linked to the
- *  original — `POST .../community/collections/{id}/take`. 404s if the source
- *  isn't public or is already owned by this profile, and 409s if this profile
- *  already holds a linked copy of it. */
-export function takeCollection(profileIndex: number, collectionID: string): Promise<Collection> {
-  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/community/collections/${collectionID}/take`)
+/** Stops sharing a catalog — `POST .../catalogs/{id}/withdraw`. Copies other
+ *  profiles took stay theirs, marked no longer shared. */
+export function withdrawCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/withdraw`)
 }
 
-/** Rewrites this profile's linked copy of a community catalog from the
- *  original's current name and recipe —
- *  `POST .../community/catalogs/{id}/update`, where `id` is the original's.
- *  404s if the original isn't public or no linked copy exists, and 409s, after
- *  unlinking it, if the copy was edited since it was last in step. */
-export function updateTakenCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
-  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/community/catalogs/${catalogID}/update`)
+/** Ends a subscribed catalog's subscription, keeping its id: it becomes the
+ *  owner's own to edit, and gets no more updates —
+ *  `POST .../catalogs/{id}/detach`. */
+export function detachCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/detach`)
 }
 
-/** Rewrites this profile's linked copy of a community collection from the
- *  original's current tree, keeping the copy's id, `is_public` and home
- *  placement and bumping its `version` —
- *  `POST .../community/collections/{id}/update`. Fails the same ways as
- *  `updateTakenCatalog`. */
-export function updateTakenCollection(profileIndex: number, collectionID: string): Promise<Collection> {
-  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/community/collections/${collectionID}/update`)
+/** `publishCatalog` for a collection: shares its tree, with every catalog its
+ *  folders use, library catalogs included. 400s for a subscribed copy, and
+ *  for a collection using a catalog its owner subscribes to. */
+export function publishCollection(profileIndex: number, collectionID: string): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/publish`)
 }
 
-/** Take without the link: a private, listed copy of a community catalog that
- *  Community never offers Update for — `POST .../community/catalogs/{id}/duplicate`. */
-export function duplicateCommunityCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
-  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/community/catalogs/${catalogID}/duplicate`)
+export function withdrawCollection(profileIndex: number, collectionID: string): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/withdraw`)
 }
 
-/** Take without the link, for a collection —
- *  `POST .../community/collections/{id}/duplicate`. */
-export function duplicateCommunityCollection(profileIndex: number, collectionID: string): Promise<Collection> {
-  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/community/collections/${collectionID}/duplicate`)
+export function detachCollection(profileIndex: number, collectionID: string): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/detach`)
+}
+
+/** Take: a copy of a publication that follows its updates until a save of
+ *  it makes it the profile's own — `POST .../community/{id}/subscribe`. */
+export function subscribe(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
+  return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/subscribe`)
+}
+
+/** Rewrites this profile's copy of a publication from its current snapshot,
+ *  keeping every id — `POST .../community/{id}/update`. 404s once the
+ *  publication is withdrawn or the copy is gone. */
+export function updateSubscription(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
+  return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/update`)
+}
+
+/** Duplicate: a copy of a publication that is the profile's own, with no
+ *  subscription — `POST .../community/{id}/fork`. */
+export function forkPublication(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
+  return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/fork`)
 }
 
 /**
@@ -72,7 +79,6 @@ export interface CatalogPayload {
   name: string
   provider: string
   params: string
-  is_public: boolean
   collection_id?: string | null
 }
 
@@ -98,8 +104,8 @@ export function updateCatalog(
 }
 
 /** Hard delete of an owned catalog, cascading to the folder refs that point
- *  at it. Copies other profiles took are independent rows and survive; the
- *  delete only clears their `taken_from` link. */
+ *  at it. A shared catalog stops being shared; copies other profiles took
+ *  stay theirs, marked no longer shared. */
 export function deleteCatalog(profileIndex: number, catalogID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/catalogs/${catalogID}`)
 }
@@ -179,8 +185,6 @@ interface ScopedCatalogEdit {
  */
 export interface CollectionPayload {
   title: string
-  is_public: boolean
-  pin_to_top: boolean
   view_mode: string
   show_all_tab: boolean
   backdrop_image_url: string
@@ -229,4 +233,16 @@ export function updateCollection(
  *  catalog refs. As with a catalog, copies other profiles took survive. */
 export function deleteCollection(profileIndex: number, collectionID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/collections/${collectionID}`)
+}
+
+/** Saves the signed-in account's TMDB key, replacing any it had, once TMDB
+ *  accepts it. A key of the wrong shape, or one TMDB refuses, is a 400 in
+ *  words; TMDB unreachable is a 502. Nothing is saved on either. */
+export function saveTMDBKey(key: string): Promise<TMDBKeyStatus> {
+  return sendJSON<TMDBKeyStatus>('PUT', '/api/account/tmdb-key', { key })
+}
+
+/** Removes the signed-in account's TMDB key. */
+export function removeTMDBKey(): Promise<null> {
+  return sendJSON<null>('DELETE', '/api/account/tmdb-key')
 }

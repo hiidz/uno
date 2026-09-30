@@ -14,9 +14,10 @@ import (
 )
 
 // assembleCollectionTree fetches folders, folder_catalogs and catalogs for
-// the given collections through q and zips everything into the nested
-// response shape. Order of the input collections slice is preserved.
-func assembleCollectionTree(ctx context.Context, q querier, collections []Collection) ([]CollectionWithFolders, error) {
+// the given collections through q, the catalogs by readCatalogs, and zips
+// everything into the nested response shape. Order of the input collections
+// slice is preserved.
+func assembleCollectionTree(ctx context.Context, q querier, collections []Collection, readCatalogs catalogReader) ([]CollectionWithFolders, error) {
 	if len(collections) == 0 {
 		return []CollectionWithFolders{}, nil
 	}
@@ -55,7 +56,7 @@ func assembleCollectionTree(ctx context.Context, q querier, collections []Collec
 	}
 	catalogsByID := make(map[uuid.UUID]Catalog)
 	if len(allCatalogIDs) > 0 {
-		catalogs, err := catalogsByIDs(ctx, q, dedupeUUIDs(allCatalogIDs))
+		catalogs, err := readCatalogs(ctx, q, dedupeUUIDs(allCatalogIDs))
 		if err != nil {
 			return nil, err
 		}
@@ -78,9 +79,25 @@ func assembleCollectionTree(ctx context.Context, q querier, collections []Collec
 			Folders:    jsonwire.OrEmpty(foldersByCollection[c.ID]),
 			Catalogs:   jsonwire.OrEmpty(catalogs),
 		}
+		result[i].markChangedSincePublish()
+		result[i].markNeedsPush()
 	}
 
 	return result, nil
+}
+
+// markChangedSincePublish sets tree's ChangedSincePublish when tree no
+// longer snapshots to what its publication holds.
+func (tree *CollectionWithFolders) markChangedSincePublish() {
+	if p := tree.Publication; p != nil {
+		p.ChangedSincePublish = collectionSnapshot(p.ID, *tree).contentHash() != p.contentHash
+	}
+}
+
+// ownCollection reads collection id's tree, which must be owned by
+// profileID (ErrCollectionNotFound otherwise), through q.
+func ownCollection(ctx context.Context, q querier, profileID, id uuid.UUID) (CollectionWithFolders, error) {
+	return selectTree(ctx, q, "col.id = ? AND col.owner_id = ?", id.String(), profileID.String())
 }
 
 // selectTree loads the one collection where selects, with its tree
@@ -90,7 +107,7 @@ func selectTree(ctx context.Context, q querier, where string, args ...any) (Coll
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
-	trees, err := assembleCollectionTree(ctx, q, collections)
+	trees, err := assembleCollectionTree(ctx, q, collections, catalogsByIDs)
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
@@ -104,14 +121,13 @@ func selectTree(ctx context.Context, q querier, where string, args ...any) (Coll
 // query, ordered by collection and then by sort_order within each — the order
 // assembleCollectionTree's grouping relies on.
 func loadFoldersByCollections(ctx context.Context, q querier, collectionIDs []uuid.UUID) ([]Folder, error) {
-	placeholders, args := buildInClause(collectionIDs)
-	rows, err := q.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := q.QueryContext(ctx, `
 		SELECT id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
-		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url
+		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url, sub_key
 		FROM folders
-		WHERE collection_id IN (%s)
+		WHERE collection_id IN (SELECT value FROM json_each(?))
 		ORDER BY collection_id, sort_order
-	`, placeholders), args...)
+	`, idsJSON(collectionIDs))
 	if err != nil {
 		return nil, fmt.Errorf("querying folders: %w", err)
 	}
@@ -135,13 +151,12 @@ func loadFolderRefs(ctx context.Context, q querier, folderIDs []uuid.UUID) (map[
 		return refsByFolder, nil
 	}
 
-	placeholders, args := buildInClause(folderIDs)
-	rows, err := q.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := q.QueryContext(ctx, `
 		SELECT folder_id, catalog_id, sort_order, genre
 		FROM folder_catalogs
-		WHERE folder_id IN (%s)
+		WHERE folder_id IN (SELECT value FROM json_each(?))
 		ORDER BY folder_id, sort_order
-	`, placeholders), args...)
+	`, idsJSON(folderIDs))
 	if err != nil {
 		return nil, fmt.Errorf("querying folder catalogs: %w", err)
 	}

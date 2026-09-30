@@ -1,4 +1,4 @@
-package nuvio
+package vault
 
 import (
 	"encoding/json"

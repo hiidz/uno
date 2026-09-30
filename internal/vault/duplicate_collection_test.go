@@ -12,8 +12,8 @@ import (
 // a reference (same id), while each distinct scoped source catalog becomes
 // one fresh scoped copy in the new collection, referenced everywhere the
 // source referenced it — the same one-copy-per-distinct-source-catalog rule
-// TakeCollection uses. taken_from stays nil throughout: this is a copy of
-// the caller's own data, not a take.
+// a subscribe follows. The copy is neither published nor subscribed: it is a
+// copy of the caller's own data.
 func TestDuplicateCollection(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -58,11 +58,8 @@ func TestDuplicateCollection(t *testing.T) {
 	if dup.OwnerID != owner {
 		t.Fatalf("duplicate owner = %s, want %s", dup.OwnerID, owner)
 	}
-	if dup.IsPublic {
-		t.Fatalf("duplicate is_public = true, want false")
-	}
-	if dup.TakenFrom != nil {
-		t.Fatalf("duplicate taken_from = %v, want nil", dup.TakenFrom)
+	if dup.Publication != nil || dup.Subscription != nil {
+		t.Fatalf("duplicate publication = %v, subscription = %v, want neither", dup.Publication, dup.Subscription)
 	}
 	if dup.Title != "Source (copy)" {
 		t.Fatalf("duplicate title = %q, want %q", dup.Title, "Source (copy)")
@@ -100,8 +97,8 @@ func TestDuplicateCollection(t *testing.T) {
 	if newScoped.ID == uuid.Nil {
 		t.Fatalf("duplicate.Catalogs missing the new scoped copy %s", newScopedID)
 	}
-	if newScoped.TakenFrom != nil {
-		t.Fatalf("duplicate's scoped catalog taken_from = %v, want nil", newScoped.TakenFrom)
+	if newScoped.SubKey != "" {
+		t.Fatalf("duplicate's scoped catalog sub_key = %q, want none", newScoped.SubKey)
 	}
 	if newScoped.CollectionID == nil || *newScoped.CollectionID != dup.ID {
 		t.Fatalf("duplicate's scoped catalog collection_id = %v, want %s", newScoped.CollectionID, dup.ID)

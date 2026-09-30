@@ -57,12 +57,13 @@ func tmdbDown(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handlerFixture is two profiles' published libraries: the owner's home
-// catalog and an unpublished one, the other profile's home catalog, and a
-// third profile that publishes nothing.
+// catalog, an unpublished one and a deleted one, the other profile's home
+// catalog and a deleted one, and a third profile that publishes nothing.
 type handlerFixture struct {
 	db                          *vault.DB
 	owner, other, empty         vault.Profile
 	onHome, unpublished, theirs vault.Catalog
+	deleted, theirsDeleted      vault.Catalog
 }
 
 func newHandlerFixture(t *testing.T) handlerFixture {
@@ -96,6 +97,15 @@ func newHandlerFixture(t *testing.T) handlerFixture {
 	f.onHome, f.unpublished, f.theirs = catalog(f.owner, "On home"), catalog(f.owner, "Unpublished"), catalog(f.other, "Theirs")
 	publish(f.owner, f.onHome)
 	publish(f.other, f.theirs)
+	f.deleted, f.theirsDeleted = catalog(f.owner, "Deleted"), catalog(f.other, "Theirs deleted")
+	for _, d := range []struct {
+		p vault.Profile
+		c vault.Catalog
+	}{{f.owner, f.deleted}, {f.other, f.theirsDeleted}} {
+		if err := f.db.DeleteUserCatalog(ctx, d.p.ID, d.c.ID); err != nil {
+			t.Fatalf("deleting %s: %v", d.c.Name, err)
+		}
+	}
 	return f
 }
 
@@ -104,7 +114,7 @@ func newHandlerFixture(t *testing.T) handlerFixture {
 // another's cached lists.
 func (f handlerFixture) get(t *testing.T, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	s, err := New(f.db, provider.NewTMDBClient("test-key"))
+	s, err := New(f.db, provider.NewTMDBClient("test-key"), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -181,11 +191,11 @@ func TestManifestHandler(t *testing.T) {
 	}
 }
 
-// TestCatalogHandler covers the catalog route. Its access check is the
-// profile's own published selection: a catalog that exists but isn't
-// published there, whether another profile's or its own unpublished one, is
-// the same 404 as one that doesn't exist, and is never fetched. A TMDB
-// failure is a 502.
+// TestCatalogHandler covers the catalog route. It serves a catalog the
+// token's profile has on the TV. Its own catalog off the TV or deleted,
+// another profile's catalog, live or deleted, a type or provider the catalog
+// doesn't have, and an id ManifestID can't have written are the same 404 as
+// one that doesn't exist, and are never fetched. A TMDB failure is a 502.
 func TestCatalogHandler(t *testing.T) {
 	f := newHandlerFixture(t)
 	path := func(token, catalogType string, c vault.Catalog) string {
@@ -202,7 +212,12 @@ func TestCatalogHandler(t *testing.T) {
 		{name: "published catalog", path: path(f.owner.Token, "movie", f.onHome), tmdb: tmdbUp, wantStatus: http.StatusOK, wantTMDB: true},
 		{name: "unknown token", path: path("no-such-token", "movie", f.onHome), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
 		{name: "another profile's catalog", path: path(f.owner.Token, "movie", f.theirs), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
-		{name: "own unpublished catalog", path: path(f.owner.Token, "movie", f.unpublished), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
+		{name: "own catalog off the TV", path: path(f.owner.Token, "movie", f.unpublished), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
+		{name: "own deleted catalog", path: path(f.owner.Token, "movie", f.deleted), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
+		{name: "another profile's deleted catalog", path: path(f.owner.Token, "movie", f.theirsDeleted), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
+		{name: "another provider", path: "/u/" + f.owner.Token + "/catalog/movie/other-" + f.onHome.ID.String() + ".json", tmdb: tmdbUp, wantStatus: http.StatusNotFound},
+		{name: "an id in another form", path: "/u/" + f.owner.Token + "/catalog/movie/tmdb-" + strings.ToUpper(f.onHome.ID.String()) + ".json", tmdb: tmdbUp, wantStatus: http.StatusNotFound},
+		{name: "no provider", path: "/u/" + f.owner.Token + "/catalog/movie/" + strings.ReplaceAll(f.onHome.ID.String(), "-", "") + ".json", tmdb: tmdbUp, wantStatus: http.StatusNotFound},
 		{name: "published catalog under the wrong type", path: path(f.owner.Token, "series", f.onHome), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
 		{name: "TMDB down", path: path(f.owner.Token, "movie", f.onHome), tmdb: tmdbDown, wantStatus: http.StatusBadGateway, wantTMDB: true},
 	}
@@ -257,7 +272,7 @@ func TestHandlersVaultFailure(t *testing.T) {
 // origin, and turns a handler panic into a 500 — nothing else on this
 // unauthenticated path would recover it.
 func TestPublic(t *testing.T) {
-	s, err := New(newTestVault(t), provider.NewTMDBClient("test-key"))
+	s, err := New(newTestVault(t), provider.NewTMDBClient("test-key"), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -284,10 +299,10 @@ func TestPublic(t *testing.T) {
 }
 
 func TestNewRequiresBothDependencies(t *testing.T) {
-	if _, err := New(nil, provider.NewTMDBClient("test-key")); err == nil {
+	if _, err := New(nil, provider.NewTMDBClient("test-key"), nil); err == nil {
 		t.Error("New(nil vault) = nil error, want one")
 	}
-	if _, err := New(newTestVault(t), nil); err == nil {
+	if _, err := New(newTestVault(t), nil, nil); err == nil {
 		t.Error("New(nil provider) = nil error, want one")
 	}
 }

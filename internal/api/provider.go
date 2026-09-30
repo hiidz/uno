@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/hiidz/uno/internal/httpx"
@@ -14,19 +15,14 @@ import (
 )
 
 // lookupList answers with fetch's result, classifying a failure the way every
-// TMDB lookup route does: an unusable catalog type or an unusable query param
-// is the caller's fault (400, and TMDB was never contacted), a resource TMDB
-// doesn't have is a 404, anything else is upstream's (502). fetch is a
-// closure so each route can pass its own path and query params.
+// TMDB lookup route does (lookupErrors), and anything else as upstream's
+// (502). fetch is a closure so each route can pass its own path and query
+// params.
 func lookupList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, error)) {
 	result, err := fetch()
 	if err != nil {
-		if errors.Is(err, provider.ErrInvalidCatalogType) || errors.Is(err, provider.ErrInvalidParams) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, provider.ErrNotFound) {
-			http.Error(w, "not found on TMDB", http.StatusNotFound)
+		if status, msg := clientFailureOf(lookupErrors, err); status != 0 {
+			http.Error(w, msg, status)
 			return
 		}
 		log.Printf("lookupList: %s: %v", failMsg, err)
@@ -35,6 +31,23 @@ func lookupList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, e
 	}
 	httpx.WriteJSON(w, http.StatusOK, result)
 }
+
+// lookupErrors are the failures of a TMDB lookup the caller can act on: a key
+// problem (keyFailures), an unusable catalog type or query param (400, and
+// TMDB was never contacted), and a resource TMDB doesn't have (404).
+var lookupErrors = slices.Concat(keyFailures, []clientFailure{
+	{provider.ErrInvalidCatalogType, http.StatusBadRequest, ""},
+	{provider.ErrInvalidParams, http.StatusBadRequest, ""},
+	{provider.ErrNotFound, http.StatusNotFound, "not found on TMDB"},
+})
+
+// previewErrors are the failures of a preview the caller can act on once its
+// recipe has passed validateCatalogParams: a key problem, or an unusable
+// catalog type. Anything else is TMDB's, a 502 the SPA answers with
+// placeholder tiles.
+var previewErrors = slices.Concat(keyFailures, []clientFailure{
+	{provider.ErrInvalidCatalogType, http.StatusBadRequest, ""},
+})
 
 func (s *Server) listGenres(w http.ResponseWriter, r *http.Request) {
 	lookupList(w, "failed to fetch genres", func() ([]provider.Genre, error) {

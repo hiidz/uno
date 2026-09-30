@@ -4,7 +4,6 @@ import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catal
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
-  changesContent,
   emptyCollectionForm,
   formFromCollection,
   isSameCollection,
@@ -137,23 +136,6 @@ describe('undoing a staged Move to library', () => {
   it('keeps a rename made alongside the move', () => {
     const undone = stageAndUndo({ ...formFromCatalog(saved), name: 'Renamed', collectionID: null })
     expect(undone.catalogEdits.c1).toMatchObject({ name: 'Renamed', moveToLibrary: false })
-  })
-})
-
-describe('changesContent', () => {
-  const baseline = formWith([newRef('c1')])
-
-  it('ignores a Public toggle on its own', () => {
-    expect(changesContent(baseline, { ...baseline, isPublic: true })).toBe(false)
-  })
-
-  it('counts a change to anything else', () => {
-    expect(changesContent(baseline, { ...baseline, isPublic: true, title: 'Renamed' })).toBe(true)
-  })
-
-  it('counts a staged Move to library with nothing else changed', () => {
-    const edit = { type: 'movie', provider: 'tmdb', name: 'Scoped', params: '{}', moveToLibrary: true } as const
-    expect(changesContent(baseline, { ...baseline, catalogEdits: { c1: edit } })).toBe(true)
   })
 })
 

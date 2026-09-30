@@ -1,15 +1,18 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 
 	"github.com/hiidz/uno/internal/httpx"
+	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -46,8 +49,24 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // generic 400, so a client can tell "too big" from "malformed".
 func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	return decoded(w, json.NewDecoder(r.Body), v)
+}
 
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+// decodeStrictJSON is decodeJSON refusing, as a 400, any field v doesn't
+// have. Push decodes this way: its body is the whole selection, so one sent
+// in another shape, by a tab loaded before the shape changed, would otherwise
+// read as empty and take every Uno collection off Nuvio.
+func decodeStrictJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	return decoded(w, d, v)
+}
+
+// decoded decodes d into v, answering a failure itself: 413 for a body over
+// its limit, else 400.
+func decoded(w http.ResponseWriter, d *json.Decoder, v any) bool {
+	if err := d.Decode(v); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
@@ -61,9 +80,7 @@ func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64)
 
 // writeVaultError classifies a vault-layer (or vault-flavored, see
 // validateCatalogParams) error into one HTTP response: an error the caller
-// caused (clientErrorStatus) is its 400 or 409 using the error's own message
-// (safe — every ErrInvalidInput and ErrConflict message is built from
-// validation or state text, never a lower-level detail),
+// can act on (clientErrors) is its 422, 400, 403 or 409 with the row's words,
 // notFound is the resource's own not-found sentinel (pass nil to skip that
 // case, e.g. create has none), errUpstreamValidation is a 502 because a
 // recipe that couldn't be checked against TMDB has not been found at fault,
@@ -74,13 +91,11 @@ func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64)
 //
 // Shared by every catalog/collection create/update/delete handler and by
 // the two preview routes, so a recipe fails the same way wherever it is
-// judged — before this, catalogs answered a bad recipe with a bare
-// http.Error(err.Error(), 400) from validateCatalogParams while a bad
-// vault.CatalogForm went through this same errors.Is switch.
+// judged.
 func writeVaultError(w http.ResponseWriter, op string, err error, notFound error, notFoundMsg, defaultMsg string) {
-	switch status := clientErrorStatus(err); {
+	switch status, msg := clientFailureOf(clientErrors, err); {
 	case status != 0:
-		http.Error(w, err.Error(), status)
+		http.Error(w, msg, status)
 	case notFound != nil && errors.Is(err, notFound):
 		http.Error(w, notFoundMsg, http.StatusNotFound)
 	case errors.Is(err, errUpstreamValidation):
@@ -92,25 +107,53 @@ func writeVaultError(w http.ResponseWriter, op string, err error, notFound error
 	}
 }
 
-// clientErrorStatus is the status of a vault error the caller caused —
-// 400 for vault.ErrInvalidInput, 409 for vault.ErrConflict — or 0 for any
-// other error.
-func clientErrorStatus(err error) int {
-	switch {
-	case errors.Is(err, vault.ErrInvalidInput):
-		return http.StatusBadRequest
-	case errors.Is(err, vault.ErrConflict):
-		return http.StatusConflict
-	}
-	return 0
+// clientFailure pairs an error the caller can act on with the status it is
+// answered with, and the words: message, or the error's own when message is
+// empty.
+type clientFailure struct {
+	sentinel error
+	status   int
+	message  string
 }
+
+// clientFailureOf is the status and words table gives err, or 0 when err is
+// in none of its rows. Rows are tried in order.
+func clientFailureOf(table []clientFailure, err error) (int, string) {
+	for _, f := range table {
+		if errors.Is(err, f.sentinel) {
+			return f.status, cmp.Or(f.message, err.Error())
+		}
+	}
+	return 0, ""
+}
+
+// keyFailures answer a TMDB call the account's own key couldn't make, on a
+// server where each account brings one: it has saved none, or TMDB doesn't
+// accept it. They are a 422, a status nothing else in the builder API
+// answers, so the SPA can tell a key problem from any other failure: not a
+// 401 (the SPA refreshes and retries on one), a 403 (the access refusal) or a
+// 409 (Already taken).
+var keyFailures = []clientFailure{
+	{provider.ErrNoKey, http.StatusUnprocessableEntity, "This account has no TMDB key yet."},
+	{provider.ErrKeyRejected, http.StatusUnprocessableEntity, "TMDB didn't accept your key."},
+}
+
+// clientErrors are the errors a vault write or its recipe check answers
+// the caller with: a key problem (keyFailures), then 400 for
+// vault.ErrInvalidInput and 409 for vault.ErrConflict, each in the error's own
+// words — safe, since every such message is built from validation or state
+// text, never a lower-level detail.
+var clientErrors = slices.Concat(keyFailures, []clientFailure{
+	{vault.ErrInvalidInput, http.StatusBadRequest, ""},
+	{vault.ErrConflict, http.StatusConflict, ""},
+})
 
 // writeNuvioError classifies a Nuvio-call error and writes a plain-text
 // response: nuvio.ErrNuvioRequestFailed is upstream's fault (502, "nuvio
 // unavailable"), anything else is ours (500, defaultMsg). Delegates the
 // classification to nuvioErrorStatus (push.go) so its JSON responses and
 // these plain-text ones can't drift apart on what counts as an upstream
-// failure — profiles.go used to hand-roll this same errors.Is check twice.
+// failure.
 func writeNuvioError(w http.ResponseWriter, err error, defaultMsg string) {
 	if nuvioErrorStatus(err) == http.StatusBadGateway {
 		http.Error(w, "nuvio unavailable", http.StatusBadGateway)

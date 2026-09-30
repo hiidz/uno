@@ -1,230 +1,247 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { ApiError, ProfileNotSelectedError } from '@/api'
+import { Search } from 'lucide-react'
+import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
 import { Segmented } from '@/components/fields'
+import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
-import { describeCollection } from '@/features/library/collection'
-import { typeLabel } from '@/features/library/recipe'
-import { CommunityCatalogPreview, CommunityCollectionPreview, CommunityRow } from './CommunityRow'
-import { useCommunityCatalogs, useCommunityCollections } from './useCommunity'
+import { useGenreLookups, type GenreLookups } from '@/features/library/useLibrary'
+import { snapshotRecipeLine } from '@/features/sharing/snapshot'
+import {
+  itemMeta,
+  itemSummary,
+  ofKind,
+  openItemIn,
+  startingView,
+  visibleItems,
+  type CommunityFilters,
+  type OpenPublication,
+} from './communityQuery'
+import { CommunityRow, type RowActions } from './CommunityRow'
+import { PublicationPage } from './PublicationPage'
+import { focusRow, rowButtonID, useScrollMemory } from './scroll'
+import { useCommunityList } from './useCommunity'
 import { useCommunityMutations, type CommunityAction } from './useCommunityMutations'
 
-type Kind = 'catalogs' | 'collections'
-type Sort = 'name' | 'newest'
+const NO_ITEMS: CommunityItem[] = []
 
 /**
- * The Community tab: everyone else's public catalogs and collections, browsed
- * and copied rather than referenced — the closed-graph model's only path
- * across an owner boundary. No author, no handle, no "copied from" line
- * anywhere here: that provenance is retired,
- * not merely hidden — `taken_from` exists only to link this profile's own
- * copy to its original, so a row can say "✓ Taken" or offer Update.
+ * The Community tab: what other profiles share, loaded in one call and
+ * searched, filtered and sorted here. A row opens its publication's page in
+ * place of the list, and the way back returns to the same scroll position.
+ * Take adds a copy that follows its owner's updates; Update… opens the page,
+ * which shows the new version and applies it; Duplicate adds a copy that is
+ * the profile's own. No owner is named anywhere here. `initialOpen` starts on
+ * a publication's page: a copy's own Update… lands there.
  */
-export function CommunityView({ profileIndex }: { profileIndex: number }) {
-  const catalogsQuery = useCommunityCatalogs(profileIndex)
-  const collectionsQuery = useCommunityCollections(profileIndex)
+export function CommunityView({
+  profileIndex,
+  initialOpen,
+}: {
+  profileIndex: number
+  initialOpen: OpenPublication | null
+}) {
+  const { genres } = useGenreLookups()
   const mutations = useCommunityMutations(profileIndex)
+  const list = useCommunityList(profileIndex)
 
-  const [kind, setKind] = useState<Kind>('catalogs')
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<Sort>('name')
-  const [previewID, setPreviewID] = useState<string | null>(null)
+  const [start] = useState(() => startingView(initialOpen))
+  const [filters, setFilters] = useState<CommunityFilters>(start.filters)
+  const [openID, setOpenID] = useState<string | null>(start.openID)
   const [toast, setToast] = useToast()
-  // Keyed by the original's id; catalog and collection ids never collide.
+  // Keyed by publication id. Actions on different rows can overlap.
   const [pending, setPending] = useState<ReadonlyMap<string, CommunityAction>>(new Map())
 
-  const query = search.trim().toLowerCase()
+  const all = list.data ?? NO_ITEMS
+  const items = useMemo(() => visibleItems(all, filters), [all, filters])
+  const open = openItemIn(all, openID)
+  const now = new Date()
 
-  const catalogs = useMemo(
-    () => filterAndSort(catalogsQuery.data ?? [], (c) => c.name, query, sort),
-    [catalogsQuery.data, query, sort],
-  )
-  const collections = useMemo(
-    () => filterAndSort(collectionsQuery.data ?? [], (c) => c.title, query, sort),
-    [collectionsQuery.data, query, sort],
+  const { scrollRef, remember, restore } = useScrollMemory()
+
+  const back = useCallback(
+    (id: string) => {
+      setOpenID(null)
+      restore(() => focusRow(id))
+    },
+    [restore],
   )
 
-  function togglePreview(id: string) {
-    setPreviewID((current) => (current === id ? null : id))
+  function openItem(id: string) {
+    remember()
+    setOpenID(id)
   }
 
-  // Actions on different rows can overlap, so each settles through its own
-  // mutateAsync promise: callbacks passed to mutate() run only for the latest
-  // call, which would leave an earlier row stuck on "Taking…". The promise
-  // settles once the lists have refetched (`useCommunityMutations`), so the
-  // toast arrives with the row already showing the outcome.
-  function run(rowKind: Kind, id: string, action: CommunityAction) {
-    setPending((current) => new Map(current).set(id, action))
-    mutations[rowKind][action]
-      .mutateAsync(id)
+  function run(item: CommunityItem, action: CommunityAction) {
+    setPending((current) => new Map(current).set(item.id, action))
+    mutations[action]
+      .mutateAsync(item.id)
       .then(
-        () => setToast({ text: DONE[action][rowKind], tone: 'success' }),
-        (error: Error) => setToast(failure(action, rowKind, error)),
+        () => setToast({ text: DONE[action][item.kind], tone: 'success' }),
+        (error: Error) => setToast(failure(action, error)),
       )
       .finally(() =>
         setPending((current) => {
           const next = new Map(current)
-          next.delete(id)
+          next.delete(item.id)
           return next
         }),
       )
   }
 
-  const activeQuery = kind === 'catalogs' ? catalogsQuery : collectionsQuery
-  const activeCount = kind === 'catalogs' ? catalogs.length : collections.length
+  function actionsFor(item: CommunityItem, onUpdate: () => void, updateLabel: string): RowActions {
+    return {
+      pending: pending.get(item.id),
+      onTake: () => run(item, 'take'),
+      onDuplicate: () => run(item, 'duplicate'),
+      onUpdate,
+      updateLabel,
+    }
+  }
 
-  // A 404 on a profile-scoped route means this slot was never selected —
-  // there's nothing to retry, so send the user back to pick one.
-  if (activeQuery.error instanceof ProfileNotSelectedError) {
+  // A 404 on the list means this slot was never selected; there is nothing
+  // to retry, so send the user back to pick one.
+  if (list.error instanceof ProfileNotSelectedError) {
     return <Navigate to="/profiles" replace />
   }
 
+  const describe = (item: CommunityItem) => describeItem(item, genres)
+
   return (
-    <div className="tone-community flex w-full flex-col">
+    <div ref={scrollRef} className="tone-community flex w-full flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
       <div className="sign min-h-[64px] px-4 py-3 lg:min-h-[80px] lg:px-6">
         <h1 className="type-sign m-0 text-[18px] leading-tight lg:text-[25px]">Community</h1>
       </div>
-      <section className="mx-auto flex w-full max-w-[900px] flex-col gap-4 p-4 lg:p-6">
+      <section className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 p-4 lg:p-6">
         <Toast toast={toast} />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Segmented
-            ariaLabel="Community kind"
-            value={kind}
-            onChange={setKind}
-            options={[
-              { value: 'catalogs', label: 'Catalogs' },
-              { value: 'collections', label: 'Collections' },
-            ]}
+        {open ? (
+          <PublicationPage
+            key={open.id}
+            profileIndex={profileIndex}
+            item={open}
+            summary={describe(open)}
+            meta={itemMeta(open, now)}
+            genres={genres}
+            actions={actionsFor(open, () => run(open, 'update'), 'Update')}
+            onBack={() => back(open.id)}
           />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by name"
-            aria-label="Search the community"
-            className="field h-10 min-w-[200px] flex-1 text-[14px] pointer-coarse:text-[16px]"
-          />
-          <div className="flex items-center gap-2">
-            <span className="type-label">Sort</span>
-            <Segmented
-              ariaLabel="Sort community results"
-              value={sort}
-              onChange={setSort}
-              options={[
-                { value: 'name', label: 'Name' },
-                { value: 'newest', label: 'Newest' },
-              ]}
-            />
-          </div>
-        </div>
-
-        {query && (activeQuery.data?.length ?? 0) > 0 && (
-          <p className="type-data text-dim m-0 text-[13.5px]">
-            {activeCount} of {activeQuery.data?.length} {kind}
-          </p>
-        )}
-
-        <ListState
-          isLoading={activeQuery.isPending}
-          error={activeQuery.error as Error | null}
-          isEmpty={activeCount === 0}
-          loadingLabel={`Loading community ${kind}…`}
-          errorLabel={`Couldn't load community ${kind}.`}
-          onRetry={activeQuery.refetch}
-          emptyLabel={
-            query
-              ? `No ${kind} match this search.`
-              : kind === 'catalogs'
-                ? 'Nobody has shared a catalog yet.'
-                : 'Nobody has shared a collection yet.'
-          }
-        >
-          {kind === 'catalogs'
-            ? catalogs.map((catalog) => (
+        ) : (
+          <>
+            <Controls filters={filters} onChange={setFilters} />
+            <SearchCount filters={filters} shown={items.length} of={ofKind(all, filters.kind).length} />
+            <ListState
+              isLoading={list.isPending}
+              error={list.error as Error | null}
+              isEmpty={items.length === 0}
+              loadingLabel="Loading Community…"
+              errorLabel="Couldn’t load Community."
+              onRetry={list.refetch}
+              emptyLabel={emptyLabel(filters)}
+            >
+              {items.map((item) => (
                 <CommunityRow
-                  key={catalog.id}
-                  name={catalog.name}
-                  summary={typeLabel(catalog.type)}
-                  taken={catalog.taken}
-                  updateAvailable={catalog.update_available}
-                  pending={pending.get(catalog.id)}
-                  previewOpen={previewID === catalog.id}
-                  onTogglePreview={() => togglePreview(catalog.id)}
-                  onTake={() => run('catalogs', catalog.id, 'take')}
-                  onUpdate={() => run('catalogs', catalog.id, 'update')}
-                  onDuplicate={() => run('catalogs', catalog.id, 'duplicate')}
-                  preview={<CommunityCatalogPreview catalog={catalog} />}
-                />
-              ))
-            : collections.map((collection) => (
-                <CommunityRow
-                  key={collection.id}
-                  name={collection.title}
-                  summary={describeCollection(collection)}
-                  taken={collection.taken}
-                  updateAvailable={collection.update_available}
-                  pending={pending.get(collection.id)}
-                  previewOpen={previewID === collection.id}
-                  onTogglePreview={() => togglePreview(collection.id)}
-                  onTake={() => run('collections', collection.id, 'take')}
-                  onUpdate={() => run('collections', collection.id, 'update')}
-                  onDuplicate={() => run('collections', collection.id, 'duplicate')}
-                  preview={<CommunityCollectionPreview collection={collection} />}
+                  key={item.id}
+                  item={item}
+                  summary={describe(item)}
+                  meta={itemMeta(item, now)}
+                  buttonID={rowButtonID(item.id)}
+                  onOpen={() => openItem(item.id)}
+                  actions={actionsFor(item, () => openItem(item.id), 'Update…')}
                 />
               ))}
-        </ListState>
+            </ListState>
+          </>
+        )}
       </section>
     </div>
   )
 }
 
-const DONE: Record<CommunityAction, Record<Kind, string>> = {
-  take: { catalogs: 'Added to your catalogs', collections: 'Added to your collections' },
-  update: { catalogs: 'Updated your copy', collections: 'Updated your copy' },
-  duplicate: { catalogs: 'Duplicated to your catalogs', collections: 'Duplicated to your collections' },
+function describeItem(item: CommunityItem, genres: GenreLookups): string {
+  return itemSummary(item, item.catalog ? snapshotRecipeLine(item.catalog, genres) : '')
 }
 
-/** The toast for a failed action. A stale failure (`isStale`) has already
- *  refreshed the lists, so the answers that mean "the row was behind" say what
- *  happened rather than repeating the server's message: a 409 from Take means
- *  the copy exists; a 409 from Update means Update found the copy edited and
- *  unlinked it; a 404 from Update means the original went private or was
- *  deleted, or the copy was already unlinked, and the response can't say
- *  which. */
-function failure(action: CommunityAction, rowKind: Kind, error: Error): ToastMessage {
-  const noun = rowKind === 'catalogs' ? 'catalog' : 'collection'
+const KIND_WORD: Record<CommunityItem['kind'], string> = { catalog: 'catalogs', collection: 'collections' }
+
+/** What an empty list says: that nothing matches the search, or that nobody
+ *  has shared anything of this kind. */
+function emptyLabel(filters: CommunityFilters): string {
+  if (filters.q.trim()) return `No ${KIND_WORD[filters.kind]} match this search.`
+  return `Nobody has shared any ${KIND_WORD[filters.kind]} yet. Share one of your own from its editor.`
+}
+
+/** "3 of 12 catalogs" while a search narrows a kind that has any rows. */
+function SearchCount({ filters, shown, of }: { filters: CommunityFilters; shown: number; of: number }) {
+  if (!filters.q.trim() || of === 0) return null
+  return (
+    <p className="type-data text-dim m-0 text-[13.5px]">
+      {shown} of {of} {KIND_WORD[filters.kind]}
+    </p>
+  )
+}
+
+/** The kind switch, the search box and the sort. */
+function Controls({
+  filters,
+  onChange,
+}: {
+  filters: CommunityFilters
+  onChange: (filters: CommunityFilters) => void
+}) {
+  const patch = (next: Partial<CommunityFilters>) => onChange({ ...filters, ...next })
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Segmented<CommunityFilters['kind']>
+        ariaLabel="Community kind"
+        value={filters.kind}
+        onChange={(kind) => patch({ kind })}
+        options={[
+          { value: 'catalog', label: 'Catalogs' },
+          { value: 'collection', label: 'Collections' },
+        ]}
+      />
+      <div className="relative min-w-[200px] flex-1">
+        <Icon icon={Search} size={16} className="text-dimmer pointer-events-none absolute top-1/2 left-4 -translate-y-1/2" />
+        <input
+          type="search"
+          value={filters.q}
+          onChange={(event) => patch({ q: event.target.value })}
+          placeholder="Search names and catalogs"
+          aria-label="Search Community"
+          className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:text-[16px]"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="type-label">Sort</span>
+        <Segmented<CommunityFilters['sort']>
+          ariaLabel="Sort Community"
+          value={filters.sort}
+          onChange={(sort) => patch({ sort })}
+          options={[
+            { value: 'name', label: 'Name' },
+            { value: 'newest', label: 'Newest' },
+          ]}
+        />
+      </div>
+    </div>
+  )
+}
+
+const DONE: Record<CommunityAction, Record<CommunityItem['kind'], string>> = {
+  take: { catalog: 'Added to your catalogs', collection: 'Added to your collections' },
+  update: { catalog: 'Updated your copy', collection: 'Updated your copy' },
+  duplicate: { catalog: 'Duplicated to your catalogs', collection: 'Duplicated to your collections' },
+}
+
+/** The toast for a failed action. A stale failure has already refreshed the
+ *  lists: a 409 from Take means this profile already holds a copy, and a 404
+ *  means the owner stopped sharing it. */
+function failure(action: CommunityAction, error: Error): ToastMessage {
   const status = error instanceof ApiError ? error.status : undefined
-  if (action === 'take' && status === 409) {
-    return { text: 'Already taken', tone: 'success' }
-  }
-  if (action === 'update' && status === 409) {
-    return {
-      text: "Your copy was edited, so it's no longer linked. Take it again to get the latest",
-      tone: 'danger',
-    }
-  }
-  if (action === 'update' && status === 404) {
-    return {
-      text: "Couldn't update: the original is no longer available, or your copy is no longer linked.",
-      tone: 'danger',
-    }
-  }
-  const what = action === 'update' ? 'your copy' : `this ${noun}`
-  return { text: `Couldn't ${action} ${what}: ${error.message}`, tone: 'danger' }
-}
-
-/** The rows whose name holds `query`, by name or newest first. */
-function filterAndSort<T extends { created_at: string }>(
-  rows: T[],
-  name: (row: T) => string,
-  query: string,
-  sort: Sort,
-): T[] {
-  const matched = query ? rows.filter((row) => name(row).toLowerCase().includes(query)) : [...rows]
-  return sort === 'newest'
-    ? matched.sort((a, b) => b.created_at.localeCompare(a.created_at))
-    : matched.sort((a, b) => name(a).localeCompare(name(b)))
+  if (action === 'take' && status === 409) return { text: 'Already taken', tone: 'success' }
+  if (status === 404) return { text: 'Its owner no longer shares it.', tone: 'danger' }
+  return { text: `Couldn’t ${action} it: ${error.message}`, tone: 'danger' }
 }

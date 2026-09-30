@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Download, Plus, Search, Upload } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import { Icon } from '@/components/Icon'
+import { rowStickers } from '@/features/sharing/sharingState'
 import { ListError, ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { describeCollection } from './collection'
@@ -149,8 +150,7 @@ export function LibrarySection({
           <LibraryItem
             key={catalog.id}
             kind={catalog.type}
-            linked={catalog.linked}
-            isPublic={catalog.is_public}
+            stickers={rowStickers(catalog)}
             name={catalog.name}
             summary={summary}
             selected={selectedID === catalog.id}
@@ -163,6 +163,7 @@ export function LibrarySection({
             }
             onDuplicate={() => onDuplicateCatalog(catalog)}
             onDelete={() => onDeleteCatalog(catalog)}
+            deleteBlocked={home.deleteBlockers.catalog(catalog.id)}
           />
         ))}
       </LibraryGroup>
@@ -189,8 +190,7 @@ export function LibrarySection({
           <LibraryItem
             key={collection.id}
             kind="collection"
-            linked={collection.linked}
-            isPublic={collection.is_public}
+            stickers={rowStickers(collection)}
             name={collection.title}
             summary={summary}
             selected={selectedID === collection.id}
@@ -203,6 +203,7 @@ export function LibrarySection({
             }
             onDuplicate={() => onDuplicateCollection(collection)}
             onDelete={() => onDeleteCollection(collection)}
+            deleteBlocked={home.deleteBlockers.collection(collection.id)}
           />
         ))}
       </LibraryGroup>

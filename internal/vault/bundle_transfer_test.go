@@ -30,22 +30,6 @@ func readTestBundle(t *testing.T) Bundle {
 	return b
 }
 
-// stampRecipeHashes sets every catalog's RecipeHash in b to a stand-in
-// naming its type and params, the field extractBundle fills from a stored
-// row, so bundleCollectionHash can hash a bundle read from a file.
-func stampRecipeHashes(b Bundle) Bundle {
-	stamp := func(catalogs []BundleCatalog) {
-		for i := range catalogs {
-			catalogs[i].RecipeHash = "fp:" + catalogs[i].Type + ":" + string(catalogs[i].Params)
-		}
-	}
-	stamp(b.Catalogs)
-	for i := range b.Collections {
-		stamp(b.Collections[i].Catalogs)
-	}
-	return b
-}
-
 func requireInvalid(t *testing.T, err error, fragment string) {
 	t.Helper()
 	if !errors.Is(err, ErrInvalidInput) {
@@ -296,8 +280,8 @@ func TestImportBundleWritesNewRows(t *testing.T) {
 		t.Fatalf("imported catalogs = %v, want the two top-level ones in order", names)
 	}
 	for _, c := range catalogs {
-		if c.OwnerID != importer || c.IsPublic || c.CollectionID != nil || c.TakenFrom != nil || c.Linked || c.HomeSortOrder != nil {
-			t.Errorf("listed %q = %+v, want a private, unlinked, listed row off Home", c.Name, c)
+		if c.OwnerID != importer || c.Publication != nil || c.CollectionID != nil || c.Subscription != nil || c.SubKey != "" || c.HomeSortOrder != nil {
+			t.Errorf("listed %q = %+v, want an unpublished, unsubscribed, listed row off Home", c.Name, c)
 		}
 		if want := RecipeHash(c.Type, c.Provider, c.Params); c.RecipeHash != want {
 			t.Errorf("listed %q recipe hash = %q, want %q", c.Name, c.RecipeHash, want)
@@ -311,13 +295,13 @@ func TestImportBundleWritesNewRows(t *testing.T) {
 		t.Fatalf("imported %d collections, want 1", len(collections))
 	}
 	halloween := collections[0]
-	if halloween.Title != "Halloween" || halloween.IsPublic || halloween.Version != 1 || halloween.PushedVersion != nil ||
-		halloween.HomeSortOrder != nil || halloween.TakenFrom != nil || halloween.PinToTop || halloween.BackdropImageURL == "" {
-		t.Errorf("collection = %+v, want the file's fields on a private, unlinked, never-pushed row off Home", halloween.Collection)
+	if halloween.Title != "Halloween" || halloween.Publication != nil || halloween.pushedHash != "" ||
+		halloween.HomeSortOrder != nil || halloween.Subscription != nil || halloween.PinToTop || halloween.BackdropImageURL == "" {
+		t.Errorf("collection = %+v, want the file's fields on an unpublished, unsubscribed, never-pushed row off Home", halloween.Collection)
 	}
 	slashers := halloween.Catalogs[slices.IndexFunc(halloween.Catalogs, func(c Catalog) bool { return c.Name == "Slashers" })]
-	if slashers.CollectionID == nil || *slashers.CollectionID != halloween.ID || slashers.TakenFrom != nil {
-		t.Errorf("Slashers = %+v, want it scoped to the new collection, unlinked", slashers)
+	if slashers.CollectionID == nil || *slashers.CollectionID != halloween.ID || slashers.SubKey != "" {
+		t.Errorf("Slashers = %+v, want it scoped to the new collection, with no sub_key", slashers)
 	}
 	if want := RecipeHash("movie", "tmdb", `{"sort_by":"revenue.desc"}`); slashers.RecipeHash != want {
 		t.Errorf("Slashers recipe hash = %q, want %q", slashers.RecipeHash, want)
@@ -540,16 +524,8 @@ func TestExportImportRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reload source: %v", err)
 		}
-		want, err := collectionHash(stored[0])
-		if err != nil {
-			t.Fatalf("hash source: %v", err)
-		}
-		got, err := collectionHash(collections[i])
-		if err != nil {
-			t.Fatalf("hash import: %v", err)
-		}
-		if got != want {
-			t.Errorf("collection %q: imported hash %s, source hash %s", source.Title, got, want)
+		if got, want := contentOf(t, collections[i]), contentOf(t, stored[0]); got != want {
+			t.Errorf("collection %q: imported %s, source %s", source.Title, got, want)
 		}
 	}
 	requireOwnedCounts(t, f.db, importer, 3, 2)
@@ -601,4 +577,15 @@ func TestImportBundleRollsBackWrittenRows(t *testing.T) {
 		t.Fatalf("the failed import left %d catalogs", len(all))
 	}
 	requireOwnedCounts(t, db, importer, 0, 0)
+}
+
+// contentOf is tree's content: the JSON of its bundle form, every catalog it
+// references in its own list, which leaves ids out.
+func contentOf(t *testing.T, tree CollectionWithFolders) string {
+	t.Helper()
+	b, err := json.Marshal(extractBundle(nil, []CollectionWithFolders{tree}, true).Collections[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(b)
 }

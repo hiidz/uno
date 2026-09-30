@@ -7,8 +7,8 @@ import type { CatalogType } from './types'
  * Everything under `/api/p/{i}/...` keys on `['p', profileIndex, …]` so
  * switching profile slots invalidates the whole subtree in one call and no
  * stale row from another profile can survive — this includes the community
- * routes, which are profile-scoped (they exclude the caller's own rows and
- * compute `taken` per profile). Genre lookups are account-wide, so they sit
+ * routes, which are profile-scoped (they exclude the caller's own publications
+ * and mark the ones it subscribes to). Genre lookups are account-wide, so they sit
  * outside that prefix and stay cached across a profile switch.
  */
 export const queryKeys = {
@@ -18,6 +18,12 @@ export const queryKeys = {
    *  profile, so this sits outside the `['p', i, …]` prefix like the genre
    *  keys below. */
   profiles: () => ['profiles'] as const,
+
+  /** `GET /api/config` — the server's setup, the same for every account. */
+  serverConfig: () => ['config'] as const,
+  /** `GET /api/account/tmdb-key` — the signed-in account's own TMDB key, so
+   *  outside the `['p', i, …]` prefix like `profiles`. */
+  tmdbKey: () => ['account', 'tmdb-key'] as const,
 
   ownedCatalogs: (profileIndex: number) => ['p', profileIndex, 'catalogs'] as const,
   ownedCollections: (profileIndex: number) => ['p', profileIndex, 'collections'] as const,
@@ -29,10 +35,12 @@ export const queryKeys = {
 
   /** Beside the owned-list keys rather than under them, so refreshing a
    *  library list leaves Community alone; a write that changes Community
-   *  refreshes these keys itself. */
-  communityCatalogs: (profileIndex: number) => ['p', profileIndex, 'community', 'catalogs'] as const,
-  communityCollections: (profileIndex: number) =>
-    ['p', profileIndex, 'community', 'collections'] as const,
+   *  refreshes this prefix itself. Every Community key sits under it. */
+  community: (profileIndex: number) => ['p', profileIndex, 'community'] as const,
+  /** Every live publication Community lists, in one call. */
+  communityList: (profileIndex: number) => ['p', profileIndex, 'community', 'list'] as const,
+  publication: (profileIndex: number, publicationID: string) =>
+    ['p', profileIndex, 'community', 'publication', publicationID] as const,
 
   genres: (type: CatalogType) => ['genres', type] as const,
   certifications: (type: CatalogType) => ['certifications', type] as const,
@@ -82,18 +90,18 @@ export const queryKeys = {
 } as const
 
 /**
- * Marks this profile's own catalog and collection lists stale, and the
- * Community lists beside them — what a write that can add a copy or change a
+ * Marks this profile's own catalog and collection lists stale, and every
+ * Community query beside them — what a write that can add a copy or change a
  * row's sharing has to refresh. The owned-list keys prefix the selection keys,
- * so the selections refetch too. Settles once every active list has refetched.
+ * so the selections refetch too. Settles once every active query has
+ * refetched.
  */
 export async function invalidateProfileLists(queryClient: QueryClient, profileIndex: number): Promise<void> {
   await Promise.all(
     [
       queryKeys.ownedCatalogs(profileIndex),
       queryKeys.ownedCollections(profileIndex),
-      queryKeys.communityCatalogs(profileIndex),
-      queryKeys.communityCollections(profileIndex),
+      queryKeys.community(profileIndex),
     ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
   )
 }

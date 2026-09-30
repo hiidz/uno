@@ -453,43 +453,6 @@ function ThumbValue({ fraction, label }: { fraction: number; label: string }) {
   )
 }
 
-/**
- * The app's one switch, scoped to sharing (DESIGN.md, "Sharing switch"). A
- * catalog's or a collection's Sharing row is the only setting that uses one —
- * every other yes/no in the app is a segmented control, because a switch
- * flips state on its own while a segment shows every value at once, and
- * "shared or not" is the one setting whose current value is worth reading at
- * a glance without the words beside it (which this still carries — the state
- * is never colour or position alone).
- */
-export function Switch({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean
-  onChange: (checked: boolean) => void
-  /** The state in words, beside the track — "Shared, so anyone can import
-   *  it" / "Not shared, only you can use it". Never omitted: the switch has
-   *  no label of its own. */
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className="switch"
-    >
-      <span className="switch-track">
-        <span className="switch-knob" />
-      </span>
-      <span>{label}</span>
-    </button>
-  )
-}
-
 /** A checkbox with its label. */
 export function Checkbox({
   checked,

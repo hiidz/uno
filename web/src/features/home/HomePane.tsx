@@ -15,19 +15,22 @@ import { recipeLine, typeLabel } from '@/features/library/recipe'
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
 import { noTiles, TileRun, TILE_ASPECT } from '@/features/preview/tiles'
 import { ordinal } from '@/lib/ordinal'
+import { showFirstAction } from './changes'
 import { HomePreview } from './HomePreview'
 import type { PreviewRow } from './preview'
 import { SortableList } from './SortableList'
 import { useCatalogTiles } from './useCatalogTiles'
-import { useHomePreview, useHomeSelection } from './useHomeSelection'
+import { useHomeEdits, useHomePreview, useHomeSelection } from './useHomeSelection'
 
 export type HomeView = 'list' | 'preview'
 
 /**
  * What is actually on the profile's home screen: selected collections (each a
  * row whose tiles are its folders) and selected catalogs (each a row of
- * content), both ordered. Collections with `pin_to_top` sit above the catalog
- * rows, the rest below — Preview is where that order is visible. This view
+ * content), both ordered. Collections shown first — Show first, a pending
+ * edit in each collection row's menu, like Move to Discover for a catalog —
+ * sit above the catalog rows, the rest below; Preview is where that order is
+ * visible. This view
  * groups by Nuvio's own three bands too — see `HomeList` — because the
  * running order's numbering only makes sense in that order.
  *
@@ -495,6 +498,7 @@ function CollectionRow({
       </RowBody>
 
       <MoreMenu label={collection.title}>
+        <ShowFirstItem collection={collection} />
         <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
       </MoreMenu>
     </HomeRow>
@@ -593,4 +597,15 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
 
 function EmptyBlock({ children }: { children: ReactNode }) {
   return <p className="text-dim m-0 py-3 text-[14px]">{children}</p>
+}
+
+/** A collection row's Show first: a pending edit, like Move to Discover for a
+ *  catalog, that moves the row to the other collection group until Push. */
+function ShowFirstItem({ collection }: { collection: PreviewCollection }) {
+  const home = useHomeEdits()
+  return (
+    <MoreMenuItem onSelect={() => home.togglePinToTop(collection.id)}>
+      {showFirstAction(collection.pinned)}
+    </MoreMenuItem>
+  )
 }

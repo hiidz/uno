@@ -50,6 +50,14 @@ describe('apiFetch', () => {
     expect(auth.refresh).not.toHaveBeenCalled()
   })
 
+  it('hands a 429 back as it is, without refreshing or retrying', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 429, headers: { 'Retry-After': '3' } }))
+    const res = await apiFetch('/api/p/1/catalogs', { method: 'POST' })
+    expect(res.status).toBe(429)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(auth.refresh).not.toHaveBeenCalled()
+  })
+
   it('refreshes once on a 401 and retries with the new token', async () => {
     auth.getAccessToken.mockReturnValueOnce('expired').mockReturnValueOnce('token-2')
     fetchMock.mockResolvedValueOnce(status(401)).mockResolvedValueOnce(status(200))

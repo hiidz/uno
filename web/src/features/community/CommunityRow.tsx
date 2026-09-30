@@ -1,13 +1,8 @@
-import { useEffect, useId, useMemo, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
-import type { CommunityCatalog, CommunityCollection } from '@/api'
+import type { CommunityItem } from '@/api'
 import { InfoTip } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
-import { RecipePreview } from '@/features/catalogs/RecipePreview'
-import { CollectionPreview } from '@/features/collections/CollectionPreview'
-import { toPreviewCollection } from '@/features/home/preview'
-import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import type { CommunityAction } from './useCommunityMutations'
 
 const PENDING_LABEL: Record<CommunityAction, string> = {
@@ -16,137 +11,111 @@ const PENDING_LABEL: Record<CommunityAction, string> = {
   duplicate: 'Duplicating…',
 }
 
-/**
- * One community row: name, then either "Movies"/"Series" or a folder count in
- * place of the library's recipe summary — someone here is deciding whether to
- * take a copy, and Preview shows the rest. No author, no handle, no
- * provenance: the closed graph means nothing here can be attributed without
- * becoming a live pointer.
- *
- * **One main button, three states**, from the server's own flags: Take; a
- * disabled "✓ Taken" while this profile holds a linked copy (the server
- * answers a second Take with a 409); and Update while that copy is behind the
- * original. Duplicate, an unlinked copy that is always allowed, waits behind
- * "⋯", following the collection editor's `RefMenu`.
- */
-export function CommunityRow({
-  name,
-  summary,
-  taken,
-  updateAvailable,
-  pending,
-  previewOpen,
-  onTogglePreview,
-  onTake,
-  onUpdate,
-  onDuplicate,
-  preview,
-}: {
-  name: string
-  summary: string
-  taken: boolean
-  updateAvailable: boolean
-  /** The action in flight on this row, if any. Every action waits for it. */
+/** A row's or a publication page's actions. A row's `onUpdate` opens the
+ *  publication's page, which shows the new version, and says so with
+ *  `updateLabel` "Update…"; the page's applies it, as "Update". */
+export interface RowActions {
   pending: CommunityAction | undefined
-  previewOpen: boolean
-  onTogglePreview: () => void
   onTake: () => void
   onUpdate: () => void
+  updateLabel: string
   onDuplicate: () => void
-  preview: ReactNode
-}) {
-  const previewPanelID = useId()
-  const label = pending ? (
-    PENDING_LABEL[pending]
-  ) : updateAvailable ? (
-    'Update'
-  ) : taken ? (
-    <>
-      <Icon icon={Check} size={14} />
-      Taken
-    </>
-  ) : (
-    'Take'
-  )
+}
 
+/**
+ * One main button, from the server's own flags — Take; a disabled "✓ Taken"
+ * while this profile holds a copy that follows the publication; while an
+ * update waits for that copy, the actions' `updateLabel` — and Duplicate, a
+ * copy that is the profile's own and follows nothing, behind "⋯".
+ */
+export function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActions }) {
+  const { pending } = actions
+  const taken = item.subscribed && !item.update_available
   return (
-    <div className="border-line border-b py-3.5">
-      <div className="flex items-center gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="truncate text-[16px] font-bold">{name}</span>
-          <span className="text-dim truncate text-[13.5px]">{summary}</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={onTogglePreview}
-          aria-expanded={previewOpen}
-          aria-controls={previewPanelID}
-          className="btn-ghost btn-sm shrink-0"
-        >
-          {previewOpen ? 'Hide preview' : 'Preview'}
-        </button>
-
-        <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            onClick={updateAvailable ? onUpdate : onTake}
-            disabled={pending !== undefined || (taken && !updateAvailable)}
-            className="btn-secondary btn-sm"
-          >
-            {label}
-          </button>
-          <InfoTip
-            label="Take"
-            text="Your copy gets the owner's updates until you edit it. Duplicate (⋯) makes an unlinked copy."
-          />
-          <MoreMenu label={name}>
-            <MoreMenuItem disabled={pending !== undefined} onSelect={onDuplicate}>
-              Duplicate
-            </MoreMenuItem>
-          </MoreMenu>
-        </div>
-      </div>
-
-      {previewOpen && (
-        <div id={previewPanelID} className="mt-3">
-          {preview}
-        </div>
-      )}
+    <div className="flex shrink-0 items-center gap-1.5">
+      <button
+        type="button"
+        onClick={item.update_available ? actions.onUpdate : actions.onTake}
+        disabled={pending !== undefined || taken}
+        className="btn-secondary btn-sm"
+      >
+        <MainLabel item={item} pending={pending} update={actions.updateLabel} />
+      </button>
+      <InfoTip
+        label="Take"
+        text="Take adds a copy to your library that follows its owner's updates until you save a change to it, which makes it yours. Duplicate (⋯) makes a copy that's yours from the start."
+      />
+      <MoreMenu label={item.title}>
+        <MoreMenuItem disabled={pending !== undefined} onSelect={actions.onDuplicate}>
+          Duplicate
+        </MoreMenuItem>
+      </MoreMenu>
     </div>
   )
 }
 
-/** `RecipePreview` over a community catalog's own stored recipe — the same
- *  component the catalog editor's results panel uses. Unlike the editor, the
- *  recipe here is a saved row, not something being typed, so there's no
- *  keystroke-per-request concern — it runs itself as soon as the panel
- *  opens, and "Run again" still works for a shuffled recipe's next page.
- *  Never `invalid`: a community row is a saved catalog the server already
- *  accepted. */
-export function CommunityCatalogPreview({ catalog }: { catalog: CommunityCatalog }) {
-  const preview = useRecipeTiles(catalog.type, catalog.params)
-  // Empty deps deliberately: this component mounts fresh each time the
-  // preview panel opens (see `CommunityRow`), so running once on mount is
-  // "run once, on open" — `preview.run` itself isn't stable across renders.
-  // oxlint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => preview.run(), [])
-  return <RecipePreview preview={preview} type={catalog.type} invalid={false} onRun={preview.run} />
+/** The main button's words: what is in flight, else `update`, ✓ Taken or
+ *  Take. */
+function MainLabel({
+  item,
+  pending,
+  update,
+}: {
+  item: CommunityItem
+  pending: CommunityAction | undefined
+  update: string
+}) {
+  if (pending) return PENDING_LABEL[pending]
+  if (item.update_available) return update
+  if (!item.subscribed) return 'Take'
+  return (
+    <>
+      <Icon icon={Check} size={14} />
+      Taken
+    </>
+  )
 }
 
-/** The Preview panel over a community collection's own tree — the same component
- *  the collection editor's docked panel uses, fed from the row's own
- *  `catalogs` rather than the library, so every folder resolves regardless of
- *  what this profile owns. */
-export function CommunityCollectionPreview({ collection }: { collection: CommunityCollection }) {
-  const preview = useMemo(
-    () =>
-      toPreviewCollection(
-        collection.id,
-        collection,
-        new Map((collection.catalogs ?? []).map((catalog) => [catalog.id, catalog])),
-      ),
-    [collection],
+/**
+ * One Community row: its name with its kind, and an Update sticker while an
+ * update waits for this profile's copy; what it is in plain words; how many
+ * have taken it and when it last changed. The name, summary and meta are one
+ * button that opens the publication's page. No owner anywhere: Community
+ * never names who shared a row.
+ */
+export function CommunityRow({
+  item,
+  summary,
+  meta,
+  buttonID,
+  onOpen,
+  actions,
+}: {
+  item: CommunityItem
+  summary: string
+  meta: string
+  /** The open button's id, which focus returns to when its page closes. */
+  buttonID: string
+  onOpen: () => void
+  actions: RowActions
+}) {
+  return (
+    <div className="border-line flex items-center gap-3 border-b py-3.5">
+      <button
+        id={buttonID}
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 flex-col gap-1 rounded-[8px] text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[16px] font-bold">{item.title}</span>
+          <span className="stk stk-kind shrink-0">{item.kind === 'catalog' ? 'Catalog' : 'Collection'}</span>
+          {item.update_available && <span className="stk stk-update shrink-0">Update</span>}
+        </span>
+        <span className="text-dim truncate text-[13.5px]">{summary}</span>
+        <span className="type-data text-dimmer text-[12.5px]">{meta}</span>
+      </button>
+      <ItemActions item={item} actions={actions} />
+    </div>
   )
-  return <CollectionPreview collection={preview} />
 }

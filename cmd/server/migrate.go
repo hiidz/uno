@@ -33,11 +33,12 @@ func runMigrate(args []string, stdout io.Writer) error {
 }
 
 // rehearse dry-runs the migrations on the database at path, checking every
-// catalog's recipe with provider.SameRecipe, and prints the report. A
+// catalog's recipe with provider.SameRecipe and every publication the
+// migrations create with provider.ValidateRecipe, and prints the report. A
 // migration that fails still gets the report of what ran before it, printed
 // ahead of the error.
 func rehearse(path string, stdout io.Writer) error {
-	report, err := vault.DryRun(context.Background(), path, provider.SameRecipe)
+	report, err := vault.DryRun(context.Background(), path, vault.LiveChecks{SameRecipe: provider.SameRecipe, ValidRecipe: provider.ValidateRecipe})
 	if report.RowsAfter != nil {
 		if _, writeErr := io.WriteString(stdout, reportText(path, report)); writeErr != nil {
 			return writeErr
@@ -50,8 +51,8 @@ func rehearse(path string, stdout io.Writer) error {
 }
 
 // reportText is a dry run's report: the schema versions, each migration with
-// its notes, the recipe check, then every table's row count before and
-// after.
+// its notes, the recipe check, the publication check, the push-hash check,
+// then every table's row count before and after.
 func reportText(path string, r vault.MigrationReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Dry run of %s. Nothing was written to it.\n", path)
@@ -63,6 +64,8 @@ func reportText(path string, r vault.MigrationReport) string {
 		}
 	}
 	writeRecipeCheck(&b, r)
+	writePublicationCheck(&b, r)
+	writePushHashCheck(&b, r)
 	tables := maps.Clone(r.RowsBefore)
 	maps.Copy(tables, r.RowsAfter)
 	fmt.Fprintf(&b, "\n%-24s %8s %8s\n", "Rows", "before", "after")
@@ -93,4 +96,35 @@ func countCell(counts map[string]int, table string) string {
 		return strconv.Itoa(n)
 	}
 	return "-"
+}
+
+// writePublicationCheck writes how many publications the dry run checked
+// with today's validators and every one they refuse, or nothing when it
+// checked none. A refused publication doesn't stop the migration: it was
+// published as its source stood.
+func writePublicationCheck(b *strings.Builder, r vault.MigrationReport) {
+	if r.PublicationsChecked == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\nPublication check: %d publications, %d that today's validators refuse (migrated as they stood)\n",
+		r.PublicationsChecked, len(r.PublicationProblems))
+	for _, problem := range r.PublicationProblems {
+		fmt.Fprintf(b, "  %s\n", problem)
+	}
+}
+
+// writePushHashCheck writes how many collections the pushed_hash migration
+// backfilled and left pending, and on how many backfilled ones the vault's
+// live push payload agrees, naming each it doesn't; nothing when the dry run
+// backfilled none. A disagreement means the migration's copy of the push
+// payload has drifted, and the collection would read as needing a push.
+func writePushHashCheck(b *strings.Builder, r vault.MigrationReport) {
+	if r.PushHashesBackfilled == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\nPush hashes: %d backfilled, %d pending; live builder agrees on %d of %d\n",
+		r.PushHashesBackfilled, r.PushHashesPending, r.PushHashesBackfilled-len(r.PushHashMismatches), r.PushHashesBackfilled)
+	for _, mismatch := range r.PushHashMismatches {
+		fmt.Fprintf(b, "  %s\n", mismatch)
+	}
 }

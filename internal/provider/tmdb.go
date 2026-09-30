@@ -78,6 +78,17 @@ type TMDBClient struct {
 	// catalog type, keyed "with_companies:movie:123"/"with_networks:series:213":
 	// see titleCount.
 	titleCounts *memo[int]
+
+	// pages holds finished catalog pages, keyed by their discover request: see
+	// FetchCatalogPage.
+	pages *pageCache
+
+	// limiter paces every TMDB API call get makes: see limiter.
+	limiter *limiter
+
+	// keyLimiters paces the calls made with each account's own key, under
+	// limiter: see waitTurn.
+	keyLimiters *keyLimiters
 }
 
 // maxEntityCacheEntries bounds each memo keyed by an id a caller supplies:
@@ -105,8 +116,9 @@ const maxIMDBCacheEntries = 100_000
 // a newly-added provider id for as long as it stayed up.
 const watchProviderTTL = 24 * time.Hour
 
-// NewTMDBClient builds a TMDBClient that authenticates requests with
-// apiKey.
+// NewTMDBClient builds a TMDBClient whose calls use apiKey, the server's
+// shared key, unless their context carries an account's own (WithKeySource).
+// A server that asks every account for its own key passes an empty apiKey.
 func NewTMDBClient(apiKey string) *TMDBClient {
 	return &TMDBClient{
 		httpClient: &http.Client{
@@ -131,6 +143,10 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 
 		collectionFilms: newBoundedMemo(collectionPartsTTL, maxCollectionPartsEntries, slices.Clone[[]tmdbDiscoverItem]),
 		titleCounts:     newBoundedMemo(titleCountsTTL, maxEntityCacheEntries, func(v int) int { return v }),
+
+		pages:       newPageCache(catalogPageTTL, maxCatalogPageEntries),
+		limiter:     newLimiter(tmdbRequestsPerSecond, tmdbRequestBurst),
+		keyLimiters: newKeyLimiters(perKeyRequestsPerSecond, perKeyRequestBurst),
 	}
 }
 
@@ -142,36 +158,86 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 // answers a 404 with a 404.
 var ErrNotFound = errors.New("provider: TMDB has no such resource")
 
-// get is the shared low-level TMDB call: attach the API key, require a 200,
-// decode the body. discover and external_ids both go through this.
+// get is the shared low-level TMDB call: send path and query with the call's
+// key (request), require a 200, decode the body. Every TMDB API call goes
+// through this.
 func (c *TMDBClient) get(ctx context.Context, path string, query url.Values, out any) error {
-	if query == nil {
-		query = url.Values{}
-	}
-	query.Set("api_key", c.apiKey)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path+"?"+query.Encode(), nil)
-	if err != nil {
-		return fmt.Errorf("provider: build request for %s: %w", path, err)
-	}
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
+	resp, key, err := c.request(ctx, path, query)
 	if err != nil {
 		return fmt.Errorf("provider: fetch %s: %w", path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	return decodeResponse(resp, path, key, out)
+}
 
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("%w: %s", ErrNotFound, path)
+// request sends path and query with the key the call uses (keyFor) as
+// api_key, through the limiters (send). A failed request's error doesn't
+// carry the URL, which holds the key (withoutURL).
+func (c *TMDBClient) request(ctx context.Context, path string, query url.Values) (*http.Response, apiKey, error) {
+	key, err := c.keyFor(ctx)
+	if err != nil {
+		return nil, key, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("provider: TMDB returned status %d for %s", resp.StatusCode, path)
+	if query == nil {
+		query = url.Values{}
+	}
+	query.Set("api_key", key.value)
+	resp, err := c.send(ctx, key, c.baseURL+path+"?"+query.Encode())
+	return resp, key, withoutURL(err)
+}
+
+// send GETs rawURL once the limiters allow it. A 429 pauses the process-wide
+// limiter for its Retry-After, then the request goes once more, and that
+// answer stands.
+func (c *TMDBClient) send(ctx context.Context, key apiKey, rawURL string) (*http.Response, error) {
+	resp, err := c.sendOnce(ctx, key, rawURL)
+	if err != nil || resp.StatusCode != http.StatusTooManyRequests {
+		return resp, err
+	}
+	_ = resp.Body.Close()
+	now := time.Now()
+	c.limiter.pause(now, retryAfter(resp.Header.Get("Retry-After"), now))
+	return c.sendOnce(ctx, key, rawURL)
+}
+
+// sendOnce waits its turn (waitTurn), then GETs rawURL.
+func (c *TMDBClient) sendOnce(ctx context.Context, key apiKey, rawURL string) (*http.Response, error) {
+	if err := c.waitTurn(ctx, key); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	return c.httpClient.Do(req)
+}
+
+// decodeResponse requires resp to be a 200 (statusError) and decodes its body
+// into out.
+func decodeResponse(resp *http.Response, path string, key apiKey, out any) error {
+	if err := statusError(resp.StatusCode, path, key); err != nil {
+		return err
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out); err != nil {
 		return fmt.Errorf("provider: decode response for %s: %w", path, err)
 	}
 	return nil
+}
+
+// statusError is nil for a 200 and otherwise what the status means: a 404
+// wraps ErrNotFound, a 401 on an account's own key wraps ErrKeyRejected, and
+// anything else is TMDB failing.
+func statusError(status int, path string, key apiKey) error {
+	switch {
+	case status == http.StatusOK:
+		return nil
+	case status == http.StatusNotFound:
+		return fmt.Errorf("%w: %s", ErrNotFound, path)
+	case status == http.StatusUnauthorized && key.own:
+		return fmt.Errorf("%w: %s", ErrKeyRejected, path)
+	}
+	return fmt.Errorf("provider: TMDB returned status %d for %s", status, path)
 }
 
 func (c *TMDBClient) discover(ctx context.Context, endpoint string, query url.Values) (tmdbDiscoverResponse, error) {

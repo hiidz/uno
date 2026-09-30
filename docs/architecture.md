@@ -31,7 +31,7 @@ embedded frontend build.
 
 | Package | Owns |
 | --- | --- |
-| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Imports only `jsonwire` and its own `vault/migrations` (the frozen schema migrations, standard library only) |
+| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Also the push payload (`pushpayload.go`: the wire types push sends, the addon id and manifest id they carry, and the hash push stores), since what push sends decides whether a collection needs a push. Imports only `jsonwire` and its own `vault/migrations` (the frozen schema migrations, standard library only) |
 | `internal/addon` | Stremio-protocol manifest + catalog responses, `/u/{token}/...` |
 | `internal/api` | Bearer-token auth, CRUD orchestration, push, the route table |
 | `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |
@@ -45,18 +45,23 @@ imports only `vault` and `provider`. That keeps the one public-facing surface si
 and independently scalable. The split exists because these are three surfaces with three different
 trust boundaries — authenticated SPA API, push orchestrator, public unauthenticated addon server.
 
-`addon.ID` (`"hiidz.uno.catalog"`) is constant across every profile. Identity in the addon
-protocol comes from the URL path (`/u/{token}/...`), never from the addon id.
+`addon.ID` (`"hiidz.uno.catalog"`, defined as `vault.AddonID`) is constant across every profile.
+Identity in the addon protocol comes from the URL path (`/u/{token}/...`), never from the addon
+id.
 
-**`addon.ManifestID(c)` is `c.Provider + "-" + c.ID.String()`** — the same literal string that
+**`vault.ManifestID(c)` is `c.Provider + "-" + c.ID.String()`** — the same literal string that
 round-trips as Nuvio's `catalogSources[].catalogId`. Whatever string Uno's manifest uses for a
-catalog id must be the same string in a pushed source entry; both go through `addon.ManifestID`,
-and it has to stay that way.
+catalog id must be the same string in a pushed source entry: the manifest goes through
+`addon.ManifestID`, which delegates to it, and the push payload calls it directly, and it has to
+stay that way. Both live in the vault because the vault builds the push payload and `addon`
+imports the vault, not the other way round.
 
 ## Server construction
 
 `api.Server` is built from a `Deps` struct — `New(d Deps) (*Server, error)`, with `Deps{Vault, Provider,
-Verifier, Nuvio, SiteBaseURL}` (`internal/api/deps.go`). `Verifier` (`TokenVerifier`, one method)
+Verifier, Nuvio, SiteBaseURL, NuvioBaseURL, Access, Keys}` (`internal/api/deps.go`); a zero `Access` admits every
+account, and a nil `Keys` is a server with one shared TMDB key (*TMDB keys*). `cmd/server`'s
+`apiDeps` builds them from the config. `Verifier` (`TokenVerifier`, one method)
 and `Nuvio` (`NuvioClient`, five methods) are narrow *consumer-side* interfaces over
 `*nuvio.Client`'s method set, not the concrete type — the seam that makes `requireNuvioAuth` and
 `listProfiles` testable against a fake. Compile-time assertions in `deps.go` turn a signature
@@ -102,11 +107,32 @@ Route registration is in `internal/api/server.go`. Everything not matching a reg
 falls through to the embedded SPA (`static.Gzip(static.Handler(distFS))`); Go's `ServeMux`
 matches the most specific registered pattern first.
 
-`requireNuvioAuth` (`internal/api/auth.go`) reads `Authorization: Bearer`, calls
-`s.verifier.Verify`, maps `ErrInvalidToken` → `401` and `ErrJWKSUnavailable` → `502`, then stashes
-both the verified `sub` and the raw token in the request context under an unexported `contextKey`
-type. Handlers read them via `nuvioUserIDFrom(ctx)` / `nuvioTokenFrom(ctx)`. The raw token is
-stashed so exactly one place in the codebase understands the `Authorization` header format.
+`requireNuvioAuth` (`internal/api/auth.go`) runs `authenticate` (`internal/api/access.go`): it
+reads `Authorization: Bearer`, calls `s.verifier.Verify`, maps `ErrInvalidToken` → `401` and
+`ErrJWKSUnavailable` → `502` (`verifyRefusal`), then checks the verified claims against the access
+policy (below). It then stashes both the `sub` and the raw token in the request context under an
+unexported `contextKey` type. Handlers read them via `nuvioUserIDFrom(ctx)` /
+`nuvioTokenFrom(ctx)`. On a server in per-account key mode it also attaches the account's own
+TMDB key source (*TMDB keys*), read only if the request reaches TMDB. The raw token is stashed so exactly one place in the codebase understands
+the `Authorization` header format.
+
+### Access
+
+Any Nuvio account can sign in by default. `UNO_ACCESS=allowlist` admits only the accounts whose
+token carries an email address listed in `UNO_ALLOWED_EMAILS` (`docs/configuration.md`).
+`Deps.Access` carries it, and `authenticate` checks it after verification on every authenticated
+route: the token's `email` claim (`nuvio.Claims.Email`), lower-cased, must be in the list, which
+startup stores lower-cased. A token without an `email` claim matches no entry. Every token Uno sees
+has one: Uno signs in only with an email and a password, and Supabase writes the address into every
+token it signs. After an email change the old address still matches until the token refreshes,
+within the hour.
+
+A verified account the policy doesn't admit gets **403** "this Nuvio account can't use this Uno
+server", never a 401: the SPA answers a 401 by refreshing its token and retrying, which a refused
+account would do forever. When the dev auth bypass is configured, `cmd/server` admits its fake
+account too, by its id, since it has no email (`Access.WithDevBypass`, `DevBypassSub`).
+
+The policy is read from the environment, so it holds across instances.
 
 `requireProfile` chains *after* it on every profile-scoped route — the route table applies the
 pair as `requireProfileAuth` — and reads `sub` from context, reads
@@ -116,60 +142,62 @@ resolved profile ID. It is a **lookup-only** resolver — no create, no drift-ov
 hitting a CRUD route before ever calling `POST /api/profiles/select` gets a clean `404`, not a
 silent auto-provision.
 
-Six route-semantics facts the client has to honour:
+Seven route-semantics facts the client has to honour:
 
 - **Selection is read via `GET .../selection` but never written there.** The whole pending
   selection travels in `POST .../push`'s body and is written by that handler, in one transaction,
   only after Nuvio has accepted the push. There are no `PUT .../selection` routes; the
   transactional write bodies are `saveCatalogSelectionTx`/`saveCollectionSelectionTx` inside
   `internal/vault`.
-- **Community list endpoints are profile-scoped and exclude your own rows.**
-  `GET /api/p/{i}/community/catalogs` and `GET /api/p/{i}/community/collections`
-  (`GetCommunityCatalogs`/`GetCommunityCollections`) are `is_public = TRUE AND owner_id != ?`,
-  so — unlike the pre-closed-graph community routes — there is no merge or dedup left for the
-  frontend to do: a row you own never appears there. Catalogs additionally collapse to one row
-  per recipe (`recipe_hash`): the row shown is the one the caller holds a linked copy of, if
-  any, and otherwise the oldest `created_at`, ties broken by the smallest id — a fully deterministic rule,
-  not the query's own row order — and the final list is sorted name/title, then `created_at`,
-  then id, so equal names never swap between requests. Both responses carry per-row
-  `taken: bool` (the caller holds a linked copy) and `update_available: bool` (that copy's
-  `taken_hash` no longer matches the original), computed server-side, never inferred
-  client-side; "A Take is a linked copy" in `docs/data-model.md` has the rules.
-- **Take, Update and Community Duplicate share one shape.** All six routes run through
-  `serveCommunityCall` (`internal/api/community.go`) except the two Takes, which predate it and
-  answer the same way. The id in the path is always the original's.
-  - `POST /api/p/{i}/community/catalogs/{id}/take` and `.../community/collections/{id}/take`
-    (`TakeCatalog`/`TakeCollection`) deep-copy a public, not-own source into a new row the caller
-    fully owns, linked to the source (201). A second Take of one source is a 409.
-  - `POST .../community/catalogs/{id}/update` and `.../community/collections/{id}/update`
-    (`UpdateTakenCatalog`/`UpdateTakenCollection`) rewrite the caller's linked copy with the
-    original's current content (200, the copy). A 404 means the original isn't public any more or
-    the caller holds no linked copy of it. A 409 means the copy no longer matched what was taken:
-    Update has unlinked it, and a Take works again.
-  - `POST .../community/catalogs/{id}/duplicate` and `.../community/collections/{id}/duplicate`
-    (`DuplicateCommunityCatalog`/`DuplicateCommunityCollection`) are Take without the link (201).
-  - All six 404 via `ErrCatalogNotFound`/`ErrCollectionNotFound` if the original isn't public or
-    is the caller's own, and re-validate the recipes they copy against TMDB before writing
-    anything, so any of them can also 400 on a source recipe that no longer validates or 502 when
-    TMDB can't be reached to judge it — see "Take re-validates what it copies" in
-    `docs/data-model.md`. `vault.ErrConflict` is `writeVaultError`'s 409, with the error's own
-    message.
-  - Updating a linked *listed* catalog changes its addon rows at once: a folder source in the
-    pushed blob names a catalog only by id and type, and the addon server reads the name and
-    params live. Updating a
-    collection bumps its `version`, so a pushed copy shows on Home as an unpushed change until the
-    next push carries its folders to Nuvio.
-  - `GET /api/catalogs` and `GET /api/collections` (the old unscoped, unauthenticated-by-profile
-    community routes) are removed.
+- **Community is other profiles' publications, by publication id.** Every route is
+  profile-scoped, and the rules behind them are in `docs/data-model.md` → *Publications and
+  subscriptions*. The handlers are in `internal/api/community.go`, and every one but the list
+  runs through `serveSharingCall`: the id comes from the path, and a vault error goes through
+  `writeVaultError`, whose 404 for these routes is `vault.ErrPublicationNotFound`.
+  - `GET /api/p/{i}/community` (`ListCommunity`) answers every live publication not the
+    caller's own, newest first, in one array: the SPA searches, filters and sorts it. A row
+    carries its counts, dates, `subscribed` and `update_available` for the caller, the names of
+    its catalogs, and for a catalog its recipe, but never its owner.
+  - `GET .../community/{id}` (`GetPublication`) is the row with its `snapshot` and `withdrawn`:
+    a live publication, or a withdrawn one the caller subscribes to. It is also how the SPA
+    previews an update: the page shows the new version before Update applies it.
+  - `POST .../community/{id}/subscribe` (`Subscribe`, 201) and `.../fork` (`ForkPublication`,
+    201) copy a live publication of someone else's into the caller's own rows, as
+    `{kind, catalog | collection}`. A second subscribe is a 409. `.../update`
+    (`UpdateSubscription`, 200) brings the caller's subscribed copy up to the current snapshot.
+    None of the three reaches TMDB: they run the form validators over a snapshot whose recipes
+    were checked at publish, so a snapshot today's rules refuse is a 400.
+  - Updating a subscribed *listed* catalog changes its addon rows at once: a folder source in
+    the pushed blob names a catalog only by id and type, and the addon server reads the name and
+    params live. An Update that changes what push sends for a collection copy on Home leaves it
+    `needs_push`, so it shows on Home as an unpushed change until the next push carries its
+    folders to Nuvio.
+- **Sharing an owned row, and detaching a copy, are calls on the row.**
+  - `POST /api/p/{i}/catalogs/{id}/publish` and `.../collections/{id}/publish`
+    (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish or
+    republish it. They run every recipe the snapshot shares through `validateCatalogParams`, so
+    a recipe TMDB refuses is a 400 and TMDB being unreachable a 502. A catalog inside a
+    collection, a subscribed copy, and a collection that references a catalog the caller
+    subscribes to are 400s, and a source edited while it was being checked a 409. Two
+    publications of the same content are both listed in Community.
+  - `.../withdraw` (`WithdrawCatalog`/`WithdrawCollection`) withdraws its live publication, if
+    any.
+  - `.../detach` (`DetachCatalog`/`DetachCollection`) drops a subscribed copy's subscription and
+    keeps the row; a row that isn't a subscribed copy is a 400.
+  - A content write to a subscribed copy — `PUT` of the catalog or the collection, a catalog
+    created in or demoted into it — detaches the copy in the same transaction: its subscription
+    goes and every id stays. `POST .../community/{id}/update` never detaches. Placement is not
+    content: Home order, Home or Discover and Show first (`pin_to_top`) all travel in push's
+    selection (*Push* below), for a copy as for any row.
+  - Another profile's row answers 404 on all of them, like one that doesn't exist.
 - **Duplicating a collection you own is one atomic server call, not a client-built copy.**
-  `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) reuses `TakeCollection`'s
-  copy path (`copyCollection`, which writes through the same `createCollectionTx` a collection
-  create runs): folders and their refs are copied in order, a listed
-  source catalog stays a reference (same id), and each distinct catalog scoped to the source
-  collection becomes a fresh scoped copy in the new one — the same one-copy-per-distinct-catalog
-  rule Take uses, so a catalog referenced by two folders collapses into one new scoped copy
-  referenced twice. `taken_from` stays `NULL` throughout: this is a copy of the caller's own data,
-  not a take. 404s via `ErrCollectionNotFound` if the source isn't owned by the caller.
+  `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) extracts the source into
+  its bundle form and writes it back through the same `createCollectionTx` a collection create
+  runs: folders and their refs are copied in order, a listed source catalog stays a reference
+  (same id), and each distinct catalog scoped to the source collection becomes a fresh scoped
+  copy in the new one, so a catalog referenced by two folders collapses into one new scoped copy
+  referenced twice. The copy is unpublished and subscribed to nothing, even when its source is a
+  subscribed copy. 404s via `ErrCollectionNotFound` if the source isn't owned by the caller.
 - **A catalog inside a collection is written only through that collection's save.**
   `PUT` and `DELETE /api/p/{i}/catalogs/{id}` answer `400` for a catalog whose `collection_id` is
   set. Its edits travel in the collection's own `PUT` body as `catalog_edits`
@@ -178,6 +206,18 @@ Six route-semantics facts the client has to honour:
   on the collection save. It goes away by dropping its last folder ref and saving the collection.
   `PUT` still accepts a *listed* catalog with `collection_id` set, which moves it into that
   collection.
+- **Deletes refuse what Nuvio may still hold** (`internal/vault/delete_guard.go`). Each check runs
+  inside the delete's own transaction and reads Home as the server holds it, which is what the
+  last push sent, never the SPA's pending edits. A refusal is `vault.ErrConflict`, answered `409`
+  with its reason alone as the body (`conflictReason`), the sentence the SPA shows.
+  - `DELETE /api/p/{i}/catalogs/{id}`, with the first that holds: the catalog has its own Home
+    row, Discover-only included ("Take it off Home and push first."); a collection on Home uses it,
+    the first in Home order named ("Remove it from “X” and push first."); or any of the profile's
+    collections on Home has `needs_push` ("Push first: Nuvio may still show it in a collection.").
+    The last is profile-wide: the pushed hash can't say which catalogs that collection's last
+    pushed version used.
+  - `DELETE /api/p/{i}/collections/{id}` for a collection on Home ("Take it off Home and push
+    first.").
 - **Import never trusts its own check step.** Three routes in `internal/api/bundle.go` move
   catalogs and collections in and out as a bundle (format in `docs/data-model.md`, "Bundle
   format"):
@@ -214,17 +254,55 @@ Six route-semantics facts the client has to honour:
 
 Two routes: `GET /u/{token}/manifest.json` and `GET /u/{token}/catalog/{type}/{rest...}`, where
 `rest` is `{id}.json` or `{id}/{extra}.json`, where `{extra}` is a query string of `skip`
-(pagination) and `genre` (a pick from the catalog's genre extra). An unknown/invalid token, or a
-catalog id that is not in this profile's *published set*, both return **404** rather than an
-empty or error response — `findSelectedCatalog` doubles as the access check, so a leaked or
-guessed catalog UUID can't pull data through a profile it was never shared with. A `skip` landing
-past TMDB's own pagination ceiling (`maxCatalogPage`, page 500) answers **200 with an empty
-`metas`** and makes no TMDB call: an empty page past the end is the honest answer, and TMDB would
-refuse the request anyway.
+(pagination) and `genre` (a pick from the catalog's genre extra).
+
+The catalog route makes **one lookup**, `vault.ServedCatalog`: the profile by token, joined
+to the catalog by id and owner (and to the owner's sealed TMDB key, for per-account mode), with the route's type and the provider from its manifest id
+(`parseManifestID` accepts only the exact form `ManifestID` writes). It serves only a catalog **on
+the TV**, the manifest's set checked for this one catalog: one with its own home row
+(`home_sort_order` set, Discover-only rows included), or one a folder of the profile's on-home
+collections references, found by an `EXISTS` over that catalog's own refs. The lookup is also the
+access check: an unknown token, another profile's catalog, a catalog off the TV and a type or
+provider the catalog doesn't have all return **404**, so a leaked or guessed catalog UUID can't
+pull data through a profile it doesn't belong to, nor a catalog the profile hasn't pushed. A
+`skip` landing past TMDB's own pagination ceiling (`maxCatalogPage`, page 500) answers **200 with
+an empty `metas`** and makes no TMDB call: an empty page past the end is the honest answer, and
+TMDB would refuse the request anyway.
+
+**A catalog that leaves the TV answers 404 at once**: taken off Home and pushed, or deleted. A TV
+keeps showing what it was last pushed until it syncs again, and until then a row or folder tile
+for that catalog comes back empty. NuvioTV (source read at `1a132cb`, 2026-09-30) syncs rarely:
+- **Collections and the addon list** are pulled only by a full sync, when the app starts or a
+  profile is picked (`StartupSyncService.requestSyncNow`), or from the addon manager's manual
+  refresh, which pulls the addon list alone.
+- **Not on resume**, and not on the 15-minute timer: both pull only watch state and library
+  (`scheduleActivityPull`). A realtime collections pull exists (`requestRealtimeSurfacePull`),
+  but nothing calls it.
+- **Manifests** refresh at launch, then at most every 6 hours while the app runs
+  (`MANIFEST_CACHE_TTL_MS`).
+
+So a TV left running would keep a deleted catalog's row or tile until it restarts or someone picks
+a profile, which can be hours or days. That is why **nothing Nuvio may still hold can be deleted**
+(*Deletes refuse what Nuvio may still hold*, under *HTTP surface*): a catalog or collection is
+deleted only once a push has taken it off. Two gaps
+remain, accepted:
+- a collection's own catalogs dropped by a save of it or by a Community Update, which go at once;
+- a delete made soon after the push that took the row off, before the TV has pulled that push.
 
 The tile flow is `CatalogHandler` → `TMDBClient.FetchCatalogPage` → TMDB `/discover/{movie|tv}` →
-per-item `/external_ids` → `Meta`. Direct per-request TMDB call; there is **no response cache**
-for discover results (a ranking goes stale), only the TMDB-id→IMDB-id cache on `TMDBClient`
+per-item `/external_ids` → `Meta`. A discover page is served from the **page cache**
+(`internal/provider/pagecache.go`): the finished metas, keyed by the discover request — its path
+and sorted query, genre pick and page included, `api_key` not — for 30 minutes
+(`catalogPageTTL`), well under the three-hour `cacheMaxAge`. So profiles showing the same recipe
+cost TMDB one fetch per half hour, not one each. It holds at most `maxCatalogPageEntries` (1,000,
+near 20 MB), evicting the least recently used. Requests for a key whose fetch is in flight wait
+for that fetch; it runs detached from the request that started it (bounded by
+`catalogPageFetchTimeout`), so one client hanging up fails no other. A failed fetch is not
+cached. A randomized recipe picks its page before the lookup, so each random page is its own
+entry. A page whose genre list failed to load is served without `genres` but not cached, so it
+isn't shared. A panic in a fetch, which runs outside any handler's recover, becomes that fetch's
+error (`recoverFetch`). A collection recipe's page isn't cached: its films are memoized already (below).
+The TMDB-id→IMDB-id cache on `TMDBClient`
 (a pairing never changes once resolved, so an entry never expires; the map is capped at
 `maxIMDBCacheEntries` and emptied whole once it fills, because the public addon route can add one
 entry per title TMDB has) and the lookup-list memos beside it
@@ -256,12 +334,13 @@ A failed genre-list fetch serves the page without `genres` instead of failing it
 deliberately absent: TMDB only has its own `vote_average`, and Nuvio labels the field IMDb.
 `logo` and `runtime` are absent because discover doesn't carry them.
 
-Both routes read `vault.GetPublishedCatalogs`, not `GetCurrentCatalogSelection` — the derived
+The manifest reads `vault.GetPublishedCatalogs`, not `GetCurrentCatalogSelection` — the derived
 union of listed catalogs on the home screen and every catalog referenced by a folder of a
 collection on the home screen, deduped by id with the home row's
 `ShowInHome` winning over a folder-derived one. `GetCurrentCatalogSelection` stays the narrower
-pre-push validation/selection-editor view; the addon server needs the wider set so a catalog used
-only inside an on-TV collection's folder is still published, not a dangling reference.
+pre-push validation/selection-editor view; the manifest needs the wider set so a catalog used
+only inside an on-TV collection's folder is still listed, not a dangling reference. The catalog
+route checks the same set, for one catalog at a time (above).
 
 Every catalog declares `extra: [{name: "skip"}]` and an explicit `showInHome` (its *published*
 `ShowInHome`), plus one `genre` extra (`genreExtra`). Its options aren't chosen by the user.
@@ -320,13 +399,64 @@ offers every genre, and its pick filters the collection's films by `genre_ids` i
 narrowing a discover query.
 
 Cache headers: `cacheMaxAge` 10800s / `staleRevalidate` 3600s — the same values the Cinemeta
-sample carries. With no server-side response cache, these are the only thing keeping Stremio from
-re-hitting TMDB on every reopen.
+sample carries. They keep Stremio from asking again on every reopen; the page cache only shares a
+page between the clients that do ask.
 
-**No server-side cache, deliberately.** At this project's scale (~10 people, ≤30 devices) the
-addon path is roughly 30 devices × 5 opens/day × 15 rows ≈ 2,250 discover calls/day, ~0.03 req/s —
-orders of magnitude under TMDB's limits. `discover()` (`internal/provider/tmdb.go`) remains the
-one place a server cache drops in if that stops being true.
+**Rate limit.** Every TMDB API call the process makes goes through `TMDBClient.get`, and so
+through one token bucket (`internal/provider/ratelimit.go`): Uno's own ceiling of 40 requests a
+second with a burst of 40 (`tmdbRequestsPerSecond`, `tmdbRequestBurst`), shared by the builder's
+lookups and previews and every catalog page. A request waits for a token, or gives up when its
+context ends. A **429** pauses the whole bucket for the answer's `Retry-After` (seconds or an HTTP
+date, 1 s when missing, capped at 10 s so a waiting page fetch can still finish inside its
+30 s timeout), then the request goes once more and that answer
+stands. The network export download (`files.tmdb.org`, not the API) doesn't go through it. A
+call made with an account's own key (*TMDB keys*) first waits on that key's own bucket (a token
+taken under the map's lock, so the once-a-minute sweep of refilled buckets can't split a key
+across two), 20 a
+second with a burst of 40 (`perKeyRequestsPerSecond`, `keyLimiters`), so one account can't take
+the whole budget; the shared key waits on the process-wide bucket alone.
+
+**One process.** The page cache, the memos and the limiter live in memory, so they assume one
+server process. A second instance would need shared ones.
+
+### TMDB keys
+
+`TMDB_KEY_MODE` (`docs/configuration.md`) picks how the server reaches TMDB. In `shared` mode
+every call uses `TMDB_API_KEY`, the `TMDBClient`'s own key. In `per-account` mode the client has
+no key, and each call's comes from its context (`provider.WithKeySource`):
+
+- **Which key.** The builder routes use the signed-in account's (`requireNuvioAuth` attaches
+  `tmdbkey.Keys.ForAccount`), so a preview, a save's recipe check, a lookup and a publish's check
+  use the caller's key. The catalog route uses the key of the account that owns the token's
+  profile, read in its one lookup (`Keys.Sealed`); the manifest route looks it up by token for a
+  cold genre list (`Keys.ForToken`). Take makes no TMDB call. A source runs at most once per
+  request, and only when a call goes out, so a request answered from a cache reads no key.
+- **One client, shared caches.** There is one `TMDBClient`; `request` picks the call's key
+  (`keyFor`) and sets `api_key`. The page cache, the memos and the IMDB-id cache stay shared,
+  since TMDB's data doesn't depend on the key. A shared page fetch runs with the key of the caller
+  that started it, so a caller that waited on it and got that caller's key problem tries again,
+  until it gets another answer or starts the fetch itself with its own key (`pageCache.load`):
+  another keyless caller may have started the next one.
+- **Errors.** No key is `provider.ErrNoKey`, raised before any request. A TMDB `401` on an
+  account's key is `provider.ErrKeyRejected`; on the shared key it stays an ordinary upstream
+  failure (`502`), the operator's to fix. A stored key that no longer opens (`UNO_SECRET`
+  changed) is treated as rejected, since its owner fixes it the same way. The builder answers
+  both key problems `422` with fixed words (`keyFailures`): a status nothing else in the API
+  answers, so the SPA can tell it apart — not `401` (the SPA refreshes and retries), `403` (the
+  access refusal) or `409` (Already taken). The addon routes answer `502`, as for any
+  upstream failure, but log a key problem as the profile owner's key, apart from TMDB failing
+  (`logTMDBFailure`): a keyless owner's TV asks for every row on every load.
+- **Storage.** `internal/tmdbkey` seals a key with AES-256-GCM under `UNO_SECRET`, bound to the
+  account id as additional data (`Box`), for `accounts` (`docs/data-model.md`). A key is never
+  returned, never logged, and only ever sent to TMDB: a failed request's error drops its URL,
+  which holds `api_key`, before anything wraps or logs it (`withoutURL`).
+- **Routes.** `GET /api/config` (no sign-in) says the mode. `GET`, `PUT` and `DELETE
+  /api/account/tmdb-key` read, save and remove the signed-in account's key, and answer `404` in
+  shared mode (`perAccountKeys`). `GET` answers `{set, last4}`. `PUT {key}` trims the key and
+  refuses one that isn't 32 hexadecimal characters with a `400`, naming TMDB's Read Access Token
+  when it is one (`tmdbkey.Clean`); then it checks the key with one call to TMDB's
+  `/authentication` (`TMDBClient.CheckKey`). A key TMDB refuses is a `400`, TMDB unreachable a
+  `502`, and neither saves anything.
 
 ### `POST /api/profiles/select`
 
@@ -383,11 +513,11 @@ Four properties, each load-bearing:
   `total_pages` keeps a small recipe from landing on an empty page past its last one. The builder's
   "Run again" re-fetches an unchanged recipe when the flag is set, so each press is a new page.
 
-**It is not routed through the selection**, which is what makes it usable at all:
-`CatalogHandler` resolves via `findSelectedCatalog` over `GetPublishedCatalogs`, so the
-public addon route can only ever serve the *persisted, published* set — useless for previewing
-pending, unpushed edits. That is a disqualification for reusing it from the browser, not a
-tradeoff.
+**It is not routed through the addon route**, which is what makes it usable at all:
+`CatalogHandler` serves only a stored catalog on the TV, by id, so it can't preview a
+recipe the editor hasn't saved. That is a disqualification for reusing it from the browser, not
+a tradeoff. Preview doesn't read the addon's page cache either: it reports TMDB's
+`total_results`, which a cached page doesn't carry.
 
 ### `POST /api/catalogs/genre-options`
 
@@ -412,7 +542,8 @@ API serves no whole list of, `GET /api/keywords/search?q=` and `/api/collections
 `/api/networks/{id}` (`{id, name, origin_country}`): a saved id resolved back to its name. `lookupList` classifies a failure once for every route: `ErrInvalidCatalogType` or
 `ErrInvalidParams` → `400` without contacting TMDB (a blank `q`, a missing or unknown company
 search `type`, an id below 1; a non-numeric `{id}` is rejected before the provider is called),
-`provider.ErrNotFound` → `404`, anything else → `502`. The literal `search` segment outranks
+`provider.ErrNotFound` → `404`, a key problem → `422` (*TMDB keys*), anything else → `502`
+(`lookupErrors`, a `clientFailure` table). The literal `search` segment outranks
 `{id}` in `ServeMux`, so the two patterns coexist.
 
 Company search is ranked, because TMDB's raw order is not usable: its first page for "a24" put
@@ -459,7 +590,13 @@ for create/update/delete on both resources *and* for the two preview routes, so 
 same way wherever it is judged. `validateCatalogParams` wraps a rejected recipe in
 `vault.ErrInvalidInput` (one path to a 400 rather than two) and a recipe it could not check in
 `errUpstreamValidation` (a 502 carrying a fixed "failed to reach TMDB", not the caller's own
-`defaultMsg`, which would blame Uno for a TMDB outage). `writeNuvioError`
+`defaultMsg`, which would blame Uno for a TMDB outage). `clientErrors`, a `clientFailure` table
+read by `clientFailureOf`, maps the errors the caller can act on: a key problem → `422` in fixed
+words (`keyFailures`, *TMDB keys*), then the vault errors, each answered with its own message:
+`ErrInvalidInput` → `400`, `ErrConflict` → `409` (a delete's refusal among them, whose message
+carries no `conflict:` prefix). Preview and genre-options classify what TMDB
+answers after validation the same way (`previewErrors`). The `403` of the access policy comes from
+the middleware, before any handler (*Access*). `writeNuvioError`
 delegates to `nuvioErrorStatus` so push's JSON responses and the plain-text ones classify Nuvio
 failures identically — `nuvio.ErrNuvioRequestFailed` → `502`, anything else → `500`.
 
@@ -556,7 +693,15 @@ when anything here disagrees with it. The facts Uno's integration leans on:
 ### Push
 
 `POST /api/p/{profileIndex}/push` (`internal/api/push.go`). Body is the full pending selection,
-`{catalogs: CatalogSelectionForm, collections: CollectionSelectionForm}`. Response, past auth and
+`{catalogs: CatalogSelectionForm, collections: CollectionSelectionForm}`: catalogs as
+`{catalogs: [{catalog_id, show_in_home}]}` and collections as
+`{collections: [{collection_id, pin_to_top}]}`, each in Home order. The body is decoded strictly
+(`decodeStrictJSON`): a field it doesn't have is a 400 before anything reaches Nuvio. A lenient
+read would take a body in an older shape, from a tab loaded before a deploy, as an empty
+selection, and a full-replace push of that clears every Uno collection. Show first (`pin_to_top`)
+is part of the selection, not of a collection save: push builds each collection it sends with
+its entry's pin and stores that pin in its local write, which is the only place `pin_to_top` is
+written. A collection push leaves off Home keeps its last pin. Response, past auth and
 profile resolution, is always JSON and deliberately flat:
 `{success, manifest_url, error?, undo_failed?}` — no partial-progress flags, because the ordering
 below guarantees an ordinary failure means nothing changed at all.
@@ -599,17 +744,21 @@ about (its own native UI, or another client), so the merge must touch only what 
    the only place such a collection could have come from. A pulled collection with no sources at
    all doesn't match the heuristic — there's nothing to compare against `addon.ID`, and treating
    it as a match would risk deleting a Nuvio-native collection whose folders are simply empty.
-3. Append freshly built entries for the pending selection.
+3. Append freshly built entries for the pending selection: each collection's
+   `vault.CollectionWithFolders.PushJSON`, the vault's push payload, with the selection's pin.
 
-**Push stamps the version it read, not a clock.** `pushCollections` returns
-`map[uuid.UUID]int` alongside the pulled blob — each selected collection's `Version` as read at
-step 3, before Nuvio was called. The local write (step 4, `SaveSelectionsForPush` →
-`saveCollectionSelectionTx`) stamps `collections.pushed_version` from that map, never from the
-row's current `Version` at write time. A Save landing between the read and the local write —
-even inside the same second — leaves `Version` ahead of the stamped `PushedVersion`, so the
-frontend's pending-change signal (`Version !== PushedVersion`) still fires correctly for it. A
-row with no entry in the map (vanished between the read and the write) is left untouched rather
-than guessed at.
+**Push stores the hash of what it sent.** `pushCollections` returns `map[uuid.UUID]string`
+alongside the pulled blob — for each selected collection, `vault.PushHash` over the exact bytes it
+appended at step 3, before Nuvio was called. The local write (step 4, `SaveSelectionsForPush` →
+`saveCollectionSelectionTx`) stamps `collections.pushed_hash` from that map, never from the row as
+it stands at write time. A collection's reads carry `needs_push` when it is on Home and the hash of
+what push would send for it now differs from that stamp (`markNeedsPush` in
+`internal/vault/pushpayload.go`), so Home flags exactly the edits that change what Nuvio holds:
+a folder's catalogs, genre or images, a title, a setting. A rename and back, or a recipe-only
+edit, changes nothing Nuvio holds and flags nothing. A Save landing between push's read and the
+local write leaves the row hashing to something else, so it still reads as needing a push. A row
+with no entry in the map (vanished between the read and the write) is left untouched rather than
+guessed at.
 
 **The one gap the ordering can't close, and its mitigation.** If the local commit fails *after*
 both Nuvio calls succeeded, Nuvio has the new collections but Uno's vault doesn't record them. On

@@ -199,7 +199,7 @@ func TestCatalogRoutes(t *testing.T) {
 		{name: "list", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
 		{name: "list includes the created catalog", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"New"`},
 		{name: "selection", method: http.MethodGet, path: "/api/p/1/catalogs/selection", wantStatus: http.StatusOK, wantBody: "[]"},
-		{name: "community list leaves out private catalogs", method: http.MethodGet, path: "/api/p/1/community/catalogs", wantStatus: http.StatusOK, wantBody: "[]"},
+		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "provider must be"},
 		{name: "create with a broken recipe", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"tmdb","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest},
@@ -246,7 +246,7 @@ func TestCollectionRoutes(t *testing.T) {
 	runSteps(t, f.s, []routeStep{
 		{name: "list", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
 		{name: "selection", method: http.MethodGet, path: "/api/p/1/collections/selection", wantStatus: http.StatusOK, wantBody: "[]"},
-		{name: "community list leaves out private collections", method: http.MethodGet, path: "/api/p/1/community/collections", wantStatus: http.StatusOK, wantBody: "[]"},
+		{name: "community leaves out unpublished collections", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "create with a new scoped catalog", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(popular), wantStatus: http.StatusCreated, wantBody: `"title":"Scoped"`},
 		{name: "create with a broken scoped recipe", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(`{"sort_by":"bogus.desc"}`), wantStatus: http.StatusBadRequest},
 		{name: "create referencing another profile's private catalog", method: http.MethodPost, path: "/api/p/1/collections", body: referencing(f.theirs.ID), wantStatus: http.StatusBadRequest},
@@ -259,6 +259,28 @@ func TestCollectionRoutes(t *testing.T) {
 		{name: "delete another profile's collection", method: http.MethodDelete, path: theirs, wantStatus: http.StatusNotFound, wantBody: "collection not found"},
 		{name: "delete", method: http.MethodDelete, path: mine, wantStatus: http.StatusNoContent},
 		{name: "delete again", method: http.MethodDelete, path: mine, wantStatus: http.StatusNotFound, wantBody: "collection not found"},
+	})
+}
+
+// TestDeleteRoutesRefuseWhatNuvioHolds deletes a catalog and a collection
+// that are on Home: each answers 409 with its reason alone, the sentence the
+// SPA shows, and stays.
+func TestDeleteRoutesRefuseWhatNuvioHolds(t *testing.T) {
+	f := newRouteFixture(t)
+	if err := f.db.SaveSelectionsForPush(t.Context(), f.caller.ID,
+		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: f.mine.ID, ShowInHome: true}}},
+		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: f.mineColl.ID}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/p/1/catalogs/" + f.mine.ID.String(), "/api/p/1/collections/" + f.mineColl.ID.String()} {
+		w := serve(t, f.s, http.MethodDelete, path, "", false)
+		if got := strings.TrimSpace(w.Body.String()); w.Code != http.StatusConflict || got != "Take it off Home and push first." {
+			t.Errorf("DELETE %s = %d %q, want 409 with the reason alone", path, w.Code, got)
+		}
+	}
+	runSteps(t, f.s, []routeStep{
+		{name: "the catalog stays", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
+		{name: "the collection stays", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
 	})
 }
 

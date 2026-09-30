@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"log"
 	"net/http"
 
@@ -56,8 +55,8 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 
 	items, totalResults, randomized, err := s.provider.PreviewCatalog(r.Context(), input.Type, input.Params, input.Genre)
 	if err != nil {
-		if errors.Is(err, provider.ErrInvalidCatalogType) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if status, msg := clientFailureOf(previewErrors, err); status != 0 {
+			http.Error(w, msg, status)
 			return
 		}
 		// 502, never 500: tells the client this was TMDB's fault, so it can
@@ -98,8 +97,8 @@ func (s *Server) catalogGenreOptions(w http.ResponseWriter, r *http.Request) {
 
 	genres, err := s.provider.GenreExtraOptions(r.Context(), input.Type, input.Params)
 	if err != nil {
-		if errors.Is(err, provider.ErrInvalidCatalogType) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if status, msg := clientFailureOf(previewErrors, err); status != 0 {
+			http.Error(w, msg, status)
 			return
 		}
 		log.Printf("catalogGenreOptions: %v", err)

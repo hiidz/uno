@@ -1,14 +1,14 @@
 // The bundle: the portable, ID-free form of catalogs and collections, its
-// file-level rules, the two conversions that connect it to stored rows, and
-// the content hashes a linked copy is compared by. extractBundle turns stored
-// trees into a Bundle; collectionFormFromBundle turns one of its collections
-// into the CollectionForm the create core writes.
+// file-level rules, and the two conversions that connect it to stored rows.
+// extractBundle turns stored trees into a Bundle; collectionFormFromBundle
+// turns one of its collections into the CollectionForm the create core
+// writes. A publication's snapshot is built on the same form (snapshot.go).
 
 package vault
 
 import (
 	"bytes"
-	"context"
+
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -368,12 +368,11 @@ func bundleCatalogFrom(key string, c Catalog) BundleCatalog {
 
 // collectionFormFromBundle builds the CollectionForm that writes bc as a new
 // collection. A ref to one of bc's own catalogs becomes a New entry carrying
-// that catalog's spec, plus its SourceID as TakenFrom when link is set;
-// every ref to one key shares one spec. A ref to a
-// top-level key becomes a CatalogID ref to topIDs[key]. Folder IDs are nil
-// and the collection is private and not shown first.
-func collectionFormFromBundle(bc BundleCollection, topIDs map[string]uuid.UUID, link bool) CollectionForm {
-	specs := newSpecsByKey(bc.Catalogs, link)
+// that catalog's spec, plus its key as SubKey when keyed; every ref to one
+// key shares one spec. A ref to a top-level key becomes a CatalogID ref to
+// topIDs[key]. Folder IDs are nil and the collection is not shown first.
+func collectionFormFromBundle(bc BundleCollection, topIDs map[string]uuid.UUID, keyed bool) CollectionForm {
+	specs := newSpecsByKey(bc.Catalogs, keyed)
 	folders := make([]FolderData, len(bc.Folders))
 	for i, f := range bc.Folders {
 		folders[i] = folderDataFromBundle(f, specs, topIDs)
@@ -389,8 +388,8 @@ func collectionFormFromBundle(bc BundleCollection, topIDs map[string]uuid.UUID, 
 }
 
 // newSpecsByKey builds the New spec for each of a collection's own catalogs,
-// keyed by catalog key.
-func newSpecsByKey(catalogs []BundleCatalog, link bool) map[string]*NewScopedCatalog {
+// by catalog key, each carrying its key as SubKey when keyed.
+func newSpecsByKey(catalogs []BundleCatalog, keyed bool) map[string]*NewScopedCatalog {
 	specs := make(map[string]*NewScopedCatalog, len(catalogs))
 	for _, c := range catalogs {
 		spec := &NewScopedCatalog{
@@ -400,8 +399,8 @@ func newSpecsByKey(catalogs []BundleCatalog, link bool) map[string]*NewScopedCat
 			Provider: c.Provider,
 			Params:   string(c.Params),
 		}
-		if link {
-			spec.TakenFrom = c.SourceID
+		if keyed {
+			spec.SubKey = c.Key
 		}
 		specs[c.Key] = spec
 	}
@@ -433,57 +432,6 @@ func folderDataFromBundle(f BundleFolder, specs map[string]*NewScopedCatalog, to
 		TitleLogoURL:    f.TitleLogoURL,
 		Catalogs:        refs,
 	}
-}
-
-// catalogHash is the content hash of a listed catalog: its name and recipe
-// hash, the two things a catalog save or Update can change. The name is
-// length-prefixed, so no two (name, recipe hash) pairs share an input.
-func catalogHash(name, recipeHash string) string {
-	return sha256Hex([]byte(strconv.Itoa(len(name)) + ":" + name + recipeHash))
-}
-
-// collectionHash is bundleCollectionHash over tree's bundle form, with every
-// catalog it references in its own list.
-func collectionHash(tree CollectionWithFolders) (string, error) {
-	return bundleCollectionHash(extractBundle(nil, []CollectionWithFolders{tree}, true).Collections[0])
-}
-
-// bundleCollectionHash is the content hash of bc: sha256 hex over its JSON
-// form, with each catalog's params replaced by that catalog's recipe hash. A
-// copy shares its original's recipes, so the two hash alike. Whatever the
-// bundle form leaves out — ids, scope, is_public, pin_to_top, the home
-// fields, version and timestamps — the hash leaves out too. A content field
-// added to the form is hashed with no change here, and that changes every
-// collection's hash, so each linked copy's stored taken_hash stops matching
-// and its next save unlinks it. TestLinkHashesArePinned holds the hashes to
-// literal values. migrations/0002_recipes.go holds a frozen copy of this
-// and catalogHash.
-func bundleCollectionHash(bc BundleCollection) (string, error) {
-	catalogs := make([]BundleCatalog, len(bc.Catalogs))
-	for i, c := range bc.Catalogs {
-		recipeHash, err := json.Marshal(c.RecipeHash)
-		if err != nil {
-			return "", fmt.Errorf("hashing collection: %w", err)
-		}
-		c.Params = recipeHash
-		catalogs[i] = c
-	}
-	bc.Catalogs = catalogs
-	b, err := json.Marshal(bc)
-	if err != nil {
-		return "", fmt.Errorf("hashing collection: %w", err)
-	}
-	return sha256Hex(b), nil
-}
-
-// storedCollectionHash loads collection id's tree through q and hashes it.
-// Returns ErrCollectionNotFound if there is no such row.
-func storedCollectionHash(ctx context.Context, q querier, id uuid.UUID) (string, error) {
-	tree, err := selectTree(ctx, q, "id = ?", id.String())
-	if err != nil {
-		return "", err
-	}
-	return collectionHash(tree)
 }
 
 // sha256Hex is the hex sha256 of b.

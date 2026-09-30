@@ -7,12 +7,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -239,12 +239,13 @@ func TestMigrateRollsBackABrokenForeignKey(t *testing.T) {
 // A database at a version this build doesn't know — a newer build's, or a
 // negative one set by hand — is refused before anything is written.
 func TestInitDBRefusesAnUnknownVersion(t *testing.T) {
-	for _, version := range []string{"3", "-1"} {
+	latest := strconv.Itoa(len(migrations.All()))
+	for _, version := range []string{strconv.Itoa(len(migrations.All()) + 1), "-1"} {
 		t.Run(version, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "vault.db")
 			execSQL(t, path, `PRAGMA user_version = `+version)
 			_, err := InitDB(path)
-			if err == nil || !strings.Contains(err.Error(), "schema version "+version+", which this build (versions 0 to 2) cannot read") {
+			if err == nil || !strings.Contains(err.Error(), "schema version "+version+", which this build (versions 0 to "+latest+") cannot read") {
 				t.Fatalf("InitDB = %v, want the unknown-version refusal", err)
 			}
 			if got := backupsOf(t, path); len(got) != 0 {
@@ -364,20 +365,16 @@ func dumpKept(t *testing.T, path string) map[string][]string {
 }
 
 // Migration 2 over prod's database, odd params included, keeps every id,
-// version and placement, gives each catalog the recipe the live
-// canonicalizer and RecipeHash make of its params, one per distinct recipe,
-// and the pool reads the result.
-func TestInitDBMovesTheFixtureToRecipes(t *testing.T) {
-	ctx := context.Background()
+// version and placement, and gives each catalog the recipe the live
+// canonicalizer and RecipeHash make of its params, one per distinct recipe.
+func TestMigrationTwoMovesTheFixtureToRecipes(t *testing.T) {
 	path := fixtureAtV1(t, oddParams)
 	before := dumpKept(t, path)
 	oldParams := queryPairs(t, path, `SELECT id, type || char(9) || params FROM catalogs`)
 
-	db, err := InitDB(path)
-	if err != nil {
-		t.Fatalf("InitDB: %v", err)
+	if err := migrate(context.Background(), path, migrations.All()[:2]); err != nil {
+		t.Fatalf("migrate to 2: %v", err)
 	}
-	defer db.Close()
 
 	if got := userVersionOf(t, path); got != "2" {
 		t.Errorf("user_version = %s, want 2", got)
@@ -403,14 +400,6 @@ func TestInitDBMovesTheFixtureToRecipes(t *testing.T) {
 		}
 	}
 
-	alice := uuid.MustParse("aaaaaaaa-0000-4000-8000-000000000001")
-	bob := uuid.MustParse("aaaaaaaa-0000-4000-8000-000000000002")
-	if catalogs, err := db.GetUserCatalogs(ctx, alice); err != nil || len(catalogs) != 4 || catalogs[0].Params == "" {
-		t.Errorf("GetUserCatalogs(alice) = %+v, %v; want 4 with their recipes", catalogs, err)
-	}
-	if collections, err := db.GetUserCollections(ctx, bob); err != nil || len(collections) != 2 {
-		t.Errorf("GetUserCollections(bob) = %d collections, %v; want 2", len(collections), err)
-	}
 }
 
 // queryPairs runs a query of two TEXT columns against the database at path
@@ -438,103 +427,6 @@ func queryPairs(t *testing.T, path, query string) map[string]string {
 	return pairs
 }
 
-// linkState is whether a linked copy's taken_hash is its own link hash now,
-// and its source's.
-type linkState struct{ matchesCopy, matchesSource bool }
-
-// catalogLinkStates reads each of ids' link state in db, by the link hashes
-// the code computes over recipe hashes.
-func catalogLinkStates(t *testing.T, db *DB, ids ...string) map[string]linkState {
-	t.Helper()
-	states := map[string]linkState{}
-	for _, id := range ids {
-		var takenHash, name, recipeHash, sourceName, sourceRecipe string
-		err := db.conn.QueryRowContext(context.Background(), `
-			SELECT c.taken_hash, c.name, c.recipe_hash, s.name, s.recipe_hash
-			FROM catalogs c JOIN catalogs s ON s.id = c.taken_from WHERE c.id = ?
-		`, id).Scan(&takenHash, &name, &recipeHash, &sourceName, &sourceRecipe)
-		if err != nil {
-			t.Fatalf("catalog %s: %v", id, err)
-		}
-		states[id] = linkState{catalogHash(name, recipeHash) == takenHash, catalogHash(sourceName, sourceRecipe) == takenHash}
-	}
-	return states
-}
-
-// collectionLinkStates is catalogLinkStates for linked collections.
-func collectionLinkStates(t *testing.T, db *DB, ids ...string) map[string]linkState {
-	t.Helper()
-	ctx := context.Background()
-	states := map[string]linkState{}
-	for _, id := range ids {
-		var takenFrom, takenHash string
-		if err := db.conn.QueryRowContext(ctx, `SELECT taken_from, taken_hash FROM collections WHERE id = ?`, id).Scan(&takenFrom, &takenHash); err != nil {
-			t.Fatalf("collection %s: %v", id, err)
-		}
-		copyHash, err := storedCollectionHash(ctx, db.conn, uuid.MustParse(id))
-		if err != nil {
-			t.Fatalf("collection %s: %v", id, err)
-		}
-		sourceHash, err := storedCollectionHash(ctx, db.conn, uuid.MustParse(takenFrom))
-		if err != nil {
-			t.Fatalf("collection %s's source: %v", id, err)
-		}
-		states[id] = linkState{copyHash == takenHash, sourceHash == takenHash}
-	}
-	return states
-}
-
-const (
-	inStep = "in step"
-	behind = "behind"
-)
-
-// Migration 2 remaps every taken_hash onto the link hashes over recipe
-// hashes, so the fixture's linked copies are in or out of step exactly as
-// its header says, and each copy, untouched since it was taken, still
-// matches its taken_hash.
-func TestFixtureLinksMatchTheirLabels(t *testing.T) {
-	db, err := InitDB(fixtureDB(t))
-	if err != nil {
-		t.Fatalf("InitDB: %v", err)
-	}
-	defer db.Close()
-
-	labels := map[string]string{
-		"cacacaca-0000-4000-8000-000000000009": inStep,
-		"cacacaca-0000-4000-8000-000000000010": behind,
-		"cacacaca-0000-4000-8000-000000000011": inStep,
-		"cacacaca-0000-4000-8000-000000000017": inStep,
-		"cccccccc-0000-4000-8000-000000000004": inStep,
-		"cccccccc-0000-4000-8000-000000000005": behind,
-		"cccccccc-0000-4000-8000-000000000006": inStep,
-	}
-	states := catalogLinkStates(t, db, "cacacaca-0000-4000-8000-000000000009", "cacacaca-0000-4000-8000-000000000010",
-		"cacacaca-0000-4000-8000-000000000011", "cacacaca-0000-4000-8000-000000000017")
-	maps.Copy(states, collectionLinkStates(t, db, "cccccccc-0000-4000-8000-000000000004", "cccccccc-0000-4000-8000-000000000005",
-		"cccccccc-0000-4000-8000-000000000006"))
-	for id, label := range labels {
-		if want := (linkState{matchesCopy: true, matchesSource: label == inStep}); states[id] != want {
-			t.Errorf("%s (%s): %+v, want %+v", id, label, states[id], want)
-		}
-	}
-}
-
-// A copy edited without being unlinked keeps pointing at its source's hash
-// by the live link hashes, so Update and Community judge it as they did
-// before migration 2.
-func TestMigrationTwoKeepsAnEditedCopyOnItsSource(t *testing.T) {
-	const edited = "cacacaca-0000-4000-8000-000000000011"
-	db, err := InitDB(fixtureAtV1(t, `UPDATE catalogs SET name = 'Renamed without unlinking' WHERE id = '`+edited+`'`))
-	if err != nil {
-		t.Fatalf("InitDB: %v", err)
-	}
-	defer db.Close()
-	if got, want := catalogLinkStates(t, db, edited)[edited], (linkState{matchesSource: true}); got != want {
-		t.Errorf("edited copy: %+v, want %+v", got, want)
-	}
-}
-
 // oddParams gives two of the fixture's catalogs params in forms the builder
 // never wrote: unknown keys, a zero value, unsorted keys, a trailing zero.
 const oddParams = `
@@ -545,7 +437,7 @@ const oddParams = `
 // The dry run's recipe check finds that every catalog's params, odd forms
 // included, fetch the same titles once canonical.
 func TestDryRunFindsCanonicalParamsFetchTheSameTitles(t *testing.T) {
-	report, err := DryRun(context.Background(), fixtureAtV1(t, oddParams), provider.SameRecipe)
+	report, err := DryRun(context.Background(), fixtureAtV1(t, oddParams), liveChecks)
 	if err != nil {
 		t.Fatalf("DryRun: %v", err)
 	}
@@ -608,9 +500,10 @@ func listDir(t *testing.T, dir string) []string {
 	return names
 }
 
-// A dry run reports both migrations over prod's database, with the recipe
-// check over every catalog, and leaves the file, and the directory it sits
-// in, exactly as they were.
+// A dry run reports every migration over prod's database, with the recipe
+// check over every catalog and the publication check over every publication
+// it creates, and leaves the file, and the directory it sits in, exactly as
+// they were.
 func TestDryRunWritesNothing(t *testing.T) {
 	path := fixtureDB(t)
 	dir := filepath.Dir(path)
@@ -620,13 +513,13 @@ func TestDryRunWritesNothing(t *testing.T) {
 	}
 	filesBefore := listDir(t, dir)
 
-	report, err := DryRun(context.Background(), path, provider.SameRecipe)
+	report, err := DryRun(context.Background(), path, liveChecks)
 	if err != nil {
 		t.Fatalf("DryRun: %v", err)
 	}
 
 	want := MigrationReport{
-		From: 0, To: 2,
+		From: 0, To: 5,
 		Applied: []AppliedMigration{
 			{Version: 1, Name: "baseline", Notes: []string{
 				"found 5 of 5 baseline tables already present; checked their columns",
@@ -639,10 +532,28 @@ func TestDryRunWritesNothing(t *testing.T) {
 				"remapped catalog links: 3 in step, 1 behind their source, 0 edited since taken, 0 matching neither hash (left as they were)",
 				"remapped collection links: 2 in step, 1 behind their source, 0 edited since taken, 0 matching neither hash (left as they were)",
 			}},
+			{Version: 3, Name: "publications", Notes: []string{
+				"published 2 catalogs and 2 collections: every public row that was not a linked copy, as it stood",
+				"left 2 public linked copies unpublished: each became a subscription or a detached copy",
+				"left 0 public collections unpublished: each uses a catalog that became a subscription, which only its publisher can share",
+				"catalog links: 2 became subscriptions (1 in step, 0 of those only because the copy already equals its source; 1 out of step); detached 2 (1 from a private source, 1 from a copy, 0 from a public source left unpublished)",
+				"collection links: 2 became subscriptions (1 in step, 0 of those only because the copy already equals its source; 1 out of step); detached 1 (0 from a private source, 1 from a copy, 0 from a public source left unpublished)",
+				"dropped is_public, taken_from and taken_hash from catalogs and collections, and the legacy is_default columns",
+			}},
+			{Version: 4, Name: "accounts", Notes: []string{"added accounts, which holds each account's own TMDB key, sealed"}},
+			{Version: 5, Name: "pushed_hash", Notes: []string{
+				"backfilled 2 push hashes; left 4 collections pending (changed since their last push, or never pushed)",
+			}},
 		},
-		RowsBefore:     map[string]int{"profiles": 3, "collections": 6, "catalogs": 20, "folders": 11, "folder_catalogs": 18},
-		RowsAfter:      map[string]int{"profiles": 3, "collections": 6, "catalogs": 20, "folders": 11, "folder_catalogs": 18, "recipes": 9},
-		RecipesChecked: 20,
+		RowsBefore: map[string]int{"profiles": 3, "collections": 6, "catalogs": 20, "folders": 11, "folder_catalogs": 18},
+		RowsAfter: map[string]int{
+			"profiles": 3, "collections": 6, "catalogs": 20, "folders": 11, "folder_catalogs": 18, "recipes": 9,
+			"publications": 4, "subscriptions": 4, "accounts": 0,
+		},
+		RecipesChecked:       20,
+		PublicationsChecked:  4,
+		PushHashesBackfilled: 2,
+		PushHashesPending:    4,
 	}
 	if !reflect.DeepEqual(report, want) {
 		t.Errorf("report = %+v\nwant %+v", report, want)
@@ -660,12 +571,14 @@ func TestDryRunWritesNothing(t *testing.T) {
 func TestDryRunReportsRecipeMismatches(t *testing.T) {
 	const odd = "cacacaca-0000-4000-8000-000000000008"
 	path := fixtureDB(t)
-	report, err := DryRun(context.Background(), path, func(catalogType, _, before, after string) error {
+	checks := liveChecks
+	checks.SameRecipe = func(catalogType, _, before, after string) error {
 		if catalogType == "series" && strings.Contains(before, "first_air_date") {
 			return errors.New("boom")
 		}
 		return nil
-	})
+	}
+	report, err := DryRun(context.Background(), path, checks)
 	if err != nil {
 		t.Fatalf("DryRun: %v", err)
 	}
@@ -676,12 +589,17 @@ func TestDryRunReportsRecipeMismatches(t *testing.T) {
 	if err := migrate(context.Background(), path, migrations.All()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	report, err = DryRun(context.Background(), path, func(string, string, string, string) error {
+	checks.SameRecipe = func(string, string, string, string) error {
 		t.Error("the recipe check ran on a database past migration 2")
 		return nil
-	})
-	if err != nil || report.RecipesChecked != 0 || report.From != 2 || report.To != 2 {
-		t.Errorf("dry run past migration 2 = %+v, %v; want nothing applied or checked", report, err)
+	}
+	checks.ValidRecipe = func(string, string, string) error {
+		t.Error("the publication check ran on a database past migration 3")
+		return nil
+	}
+	report, err = DryRun(context.Background(), path, checks)
+	if err != nil || report.RecipesChecked != 0 || report.PublicationsChecked != 0 || report.PushHashesBackfilled != 0 || report.From != 5 || report.To != 5 {
+		t.Errorf("dry run past the last migration = %+v, %v; want nothing applied or checked", report, err)
 	}
 }
 
@@ -698,7 +616,7 @@ func TestDryRunKeepsSidecarsItDidNotCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := DryRun(context.Background(), path, provider.SameRecipe); err != nil {
+	if _, err := DryRun(context.Background(), path, liveChecks); err != nil {
 		t.Fatalf("DryRun: %v", err)
 	}
 	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
@@ -744,7 +662,7 @@ func TestDryRunFailures(t *testing.T) {
 				execSQL(t, path, tc.setup)
 			}
 			filesBefore := listDir(t, filepath.Dir(path))
-			report, err := dryRun(ctx, path, tc.list, provider.SameRecipe)
+			report, err := dryRun(ctx, path, tc.list, liveChecks)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("dryRun = %v, want an error containing %q", err, tc.want)
 			}
@@ -755,5 +673,140 @@ func TestDryRunFailures(t *testing.T) {
 				t.Errorf("directory = %q after the dry run, want %q", filesAfter, filesBefore)
 			}
 		})
+	}
+}
+
+// liveChecks are the checks cmd/server passes a dry run.
+var liveChecks = LiveChecks{SameRecipe: provider.SameRecipe, ValidRecipe: provider.ValidateRecipe}
+
+// The publication check runs today's validators over every publication the
+// migrations create and names each one they refuse, without failing the dry
+// run: a publication holds its source as it stood.
+func TestDryRunChecksPublications(t *testing.T) {
+	path := fixtureAtV1(t, `
+		UPDATE catalogs SET params = '{"sort_by":"nonsense"}' WHERE id = 'cacacaca-0000-4000-8000-000000000002';
+		UPDATE collections SET view_mode = 'CAROUSEL' WHERE id = 'cccccccc-0000-4000-8000-000000000002';`)
+	checks := liveChecks
+	checks.SameRecipe = func(string, string, string, string) error { return nil }
+	report, err := DryRun(context.Background(), path, checks)
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if report.PublicationsChecked != 4 || len(report.PublicationProblems) != 2 {
+		t.Fatalf("publication check: %d checked, problems %q; want 4 and 2", report.PublicationsChecked, report.PublicationProblems)
+	}
+	for i, want := range []string{"catalog ", "collection "} {
+		if problem := report.PublicationProblems[i]; !strings.HasPrefix(problem, want) {
+			t.Errorf("problem %d = %q, want one about a %s", i, problem, want)
+		}
+	}
+	if !strings.Contains(report.PublicationProblems[1], "view mode") {
+		t.Errorf("collection problem = %q, want the view mode named", report.PublicationProblems[1])
+	}
+}
+
+// The fixture at the latest version, read through live code: every
+// publication's snapshot is exactly what the live code makes of its source,
+// so no owner sees a change since publishing; each subscription reads in or
+// out of step as its copy's label says, and an in-step copy snapshots, by
+// its sub_keys, to exactly its publication's content; detached copies carry
+// no subscription and no sub_keys; and Community shows the others Alice's
+// four publications.
+func TestInitDBMovesTheFixtureToPublications(t *testing.T) {
+	ctx := context.Background()
+	db, err := InitDB(fixtureDB(t))
+	if err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer db.Close()
+	alice := uuid.MustParse("aaaaaaaa-0000-4000-8000-000000000001")
+	bob := uuid.MustParse("aaaaaaaa-0000-4000-8000-000000000002")
+	carol := uuid.MustParse("aaaaaaaa-0000-4000-8000-000000000003")
+
+	catalogs, err := db.GetUserCatalogs(ctx, alice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collections, err := db.GetUserCollections(ctx, alice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published := 0
+	for _, c := range catalogs {
+		if c.Publication != nil {
+			published++
+			requireUnchangedSincePublish(t, c.Name, *c.Publication, catalogSnapshot(c.Publication.ID, c).contentHash(), db)
+		}
+	}
+	for _, c := range collections {
+		if c.Publication != nil {
+			published++
+			requireUnchangedSincePublish(t, c.Title, *c.Publication, collectionSnapshot(c.Publication.ID, c).contentHash(), db)
+		}
+	}
+	if published != 4 {
+		t.Errorf("Alice has %d published rows, want 4", published)
+	}
+
+	for id, wantUpdate := range map[string]bool{
+		"cacacaca-0000-4000-8000-000000000009": false, "cacacaca-0000-4000-8000-000000000010": true,
+	} {
+		c := reloadCatalog(t, db, uuid.MustParse(id))
+		if c.Subscription == nil || c.Subscription.UpdateAvailable != wantUpdate || c.Subscription.Withdrawn {
+			t.Errorf("catalog %s subscription = %+v, want update available %v", id, c.Subscription, wantUpdate)
+		}
+	}
+	for id, wantUpdate := range map[string]bool{
+		"cccccccc-0000-4000-8000-000000000004": false, "cccccccc-0000-4000-8000-000000000005": true,
+	} {
+		c := mustOwnCollection(t, db, bob, uuid.MustParse(id))
+		if c.Subscription == nil || c.Subscription.UpdateAvailable != wantUpdate {
+			t.Fatalf("collection %s subscription = %+v, want update available %v", id, c.Subscription, wantUpdate)
+		}
+		var hash string
+		if err := db.conn.QueryRowContext(ctx, `SELECT content_hash FROM publications WHERE id = ?`, c.Subscription.PublicationID.String()).Scan(&hash); err != nil {
+			t.Fatal(err)
+		}
+		if matches := copyTreeSnapshot(c).contentHash() == hash; matches == wantUpdate {
+			t.Errorf("collection %s snapshots to its publication: %v, want %v", id, matches, !wantUpdate)
+		}
+	}
+	for _, id := range []string{"cacacaca-0000-4000-8000-000000000011", "cacacaca-0000-4000-8000-000000000017"} {
+		if c := reloadCatalog(t, db, uuid.MustParse(id)); c.Subscription != nil {
+			t.Errorf("detached catalog %s subscription = %+v, want none", id, c.Subscription)
+		}
+	}
+	detached := mustOwnCollection(t, db, carol, uuid.MustParse("cccccccc-0000-4000-8000-000000000006"))
+	if detached.Subscription != nil || detached.Catalogs[0].SubKey != "" || detached.Folders[0].SubKey != "" {
+		t.Errorf("Carol's detached collection = %+v, want no subscription and no sub_keys", detached.Collection)
+	}
+
+	for profile, wantSubscribed := range map[uuid.UUID]int{carol: 0, bob: 4} {
+		items, err := db.ListCommunity(ctx, profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		subscribed := 0
+		for _, item := range items {
+			if item.Subscribed {
+				subscribed++
+			}
+		}
+		if len(items) != 4 || subscribed != wantSubscribed {
+			t.Errorf("Community for %s: %d items, %d subscribed; want 4 and %d", profile, len(items), subscribed, wantSubscribed)
+		}
+	}
+}
+
+// requireUnchangedSincePublish fails unless publication p holds exactly the
+// content whose hash live is, and reads as unchanged.
+func requireUnchangedSincePublish(t *testing.T, name string, p PublicationState, live string, db *DB) {
+	t.Helper()
+	var stored string
+	if err := db.conn.QueryRowContext(context.Background(), `SELECT content_hash FROM publications WHERE id = ?`, p.ID.String()).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != live || p.ChangedSincePublish || p.Status != statusLive {
+		t.Errorf("%s: publication %+v with content %s, live snapshot %s; want them equal and unchanged", name, p, stored, live)
 	}
 }

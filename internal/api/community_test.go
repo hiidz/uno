@@ -1,92 +1,177 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/hiidz/uno/internal/vault"
 )
 
-// TestCommunityRoutes drives the community POSTs through the real router,
-// as the authenticated caller, against one public catalog and one public
-// collection of another profile's. The steps run in order, since each one's
-// answer depends on what the steps before it took: Update before any Take
-// finds no linked copy, Duplicate never links, Take links, Update on a
-// fresh Take changes nothing, and a second Take is a conflict.
-func TestCommunityRoutes(t *testing.T) {
-	db := newTestVaultDB(t)
-	s := newProfileTestServer(t, db)
-	ctx := t.Context()
+// sharingFixture is another profile's published catalog and collection, and
+// the caller's own catalog and collection, all with recipes that TMDB never
+// needs to check.
+type sharingFixture struct {
+	f                                      routeFixture
+	theirCatalog, theirCollection          uuid.UUID
+	ownCatalog, ownCollection              uuid.UUID
+	theirCatalogSource, theirCollectionSrc uuid.UUID
+}
 
-	if _, err := db.ResolveOrCreateProfile(ctx, "test-sub", 1, "nuvio-profile-caller"); err != nil {
-		t.Fatalf("ResolveOrCreateProfile (caller): %v", err)
-	}
-	owner, err := db.ResolveOrCreateProfile(ctx, "owner", 1, "nuvio-profile-owner")
+func newSharingFixture(t *testing.T) sharingFixture {
+	t.Helper()
+	ctx := t.Context()
+	f := newRouteFixture(t)
+	owner, err := f.db.ResolveOrCreateProfile(ctx, "owner", 1, "nuvio-profile-owner")
 	if err != nil {
-		t.Fatalf("ResolveOrCreateProfile (owner): %v", err)
+		t.Fatal(err)
 	}
-	catalog, err := db.CreateUserCatalog(ctx, owner.ID, vault.CatalogForm{
-		Type: "movie", Name: "Theirs", Provider: "tmdb", Params: `{"sort_by":"popularity.desc"}`, IsPublic: true,
-	})
+	catalog, err := f.db.CreateUserCatalog(ctx, owner.ID, vault.CatalogForm{Type: "movie", Name: "Theirs", Provider: "tmdb", Params: popular})
 	if err != nil {
-		t.Fatalf("create public catalog: %v", err)
+		t.Fatal(err)
 	}
-	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{
-		Title: "Theirs", IsPublic: true, ViewMode: "TABBED_GRID",
+	catalog, err = f.db.PublishCatalog(ctx, owner.ID, catalog.ID, acceptAnyRecipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collection, err := f.db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{
+		Title: "Their Weekend", ViewMode: "TABBED_GRID",
 		Folders: []vault.FolderData{{Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
 	})
 	if err != nil {
-		t.Fatalf("create public collection: %v", err)
+		t.Fatal(err)
 	}
-	catalogs := "/api/p/1/community/catalogs/" + catalog.ID.String()
-	collections := "/api/p/1/community/collections/" + collection.ID.String()
+	collection, err = f.db.PublishCollection(ctx, owner.ID, collection.ID, acceptAnyRecipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sharingFixture{
+		f: f, theirCatalog: catalog.Publication.ID, theirCollection: collection.Publication.ID,
+		ownCatalog: f.mine.ID, ownCollection: f.mineColl.ID,
+		theirCatalogSource: catalog.ID, theirCollectionSrc: collection.ID,
+	}
+}
 
-	steps := []struct {
-		name, path string
+// acceptAnyRecipe is a vault.CatalogParamsValidator that accepts every
+// recipe, for publishing the fixture's rows through the vault.
+func acceptAnyRecipe(_, _, _ string) error { return nil }
+
+// TestSharingRoutes drives the Community, subscription and publication
+// routes through the real router, as the caller, in order: each step's
+// answer depends on what the steps before it did. None of them reaches TMDB:
+// a subscribe, an Update and a fork copy a snapshot checked at publish, and
+// the recipes published here need no TMDB list to check.
+func TestSharingRoutes(t *testing.T) {
+	x := newSharingFixture(t)
+	noTMDB(t)
+	community := "/api/p/1/community/"
+	theirCatalog := community + x.theirCatalog.String()
+	theirCollection := community + x.theirCollection.String()
+
+	runSteps(t, x.f.s, []routeStep{
+		{name: "list", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: x.theirCatalog.String()},
+		{name: "list holds the collection", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: `"title":"Their Weekend"`},
+		{name: "detail", method: http.MethodGet, path: theirCollection, wantStatus: http.StatusOK, wantBody: `"snapshot":{"format":"uno-publication"`},
+		{name: "detail of an unknown publication", method: http.MethodGet, path: community + uuid.NewString(), wantStatus: http.StatusNotFound, wantBody: "publication not found"},
+		{name: "detail with a path id that isn't a uuid", method: http.MethodGet, path: community + "nope", wantStatus: http.StatusBadRequest, wantBody: "invalid publication id"},
+		{name: "update before subscribing", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "publication not found"},
+		{name: "fork", method: http.MethodPost, path: theirCatalog + "/fork", wantStatus: http.StatusCreated, wantBody: `"subscription":null`},
+		{name: "subscribe to the catalog", method: http.MethodPost, path: theirCatalog + "/subscribe", wantStatus: http.StatusCreated, wantBody: `"subscription":{"publication_id":"` + x.theirCatalog.String()},
+		{name: "subscribe again", method: http.MethodPost, path: theirCatalog + "/subscribe", wantStatus: http.StatusConflict, wantBody: "already subscribe"},
+		{name: "subscribe to the collection", method: http.MethodPost, path: theirCollection + "/subscribe", wantStatus: http.StatusCreated, wantBody: `"kind":"collection"`},
+		{name: "update in step", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusOK, wantBody: `"update_available":false`},
+		{name: "list after subscribing", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: `"subscribed":true`},
+	})
+
+	collectionCopy := subscribedCopy(t, x.f, x.theirCollection)
+	catalogCopy := subscribedCatalog(t, x.f, x.theirCatalog)
+	withTaken, err := x.f.db.CreateUserCollection(t.Context(), x.f.caller.ID, vault.CollectionForm{
+		Title: "With a taken catalog", ViewMode: "ROWS",
+		Folders: []vault.FolderData{{Title: "F", Catalogs: vault.CatalogRefs(catalogCopy)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyPath := "/api/p/1/collections/" + collectionCopy.String()
+	ownCatalog := "/api/p/1/catalogs/" + x.ownCatalog.String()
+	ownCollection := "/api/p/1/collections/" + x.ownCollection.String()
+	runSteps(t, x.f.s, []routeStep{
+		{name: "publish the subscribed copy", method: http.MethodPost, path: copyPath + "/publish", wantStatus: http.StatusBadRequest, wantBody: "only its publisher can share"},
+		{name: "save the subscribed copy, which detaches it", method: http.MethodPut, path: copyPath, body: `{"title":"Mine now"}`, wantStatus: http.StatusOK, wantBody: `"subscription":null`},
+		{name: "detach the saved copy", method: http.MethodPost, path: copyPath + "/detach", wantStatus: http.StatusBadRequest, wantBody: "not a subscribed copy"},
+		{name: "publish a collection with a subscribed catalog", method: http.MethodPost, path: "/api/p/1/collections/" + withTaken.ID.String() + "/publish", wantStatus: http.StatusBadRequest, wantBody: "only their publisher can share: Theirs; detach them, or duplicate them and use the copies"},
+		{name: "detach the subscribed catalog", method: http.MethodPost, path: "/api/p/1/catalogs/" + catalogCopy.String() + "/detach", wantStatus: http.StatusOK, wantBody: `"subscription":null`},
+		{name: "publish the collection once its catalog is detached", method: http.MethodPost, path: "/api/p/1/collections/" + withTaken.ID.String() + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
+		{name: "detach a catalog that isn't subscribed", method: http.MethodPost, path: ownCatalog + "/detach", wantStatus: http.StatusBadRequest, wantBody: "not a subscribed copy"},
+		{name: "publish my catalog", method: http.MethodPost, path: ownCatalog + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live","changed_since_publish":false`},
+		{name: "withdraw my catalog", method: http.MethodPost, path: ownCatalog + "/withdraw", wantStatus: http.StatusOK, wantBody: `"status":"withdrawn"`},
+		{name: "publish my collection", method: http.MethodPost, path: ownCollection + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
+		{name: "withdraw my collection", method: http.MethodPost, path: ownCollection + "/withdraw", wantStatus: http.StatusOK, wantBody: `"status":"withdrawn"`},
+		{name: "publish another profile's catalog", method: http.MethodPost, path: "/api/p/1/catalogs/" + x.theirCatalogSource.String() + "/publish", wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
+		{name: "withdraw another profile's collection", method: http.MethodPost, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/withdraw", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
+		{name: "publish with a path id that isn't a uuid", method: http.MethodPost, path: "/api/p/1/catalogs/nope/publish", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
+	})
+}
+
+// subscribedCopy is the id of the caller's collection subscribed to
+// publicationID.
+func subscribedCopy(t *testing.T, f routeFixture, publicationID uuid.UUID) uuid.UUID {
+	t.Helper()
+	collections, err := f.db.GetUserCollections(t.Context(), f.caller.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range collections {
+		if c.Subscription != nil && c.Subscription.PublicationID == publicationID {
+			return c.ID
+		}
+	}
+	t.Fatalf("the caller has no collection subscribed to %s", publicationID)
+	return uuid.Nil
+}
+
+// subscribedCatalog is the id of the caller's catalog subscribed to
+// publicationID.
+func subscribedCatalog(t *testing.T, f routeFixture, publicationID uuid.UUID) uuid.UUID {
+	t.Helper()
+	catalogs, err := f.db.GetUserCatalogs(t.Context(), f.caller.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range catalogs {
+		if c.Subscription != nil && c.Subscription.PublicationID == publicationID {
+			return c.ID
+		}
+	}
+	t.Fatalf("the caller has no catalog subscribed to %s", publicationID)
+	return uuid.Nil
+}
+
+// A publish checks every recipe it shares against TMDB, the check a catalog
+// save runs: TMDB down is a 502, and nothing is published.
+func TestPublishChecksRecipesAgainstTMDB(t *testing.T) {
+	f := newRouteFixture(t)
+	catalog, err := f.db.CreateUserCatalog(t.Context(), f.caller.ID, vault.CatalogForm{
+		Type: "movie", Name: "Action", Provider: "tmdb", Params: `{"with_genres":"28"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/p/1/catalogs/" + catalog.ID.String() + "/publish"
+	for _, tc := range []struct {
+		name       string
+		tmdb       http.HandlerFunc
 		wantStatus int
-		wantBody   string // for an error, a fragment of the body
-		wantLinked bool   // for a success, the result's linked
 	}{
-		{name: "update a catalog before taking it", path: catalogs + "/update", wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
-		{name: "update a collection before taking it", path: collections + "/update", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
-		{name: "duplicate the catalog", path: catalogs + "/duplicate", wantStatus: http.StatusCreated},
-		{name: "duplicate the collection", path: collections + "/duplicate", wantStatus: http.StatusCreated},
-		{name: "take the catalog", path: catalogs + "/take", wantStatus: http.StatusCreated, wantLinked: true},
-		{name: "take the collection", path: collections + "/take", wantStatus: http.StatusCreated, wantLinked: true},
-		{name: "update the taken catalog", path: catalogs + "/update", wantStatus: http.StatusOK, wantLinked: true},
-		{name: "update the taken collection", path: collections + "/update", wantStatus: http.StatusOK, wantLinked: true},
-		{name: "take the catalog again", path: catalogs + "/take", wantStatus: http.StatusConflict, wantBody: "already taken"},
-		{name: "take the collection again", path: collections + "/take", wantStatus: http.StatusConflict, wantBody: "already taken"},
-		{name: "a path id that isn't a uuid", path: "/api/p/1/community/catalogs/nope/update", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
-	}
-
-	for _, step := range steps {
-		t.Run(step.name, func(t *testing.T) {
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, step.path, nil)
-			req.Header.Set("Authorization", "Bearer token")
-			w := httptest.NewRecorder()
-			s.ServeHTTP(w, req)
-
-			if w.Code != step.wantStatus {
-				t.Fatalf("status = %d, want %d (body %q)", w.Code, step.wantStatus, w.Body.String())
-			}
-			if w.Code >= http.StatusBadRequest {
-				if !strings.Contains(w.Body.String(), step.wantBody) {
-					t.Fatalf("body = %q, want it to contain %q", strings.TrimSpace(w.Body.String()), step.wantBody)
-				}
-				return
-			}
-			var got struct {
-				Linked bool `json:"linked"`
-			}
-			if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
-				t.Fatalf("decoding body: %v", err)
-			}
-			if got.Linked != step.wantLinked {
-				t.Fatalf("linked = %v, want %v", got.Linked, step.wantLinked)
+		{"TMDB down", tmdbDown, http.StatusBadGateway},
+		{"TMDB up", tmdbUp, http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hits := fakeTMDB(t, tc.tmdb)
+			w := serve(t, f.s, http.MethodPost, path, "", false)
+			if w.Code != tc.wantStatus || hits.Load() == 0 {
+				t.Fatalf("status = %d after %d TMDB calls, want %d after some (body %q)", w.Code, hits.Load(), tc.wantStatus, w.Body.String())
 			}
 		})
 	}

@@ -21,28 +21,43 @@ type querier interface {
 // and returns them in row order. label names one such value (e.g. "folder
 // id") and appears in every error this can return.
 func queryUUIDs(ctx context.Context, q querier, label, query string, args ...any) ([]uuid.UUID, error) {
+	strs, err := queryStrings(ctx, q, label, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	var ids []uuid.UUID
+	for _, s := range strs {
+		id, err := parseUUID(s, label)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// queryStrings runs a query whose rows are a single TEXT column and returns
+// them in row order. label names one such value and appears in every error
+// this can return.
+func queryStrings(ctx context.Context, q querier, label, query string, args ...any) ([]string, error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying %s list: %w", label, err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var ids []uuid.UUID
+	var values []string
 	for rows.Next() {
-		var idStr string
-		if err := rows.Scan(&idStr); err != nil {
+		var s string
+		if err := rows.Scan(&s); err != nil {
 			return nil, fmt.Errorf("scanning %s: %w", label, err)
 		}
-		id, err := parseUUID(idStr, label)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
+		values = append(values, s)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating %s list: %w", label, err)
 	}
-	return ids, nil
+	return values, nil
 }
 
 // parseTimestamp parses an RFC3339 TEXT column into a time.Time, wrapping
@@ -55,20 +70,6 @@ func parseTimestamp(s, field string) (time.Time, error) {
 	return t, nil
 }
 
-// parseNullableUUID parses a nullable TEXT column into a *uuid.UUID, nil
-// when the column is NULL, wrapping any parse error with the given field
-// name.
-func parseNullableUUID(s sql.NullString, field string) (*uuid.UUID, error) {
-	if !s.Valid {
-		return nil, nil
-	}
-	id, err := parseUUID(s.String, field)
-	if err != nil {
-		return nil, err
-	}
-	return &id, nil
-}
-
 // nullableInt converts a nullable INTEGER column into a *int, nil when the
 // column is NULL — used for catalogs.home_sort_order/collections.home_sort_order.
 func nullableInt(n sql.NullInt64) *int {
@@ -79,64 +80,113 @@ func nullableInt(n sql.NullInt64) *int {
 	return &v
 }
 
-// scanCatalog reads one catalog row: the fifteen catalog columns, its
-// recipe's type, provider and params among them, in the order every catalog
-// SELECT in this package lists them (catalogColumns), followed by
-// extraDests — destinations for any further columns the caller's own query
-// appended (see GetPublishedCatalogs' ordering columns).
+// rowParser parses the text columns of one scanned row, keeping the first
+// error so a scanner checks once, after every column.
+type rowParser struct{ err error }
+
+// uuid parses s as field's UUID.
+func (p *rowParser) uuid(s, field string) uuid.UUID {
+	if p.err != nil {
+		return uuid.Nil
+	}
+	id, err := parseUUID(s, field)
+	p.err = err
+	return id
+}
+
+// nullableUUID parses s as field's UUID, nil when s is NULL.
+func (p *rowParser) nullableUUID(s sql.NullString, field string) *uuid.UUID {
+	if !s.Valid {
+		return nil
+	}
+	id := p.uuid(s.String, field)
+	return &id
+}
+
+// timestamp parses s as field's RFC3339 time.
+func (p *rowParser) timestamp(s, field string) time.Time {
+	if p.err != nil {
+		return time.Time{}
+	}
+	t, err := parseTimestamp(s, field)
+	p.err = err
+	return t
+}
+
+// scanCatalog reads one catalog row: the catalog columns (catalogColumns),
+// its recipe's type, provider and params among them and its sharing columns
+// last, in the order every catalog SELECT in this package lists them,
+// followed by extraDests — destinations for any further columns the caller's
+// own query appended (see GetPublishedCatalogs' ordering columns).
 func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	var c Catalog
-	var idStr, ownerIDStr string
-	var isPublic, showInHome int
-	var collectionIDStr, takenFromStr, takenHash sql.NullString
+	var idStr, ownerIDStr, createdAtStr, updatedAtStr string
+	var showInHome int
+	var collectionIDStr, subKey sql.NullString
 	var homeSortOrder sql.NullInt64
-	var createdAtStr, updatedAtStr string
+	var sharing sharingScan
 
 	dests := append([]any{
-		&idStr, &c.Type, &c.Name, &c.Provider,
-		&c.Params, &ownerIDStr, &isPublic,
-		&collectionIDStr, &homeSortOrder, &showInHome, &takenFromStr, &takenHash, &c.RecipeHash,
+		&idStr, &c.Type, &c.Name, &c.Provider, &c.Params, &ownerIDStr,
+		&collectionIDStr, &homeSortOrder, &showInHome, &c.RecipeHash, &subKey,
 		&createdAtStr, &updatedAtStr,
-	}, extraDests...)
-	if err := rows.Scan(dests...); err != nil {
+	}, sharing.dests()...)
+	if err := rows.Scan(append(dests, extraDests...)...); err != nil {
 		return Catalog{}, fmt.Errorf("scanning catalog row: %w", err)
 	}
 
-	id, err := parseUUID(idStr, "catalog id")
-	if err != nil {
-		return Catalog{}, err
-	}
-	c.ID = id
-
-	c.OwnerID, err = parseUUID(ownerIDStr, "owner id")
-	if err != nil {
-		return Catalog{}, err
-	}
-	c.IsPublic = isPublic != 0
-
-	c.CollectionID, err = parseNullableUUID(collectionIDStr, "collection id")
-	if err != nil {
-		return Catalog{}, err
+	var p rowParser
+	c.ID = p.uuid(idStr, "catalog id")
+	c.OwnerID = p.uuid(ownerIDStr, "owner id")
+	c.CollectionID = p.nullableUUID(collectionIDStr, "collection id")
+	c.CreatedAt = p.timestamp(createdAtStr, "catalog created_at")
+	c.UpdatedAt = p.timestamp(updatedAtStr, "catalog updated_at")
+	c.Publication, c.Subscription = sharing.states(&p)
+	if p.err != nil {
+		return Catalog{}, p.err
 	}
 	c.HomeSortOrder = nullableInt(homeSortOrder)
 	c.ShowInHome = showInHome != 0
-	c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
-	if err != nil {
-		return Catalog{}, err
-	}
-	c.TakenHash = takenHash.String
-	c.Linked = c.linkedCopy()
-
-	c.CreatedAt, err = parseTimestamp(createdAtStr, "catalog created_at")
-	if err != nil {
-		return Catalog{}, err
-	}
-	c.UpdatedAt, err = parseTimestamp(updatedAtStr, "catalog updated_at")
-	if err != nil {
-		return Catalog{}, err
-	}
-
+	c.SubKey = subKey.String
+	c.markChangedSincePublish()
 	return c, nil
+}
+
+// sharingScan is a row's sharing columns as scanned (sharingColumns): its
+// own publication's id, status and content hash, and the publication its
+// subscription names, with whether an update is available and whether that
+// publication is withdrawn. A row without one scans NULLs for it.
+type sharingScan struct {
+	publicationID, status, contentHash sql.NullString
+	subscribedTo                       sql.NullString
+	updateAvailable, withdrawn         sql.NullBool
+}
+
+// dests are the destinations for s's columns, in sharingColumns' order.
+func (s *sharingScan) dests() []any {
+	return []any{&s.publicationID, &s.status, &s.contentHash, &s.subscribedTo, &s.updateAvailable, &s.withdrawn}
+}
+
+// states is the row's publication and subscription, each nil when the row
+// has none, parsed through p.
+func (s sharingScan) states(p *rowParser) (*PublicationState, *SubscriptionState) {
+	var publication *PublicationState
+	if id := p.nullableUUID(s.publicationID, "publication id"); id != nil {
+		publication = &PublicationState{ID: *id, Status: s.status.String, contentHash: s.contentHash.String}
+	}
+	var subscription *SubscriptionState
+	if id := p.nullableUUID(s.subscribedTo, "subscription's publication id"); id != nil {
+		subscription = &SubscriptionState{PublicationID: *id, UpdateAvailable: s.updateAvailable.Bool, Withdrawn: s.withdrawn.Bool}
+	}
+	return publication, subscription
+}
+
+// markChangedSincePublish sets c's ChangedSincePublish when c no longer
+// snapshots to what its publication holds.
+func (c *Catalog) markChangedSincePublish() {
+	if c.Publication != nil {
+		c.Publication.ChangedSincePublish = catalogSnapshot(c.Publication.ID, *c).contentHash() != c.Publication.contentHash
+	}
 }
 
 func parseCatalogs(rows *sql.Rows) ([]Catalog, error) {
@@ -157,53 +207,10 @@ func parseCatalogs(rows *sql.Rows) ([]Catalog, error) {
 func parseCollections(rows *sql.Rows) ([]Collection, error) {
 	collections := []Collection{}
 	for rows.Next() {
-		var c Collection
-		var idStr, ownerIDStr string
-		var isPublic, pinToTop, showAllTab, focusGlowEnabled, version int
-		var takenFromStr, takenHash sql.NullString
-		var homeSortOrder, pushedVersion sql.NullInt64
-		var createdAtStr, updatedAtStr string
-
-		if err := rows.Scan(&idStr, &c.Title, &ownerIDStr, &isPublic,
-			&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
-			&homeSortOrder, &version, &pushedVersion, &takenFromStr, &takenHash, &createdAtStr, &updatedAtStr); err != nil {
-			return nil, fmt.Errorf("scanning collection row: %w", err)
-		}
-
-		id, err := parseUUID(idStr, "collection id")
+		c, err := scanCollection(rows)
 		if err != nil {
 			return nil, err
 		}
-		c.ID = id
-
-		c.OwnerID, err = parseUUID(ownerIDStr, "owner id")
-		if err != nil {
-			return nil, err
-		}
-		c.IsPublic = isPublic != 0
-		c.PinToTop = pinToTop != 0
-		c.ShowAllTab = showAllTab != 0
-		c.FocusGlowEnabled = focusGlowEnabled != 0
-
-		c.TakenFrom, err = parseNullableUUID(takenFromStr, "taken_from id")
-		if err != nil {
-			return nil, err
-		}
-		c.TakenHash = takenHash.String
-		c.Linked = c.TakenFrom != nil
-		c.HomeSortOrder = nullableInt(homeSortOrder)
-		c.Version = version
-		c.PushedVersion = nullableInt(pushedVersion)
-
-		c.CreatedAt, err = parseTimestamp(createdAtStr, "collection created_at")
-		if err != nil {
-			return nil, err
-		}
-		c.UpdatedAt, err = parseTimestamp(updatedAtStr, "collection updated_at")
-		if err != nil {
-			return nil, err
-		}
-
 		collections = append(collections, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -212,31 +219,59 @@ func parseCollections(rows *sql.Rows) ([]Collection, error) {
 	return collections, nil
 }
 
+// scanCollection reads one collection row: the columns selectCollections
+// lists, its sharing columns last.
+func scanCollection(rows *sql.Rows) (Collection, error) {
+	var c Collection
+	var idStr, ownerIDStr, createdAtStr, updatedAtStr string
+	var pinToTop, showAllTab, focusGlowEnabled int
+	var homeSortOrder sql.NullInt64
+	var pushedHash sql.NullString
+	var sharing sharingScan
+
+	if err := rows.Scan(append([]any{&idStr, &c.Title, &ownerIDStr,
+		&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
+		&homeSortOrder, &pushedHash, &createdAtStr, &updatedAtStr}, sharing.dests()...)...); err != nil {
+		return Collection{}, fmt.Errorf("scanning collection row: %w", err)
+	}
+
+	var p rowParser
+	c.ID = p.uuid(idStr, "collection id")
+	c.OwnerID = p.uuid(ownerIDStr, "owner id")
+	c.CreatedAt = p.timestamp(createdAtStr, "collection created_at")
+	c.UpdatedAt = p.timestamp(updatedAtStr, "collection updated_at")
+	c.Publication, c.Subscription = sharing.states(&p)
+	c.PinToTop = pinToTop != 0
+	c.ShowAllTab = showAllTab != 0
+	c.FocusGlowEnabled = focusGlowEnabled != 0
+	c.HomeSortOrder = nullableInt(homeSortOrder)
+	c.pushedHash = pushedHash.String
+	return c, p.err
+}
+
 func parseFolders(rows *sql.Rows) ([]Folder, error) {
 	folders := []Folder{}
 	for rows.Next() {
 		var f Folder
 		var idStr, collectionIDStr string
 		var hideTitle, focusGIFEnabled int
+		var subKey sql.NullString
 
 		if err := rows.Scan(&idStr, &collectionIDStr, &f.Title, &f.SortOrder,
 			&f.TileShape, &hideTitle, &f.CoverEmoji, &f.CoverImageURL,
-			&f.FocusGIFURL, &focusGIFEnabled, &f.HeroBackdropURL, &f.HeroVideoURL, &f.TitleLogoURL); err != nil {
+			&f.FocusGIFURL, &focusGIFEnabled, &f.HeroBackdropURL, &f.HeroVideoURL, &f.TitleLogoURL, &subKey); err != nil {
 			return nil, fmt.Errorf("scanning folder row: %w", err)
 		}
 
-		id, err := parseUUID(idStr, "folder id")
-		if err != nil {
-			return nil, err
-		}
-		f.ID = id
-
-		f.CollectionID, err = parseUUID(collectionIDStr, "collection id")
-		if err != nil {
-			return nil, err
+		var p rowParser
+		f.ID = p.uuid(idStr, "folder id")
+		f.CollectionID = p.uuid(collectionIDStr, "collection id")
+		if p.err != nil {
+			return nil, p.err
 		}
 		f.HideTitle = hideTitle != 0
 		f.FocusGIFEnabled = focusGIFEnabled != 0
+		f.SubKey = subKey.String
 
 		folders = append(folders, f)
 	}

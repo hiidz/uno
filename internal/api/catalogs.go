@@ -11,15 +11,6 @@ func (s *Server) listUserCatalogs(w http.ResponseWriter, r *http.Request) {
 	listByProfile(w, r, "listUserCatalogs", "failed to load catalogs", s.vault.GetUserCatalogs)
 }
 
-func (s *Server) listCommunityCatalogs(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listCommunityCatalogs", "failed to load catalogs", s.vault.GetCommunityCatalogs)
-}
-
-func (s *Server) takeCatalog(w http.ResponseWriter, r *http.Request) {
-	serveCommunityCall(s, w, r, communityCall{catalogItem, "takeCatalog", "failed to take catalog", http.StatusCreated},
-		s.vault.TakeCatalog)
-}
-
 func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 

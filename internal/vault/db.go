@@ -30,10 +30,16 @@ func InitDB(path string) (*DB, error) {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
 
+	// _txlock=immediate: every transaction takes the write lock when it
+	// begins, waiting out busy_timeout for it. A deferred one that reads
+	// before it writes, as most writes here do, can't take the lock later once
+	// another write has committed, and fails at once with SQLITE_BUSY. The
+	// pool's reads run outside transactions and are unaffected.
 	dsn := "file:" + path +
 		"?_pragma=journal_mode(WAL)" +
 		"&_pragma=busy_timeout(5000)" +
-		"&_pragma=foreign_keys(on)"
+		"&_pragma=foreign_keys(on)" +
+		"&_txlock=immediate"
 
 	d, err := sql.Open("sqlite", dsn)
 	if err != nil {

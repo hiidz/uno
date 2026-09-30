@@ -14,7 +14,6 @@ import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
 import {
   duplicatePayload,
   emptyForm,
-  formFromCatalog,
   toPayload,
   type CatalogFormState,
 } from '@/features/catalogs/catalogForm'
@@ -28,10 +27,13 @@ import {
 } from '@/features/collections/collectionForm'
 import { accessibleIDs, buildRefOptions, indexRefOptions } from '@/features/collections/refs'
 import { useCollectionMutations } from '@/features/collections/useCollectionMutations'
+import type { OpenPublication } from '@/features/community/communityQuery'
 import { HomePane, type HomeView } from '@/features/home/HomePane'
 import { useHomeEdits } from '@/features/home/useHomeSelection'
 import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
+import { isShared } from '@/features/sharing/sharingState'
+import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
 import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
 import { useEditorGuard } from './EditorGuard'
@@ -42,7 +44,8 @@ import {
   useStackedScroll,
   type ScrollDestination,
 } from './stacked'
-import type { EditorTarget } from './target'
+import { catalogTarget, collectionTarget, type EditorTarget } from './target'
+
 
 /**
  * What the workspace is waiting on an answer to.
@@ -93,7 +96,14 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  * viewport and nothing else: the editor stays mounted and stays dirty, exactly
  * as it does above `lg` while the rail sits beside it.
  */
-export function Workspace({ profileIndex }: { profileIndex: number }) {
+export function Workspace({
+  profileIndex,
+  onOpenPublication,
+}: {
+  profileIndex: number
+  /** Leaves for Community with a publication's page open: a copy's Update…. */
+  onOpenPublication: (publication: OpenPublication) => void
+}) {
   const library = useLibrary(profileIndex)
   // Edits only: reading the selection here would re-render the whole
   // workspace, open editor included, on every change to the home screen.
@@ -102,7 +112,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const catalogMutations = useCatalogMutations(profileIndex)
   const collectionMutations = useCollectionMutations(profileIndex)
 
-  const { guard, setDirty, blocked, proceed, cancel } = useEditorGuard()
+  const { guard, setDirty, blocked, proceed, cancel, dirty } = useEditorGuard()
 
   const [target, setTarget] = useState<EditorTarget | null>(null)
   // Held here, not in `HomePane`, so it survives an editor taking the pane:
@@ -118,6 +128,21 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   const [confirming, setConfirming] = useState<Confirmation | null>(null)
   const [transfer, setTransfer] = useState<'import' | 'export' | null>(null)
   const [toast, setToast] = useToast()
+  const sharing = useWorkspaceSharing({
+    profileIndex,
+    genres: library.genres,
+    dirty,
+    onToast: setToast,
+    onReopen: setTarget,
+    // Leaving the Workspace tab unmounts the pane, so it passes the editor's
+    // guard like every other way out, and clears its dirty flag as the tab
+    // switch does.
+    onOpenPublication: (publication) =>
+      guard(() => {
+        setDirty(false)
+        onOpenPublication(publication)
+      }),
+  })
 
   const railRef = useRef<HTMLElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -256,12 +281,15 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
     })
   }
 
+  // A copy taken from Community asks before its save, which makes it the
+  // profile's own (`confirmCopySave`); any other row saves at once.
   function saveCatalog(state: CatalogFormState) {
     if (target?.kind !== 'catalog') return
-    catalogMutations.update.mutate(
-      { id: target.id, payload: toPayload(state) },
-      { onSuccess: closeAfterSave },
-    )
+    sharing.confirmCopySave(activeCatalog, updateCatalog, { id: target.id, payload: toPayload(state) })
+  }
+
+  function updateCatalog(update: { id: string; payload: ReturnType<typeof toPayload> }) {
+    catalogMutations.update.mutate(update, { onSuccess: closeAfterSave })
   }
 
   // `payload` already resolved every draft catalog into an inline `new`
@@ -269,7 +297,11 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   // `localCatalogs` to resolve them against — see its own `save`.
   function saveCollection(payload: CollectionPayload) {
     if (target?.kind !== 'collection') return
-    collectionMutations.update.mutate({ id: target.id, payload }, { onSuccess: closeAfterSave })
+    sharing.confirmCopySave(activeCollection, updateCollection, { id: target.id, payload })
+  }
+
+  function updateCollection(update: { id: string; payload: CollectionPayload }) {
+    collectionMutations.update.mutate(update, { onSuccess: closeAfterSave })
   }
 
   function confirmDeleteCatalog(catalog: LibraryCatalog) {
@@ -330,9 +362,11 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
   // The library row the open editor was opened from. Below `lg` the editor's
   // own header carries that row's duplicate and delete — the row itself is a
   // screen-length scroll away — so it has to know which row it stands for. Its
-  // `linked` drives the editor's linked banner, and is current after a save or
-  // an Update because both refetch the library. Undefined until the library's
-  // refetch lists a row that was just created or duplicated.
+  // sharing state fills the editor's sharing setting (a copy taken from
+  // Community gets its From Community row, and asks before a save), and is
+  // current after a save or a sharing call because both refetch the library.
+  // Undefined until the library's refetch lists a row that was just created
+  // or duplicated.
   const activeCatalog =
     target?.kind === 'catalog' ? library.catalogs.find((catalog) => catalog.id === target.id) : undefined
   const activeCollection =
@@ -453,19 +487,16 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
         const { catalog } = confirming
         return {
           title: 'Delete this catalog?',
-          // Under the closed-graph sharing model a taker holds an
-          // independent copy (`taken_from` is nulled on this delete, per
-          // ON DELETE SET NULL) — deleting a shared catalog never reaches
-          // anyone else's copy, only your own row and this profile's own
-          // folder refs to it.
+          // Deleting a shared catalog withdraws its publication. Copies other
+          // profiles took stay theirs, marked no longer shared; only this row
+          // and its folder refs go.
           body: (
             <>
               <strong className="text-ink">{catalog.name}</strong> is deleted permanently.
-              {catalog.is_public && (
+              {isShared(catalog) && (
                 <>
                   {' '}
-                  Anyone who already took a copy keeps theirs — this only removes it from the
-                  community list.
+                  {STOPS_SHARING}
                 </>
               )}{' '}
               Any references to this catalog from a collection will also be removed. This can't
@@ -519,11 +550,10 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
             <>
               <strong className="text-ink">{collection.title}</strong> and its{' '}
               {folderCount(collection)} are deleted permanently.
-              {collection.is_public && (
+              {isShared(collection) && (
                 <>
                   {' '}
-                  Anyone who already took a copy keeps theirs — this only removes it from the
-                  community list.
+                  {STOPS_SHARING}
                 </>
               )}{' '}
               {scoped > 0
@@ -669,8 +699,9 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               onRequestClose={close}
               onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
               onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
+              deleteBlocked={home.deleteBlockers.catalog(target.id)}
               onDirtyChange={setDirty}
-              linked={activeCatalog?.linked ?? false}
+              {...sharing.catalogSharing(activeCatalog, duplicateCatalog)}
             />
           ) : (
             <CollectionEditor
@@ -686,6 +717,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               onRequestClose={close}
               onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
               onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
+              deleteBlocked={home.deleteBlockers.collection(target.id)}
               onDirtyChange={setDirty}
               collectionID={target.id}
               initialCatalogs={editingCollectionCatalogs}
@@ -695,7 +727,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
               countryNames={library.countryNames}
               languages={library.languages}
               usedInFolders={usedInFolders}
-              linked={activeCollection?.linked ?? false}
+              {...sharing.collectionSharing(activeCollection, duplicateCollection)}
             />
           )}
         </div>
@@ -721,7 +753,7 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       />
 
       {/* One field, by the same rule: nothing about a collection is immutable
-          the way a catalog's `type` is. View mode, pinning, the All tab and the
+          the way a catalog's `type` is. View mode, the All tab and the
           backdrop are all editable afterwards, and folders are the substance of
           the editor rather than something to guess at up front. */}
       <NewItemDialog
@@ -762,19 +794,13 @@ export function Workspace({ profileIndex }: { profileIndex: number }) {
       {/* Rendered here rather than beside the guard itself, because this is the
           level that knows what is being edited — the prompt names it. */}
       {prompt && <ConfirmDialog open {...prompt} />}
+      {sharing.dialogs}
     </>
   )
 }
 
-/** Selecting a library row opens it for editing: everything in the library is
- *  yours. */
-function catalogTarget(catalog: LibraryCatalog): EditorTarget {
-  return { kind: 'catalog', id: catalog.id, initial: formFromCatalog(catalog) }
-}
-
-function collectionTarget(collection: LibraryCollection): EditorTarget {
-  return { kind: 'collection', id: collection.id, initial: formFromCollection(collection) }
-}
+/** What deleting a shared row does to the copies others took of it. */
+const STOPS_SHARING = 'It stops being shared, and copies people took stay theirs.'
 
 /** What the discard prompt is about: the row as it was opened, which is the
  *  name the rail still shows — a rename is itself one of the changes the

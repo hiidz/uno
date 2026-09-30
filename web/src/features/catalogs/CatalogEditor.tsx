@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Tag } from 'lucide-react'
 import { fetchCollection, queryKeys } from '@/api'
@@ -6,14 +6,12 @@ import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api
 import { Icon } from '@/components/Icon'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
-import { ConfirmUnlink, LinkedBanner } from '@/features/builder/LinkedCopy'
 import { useEditorForm } from '@/features/builder/useEditorForm'
 import { buildGenreLookup, recipeSentence, typeLabel } from '@/features/library/recipe'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
-  changesContent,
   isCollectionRow,
   isSameCatalog,
   paramsString,
@@ -55,7 +53,6 @@ import {
   RangeField,
   Segmented,
   Select,
-  Switch,
   TextInput,
 } from './fields'
 
@@ -72,12 +69,10 @@ import {
  * the rail, switching profile — so the pane owns the confirmation and this only
  * has to say whether there is anything to lose.
  *
- * **There is no read-only "imported" view.** The closed-graph sharing model
- * has no such state: a taken catalog is a private copy you fully own from
- * the moment it's created, not a live pointer that could ever need a
- * read-only screen. Every row this editor opens is yours. While a taken
- * copy is still `linked`, a banner says so, and a save that would unlink it
- * asks first.
+ * **Every row this editor opens is editable,** a catalog taken from Community
+ * included. Its sharing setting is `sharingRow`, which the pane builds: an own
+ * row's Sharing row, or a copy's From Community row, and the pane asks before
+ * a copy's save, which makes it the profile's own.
  *
  * **`type` is always locked.** It is chosen when the catalog is named, and
  * nothing — here or anywhere else — changes an existing row's type.
@@ -94,9 +89,11 @@ export function CatalogEditor({
   onRequestClose,
   onDuplicate,
   onDelete,
+  deleteBlocked = null,
   onDirtyChange,
   canMoveToLibrary = true,
-  linked = false,
+  sharingRow,
+  sharingBadges,
 }: {
   /** The form as the row stands. A new identity re-seeds the editor (see
    *  `useEditorForm`), so callers hand over a stable object. */
@@ -117,15 +114,20 @@ export function CatalogEditor({
    *  was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
+  /** Why Delete is disabled — Nuvio may still hold this catalog — or `null`
+   *  (`EditorShell`). */
+  deleteBlocked?: string | null
   onDirtyChange: (dirty: boolean) => void
   /** False for a catalog staged inside a collection that isn't a row yet: it
    *  is created scoped when the collection saves, so there is nothing to move
    *  until then. */
   canMoveToLibrary?: boolean
-  /** A library catalog still linked to the community catalog it was taken
-   *  from: shows the linked banner, and a save that changes anything besides
-   *  Public asks first (`ConfirmUnlink`). */
-  linked?: boolean
+  /** A listed catalog's sharing setting: its Sharing row, or a copy's From
+   *  Community row. Absent in a collection's nested editor, where a scoped
+   *  catalog shows its Scope. */
+  sharingRow?: ReactNode
+  /** Its sharing stickers, beside the kind on the sign. */
+  sharingBadges?: ReactNode
 }) {
   const baseline = initial
   const { state, setState, dirty, showErrors, revealErrors, submit } = useEditorForm(
@@ -156,9 +158,8 @@ export function CatalogEditor({
   )
 
   // Fed the recipe as it stands on every render, but only *fetches* when the
-  // preview block's button is pressed — see `useRecipeTiles`. `name` and
-  // `is_public` aren't part of a recipe, so renaming a catalog doesn't make
-  // its preview stale.
+  // preview block's button is pressed — see `useRecipeTiles`. `name` isn't
+  // part of a recipe, so renaming a catalog doesn't make its preview stale.
   const params = paramsString(state)
   const preview = useRecipeTiles(state.type, params)
   const resetPreview = preview.reset
@@ -260,23 +261,13 @@ export function CatalogEditor({
     requestAnimationFrame(() => document.getElementById(target)?.focus())
   }
 
-  const [confirmingUnlink, setConfirmingUnlink] = useState(false)
-
   function trySubmit() {
     if (errorCount > 0) {
       revealErrors()
       focusFirstError()
       return
     }
-    submit(errorCount, (finalState) => {
-      if (linked && changesContent(baseline, finalState)) setConfirmingUnlink(true)
-      else onSave(finalState)
-    })
-  }
-
-  function confirmUnlink() {
-    setConfirmingUnlink(false)
-    onSave(state)
+    submit(errorCount, (finalState) => onSave(finalState))
   }
 
   const sections = buildSections({
@@ -315,13 +306,14 @@ export function CatalogEditor({
       badges={
         <>
           <span className="stk">{typeLabel(state.type)}</span>
-          {state.isPublic && <span className="stk stk-shared">Shared</span>}
+          {sharingBadges}
         </>
       }
       title={state.name.trim() || 'Untitled catalog'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
+      deleteBlocked={deleteBlocked}
       docked="results"
       footer={
         <EditorFooter
@@ -346,7 +338,6 @@ export function CatalogEditor({
               <Icon icon={Tag} size={20} />
               <span>{recipeWords || 'No filters yet. Set what this row shows below.'}</span>
             </p>
-            {linked && <LinkedBanner noun="catalog" />}
             <div className="setting">
               <label htmlFor="cat-name" className="setting-label type-label">
                 Name
@@ -402,7 +393,7 @@ export function CatalogEditor({
                     <button
                       type="button"
                       className="btn-secondary btn-sm"
-                      onClick={() => patch({ collectionID: null, isPublic: false })}
+                      onClick={() => patch({ collectionID: null })}
                     >
                       Move to library
                     </button>
@@ -415,16 +406,7 @@ export function CatalogEditor({
                 </p>
               </div>
             ) : (
-              <div className="setting">
-                <span className="setting-label type-label">Sharing</span>
-                <div className="setting-value">
-                  <Switch
-                    checked={state.isPublic}
-                    onChange={(isPublic) => patch({ isPublic })}
-                    label={state.isPublic ? 'Shared' : 'Private'}
-                  />
-                </div>
-              </div>
+              sharingRow
             )}
 
             <div className="setting is-head">
@@ -479,14 +461,6 @@ export function CatalogEditor({
           <RecipePreview preview={preview} type={state.type} invalid={recipeInvalid} onRun={runPreview} />
         </div>
       </div>
-
-      <ConfirmUnlink
-        open={confirmingUnlink}
-        noun="catalog"
-        name={state.name.trim() || 'this catalog'}
-        onConfirm={confirmUnlink}
-        onCancel={() => setConfirmingUnlink(false)}
-      />
     </EditorShell>
   )
 }

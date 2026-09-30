@@ -7,23 +7,71 @@ environment. See `.env.example`.
 
 | Var | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `TMDB_API_KEY` | **yes** — startup fails if empty | none | Provider's upstream key. Not public — every TMDB call is server-side for this reason |
+| `TMDB_KEY_MODE` | no | `shared` | How the server reaches TMDB: `shared` (one key for every account) or `per-account` (each Nuvio account enters its own) — see *TMDB key modes* |
+| `TMDB_API_KEY` | in `shared` mode — startup fails if empty; must be unset in `per-account` | none | The key every account shares. Not public — every TMDB call is server-side for this reason |
+| `UNO_SECRET` | in `per-account` mode | none | 32 random bytes, base64 (`openssl rand -base64 32`): the AES-256 key each account's TMDB key is sealed under. Ignored in `shared` mode |
 | `NUVIO_PUBLISHABLE_KEY` | **yes** — startup fails if empty | none | `apikey` header on Nuvio REST/RPC calls. Public by design; it is printed in Nuvio's own public docs and intended for embedding in client apps. Not a service credential |
 | `SITE_BASE_URL` | **yes** — startup fails if empty | none | Base for the absolute manifest URL handed to clients and pushed into Nuvio — see below |
 | `VAULT_DB` | no | `vault.db` | Path to the SQLite file |
 | `PORT` | no | `8123` | Listen port (plain HTTP, no TLS) |
 | `NUVIO_BASE_URL` | no | `https://api.nuvio.tv` | Base for JWKS discovery and all REST/RPC calls. Its origin is also the only cross-origin `connect-src` in the SPA's Content-Security-Policy, so it must match the `VITE_NUVIO_BASE_URL` the frontend was built with (same default). If they differ, the browser blocks login |
 | `DEV_AUTH_BYPASS_TOKEN` | no | empty (bypass off) | **Local development only** — see below |
+| `UNO_ACCESS` | no | `open` | Who may sign in: `open` (any Nuvio account) or `allowlist` — see *Access* |
+| `UNO_ALLOWED_EMAILS` | with `allowlist` | empty | Comma-separated email addresses of the Nuvio accounts admitted under `allowlist` |
 
-`config.Load` collects *all* missing required vars before failing, so a fresh setup gets one
-error naming both rather than two runs.
+`config.Load` collects every problem before failing: each missing required variable and each
+value it can't use, in one error, rather than one per run.
+
+## TMDB key modes
+
+**`shared`** (the default, and what dev uses): every TMDB call — the builder's and the addon's —
+goes out with `TMDB_API_KEY`.
+
+**`per-account`**: there is no shared key. Each Nuvio account enters its own TMDB API key on the
+profile picker, which holds the profiles until one is saved. The server checks a key with one TMDB
+call before storing it, and stores it AES-GCM sealed under `UNO_SECRET`, bound to the account id,
+beside its last four characters (`docs/data-model.md` → `accounts`). A key is never returned,
+never logged, and only ever sent to TMDB. The builder uses the signed-in account's key; the addon
+routes use the key of the account that owns the token's profile. Startup fails on an unknown mode,
+on `shared` without `TMDB_API_KEY`, and on `per-account` with `TMDB_API_KEY` set (which would
+read as a fallback that isn't there) or without a usable `UNO_SECRET`.
+
+Operator notes:
+
+- **Switching to `per-account` breaks the home screens of accounts without a key** until they add
+  one: their rows fail to load (a page another account loaded in the last 30 minutes still comes
+  from the shared cache). Switching back to `shared` needs `TMDB_API_KEY` again; stored keys stay,
+  unused, and `UNO_SECRET` may stay set.
+- **Losing or changing `UNO_SECRET` makes every stored key unreadable.** Each account's builder
+  then says TMDB didn't accept its key, and its owner enters it again on the picker.
+- The key routes (`/api/account/tmdb-key`) answer 404 in `shared` mode.
+
+## Access
+
+**`UNO_ACCESS`.** With `open`, the default, any Nuvio account that signs in can use the server.
+With `allowlist`, only the accounts whose email address is in `UNO_ALLOWED_EMAILS` can; every
+other one gets a 403 on every builder route, and the profile picker says the account can't use
+this server. The public addon routes (`/u/{token}/…`) are not affected: a TV keeps loading
+catalogs its profile already pushed. Startup fails on an unknown mode, on `allowlist` with no one
+listed, and on emails listed while the mode is `open` (which would read as a restriction that
+isn't there).
+
+**`UNO_ALLOWED_EMAILS`** is a comma-separated list of the email addresses the accounts sign in to
+Nuvio with, for example `me@example.com, partner@example.com`. Each entry is trimmed and
+lower-cased, so case doesn't matter. An entry must be one address: exactly one `@`, text on both
+sides, and no spaces. A Nuvio account id (a UUID) stops the start with a message saying the list
+takes email addresses, and so does anything else that isn't an address, rather than matching
+nobody. The server compares each entry with the `email` claim of the account's token, which
+Supabase writes into every token. After an account changes its email, the old address keeps
+matching until the token refreshes, within the hour. The dev bypass account has no email, and is
+admitted by its id when the bypass is on.
 
 ### The `SITE_BASE_URL` hazard
 
 `selectProfile` and `pushAddons` both build the absolute manifest URL pushed into Nuvio from
 `SiteBaseURL`. `config.Load` (`internal/config/config.go`) has no default for `SITE_BASE_URL`
-and includes it in the required-var check alongside `TMDB_API_KEY` and `NUVIO_PUBLISHABLE_KEY`,
-so a deploy that leaves it unset fails startup immediately rather than pushing an unreachable
+and includes it in the required-var check alongside `NUVIO_PUBLISHABLE_KEY` (and
+`TMDB_API_KEY` in shared mode), so a deploy that leaves it unset fails startup immediately rather than pushing an unreachable
 URL into the user's real Nuvio profile with no warning. `.env.example` ships
 `SITE_BASE_URL=http://localhost:8123` as the correct local dev value — that's fine for local dev,
 since the value is explicit there, not defaulted.
@@ -47,7 +95,7 @@ list that omits it.
 
 `DEV_AUTH_BYPASS_TOKEN` (`internal/api/devauth.go`, wired in `cmd/server/main.go`) makes one
 fixed bearer token authenticate as `sub = "dev-user"` with no JWKS fetch and no Nuvio account.
-When the variable is set, `main.go` wraps both the `TokenVerifier` and the `NuvioClient` in the
+When the variable is set, `apiDeps` in `main.go` wraps both the `TokenVerifier` and the `NuvioClient` in the
 decorators from `devauth.go` before building `api.Deps` — `internal/api` itself is unchanged and
 still sees one verifier and one client. Every Nuvio call carrying the bypass token is served from
 an in-memory fake account: two profiles, "Dev" at slot 1 and "Dev 2" at slot 2, each with its own
@@ -147,9 +195,18 @@ run `go run ./cmd/server migrate --dry-run --db <path>`; in the image, pass `mig
   migration 2). It reads each catalog's params before migrating, and after it compares them with
   the catalog's recipe through the live `provider.SameRecipe`: the same discover query, shuffle,
   TMDB collection and genre options. It makes no TMDB call;
-- prints the versions, each migration's notes, the recipe check's count and every mismatch, and
-  every table's row count before and after. When a migration fails, it prints the report up to
-  that point, then the error.
+- checks publications when the migrations created them (a database before migration 3). It runs
+  the form validators a subscribe runs over every publication's snapshot, then the live
+  `provider.ValidateRecipe` over each recipe: the rules that need no network. A publication they
+  refuse is reported, not an error, since a migration publishes each public row as it stood;
+- checks push hashes when it ran migration 5 (a database before it). Migration 5 stores, for
+  every collection as last pushed, the hash of its push JSON built by its own frozen copy of the
+  push payload; the check recomputes each with the vault's live payload. A collection they
+  disagree on would read as needing a push once deployed, so the check names it;
+- prints the versions, each migration's notes, the recipe check's count and every mismatch, the
+  publication check's count and every publication refused, the push hashes backfilled and left
+  pending with how many the live payload agrees on, and every table's row count before and
+  after. When a migration fails, it prints the report up to that point, then the error.
 
 **Upgrading the deployed `uno-data` volume.** The volume holds real data, so never
 `docker compose down -v` it.
@@ -159,8 +216,9 @@ run `go run ./cmd/server migrate --dry-run --db <path>`; in the image, pass `mig
    `docker volume ls | grep uno-data` gives `<vol>`.
 2. Rehearse on the copy:
    `docker run --rm -v "$PWD/uno-<date>":/data <new-image> migrate --dry-run --db /data/vault.db`.
-   The row counts should reconcile, every note should be one you expect, and the recipe check
-   should find no mismatch. If you also run the new build locally against the copy, never push
+   The row counts should reconcile, every note should be one you expect, the recipe check
+   should find no mismatch, the live payload should agree on every push hash, and any
+   publication the publication check refuses should be one you accept sharing as it stands. If you also run the new build locally against the copy, never push
    from it: that would add a localhost addon to the real Nuvio profile.
 3. Deploy. The server writes its backup, migrates, and only then serves.
 4. Roll back by restoring the backup and redeploying the previous image. Always restore first.

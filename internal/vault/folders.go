@@ -31,20 +31,22 @@ func folderFrom(id, collectionID uuid.UUID, sortOrder int, fd FolderData) Folder
 		HeroBackdropURL: fd.HeroBackdropURL,
 		HeroVideoURL:    fd.HeroVideoURL,
 		TitleLogoURL:    fd.TitleLogoURL,
+		SubKey:          fd.SubKey,
 	}
 }
 
 // insertFolder inserts fd as a new folder under collectionID at sortOrder
-// and returns the resulting row (with a freshly generated ID).
+// and returns the resulting row (with a freshly generated ID). fd.SubKey,
+// which only a subscribe or an Update sets, becomes its sub_key.
 func insertFolder(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, sortOrder int, fd FolderData) (Folder, error) {
 	f := folderFrom(uuid.New(), collectionID, sortOrder, fd)
 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO folders (id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
-		                     focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                     focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url, sub_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, f.ID.String(), f.CollectionID.String(), f.Title, f.SortOrder, f.TileShape, f.HideTitle, f.CoverEmoji, f.CoverImageURL,
-		f.FocusGIFURL, f.FocusGIFEnabled, f.HeroBackdropURL, f.HeroVideoURL, f.TitleLogoURL)
+		f.FocusGIFURL, f.FocusGIFEnabled, f.HeroBackdropURL, f.HeroVideoURL, f.TitleLogoURL, nullableString(f.SubKey))
 	if err != nil {
 		return Folder{}, fmt.Errorf("inserting folder: %w", err)
 	}
@@ -52,8 +54,9 @@ func insertFolder(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, sortO
 }
 
 // updateFolder rewrites the folder identified by id in place — the same
-// columns insertFolder writes, minus the immutable ones — and returns the
-// resulting row.
+// columns insertFolder writes, minus the immutable ones and sub_key, which
+// pairs a subscribed folder and stays as it is — and returns the resulting
+// row.
 func updateFolder(ctx context.Context, tx *sql.Tx, id, collectionID uuid.UUID, sortOrder int, fd FolderData) (Folder, error) {
 	f := folderFrom(id, collectionID, sortOrder, fd)
 
@@ -132,7 +135,8 @@ func existingFolderRefIDs(folders []FolderData) []uuid.UUID {
 // write that references it, so an edit discarded instead of saved never
 // created one at all. created maps each New.Key already resolved in this
 // save to its catalog id, so a Key's later entries reuse that catalog.
-// spec.TakenFrom becomes the row's taken_from; only a collection Take sets it.
+// spec.SubKey becomes the row's sub_key; only a subscribe or an Update sets
+// it.
 func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, ref FolderCatalogRef, created map[string]uuid.UUID) (uuid.UUID, error) {
 	if ref.CatalogID != nil {
 		return *ref.CatalogID, nil
@@ -151,7 +155,7 @@ func resolveFolderCatalogRef(ctx context.Context, tx *sql.Tx, profileID, collect
 		Params:       spec.Params,
 		OwnerID:      profileID,
 		CollectionID: &collectionID,
-		TakenFrom:    spec.TakenFrom,
+		SubKey:       spec.SubKey,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -234,8 +238,7 @@ func deleteFolders(ctx context.Context, tx *sql.Tx, ids []uuid.UUID) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	placeholders, args := buildInClause(ids)
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM folders WHERE id IN (%s)`, placeholders), args...); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM folders WHERE id IN (SELECT value FROM json_each(?))`, idsJSON(ids)); err != nil {
 		return fmt.Errorf("deleting removed folders: %w", err)
 	}
 	return nil
@@ -269,49 +272,39 @@ func insertFolders(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid
 // writeFolderSet checks every existing catalog incoming references is usable
 // in collectionID, writes incoming as its complete folder set
 // (upsertFolders), then deletes any catalog scoped to collectionID that no
-// folder references any more. Returns what upsertFolders returns.
-func writeFolderSet(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, incoming []FolderData) ([]FolderWithCatalogs, []uuid.UUID, error) {
+// folder references any more.
+func writeFolderSet(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, incoming []FolderData) error {
 	if err := validateFolderRefs(ctx, tx, profileID, &collectionID, existingFolderRefIDs(incoming)); err != nil {
-		return nil, nil, err
+		return err
 	}
-	folders, allCatalogIDs, err := upsertFolders(ctx, tx, profileID, collectionID, incoming)
-	if err != nil {
-		return nil, nil, err
+	if err := upsertFolders(ctx, tx, profileID, collectionID, incoming); err != nil {
+		return err
 	}
-	if err := deleteOrphanedScopedCatalogs(ctx, tx, collectionID); err != nil {
-		return nil, nil, err
-	}
-	return folders, allCatalogIDs, nil
+	return deleteOrphanedScopedCatalogs(ctx, tx, collectionID)
 }
 
 // upsertFolders writes incoming as collectionID's complete folder set, in
 // order: an entry carrying an ID updates that folder in place, one without
-// inserts a new row, and either way its catalog refs are rewritten. Returns
-// the folders in the response's nested shape, plus every catalog id they
-// reference with repeats included.
-func upsertFolders(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, incoming []FolderData) ([]FolderWithCatalogs, []uuid.UUID, error) {
-	folders := make([]FolderWithCatalogs, len(incoming))
-	var allCatalogIDs []uuid.UUID
+// inserts a new row, and either way its catalog refs are rewritten.
+func upsertFolders(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, incoming []FolderData) error {
 	created := map[string]uuid.UUID{}
 	for i, fd := range incoming {
-		var f Folder
-		var err error
-		if fd.ID != nil {
-			f, err = updateFolder(ctx, tx, *fd.ID, collectionID, i, fd)
-		} else {
-			f, err = insertFolder(ctx, tx, collectionID, i, fd)
-		}
+		f, err := upsertFolder(ctx, tx, collectionID, i, fd)
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
-
-		refs, err := writeFolderCatalogRefs(ctx, tx, profileID, collectionID, f.ID, fd.Catalogs, created)
-		if err != nil {
-			return nil, nil, err
+		if _, err := writeFolderCatalogRefs(ctx, tx, profileID, collectionID, f.ID, fd.Catalogs, created); err != nil {
+			return err
 		}
-
-		folders[i] = FolderWithCatalogs{Folder: f, Refs: refs}
-		allCatalogIDs = append(allCatalogIDs, folders[i].CatalogIDs()...)
 	}
-	return folders, allCatalogIDs, nil
+	return nil
+}
+
+// upsertFolder updates fd's folder in place when fd carries an ID, and
+// inserts it as a new folder otherwise, at sortOrder.
+func upsertFolder(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID, sortOrder int, fd FolderData) (Folder, error) {
+	if fd.ID != nil {
+		return updateFolder(ctx, tx, *fd.ID, collectionID, sortOrder, fd)
+	}
+	return insertFolder(ctx, tx, collectionID, sortOrder, fd)
 }

@@ -191,6 +191,7 @@ const HEADLINE: Record<PushOutcomeKind, string> = {
   failed: 'Push failed — nothing changed.',
   'undo-failed': "Push failed, and we couldn't fully undo it.",
   unknown: "Couldn't confirm what happened.",
+  'rate-limited': 'Too many pushes — nothing changed.',
 }
 
 const DETAIL: Record<PushOutcomeKind, string> = {
@@ -199,6 +200,7 @@ const DETAIL: Record<PushOutcomeKind, string> = {
   'undo-failed':
     "Nuvio may be out of step with what's saved here. Push again to put them back in line.",
   unknown: "We couldn't tell whether this push worked. Reload to see what's live.",
+  'rate-limited': 'Your edits are still here. Wait a few seconds, then try again.',
 }
 
 type PushOutcomeKind = NonNullable<Push['outcome']>['kind']

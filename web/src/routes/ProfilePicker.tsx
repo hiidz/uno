@@ -2,13 +2,52 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowRight, TriangleAlert } from 'lucide-react'
-import { fetchProfiles, queryKeys, selectProfile } from '@/api'
+import { ApiError, fetchProfiles, queryKeys, selectProfile } from '@/api'
 import type { NuvioProfile } from '@/api'
 import { logout } from '@/auth'
+import { TMDBKeyGate, TMDBKeyShelf } from '@/features/account/TMDBKey'
+import { KEY_GATE_HEADING, holdsProfiles, useKeyStep } from '@/features/account/useTMDBKey'
 import { EntryPage } from '@/components/EntryPage'
 import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
+
+/** How the picker shows a failed profile call. A 403 there is this server
+ *  refusing the signed-in Nuvio account, which only its access policy answers:
+ *  the picker says so in its own words. Anything else shows its message. */
+function pickerFailure(error: Error | null): { refused: boolean; message?: string } {
+  if (error instanceof ApiError && error.status === 403) return { refused: true }
+  return { refused: false, message: error?.message }
+}
+
+/** Said in place of the profiles when this server doesn't admit the account.
+ *  Signing in with another account, below, is the way on. */
+function RefusedAccount({ shown }: { shown: boolean }) {
+  if (!shown) return null
+  return (
+    <div className="bg-raised grid gap-2 rounded-2xl p-5">
+      <p className="m-0 text-[17px] font-bold">This Nuvio account can&rsquo;t use this Uno.</p>
+      <p className="text-dim m-0 max-w-[46ch] text-[15px]">
+        Whoever runs it chooses who can sign in. Sign in with another account, or ask them to add this one.
+      </p>
+    </div>
+  )
+}
+
+/** Whether a profile card is off: another is being chosen, or every card is
+ *  held until the account saves a TMDB key (or until it is known whether it
+ *  has one). */
+function cardOff(isChoosing: boolean, isChosen: boolean, held: boolean): boolean {
+  return held || (isChoosing && !isChosen)
+}
+
+/** What a profile card points at to say why it is as it is: the note naming
+ *  the profile being chosen, or the TMDB key card asking for a key. */
+function cardNote(isChoosing: boolean, gated: boolean, noteId: string): string | undefined {
+  if (isChoosing) return noteId
+  if (gated) return KEY_GATE_HEADING
+  return undefined
+}
 
 export function ProfilePicker() {
   const navigate = useNavigate()
@@ -55,7 +94,12 @@ export function ProfilePicker() {
     navigate('/login')
   }
 
-  const error = profiles.error?.message ?? select.error?.message
+  const failure = pickerFailure(profiles.error ?? select.error)
+  const error = failure.message
+  // On a server where each account brings its own TMDB key, the profiles are
+  // held until this account has saved one, and while that isn't known yet.
+  const keyStep = useKeyStep(failure.refused)
+  const held = holdsProfiles(keyStep)
 
   const choosingName = profiles.data?.find((p) => p.profile_index === selecting)?.name ?? 'that profile'
   const noteId = 'profiles-note'
@@ -96,6 +140,9 @@ export function ProfilePicker() {
           </>
         )}
 
+        <RefusedAccount shown={failure.refused} />
+        <TMDBKeyGate step={keyStep} />
+
         {profiles.data?.length === 0 && (
           <div className="bg-raised grid gap-2 rounded-2xl p-5">
             <p className="m-0 text-[17px] font-bold">This account has no profiles yet.</p>
@@ -110,14 +157,14 @@ export function ProfilePicker() {
             <ul className="m-0 grid list-none grid-cols-2 gap-4 p-0 max-sm:grid-cols-1">
               {profiles.data.map((profile) => {
                 const isChosen = selecting === profile.profile_index
-                const isOff = isChoosing && !isChosen
+                const isOff = cardOff(isChoosing, isChosen, held)
                 return (
                   <li key={profile.id}>
                     <button
                       type="button"
                       disabled={isOff}
                       aria-disabled={isOff || undefined}
-                      aria-describedby={isChoosing ? noteId : undefined}
+                      aria-describedby={cardNote(isChoosing, keyStep.kind === 'needed', noteId)}
                       aria-label={`Profile ${profile.profile_index}, ${profile.name}${isChosen ? ', signing in' : ''}`}
                       onClick={() => choose(profile)}
                       className={`group flex h-[168px] w-full flex-col overflow-hidden rounded-2xl text-left transition-[background-color,opacity] duration-200 ease-[var(--uno-ease)] ${
@@ -165,6 +212,8 @@ export function ProfilePicker() {
           </>
         )}
       </div>
+
+      <TMDBKeyShelf step={keyStep} />
 
       <div className="pt-6">
         <button

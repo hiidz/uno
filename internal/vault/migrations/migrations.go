@@ -29,5 +29,8 @@ func All() []Migration {
 	return []Migration{
 		{Version: 1, Name: "baseline", Up: baseline},
 		{Version: 2, Name: "recipes", Up: recipes},
+		{Version: 3, Name: "publications", Up: publications},
+		{Version: 4, Name: "accounts", Up: accounts},
+		{Version: 5, Name: "pushed_hash", Up: pushedHashes},
 	}
 }

@@ -35,14 +35,19 @@ func (db *DB) ResolveOrCreateProfile(ctx context.Context, nuvioUserID string, pr
 	}
 
 	// 3. Not found — create it.
-	p, err = db.insertProfile(ctx, nuvioUserID, profileIndex, nuvioProfileUUID)
+	return db.createProfile(ctx, nuvioUserID, profileIndex, nuvioProfileUUID)
+}
+
+// createProfile inserts the profile for the (nuvioUserID, profileIndex)
+// slot. A unique conflict means another request inserted the same slot
+// between ResolveOrCreateProfile's SELECT and this INSERT, so it returns
+// that row rather than surfacing the conflict as a 500.
+func (db *DB) createProfile(ctx context.Context, nuvioUserID string, profileIndex int, nuvioProfileUUID string) (Profile, error) {
+	p, err := db.insertProfile(ctx, nuvioUserID, profileIndex, nuvioProfileUUID)
+	if isUniqueConstraintErr(err) {
+		return db.findProfileBySlot(ctx, nuvioUserID, profileIndex)
+	}
 	if err != nil {
-		// 4. Race: another request inserted the same (user, index) between
-		// our SELECT and our INSERT. Fall back to a fresh SELECT rather
-		// than surfacing the constraint violation as a 500.
-		if isUniqueConstraintErr(err) {
-			return db.findProfileBySlot(ctx, nuvioUserID, profileIndex)
-		}
 		return Profile{}, fmt.Errorf("creating profile: %w", err)
 	}
 	return p, nil

@@ -5,7 +5,10 @@ import "time"
 // Claims is the subset of a verified Nuvio JWT's claims Uno needs.
 type Claims struct {
 	Sub string
-	Exp time.Time
+	// Email is the account's email address as the token carries it, "" when
+	// it carries none. The access allowlist matches it (internal/api).
+	Email string
+	Exp   time.Time
 }
 
 // NuvioProfile is the subset of sync_pull_profiles's response fields Uno
@@ -27,50 +30,4 @@ type NuvioAddon struct {
 	Name      string `json:"name"`
 	Enabled   bool   `json:"enabled"`
 	SortOrder int    `json:"sort_order"`
-}
-
-// CatalogSource is one folder catalogSources[] entry — a reference to one of
-// this addon's catalogs, by addon+type+catalog id. Built against the field
-// name the public doc documents; real pulled data uses "sources" for the
-// containing array name but the entry shape itself is unaffected. Genre,
-// when set, is a name from the catalog's manifest genre extra; Nuvio sends it
-// back as that extra when it loads the folder's row.
-type CatalogSource struct {
-	AddonID   string `json:"addonId"`
-	Type      string `json:"type"`
-	CatalogID string `json:"catalogId"`
-	Genre     string `json:"genre,omitempty"`
-}
-
-// PushFolder is one collection folder in push/pull's camelCase wire shape —
-// distinct from vault.Folder, which is snake_case and DB-column-shaped.
-// FocusGIFEnabled has no omitempty: Nuvio reads an absent key as true, so
-// false has to be sent to mean off.
-type PushFolder struct {
-	ID              string          `json:"id"`
-	Title           string          `json:"title"`
-	CoverImageURL   string          `json:"coverImageUrl,omitempty"`
-	CoverEmoji      string          `json:"coverEmoji,omitempty"`
-	FocusGIFURL     string          `json:"focusGifUrl,omitempty"`
-	FocusGIFEnabled bool            `json:"focusGifEnabled"`
-	HeroBackdropURL string          `json:"heroBackdropUrl,omitempty"`
-	HeroVideoURL    string          `json:"heroVideoUrl,omitempty"`
-	TitleLogoURL    string          `json:"titleLogoUrl,omitempty"`
-	TileShape       string          `json:"tileShape"`
-	HideTitle       bool            `json:"hideTitle"`
-	CatalogSources  []CatalogSource `json:"catalogSources"`
-}
-
-// PushCollection is one collection in push/pull's camelCase wire shape.
-// FocusGlowEnabled has no omitempty for the same reason as
-// PushFolder.FocusGIFEnabled.
-type PushCollection struct {
-	ID               string       `json:"id"`
-	Title            string       `json:"title"`
-	BackdropImageURL string       `json:"backdropImageUrl,omitempty"`
-	PinToTop         bool         `json:"pinToTop"`
-	FocusGlowEnabled bool         `json:"focusGlowEnabled"`
-	ViewMode         string       `json:"viewMode"`
-	ShowAllTab       bool         `json:"showAllTab"`
-	Folders          []PushFolder `json:"folders"`
 }

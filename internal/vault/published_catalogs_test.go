@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -57,7 +58,7 @@ func TestGetPublishedCatalogs(t *testing.T) {
 	// directly.
 	if err := db.SaveSelectionsForPush(ctx, owner,
 		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: onHome.ID, ShowInHome: true}}},
-		CollectionSelectionForm{CollectionIDs: []uuid.UUID{onTVCollection}},
+		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onTVCollection}}},
 		nil,
 	); err != nil {
 		t.Fatalf("SaveSelectionsForPush: %v", err)
@@ -91,5 +92,98 @@ func TestGetPublishedCatalogs(t *testing.T) {
 	if published[0].ID != onHome.ID || published[1].ID != folderOnly.ID {
 		t.Fatalf("GetPublishedCatalogs order = [%s, %s], want [onHome, folderOnly]",
 			published[0].ID, published[1].ID)
+	}
+}
+
+// profileToken is profileID's addon token.
+func profileToken(t *testing.T, db *DB, profileID uuid.UUID) string {
+	t.Helper()
+	p, err := db.GetProfileByID(context.Background(), profileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p.Token
+}
+
+// ServedCatalog finds a profile's catalog only while it is on the TV, as
+// GetPublishedCatalogs lists it: with its own home row, Discover-only
+// included, or in a folder of an on-home collection, listed or scoped. A
+// catalog off the TV, one only an off-home collection uses, a deleted one,
+// another profile's, another type or provider, and an unknown token are all
+// ErrCatalogNotFound.
+func TestServedCatalog(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner, other := newTestProfile(t, db, "owner"), newTestProfile(t, db, "other")
+	token := profileToken(t, db, owner)
+	create := func(profileID uuid.UUID, name string) Catalog {
+		t.Helper()
+		c, err := db.CreateUserCatalog(ctx, profileID, listedCatalogForm(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	homeRow, discover, inFolder, offTV, offHomeOnly, deleted := create(owner, "Home row"), create(owner, "Discover"),
+		create(owner, "In a folder"), create(owner, "Off the TV"), create(owner, "Off-home folder only"), create(owner, "Deleted")
+	theirs := create(other, "Theirs")
+	if err := db.DeleteUserCatalog(ctx, owner, deleted.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	onHome, offHome := newTestCollection(t, db, owner, "On home"), newTestCollection(t, db, owner, "Off home")
+	scopedForm := listedCatalogForm("Scoped")
+	scopedForm.CollectionID = &onHome
+	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, refs := range map[uuid.UUID][]uuid.UUID{onHome: {inFolder.ID, scoped.ID}, offHome: {offHomeOnly.ID}} {
+		if _, err := db.UpdateUserCollection(ctx, owner, id, CollectionForm{
+			Title: "C", Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(refs...)}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.SaveSelectionsForPush(ctx, owner,
+		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{
+			{CatalogID: homeRow.ID, ShowInHome: true}, {CatalogID: discover.ID},
+		}},
+		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onHome}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveSelectionsForPush(ctx, other,
+		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: theirs.ID, ShowInHome: true}}},
+		CollectionSelectionForm{}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name                  string
+		token                 string
+		id                    uuid.UUID
+		catalogType, provider string
+		found                 bool
+	}{
+		{"its own home row", token, homeRow.ID, "movie", "tmdb", true},
+		{"Discover-only", token, discover.ID, "movie", "tmdb", true},
+		{"listed, in an on-home collection", token, inFolder.ID, "movie", "tmdb", true},
+		{"scoped to an on-home collection", token, scoped.ID, "movie", "tmdb", true},
+		{"off the TV", token, offTV.ID, "movie", "tmdb", false},
+		{"only in an off-home collection", token, offHomeOnly.ID, "movie", "tmdb", false},
+		{"deleted", token, deleted.ID, "movie", "tmdb", false},
+		{"another type", token, homeRow.ID, "series", "tmdb", false},
+		{"another provider", token, homeRow.ID, "movie", "other", false},
+		{"another profile's", token, theirs.ID, "movie", "tmdb", false},
+		{"unknown token", "no-such-token", homeRow.ID, "movie", "tmdb", false},
+		{"unknown id", token, uuid.New(), "movie", "tmdb", false},
+	} {
+		served, err := db.ServedCatalog(ctx, tc.token, tc.id, tc.catalogType, tc.provider)
+		if tc.found && (err != nil || served.Params != "{}" || served.Account != "owner") {
+			t.Errorf("%s: %+v, %v; want the params and the owner's account", tc.name, served, err)
+		}
+		if !tc.found && !errors.Is(err, ErrCatalogNotFound) {
+			t.Errorf("%s: %+v, %v; want ErrCatalogNotFound", tc.name, served, err)
+		}
 	}
 }

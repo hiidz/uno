@@ -20,7 +20,7 @@ import {
   type PreviewFolder,
   type PreviewSource,
 } from '@/features/preview/model'
-import type { HomeCatalogEntry } from './pending'
+import type { HomeCatalogEntry, HomeCollectionEntry } from './pending'
 
 export interface PreviewRow {
   id: string
@@ -139,12 +139,13 @@ function toRow(entry: HomeCatalogEntry, catalog: Catalog | undefined): PreviewRo
 /**
  * Builds the whole preview in one pass.
  *
- * Ordering rule for home: `pin_to_top` lifts a collection row above the catalog
- * rows entirely — Nuvio's own field description is "pin to top of home screen",
- * so it outranks the catalogs-then-collections default rather than merely
- * sorting within the collections. Selection order is preserved inside each
- * band, so pinning moves a row between bands without discarding the order the
- * user just dragged.
+ * Ordering rule for home: Show first (`pin_to_top`) lifts a collection row
+ * above the catalog rows entirely — Nuvio's own field description is "pin to
+ * top of home screen", so it outranks the catalogs-then-collections default
+ * rather than merely sorting within the collections. The pin is the pending
+ * one each entry carries, not the one last pushed. Selection order is
+ * preserved inside each band, so pinning moves a row between bands without
+ * discarding the order the user just dragged.
  */
 export function buildHomePreview({
   catalogs,
@@ -153,13 +154,14 @@ export function buildHomePreview({
   collectionById,
 }: {
   catalogs: HomeCatalogEntry[]
-  collections: string[]
+  collections: HomeCollectionEntry[]
   catalogById: ReadonlyMap<string, Catalog>
   collectionById: ReadonlyMap<string, Collection>
 }): HomeScreenPreview {
-  const previewCollections = collections.map((id) =>
-    toPreviewCollection(id, collectionById.get(id), catalogById),
-  )
+  const previewCollections = collections.map((entry) => ({
+    ...toPreviewCollection(entry.id, collectionById.get(entry.id), catalogById),
+    pinned: entry.pinToTop,
+  }))
 
   const rows: PreviewRow[] = []
   const discoverOnly: PreviewRow[] = []

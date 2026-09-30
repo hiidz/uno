@@ -19,6 +19,7 @@ import (
 	"github.com/hiidz/uno/internal/config"
 	"github.com/hiidz/uno/internal/nuvio"
 	"github.com/hiidz/uno/internal/provider"
+	"github.com/hiidz/uno/internal/tmdbkey"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -66,25 +67,11 @@ func run() error {
 		}
 	}()
 
-	tmdb := provider.NewTMDBClient(cfg.TMDBAPIKey)
-	nuvioClient := nuvio.NewClient(cfg.NuvioBaseURL, cfg.NuvioPublishableKey)
-
-	var verifier api.TokenVerifier = nuvioClient
-	var nuvioAPI api.NuvioClient = nuvioClient
-	if cfg.DevAuthBypassToken != "" {
-		api.LogDevBypassEnabled()
-		verifier = api.NewDevBypassVerifier(nuvioClient, cfg.DevAuthBypassToken)
-		nuvioAPI = api.NewDevBypassNuvio(nuvioClient, cfg.DevAuthBypassToken)
+	deps, err := apiDeps(cfg, db)
+	if err != nil {
+		return err
 	}
-
-	apiServer, err := api.New(api.Deps{
-		Vault:        db,
-		Provider:     tmdb,
-		Verifier:     verifier,
-		Nuvio:        nuvioAPI,
-		SiteBaseURL:  cfg.SiteBaseURL,
-		NuvioBaseURL: cfg.NuvioBaseURL,
-	})
+	apiServer, err := api.New(deps)
 	if err != nil {
 		return fmt.Errorf("failed to build server: %w", err)
 	}
@@ -135,4 +122,47 @@ func run() error {
 		return fmt.Errorf("shutdown did not finish cleanly: %w", err)
 	}
 	return nil
+}
+
+// apiDeps builds the API server's dependencies from cfg over db: the TMDB and
+// Nuvio clients, the dev auth bypass when it is configured, the access policy,
+// and each account's own TMDB key on a server in per-account key mode.
+func apiDeps(cfg config.Config, db *vault.DB) (api.Deps, error) {
+	keys, err := accountKeys(cfg, db)
+	if err != nil {
+		return api.Deps{}, err
+	}
+	nuvioClient := nuvio.NewClient(cfg.NuvioBaseURL, cfg.NuvioPublishableKey)
+	deps := api.Deps{
+		Vault:        db,
+		Provider:     provider.NewTMDBClient(cfg.TMDBAPIKey),
+		Verifier:     nuvioClient,
+		Nuvio:        nuvioClient,
+		SiteBaseURL:  cfg.SiteBaseURL,
+		NuvioBaseURL: cfg.NuvioBaseURL,
+		Access:       api.Access{Allowlist: cfg.Access.Allowlist, Emails: cfg.Access.Emails},
+		Keys:         keys,
+	}
+	if cfg.DevAuthBypassToken != "" {
+		api.LogDevBypassEnabled()
+		deps.Verifier = api.NewDevBypassVerifier(nuvioClient, cfg.DevAuthBypassToken)
+		deps.Nuvio = api.NewDevBypassNuvio(nuvioClient, cfg.DevAuthBypassToken)
+		deps.Access = deps.Access.WithDevBypass()
+	}
+	return deps, nil
+}
+
+// accountKeys is what hands each request its account's own TMDB key when
+// cfg asks every account to bring one, and nil when every account shares
+// cfg.TMDBAPIKey.
+func accountKeys(cfg config.Config, db *vault.DB) (*tmdbkey.Keys, error) {
+	if !cfg.PerAccountKeys {
+		return nil, nil
+	}
+	box, err := tmdbkey.NewBox(cfg.Secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load UNO_SECRET: %w", err)
+	}
+	log.Println("TMDB key mode: per-account; each Nuvio account brings its own TMDB key")
+	return tmdbkey.New(box, db), nil
 }

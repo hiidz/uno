@@ -6,8 +6,17 @@ import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
 import { computeHomeChanges } from './changes'
 import type { HomeChange } from './changes'
-import { EMPTY_HOME, moveWithinBand, reorderWithinBand } from './pending'
-import type { HomeCatalogEntry, HomeState } from './pending'
+import { deleteBlockersFor, pushedHome } from './deleteBlockers'
+import type { DeleteBlockers } from './deleteBlockers'
+import {
+  EMPTY_HOME,
+  moveCollectionInBand,
+  moveWithinBand,
+  reorderCollectionBand,
+  reorderWithinBand,
+  togglePinToTop,
+} from './pending'
+import type { HomeCatalogEntry, HomeCollectionEntry, HomeState } from './pending'
 
 export interface HomeSelection extends HomeEdits {
   /** False until the server's current selection has loaded. Edits are blocked
@@ -23,7 +32,7 @@ export interface HomeSelection extends HomeEdits {
   retry: () => void
 
   catalogs: HomeCatalogEntry[]
-  collections: string[]
+  collections: HomeCollectionEntry[]
 
   /** Every catalog/collection the Home pane might need to render, keyed by id.
    *  Assembled from the selection response *and* the library, because a
@@ -35,11 +44,6 @@ export interface HomeSelection extends HomeEdits {
    *  deleted after being selected. It still works, but removing it is
    *  one-way, so the UI says so. */
   isDetached: (id: string) => boolean
-
-  /** `pin_to_top`, read through `collectionById` — a property of the
-   *  collection itself, set in its own editor, never edited from this pane.
-   *  Drives which of the two collection bands a row renders in. */
-  isPinned: (id: string) => boolean
 
   /** Genre lookups, so the Home pane can render recipes without calling
    *  `useLibrary` again and re-deriving the whole dataset. */
@@ -70,11 +74,17 @@ export interface HomeSelection extends HomeEdits {
 
 /**
  * The edits to the pending selection, also on a context of their own: they
- * change only with `isPinned`, never with the selection they edit, so a
- * component that makes edits without reading the selection uses
- * `useHomeEdits` and doesn't re-render on every change to it.
+ * change only with the collections an added one reads its last pushed pin
+ * from, never with the selection they edit, so a component that makes edits
+ * without reading the selection uses `useHomeEdits` and doesn't re-render on
+ * every change to it. What keeps a row from being deleted rides along, since
+ * it changes only when the server's selection does.
  */
 export interface HomeEdits {
+  /** Why a catalog or collection can't be deleted yet — Nuvio may still hold
+   *  it — read from Home as the server holds it, never the pending edits
+   *  (`deleteBlockers.ts`). `null` when it can be. */
+  deleteBlockers: DeleteBlockers
   addCatalog: (id: string) => void
   removeCatalog: (id: string) => void
   toggleShowInHome: (id: string) => void
@@ -83,8 +93,12 @@ export interface HomeEdits {
   reorderCatalogs: (orderedShownIds: string[]) => void
   /** Moves a catalog one step within its own band: shown, or Discover-only. */
   moveCatalog: (id: string, direction: -1 | 1) => void
+  /** Adds a collection, starting from the Show first it was last pushed with. */
   addCollection: (id: string) => void
   removeCollection: (id: string) => void
+  /** Flips a collection's Show first — a pending edit, like Home or Discover
+   *  for a catalog, that only Push writes. */
+  togglePinToTop: (id: string) => void
   /** Reorders one collection band — pinned or not — leaving the other
    *  untouched. A row moves only within its own band, matching the running
    *  order's three groups. */
@@ -134,7 +148,7 @@ export function HomeSelectionProvider({
         id: c.id,
         showInHome: c.show_in_home,
       })),
-      collections: (collectionSelectionData ?? []).map((c) => c.id),
+      collections: (collectionSelectionData ?? []).map((c) => ({ id: c.id, pinToTop: c.pin_to_top })),
     }
     setBaseline(hydrated)
     setCurrent(hydrated)
@@ -162,6 +176,13 @@ export function HomeSelectionProvider({
     return map
   }, [catalogSelectionData, library.catalogs, collectionById])
 
+  const blockers = useMemo(
+    function deleteBlockers() {
+      return deleteBlockersFor(pushedHome(catalogSelectionData, collectionSelectionData, collectionById))
+    },
+    [catalogSelectionData, collectionSelectionData, collectionById],
+  )
+
   const libraryLoaded = !library.isLoading && !library.failed.catalogs && !library.failed.collections
 
   const libraryIds = useMemo(
@@ -173,15 +194,17 @@ export function HomeSelectionProvider({
     [library.catalogs, library.collections],
   )
 
-  const isPinned = useCallback(
-    (id: string) => collectionById.get(id)?.pin_to_top ?? false,
+  // The Show first a collection was last pushed with, which one added to the
+  // home screen starts from.
+  const storedPin = useCallback(
+    (id: string) => collectionById.get(id)?.pin_to_top === true,
     [collectionById],
   )
 
   const state = current ?? EMPTY_HOME
   const changes = useMemo(
-    () => computeHomeChanges({ baseline, current: state, catalogById, collectionById, isPinned }),
-    [baseline, state, catalogById, collectionById, isPinned],
+    () => computeHomeChanges({ baseline, current: state, catalogById, collectionById }),
+    [baseline, state, catalogById, collectionById],
   )
   const pendingCount = changes.length
 
@@ -201,92 +224,81 @@ export function HomeSelectionProvider({
       // Only meaningful once the library has actually loaded; before that, or
       // when it failed to, everything would look detached.
       isDetached: (id: string) => libraryLoaded && !libraryIds.has(id),
-      isPinned,
       genres: library.genres,
 
       changes,
       pendingCount,
     }),
-    [catalogById, collectionById, libraryLoaded, libraryIds, isPinned, library.genres, changes, pendingCount],
+    [catalogById, collectionById, libraryLoaded, libraryIds, library.genres, changes, pendingCount],
   )
 
-  // Every one of these only closes over `edit` (plus, for the band-aware ones,
-  // `isPinned`) — stable for the life of the provider — so this whole cluster
-  // needs recomputing only when `isPinned` itself changes, not on every render
-  // that changes `state`.
+  // Every one of these only closes over `edit` — stable for the life of the
+  // provider — and, for `addCollection`, `storedPin`, so this whole cluster
+  // needs recomputing only when the collections or the server's selection
+  // change (the latter for `deleteBlockers`), not on every render that
+  // changes `state`. The band-aware edits read each row's pin from the state
+  // they edit.
   const editFns = useMemo<HomeEdits>(
-    () => ({
-      addCatalog: (id: string) =>
-        edit((previous) =>
-          previous.catalogs.some((c) => c.id === id)
-            ? previous
-            : // New rows default to showing on home: adding a catalog you
-              // can't see would be a confusing default.
-              { ...previous, catalogs: [...previous.catalogs, { id, showInHome: true }] },
-        ),
-      removeCatalog: (id: string) =>
-        edit((previous) => ({
-          ...previous,
-          catalogs: previous.catalogs.filter((c) => c.id !== id),
-        })),
-      toggleShowInHome: (id: string) =>
-        edit((previous) => ({
-          ...previous,
-          catalogs: previous.catalogs.map((c) =>
-            c.id === id ? { ...c, showInHome: !c.showInHome } : c,
+    function homeEdits() {
+      return {
+        deleteBlockers: blockers,
+        addCatalog: (id: string) =>
+          edit((previous) =>
+            previous.catalogs.some((c) => c.id === id)
+              ? previous
+              : // New rows default to showing on home: adding a catalog you
+                // can't see would be a confusing default.
+                { ...previous, catalogs: [...previous.catalogs, { id, showInHome: true }] },
           ),
-        })),
-      reorderCatalogs: (orderedShownIds: string[]) =>
-        edit((previous) => ({
-          ...previous,
-          catalogs: reorderWithinBand(previous.catalogs, (c) => c.showInHome, orderedShownIds),
-        })),
-      moveCatalog: (id: string, direction: -1 | 1) =>
-        edit((previous) => ({
-          ...previous,
-          catalogs: moveWithinBand(previous.catalogs, (c) => c.showInHome, id, direction),
-        })),
+        removeCatalog: (id: string) =>
+          edit((previous) => ({
+            ...previous,
+            catalogs: previous.catalogs.filter((c) => c.id !== id),
+          })),
+        toggleShowInHome: (id: string) =>
+          edit((previous) => ({
+            ...previous,
+            catalogs: previous.catalogs.map((c) =>
+              c.id === id ? { ...c, showInHome: !c.showInHome } : c,
+            ),
+          })),
+        reorderCatalogs: (orderedShownIds: string[]) =>
+          edit((previous) => ({
+            ...previous,
+            catalogs: reorderWithinBand(previous.catalogs, (c) => c.showInHome, orderedShownIds),
+          })),
+        moveCatalog: (id: string, direction: -1 | 1) =>
+          edit((previous) => ({
+            ...previous,
+            catalogs: moveWithinBand(previous.catalogs, (c) => c.showInHome, id, direction),
+          })),
 
-      addCollection: (id: string) =>
-        edit((previous) =>
-          previous.collections.includes(id)
-            ? previous
-            : { ...previous, collections: [...previous.collections, id] },
-        ),
-      removeCollection: (id: string) =>
-        edit((previous) => ({
-          ...previous,
-          collections: previous.collections.filter((c) => c !== id),
-        })),
-      reorderCollections: (band: 'pinned' | 'unpinned', orderedBandIds: string[]) =>
-        edit((previous) => {
-          const inBand = (id: string) => (band === 'pinned' ? isPinned(id) : !isPinned(id))
-          const asEntries = previous.collections.map((id) => ({ id }))
-          return {
+        addCollection: (id: string) =>
+          edit((previous) =>
+            previous.collections.some((c) => c.id === id)
+              ? previous
+              : { ...previous, collections: [...previous.collections, { id, pinToTop: storedPin(id) }] },
+          ),
+        removeCollection: (id: string) =>
+          edit((previous) => ({
             ...previous,
-            collections: reorderWithinBand(
-              asEntries,
-              (entry) => inBand(entry.id),
-              orderedBandIds,
-            ).map((entry) => entry.id),
-          }
-        }),
-      moveCollection: (id: string, direction: -1 | 1) =>
-        edit((previous) => {
-          const pinned = isPinned(id)
-          const asEntries = previous.collections.map((cid) => ({ id: cid }))
-          return {
+            collections: previous.collections.filter((c) => c.id !== id),
+          })),
+        togglePinToTop: (id: string) =>
+          edit((previous) => ({ ...previous, collections: togglePinToTop(previous.collections, id) })),
+        reorderCollections: (band: 'pinned' | 'unpinned', orderedBandIds: string[]) =>
+          edit((previous) => ({
             ...previous,
-            collections: moveWithinBand(
-              asEntries,
-              (entry) => isPinned(entry.id) === pinned,
-              id,
-              direction,
-            ).map((entry) => entry.id),
-          }
-        }),
-    }),
-    [edit, isPinned],
+            collections: reorderCollectionBand(previous.collections, band, orderedBandIds),
+          })),
+        moveCollection: (id: string, direction: -1 | 1) =>
+          edit((previous) => ({
+            ...previous,
+            collections: moveCollectionInBand(previous.collections, id, direction),
+          })),
+      }
+    },
+    [edit, storedPin, blockers],
   )
 
   // Every failed query in this profile's subtree — the two selections, and the
@@ -300,29 +312,31 @@ export function HomeSelectionProvider({
   }, [queryClient, profileIndex])
 
   const value = useMemo<HomeSelection>(
-    () => ({
-      ready: current !== null,
-      isLoading: catalogSelection.isPending || collectionSelection.isPending || library.isLoading,
-      error:
-        current === null
-          ? ((catalogSelection.error ?? collectionSelection.error) as Error | null)
-          : null,
-      retry,
+    function selection() {
+      return {
+        ready: current !== null,
+        isLoading: catalogSelection.isPending || collectionSelection.isPending || library.isLoading,
+        error:
+          current === null
+            ? ((catalogSelection.error ?? collectionSelection.error) as Error | null)
+            : null,
+        retry,
 
-      catalogs: state.catalogs,
-      collections: state.collections,
-      ...readData,
+        catalogs: state.catalogs,
+        collections: state.collections,
+        ...readData,
 
-      isDirty: pendingCount > 0,
+        isDirty: pendingCount > 0,
 
-      snapshot: () => state,
-      markPushed: (pushed) => setBaseline(pushed),
+        snapshot: () => state,
+        markPushed: (pushed) => setBaseline(pushed),
 
-      hasCatalog: (id) => state.catalogs.some((c) => c.id === id),
-      hasCollection: (id) => state.collections.includes(id),
+        hasCatalog: (id) => state.catalogs.some((c) => c.id === id),
+        hasCollection: (id) => state.collections.some((c) => c.id === id),
 
-      ...editFns,
-    }),
+        ...editFns,
+      }
+    },
     [
       current,
       state,

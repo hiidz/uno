@@ -6,11 +6,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/google/uuid"
 
-	"github.com/hiidz/uno/internal/nuvio"
+	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -50,32 +49,21 @@ func profileIDFrom(ctx context.Context) (uuid.UUID, bool) {
 }
 
 // requireNuvioAuth verifies the request's bearer token against Nuvio's
-// JWKS and attaches the resulting account ID (sub) to the request context.
-// On failure it responds directly and never calls next.
+// JWKS, checks its account against the access policy (authenticate), and
+// attaches the account ID (sub) and the token to the request context, with
+// the account's own TMDB key for any TMDB call the request makes (on a server
+// where each account brings one; read only if TMDB is reached). On
+// failure it responds directly and never calls next.
 func (s *Server) requireNuvioAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		token, ok := strings.CutPrefix(authHeader, "Bearer ")
-		if !ok || token == "" {
-			http.Error(w, "missing or malformed Authorization header", http.StatusUnauthorized)
+		token, claims, refusal := s.authenticate(r)
+		if refusal != nil {
+			http.Error(w, refusal.msg, refusal.status)
 			return
 		}
-
-		claims, err := s.verifier.Verify(r.Context(), token)
-		if err != nil {
-			switch {
-			case errors.Is(err, nuvio.ErrInvalidToken):
-				http.Error(w, "invalid or expired token", http.StatusUnauthorized)
-			case errors.Is(err, nuvio.ErrJWKSUnavailable):
-				http.Error(w, "auth service unavailable", http.StatusBadGateway)
-			default:
-				http.Error(w, "authentication failed", http.StatusUnauthorized)
-			}
-			return
-		}
-
 		ctx := withNuvioUserID(r.Context(), claims.Sub)
 		ctx = withNuvioToken(ctx, token)
+		ctx = provider.WithKeySource(ctx, s.keys.ForAccount(ctx, claims.Sub))
 		next(w, r.WithContext(ctx))
 	}
 }

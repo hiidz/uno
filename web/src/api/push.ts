@@ -9,7 +9,7 @@ import { ApiError, sendJSON } from './http'
  */
 export interface PushRequest {
   catalogs: { catalogs: Array<{ catalog_id: string; show_in_home: boolean }> }
-  collections: { collection_ids: string[] }
+  collections: { collections: Array<{ collection_id: string; pin_to_top: boolean }> }
 }
 
 /**

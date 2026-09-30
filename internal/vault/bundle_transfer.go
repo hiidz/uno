@@ -286,7 +286,7 @@ func (p importPlan) write(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) 
 	}
 	ids := make([]uuid.UUID, len(p.collections))
 	for i, form := range p.collections {
-		created, _, err := createCollectionTx(ctx, tx, profileID, form, nil)
+		created, _, err := createCollectionTx(ctx, tx, profileID, form)
 		if err != nil {
 			return nil, err
 		}

@@ -17,11 +17,18 @@ export interface HomeCatalogEntry {
   showInHome: boolean
 }
 
+export interface HomeCollectionEntry {
+  id: string
+  /** Mirrors `collections.pin_to_top`: Show first, which lifts the collection
+   *  above every catalog row. Only push writes it, from here. */
+  pinToTop: boolean
+}
+
 export interface HomeState {
   /** Ordered. Array position *is* `sort_order` at write time. */
   catalogs: HomeCatalogEntry[]
   /** Ordered, same rule. */
-  collections: string[]
+  collections: HomeCollectionEntry[]
 }
 
 export const EMPTY_HOME: HomeState = { catalogs: [], collections: [] }
@@ -35,7 +42,9 @@ export function toPushPayload(state: HomeState): PushRequest {
     catalogs: {
       catalogs: state.catalogs.map((c) => ({ catalog_id: c.id, show_in_home: c.showInHome })),
     },
-    collections: { collection_ids: state.collections },
+    collections: {
+      collections: state.collections.map((c) => ({ collection_id: c.id, pin_to_top: c.pinToTop })),
+    },
   }
 }
 
@@ -70,4 +79,31 @@ export function moveWithinBand<T extends { id: string }>(
   const bandIds = entries.filter(inBand).map((entry) => entry.id)
   const moved = moveByOne(bandIds, id, direction)
   return moved === bandIds ? entries : reorderWithinBand(entries, inBand, moved)
+}
+
+/** Reorders one collection band — shown first (`pinned`) or not — to
+ *  `orderedBandIds`, leaving the other band's rows as they were. */
+export function reorderCollectionBand(
+  collections: HomeCollectionEntry[],
+  band: 'pinned' | 'unpinned',
+  orderedBandIds: string[],
+): HomeCollectionEntry[] {
+  const pinned = band === 'pinned'
+  return reorderWithinBand(collections, (c) => c.pinToTop === pinned, orderedBandIds)
+}
+
+/** Moves collection `id` one step within its own band, shown first or not. */
+export function moveCollectionInBand(
+  collections: HomeCollectionEntry[],
+  id: string,
+  direction: -1 | 1,
+): HomeCollectionEntry[] {
+  const pinned = collections.some((c) => c.id === id && c.pinToTop)
+  return moveWithinBand(collections, (c) => c.pinToTop === pinned, id, direction)
+}
+
+/** Flips collection `id`'s Show first, which moves it to the other band at
+ *  its place in the selection order. */
+export function togglePinToTop(collections: HomeCollectionEntry[], id: string): HomeCollectionEntry[] {
+  return collections.map((c) => (c.id === id ? { ...c, pinToTop: !c.pinToTop } : c))
 }

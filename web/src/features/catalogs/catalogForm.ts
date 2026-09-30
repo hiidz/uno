@@ -34,7 +34,6 @@ export const MAX_ENTITY_IDS = 20
 export interface CatalogFormState {
   name: string
   type: CatalogType
-  isPublic: boolean
   dateMode: DateMode
   sourceMode: SourceMode
   params: TMDBParams
@@ -104,7 +103,7 @@ export function serializeSortBy(field: string, direction: 'asc' | 'desc'): strin
 }
 
 export function emptyForm(type: CatalogType = 'movie', collectionID: string | null = null): CatalogFormState {
-  return { name: '', type, isPublic: false, dateMode: 'any', sourceMode: 'filters', params: {}, collectionID }
+  return { name: '', type, dateMode: 'any', sourceMode: 'filters', params: {}, collectionID }
 }
 
 function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
@@ -123,7 +122,6 @@ export function formFromCatalog(catalog: Catalog): CatalogFormState {
   return {
     name: catalog.name,
     type: catalog.type,
-    isPublic: catalog.is_public,
     dateMode: dateModeOf(params, catalog.type),
     sourceMode: catalog.type === 'movie' && params.with_collection ? 'collection' : 'filters',
     params,
@@ -135,7 +133,7 @@ export function formFromCatalog(catalog: Catalog): CatalogFormState {
  * The create payload for an atomic catalog duplicate — `Workspace.tsx`'s
  * `confirmDuplicateCatalog`, which posts this directly rather than opening an
  * editor first. A duplicate gets a distinguishable name and is never born
- * public or scoped — publishing and scoping are deliberate acts, not
+ * shared or scoped — sharing and scoping are deliberate acts, not
  * something inherited from whoever it was forked from; only reachable from
  * the library, which is listed catalogs only. `type`/`params` are copied
  * verbatim: a duplicate is a straight copy.
@@ -146,7 +144,6 @@ export function duplicatePayload(catalog: Catalog): CatalogPayload {
     name: `${catalog.name} (copy)`,
     provider: CATALOG_PROVIDER,
     params: catalog.params,
-    is_public: false,
     collection_id: null,
   }
 }
@@ -318,7 +315,6 @@ export function toPayload(state: CatalogFormState): CatalogPayload {
     // Derived, never rendered — see CatalogPayload.
     provider: CATALOG_PROVIDER,
     params: paramsString(state),
-    is_public: state.isPublic,
     collection_id: state.collectionID,
   }
 }
@@ -334,11 +330,4 @@ export function toPayload(state: CatalogFormState): CatalogPayload {
  */
 export function isSameCatalog(a: CatalogFormState, b: CatalogFormState): boolean {
   return JSON.stringify(toPayload(a)) === JSON.stringify(toPayload(b))
-}
-
-/** True when saving `state` over `baseline` changes anything besides Public:
- *  what the editor asks about before saving a linked catalog. Which saves
- *  actually unlink is the server's call; this only decides whether to ask. */
-export function changesContent(baseline: CatalogFormState, state: CatalogFormState): boolean {
-  return !isSameCatalog({ ...baseline, isPublic: state.isPublic }, state)
 }

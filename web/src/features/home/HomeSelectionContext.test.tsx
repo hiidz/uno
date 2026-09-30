@@ -5,7 +5,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Collection, SelectedCatalog } from '@/api'
 import type { Library } from '@/features/library/useLibrary'
-import { catalog, selectedCatalog } from '@/test/fixtures'
+import { catalog, collection, selectedCatalog } from '@/test/fixtures'
 import { HomeSelectionProvider } from './HomeSelectionContext'
 import { useHomeSelection } from './useHomeSelection'
 
@@ -124,5 +124,38 @@ describe('HomeSelectionProvider', () => {
       { id: 'b', showInHome: true },
       { id: 'a', showInHome: false },
     ])
+  })
+
+  it('starts each collection from the pin it was pushed with, and holds Show first as a pending edit', async () => {
+    api.fetchCollectionSelection.mockResolvedValue([
+      collection({ id: 'x', title: 'X-ray', pin_to_top: true }),
+      collection({ id: 'y', title: 'Yankee' }),
+    ])
+    library.current = {
+      ...library.current,
+      collections: [{ ...collection({ id: 'z', title: 'Zulu', pin_to_top: true }), folders: [] }],
+    }
+    const { result } = await renderLoaded()
+    expect(result.current.collections).toEqual([
+      { id: 'x', pinToTop: true },
+      { id: 'y', pinToTop: false },
+    ])
+
+    act(() => result.current.togglePinToTop('y'))
+    act(() => result.current.addCollection('z'))
+    expect(result.current.collections).toEqual([
+      { id: 'x', pinToTop: true },
+      { id: 'y', pinToTop: true },
+      { id: 'z', pinToTop: true },
+    ])
+    expect(result.current.changes.map((c) => c.text)).toEqual([
+      'Added “Zulu”, 3rd on your home screen',
+      'Showing “Yankee” first',
+    ])
+
+    act(() => result.current.moveCollection('z', -1))
+    expect(result.current.collections.map((c) => c.id)).toEqual(['x', 'z', 'y'])
+    act(() => result.current.reorderCollections('pinned', ['y', 'x', 'z']))
+    expect(result.current.collections.map((c) => c.id)).toEqual(['y', 'x', 'z'])
   })
 })

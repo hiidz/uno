@@ -96,8 +96,16 @@ function NewItemForm({
     onCreate(value.trim())
   }
 
+  // `contents`, so the body and footer stay the modal's own flex children.
   return (
-    <>
+    <form
+      className="contents"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault()
+        submit()
+      }}
+    >
       <ModalBody>
         <div className="flex flex-col gap-5">
           <Field
@@ -128,10 +136,10 @@ function NewItemForm({
         <button type="button" onClick={onClose} className="btn-ghost">
           Cancel
         </button>
-        <button type="button" onClick={submit} disabled={saving} className="btn-primary">
+        <button type="submit" disabled={saving} className="btn-primary">
           {saving ? 'Creating…' : `Create ${noun}`}
         </button>
       </ModalFooter>
-    </>
+    </form>
   )
 }

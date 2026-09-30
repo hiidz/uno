@@ -122,8 +122,6 @@ interface CatalogEditState {
 
 export interface CollectionFormState {
   title: string
-  isPublic: boolean
-  pinToTop: boolean
   /** Typed to the server's enum, so an invalid view mode is unrepresentable
    *  and `validateCollectionForm` doesn't have to check it. */
   viewMode: ViewMode
@@ -180,8 +178,6 @@ export function newFolder(): FolderFormState {
 export function emptyCollectionForm(): CollectionFormState {
   return {
     title: '',
-    isPublic: false,
-    pinToTop: false,
     viewMode: 'FOLLOW_LAYOUT',
     showAllTab: false,
     backdropImageURL: '',
@@ -225,8 +221,6 @@ function folderFromWire(folder: Folder): FolderFormState {
 export function formFromCollection(collection: Collection): CollectionFormState {
   return {
     title: collection.title,
-    isPublic: collection.is_public,
-    pinToTop: collection.pin_to_top,
     viewMode: normalizeViewMode(collection.view_mode).mode,
     showAllTab: collection.show_all_tab,
     backdropImageURL: collection.backdrop_image_url,
@@ -381,8 +375,6 @@ export function toCollectionPayload(
 ): CollectionPayload {
   return {
     title: state.title.trim(),
-    is_public: state.isPublic,
-    pin_to_top: state.pinToTop,
     view_mode: state.viewMode,
     show_all_tab: state.showAllTab,
     backdrop_image_url: state.backdropImageURL.trim(),
@@ -439,14 +431,6 @@ export function isSameCollection(a: CollectionFormState, b: CollectionFormState)
   return JSON.stringify(toCollectionPayload(a)) === JSON.stringify(toCollectionPayload(b))
 }
 
-/** True when saving `state` over `baseline` changes anything besides Public —
- *  pending `catalogEdits` included, a staged Move to library among them: what
- *  the editor asks about before saving a linked collection. Which saves
- *  actually unlink is the server's call; this only decides whether to ask. */
-export function changesContent(baseline: CollectionFormState, state: CollectionFormState): boolean {
-  return !isSameCollection({ ...baseline, isPublic: state.isPublic }, state)
-}
-
 /**
  * The form's own state as a previewable collection, for the editor's Preview
  * panel.
@@ -500,7 +484,9 @@ export function previewFromForm(
     // Never rendered — the row's identity is the form, not a stored row.
     id: '',
     title: state.title,
-    pinned: state.pinToTop,
+    // Show first is Home's, pushed from there; this preview draws the
+    // collection's own layout, which it doesn't change.
+    pinned: false,
     viewMode: mode,
     viewModeAssumed: assumed,
     showAllTab: state.showAllTab,

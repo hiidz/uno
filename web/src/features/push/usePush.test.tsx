@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ProfileNotSelectedError, queryKeys, type PushResult } from '@/api'
+import { ProfileNotSelectedError, RateLimitedError, queryKeys, type PushResult } from '@/api'
 import { toPushPayload, type HomeState } from '@/features/home/pending'
 import { usePush } from './usePush'
 
@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({ pushSelection: vi.fn<(i: number, body: unknown) 
 // stay unloaded.
 vi.mock('@/api', async () => ({
   ProfileNotSelectedError: (await import('@/api/http')).ProfileNotSelectedError,
+  RateLimitedError: (await import('@/api/http')).RateLimitedError,
   queryKeys: (await import('@/api/keys')).queryKeys,
   pushSelection: api.pushSelection,
 }))
@@ -30,7 +31,10 @@ const home = vi.hoisted(() => ({
 }))
 vi.mock('@/features/home/useHomeSelection', () => ({ useHomeSelection: () => home }))
 
-const PUSHED: HomeState = { catalogs: [{ id: 'c1', showInHome: true }], collections: ['col1'] }
+const PUSHED: HomeState = {
+  catalogs: [{ id: 'c1', showInHome: true }],
+  collections: [{ id: 'col1', pinToTop: true }],
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -134,6 +138,14 @@ describe('usePush', () => {
     await act(async () => result.current.push())
     expect(result.current.outcome).toEqual({ kind: 'unknown' })
     expect(result.current.pushing).toBe(false)
+    expect(home.markPushed).not.toHaveBeenCalled()
+  })
+
+  it('reports a push the server turned away as rate limited, not unknown', async () => {
+    api.pushSelection.mockRejectedValue(new RateLimitedError('2'))
+    const { result } = renderPush()
+    await act(async () => result.current.push())
+    expect(result.current.outcome).toEqual({ kind: 'rate-limited' })
     expect(home.markPushed).not.toHaveBeenCalled()
   })
 

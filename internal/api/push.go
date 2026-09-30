@@ -76,7 +76,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body pushRequest
-	if !decodeJSON(w, r, &body) {
+	if !decodeStrictJSON(w, r, &body) {
 		return
 	}
 
@@ -90,7 +90,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	// Load-bearing, not a fail-fast nicety: with the write moved to the end,
 	// this is the only check standing between the request body and a
 	// third-party API call.
-	if err := s.vault.ValidateSelectionAccess(ctx, profileID, catalogIDs, body.Collections.CollectionIDs); err != nil {
+	if err := s.vault.ValidateSelectionAccess(ctx, profileID, catalogIDs, body.Collections.CollectionIDs()); err != nil {
 		log.Printf("push: validation failed: %v", err)
 		status := http.StatusInternalServerError
 		if errors.Is(err, vault.ErrInvalidInput) {
@@ -106,14 +106,14 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pulled, collectionVersions, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, body.Collections.CollectionIDs)
+	pulled, collectionHashes, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, body.Collections)
 	if err != nil {
 		log.Printf("push: collections push failed: %v", err)
 		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
 		return
 	}
 
-	if err := s.vault.SaveSelectionsForPush(ctx, profileID, body.Catalogs, body.Collections, collectionVersions); err != nil {
+	if err := s.vault.SaveSelectionsForPush(ctx, profileID, body.Catalogs, body.Collections, collectionHashes); err != nil {
 		log.Printf("push: local commit failed after nuvio succeeded, reverting collections: %v", err)
 		if revertErr := s.nuvio.PushCollections(ctx, accessToken, profile.NuvioProfileIndex, pulled); revertErr != nil {
 			log.Printf("push: compensating revert also failed: %v", revertErr)
@@ -218,14 +218,15 @@ func isUnoManaged(c pulledCollection) bool {
 //     residual case that union existed for — a collection Uno once pushed
 //     but has since forgotten (hard-deleted, or from a recreated database)
 //     — without needing to read the profile's previous selection at all.
-//  3. Append freshly built entries for the profile's pending selection.
+//  3. Append freshly built entries for the profile's pending selection, each
+//     pinned to the top of home as its selection entry says.
 //
 // Returns the pulled blob on success so push can use it for a compensating
 // revert if the local commit that follows this call ends up failing, plus
-// the version of each selected collection as read here — never re-read
-// later, since that's the version Nuvio was actually sent (see
-// vault.SaveSelectionsForPush's pushed_version stamp).
-func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, orderedCollectionIDs []uuid.UUID) ([]json.RawMessage, map[uuid.UUID]int, error) {
+// each selected collection's hash over the exact bytes Nuvio was sent for it
+// (vault.PushHash) — never recomputed later, since the row may change before
+// the local write (see vault.SaveSelectionsForPush's pushed_hash stamp).
+func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, selection vault.CollectionSelectionForm) ([]json.RawMessage, map[uuid.UUID]string, error) {
 	pulled, err := s.nuvio.PullCollections(ctx, accessToken, nuvioProfileIndex)
 	if err != nil {
 		return nil, nil, err
@@ -235,35 +236,15 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 	if err != nil {
 		return nil, nil, fmt.Errorf("loading owned collections: %w", err)
 	}
-	selected, err := s.vault.GetCollectionsByIDs(ctx, orderedCollectionIDs)
+	selected, err := s.vault.GetCollectionsByIDs(ctx, selection.CollectionIDs())
 	if err != nil {
 		return nil, nil, fmt.Errorf("loading pending collection selection: %w", err)
 	}
-	selected = reorderCollections(selected, orderedCollectionIDs)
-
-	versions := make(map[uuid.UUID]int, len(selected))
-	for _, c := range selected {
-		versions[c.ID] = c.Version
-	}
+	selected = applySelection(selected, selection)
 
 	ownedByID := make(map[string]bool, len(ownedIDs))
 	for _, id := range ownedIDs {
 		ownedByID[id.String()] = true
-	}
-
-	var allCatalogIDs []uuid.UUID
-	for _, c := range selected {
-		for _, f := range c.Folders {
-			allCatalogIDs = append(allCatalogIDs, f.CatalogIDs()...)
-		}
-	}
-	catalogs, err := s.vault.GetCatalogsByIDs(ctx, allCatalogIDs)
-	if err != nil {
-		return nil, nil, fmt.Errorf("loading referenced catalogs: %w", err)
-	}
-	catalogsByID := make(map[uuid.UUID]vault.Catalog, len(catalogs))
-	for _, c := range catalogs {
-		catalogsByID[c.ID] = c
 	}
 
 	kept := make([]json.RawMessage, 0, len(pulled)+len(selected))
@@ -278,88 +259,41 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 		kept = append(kept, raw)
 	}
 
+	hashes := make(map[uuid.UUID]string, len(selected))
 	for _, c := range selected {
-		rawFresh, err := json.Marshal(buildPushCollection(c, catalogsByID))
+		rawFresh, err := c.PushJSON()
 		if err != nil {
 			return nil, nil, fmt.Errorf("marshaling collection for push: %w", err)
 		}
+		hashes[c.ID] = vault.PushHash(rawFresh)
 		kept = append(kept, rawFresh)
 	}
 
 	if err := s.nuvio.PushCollections(ctx, accessToken, nuvioProfileIndex, kept); err != nil {
 		return nil, nil, err
 	}
-	return pulled, versions, nil
+	return pulled, hashes, nil
 }
 
-// reorderCollections sorts collections to match orderedIDs.
-// GetCollectionsByIDs queries by a plain IN clause and doesn't preserve
-// input order, but push needs the client's actual ordering to build the
-// pushed collections in the right sequence.
-func reorderCollections(collections []vault.CollectionWithFolders, orderedIDs []uuid.UUID) []vault.CollectionWithFolders {
+// applySelection sorts collections to match selection's order and gives each
+// the pin its selection entry carries. GetCollectionsByIDs queries by a plain
+// IN clause and doesn't preserve input order, but push needs the client's
+// actual ordering to build the pushed collections in the right sequence; and
+// the pin a push sends is the pending one, which only the local write that
+// follows stores.
+func applySelection(collections []vault.CollectionWithFolders, selection vault.CollectionSelectionForm) []vault.CollectionWithFolders {
 	byID := make(map[uuid.UUID]vault.CollectionWithFolders, len(collections))
 	for _, c := range collections {
 		byID[c.ID] = c
 	}
-	ordered := make([]vault.CollectionWithFolders, 0, len(orderedIDs))
-	for _, id := range orderedIDs {
-		if c, ok := byID[id]; ok {
+	ordered := make([]vault.CollectionWithFolders, 0, len(selection.Collections))
+	for _, entry := range selection.Collections {
+		if c, ok := byID[entry.CollectionID]; ok {
+			c.PinToTop = entry.PinToTop
 			ordered = append(ordered, c)
 		}
 	}
 	return ordered
-}
-
-// buildPushCollection converts one of Uno's own collections from its
-// snake_case DB shape into push/pull's camelCase wire shape, resolving each
-// folder's refs into addonId/type/catalogId triples via catalogsByID, each
-// carrying its reference's genre when one is set — so a catalog referenced
-// under two genres becomes two sources.
-// A catalog id missing from that map (a dangling ref) is skipped rather than
-// failing the whole push — see addon.ManifestID for the id scheme shared
-// with the addon manifest.
-func buildPushCollection(c vault.CollectionWithFolders, catalogsByID map[uuid.UUID]vault.Catalog) nuvio.PushCollection {
-	folders := make([]nuvio.PushFolder, len(c.Folders))
-	for i, f := range c.Folders {
-		sources := make([]nuvio.CatalogSource, 0, len(f.Refs))
-		for _, ref := range f.Refs {
-			catalog, ok := catalogsByID[ref.CatalogID]
-			if !ok {
-				continue
-			}
-			sources = append(sources, nuvio.CatalogSource{
-				AddonID:   addon.ID,
-				Type:      catalog.Type,
-				CatalogID: addon.ManifestID(catalog),
-				Genre:     ref.Genre,
-			})
-		}
-		folders[i] = nuvio.PushFolder{
-			ID:              f.ID.String(),
-			Title:           f.Title,
-			CoverImageURL:   f.CoverImageURL,
-			CoverEmoji:      f.CoverEmoji,
-			FocusGIFURL:     f.FocusGIFURL,
-			FocusGIFEnabled: f.FocusGIFEnabled,
-			HeroBackdropURL: f.HeroBackdropURL,
-			HeroVideoURL:    f.HeroVideoURL,
-			TitleLogoURL:    f.TitleLogoURL,
-			TileShape:       f.TileShape,
-			HideTitle:       f.HideTitle,
-			CatalogSources:  sources,
-		}
-	}
-
-	return nuvio.PushCollection{
-		ID:               c.ID.String(),
-		Title:            c.Title,
-		BackdropImageURL: c.BackdropImageURL,
-		PinToTop:         c.PinToTop,
-		FocusGlowEnabled: c.FocusGlowEnabled,
-		ViewMode:         c.ViewMode,
-		ShowAllTab:       c.ShowAllTab,
-		Folders:          folders,
-	}
 }
 
 // nuvioErrorStatus classifies a push-stage error into a status code: a

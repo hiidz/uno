@@ -24,6 +24,19 @@ func CanonicalParams(catalogType, catalogProvider, params string) (string, error
 	return sortedJSON(p)
 }
 
+// ValidateRecipe checks params as the recipe of catalogProvider and
+// catalogType by the rules that need no network: it decodes, and its
+// params struct's Validate passes. The vocabulary TMDB owns is left to
+// TMDBClient.ValidateParams. The migration dry run runs it over every
+// publication a migration creates.
+func ValidateRecipe(catalogType, catalogProvider, params string) error {
+	p, err := decodeRecipe(catalogType, catalogProvider, params)
+	if err != nil {
+		return err
+	}
+	return p.Validate()
+}
+
 // decodeRecipe decodes params as the recipe of catalogProvider and
 // catalogType. TMDB is the one provider this package has recipes for, so any
 // other is an error.

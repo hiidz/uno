@@ -1,4 +1,4 @@
-import type { Catalog, Collection, Folder, SelectedCatalog } from '@/api'
+import type { Catalog, Collection, CommunityItem, Folder, SelectedCatalog } from '@/api'
 
 /**
  * Complete wire rows for tests, so a test names only the fields it is about
@@ -14,11 +14,11 @@ export function catalog(overrides: Partial<Catalog> = {}): Catalog {
     provider: 'tmdb',
     params: '{}',
     owner_id: '',
-    is_public: false,
     collection_id: null,
     created_at: '',
     updated_at: '',
-    linked: false,
+    publication: null,
+    subscription: null,
     ...overrides,
   }
 }
@@ -52,7 +52,6 @@ export function collection(overrides: Partial<Collection> = {}): Collection {
     id: 'col1',
     title: 'Collection',
     owner_id: '',
-    is_public: false,
     pin_to_top: false,
     view_mode: 'ROWS',
     show_all_tab: false,
@@ -60,11 +59,29 @@ export function collection(overrides: Partial<Collection> = {}): Collection {
     focus_glow_enabled: true,
     created_at: '',
     updated_at: '',
-    version: 1,
-    pushed_version: null,
-    linked: false,
+    needs_push: false,
+    publication: null,
+    subscription: null,
     folders: [],
     catalogs: [],
+    ...overrides,
+  }
+}
+
+export function communityItem(overrides: Partial<CommunityItem> = {}): CommunityItem {
+  return {
+    id: 'p1',
+    kind: 'catalog',
+    title: 'Popular',
+    catalog_count: 1,
+    folder_count: 0,
+    subscriber_count: 0,
+    published_at: '2026-09-20T10:00:00Z',
+    updated_at: '2026-09-20T10:00:00Z',
+    subscribed: false,
+    update_available: false,
+    catalog_names: ['Popular'],
+    catalog: { key: 'k1', name: 'Popular', type: 'movie', provider: 'tmdb', params: {} },
     ...overrides,
   }
 }

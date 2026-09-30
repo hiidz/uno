@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -13,7 +14,9 @@ import (
 // happens last (see internal/api/push.go), so without this check a bad id
 // would reach a third-party API before anything caught it.
 func (db *DB) ValidateSelectionAccess(ctx context.Context, profileID uuid.UUID, catalogIDs, collectionIDs []uuid.UUID) error {
-	tx, err := db.conn.BeginTx(ctx, nil)
+	// ReadOnly opens a deferred transaction, one snapshot for both checks
+	// without the write lock _txlock=immediate gives every other one.
+	tx, err := db.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
 	}
@@ -28,10 +31,10 @@ func (db *DB) ValidateSelectionAccess(ctx context.Context, profileID uuid.UUID, 
 // SaveSelectionsForPush writes both selections in one transaction — the
 // local half of push, run only after both Nuvio calls have already
 // succeeded (internal/api/push.go). The two writes share one transaction
-// so they commit or roll back together. collectionVersions is the version
-// pushCollections read for each pushed collection, forwarded to
-// saveCollectionSelectionTx's pushed_version stamp — see its own comment.
-func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm, collectionVersions map[uuid.UUID]int) error {
+// so they commit or roll back together. collectionHashes is the hash of what
+// pushCollections sent for each pushed collection (PushHash), forwarded to
+// saveCollectionSelectionTx's pushed_hash stamp — see its own comment.
+func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm, collectionHashes map[uuid.UUID]string) error {
 	tx, err := db.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting transaction: %w", err)
@@ -41,7 +44,7 @@ func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, ca
 	if err := saveCatalogSelectionTx(ctx, tx, profileID, catalogs); err != nil {
 		return err
 	}
-	if err := saveCollectionSelectionTx(ctx, tx, profileID, collections, collectionVersions); err != nil {
+	if err := saveCollectionSelectionTx(ctx, tx, profileID, collections, collectionHashes); err != nil {
 		return err
 	}
 

@@ -283,7 +283,7 @@ func TestPush_CompensatingRevert(t *testing.T) {
 
 			reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
 			req := newPushRequest(t, reqCtx, pushRequest{
-				Collections: vault.CollectionSelectionForm{CollectionIDs: []uuid.UUID{coll.ID}},
+				Collections: vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}},
 			})
 			w := httptest.NewRecorder()
 
@@ -485,7 +485,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
 	s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{
-		Collections: vault.CollectionSelectionForm{CollectionIDs: []uuid.UUID{selected.ID}},
+		Collections: vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: selected.ID}}},
 	}))
 
 	if w.Code != http.StatusOK {
@@ -501,7 +501,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	if string(pushed[0]) != string(foreign) {
 		t.Fatalf("foreign collection changed in transit:\n got %s\nwant %s", pushed[0], foreign)
 	}
-	var fresh nuvio.PushCollection
+	var fresh vault.PushCollection
 	if err := json.Unmarshal(pushed[1], &fresh); err != nil {
 		t.Fatalf("decoding pushed collection: %v", err)
 	}
@@ -516,101 +516,131 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	if len(sel) != 1 {
 		t.Fatalf("saved selection = %v, want the one selected collection", sel)
 	}
-}
-
-// A folder ref's genre goes out as its catalogSources entry's "genre"; an
-// unfiltered ref has no "genre" key at all rather than an empty one. One
-// catalog referenced under two genres becomes two sources.
-func TestBuildPushCollection_CarriesRefGenre(t *testing.T) {
-	filtered := vault.Catalog{ID: uuid.New(), Type: "movie", Provider: "tmdb"}
-	plain := vault.Catalog{ID: uuid.New(), Type: "series", Provider: "tmdb"}
-	c := vault.CollectionWithFolders{
-		Collection: vault.Collection{ID: uuid.New(), Title: "C"},
-		Folders: []vault.FolderWithCatalogs{{
-			Folder: vault.Folder{ID: uuid.New(), Title: "F"},
-			Refs: []vault.FolderRef{
-				{CatalogID: filtered.ID, Genre: "Western"},
-				{CatalogID: plain.ID},
-				{CatalogID: filtered.ID, Genre: "War"},
-			},
-		}},
+	if sel[0].NeedsPush {
+		t.Errorf("needs_push right after the push = true, want false: push stores the hash of what it sent")
 	}
-
-	pushed := buildPushCollection(c, map[uuid.UUID]vault.Catalog{filtered.ID: filtered, plain.ID: plain})
-	raw, err := json.Marshal(pushed.Folders[0].CatalogSources)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	if _, err := db.UpdateUserCollection(ctx, profile.ID, selected.ID, vault.CollectionForm{Title: "Renamed"}); err != nil {
+		t.Fatal(err)
 	}
-
-	var sources []map[string]any
-	if err := json.Unmarshal(raw, &sources); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(sources) != 3 {
-		t.Fatalf("got %d sources, want 3: %s", len(sources), raw)
-	}
-	if sources[0]["genre"] != "Western" || sources[2]["genre"] != "War" {
-		t.Errorf("filtered source genres = %v, %v, want Western, War: %s", sources[0]["genre"], sources[2]["genre"], raw)
-	}
-	if sources[0]["catalogId"] != sources[2]["catalogId"] {
-		t.Errorf("the two genres of one catalog carry different catalogIds: %s", raw)
-	}
-	if _, ok := sources[1]["genre"]; ok {
-		t.Errorf("unfiltered source has a genre key: %s", raw)
+	if sel, err = db.GetCurrentCollectionSelection(ctx, profile.ID); err != nil || !sel[0].NeedsPush {
+		t.Errorf("needs_push after a rename = %v (%v), want true", sel, err)
 	}
 }
 
-// Nuvio reads an absent focusGlowEnabled/focusGifEnabled as true, so both go
-// out as an explicit false when off. The appearance URLs are omitted when
-// empty, like coverImageUrl.
-func TestBuildPushCollection_AppearanceFields(t *testing.T) {
-	c := vault.CollectionWithFolders{
-		Collection: vault.Collection{ID: uuid.New(), Title: "C"},
-		Folders: []vault.FolderWithCatalogs{
-			{Folder: vault.Folder{ID: uuid.New(), Title: "Off"}},
-			{Folder: vault.Folder{
-				ID: uuid.New(), Title: "On",
-				FocusGIFURL: "https://example.com/f.gif", FocusGIFEnabled: true,
-				HeroBackdropURL: "https://example.com/b.jpg", HeroVideoURL: "https://example.com/v.mp4",
-				TitleLogoURL: "https://example.com/l.png",
-			}},
-		},
-	}
-
-	raw, err := json.Marshal(buildPushCollection(c, nil))
+// A push body with a field the request doesn't have is a 400, before
+// anything reaches Nuvio or the vault. The case that matters is a tab loaded
+// before the selection gained its pins: it still sends collection_ids, which
+// a lenient read would take as an empty selection, clearing every Uno
+// collection from Nuvio and every collection from Home.
+func TestPush_RefusesABodyInAnotherShape(t *testing.T) {
+	db := newTestVaultDB(t)
+	profile, err := db.ResolveOrCreateProfile(t.Context(), "user-shape", 1, "nuvio-uuid-shape")
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("creating profile: %v", err)
 	}
-	var pushed struct {
-		FocusGlowEnabled *bool            `json:"focusGlowEnabled"`
-		Folders          []map[string]any `json:"folders"`
+	ctx := withNuvioToken(withProfileID(t.Context(), profile.ID), "token")
+	onHome, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "On Home"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := json.Unmarshal(raw, &pushed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	s := &Server{vault: db, nuvio: &fakeNuvio{}, siteBaseURL: "https://uno.example"}
+	w := httptest.NewRecorder()
+	s.push(w, newPushRequest(t, ctx, pushRequest{Collections: vault.CollectionSelectionForm{
+		Collections: []vault.SelectedCollectionInput{{CollectionID: onHome.ID}},
+	}}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("first push = %d (%s), want 200", w.Code, w.Body.String())
 	}
 
-	if pushed.FocusGlowEnabled == nil || *pushed.FocusGlowEnabled {
-		t.Errorf("focusGlowEnabled = %v, want explicit false: %s", pushed.FocusGlowEnabled, raw)
+	fake := &fakeNuvio{}
+	s.nuvio = fake
+	old := `{"catalogs":{"catalogs":[]},"collections":{"collection_ids":["` + onHome.ID.String() + `"]}}`
+	w = httptest.NewRecorder()
+	s.push(w, httptest.NewRequest(http.MethodPost, "/api/p/1/push", bytes.NewReader([]byte(old))).WithContext(ctx))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d (%s), want 400", w.Code, w.Body.String())
 	}
-	off, on := pushed.Folders[0], pushed.Folders[1]
-	if v, ok := off["focusGifEnabled"]; !ok || v != false {
-		t.Errorf("off folder focusGifEnabled = %v (present %v), want explicit false: %s", v, ok, raw)
+	if len(fake.pushAddonsCalls) != 0 || len(fake.pushCollectionsCalls) != 0 {
+		t.Errorf("Nuvio calls = %d addons, %d collections; want none", len(fake.pushAddonsCalls), len(fake.pushCollectionsCalls))
 	}
-	for _, key := range []string{"focusGifUrl", "heroBackdropUrl", "heroVideoUrl", "titleLogoUrl"} {
-		if _, ok := off[key]; ok {
-			t.Errorf("off folder carries empty %s: %s", key, raw)
+	if sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID); err != nil || len(sel) != 1 || sel[0].ID != onHome.ID {
+		t.Errorf("selection after the refused push = %v (%v), want On Home still on it", sel, err)
+	}
+}
+
+// Push sends each selected collection's pin as its selection entry has it,
+// not as the row last stored it, and stores that pin once Nuvio has taken
+// the push. A collection push leaves off Home keeps the pin it had.
+func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
+	db := newTestVaultDB(t)
+	ctx := t.Context()
+	profile, err := db.ResolveOrCreateProfile(ctx, "user-pin", 1, "nuvio-uuid-pin")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+	first, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "First"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Later"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{vault: db, siteBaseURL: "https://uno.example"}
+	push := func(entries ...vault.SelectedCollectionInput) []json.RawMessage {
+		t.Helper()
+		fake := &fakeNuvio{}
+		s.nuvio = fake
+		w := httptest.NewRecorder()
+		s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{
+			Collections: vault.CollectionSelectionForm{Collections: entries},
+		}))
+		if w.Code != http.StatusOK || len(fake.pushCollectionsCalls) != 1 {
+			t.Fatalf("status = %d, PushCollections calls = %d; want 200 and 1 (body %q)", w.Code, len(fake.pushCollectionsCalls), w.Body.String())
+		}
+		return fake.pushCollectionsCalls[0]
+	}
+	pinnedOf := func(raw json.RawMessage) bool {
+		t.Helper()
+		var c vault.PushCollection
+		if err := json.Unmarshal(raw, &c); err != nil {
+			t.Fatal(err)
+		}
+		return c.PinToTop
+	}
+	stored := func(id uuid.UUID) bool {
+		t.Helper()
+		all, err := db.GetCollectionsByIDs(ctx, []uuid.UUID{id})
+		if err != nil || len(all) != 1 {
+			t.Fatalf("GetCollectionsByIDs = %v, %v", all, err)
+		}
+		return all[0].PinToTop
+	}
+	// What push hashed carries the selection's pin; what a read hashes
+	// carries the stored one. Once push has stored it, the two agree.
+	pushedClean := func(when string) {
+		t.Helper()
+		sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range sel {
+			if c.NeedsPush {
+				t.Errorf("%s: %q needs a push, want none right after pushing its pin", when, c.Title)
+			}
 		}
 	}
-	want := map[string]any{
-		"focusGifEnabled": true,
-		"focusGifUrl":     "https://example.com/f.gif",
-		"heroBackdropUrl": "https://example.com/b.jpg",
-		"heroVideoUrl":    "https://example.com/v.mp4",
-		"titleLogoUrl":    "https://example.com/l.png",
+
+	sent := push(vault.SelectedCollectionInput{CollectionID: first.ID, PinToTop: true}, vault.SelectedCollectionInput{CollectionID: later.ID})
+	if !pinnedOf(sent[0]) || pinnedOf(sent[1]) || !stored(first.ID) || stored(later.ID) {
+		t.Fatalf("first push: sent pins %v, %v; stored %v, %v; want First pinned and Later not, sent and stored",
+			pinnedOf(sent[0]), pinnedOf(sent[1]), stored(first.ID), stored(later.ID))
 	}
-	for key, v := range want {
-		if on[key] != v {
-			t.Errorf("on folder %s = %v, want %v: %s", key, on[key], v, raw)
-		}
+	pushedClean("first push")
+
+	sent = push(vault.SelectedCollectionInput{CollectionID: later.ID, PinToTop: true})
+	if len(sent) != 1 || !pinnedOf(sent[0]) || !stored(later.ID) || !stored(first.ID) {
+		t.Errorf("second push: want Later sent and stored pinned, and First, now off Home, still pinned")
 	}
+	pushedClean("second push, Later's pin flipped")
 }

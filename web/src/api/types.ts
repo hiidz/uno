@@ -28,16 +28,37 @@ export interface Catalog {
    *  the call site — a malformed value must not take the list down. */
   params: string
   owner_id: string
-  is_public: boolean
   /** Scopes the catalog to one collection (hidden from the library, usable
    *  only in that collection's folders); `null` means listed. */
   collection_id: string | null
   created_at: string
   updated_at: string
-  /** True for a listed catalog still linked to the community catalog it was
-   *  taken from: Community offers it Update, and a save that changes its name
-   *  or recipe unlinks it. Always false on a catalog inside a collection. */
-  linked: boolean
+  /** This catalog's own publication; `null` when it has never been shared.
+   *  Only the owner's own reads carry it. */
+  publication: PublicationState | null
+  /** The publication this listed catalog is a subscribed copy of; `null`
+   *  for the owner's own catalog, and always `null` inside a collection. */
+  subscription: SubscriptionState | null
+}
+
+/** What an owner's row shows of its publication. `changed_since_publish` is
+ *  true once the saved row differs from what was published: people who took
+ *  it keep getting the published version until the owner publishes an
+ *  update. */
+export interface PublicationState {
+  id: string
+  status: 'live' | 'withdrawn'
+  changed_since_publish: boolean
+}
+
+/** What a subscribed copy shows of the publication it was taken from. A save
+ *  of the copy detaches it, which ends the subscription; only an Update
+ *  changes it while it follows its owner. `withdrawn` means its owner stopped
+ *  sharing it, which ends its updates. */
+export interface SubscriptionState {
+  publication_id: string
+  update_available: boolean
+  withdrawn: boolean
 }
 
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
@@ -75,7 +96,8 @@ export interface Collection {
   id: string
   title: string
   owner_id: string
-  is_public: boolean
+  /** Show first, as last pushed: only Push writes it, from Home's pending
+   *  selection (`HomeCollectionEntry.pinToTop`). */
   pin_to_top: boolean
   view_mode: string
   show_all_tab: boolean
@@ -84,16 +106,14 @@ export interface Collection {
   focus_glow_enabled: boolean
   created_at: string
   updated_at: string
-  /** Bumped by every content write (never touched by push); starts at 1. */
-  version: number
-  /** The `version` push last read and sent for this collection; `null` means
-   *  never pushed. A collection is pending re-push when `version !==
-   *  pushed_version`. */
-  pushed_version: number | null
-  /** True while this collection is linked to the community collection it was
-   *  taken from: Community offers it Update, and a save that changes anything
-   *  besides `is_public` unlinks it. */
-  linked: boolean
+  /** Whether this collection is on Home and what Push would send for it now
+   *  differs from what it last sent, so Nuvio holds a stale copy until the
+   *  next push. Always `false` off Home. */
+  needs_push: boolean
+  /** As on `Catalog`. A subscribed collection's catalogs are all scoped to
+   *  it, so they carry no subscription of their own. */
+  publication: PublicationState | null
+  subscription: SubscriptionState | null
   folders: Folder[] | null
   /** Every catalog this collection's folders reference, listed or scoped —
    *  so the editor never needs the library to render a folder. */
@@ -113,21 +133,89 @@ export interface SelectedCatalog extends Catalog {
   show_in_home: boolean
 }
 
-/** `GET /api/p/{i}/community/catalogs` — a public catalog owned by someone
- *  else, one row per distinct recipe. `taken` is true while this profile
- *  holds a linked copy of it, and `update_available` while that copy is
- *  behind it. */
-export interface CommunityCatalog extends Catalog {
-  taken: boolean
-  update_available: boolean
+/** One catalog of a snapshot or a diff, in the bundle form: named by a `key`
+ *  rather than an id, with `params` an object rather than the JSON-encoded
+ *  string a `Catalog` carries. */
+export interface SnapshotCatalog {
+  key: string
+  name: string
+  type: CatalogType
+  provider: string
+  params: TMDBParams
 }
 
-/** `GET /api/p/{i}/community/collections` — a public collection owned by
- *  someone else. `taken` is true while this profile holds a linked copy of
- *  it, and `update_available` while that copy is behind it. */
-export interface CommunityCollection extends Collection {
-  taken: boolean
+/** One folder ref of a snapshot, naming its catalog by snapshot `key`. */
+export interface SnapshotRef {
+  catalog: string
+  genre: string
+}
+
+export interface SnapshotFolder {
+  key: string
+  title: string
+  tile_shape: TileShape | ''
+  hide_title: boolean
+  cover_emoji: string
+  cover_image_url: string
+  focus_gif_url: string
+  focus_gif_enabled: boolean
+  hero_backdrop_url: string
+  hero_video_url: string
+  title_logo_url: string
+  refs: SnapshotRef[] | null
+}
+
+export interface SnapshotCollection {
+  title: string
+  view_mode: string
+  show_all_tab: boolean
+  backdrop_image_url: string
+  focus_glow_enabled: boolean
+  folders: SnapshotFolder[] | null
+}
+
+/** What a publication froze when it was published: every catalog it shares,
+ *  at the top level, and for a collection its own fields and folders. */
+export interface Snapshot {
+  format: string
+  version: number
+  catalogs: SnapshotCatalog[] | null
+  collection?: SnapshotCollection
+}
+
+/** One row of `GET /api/p/{i}/community`: a publication someone else
+ *  shares, never naming its owner. `catalog_names` names every catalog it
+ *  holds, for search. `catalog` is a catalog publication's one catalog, so
+ *  its row can be summarized without a detail call; `null` for a
+ *  collection. */
+export interface CommunityItem {
+  id: string
+  kind: 'catalog' | 'collection'
+  title: string
+  catalog_count: number
+  folder_count: number
+  subscriber_count: number
+  published_at: string
+  updated_at: string
+  subscribed: boolean
   update_available: boolean
+  catalog_names: string[] | null
+  catalog: SnapshotCatalog | null
+}
+
+/** `GET /api/p/{i}/community/{id}`: one publication with its snapshot. A
+ *  withdrawn one is visible only to a profile that subscribes to it. */
+export interface PublicationDetail extends CommunityItem {
+  withdrawn: boolean
+  snapshot: Snapshot
+}
+
+/** What a subscribe, a fork or an Update answers: the caller's copy, a listed
+ *  catalog or a collection by the publication's kind. */
+export interface CommunityCopy {
+  kind: 'catalog' | 'collection'
+  catalog?: Catalog
+  collection?: Collection
 }
 
 /** `POST /api/p/{i}/import/check` — what a bundle holds, and every catalog in
@@ -387,3 +475,15 @@ export interface TMDBParams {
    *  them. TMDB has no network exclusion, so there is no `without_networks`. */
   with_networks?: string
 }
+
+/** `GET /api/config`: how this server reaches TMDB. `per-account` means each
+ *  Nuvio account brings its own TMDB key, which the picker asks for. */
+export interface ServerConfig {
+  tmdb_key_mode: 'shared' | 'per-account'
+}
+
+/** `GET /api/account/tmdb-key`: all the SPA is told of the signed-in
+ *  account's TMDB key — whether it has saved one, and its last four
+ *  characters, which come only with a saved key. The key itself never comes
+ *  back. */
+export type TMDBKeyStatus = { set: false } | { set: true; last4: string }

@@ -158,10 +158,10 @@ func TestExtractBundleDropsDanglingRefs(t *testing.T) {
 
 // writeBundleCollection writes bc through collectionFormFromBundle and
 // createCollectionTx, the way a collection copy does, and reads it back.
-func writeBundleCollection(t *testing.T, db *DB, profileID uuid.UUID, bc BundleCollection, topIDs map[string]uuid.UUID, link bool) CollectionWithFolders {
+func writeBundleCollection(t *testing.T, db *DB, profileID uuid.UUID, bc BundleCollection, topIDs map[string]uuid.UUID, keyed bool) CollectionWithFolders {
 	t.Helper()
 	ctx := context.Background()
-	form := collectionFormFromBundle(bc, topIDs, link)
+	form := collectionFormFromBundle(bc, topIDs, keyed)
 	if err := form.Validate(); err != nil {
 		t.Fatalf("Validate the bundle's form: %v", err)
 	}
@@ -170,7 +170,7 @@ func writeBundleCollection(t *testing.T, db *DB, profileID uuid.UUID, bc BundleC
 		t.Fatalf("begin: %v", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	created, _, err := createCollectionTx(ctx, tx, profileID, form, nil)
+	created, _, err := createCollectionTx(ctx, tx, profileID, form)
 	if err != nil {
 		t.Fatalf("createCollectionTx: %v", err)
 	}
@@ -201,7 +201,8 @@ func withoutSourceIDs(b Bundle) Bundle {
 
 // Extracting a stored collection, writing the bundle form back as a new
 // collection and extracting that gives the same bundle, apart from SourceID:
-// with scopeAll, as a Take writes it, and without, as a Duplicate does, with
+// with scopeAll and keys, as a subscribe writes it, and without, as a
+// Duplicate does, with
 // listed catalogs reused by their SourceID. Every field is set to a
 // non-default value so a field lost on the way shows up here.
 func TestBundleRoundTripsThroughCreate(t *testing.T) {
@@ -233,7 +234,7 @@ func TestBundleRoundTripsThroughCreate(t *testing.T) {
 		}
 	}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Halloween", PinToTop: true, ViewMode: "ROWS", ShowAllTab: true,
+		Title: "Halloween", ViewMode: "ROWS", ShowAllTab: true,
 		BackdropImageURL: "https://example.com/backdrop.jpg", FocusGlowEnabled: true,
 		Folders: []FolderData{
 			folder("Classics", "LANDSCAPE",
@@ -279,30 +280,29 @@ func TestBundleRoundTripsThroughCreate(t *testing.T) {
 	})
 }
 
-// A copy holds every catalog it writes as a new row to CatalogForm's rules:
-// a stored catalog with a blank name, an unknown type or provider, or an
-// overlong name is refused by TakeCatalog, and by a Take or Duplicate that
-// copies it. A Duplicate leaves a listed catalog a reference to the caller's
-// own row and writes nothing from it, so it doesn't check one.
+// A publish holds every catalog its snapshot shares to CatalogForm's rules,
+// and a Duplicate every catalog it writes as a new row: a stored catalog
+// with a blank name, an unknown type or provider, or an overlong name is
+// refused by either. A Duplicate leaves a listed catalog a reference to the
+// caller's own row and writes nothing from it, so it doesn't check one.
 func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
 
-	listed, err := db.CreateUserCatalog(ctx, owner, publicCatalogForm("Listed"))
+	listed, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Listed"))
 	if err != nil {
 		t.Fatalf("create listed catalog: %v", err)
 	}
 	onlyListed, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Only listed", IsPublic: true,
+		Title:   "Only listed",
 		Folders: []FolderData{{Title: "F", Catalogs: CatalogRefs(listed.ID)}},
 	})
 	if err != nil {
 		t.Fatalf("create collection referencing the listed catalog: %v", err)
 	}
 	withScoped, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "With scoped", IsPublic: true,
+		Title: "With scoped",
 		Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: &NewScopedCatalog{
 			Key: "draft:scoped", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}",
 		}}}}},
@@ -342,11 +342,11 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 
 			t.Run("listed", func(t *testing.T) {
 				corrupt(listed.ID, "Listed")
-				if _, err := db.TakeCatalog(ctx, taker, listed.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
-					t.Errorf("TakeCatalog = %v, want ErrInvalidInput", err)
+				if _, err := db.PublishCatalog(ctx, owner, listed.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+					t.Errorf("PublishCatalog = %v, want ErrInvalidInput", err)
 				}
-				if _, err := db.TakeCollection(ctx, taker, onlyListed.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
-					t.Errorf("TakeCollection = %v, want ErrInvalidInput", err)
+				if _, err := db.PublishCollection(ctx, owner, onlyListed.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+					t.Errorf("PublishCollection = %v, want ErrInvalidInput", err)
 				}
 				if _, err := db.DuplicateCollection(ctx, owner, onlyListed.ID); err != nil {
 					t.Errorf("DuplicateCollection referencing the listed catalog = %v, want nil", err)
@@ -355,8 +355,8 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 
 			t.Run("scoped", func(t *testing.T) {
 				corrupt(scopedID, "Scoped")
-				if _, err := db.TakeCollection(ctx, taker, withScoped.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
-					t.Errorf("TakeCollection = %v, want ErrInvalidInput", err)
+				if _, err := db.PublishCollection(ctx, owner, withScoped.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+					t.Errorf("PublishCollection = %v, want ErrInvalidInput", err)
 				}
 				if _, err := db.DuplicateCollection(ctx, owner, withScoped.ID); !errors.Is(err, ErrInvalidInput) {
 					t.Errorf("DuplicateCollection = %v, want ErrInvalidInput", err)
@@ -366,71 +366,23 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 	}
 }
 
-// New entries sharing a Key compare TakenFrom by the id it names, so two
-// entries for one catalog agree without sharing a pointer, and disagree when
-// they name different sources.
-func TestCollectionFormSharedKeyComparesTakenFromByValue(t *testing.T) {
-	form := func(a, b *uuid.UUID) CollectionForm {
-		spec := func(from *uuid.UUID) *NewScopedCatalog {
-			return &NewScopedCatalog{Key: "c1", Type: "movie", Name: "Shared", Provider: "tmdb", Params: "{}", TakenFrom: from}
+// New entries sharing a Key are one catalog, so they must agree on SubKey
+// too: a subscribe writes each with its snapshot key.
+func TestCollectionFormSharedKeyComparesSubKey(t *testing.T) {
+	form := func(a, b string) CollectionForm {
+		spec := func(subKey string) *NewScopedCatalog {
+			return &NewScopedCatalog{Key: "c1", Type: "movie", Name: "Shared", Provider: "tmdb", Params: "{}", SubKey: subKey}
 		}
 		return CollectionForm{Title: "C", Folders: []FolderData{
 			{Title: "F1", Catalogs: []FolderCatalogRef{{New: spec(a)}}},
 			{Title: "F2", Catalogs: []FolderCatalogRef{{New: spec(b)}}},
 		}}
 	}
-	source := uuid.New()
-	sameSource := source
-	other := uuid.New()
-
-	if err := form(&source, &sameSource).Validate(); err != nil {
-		t.Fatalf("Validate with one source behind two pointers = %v, want nil", err)
+	if err := form("k", "k").Validate(); err != nil {
+		t.Fatalf("Validate with one sub_key = %v, want nil", err)
 	}
-	for name, b := range map[string]*uuid.UUID{"another source": &other, "no source": nil} {
-		err := form(&source, b).Validate()
-		if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "key is shared with a different catalog spec") {
-			t.Errorf("Validate with %s = %v, want the shared-key problem", name, err)
-		}
+	err := form("k", "other").Validate()
+	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "key is shared with a different catalog spec") {
+		t.Errorf("Validate with two sub_keys = %v, want the shared-key problem", err)
 	}
-}
-
-// The link hashes are pinned to literal values, because every stored
-// taken_hash was computed by today's rules. Anything that moves a hash — a
-// field added to, renamed in or reordered in the bundle form, a change to the
-// keys extractBundle hands out, a change to catalogHash's input — makes every
-// linked copy unlink on its next save, even a save that only toggles Public.
-// A new value here needs a plan for the stored taken_hash values first.
-func TestLinkHashesArePinned(t *testing.T) {
-	const consequence = "every stored taken_hash was computed by the old rule, so each linked copy would unlink on its next save"
-	check := func(t *testing.T, what, got, want string) {
-		t.Helper()
-		if got != want {
-			t.Errorf("%s = %s, pinned %s: %s", what, got, want, consequence)
-		}
-	}
-
-	t.Run("catalogHash", func(t *testing.T) {
-		check(t, "catalogHash", catalogHash("80s Horror", "fp:movie:{}"), "8108fc398c31c24ec1f12b61e5c55a7df0cb8c07371477317d76975637db46c2")
-	})
-
-	t.Run("bundleCollectionHash of the fixture", func(t *testing.T) {
-		got, err := bundleCollectionHash(stampRecipeHashes(readTestBundle(t)).Collections[0])
-		if err != nil {
-			t.Fatalf("bundleCollectionHash: %v", err)
-		}
-		check(t, "bundleCollectionHash", got, "366557de5592e438a80f3a08ce54c7b514045bce4f8c90525455f2654e37f1ba")
-	})
-
-	t.Run("collectionHash of the fixture once stored", func(t *testing.T) {
-		db := newTestDB(t)
-		_, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), readTestBundle(t), nil)
-		if err != nil {
-			t.Fatalf("ImportBundle: %v", err)
-		}
-		got, err := collectionHash(collections[0])
-		if err != nil {
-			t.Fatalf("collectionHash: %v", err)
-		}
-		check(t, "collectionHash", got, "3b5582c44e2bd369d276149819c8143f9dc7339bcedcf3884e76278c471d3663")
-	})
 }

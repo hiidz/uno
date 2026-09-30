@@ -15,16 +15,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
+	"github.com/hiidz/uno/internal/tmdbkey"
 	"github.com/hiidz/uno/internal/vault"
 )
 
 // ID stays constant across every profile — identity in the addon protocol
-// comes from the URL path (/u/{token}/...), never from this id.
+// comes from the URL path (/u/{token}/...), never from this id. It is
+// vault.AddonID, which every pushed source carries too.
 // See docs/architecture.md.
 const (
-	ID = "hiidz.uno.catalog"
+	ID = vault.AddonID
 	// Name is also the display name Nuvio's own UI shows for this addon —
 	// api/push.go's pushAddons sets it when upserting Uno's manifest URL
 	// into a profile's addon list.
@@ -45,8 +48,9 @@ const (
 	// catalogCacheMaxAge/catalogStaleRevalidate tell Stremio how long it may
 	// serve a catalog response before refetching — the same values (3h / 1h)
 	// as the real sample in docs/api/samples/catalog-response.json.
-	// There's no server-side response cache, so these are the only thing
-	// keeping Stremio from re-hitting TMDB on every reopen of the app.
+	// They keep Stremio from asking again on every reopen of the app; the
+	// provider's page cache, far shorter, only shares a page between the
+	// clients that do ask.
 	catalogCacheMaxAge     = 10800
 	catalogStaleRevalidate = 3600
 )
@@ -62,22 +66,26 @@ func ManifestPath(token string) string {
 	return "/u/" + token + "/manifest.json"
 }
 
-// Server holds the addon server's two dependencies: reading a profile's
-// current catalog selection (vault) and fetching catalog pages from TMDB
-// (provider).
+// Server holds the addon server's dependencies: reading a profile's
+// current catalog selection (vault), fetching catalog pages from TMDB
+// (provider), and, on a server where each account brings its own TMDB key,
+// the owner's key for each request (keys, nil on a server with one shared
+// key).
 type Server struct {
 	vault    *vault.DB
 	provider *provider.TMDBClient
+	keys     *tmdbkey.Keys
 }
 
-// New builds a Server. Both arguments are required — the caller (api.New)
-// already guarantees non-nil, but New is exported, so it checks again
-// rather than relying on that guarantee holding for every future caller.
-func New(v *vault.DB, p *provider.TMDBClient) (*Server, error) {
+// New builds a Server. v and p are required — the caller (api.New) already
+// guarantees non-nil, but New is exported, so it checks again rather than
+// relying on that guarantee holding for every future caller. keys is nil on
+// a server with one shared TMDB key.
+func New(v *vault.DB, p *provider.TMDBClient, keys *tmdbkey.Keys) (*Server, error) {
 	if v == nil || p == nil {
 		return nil, errors.New("addon: vault and provider must not be nil")
 	}
-	return &Server{vault: v, provider: p}, nil
+	return &Server{vault: v, provider: p, keys: keys}, nil
 }
 
 // Public wraps a handler on the public, unauthenticated addon surface:
@@ -127,13 +135,10 @@ type manifest struct {
 	Catalogs    []manifestCatalog `json:"catalogs"`
 }
 
-// ManifestID is the manifest-facing id for one catalog: provider-prefixed so
-// it's the same string that would later round-trip as Nuvio's collections
-// catalogSources[].catalogId — see the "Push wire shape" section of
-// docs/data-model.md and the sample in
-// docs/api/samples/collections-basic.json.
+// ManifestID is the manifest-facing id for one catalog, vault.ManifestID:
+// the same string a pushed collection names it by in catalogSources[].catalogId.
 func ManifestID(c vault.Catalog) string {
-	return c.Provider + "-" + c.ID.String()
+	return vault.ManifestID(c)
 }
 
 // buildManifest builds Stremio's manifest catalog list. Every catalog
@@ -218,8 +223,11 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A cold genre list is fetched with the profile owner's own TMDB key, on
+	// a server where each account brings one.
+	ctx := provider.WithKeySource(r.Context(), s.keys.ForToken(r.Context(), token))
 	httpx.WriteJSON(w, http.StatusOK, buildManifest(selection, func(sc vault.SelectedCatalog) []string {
-		return s.genreNames(r.Context(), sc)
+		return s.genreNames(ctx, sc)
 	}))
 }
 
@@ -229,7 +237,7 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) genreNames(ctx context.Context, sc vault.SelectedCatalog) []string {
 	genres, err := s.provider.GenreExtraOptions(ctx, sc.Type, sc.Params)
 	if err != nil {
-		log.Printf("addon: genre options for catalog %s: %v", ManifestID(sc.Catalog), err)
+		logTMDBFailure("genre options for catalog "+ManifestID(sc.Catalog), err)
 		return nil
 	}
 	names := make([]string, len(genres))
@@ -245,20 +253,41 @@ type catalogResponse struct {
 	StaleRevalidate int             `json:"staleRevalidate"`
 }
 
-// findSelectedCatalog looks up a catalog in one profile's selection by the
-// same id/type pair the manifest handed out (ManifestID + Type).
-//
-// This is also the access check: a catalog id that exists but isn't in this
-// profile's current selection is indistinguishable from one that doesn't
-// exist at all. A leaked or guessed catalog UUID can't be used to pull data
-// through a profile it was never shared with.
-func findSelectedCatalog(selection []vault.SelectedCatalog, catalogType, manifestID string) (vault.Catalog, bool) {
-	for _, sc := range selection {
-		if sc.Type == catalogType && ManifestID(sc.Catalog) == manifestID {
-			return sc.Catalog, true
-		}
+// parseManifestID splits a manifest id back into the provider and catalog id
+// ManifestID joined, reporting false for anything ManifestID can't have
+// written.
+func parseManifestID(manifestID string) (string, uuid.UUID, bool) {
+	catalogProvider, rawID, ok := strings.Cut(manifestID, "-")
+	id, err := uuid.Parse(rawID)
+	return catalogProvider, id, ok && err == nil && id.String() == rawID
+}
+
+// served returns the catalog a catalog route names, with its owner's
+// account and sealed TMDB key, by vault.ServedCatalog: one of the token's
+// profile's own catalogs that is on the TV. That lookup is also the access
+// check, so a leaked or guessed catalog UUID can't pull data through a
+// profile it doesn't belong to, nor a catalog the profile hasn't published.
+// Anything it doesn't find is vault.ErrCatalogNotFound.
+func (s *Server) served(ctx context.Context, token, catalogType, manifestID string) (vault.ServedCatalog, error) {
+	catalogProvider, catalogID, ok := parseManifestID(manifestID)
+	if !ok {
+		return vault.ServedCatalog{}, vault.ErrCatalogNotFound
 	}
-	return vault.Catalog{}, false
+	return s.vault.ServedCatalog(ctx, token, catalogID, catalogType, catalogProvider)
+}
+
+// catalogPage is one page of metas, empty and fetched from nowhere past
+// TMDB's pagination ceiling. It is never nil: {"metas":null} is not a valid
+// empty catalog.
+func (s *Server) catalogPage(ctx context.Context, catalogType, params, genre string, page int) ([]provider.Meta, error) {
+	if page > maxCatalogPage {
+		return []provider.Meta{}, nil
+	}
+	metas, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
+	if err != nil || metas != nil {
+		return metas, err
+	}
+	return []provider.Meta{}, nil
 }
 
 // parseCatalogPath splits the catalog route's {rest...} tail into the
@@ -293,49 +322,29 @@ func parseCatalogPath(r *http.Request) (manifestID string, page int, genre strin
 // Stremio appends extra props as an additional path segment
 // rather than a query string, so a wildcard tail is the only way to capture
 // both forms with one route.
+//
+// It serves the catalogs the manifest lists — the token's profile's
+// catalogs on the TV (vault.ServedCatalog) — and answers 404 for any other.
 func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
-	token := r.PathValue("token")
 	catalogType := r.PathValue("type")
-
-	profileID, err := s.vault.ResolveProfileID(r.Context(), token)
-	if err != nil {
-		if errors.Is(err, vault.ErrProfileNotFound) {
-			http.NotFound(w, r)
-			return
-		}
-		log.Printf("addon: catalog: resolving profile: %v", err)
-		http.Error(w, "failed to resolve profile", http.StatusInternalServerError)
-		return
-	}
-
 	manifestID, page, genre := parseCatalogPath(r)
 
-	selection, err := s.vault.GetPublishedCatalogs(r.Context(), profileID)
+	served, err := s.served(r.Context(), r.PathValue("token"), catalogType, manifestID)
 	if err != nil {
-		log.Printf("addon: catalog: loading catalogs: %v", err)
-		http.Error(w, "failed to load catalogs", http.StatusInternalServerError)
+		catalogNotServed(w, r, err)
 		return
 	}
 
-	catalog, ok := findSelectedCatalog(selection, catalogType, manifestID)
-	if !ok {
-		http.NotFound(w, r)
+	// TMDB is reached with the owner's own key, on a server where each
+	// account brings one.
+	ctx := provider.WithKeySource(r.Context(), s.keys.Sealed(served.Account, served.SealedKey))
+	metas, err := s.catalogPage(ctx, catalogType, served.Params, genre, page)
+	if err != nil {
+		// manifestID comes from the request path, so it is quoted: an
+		// unescaped newline in it would otherwise forge a log line.
+		logTMDBFailure("catalog "+strconv.Quote(manifestID), err)
+		http.Error(w, "upstream error", http.StatusBadGateway)
 		return
-	}
-
-	metas := []provider.Meta{} // {"metas":null} is not a valid empty catalog
-	if page <= maxCatalogPage {
-		metas, err = s.provider.FetchCatalogPage(r.Context(), catalog.Type, catalog.Params, genre, page)
-		if err != nil {
-			// manifestID comes from the request path, so it is quoted: an
-			// unescaped newline in it would otherwise forge a log line.
-			log.Printf("addon: catalog %s: %v", strconv.Quote(manifestID), err)
-			http.Error(w, "upstream error", http.StatusBadGateway)
-			return
-		}
-		if metas == nil {
-			metas = []provider.Meta{}
-		}
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, catalogResponse{
@@ -343,4 +352,28 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 		CacheMaxAge:     catalogCacheMaxAge,
 		StaleRevalidate: catalogStaleRevalidate,
 	})
+}
+
+// catalogNotServed answers a catalog route whose lookup failed: 404 for a
+// catalog the profile doesn't have, 500 for the vault failing.
+func catalogNotServed(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, vault.ErrCatalogNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	log.Printf("addon: catalog: resolving catalog: %v", err)
+	http.Error(w, "failed to resolve catalog", http.StatusInternalServerError)
+}
+
+// logTMDBFailure logs what, a TMDB call the addon couldn't make, and why. A
+// problem with the profile owner's own TMDB key (per-account key mode: they
+// have saved none, or TMDB refuses it) is said as that, apart from TMDB
+// failing, since only the owner can fix it and a keyless owner's TV asks for
+// every row on every load.
+func logTMDBFailure(what string, err error) {
+	if provider.IsKeyError(err) {
+		log.Printf("addon: %s: the profile owner's TMDB key can't be used: %v", what, err)
+		return
+	}
+	log.Printf("addon: %s: %v", what, err)
 }

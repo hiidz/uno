@@ -5,6 +5,10 @@ version. `internal/vault/testdata/schema_latest.sql` is the resulting schema as 
 and a test holds it to a database migrated from empty. Row structs and wire DTOs are in
 `internal/vault/models.go`, all with explicit `snake_case` JSON tags. `internal/vault/db.go`
 opens the database in WAL mode with a 5s `busy_timeout` and foreign keys on, after migrating it.
+Every write transaction begins `IMMEDIATE` (`_txlock=immediate`), taking the write lock up front
+and waiting out `busy_timeout` for it: a deferred one that reads before it writes, as most writes
+do, would fail at once with `SQLITE_BUSY` once another write committed. A read-only
+transaction (`sql.TxOptions{ReadOnly: true}`, `ValidateSelectionAccess`) still begins deferred.
 
 **Migrations.** `PRAGMA user_version` is the schema version. On every start, `InitDB` first backs
 the database up, then applies each pending migration in its own transaction on a connection with
@@ -16,9 +20,10 @@ rehearsal are described in `docs/configuration.md` → *Database lifecycle*.
   old one. It imports only the standard library, never live Uno code, so what it does can't
   drift when that code changes (`TestMigrationsImportOnlyTheStandardLibrary`). A check that needs
   live code belongs in the dry run and the tests.
-- **A migration makes no network calls, and keeps every id and version.** Catalog, collection
-  and folder ids, profile tokens, and every `version` and `pushed_version` are what Nuvio holds
-  (see *Push wire shape*). A migration that changed them would force a re-push.
+- **A migration makes no network calls, and keeps every id and the push state.** Catalog,
+  collection and folder ids and profile tokens are what Nuvio holds (see *Push wire shape*), and
+  whether a collection needs a push carries over through migration 5's backfill. A migration that
+  changed them would force a re-push.
 - **Migration 1 (`0001_baseline.go`) is the schema from before versioning, with `IF NOT EXISTS`
   throughout.** A database created before migrations (version 0, tables present) and an empty
   one take the same path. It then compares every table's columns with the baseline by name, in
@@ -45,6 +50,47 @@ rehearsal are described in `docs/configuration.md` → *Database lifecycle*.
     write sets it.
   - The dry run checks every catalog's params before migrating against its recipe after
     (`docs/configuration.md`, *Database lifecycle*).
+- **Migration 3 (`0003_publications.go`) replaces the public flag and linked copies with
+  publications and subscriptions** (see *Publications and subscriptions* below).
+  - Every public row that was not a linked copy becomes a live publication of its content as it
+    stood: a snapshot taken with no validation and no network, exactly what Community showed.
+    Publication ids are derived from the source's id, so a database always migrates to the same
+    ids. A collection that uses a catalog the next step makes a subscription stays unpublished,
+    since only that catalog's publisher shares it (`requireOwnCatalogs` refuses the same
+    publish).
+  - Every linked copy whose source became a publication becomes a subscription to it. It is in
+    step, its `taken_hash` the publication's content hash, when the source still hashes to the
+    copy's `taken_hash` by migration 2's link hashes, or when the copy already equals its source
+    (a `taken_hash` computed under an older hash rule matches neither, and would show an update
+    that changes nothing); otherwise it reads as having an update. A
+    copied collection's scoped catalogs get their `sub_key` from the catalog they were taken
+    from, and its folders theirs by position, the pairing Update used.
+  - Every other link, to a private source, a source that is itself a copy, or a public source
+    left unpublished, is dropped. The copy keeps its content.
+  - `catalogs` and `collections` are rebuilt without `is_public`, `taken_from` and `taken_hash`,
+    copying every row column by column. The rebuild also drops the legacy `is_default` columns
+    where a database still has them, and makes `catalogs.recipe_hash` `NOT NULL`.
+  - Its notes count what it published, the public collections it left unpublished, each kind
+    of link's subscriptions in and out of step (and the in-step ones only because the copy
+    equals its source), and the links it dropped.
+    The dry run runs today's form validators and the offline recipe rules over every
+    publication it creates, and reports any they refuse without failing.
+- **Migration 4 (`0004_accounts.go`) adds `accounts`** (see `accounts` below), empty: the TMDB
+  key each Nuvio account saves on a server in per-account key mode.
+- **Migration 5 (`0005_pushed_hash.go`) replaces the version counters with
+  `collections.pushed_hash`** (see *Key rules*).
+  - A collection whose `version` equals its `pushed_version` is as push last sent it, so it gets
+    the hash of its push JSON as it stands, built by the migration's own frozen copy of the push
+    payload (`sentCollection`: the same keys, order, omitted empties and escaping). Every other
+    collection is left NULL, which reads as needing a push.
+  - It then drops `version` and `pushed_version`, and adds `folder_catalogs_by_catalog`, which the
+    addon's catalog route and a catalog delete look a catalog's folder refs up by.
+  - Its note counts the hashes it backfilled and the collections it left pending. The dry run
+    recomputes every backfilled hash with the vault's live payload and names any it disagrees on.
+  - One case reads wrong: a database whose catalog deletes never bumped `version` (every build
+    before migrations) can hold a collection whose `version` equals `pushed_version` while
+    Nuvio still has a source that delete removed. It backfills as pushed; the next push of that
+    profile, which sends every collection on Home, corrects Nuvio.
 
 ```mermaid
 erDiagram
@@ -55,6 +101,38 @@ erDiagram
   FOLDERS ||--o{ FOLDER_CATALOGS : contains
   CATALOGS ||--o{ FOLDER_CATALOGS : "referenced via"
   RECIPES ||--o{ CATALOGS : "asked for by"
+  CATALOGS |o--o| PUBLICATIONS : "published as"
+  COLLECTIONS |o--o| PUBLICATIONS : "published as"
+  PUBLICATIONS ||--o{ SUBSCRIPTIONS : "followed by"
+  SUBSCRIPTIONS |o--|| CATALOGS : "copy"
+  SUBSCRIPTIONS |o--|| COLLECTIONS : "copy"
+  ACCOUNTS ||..o{ PROFILES : "keys every profile of"
+
+  PUBLICATIONS {
+    uuid id PK "kept across republishes"
+    uuid owner_id FK
+    string kind "catalog | collection"
+    uuid catalog_id FK "nullable — the source; NULL once deleted"
+    uuid collection_id FK "nullable — the source; NULL once deleted"
+    string title
+    json snapshot "format uno-publication, version 1"
+    string content_hash "sha256 hex of snapshot"
+    int catalog_count
+    int folder_count
+    int subscriber_count
+    string status "live | withdrawn"
+    string published_at
+    string updated_at
+  }
+  SUBSCRIPTIONS {
+    uuid id PK
+    uuid owner_id FK
+    uuid publication_id FK
+    uuid catalog_id FK "nullable — the copy, for a catalog"
+    uuid collection_id FK "nullable — the copy, for a collection"
+    string taken_hash "the content hash the copy was last written from"
+    string created_at
+  }
 
   RECIPES {
     string hash PK "sha256 hex of uno-recipe/1, type, provider and params"
@@ -75,12 +153,10 @@ erDiagram
     string name
     string recipe_hash FK "its recipe: type, provider and params"
     uuid owner_id FK
-    bool is_public
     uuid collection_id FK "nullable — NULL means listed"
     int home_sort_order "nullable — NULL means not on the TV"
     bool show_in_home
-    uuid taken_from FK "nullable — the catalog a Take copied this from; NULL once unlinked"
-    string taken_hash "nullable — listed copies only: the original's catalogHash when last in step"
+    string sub_key "nullable — in a subscribed collection, its snapshot key"
     string created_at
     string updated_at
   }
@@ -88,19 +164,15 @@ erDiagram
     uuid id PK
     string title
     uuid owner_id FK
-    bool is_public
-    bool pin_to_top
+    bool pin_to_top "Show first, as last pushed; only push writes it"
     string view_mode
     bool show_all_tab
     string backdrop_image_url
     bool focus_glow_enabled "defaults to 1, matching Nuvio"
     int home_sort_order "nullable — NULL means not on the TV"
-    int version "starts at 1, +1 on every content write; never touched by push"
-    int pushed_version "nullable — NULL means never pushed; the version push last read and sent"
-    uuid taken_from FK "nullable — the collection a Take copied this from; NULL once unlinked"
-    string taken_hash "nullable — the original's collectionHash when last in step"
     string created_at
     string updated_at
+    string pushed_hash "nullable — sha256 hex of the push JSON push last sent; NULL means never pushed"
   }
   FOLDERS {
     uuid id PK
@@ -116,6 +188,7 @@ erDiagram
     string hero_backdrop_url
     string hero_video_url
     string title_logo_url
+    string sub_key "nullable — in a subscribed collection, its snapshot key"
   }
   FOLDER_CATALOGS {
     uuid folder_id PK_FK
@@ -157,21 +230,50 @@ overwrites** the stored UUID on drift rather than prompting; nothing acts on the
 `profiles.token` has exactly one job: identifying a profile in the public addon URLs. It is not a
 write credential.
 
+## `accounts`
+
+```sql
+CREATE TABLE accounts (
+    nuvio_user_id       TEXT PRIMARY KEY,  -- Nuvio auth.users.id, as profiles.nuvio_user_id
+    tmdb_key_ciphertext BLOB NOT NULL,     -- nonce || AES-GCM sealed key
+    tmdb_key_last4      TEXT NOT NULL,     -- the key's last four characters, shown to its owner
+    updated_at          TEXT NOT NULL
+);
+```
+
+One row per Nuvio account that has saved its own TMDB key, on a server in per-account key mode
+(`docs/configuration.md` → *TMDB key modes*). It belongs to the account, not a profile: every
+profile of the account uses it, in the builder and on the addon routes. There is no foreign key to
+`profiles`, whose `nuvio_user_id` is not unique; a row outlives the account's profiles until its
+owner removes the key.
+
+- **Sealed, never in the clear.** `internal/tmdbkey` seals the key with AES-256-GCM under
+  `UNO_SECRET`, with the account id as additional data, so a ciphertext copied to another row
+  doesn't open. The vault stores and returns the sealed bytes only (`SetAccountKey`,
+  `AccountKey`, `AccountKeyByToken`, `DeleteAccountKey`, and `ServedCatalog`'s join).
+- **`tmdb_key_last4`** is all its owner is ever shown of the key.
+- **Replace and remove.** Saving again replaces the row; removing deletes it. A server that loses
+  `UNO_SECRET` can't open any row, and each owner enters the key again.
+- **Shared mode** neither reads nor writes the table; rows stay, unused.
+
 ## Key rules
 
 - **A catalog has a scope: listed or scoped to one collection.** `catalogs.collection_id` is
   `NULL` for a listed catalog (in the library, usable on home and in any of the owner's folders)
   or a collection id for one scoped to exactly that collection (hidden from the library, usable
   only in that collection's folders, deleted with it). `CreateUserCatalog`/`UpdateUserCatalog`
-  enforce that the target collection is owned by the same profile, that a scoped catalog is never
-  public, and that a scoped catalog is never on the home screen — the schema's own
-  `CHECK (collection_id IS NULL OR (is_public = 0 AND home_sort_order IS NULL))` exists as a
-  backstop and would surface as a 500, so the Go layer rejects all three before that CHECK is ever
-  hit. Demoting a listed catalog into a collection (`UpdateUserCatalog` with `collection_id` set)
+  enforce that the target collection is owned by the same profile and not a subscribed copy
+  (`requireWritableCollection`), and that a scoped catalog is never on the home screen — the
+  schema's own `CHECK (collection_id IS NULL OR home_sort_order IS NULL)` exists as a backstop and
+  would surface as a 500, so the Go layer rejects it before that CHECK is ever hit. A scoped
+  catalog is never published on its own: it is shared with its collection. Demoting a listed
+  catalog into a collection (`UpdateUserCatalog` with `collection_id` set)
   additionally requires it to be off the home screen (`requireNotOnHome`, checking
   `home_sort_order IS NULL` directly on the row) and every existing folder ref to it to already be
-  inside the target collection; promoting a scoped catalog back to listed is always allowed, and
-  happens through its collection's save (a `catalog_edits` entry with `move_to_library`, below).
+  inside the target collection, and withdraws its publication if it has a live one (the
+  `publications_withdraw_on_scope` trigger); promoting a scoped catalog back to listed is always
+  allowed, and happens through its collection's save (a `catalog_edits` entry with
+  `move_to_library`, below).
   `GetUserCatalogs` (the library) returns listed catalogs
   only — a scoped one is reached through its owning collection's own response instead.
 - **A scoped catalog is written only through its collection's save.** `UpdateUserCatalog` and
@@ -189,8 +291,9 @@ write credential.
   reference a catalog only if `internal/vault/access.go`'s `validateFolderRefs` accepts it: the
   catalog's `owner_id` must equal the collection's `owner_id`, and the catalog's `collection_id`
   must be `NULL` (listed) or equal to that same collection (scoped to it already). There is no
-  "or public" branch anywhere in a write path — a community catalog can only enter another
-  profile's graph through Take (a copy with a fresh id), never through a live reference.
+  "or public" branch anywhere in a write path — a published catalog can only enter another
+  profile's graph as a copy with fresh ids (a subscribe or a fork), never through a live
+  reference.
   `CreateUserCollection` has no collection id yet, so its folders may reference listed catalogs
   only. `CollectionWithFolders.Catalogs` carries every catalog a collection's folders reference,
   listed or scoped, so the editor never needs the library to render a folder.
@@ -204,53 +307,13 @@ write credential.
 - **`catalogs.recipe_hash` names the catalog's recipe.** Its type, provider and params live in
   `recipes`, one row per distinct recipe (see *Recipes* below). Every catalog read joins its
   recipe in, so each catalog still carries `type` and `params` on the wire, and `recipe_hash`
-  never reaches it. `GetCommunityCatalogs` collapses rows that share one, and the import check
-  offers the caller's listed catalogs with the same one. A copy shares its source's recipe, so
-  an original and its copy always hash on the same terms.
-- **A Take is a linked copy.** `taken_from` names the original, and `taken_hash` is the
-  original's content hash from when the copy was last in step with it. Both are `json:"-"`, and
-  neither is rendered as attribution. The wire carries `linked` instead: a collection is linked
-  while `taken_from` is set, and a catalog while `taken_from` is set and it is listed.
-  - **Where the link lives.** A listed catalog Take links the catalog. A collection Take links
-    the collection: every catalog copied inside it also carries `taken_from`, which is how Update
-    pairs it with its source, but no `taken_hash`.
-  - **One link per source.** `catalogs_one_link` (unique on `(owner_id, taken_from)` for listed
-    rows) and `collections_one_link` (unique on `(owner_id, taken_from)`) are the only check. A
-    second Take hits one of them, and `takeConflict` turns the unique violation into
-    `ErrConflict` (409).
-  - **The hashes** (`internal/vault/bundle.go`). `catalogHash` is a sha256 of the name and
-    recipe hash. `collectionHash` is a sha256 of the collection's bundle form (`extractBundle`,
-    every referenced catalog in the collection's own list), with each catalog's params replaced
-    by its recipe hash. Whatever the bundle form leaves out — ids, scope, `is_public`,
-    `pin_to_top`, the home fields, `version`, timestamps — the hash leaves out too. A content
-    field added to the bundle form is hashed with no other change, which also shifts every
-    stored `taken_hash` once: Community then offers each linked copy an Update that changes
-    nothing but `taken_hash`, and any save of a copy before that Update — even one that only
-    toggles `is_public` — unlinks it. `TestLinkHashesArePinned` (`bundle_test.go`) holds all
-    three hashes to literal values, so such a change fails a test rather than landing silently.
-    Migration 2 holds frozen copies of both, over fingerprints and over recipe hashes, and
-    rewrites every `taken_hash` with them (its bullet at the top of this file).
-  - **Community flags.** `taken` means the caller holds a linked copy. `update_available` means
-    that copy's `taken_hash` differs from the original's hash now. Among community catalogs that
-    share a recipe, the row shown is the one the caller is linked to, otherwise the oldest.
-  - **A save that changes content unlinks.** `UpdateUserCatalog` clears both columns when the
-    saved name and recipe no longer hash to `taken_hash`, or the catalog moves into a
-    collection. `UpdateUserCollection` clears them when the saved tree no longer hashes to
-    `taken_hash`, or any catalog edit moves a catalog to the library. A moved catalog's own
-    `taken_from` is cleared too, so it never reads as a Take of its own. Toggling `is_public` or `pin_to_top` and
-    the selection writes of push never unlink.
-  - **Update** (`internal/vault/link.go`) compares the original's hash now, the copy's hash now,
-    and `taken_hash`. A copy equal to its original only has `taken_hash` rewritten. A copy that
-    no longer matches `taken_hash` was changed some way a save didn't unlink, so Update unlinks
-    it, commits that, and returns `ErrConflict` rather than overwrite it. Anything else is
-    rewritten through the same update core a save uses: the original's content, with the copy's
-    `is_public`, `pin_to_top`, home placement and `pushed_version` kept, folders matched by position and
-    catalogs by `taken_from`, and `version` bumped by one. An original made private is not found
-    (404), and a deleted one unlinks its copies (`taken_from` is `ON DELETE SET NULL`).
-  - **Community Duplicate** is a Take without the link: no `taken_from` anywhere in the copy, the
-    original's title kept, and any number of them beside a Take.
+  never reaches it. The import check offers the caller's listed catalogs with the same one. A
+  copy shares its snapshot's recipe.
+- **Sharing is by publication.** A row is shared by publishing it as a frozen snapshot, and
+  another profile follows it through a subscribed copy; see *Publications and subscriptions*
+  below.
 - **`catalogs.id` is permanent once created** — never rename or recycle it. It is baked into
-  `addon.ManifestID` and therefore into Nuvio's `catalogSources[].catalogId`.
+  `vault.ManifestID` and therefore into Nuvio's `catalogSources[].catalogId`.
 - **`recipes.params` is opaque `TEXT` at the schema level.** For `provider = 'tmdb'` there is an
   app-level shape in `internal/provider` (`TMDBMovieParams` / `TMDBTVParams` on
   `TMDBCommonParams` + `BaseParams`), with `Validate()` covering cross-field rules, dispatched by
@@ -260,17 +323,32 @@ write credential.
   recipe, and every write that repoints a catalog at another recipe keeps it. `UpdateUserCatalog`
   reads the stored type in its own opening `SELECT` and rejects the write with
   `ErrInvalidInput` if the incoming form's `type` differs; a collection's catalog edit and a
-  linked copy's Update refuse a different type the same way. A catalog's type is baked into the
+  subscribed catalog's Update refuse a different type the same way, and a subscribed
+  collection's Update writes a snapshot catalog of another type as a new catalog rather than an
+  edit. A catalog's type is baked into the
   pushed collections blob (each folder source names its catalog's type), so changing it would
-  alter what Nuvio should have without bumping any collection's `version`. The catalog editor
+  alter what Nuvio should have with no save of any collection. The catalog editor
   already locks the field once a row exists; this is the write path enforcing the same rule
   server-side. Duplicate is the supported way to get a different-typed copy.
 - **Two distinct removal mechanisms — don't conflate them.**
-  - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped single `DELETE`,
-    all downstream cleanup via `ON DELETE CASCADE`, and a recipe the delete leaves unused goes
-    with it (*Recipes*, below). A public row leaves Community, but every copy
-    another profile already took survives: those copies are independent rows whose `taken_from`
-    is `ON DELETE SET NULL`, so the delete only unlinks them.
+  - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped, one
+    transaction, all downstream cleanup via `ON DELETE CASCADE`. A deleted catalog answers 404 on
+    the addon at once, and a TV that still shows it gets an empty row or tile until it syncs
+    (`docs/architecture.md`, addon section), so **nothing Nuvio may still hold is deleted**
+    (`internal/vault/delete_guard.go`). Checked in the delete's transaction against the rows'
+    own Home state, it refuses with `ErrConflict`, its message the reason alone:
+    - a catalog with its own Home row (`home_sort_order` set, Discover-only included), or a
+      collection on Home: "Take it off Home and push first.";
+    - a catalog that a collection on Home uses (`tree.Catalogs`, the first in Home order named):
+      "Remove it from “X” and push first.";
+    - any catalog while one of the profile's collections on Home has `needs_push`: "Push first:
+      Nuvio may still show it in a collection." The pushed hash can't say which catalogs that
+      collection's last pushed version used, so this one holds every catalog.
+
+    So a deleted listed catalog leaves only folders of collections off Home, by cascade, and no
+    collection on Home ever loses a source to a delete. Deleting a published row withdraws its publication, and every
+    copy another profile holds survives, marked withdrawn (*Publications and subscriptions*,
+    below). Deleting a subscribed copy removes its subscription.
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
     into `catalogs.home_sort_order`/`show_in_home` and `collections.home_sort_order`
     (`saveCatalogSelectionTx`/`saveCollectionSelectionTx`, `internal/vault`). Every owned row's
@@ -278,7 +356,7 @@ write credential.
     an id that isn't owned (or, for a catalog, isn't listed — `AND collection_id IS NULL`) affects
     0 rows and is `ErrInvalidInput` naming the id. There is no separate join table and no separate
     access-check query — the `UPDATE`'s own `WHERE` clause is the validation.
-- **`catalogs.show_in_home` drives the manifest's per-catalog genre extra, but the addon server
+- **`catalogs.show_in_home` drives the manifest's per-catalog genre extra, but the manifest
   reads it through `vault.GetPublishedCatalogs`, not the raw column.** `GetPublishedCatalogs` is
   the union of every owned catalog with `home_sort_order`
   non-`NULL` (its own `show_in_home`), plus every catalog referenced by a folder of a collection
@@ -291,19 +369,34 @@ write credential.
   Nuvio desktop and Stremio read the required extra. `docs/architecture.md`'s addon-server
   section covers both.
   `GetCurrentCatalogSelection` (the narrower `home_sort_order IS NOT NULL` query)
-  remains the pre-push validation/selection-editor view; only the addon server needs the wider
-  published set.
-- **`collections.version` bumps on every content write (`UpdateUserCollection`,
-  `UpdateTakenCollection`), starting at 1 on insert (`CreateUserCollection`, `TakeCollection`,
-  `DuplicateCollection`, `DuplicateCommunityCollection`) — push never touches it.**
-  `collections.pushed_version` is stamped by `SaveSelectionsForPush` with the version
-  `pushCollections` read for that collection *before* calling Nuvio, for every collection in the
-  pushed selection, and only there. `NULL` means never pushed. The frontend flags a pending change
-  when `version !== pushed_version` (`web/src/features/home/changes.ts`) — an integer compare, not
-  a clock, so a Save landing between push's read and its local write (even inside the same second)
-  is never mistaken for pushed.
-- **No cascade on `owner_id`** (`catalogs`/`collections`). Irrelevant until profile deletion
-  exists; revisit then.
+  remains the pre-push validation/selection-editor view; only the manifest needs the wider
+  published set. The addon's catalog route checks that same set for the one catalog it is asked
+  for (`ServedCatalog`), so it serves exactly what the manifest lists.
+- **`collections.pin_to_top` (Show first) is written only by push**, from its selection's entry
+  for each collection it puts on Home (`saveCollectionSelectionTx`), in the same statement as
+  `home_sort_order`. A collection save never writes it (the form has no pin), a new collection
+  (a create, subscribe, fork, Duplicate or import) starts unpinned, and one push leaves off Home
+  keeps its last pin, which putting it back on Home starts from. Like Home or Discover for a
+  catalog, it is a pending edit on the Home pane until push.
+- **`collections.pushed_hash` is the hash of what push last sent for the collection**:
+  `vault.PushHash`, sha256 hex, over the exact push JSON (`PushJSON`, *Push wire shape*) that
+  `pushCollections` built and sent *before* the local write, stamped by `SaveSelectionsForPush`
+  for every collection in the pushed selection, and only there. `NULL` means never pushed; a new
+  collection (a create, subscribe, fork, Duplicate or import) starts there.
+  - **`needs_push`** is on every collection read: `true` when the collection is on Home and the
+    hash of what push would send for it now, with its stored `pin_to_top`, differs from
+    `pushed_hash` (a `NULL` one included). Off Home it is always `false`. The Home pane lists it
+    as "changed since it was last pushed" (`web/src/features/home/changes.ts`).
+  - So Home flags exactly the edits that change what Nuvio holds — a folder's catalogs, genre or
+    images, a title, a setting — and nothing else: a rename
+    and back, a save that changes nothing, or a recipe-only edit (a source names its catalog by
+    id and type; the addon serves the recipe live) leaves it unflagged.
+  - A Save landing between push's read and its local write leaves the row hashing to something
+    other than what push sent, so it still reads as needing a push.
+  - If the push JSON ever gains a field, every collection reads as needing a push once, which is
+    right: Nuvio lacks the field.
+- **No cascade on `owner_id`** (`catalogs`/`collections`). Irrelevant until
+  profile deletion exists; revisit then.
 - **`folder_catalogs.genre` narrows one folder reference, not the catalog.** It is a genre
   *name* from the catalog's manifest `genre` extra (`provider.GenreExtraOptions`), `''` for
   unfiltered. Push sends it as the folder source's `genre`, and Nuvio sends that back as the
@@ -312,8 +405,9 @@ write credential.
   TMDB id because the name is what goes over the wire both ways. It is not validated against the
   recipe on save: a later recipe edit can leave a stored genre outside the options (now required
   or excluded), and the addon path then serves that row unfiltered, the same as any unknown
-  extra. The collection editor flags that case rather than clearing it. Take and Duplicate carry
-  it onto the copy (`extractBundle` keeps each ref's genre). On the wire each folder carries an ordered
+  extra. The collection editor flags that case rather than clearing it. A publication's snapshot,
+  and so every subscribe, fork and Update, and a Duplicate carry it onto the copy
+  (`extractBundle` keeps each ref's genre). On the wire each folder carries an ordered
   `refs: [{catalog_id, genre}]` (`vault.FolderRef`), not a list of catalog ids, because one
   catalog can be two refs. A genre picked in Nuvio's own editor doesn't survive a push, because
   push rebuilds every Uno-managed collection from Uno's data.
@@ -334,8 +428,9 @@ write credential.
   scoped catalogs included), the cover emoji and the media URLs. An empty `view_mode` or
   `tile_shape` is stored as `TABBED_GRID` or `POSTER`, which is what every Nuvio client shows
   for one (see "Push wire shape" below). So an untouched editor save writes back exactly what is
-  stored, and never unlinks a linked copy. A Take, Duplicate or Update writes the values it read
-  without normalizing them, so a copy hashes like its original. Rows written before
+  stored, and a published row reads as unchanged after one. A publish snapshots the values it
+  reads, and a subscribe, fork, Update or Duplicate writes the values it reads, without
+  normalizing them, so a subscribed copy snapshots exactly like its publication. Rows written before
   normalization can still hold `''` or padding; Preview and the editor read an empty value the
   way Nuvio does.
 - **`folders.tile_shape` defaults to `'LANDSCAPE'` at the schema level**, but every write sends
@@ -347,21 +442,21 @@ write credential.
   the wire. Every insert sets both to the same instant; every update rewrites only `updated_at`.
 - **Legacy `is_default` columns.** `catalogs.is_default` and `collections.is_default`
   (`INTEGER NOT NULL DEFAULT 0`) are not in the baseline schema and are named nowhere in Go.
-  Prod's database, created before they were removed, still carries them. Migration 1 accepts them
-  with that exact definition and notes them. Every insert omits the column, so the default
-  satisfies `NOT NULL`. Databases created since don't have them. Dropping them takes a
-  migration.
+  A database created before they were removed carries them, and migration 1 accepts them with
+  that exact definition and notes them. Migration 3's rebuild of both tables drops them, so no
+  database past it has them.
 - **Nuvio appearance fields.** `collections.focus_glow_enabled` (the TV's focus glow on the
   collection's home-screen folder cards), `folders.focus_gif_url`/`focus_gif_enabled` (an
   animated GIF played over a folder tile while it's focused), and
   `folders.hero_backdrop_url`/`hero_video_url`/`title_logo_url` (hero media that Nuvio's own
-  editor labels "(Modern Home)") are stored, edited in the collection editor, copied by
-  Take/Duplicate, and pushed. Uno's Preview renders none of them. The two flags default to `1`
-  because Nuvio reads an absent flag as on. Every URL among them, plus
+  editor labels "(Modern Home)") are stored, edited in the collection editor, carried by a
+  publication's snapshot and every copy, and pushed. Uno's Preview renders none of them. The two
+  flags default to `1` because Nuvio reads an absent flag as on. Every URL among them, plus
   `collections.backdrop_image_url`, must be an absolute `http`/`https` URL under 2048 characters
-  — `CollectionForm.Validate` enforces it on save, and on Take/Duplicate against the form built
-  from the source. Uno never renders these, but Nuvio's clients do, and a Take carries them into
-  a profile that didn't author them, so a `javascript:` or `data:` value must not reach the push.
+  — `CollectionForm.Validate` enforces it on save, on a publish, and on a subscribe, fork, Update
+  or Duplicate against the form built from the snapshot or source. Uno never renders these, but
+  Nuvio's clients do, and a subscribe carries them into a profile that didn't author them, so a
+  `javascript:` or `data:` value must not reach the push.
 - **`collections.backdrop_image_url` is stored, editable in the collection editor, pushed to
   Nuvio, and never rendered by Uno.** It is a collection-level field, and a collection renders on
   home as a row of folder tiles rather than as its own page, so no current surface wants it.
@@ -403,6 +498,9 @@ write credential.
   `web/src/features/library/useLibrary.ts`, `web/src/features/home/preview.ts`,
   `web/src/features/collections/collectionForm.ts`) assert the no-`null` rule unconditionally,
   and one nil slice on the wire makes all four wrong.
+- **An id list binds as one parameter.** Every query over a list of ids reads it with
+  `IN (SELECT value FROM json_each(?))`, bound to the JSON array `idsJSON` makes, so a list of
+  any length is one parameter and never nears SQLite's parameter limit.
 
 ## Recipes
 
@@ -431,24 +529,122 @@ asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes
   never takes one from a caller, so a hash never names content other than its own.
   - `TestRecipeHashIsPinned` holds it to a literal, and migration 2 holds a frozen copy of it
     and of the canonical form.
-  - Changing either changes every stored `recipe_hash`, and every `taken_hash` built over them.
-    So it needs a migration that rewrites both.
+  - Changing either changes every stored `recipe_hash` and the params inside every snapshot. So it needs a migration that rewrites them, and
+    the subscriptions' `taken_hash` with them.
 - **Stored with the write that uses it.** `ensureRecipe` inserts a recipe unless it is stored
   already, in the same transaction as the catalog write that points at it:
-  - `insertCatalog`, which a catalog save, a Take and a collection save's new entries all go
-    through;
+  - `insertCatalog`, which a catalog save, a subscribe or fork and a collection save's new
+    entries all go through;
   - `UpdateUserCatalog`;
-  - a collection save's catalog edit.
+  - a collection save's catalog edit;
+  - a subscribed catalog's Update.
 
-  A linked copy's Update points the copy at the recipe its original already holds.
+  A snapshot carries every recipe's params inline, so a copy never needs the publisher's recipe
+  row, which the publisher's later edits may have deleted.
 - **Deleted once unused.** Two triggers delete a recipe as soon as no catalog references it, in
   the transaction of the change that left it unused. `recipes_drop_unused_on_delete` covers a
   deleted catalog, cascades included: a collection's delete, and the orphan cleanup of a
   collection save. `recipes_drop_unused_on_repoint` covers a catalog repointed at another
   recipe. The `catalogs_by_recipe` index keeps their check cheap.
-- **Copies share.** A Take, a Duplicate and a linked copy's Update point the copy at its
-  source's recipe. `changesNothing`, the Community collapse and the import check's matches all
-  compare `recipe_hash`.
+- **Copies share.** A subscribe, a fork, an Update and a Duplicate write the recipe they copy,
+  which is the same recipe row whenever it is still stored. `changesNothing` and the import
+  check's matches compare `recipe_hash`.
+
+## Publications and subscriptions
+
+**A row is shared by publishing it, and followed by subscribing to it.** Publishing freezes
+the row's content as a snapshot; the owner's later edits stay private until they publish
+again. Another profile subscribes to a publication and gets a copy of the snapshot as its own
+rows, which Update brings up to a newer snapshot. `internal/vault/publications.go`,
+`subscriptions.go`, `community.go` and `snapshot.go`.
+
+- **The snapshot** (`Snapshot`, format `uno-publication`, version 1) is the bundle form with
+  every catalog's params inline, for a collection its own fields and folders, and every catalog
+  and folder under a **stable key**: the first 16 hex digits of the sha256 of the publication's
+  id and the source row's id (`stableKey`). The same row has the same key in every snapshot of
+  one publication, which is how Update pairs a copy with a newer snapshot. A collection's
+  snapshot holds every catalog its folders reference, listed or scoped, in the order they are
+  first referenced, once each.
+  - **The content hash** is the sha256 of the snapshot's stored bytes. It is the publication's
+    `content_hash`. `TestSnapshotIsPinned` holds the bytes
+    to literal hashes, and migration 3 holds a frozen copy of the format. Changing what a
+    snapshot holds or how it encodes changes every content hash, so it needs a migration that
+    re-serializes the stored snapshots and remaps every subscription's `taken_hash`; otherwise
+    every subscriber sees an update that changes nothing.
+- **Publish** (`PublishCatalog`, `PublishCollection`) snapshots an owner's listed catalog or
+  collection. It runs the form validators the snapshot's copies are written through and the TMDB
+  recipe check over every catalog it shares, which is the consent to share a private library
+  catalog a collection references. It reads and checks through the pool, then reads the source
+  again inside the write transaction and writes only if its snapshot is unchanged, so a source
+  edited while TMDB was checking it is `ErrConflict` rather than published unchecked. A catalog
+  inside a collection and a subscribed copy are refused (`ErrInvalidInput`), and so is a
+  collection that references a catalog its owner subscribes to (`requireOwnCatalogs`): only
+  its publisher shares a publication. A copy that is detached, forked or duplicated is the
+  caller's own, and publishes like any other row. A duplicated collection keeps referencing the
+  same listed catalogs, so a collection using a subscribed one publishes once that catalog is
+  detached, or replaced in its folders by a duplicate of it; the refusal says so.
+  - **Republishing** rewrites the same publication row: its id and `published_at` are kept, and
+    a withdrawn publication is live again.
+  - **The owner's row** carries `publication {id, status, changed_since_publish}`. The flag is
+    set when the row as it stands no longer snapshots to the stored content hash; it is a hint
+    to the owner only. Only the owner's own reads carry sharing state (`selectCatalogs`,
+    `selectCollections`), the catalogs of their collection trees included: the addon's
+    `GetPublishedCatalogs` and push's `GetCatalogsByIDs` and `GetCollectionsByIDs`, the trees'
+    catalogs too, read without the joins or the hash (`selectLeanCatalogs`,
+    `selectLeanCollections`), and carry `null`.
+- **Withdraw.** `WithdrawCatalog`/`WithdrawCollection` withdraw a live publication. So does
+  deleting its source (the source column is `ON DELETE SET NULL`, and the
+  `publications_withdraw_on_source_delete` trigger sets `status`) and demoting a published
+  listed catalog into a collection (`publications_withdraw_on_scope`). A withdrawn publication
+  leaves Community; its subscribers keep their copies, marked withdrawn, and can still read its
+  last snapshot, but Update answers not found.
+- **No collapse.** Two publications of the same content, a recipe two profiles both publish or
+  an identical collection, are both listed.
+- **Subscribe** (`Subscribe`) writes a live publication of someone else's as the caller's own
+  rows: a catalog as a listed catalog, a collection as a collection with every catalog scoped to
+  it, each catalog and folder carrying its snapshot key in `sub_key`. The copy is unpublished,
+  off Home and never pushed. Only the form validators run: the recipes were checked
+  against TMDB at publish, so a subscribe makes no TMDB call. `subscriptions` is unique on
+  `(owner_id, publication_id)`, so a second subscribe is `ErrConflict`, and deleting the copy
+  deletes its subscription by cascade. `subscriber_count` is kept by the
+  `subscriptions_count_*` triggers.
+- **Writing a subscribed copy makes it the caller's own.** A catalog save, a collection save, and
+  a catalog created in or demoted into it each detach the copy in the same transaction, after
+  their write (`detachTx`): the subscription goes, lowering `subscriber_count`, the `sub_key`s
+  inside the copy are cleared, and every id stays. Update shares the collection update core but
+  never detaches, so a copy it writes keeps its subscription and keys. A publish of a subscribed
+  copy is `ErrInvalidInput`: only its publisher shares it. Its home order, show-in-home and
+  Show first change through push, like any row's, and it can be deleted.
+  - **The copy's row** carries `subscription {publication_id, update_available, withdrawn}`.
+    `update_available` is true while the publication is live and the subscription's
+    `taken_hash` differs from its content hash.
+- **Update** (`UpdateSubscription`) brings a copy up to the current snapshot, in one
+  transaction. A copy whose content already equals the snapshot is only marked in step, with no
+  check, since nothing is written. Otherwise the snapshot is written through the validators a
+  save runs, and refused with `ErrInvalidInput` when they refuse it: a catalog copy takes the
+  snapshot's name and recipe, keeping its id, and a collection copy is overwritten by key
+  through the update core a collection save uses:
+  - a snapshot folder whose key names one of the copy's folders keeps that folder's id; the
+    others are new folders under their keys, and the copy's folders the snapshot no longer has
+    are removed;
+  - a snapshot catalog whose key names one of the copy's scoped catalogs, of the same type and
+    provider, is a catalog edit of it; any other is a new scoped catalog under its key, and a
+    catalog no folder references any more is removed;
+  - the copy's pin and Home placement stay; on Home, an update that changes what push sends for
+    it leaves it `needs_push`, so Home shows the update as a change to push.
+
+  A copy Update reaches is still subscribed, so no save has touched it since it was written:
+  there is nothing to conflict with.
+- **Detach** (`DetachCatalog`, `DetachCollection`) deletes the subscription and keeps the copy,
+  ids included, as the caller's own editable rows, clearing the `sub_key`s inside it. **Fork**
+  (`ForkPublication`) is a subscribe without the subscription: an editable copy with no
+  `sub_key`s, and any number of them beside a subscription.
+- **Community** (`ListCommunity`) is every live publication not the caller's own, newest first,
+  in one call; the SPA searches, filters and sorts it. A row is light: counts, dates,
+  `subscribed` and `update_available` from a join with the caller's subscriptions, the names of
+  the catalogs it holds (`catalog_names`, read from the snapshot, for search), and for a catalog
+  its recipe. It never carries an owner. `GetPublication` returns one publication with its
+  snapshot: a live one, or a withdrawn one the caller subscribes to.
 
 ## Recipe params (TMDB)
 
@@ -532,49 +728,38 @@ describing what a TMDB-backed catalog may ask for.
   rejected with `ErrInvalidParams`, for the same `json.Unmarshal` reason. Validation never reads
   the network export that network search uses (`docs/architecture.md`), so saving a recipe does
   not depend on TMDB's file host.
-- **Take re-validates what it copies.** `TakeCatalog` and `TakeCollection` both run the same
-  params check against the source rows before copying them (the recipe is another profile's
-  input, validated when they wrote it, not when it is taken), via a validator passed in by
-  `api` — `internal/vault` is the leaf package and cannot reach `internal/provider`. Update and
-  Community Duplicate read the original the same way and run the same check. All of them
-  require the validator: nil is a programming error, not "skip the check". A take crosses the
-  owner boundary either way, and a listed catalog reachable directly is equally reachable
-  through a public collection that references it, so both doors check the same row. One
-  rejected recipe fails the whole collection take — a half-copied collection is not a
-  collection. Every copy is also held to the save path's own rules, because being stored is not
-  evidence a row was ever checked: rows written before a given check existed reach here too.
-  `TakeCatalog` runs `CatalogForm.Validate` over the source row. A collection copy extracts the
-  source tree into its bundle form (`extractBundle`, `internal/vault/bundle.go`), builds the
-  `CollectionForm` that writes the copy from it (`collectionFormFromBundle`), and runs
-  `CollectionForm.Validate` on that form: the collection's and every folder's enum values and
-  media URLs, their titles, a folder's cover emoji, each folder's ref count and ref genres, and
-  every catalog the copy writes as a new row. A stored row that never passed one of those
-  checks — an unrecognized `view_mode`, a title past `maxNameLen` — is therefore not copyable
-  at all, by Take or by Duplicate, and fails with `ErrInvalidInput` → 400. Because a copied
-  catalog gets the full catalog rules rather than length bounds alone, a copied catalog with a
-  blank name, or a `type` or `provider` Uno doesn't accept, is refused too — by `TakeCatalog`,
-  `TakeCollection` and `DuplicateCollection` alike.
-  `DuplicateCollection` passes no params validator: it copies rows the caller already owns, so a
-  recipe TMDB has since outgrown must not block you from duplicating your own collection. It is
-  still subject to `CollectionForm.Validate` — a stale enum, an overlong title, or a scoped
-  catalog with a blank name or an unknown type or provider is stale whoever owns it — including
+- **A publish checks what it shares; a copy re-checks the form rules.** A publish runs the TMDB
+  recipe check over every catalog its snapshot shares, via a validator passed in by `api` —
+  `internal/vault` is the leaf package and cannot reach `internal/provider` — and requires it:
+  nil is a programming error, not "skip the check". One rejected recipe fails the whole publish.
+  It first runs the form validators the snapshot's copies are written through, because being
+  stored is not evidence a row was ever checked: rows written before a given check existed reach
+  here too. A catalog snapshot is checked by `CatalogForm.Validate`; a collection snapshot by
+  `CollectionForm.Validate` over the form that writes it as a new collection: the collection's
+  and every folder's enum values and media URLs, their titles, a folder's cover emoji, each
+  folder's ref count and ref genres, and every catalog the copy writes as a new row. A stored row
+  that never passed one of those checks — an unrecognized `view_mode`, a title past `maxNameLen`,
+  a blank catalog name, a `type` or `provider` Uno doesn't accept, params that aren't JSON — is
+  not publishable, and fails with `ErrInvalidInput` → 400. A subscribe, a fork and an Update run
+  the same form validators over what they write from the snapshot, and nothing else: the
+  snapshot's recipes were checked against TMDB when it was published, so none of them makes a
+  TMDB call. An Update that writes nothing checks nothing.
+  `DuplicateCollection` runs `CollectionForm.Validate` over the form built from the caller's own
+  source, with no params check: a recipe TMDB has since outgrown must not block you from
+  duplicating your own collection. A stale enum, an overlong title, or a scoped catalog with a
+  blank name or an unknown type or provider is stale whoever owns it, and that includes
   `maxNameLen` on the `" (copy)"`-suffixed title it writes, so a collection whose title already
   fills the bound cannot be duplicated rather than being copied into a row the collection
   editor's own save would then refuse. The listed catalogs a Duplicate references are not
   checked: they stay `catalog_id` refs to rows the caller already owns, and nothing is written
   from them.
-- **A collection copy reads and checks before it opens a transaction, then writes through the
-  create core.** `copyCollection` reads the whole source tree — cosmetics, folders, refs, and
-  the catalog rows those refs name — through the pool, and extracts and validates it as above.
-  Only then does the write transaction open, and `createCollectionTx`, the same core
-  `CreateUserCollection` runs, writes the copy, holding SQLite's write lock for inserts alone.
-  Each scoped catalog copy is one of the form's `new` entries, carrying the source's recipe
-  and, for a Take, `taken_from` naming the catalog it was copied from. A Take then
-  sets the new collection's `taken_hash` from the copy as written, before committing. The params
-  check reaches TMDB, and stalling every other writer for the length of a cold-cache network
-  call is the cost this ordering avoids; it is the same read-then-validate-then-insert order
-  `TakeCatalog` uses. A copy is a snapshot either way, so a source edit landing between the
-  read and the write only means copying the slightly older tree.
+- **A publish reads and checks before it opens a transaction.** The TMDB check can reach the
+  network, and holding SQLite's write lock across a cold-cache call would stall every other
+  writer. So `publish` reads the source through the pool and checks it, then opens the write
+  transaction, reads the source again and writes the publication only if the source still
+  snapshots to what was checked. A Duplicate reads its source through the pool too, then writes
+  it through `createCollectionTx`, the create core `CreateUserCollection` runs, each scoped
+  catalog copy one of the form's `new` entries.
 - **Certification applies to both types.** `certification`, `certification.gte`,
   `certification.lte`, and `certification_country` sit on `TMDBCommonParams` and map in
   `commonQuery` (`internal/provider/query.go`), so `/discover/tv` gets them too. The **value
@@ -631,8 +816,8 @@ describing what a TMDB-backed catalog may ask for.
 ## Bundle format
 
 **A bundle is catalogs and collections with every row id replaced by a key.** It is the file
-export writes and import reads, and the in-memory shape every collection copy and the link hash
-go through. The Go types in `internal/vault/bundle.go` (`Bundle`, `BundleCatalog`,
+export writes and import reads, and the in-memory shape every collection copy and a
+publication's snapshot are built on. The Go types in `internal/vault/bundle.go` (`Bundle`, `BundleCatalog`,
 `BundleCollection`, `BundleFolder`, `BundleRef`) are its only definition. Keys are snake_case.
 Version 1:
 
@@ -651,9 +836,10 @@ Version 1:
 
 - **Two kinds of catalog list.** The top-level `catalogs` are listed catalogs. A collection's own
   `catalogs` are scoped to it; one that no ref uses is ignored on import.
-- **Never in the bundle:** row ids, `owner_id`, `is_public`, `pin_to_top`, `collection_id`, timestamps,
-  `home_sort_order`, `show_in_home`, `taken_from`, `taken_hash`, `recipe_hash`, `version` and
-  `pushed_version`.
+- **Never in the bundle:** row ids, `owner_id`, `pin_to_top`, `collection_id`, timestamps,
+  `home_sort_order`, `show_in_home`, `sub_key`, a publication or subscription, `recipe_hash` and
+  `pushed_hash`. A publication's snapshot is built on the same form, with its
+  own format name and stable keys (*Publications and subscriptions*, above).
 - **Export writes every field.** Booleans are plain bools, and an empty list is `[]`. `params` is
   the stored recipe as a JSON object.
 - **Export placement** (`ExportBundle`): the selected listed catalogs come first, in library
@@ -675,8 +861,8 @@ Version 1:
 
 - Every row id is minted by Uno; the file only ever supplies keys. Importing one file twice gives
   two independent sets.
-- Imported rows are private and off Home, with `taken_from` NULL, `version` 1 and
-  `pushed_version` NULL. Titles are kept as they are, with no "(copy)" suffix. Imports never link.
+- Imported rows are unpublished and off Home, subscribed to nothing, and never pushed
+  (`pushed_hash` NULL). Titles are kept as they are, with no "(copy)" suffix.
 - **Optional reuse.** `reuse` maps a bundle catalog key, top-level or a collection's own, to one
   of the importer's own *listed* catalogs; its refs then point at that row and no new row is
   written for it. The import check offers the listed catalogs whose recipe matches. A reuse
@@ -694,10 +880,19 @@ Version 1:
 `coverEmoji`, `focusGifUrl`, `focusGifEnabled`, `heroBackdropUrl`, `heroVideoUrl`,
 `titleLogoUrl`, `tileShape`, `hideTitle`, plus `addonId`/`type`/`catalogId` inside each source — a different
 convention from every other Nuvio surface (RPC params and REST table rows are snake_case) *and*
-from Uno's own Builder API. Push therefore has dedicated types in `internal/nuvio/types.go`
-(`PushCollection`, `PushFolder`, `CatalogSource`) built by `buildPushCollection`; **never
-`json.Marshal` a `vault.CollectionWithFolders` into this payload.** A dangling catalog ref (an id
-missing from the resolved map) is skipped rather than failing the whole push.
+from Uno's own Builder API. Push therefore has dedicated types in `internal/vault/pushpayload.go`
+(`PushCollection`, `PushFolder`, `CatalogSource`) built by `CollectionWithFolders.PushPayload`;
+**never `json.Marshal` a `vault.CollectionWithFolders` into this payload.** `wire_test.go` beside
+it checks every key they write against the samples. A dangling catalog ref (an id the tree's
+catalogs lack) is skipped rather than failing the whole push. `pinToTop` comes from the push's own
+selection entry for the collection (`applySelection`), not from the stored row, which push then
+brings up to it.
+
+**Push hashes what it sends.** `PushJSON` is the payload's exact bytes, which push both sends and
+hashes (`PushHash`, stored as `collections.pushed_hash`), and which a collection read hashes again
+to decide `needs_push` (*Key rules*). The two can only agree if they marshal the same way, so
+there is one builder, in the vault; migration 5 holds a frozen copy of it for its backfill, which
+the dry run checks against this one.
 
 **Nuvio fills absent keys with its own defaults**, and they don't all match Uno's (from
 NuvioTV's `CollectionsDataStore` and `domain/model/Collection.kt`): `focusGlowEnabled`,
@@ -724,7 +919,7 @@ confirmed to use `catalogSources` only.
 plus `filters`, `mediaType`, `sortBy`, `sortHow`, `title`, `tmdbId`, `tmdbSourceType`,
 `traktListId`. So a Nuvio folder can source content from TMDB directly and from Trakt lists, not
 only from an installed addon's catalog, and can sort and filter per reference. Uno emits only the
-addon-catalog form (`buildPushCollection` → `nuvio.CatalogSource`: `addonId`, `type`,
+addon-catalog form (`PushPayload` → `vault.CatalogSource`: `addonId`, `type`,
 `catalogId`, plus `genre` when the reference has one), which is correct for what Uno owns; collections Uno doesn't own pass through push as raw `json.RawMessage`, which is what keeps
 their wider entries intact, and that protection holds only while Uno never imports one into its
 own database.

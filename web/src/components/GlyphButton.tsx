@@ -12,6 +12,8 @@ export function GlyphButton({
   onClick,
   destructive,
   variant,
+  disabled = false,
+  title = label,
 }: {
   label: string
   icon: LucideIcon
@@ -22,6 +24,10 @@ export function GlyphButton({
    *  `'labeled'`: the icon plus the label's first word — the library rail's
    *  own row actions, above `lg`, where a selected row has room to spend. */
   variant: 'icon' | 'labeled'
+  /** Refuses the action, with `title` saying why (`deleteButton`). */
+  disabled?: boolean
+  /** The tooltip; the label unless something else needs saying. */
+  title?: string
 }) {
   return (
     <button
@@ -34,16 +40,17 @@ export function GlyphButton({
         onClick()
       }}
       aria-label={label}
-      title={label}
+      title={title}
+      disabled={disabled}
       className={
         variant === 'icon'
-          ? `tap grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors ${
-              destructive ? 'hover:bg-sign-ink hover:text-danger' : 'hover:bg-sign-ink/15'
+          ? `tap grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              destructive ? 'enabled:hover:bg-sign-ink enabled:hover:text-danger' : 'enabled:hover:bg-sign-ink/15'
             }`
-          : `flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-[color,box-shadow] pointer-coarse:h-11 ${
+          : `flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-[color,box-shadow] pointer-coarse:h-11 disabled:cursor-not-allowed disabled:opacity-40 ${
               destructive
-                ? 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] hover:text-danger hover:shadow-[inset_0_0_0_1.5px_var(--uno-danger)]'
-                : 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--uno-dim)]'
+                ? 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] enabled:hover:text-danger enabled:hover:shadow-[inset_0_0_0_1.5px_var(--uno-danger)]'
+                : 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] enabled:hover:text-ink enabled:hover:shadow-[inset_0_0_0_1px_var(--uno-dim)]'
             }`
       }
     >

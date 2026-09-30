@@ -1,3 +1,4 @@
+import { pluralCount } from '@/lib/plural'
 import { apiFetch } from './client'
 
 export class ApiError extends Error {
@@ -38,6 +39,27 @@ export class ProfileNotSelectedError extends ApiError {
   }
 }
 
+/**
+ * A `429`: this account has sent too many requests of this kind lately. The
+ * `Retry-After` header gives the seconds to wait, which the message puts in
+ * words. Nothing retries it: `apiFetch` retries only a 401, and queries never
+ * retry a 4xx.
+ */
+export class RateLimitedError extends ApiError {
+  constructor(retryAfter: string | null) {
+    super(429, `Too many requests. Try again in ${waitWords(retryAfter)}.`)
+    this.name = 'RateLimitedError'
+  }
+}
+
+/** A `Retry-After` in seconds as words (1 second, 10 seconds), or as a
+ *  moment when the header is missing or not a whole number. */
+function waitWords(retryAfter: string | null): string {
+  const seconds = Number(retryAfter) // 0 for a missing or empty header
+  if (!Number.isInteger(seconds) || seconds < 1) return 'a moment'
+  return pluralCount(seconds, 'second')
+}
+
 /** Best-effort: an error body that happens to be JSON becomes `ApiError.body`.
  *  Never throws — a plain-text body is the norm, not an exceptional case. */
 function parseJSONOrUndefined(text: string): unknown {
@@ -49,20 +71,22 @@ function parseJSONOrUndefined(text: string): unknown {
   }
 }
 
+/** The error a failed answer from `path` is thrown as. */
+async function failure(path: string, res: Response): Promise<ApiError> {
+  if (res.status === 429) return new RateLimitedError(res.headers.get('Retry-After'))
+  // The Go handlers write errors with `http.Error`, so the body is plain
+  // text and more specific than anything the status alone gives.
+  const body = (await res.text().catch(() => '')).trim()
+  const message = body || `Request failed (${res.status})`
+  if (res.status === 404 && path.startsWith('/api/p/')) {
+    return new ProfileNotSelectedError(message)
+  }
+  return new ApiError(res.status, message, parseJSONOrUndefined(body))
+}
+
 async function request(path: string, init?: RequestInit): Promise<unknown> {
   const res = await apiFetch(path, init)
-
-  if (!res.ok) {
-    // The Go handlers write errors with `http.Error`, so the body is plain
-    // text and more specific than anything the status alone gives.
-    const body = (await res.text().catch(() => '')).trim()
-    const message = body || `Request failed (${res.status})`
-    if (res.status === 404 && path.startsWith('/api/p/')) {
-      throw new ProfileNotSelectedError(message)
-    }
-    throw new ApiError(res.status, message, parseJSONOrUndefined(body))
-  }
-
+  if (!res.ok) throw await failure(path, res)
   if (res.status === 204) return null
   return await res.json()
 }

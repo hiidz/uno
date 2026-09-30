@@ -5,10 +5,12 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
+import { KeyProblemBanner } from '@/features/account/KeyProblemBanner'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
 import { Workspace } from '@/features/builder/Workspace'
+import type { OpenPublication } from '@/features/community/communityQuery'
 import { CommunityView } from '@/features/community/CommunityView'
 import { HomeSelectionProvider } from '@/features/home/HomeSelectionContext'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
@@ -51,6 +53,19 @@ export function Builder() {
   const location = useLocation()
   const profile = location.state as BuilderProfile | null
   const [tab, setTab] = useState<Tab>('workspace')
+  // The publication Community opens on when a copy's Update… switched to it;
+  // the tab switch in the header opens Community on its list.
+  const [opening, setOpening] = useState<OpenPublication | null>(null)
+
+  function changeTab(next: Tab) {
+    setOpening(null)
+    setTab(next)
+  }
+
+  function openPublication(publication: OpenPublication) {
+    setOpening(publication)
+    setTab('community')
+  }
 
   // Only reachable by selecting a profile on /profiles, which hands the
   // profile down via navigation state — a direct or refreshed visit to this
@@ -63,11 +78,11 @@ export function Builder() {
     <HomeSelectionProvider profileIndex={profile.profileIndex}>
       <EditorGuardProvider>
         <div className="flex min-h-svh flex-col lg:h-svh">
-          <BuilderHeader profile={profile} tab={tab} onTabChange={setTab} />
+          <BuilderHeader profile={profile} tab={tab} onTabChange={changeTab} />
           {tab === 'workspace' ? (
-            <Workspace profileIndex={profile.profileIndex} />
+            <Workspace profileIndex={profile.profileIndex} onOpenPublication={openPublication} />
           ) : (
-            <CommunityView profileIndex={profile.profileIndex} />
+            <CommunityView profileIndex={profile.profileIndex} initialOpen={opening} />
           )}
         </div>
       </EditorGuardProvider>
@@ -223,6 +238,10 @@ function BuilderHeader({
           onHide={() => setChangesOpen(false)}
         />
         <PushBanner {...push} />
+        {/* The account's TMDB key is unusable, on a server where each account
+            brings one; it is fixed on the picker, reached as switching profile
+            is. */}
+        <KeyProblemBanner onFix={requestLeave} />
       </div>
 
       {/* Below `lg` only, and outside the sticky band: it scrolls with the

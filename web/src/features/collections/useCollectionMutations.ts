@@ -5,10 +5,10 @@ import type { CollectionPayload } from '@/api'
 /**
  * Collection writes, with the invalidation they imply.
  *
- * Same rule as `useCatalogMutations`, for the same reason: invalidates the
- * community query key too, since the Community tab (`features/community/`)
- * reads it and `is_public` can change on any save. That also refetches the
- * collection selection query, since
+ * Invalidates Community too, as `useCatalogMutations` does: a save can change
+ * whether a shared collection has changed since it was published, and delete
+ * withdraws its publication. That also refetches the collection selection
+ * query, since
  * `['p', i, 'collections']` prefix-matches its `…, 'selection'` child;
  * selection is client state until Push, and the one-shot hydration guard in
  * `HomeSelectionContext` is what keeps that refetch from clobbering the user's
@@ -26,7 +26,7 @@ export function useCollectionMutations(profileIndex: number) {
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.communityCollections(profileIndex) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.community(profileIndex) })
   }
 
   const create = useMutation({
@@ -45,9 +45,12 @@ export function useCollectionMutations(profileIndex: number) {
     },
   })
 
+  // A refused delete refetches too, as a catalog's does: its 409 means this
+  // tab missed a push that put the collection on Home.
   const remove = useMutation({
     mutationFn: (id: string) => deleteCollection(profileIndex, id),
     onSuccess: invalidate,
+    onError: invalidate,
   })
 
   const duplicate = useMutation({

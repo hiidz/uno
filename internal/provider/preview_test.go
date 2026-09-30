@@ -31,6 +31,9 @@ func fakeDiscover(t *testing.T, totalPages int) (*TMDBClient, func() []int) {
 
 	c := NewTMDBClient("key")
 	c.baseURL = srv.URL
+	// The shuffle tests send hundreds of requests; pacing them isn't what
+	// they test.
+	c.limiter = newLimiter(1e9, 1e9)
 	return c, func() []int {
 		mu.Lock()
 		defer mu.Unlock()

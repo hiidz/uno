@@ -32,10 +32,8 @@ func listedCatalogForm(name string) vault.CatalogForm {
 
 // A catalog only reachable through a folder of an on-TV collection is
 // published with the required genre extra (Stremio's mechanism for keeping
-// it out of home's automatic rows) and is fetchable — findSelectedCatalog,
-// CatalogHandler's own access check, finds it in the same selection the
-// manifest was built from.
-func TestBuildManifestFolderOnlyCatalogGetsGenreExtraAndIsFetchable(t *testing.T) {
+// it out of home's automatic rows).
+func TestBuildManifestFolderOnlyCatalogGetsGenreExtra(t *testing.T) {
 	ctx := context.Background()
 	db := newTestVault(t)
 
@@ -62,7 +60,7 @@ func TestBuildManifestFolderOnlyCatalogGetsGenreExtraAndIsFetchable(t *testing.T
 
 	if err := db.SaveSelectionsForPush(ctx, owner.ID,
 		vault.CatalogSelectionForm{},
-		vault.CollectionSelectionForm{CollectionIDs: []uuid.UUID{collection.ID}},
+		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}},
 		nil,
 	); err != nil {
 		t.Fatalf("SaveSelectionsForPush: %v", err)
@@ -91,10 +89,6 @@ func TestBuildManifestFolderOnlyCatalogGetsGenreExtraAndIsFetchable(t *testing.T
 	}
 	if !hasRequiredGenre {
 		t.Fatalf("folder-only catalog's extras = %+v, want a required genre extra", mc.Extra)
-	}
-
-	if _, ok := findSelectedCatalog(selection, folderOnly.Type, ManifestID(folderOnly)); !ok {
-		t.Fatalf("findSelectedCatalog did not find the folder-only catalog in its own published selection")
 	}
 }
 
@@ -128,7 +122,7 @@ func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testi
 
 	if err := db.SaveSelectionsForPush(ctx, owner.ID,
 		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}},
-		vault.CollectionSelectionForm{CollectionIDs: []uuid.UUID{collection.ID}},
+		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}},
 		nil,
 	); err != nil {
 		t.Fatalf("SaveSelectionsForPush: %v", err)
@@ -251,7 +245,7 @@ func TestManifestCatalogShowInHomeIsAlwaysExplicit(t *testing.T) {
 }
 
 // A catalog reachable only through a folder of a collection that is not on
-// the TV does not appear in the manifest, and is not fetchable.
+// the TV does not appear in the manifest.
 func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) {
 	ctx := context.Background()
 	db := newTestVault(t)
@@ -289,9 +283,6 @@ func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) 
 			t.Fatalf("catalog in a folder of an off-TV collection appeared in the manifest: %+v", c)
 		}
 	}
-	if _, ok := findSelectedCatalog(selection, catalog.Type, ManifestID(catalog)); ok {
-		t.Fatalf("findSelectedCatalog found a catalog whose collection is not on the TV")
-	}
 }
 
 // A skip past TMDB's pagination ceiling is answered with an empty page and no
@@ -321,7 +312,7 @@ func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
 		t.Fatalf("SaveSelectionsForPush: %v", err)
 	}
 
-	s, err := New(db, provider.NewTMDBClient("test-key"))
+	s, err := New(db, provider.NewTMDBClient("test-key"), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

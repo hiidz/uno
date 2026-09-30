@@ -18,9 +18,7 @@ func TestUpdateUserCollectionRejectsFolderRefToAnotherOwnersPublicCatalog(t *tes
 	other := newTestProfile(t, db, "other")
 	collectionID := newTestCollection(t, db, owner, "My Collection")
 
-	othersForm := listedCatalogForm("Other's public catalog")
-	othersForm.IsPublic = true
-	othersCatalog, err := db.CreateUserCatalog(ctx, other, othersForm)
+	othersCatalog, err := db.CreateUserCatalog(ctx, other, listedCatalogForm("Other's catalog"))
 	if err != nil {
 		t.Fatalf("create other's public catalog: %v", err)
 	}
@@ -183,8 +181,8 @@ func TestUpdateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 		t.Fatalf("saved.Catalogs = %+v, want exactly the new catalog %s", saved.Catalogs, newID)
 	}
 	got := saved.Catalogs[0]
-	if got.Name != "New Scoped" || got.IsPublic || got.CollectionID == nil || *got.CollectionID != collectionID {
-		t.Fatalf("created catalog = %+v, want name=%q, is_public=false, collection_id=%s",
+	if got.Name != "New Scoped" || got.CollectionID == nil || *got.CollectionID != collectionID {
+		t.Fatalf("created catalog = %+v, want name=%q, collection_id=%s",
 			got, "New Scoped", collectionID)
 	}
 }

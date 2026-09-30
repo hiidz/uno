@@ -5,9 +5,9 @@ import type { CatalogPayload } from '@/api'
 /**
  * Catalog writes, with the invalidation they imply.
  *
- * Invalidates the community query keys too: `is_public` can change on any
- * save, and the Community tab (`features/community/`) reads exactly those
- * keys, so a save here has to keep its list current.
+ * Invalidates Community too (`invalidateProfileLists`): a save can change
+ * whether a shared catalog has changed since it was published, and a delete
+ * withdraws its publication.
  *
  * The collection lists are invalidated too, because of a real cascade:
  * `DELETE FROM catalogs` drops the row's `folder_catalogs` entries
@@ -44,9 +44,13 @@ export function useCatalogMutations(profileIndex: number) {
     onSuccess: invalidate,
   })
 
+  // A refused delete refetches too: only a tab behind the server gets one —
+  // its 409 names what on Home still holds the catalog, which the refetched
+  // selections then show beside a disabled Delete.
   const remove = useMutation({
     mutationFn: (id: string) => deleteCatalog(profileIndex, id),
     onSuccess: invalidate,
+    onError: invalidate,
   })
 
   return { create, update, remove }

@@ -61,7 +61,7 @@ export function ModalFooter({
   tone,
   children,
 }: {
-  tone?: 'catalog' | 'collection'
+  tone?: 'catalog' | 'collection' | 'community'
   children: ReactNode
 }) {
   return (

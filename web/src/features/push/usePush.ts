@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { ProfileNotSelectedError, pushSelection, queryKeys } from '@/api'
+import { ProfileNotSelectedError, RateLimitedError, pushSelection, queryKeys } from '@/api'
 import { toPushPayload } from '@/features/home/pending'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 
@@ -22,6 +22,16 @@ type PushOutcome =
    *  page, a response that never parsed. We genuinely don't know whether the
    *  push landed, and must not claim nothing happened. */
   | { kind: 'unknown' }
+  /** The server turned the push away before running it: this account has
+   *  pushed too often lately. Nothing changed; it can go again shortly. */
+  | { kind: 'rate-limited' }
+
+/** What a push that threw is reported as: one the server turned away for
+ *  pushing too often is rate-limited, anything else unknown. */
+function thrownOutcome(err: unknown): PushOutcome {
+  if (err instanceof RateLimitedError) return { kind: 'rate-limited' }
+  return { kind: 'unknown' }
+}
 
 export interface Push {
   push: () => void
@@ -74,11 +84,11 @@ export function usePush(profileIndex: number): Push {
           void queryClient.invalidateQueries({
             queryKey: queryKeys.collectionSelection(profileIndex),
           })
-          // `pushed_version` lives on the owned-collection row too, and
+          // `needs_push` lives on the owned-collection row too, and
           // `HomeSelectionContext`'s `collectionById` map lets the owned list
           // win over the selection response on id collision (it's built
           // second) — so without this, a collection that's both owned and
-          // currently selected keeps showing its pre-push `pushed_version` and
+          // currently selected keeps showing its pre-push `needs_push` and
           // the "changed since it was last pushed" line never clears.
           void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
           setOutcome({ kind: 'success', manifestURL: result.manifest_url })
@@ -92,7 +102,7 @@ export function usePush(profileIndex: number): Push {
           void navigate('/profiles', { replace: true })
           return
         }
-        setOutcome({ kind: 'unknown' })
+        setOutcome(thrownOutcome(err))
       } finally {
         inFlight.current = false
         setPushing(false)

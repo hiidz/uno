@@ -32,14 +32,27 @@ type AppliedMigration struct {
 // after, keyed by table name. When the copy's catalogs still had their own
 // params before migrating, RecipesChecked is how many catalogs the recipe
 // check compared before and after, and RecipeMismatches names each one it
-// found different, with the difference.
+// found different, with the difference. When the migrations created the
+// publications, PublicationsChecked is how many the publication check ran
+// today's validators over, and PublicationProblems names each one they
+// refuse, with the reason.
 type MigrationReport struct {
-	From, To         int
-	Applied          []AppliedMigration
-	RowsBefore       map[string]int
-	RowsAfter        map[string]int
-	RecipesChecked   int
-	RecipeMismatches []string
+	From, To            int
+	Applied             []AppliedMigration
+	RowsBefore          map[string]int
+	RowsAfter           map[string]int
+	RecipesChecked      int
+	RecipeMismatches    []string
+	PublicationsChecked int
+	PublicationProblems []string
+	// PushHashesBackfilled and PushHashesPending count the collections the
+	// pushed_hash migration gave a pushed hash and left pending, and
+	// PushHashMismatches names each backfilled one whose hash the vault's live
+	// push payload doesn't give: none, unless the migration's own copy of the
+	// payload has drifted from the vault's.
+	PushHashesBackfilled int
+	PushHashesPending    int
+	PushHashMismatches   []string
 }
 
 // RecipeCheck reports how before and after, one catalog's params before and
@@ -275,18 +288,28 @@ func logMigrated(backup string, applied []AppliedMigration) {
 	}
 }
 
+// LiveChecks is the live code a dry run checks the migrated copy with, which
+// a migration can't run and this package can't import: provider.SameRecipe
+// and provider.ValidateRecipe. Both are required.
+type LiveChecks struct {
+	// SameRecipe compares each catalog's params from before migrating with
+	// its recipe's after, while the copy's catalogs hold their own params.
+	SameRecipe RecipeCheck
+	// ValidRecipe checks every recipe of each publication the migrations
+	// create, with no network call.
+	ValidRecipe CatalogParamsValidator
+}
+
 // DryRun reports what migrating the database at path would do, without
 // writing to it: the file is opened read-only and copied to a temporary
 // directory, and every pending migration runs on the copy, which is then
-// deleted. While the copy's catalogs hold their own params, sameRecipe,
-// which is required, compares each catalog's params from before migrating
-// with its recipe's after.
-func DryRun(ctx context.Context, path string, sameRecipe RecipeCheck) (MigrationReport, error) {
-	return dryRun(ctx, path, migrations.All(), sameRecipe)
+// deleted. checks run over the copy; see LiveChecks.
+func DryRun(ctx context.Context, path string, checks LiveChecks) (MigrationReport, error) {
+	return dryRun(ctx, path, migrations.All(), checks)
 }
 
 // dryRun is DryRun over list.
-func dryRun(ctx context.Context, path string, list []migrations.Migration, sameRecipe RecipeCheck) (MigrationReport, error) {
+func dryRun(ctx context.Context, path string, list []migrations.Migration, checks LiveChecks) (MigrationReport, error) {
 	dir, err := os.MkdirTemp("", "uno-migrate-")
 	if err != nil {
 		return MigrationReport{}, fmt.Errorf("creating a directory for the copy: %w", err)
@@ -297,7 +320,7 @@ func dryRun(ctx context.Context, path string, list []migrations.Migration, sameR
 	if err := copyReadOnly(ctx, path, copyPath); err != nil {
 		return MigrationReport{}, err
 	}
-	return migrateCopy(ctx, copyPath, list, sameRecipe)
+	return migrateCopy(ctx, copyPath, list, checks)
 }
 
 // copyReadOnly writes a copy of the database at src to dst, opening src
@@ -342,17 +365,76 @@ func removeFiles(paths []string) {
 }
 
 // migrateCopy migrates the throwaway copy at path through list, counting
-// every table's rows before and after, and checks its recipes with
-// sameRecipe (checkRecipes).
-func migrateCopy(ctx context.Context, path string, list []migrations.Migration, sameRecipe RecipeCheck) (MigrationReport, error) {
+// every table's rows before and after, checks its recipes with
+// checks.SameRecipe (checkRecipes), the publications it creates with
+// checks.ValidRecipe (checkPublications), and the push hashes it backfills
+// with the live push payload (checkPushHashes).
+func migrateCopy(ctx context.Context, path string, list []migrations.Migration, checks LiveChecks) (MigrationReport, error) {
 	d, err := openMigrationDB(path, "")
 	if err != nil {
 		return MigrationReport{}, err
 	}
 	defer func() { _ = d.Close() }()
-	return checkRecipes(ctx, d, sameRecipe, func() (MigrationReport, error) {
-		return migrateCopyOpen(ctx, d, list)
+	return checkRecipes(ctx, d, checks.SameRecipe, func() (MigrationReport, error) {
+		return migrateAndCheck(ctx, d, list, checks.ValidRecipe)
 	})
+}
+
+// migrateAndCheck is migrateCopyOpen, then checkPublications and
+// checkPushHashes over what it migrated, unless it failed.
+func migrateAndCheck(ctx context.Context, d *sql.DB, list []migrations.Migration, validRecipe CatalogParamsValidator) (MigrationReport, error) {
+	report, err := migrateCopyOpen(ctx, d, list)
+	if err != nil {
+		return report, err
+	}
+	if report, err = checkPublications(ctx, d, report, validRecipe); err != nil {
+		return report, err
+	}
+	return checkPushHashes(ctx, d, report)
+}
+
+// pushedHashMigration is the name of the migration that backfills
+// collections.pushed_hash.
+const pushedHashMigration = "pushed_hash"
+
+// checkPushHashes compares the pushed hash the pushed_hash migration stored
+// for each collection with the hash of the vault's live push payload for it,
+// adding what it found to report. A collection whose two differ would read
+// as needing a push once deployed. It checks nothing unless this dry run
+// applied that migration.
+func checkPushHashes(ctx context.Context, d *sql.DB, report MigrationReport) (MigrationReport, error) {
+	if !slices.ContainsFunc(report.Applied, isPushedHashMigration) {
+		return report, nil
+	}
+	collections, err := selectLeanCollections(ctx, d, "col.pushed_hash IS NOT NULL ORDER BY col.id")
+	if err != nil {
+		return report, err
+	}
+	trees, err := assembleCollectionTree(ctx, d, collections, leanCatalogsByIDs)
+	if err != nil {
+		return report, err
+	}
+	report.PushHashesBackfilled = len(trees)
+	report.PushHashMismatches = pushHashMismatches(trees)
+	err = d.QueryRowContext(ctx, `SELECT count(*) FROM collections WHERE pushed_hash IS NULL`).Scan(&report.PushHashesPending)
+	return report, err
+}
+
+// isPushedHashMigration reports whether m is the pushed_hash migration.
+func isPushedHashMigration(m AppliedMigration) bool {
+	return m.Name == pushedHashMigration
+}
+
+// pushHashMismatches names each of trees whose stored pushed hash isn't the
+// hash of its live push payload.
+func pushHashMismatches(trees []CollectionWithFolders) []string {
+	var mismatches []string
+	for _, tree := range trees {
+		if raw, err := tree.PushJSON(); err != nil || PushHash(raw) != tree.pushedHash {
+			mismatches = append(mismatches, fmt.Sprintf("collection %s (%s)", tree.ID, tree.Title))
+		}
+	}
+	return mismatches
 }
 
 // checkRecipes reads every catalog's params from d, runs migrate, then
@@ -448,6 +530,61 @@ func recipeParamsByCatalog(ctx context.Context, d *sql.DB) (map[string]string, e
 	return params, rows.Err()
 }
 
+// checkPublications runs today's checks over every publication the
+// migrations created, adding what it found to report: the form validators a
+// subscribe runs, then validRecipe over each recipe, which makes no network
+// call. A refused publication is reported, not an error: a migration
+// publishes each source as it stood, unchecked. It checks nothing when the
+// copy had publications before migrating, or has none after.
+func checkPublications(ctx context.Context, d *sql.DB, report MigrationReport, validRecipe CatalogParamsValidator) (MigrationReport, error) {
+	_, before := report.RowsBefore["publications"]
+	_, after := report.RowsAfter["publications"]
+	if before || !after {
+		return report, nil
+	}
+	pubs, err := readStoredPublications(ctx, d)
+	for _, pub := range pubs {
+		report.PublicationsChecked++
+		if problem := checkSnapshot(pub.raw, validRecipe); problem != nil {
+			report.PublicationProblems = append(report.PublicationProblems, fmt.Sprintf("%s %s (%s): %v", pub.kind, pub.id, pub.title, problem))
+		}
+	}
+	return report, err
+}
+
+// storedPublicationRow is one publication as the publication check reads
+// it.
+type storedPublicationRow struct{ id, kind, title, raw string }
+
+// readStoredPublications reads every publication in d, by kind, then
+// title, then id.
+func readStoredPublications(ctx context.Context, d *sql.DB) ([]storedPublicationRow, error) {
+	rows, err := d.QueryContext(ctx, `SELECT id, kind, title, snapshot FROM publications ORDER BY kind, title, id`)
+	if err != nil {
+		return nil, fmt.Errorf("reading publications: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var pubs []storedPublicationRow
+	for rows.Next() {
+		var p storedPublicationRow
+		if err := rows.Scan(&p.id, &p.kind, &p.title, &p.raw); err != nil {
+			return nil, fmt.Errorf("reading publications: %w", err)
+		}
+		pubs = append(pubs, p)
+	}
+	return pubs, rows.Err()
+}
+
+// checkSnapshot runs a publish's checks over the stored snapshot raw, with
+// validRecipe in place of the TMDB check.
+func checkSnapshot(raw string, validRecipe CatalogParamsValidator) error {
+	s, err := decodeSnapshot(raw)
+	if err != nil {
+		return err
+	}
+	return publication{snapshot: s}.check(validRecipe)
+}
+
 // migrateCopyOpen is migrateCopy over the connection d has open to the copy.
 // When a migration fails, the report still covers the ones applied before it,
 // with the row counts the copy holds after them, alongside the error.
@@ -486,9 +623,12 @@ func countRows(ctx context.Context, d *sql.DB) (map[string]int, error) {
 	return counts, nil
 }
 
-// tableNames lists d's tables, SQLite's own aside.
+// tableNames lists d's tables, SQLite's own and a virtual table's shadow
+// tables aside.
 func tableNames(ctx context.Context, d *sql.DB) ([]string, error) {
-	rows, err := d.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+	rows, err := d.QueryContext(ctx, `
+		SELECT name FROM pragma_table_list
+		WHERE schema = 'main' AND type IN ('table', 'virtual') AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("listing tables: %w", err)
 	}

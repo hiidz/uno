@@ -103,18 +103,16 @@ func TestCollectionFormLengthAndCountBounds(t *testing.T) {
 }
 
 // A stored collection that never passed today's checks — an unrecognized
-// view mode, an overlong folder title — is not copyable, by Take or by
-// Duplicate: the copy path re-checks the source rather than trusting it.
+// view mode, an overlong folder title — is neither publishable nor copyable
+// by Duplicate: both re-check the source rather than trusting it.
 func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
 
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:    "Source",
-		IsPublic: true,
-		Folders:  []FolderData{{Title: "Folder 1"}},
+		Title:   "Source",
+		Folders: []FolderData{{Title: "Folder 1"}},
 	})
 	if err != nil {
 		t.Fatalf("create source collection: %v", err)
@@ -146,8 +144,8 @@ func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 				}
 			})
 
-			if _, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
-				t.Errorf("TakeCollection = %v, want ErrInvalidInput", err)
+			if _, err := db.PublishCollection(ctx, owner, source.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+				t.Errorf("PublishCollection = %v, want ErrInvalidInput", err)
 			}
 			if _, err := db.DuplicateCollection(ctx, owner, source.ID); !errors.Is(err, ErrInvalidInput) {
 				t.Errorf("DuplicateCollection = %v, want ErrInvalidInput", err)
@@ -156,17 +154,16 @@ func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 	}
 }
 
-// A stored public catalog past today's length bounds is not takeable on its
-// own either: TakeCatalog re-checks the source row the same way the
-// collection copy path re-checks every catalog in a tree, so the one listed
-// row is bounded whichever door it is taken through.
-func TestTakeCatalogRejectsStaleSourceRows(t *testing.T) {
+// A stored catalog past today's length bounds is not publishable either: a
+// publish re-checks the source row the same way it re-checks every catalog
+// in a collection, so the one listed row is bounded whichever way it is
+// shared.
+func TestPublishCatalogRejectsStaleSourceRows(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
 
-	source, err := db.CreateUserCatalog(ctx, owner, publicCatalogForm("Source"))
+	source, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Source"))
 	if err != nil {
 		t.Fatalf("create source catalog: %v", err)
 	}
@@ -193,15 +190,15 @@ func TestTakeCatalogRejectsStaleSourceRows(t *testing.T) {
 				}
 			})
 
-			if _, err := db.TakeCatalog(ctx, taker, source.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
-				t.Errorf("TakeCatalog = %v, want ErrInvalidInput", err)
+			if _, err := db.PublishCatalog(ctx, owner, source.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+				t.Errorf("PublishCatalog = %v, want ErrInvalidInput", err)
 			}
 		})
 	}
 
-	// The restored row is takeable, so the bound is what refused it.
-	if _, err := db.TakeCatalog(ctx, taker, source.ID, allowAnyCatalogParams); err != nil {
-		t.Errorf("TakeCatalog on the restored row: %v", err)
+	// The restored row publishes, so the bound is what refused it.
+	if _, err := db.PublishCatalog(ctx, owner, source.ID, allowAnyCatalogParams); err != nil {
+		t.Errorf("PublishCatalog on the restored row: %v", err)
 	}
 }
 
@@ -361,7 +358,7 @@ func TestBuilderWritesStoreNormalizedValues(t *testing.T) {
 		t.Fatalf("CreateUserCollection: %v", err)
 	}
 	requireNormalizedTree(t, "created", created, "Scoped")
-	stored, err := db.reloadCollection(ctx, created.ID)
+	stored, err := ownCollection(ctx, db.conn, owner, created.ID)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -377,7 +374,7 @@ func TestBuilderWritesStoreNormalizedValues(t *testing.T) {
 		t.Fatalf("UpdateUserCollection: %v", err)
 	}
 	requireNormalizedTree(t, "updated", updated, "Scoped 2")
-	if stored, err = db.reloadCollection(ctx, created.ID); err != nil {
+	if stored, err = ownCollection(ctx, db.conn, owner, created.ID); err != nil {
 		t.Fatalf("reload: %v", err)
 	}
 	requireNormalizedTree(t, "stored after update", stored, "Scoped 2")
@@ -404,16 +401,16 @@ func TestImportBundleStoresNormalizedValues(t *testing.T) {
 	requireNormalizedTree(t, "imported", collections[0], "Slashers")
 }
 
-// A Take copies what its original stores as it is, values a builder write
-// would normalize included, so the copy hashes like its original: Community
-// shows it taken with no update available.
-func TestTakeCopiesStoredValuesAsTheyAre(t *testing.T) {
+// A publish snapshots what its source stores as it is, values a builder
+// write would normalize included, and a subscribe writes the snapshot as it
+// is, so the copy matches its snapshot: no update is available.
+func TestSubscribeCopiesStoredValuesAsTheyAre(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, taker := newTestProfile(t, db, "owner"), newTestProfile(t, db, "taker")
 	scoped := &NewScopedCatalog{Key: "k", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}"}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Source", IsPublic: true, Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: scoped}}}},
+		Title: "Source", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: scoped}}}},
 	})
 	if err != nil {
 		t.Fatalf("CreateUserCollection: %v", err)
@@ -427,14 +424,14 @@ func TestTakeCopiesStoredValuesAsTheyAre(t *testing.T) {
 		}
 	}
 
-	taken, err := db.TakeCollection(ctx, taker, source.ID, allowAnyCatalogParams)
-	if err != nil {
-		t.Fatalf("TakeCollection: %v", err)
-	}
+	taken := takeCollection(t, db, owner, taker, source.ID)
 	if taken.Title != " Source " || taken.ViewMode != "" || taken.Folders[0].TileShape != "" {
 		t.Errorf("taken title, view mode, tile shape = %q, %q, %q, want the source's as stored", taken.Title, taken.ViewMode, taken.Folders[0].TileShape)
 	}
-	if row := communityCollectionRow(t, db, taker, source.ID); !row.Taken || row.UpdateAvailable {
-		t.Errorf("community row taken = %v, update_available = %v, want true, false", row.Taken, row.UpdateAvailable)
+	if taken.Subscription == nil || taken.Subscription.UpdateAvailable {
+		t.Errorf("subscription = %+v, want one with no update available", taken.Subscription)
+	}
+	if copyTreeSnapshot(taken).contentHash() != collectionSnapshot(taken.Subscription.PublicationID, mustOwnCollection(t, db, owner, source.ID)).contentHash() {
+		t.Error("the copy does not snapshot to what its publication holds")
 	}
 }

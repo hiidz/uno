@@ -84,7 +84,11 @@ func (v *Verifier) Verify(ctx context.Context, tokenString string) (Claims, erro
 		return Claims{}, fmt.Errorf("%w: missing expiry", ErrInvalidToken)
 	}
 
-	return Claims{Sub: sub, Exp: expTime.Time}, nil
+	// Supabase writes the account's email address into every token it signs;
+	// one without it reads as "".
+	email, _ := claims["email"].(string)
+
+	return Claims{Sub: sub, Email: email, Exp: expTime.Time}, nil
 }
 
 // resolveKey extracts kid from tokenString's header and returns the
