@@ -15,8 +15,6 @@ export interface FromCommunityActions {
   onClose: () => void
   onDuplicate?: () => void
   onDelete?: () => void
-  /** Why Delete is disabled — Nuvio may still hold the row — or `null`. */
-  deleteBlocked?: string | null
   onUpdate: () => void
 }
 
@@ -71,7 +69,6 @@ function ViewFrame({
   onClose,
   onDuplicate,
   onDelete,
-  deleteBlocked,
   onUpdate,
 }: {
   tone: 'catalog' | 'collection'
@@ -107,7 +104,6 @@ function ViewFrame({
       onRequestClose={onClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
-      deleteBlocked={deleteBlocked}
       docked={docked}
       footer={
         <>

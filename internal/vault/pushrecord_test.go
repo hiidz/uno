@@ -91,8 +91,8 @@ func storedRecord(t *testing.T, db *DB, profileID uuid.UUID) (PushRecord, string
 	return record, stamp
 }
 
-// The record holds every catalog the addon's manifest lists for the same
-// Home, in its order, with name, type and params inline; the Home selection
+// The record holds every catalog Nuvio reaches for the Home, in the manifest's
+// order, with name, type and params inline; the Home selection
 // as pushed; and each collection as the bytes push sends, in Home order with
 // the pending pin.
 func TestPushRecordHoldsWhatNuvioReaches(t *testing.T) {
@@ -105,17 +105,32 @@ func TestPushRecordHoldsWhatNuvioReaches(t *testing.T) {
 		t.Errorf("stamp = %q, want the profile's Nuvio profile id", stamp)
 	}
 
+	// Home rows first, in Home order, then what the collections' folders use,
+	// each once, in the order the collections, folders and refs list them.
+	wantNames := []string{"Home row", "Discover", "Scoped", "Folder only"}
+	wantParams := []string{`{"sort_by":"popularity.desc"}`, `{"sort_by":"vote_average.desc"}`, "{}", `{"with_genres":"27"}`}
+	if len(record.Catalogs) != len(wantNames) {
+		t.Fatalf("record has %d catalogs, want %d (%+v)", len(record.Catalogs), len(wantNames), record.Catalogs)
+	}
+	for i, c := range record.Catalogs {
+		if c.Name != wantNames[i] || c.Type != "movie" || c.Provider != "tmdb" || string(c.Params) != wantParams[i] {
+			t.Errorf("catalog %d = %s %s %s %s, want %s movie tmdb %s", i, c.Name, c.Type, c.Provider, c.Params, wantNames[i], wantParams[i])
+		}
+	}
+
+	// The manifest lists those catalogs, from the record, with the Home or
+	// Discover the push carried; the ones only a folder uses are off Home.
 	published, err := f.db.GetPublishedCatalogs(ctx, f.owner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(record.Catalogs) != len(published) {
-		t.Fatalf("record has %d catalogs, the manifest lists %d", len(record.Catalogs), len(published))
+	wantShown := []bool{true, false, false, false}
+	if len(published) != len(wantNames) {
+		t.Fatalf("manifest lists %d catalogs, want %d", len(published), len(wantNames))
 	}
 	for i, p := range published {
-		got := record.Catalogs[i]
-		if got.ID != p.ID || got.Name != p.Name || got.Type != p.Type || got.Provider != p.Provider || string(got.Params) != p.Params {
-			t.Errorf("catalog %d = %+v (params %s), want %s %q %s %s %s", i, got, got.Params, p.ID, p.Name, p.Type, p.Provider, p.Params)
+		if p.Name != wantNames[i] || p.Params != wantParams[i] || p.ShowInHome != wantShown[i] {
+			t.Errorf("manifest %d = %q %s showInHome=%v, want %q %s %v", i, p.Name, p.Params, p.ShowInHome, wantNames[i], wantParams[i], wantShown[i])
 		}
 	}
 	for _, c := range record.Catalogs {

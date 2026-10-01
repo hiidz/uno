@@ -22,7 +22,8 @@ import type { CatalogPayload } from '@/api'
  * `['p', i, 'collections']` each take their `…, 'selection'` child with them.
  * Selection is client state until Push, and the one-shot hydration guard in
  * `HomeSelectionContext` is what keeps those refetches from clobbering the
- * user's pending home-screen edits.
+ * user's pending home-screen edits; only a row the refetches show deleted
+ * leaves them (`usePrunedHome`). What waits for a push is refreshed too.
  */
 export function useCatalogMutations(profileIndex: number) {
   const queryClient = useQueryClient()
@@ -44,13 +45,9 @@ export function useCatalogMutations(profileIndex: number) {
     onSuccess: invalidate,
   })
 
-  // A refused delete refetches too: only a tab behind the server gets one —
-  // its 409 names what on Home still holds the catalog, which the refetched
-  // selections then show beside a disabled Delete.
   const remove = useMutation({
     mutationFn: (id: string) => deleteCatalog(profileIndex, id),
     onSuccess: invalidate,
-    onError: invalidate,
   })
 
   return { create, update, remove }

@@ -4,9 +4,7 @@ import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
 import { stickerWords, type SharingSticker } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
-import { deleteButton } from '@/features/home/deleteBlockers'
 import { prefersReducedMotion } from '@/lib/motion'
-import { DeleteBlockedNote } from './DeleteBlockedNote'
 import { typeLabel } from './recipe'
 
 type RowKind = 'movie' | 'series' | 'collection'
@@ -52,7 +50,6 @@ export function LibraryItem({
   onToggle,
   onDuplicate,
   onDelete,
-  deleteBlocked = null,
 }: {
   kind: RowKind
   /** What the row's sharing state says, in words (`rowStickers`). */
@@ -68,9 +65,6 @@ export function LibraryItem({
   onToggle: () => void
   onDuplicate: () => void
   onDelete: () => void
-  /** Why Delete is disabled — Nuvio may still hold the row — shown beside
-   *  it; `null` while it can be deleted. */
-  deleteBlocked?: string | null
 }) {
   const [slap, setSlap] = useState(false)
 
@@ -142,14 +136,7 @@ export function LibraryItem({
       {selected && (
         <div className="hidden flex-wrap items-center gap-1.5 px-3 pb-3 lg:flex">
           <GlyphButton label={`Duplicate ${name}`} icon={Copy} onClick={onDuplicate} variant="labeled" />
-          <GlyphButton
-            {...deleteButton(name, deleteBlocked)}
-            icon={Trash2}
-            onClick={onDelete}
-            destructive
-            variant="labeled"
-          />
-          <DeleteBlockedNote reason={deleteBlocked} className="w-full pt-0.5" />
+          <GlyphButton label={`Delete ${name}`} icon={Trash2} onClick={onDelete} destructive variant="labeled" />
         </div>
       )}
     </div>

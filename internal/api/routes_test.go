@@ -262,10 +262,10 @@ func TestCollectionRoutes(t *testing.T) {
 	})
 }
 
-// TestDeleteRoutesRefuseWhatNuvioHolds deletes a catalog and a collection
-// that are on Home: each answers 409 with its reason alone, the sentence the
-// SPA shows, and stays.
-func TestDeleteRoutesRefuseWhatNuvioHolds(t *testing.T) {
+// TestDeleteRoutesAllowWhatNuvioHolds deletes a catalog and a collection that
+// are on Home: each answers 204 and goes, and the pending push lists both as
+// removed, by the names the last push left, until a push takes them off.
+func TestDeleteRoutesAllowWhatNuvioHolds(t *testing.T) {
 	f := newRouteFixture(t)
 	record, err := f.db.BuildPushRecord(t.Context(), f.caller.ID,
 		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: f.mine.ID, ShowInHome: true}}},
@@ -276,15 +276,14 @@ func TestDeleteRoutesRefuseWhatNuvioHolds(t *testing.T) {
 	if err := f.db.SavePush(t.Context(), f.caller.ID, record); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/api/p/1/catalogs/" + f.mine.ID.String(), "/api/p/1/collections/" + f.mineColl.ID.String()} {
-		w := serve(t, f.s, http.MethodDelete, path, "", false)
-		if got := strings.TrimSpace(w.Body.String()); w.Code != http.StatusConflict || got != "Take it off Home and push first." {
-			t.Errorf("DELETE %s = %d %q, want 409 with the reason alone", path, w.Code, got)
-		}
-	}
 	runSteps(t, f.s, []routeStep{
-		{name: "the catalog stays", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
-		{name: "the collection stays", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
+		{name: "nothing is waiting after the push", method: http.MethodGet, path: "/api/p/1/push/pending", wantStatus: http.StatusOK, wantBody: "[]"},
+		{name: "delete a catalog on Home", method: http.MethodDelete, path: "/api/p/1/catalogs/" + f.mine.ID.String(), wantStatus: http.StatusNoContent},
+		{name: "delete a collection on Home", method: http.MethodDelete, path: "/api/p/1/collections/" + f.mineColl.ID.String(), wantStatus: http.StatusNoContent},
+		{name: "the catalog's removal waits for a push", method: http.MethodGet, path: "/api/p/1/push/pending", wantStatus: http.StatusOK,
+			wantBody: fmt.Sprintf(`{"kind":"catalog","id":%q,"name":"Mine","change":"removed"}`, f.mine.ID)},
+		{name: "the collection's removal waits for a push", method: http.MethodGet, path: "/api/p/1/push/pending", wantStatus: http.StatusOK,
+			wantBody: fmt.Sprintf(`{"kind":"collection","id":%q,"name":"Mine","change":"removed"}`, f.mineColl.ID)},
 	})
 }
 

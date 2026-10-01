@@ -101,26 +101,10 @@ describe('CollectionEditor', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'Mine now' }))
   })
 
-  it('disables Delete while something holds the collection, and says why', () => {
-    const onDelete = vi.fn()
-    renderEditor({
-      initial: formFromCollection(saved),
-      onDelete,
-      deleteBlocked: 'Take it off Home and push first.',
-    })
-    const del = screen.getByRole('button', { name: 'Delete Weekend' })
-    expect(del).toBeDisabled()
-    expect(del).toHaveAttribute('title', 'Take it off Home and push first.')
-    expect(screen.getByText('Can’t delete yet. Take it off Home and push first.')).toBeVisible()
-    fireEvent.click(del)
-    expect(onDelete).not.toHaveBeenCalled()
-  })
-
-  it('keeps Delete enabled, and quiet, while nothing holds it', () => {
+  it('asks to delete the collection, whatever Nuvio holds', () => {
     const onDelete = vi.fn()
     renderEditor({ initial: formFromCollection(saved), onDelete })
     fireEvent.click(screen.getByRole('button', { name: 'Delete Weekend' }))
     expect(onDelete).toHaveBeenCalled()
-    expect(screen.queryByText(/Can’t delete yet/)).not.toBeVisible()
   })
 })

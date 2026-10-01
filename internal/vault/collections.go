@@ -350,25 +350,30 @@ func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 }
 
 // DeleteUserCollection deletes the collection identified by collectionID,
-// provided it's owned by profileID (ErrCollectionNotFound otherwise) and off
-// Home: one on Home, which Nuvio holds, is ErrConflict with its reason as
-// its message (collectionDeleteBlocker).
+// provided it's owned by profileID (ErrCollectionNotFound otherwise). It is
+// allowed at any time, Home or not: Nuvio keeps what the last push put there,
+// served from the push record, until the next push drops it.
 func (db *DB) DeleteUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
-		return deleteOffHomeCollection(ctx, tx, profileID, collectionID)
+		return deleteOwnedCollection(ctx, tx, profileID, collectionID)
 	})
 }
 
-// deleteOffHomeCollection deletes collectionID inside tx, once
-// collectionDeleteBlocker has found it profileID's and off Home.
-func deleteOffHomeCollection(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID) error {
-	if err := collectionDeleteBlocker(ctx, tx, profileID, collectionID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
+// deleteOwnedCollection deletes collectionID inside tx when profileID owns it
+// (ErrCollectionNotFound otherwise).
+func deleteOwnedCollection(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID) error {
+	result, err := tx.ExecContext(ctx, `
 		DELETE FROM collections WHERE id = ? AND owner_id = ?
-	`, collectionID.String(), profileID.String()); err != nil {
+	`, collectionID.String(), profileID.String())
+	if err != nil {
 		return fmt.Errorf("deleting collection: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrCollectionNotFound
 	}
 	return nil
 }

@@ -88,7 +88,6 @@ export function CatalogEditor({
   onRequestClose,
   onDuplicate,
   onDelete,
-  deleteBlocked = null,
   onDirtyChange,
   canMoveToLibrary = true,
   sharingRow,
@@ -113,9 +112,6 @@ export function CatalogEditor({
    *  was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
-  /** Why Delete is disabled — Nuvio may still hold this catalog — or `null`
-   *  (`EditorShell`). */
-  deleteBlocked?: string | null
   onDirtyChange: (dirty: boolean) => void
   /** False for a catalog staged inside a collection that isn't a row yet: it
    *  is created scoped when the collection saves, so there is nothing to move
@@ -311,7 +307,6 @@ export function CatalogEditor({
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
-      deleteBlocked={deleteBlocked}
       docked="results"
       footer={
         <EditorFooter

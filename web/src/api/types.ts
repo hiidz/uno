@@ -132,6 +132,20 @@ export interface SelectedCatalog extends Catalog {
   show_in_home: boolean
 }
 
+/**
+ * One row `GET /api/p/{i}/push/pending` says a push would change in Nuvio:
+ * `changed` (Nuvio holds it differently — a collection also when a catalog its
+ * folders use changed), `added` (on Home, and Nuvio holds nothing for it) or
+ * `removed` (deleted since the last push, which drops it). `name` is the row's
+ * name now, or as the last push left it for a removed one.
+ */
+export interface PendingChange {
+  kind: 'catalog' | 'collection'
+  id: string
+  name: string
+  change: 'added' | 'changed' | 'removed'
+}
+
 /** One catalog of a snapshot or a diff, in the bundle form: named by a `key`
  *  rather than an id, with `params` an object rather than the JSON-encoded
  *  string a `Catalog` carries. */

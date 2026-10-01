@@ -1,13 +1,11 @@
 import { createContext, useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
-import { fetchCatalogSelection, fetchCollectionSelection, queryKeys } from '@/api'
+import { fetchCatalogSelection, fetchCollectionSelection, fetchPendingPush, queryKeys } from '@/api'
 import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
 import { computeHomeChanges, countUnsaved } from './changes'
 import type { HomeChange } from './changes'
-import { deleteBlockersFor, pushedHome } from './deleteBlockers'
-import type { DeleteBlockers } from './deleteBlockers'
 import {
   EMPTY_HOME,
   moveCollectionInBand,
@@ -15,8 +13,10 @@ import {
   reorderCollectionBand,
   reorderWithinBand,
   togglePinToTop,
+  existingRowIDs,
 } from './pending'
 import type { HomeCatalogEntry, HomeCollectionEntry, HomeState } from './pending'
+import { usePrunedHome } from './usePrunedHome'
 
 export interface HomeSelection extends HomeEdits {
   /** False until the server's current selection has loaded. Edits are blocked
@@ -40,9 +40,9 @@ export interface HomeSelection extends HomeEdits {
   catalogById: ReadonlyMap<string, Catalog>
   collectionById: ReadonlyMap<string, Collection>
 
-  /** True when a selected item is no longer in the library — the row was
-   *  deleted after being selected. It still works, but removing it is
-   *  one-way, so the UI says so. */
+  /** True when a selected item is not in the library, which the lists can show
+   *  for the moment between a delete and their refetch: the provider then drops
+   *  the row from the pending selection (`usePrunedHome`). */
   isDetached: (id: string) => boolean
 
   /** Genre lookups, so the Home pane can render recipes without calling
@@ -82,14 +82,9 @@ export interface HomeSelection extends HomeEdits {
  * change only with the collections an added one reads its last pushed pin
  * from, never with the selection they edit, so a component that makes edits
  * without reading the selection uses `useHomeEdits` and doesn't re-render on
- * every change to it. What keeps a row from being deleted rides along, since
- * it changes only when the server's selection does.
+ * every change to it.
  */
 export interface HomeEdits {
-  /** Why a catalog or collection can't be deleted yet — Nuvio may still hold
-   *  it — read from Home as the server holds it, never the pending edits
-   *  (`deleteBlockers.ts`). `null` when it can be. */
-  deleteBlockers: DeleteBlockers
   addCatalog: (id: string) => void
   removeCatalog: (id: string) => void
   toggleShowInHome: (id: string) => void
@@ -124,7 +119,7 @@ export function HomeSelectionProvider({
 }) {
   const library = useLibrary(profileIndex)
 
-  const [catalogSelection, collectionSelection] = useQueries({
+  const [catalogSelection, collectionSelection, pendingPush] = useQueries({
     queries: [
       {
         queryKey: queryKeys.catalogSelection(profileIndex),
@@ -133,6 +128,10 @@ export function HomeSelectionProvider({
       {
         queryKey: queryKeys.collectionSelection(profileIndex),
         queryFn: () => fetchCollectionSelection(profileIndex),
+      },
+      {
+        queryKey: queryKeys.pendingPush(profileIndex),
+        queryFn: () => fetchPendingPush(profileIndex),
       },
     ],
   })
@@ -181,13 +180,6 @@ export function HomeSelectionProvider({
     return map
   }, [catalogSelectionData, library.catalogs, collectionById])
 
-  const blockers = useMemo(
-    function deleteBlockers() {
-      return deleteBlockersFor(pushedHome(catalogSelectionData, collectionSelectionData, collectionById))
-    },
-    [catalogSelectionData, collectionSelectionData, collectionById],
-  )
-
   const libraryLoaded = !library.isLoading && !library.failed.catalogs && !library.failed.collections
 
   const libraryIds = useMemo(
@@ -199,6 +191,18 @@ export function HomeSelectionProvider({
     [library.catalogs, library.collections],
   )
 
+  // A row deleted since — here, or in another tab — leaves the pending
+  // selection and the baseline both, once the lists have refetched without it:
+  // Push would be refused for naming it. Nuvio still holds it until the next
+  // push, which the list of changes says from `pendingPush`.
+  usePrunedHome(
+    current,
+    baseline,
+    existingRowIDs(selectionLoaded, libraryLoaded, libraryIds, catalogSelectionData, collectionSelectionData),
+    setCurrent,
+    setBaseline,
+  )
+
   // The Show first a collection was last pushed with, which one added to the
   // home screen starts from.
   const storedPin = useCallback(
@@ -208,8 +212,8 @@ export function HomeSelectionProvider({
 
   const state = current ?? EMPTY_HOME
   const changes = useMemo(
-    () => computeHomeChanges({ baseline, current: state, catalogById, collectionById }),
-    [baseline, state, catalogById, collectionById],
+    () => computeHomeChanges({ baseline, current: state, catalogById, collectionById, waiting: pendingPush.data }),
+    [baseline, state, catalogById, collectionById, pendingPush.data],
   )
   const pendingCount = changes.length
   const unsavedCount = countUnsaved(changes)
@@ -242,14 +246,12 @@ export function HomeSelectionProvider({
 
   // Every one of these only closes over `edit` — stable for the life of the
   // provider — and, for `addCollection`, `storedPin`, so this whole cluster
-  // needs recomputing only when the collections or the server's selection
-  // change (the latter for `deleteBlockers`), not on every render that
-  // changes `state`. The band-aware edits read each row's pin from the state
-  // they edit.
+  // needs recomputing only when the collections change, not on every render
+  // that changes `state`. The band-aware edits read each row's pin from the
+  // state they edit.
   const editFns = useMemo<HomeEdits>(
     function homeEdits() {
       return {
-        deleteBlockers: blockers,
         addCatalog: (id: string) =>
           edit((previous) =>
             previous.catalogs.some((c) => c.id === id)
@@ -306,7 +308,7 @@ export function HomeSelectionProvider({
           })),
       }
     },
-    [edit, storedPin, blockers],
+    [edit, storedPin],
   )
 
   // Every failed query in this profile's subtree — the two selections, and the

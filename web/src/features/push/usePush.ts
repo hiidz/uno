@@ -88,9 +88,10 @@ export function usePush(profileIndex: number): Push {
           // `HomeSelectionContext`'s `collectionById` map lets the owned list
           // win over the selection response on id collision (it's built
           // second) — so without this, a collection that's both owned and
-          // currently selected keeps showing its pre-push `needs_push` and
-          // the "changed since it was last pushed" line never clears.
+          // currently selected keeps showing its pre-push `needs_push`.
           void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
+          // What waited for this push is in Nuvio now.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.pendingPush(profileIndex) })
           setOutcome({ kind: 'success', manifestURL: result.manifest_url })
         } else {
           setOutcome({ kind: result.undo_failed ? 'undo-failed' : 'failed' })

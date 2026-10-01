@@ -644,3 +644,81 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 	}
 	pushedClean("second push, Later's pin flipped")
 }
+
+// A collection the last push sent, deleted since, is dropped from Nuvio's blob
+// by the next push even with no folders, which the addon-id heuristic can't
+// tell from a Nuvio-native one. A foreign collection with no folders stays.
+func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
+	db := newTestVaultDB(t)
+	ctx := context.Background()
+	profile, err := db.ResolveOrCreateProfile(ctx, "user-deleted", 1, "nuvio-uuid-deleted")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+	empty, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Empty", ViewMode: "ROWS"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := json.RawMessage(`{"id":"` + uuid.NewString() + `","folders":[]}`)
+	fake := &fakeNuvio{pullCollections: []json.RawMessage{foreign}}
+	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
+	reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
+
+	first := vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: empty.ID}}}
+	s.push(httptest.NewRecorder(), newPushRequest(t, reqCtx, pushRequest{Collections: first}))
+	if got := fake.pushCollectionsCalls[0]; len(got) != 2 {
+		t.Fatalf("first push sent %d collections, want the foreign one and Empty", len(got))
+	}
+
+	if err := db.DeleteUserCollection(ctx, profile.ID, empty.ID); err != nil {
+		t.Fatalf("deleting a collection on Home: %v", err)
+	}
+	fake.pullCollections = fake.pushCollectionsCalls[0]
+	w := httptest.NewRecorder()
+	s.push(w, newPushRequest(t, reqCtx, pushRequest{}))
+	if w.Code != http.StatusOK {
+		t.Fatalf("second push status = %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	if got := fake.pushCollectionsCalls[1]; len(got) != 1 || string(got[0]) != string(foreign) {
+		t.Errorf("second push sent %s, want only the foreign collection", got)
+	}
+}
+
+// A push the server can't run is turned away before Nuvio is contacted: no
+// profile or no Nuvio token on the request is a 401, a profile that doesn't
+// exist a 500, and a selection naming a catalog the profile doesn't own a 400.
+func TestPush_TurnsAwayWhatItCannotRun(t *testing.T) {
+	db := newTestVaultDB(t)
+	ctx := context.Background()
+	profile, err := db.ResolveOrCreateProfile(ctx, "user-turned-away", 1, "nuvio-uuid-turned-away")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+	foreign := vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: uuid.New(), ShowInHome: true}}}
+
+	tests := []struct {
+		name string
+		ctx  context.Context
+		body pushRequest
+		want int
+	}{
+		{"no profile", withNuvioToken(ctx, "token"), pushRequest{}, http.StatusUnauthorized},
+		{"no Nuvio token", withProfileID(ctx, profile.ID), pushRequest{}, http.StatusUnauthorized},
+		{"unknown profile", withNuvioToken(withProfileID(ctx, uuid.New()), "token"), pushRequest{}, http.StatusInternalServerError},
+		{"a catalog it doesn't own", withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{Catalogs: foreign}, http.StatusBadRequest},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeNuvio{}
+			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
+			w := httptest.NewRecorder()
+			s.push(w, newPushRequest(t, tc.ctx, tc.body))
+			if w.Code != tc.want {
+				t.Errorf("status = %d, want %d (%s)", w.Code, tc.want, w.Body.String())
+			}
+			if len(fake.pushAddonsCalls) != 0 || len(fake.pushCollectionsCalls) != 0 {
+				t.Error("Nuvio was contacted")
+			}
+		})
+	}
+}

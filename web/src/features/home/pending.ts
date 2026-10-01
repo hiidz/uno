@@ -107,3 +107,32 @@ export function moveCollectionInBand(
 export function togglePinToTop(collections: HomeCollectionEntry[], id: string): HomeCollectionEntry[] {
   return collections.map((c) => (c.id === id ? { ...c, pinToTop: !c.pinToTop } : c))
 }
+
+/**
+ * The ids of the rows that still exist — the library's and the two selection
+ * responses' — or `null` until all of those have loaded, when nothing can be
+ * said to be gone.
+ */
+export function existingRowIDs(
+  selectionLoaded: boolean,
+  libraryLoaded: boolean,
+  libraryIDs: ReadonlySet<string>,
+  ...selections: (readonly { id: string }[] | undefined)[]
+): ReadonlySet<string> | null {
+  if (!selectionLoaded || !libraryLoaded) return null
+  return new Set([...libraryIDs, ...selections.flatMap((rows) => (rows ?? []).map((row) => row.id))])
+}
+
+/**
+ * `state` without the rows `existing` lacks — deleted, here or in another tab,
+ * which Push would otherwise be refused for naming — or `state` itself when
+ * none are, when it is `null`, or when `existing` is `null`, which means
+ * nothing is loaded to judge by yet.
+ */
+export function withoutDeleted<T extends HomeState | null>(state: T, existing: ReadonlySet<string> | null): T {
+  if (state === null || existing === null) return state
+  const catalogs = state.catalogs.filter((c) => existing.has(c.id))
+  const collections = state.collections.filter((c) => existing.has(c.id))
+  if (catalogs.length === state.catalogs.length && collections.length === state.collections.length) return state
+  return { catalogs, collections } as T
+}

@@ -9,7 +9,7 @@
  * reads exactly like the running-order row it describes.
  */
 
-import type { Catalog, Collection } from '@/api'
+import type { Catalog, Collection, PendingChange } from '@/api'
 import { ordinal } from '@/lib/ordinal'
 import type { HomeState } from './pending'
 
@@ -169,22 +169,72 @@ function groupMoves(
   return list
 }
 
+function holds(state: HomeState, row: RowKey): boolean {
+  return (row.kind === 'catalog' ? state.catalogs : state.collections).some((entry) => entry.id === row.id)
+}
+
+/**
+ * The lines for what the server says a push would change in Nuvio, already
+ * saved, which this tab's own edits don't say: a row edited since its last push
+ * (a collection also when a catalog its folders use was), one Nuvio holds
+ * nothing for, and one deleted, which the next push drops. The first two are
+ * left out for a row this tab takes off the home screen, where the removal is
+ * the change. A deleted row's line is the removal's own, so it isn't said twice
+ * when `taken`, the keys already listed, has it.
+ */
+function waitingChanges(
+  waiting: readonly PendingChange[],
+  baseline: HomeState,
+  current: HomeState,
+  taken: ReadonlySet<string>,
+): HomeChange[] {
+  return waiting
+    .map((item) => waitingLine(item, baseline, current, taken))
+    .filter((line): line is HomeChange => line !== null)
+}
+
+/** `waitingChanges`' line for one row, or `null` when this tab says it already. */
+function waitingLine(
+  { kind, id, name, change }: PendingChange,
+  baseline: HomeState,
+  current: HomeState,
+  taken: ReadonlySet<string>,
+): HomeChange | null {
+  const row: RowKey = { kind, id }
+  if (change === 'removed') return removalLine(row, name, taken)
+  if (!holds(baseline, row) || !holds(current, row)) return null
+  return { key: `waiting:${keyOf(row)}`, text: waitingText(change, name), saved: true }
+}
+
+/** The line for a deleted row, unless `taken` says this tab has it already. */
+function removalLine(row: RowKey, name: string, taken: ReadonlySet<string>): HomeChange | null {
+  const key = `remove:${keyOf(row)}`
+  return taken.has(key) ? null : { key, text: `Removed “${name}” from home screen`, saved: true }
+}
+
+function waitingText(change: 'added' | 'changed', name: string): string {
+  return change === 'added' ? `“${name}” isn’t in Nuvio yet` : `“${name}” changed since it was last pushed`
+}
+
 /**
  * Every change a push would make, additions and removals, moves between home
  * and Discover, Show first turned on or off, and the fewest moves that explain
  * the new order within each group. Only Show first moves a row from one group
  * to another, and it is reported as that, so moves are found group by group.
+ * `waiting` is what the server says is waiting for a push beyond those edits.
  */
 export function computeHomeChanges({
   baseline,
   current,
   catalogById,
   collectionById,
+  waiting = [],
 }: {
   baseline: HomeState
   current: HomeState
   catalogById: ReadonlyMap<string, Catalog>
   collectionById: ReadonlyMap<string, Collection>
+  waiting?: readonly PendingChange[]
 }): HomeChange[] {
   const quoted = quoter(catalogById, collectionById)
 
@@ -239,25 +289,7 @@ export function computeHomeChanges({
     }
   })
 
-  // A collection in Nuvio whose content moved on since the push that put it
-  // there — what Push would send for it differs from what it last sent
-  // (`needs_push`), so Nuvio's copy is stale until the next push, even though
-  // nothing about *this* selection changed. Restricted to collections present
-  // in *both* baseline and current: a collection taken off the home screen,
-  // pushed, edited, then put back would otherwise show both "Added …" and
-  // "changed since …" today, when only "Added …" should fire.
-  const baseSet = new Set(baseline.collections.map((c) => c.id))
-  current.collections
-    .filter((c) => baseSet.has(c.id))
-    .forEach(({ id }) => {
-      if (collectionById.get(id)?.needs_push) {
-        list.push({
-          key: `stale:${id}`,
-          text: `${quoted({ kind: 'collection', id })} changed since it was last pushed`,
-          saved: true,
-        })
-      }
-    })
+  list.push(...waitingChanges(waiting, baseline, current, new Set(list.map((change) => change.key))))
 
   return list
 }

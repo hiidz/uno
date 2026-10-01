@@ -6,6 +6,8 @@ import {
   reorderWithinBand,
   toPushPayload,
   togglePinToTop,
+  existingRowIDs,
+  withoutDeleted,
   type HomeCatalogEntry,
   type HomeCollectionEntry,
 } from './pending'
@@ -90,5 +92,41 @@ describe('the collection bands', () => {
   it('flips one collection’s Show first and keeps its place in the selection', () => {
     expect(togglePinToTop(entries, 'u1')).toEqual([first('p1'), first('u1'), first('p2'), after('u2')])
     expect(togglePinToTop(entries, 'p2')).toEqual([first('p1'), after('u1'), after('p2'), after('u2')])
+  })
+})
+
+describe('existingRowIDs', () => {
+  it('is null until the lists have loaded', () => {
+    expect(existingRowIDs(false, true, new Set(['a']), [{ id: 'b' }])).toBeNull()
+  })
+
+  it('unites the library with both selections', () => {
+    expect(existingRowIDs(true, true, new Set(['a']), [{ id: 'b' }], undefined)).toEqual(new Set(['a', 'b']))
+  })
+})
+
+describe('withoutDeleted', () => {
+  const state = {
+    catalogs: [
+      { id: 'a', showInHome: true },
+      { id: 'b', showInHome: false },
+    ],
+    collections: [
+      { id: 'x', pinToTop: false },
+      { id: 'y', pinToTop: true },
+    ],
+  }
+
+  it('is the state itself while every row exists, before anything can be judged, or for none', () => {
+    expect(withoutDeleted(state, new Set(['a', 'b', 'x', 'y']))).toBe(state)
+    expect(withoutDeleted(state, null)).toBe(state)
+    expect(withoutDeleted(null, new Set())).toBeNull()
+  })
+
+  it('drops the rows that are gone, keeping the order of the rest', () => {
+    expect(withoutDeleted(state, new Set(['b', 'y']))).toEqual({
+      catalogs: [{ id: 'b', showInHome: false }],
+      collections: [{ id: 'y', pinToTop: true }],
+    })
   })
 })

@@ -31,7 +31,7 @@ embedded frontend build.
 
 | Package | Owns |
 | --- | --- |
-| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Also the push payload (`pushpayload.go`: the wire types push sends, and the addon id and manifest id they carry) and the push record (`pushrecord.go`: what a profile's last push sent), since what push sends decides whether a collection needs a push. Imports only `jsonwire`. The schema is `schema.sql`, embedded |
+| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Also the push payload (`pushpayload.go`: the wire types push sends, and the addon id and manifest id they carry) and the push record (`pushrecord.go`: what a profile's last push sent), since what push sends decides whether a collection needs a push, and the reads built on it: what the addon serves (`published.go`) and what waits for a push (`pushpending.go`). Imports only `jsonwire`. The schema is `schema.sql`, embedded |
 | `internal/addon` | Stremio-protocol manifest + catalog responses, `/u/{token}/...` |
 | `internal/api` | Bearer-token auth, CRUD orchestration, push, the route table |
 | `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |
@@ -198,11 +198,11 @@ Route-semantics facts the client has to honour:
     (`UpdateSubscription`, 200) brings the caller's subscribed copy up to the current snapshot.
     None of the three reaches TMDB: they run the form validators over a snapshot whose recipes
     were checked at publish, so a snapshot today's rules refuse is a 400.
-  - Updating a subscribed *listed* catalog changes its addon rows at once: a folder source in
-    the pushed blob names a catalog only by id and type, and the addon server reads the name and
-    params live. An Update that changes what push sends for a collection copy on Home leaves it
-    `needs_push`, so it shows on Home as an unpushed change until the next push carries its
-    folders to Nuvio.
+  - Updating a subscribed *listed* catalog changes what Nuvio shows only at the next push: the
+    addon serves a catalog's name and params from the push record (*Addon server* below), so an
+    Update, like an editor Save, waits for Push. It shows on Home as a change to push
+    (`GET .../push/pending`, *Push*), as does an Update that changes what push sends for a
+    collection copy on Home.
 - **Publishing an owned row is a call on the row.**
   - `POST /api/p/{i}/catalogs/{id}/publish` and `.../collections/{id}/publish`
     (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish or
@@ -238,18 +238,22 @@ Route-semantics facts the client has to honour:
   on the collection save. It goes away by dropping its last folder ref and saving the collection.
   `PUT` of a *listed* catalog leaves its scope alone: a `collection_id` in the body is accepted
   and not read, so the catalog stays listed.
-- **Deletes refuse what Nuvio may still hold** (`internal/vault/delete_guard.go`). Each check runs
-  inside the delete's own transaction and reads Home as the server holds it, which is what the
-  last push sent, never the SPA's pending edits. A refusal is `vault.ErrConflict`, answered `409`
-  with its reason alone as the body (`conflictReason`), the sentence the SPA shows.
-  - `DELETE /api/p/{i}/catalogs/{id}`, with the first that holds: the catalog has its own Home
-    row, Discover-only included ("Take it off Home and push first."); a collection on Home uses it,
-    the first in Home order named ("Remove it from “X” and push first."); or any of the profile's
-    collections on Home has `needs_push` ("Push first: Nuvio may still show it in a collection.").
-    The last is profile-wide: `needs_push` says a collection's pushed version differs, not which
-    catalogs that version used.
-  - `DELETE /api/p/{i}/collections/{id}` for a collection on Home ("Take it off Home and push
-    first.").
+- **Deletes are allowed any time.** `DELETE /api/p/{i}/catalogs/{id}` and
+  `.../collections/{id}` remove the row from Uno and Community at once (a published row is
+  unpublished) whether or not it is on Home; Nuvio keeps what the last push put there, served
+  from the push record, until the next push drops it (*Addon server*, *Push*). A delete changes
+  nothing else about Nuvio: a collection whose folders used the catalog loses it by cascade, so
+  that collection shows as changed. The delete confirm says so: "Delete removes it from Uno and
+  Community now, and from Nuvio at your next push."
+- **What waits for a push is read from the server.** `GET /api/p/{i}/push/pending`
+  (`PendingPush`, `internal/vault/pushpending.go`) answers the rows a push of the Home as Uno
+  stores it would change in Nuvio, as `[{kind, id, name, change}]` with `change` one of `changed`
+  (Nuvio holds the row differently: a catalog's name or recipe, a collection's pushed bytes, or
+  a catalog its folders use), `added` (on Home, and Nuvio holds nothing for it) and `removed`
+  (deleted since the last push). It is the difference between the push record and the record
+  `StoredPushRecord` builds from the Home columns now, read in one snapshot. The Home edits a tab
+  has made and not pushed are not in it: the SPA lists those itself and adds this list
+  (`docs/frontend.md`).
 - **Import never trusts its own check step.** Three routes in `internal/api/bundle.go` move
   catalogs and collections in and out as a bundle (format in `docs/data-model.md`, "Bundle
   format"):
@@ -288,22 +292,37 @@ Two routes: `GET /u/{token}/manifest.json` and `GET /u/{token}/catalog/{type}/{r
 `rest` is `{id}.json` or `{id}/{extra}.json`, where `{extra}` is a query string of `skip`
 (pagination) and `genre` (a pick from the catalog's genre extra).
 
-The catalog route makes **one lookup**, `vault.ServedCatalog`: the profile by token, joined
-to the catalog by id and owner (and to the owner's sealed TMDB key, for per-account mode), with the route's type and the provider from its manifest id
-(`parseManifestID` accepts only the exact form `ManifestID` writes). It serves only a catalog **on
-the TV**, the manifest's set checked for this one catalog: one with its own home row
-(`home_sort_order` set, Discover-only rows included), or one a folder of the profile's on-home
-collections references, found by an `EXISTS` over that catalog's own refs. The lookup is also the
-access check: an unknown token, another profile's catalog, a catalog off the TV and a type or
-provider the catalog doesn't have all return **404**, so a leaked or guessed catalog UUID can't
-pull data through a profile it doesn't belong to, nor a catalog the profile hasn't pushed. A
-`skip` landing past TMDB's own pagination ceiling (`maxCatalogPage`, page 500) answers **200 with
-an empty `metas`** and makes no TMDB call: an empty page past the end is the honest answer, and
-TMDB would refuse the request anyway.
+**Both routes serve the profile's push record, never its live rows.** What the addon tells Nuvio
+is what the profile's last push put there (`PushRecord`, *Push* below): a Save, an Update or a
+delete changes the rows in Uno and reaches Nuvio only once a push has carried it. The record is
+current only while its stamp is the profile's Nuvio profile id now (`currentRecords`); a profile
+that never pushed, or whose Nuvio profile slot was reused since (`ResolveOrCreateProfile` updates
+the id), has none, and Nuvio is taken to hold nothing: its manifest is a 200 with an empty
+`catalogs` list and every catalog route is a 404, until its next push stores a fresh record.
 
-**A catalog that leaves the TV answers 404 at once**: taken off Home and pushed, or deleted. A TV
-keeps showing what it was last pushed until it syncs again, and until then a row or folder tile
-for that catalog comes back empty. NuvioTV (source read at `1a132cb`, 2026-09-30) syncs rarely:
+The manifest (`vault.GetPublishedCatalogs`) lists the record's catalogs in its order: those with a
+home row of their own, with the Home or Discover the push carried, then those only a folder of a
+pushed collection uses, off Home. Names, types and params are the record's own, so they are what
+the last push left.
+
+The catalog route makes **one lookup**, `vault.ServedCatalog`: the profile by token, joined to its
+current push record and to the owner's sealed TMDB key (for per-account mode, read live: a key
+isn't content), then the catalog by id with the route's type and the provider from its manifest id
+(`parseManifestID` accepts only the exact form `ManifestID` writes) among the record's catalogs.
+It serves only a catalog **Nuvio can reach**, the manifest's set checked for this one catalog: one
+with its own home row (Discover-only rows included), or one a folder of a pushed collection
+references, with the params the push left. The lookup is also the access check: an unknown token,
+another profile's catalog, a catalog the last push didn't put in Nuvio and a type or provider the
+catalog doesn't have all return **404**, so a leaked or guessed catalog UUID can't pull data
+through a profile it doesn't belong to, nor a catalog the profile hasn't pushed. A `skip` landing
+past TMDB's own pagination ceiling (`maxCatalogPage`, page 500) answers **200 with an empty
+`metas`** and makes no TMDB call: an empty page past the end is the honest answer, and TMDB would
+refuse the request anyway.
+
+**A catalog leaves Nuvio's addon when a push takes it off**, whether it was taken off Home or
+deleted: until then it is served as pushed, so a deleted catalog never leaves a Nuvio client with
+an empty row or tile before it has synced. A client keeps showing what it was last pushed until it
+syncs again. NuvioTV (source read at `1a132cb`, 2026-09-30) syncs rarely:
 - **Collections and the addon list** are pulled only by a full sync, when the app starts or a
   profile is picked (`StartupSyncService.requestSyncNow`), or from the addon manager's manual
   refresh, which pulls the addon list alone.
@@ -313,13 +332,11 @@ for that catalog comes back empty. NuvioTV (source read at `1a132cb`, 2026-09-30
 - **Manifests** refresh at launch, then at most every 6 hours while the app runs
   (`MANIFEST_CACHE_TTL_MS`).
 
-So a TV left running would keep a deleted catalog's row or tile until it restarts or someone picks
-a profile, which can be hours or days. That is why **nothing Nuvio may still hold can be deleted**
-(*Deletes refuse what Nuvio may still hold*, under *HTTP surface*): a catalog or collection is
-deleted only once a push has taken it off. Two gaps
-remain, accepted:
-- a collection's own catalogs dropped by a save of it or by a Community Update, which go at once;
-- a delete made soon after the push that took the row off, before the TV has pulled that push.
+So a client left running keeps a row until it restarts or someone picks a profile, which can be
+hours or days, and a push that takes a row off answers 404 for it at once to a client that
+hasn't synced: its row or folder tile comes back empty until then. That is accepted. A second
+gap, also accepted: push stores the record only after Nuvio accepted the push, so a client that
+reads the manifest in those few milliseconds sees the list as it was before the push.
 
 The tile flow is `CatalogHandler` → `TMDBClient.FetchCatalogPage` → TMDB `/discover/{movie|tv}` →
 per-item `/external_ids` → `Meta`. A discover page is served from the **page cache**
@@ -767,16 +784,15 @@ about (its own native UI, or another client), so the merge must touch only what 
 1. Pull the current blob as **raw `json.RawMessage` per element** — never decoded into a generic
    map. Round-tripping through `map[string]any` converts JSON numbers to `float64` and would
    silently corrupt any collection Uno doesn't own.
-2. Drop every pulled entry that is either **owned by this profile**, or **Uno-managed by the
-   addon-id heuristic** (`isUnoManaged`, `internal/api/push.go`): every source in every folder
-   carries this addon's id. With the closed graph, everything selected is owned, so the owned set
-   alone covers a deselected collection — there's no "old selection" case left to union in, since
-   a non-owned collection can never have been selected in the first place. The heuristic instead
-   covers a collection Uno *once* pushed but no longer knows the id of (hard-deleted locally, or a
-   recreated database): nothing else ever writes a source pointing at this addon's id, so that's
-   the only place such a collection could have come from. A pulled collection with no sources at
-   all doesn't match the heuristic — there's nothing to compare against `addon.ID`, and treating
-   it as a match would risk deleting a Nuvio-native collection whose folders are simply empty.
+2. Drop every pulled entry that is **owned by this profile**, **sent by this profile's last push**
+   (the push record's collections, `vault.PushedCollectionIDs`), or **Uno-managed by the addon-id
+   heuristic** (`isUnoManaged`, `internal/api/push.go`): every source in every folder carries
+   this addon's id. With the closed graph, everything selected is owned, so the owned set alone
+   covers a deselected collection. The record covers a collection deleted since the last push,
+   whatever it held: a deleted collection with no folders has no source for the heuristic to
+   match, and treating a source-less collection as a match would risk deleting a Nuvio-native one.
+   The heuristic covers a collection Uno *once* pushed but no longer knows the id of (from a
+   recreated database): nothing else ever writes a source pointing at this addon's id.
 3. Append the pending selection's collections as the push record holds them: each
    collection's `vault.CollectionWithFolders.PushJSON`, the vault's push payload, with the
    selection's pin.
@@ -790,14 +806,23 @@ the local write (step 4, `vault.SavePush`) stores the record whole in `push_reco
 profile replaced by each push and stamped with the Nuvio profile id the profile has then
 (`profiles.nuvio_profile_uuid`). Nothing cascades into it from `catalogs` or `collections`. It is
 never rebuilt from the rows at write time, so a Save landing between the build and the write still
-reads as needing a push. A collection's reads carry `needs_push` when it is on Home and what push
-would send for it now differs from the bytes its owner's record holds for it, or the record holds
-none (`markNeedsPush`, read through the same querier as the tree, so the delete guard's reads see
-it inside the delete's transaction). Home flags exactly the edits that change what Nuvio holds: a
-folder's catalogs, genre or images, a title, a setting. A rename and back, or a recipe-only edit,
-changes nothing Nuvio holds and flags nothing. Only push writes the Home columns, so a collection
-on Home was in the last push and the record holds it. Nothing reads the record's catalogs or its
-stamp yet: the addon still serves live rows.
+reads as needing a push.
+
+**The record is what Nuvio holds, and everything about Nuvio reads it.** The addon serves from it
+(*Addon server*). A record counts only while its stamp is the profile's Nuvio profile id now
+(`currentRecords`): when the slot is reused by a new Nuvio profile, the record describes one that
+is gone, so Nuvio holds nothing, the Home layout and the library are kept, every row on Home
+waits for a push, and the next push stores a fresh record. A collection's reads carry `needs_push`
+when it is on Home and what push would send for it now differs from the bytes its owner's current
+record holds for it, or the record holds none (`markNeedsPush`, read through the same querier as
+the tree). That is the collection's own payload: a folder's catalogs, genre or images, a title, a
+setting. A rename and back changes nothing Nuvio holds and flags nothing. A catalog's name and
+recipe are not in a pushed collection, which names a catalog only by id and type, so an edit to
+one is no `needs_push` of its own; it shows in the list of what waits for a push
+(`PendingPush`, *HTTP surface*), which compares the record's catalogs too, and a collection
+using an edited catalog is listed as changed there. Only push writes the Home columns, so a row on
+Home was in the last push and the record holds it, until a delete takes the row and leaves the
+record holding it: the next push drops it.
 
 **The one gap the ordering can't close, and its mitigation.** If the local commit fails *after*
 both Nuvio calls succeeded, Nuvio has the new collections but Uno's vault doesn't record them. On

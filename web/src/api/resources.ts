@@ -16,6 +16,7 @@ import type {
   Network,
   NetworkSearchResult,
   NuvioProfile,
+  PendingChange,
   PreviewRequest,
   PublicationDetail,
   SelectedCatalog,
@@ -66,6 +67,14 @@ export function fetchCatalogSelection(profileIndex: number): Promise<SelectedCat
 
 export function fetchCollectionSelection(profileIndex: number): Promise<Collection[]> {
   return getList<Collection>(`/api/p/${profileIndex}/collections/selection`)
+}
+
+/** What a push of the Home as the server stores it would change in Nuvio: the
+ *  catalogs and collections edited or deleted since the last push, and any row
+ *  on Home that Nuvio holds nothing for. The Home pane adds its own unpushed
+ *  edits to it. */
+export function fetchPendingPush(profileIndex: number): Promise<PendingChange[]> {
+  return getList<PendingChange>(`/api/p/${profileIndex}/push/pending`)
 }
 
 /** Live from TMDB via the Go side. Takes the catalog's own `type`

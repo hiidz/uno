@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Collection, SelectedCatalog } from '@/api'
+import type { Collection, PendingChange, SelectedCatalog } from '@/api'
 import type { Library } from '@/features/library/useLibrary'
 import { catalog, collection, selectedCatalog } from '@/test/fixtures'
 import { HomeSelectionProvider } from './HomeSelectionContext'
@@ -12,6 +12,7 @@ import { useHomeSelection } from './useHomeSelection'
 const api = vi.hoisted(() => ({
   fetchCatalogSelection: vi.fn<(i: number) => Promise<SelectedCatalog[]>>(),
   fetchCollectionSelection: vi.fn<(i: number) => Promise<Collection[]>>(),
+  fetchPendingPush: vi.fn<(i: number) => Promise<PendingChange[]>>(),
 }))
 vi.mock('@/api', async () => ({ ...api, queryKeys: (await import('@/api/keys')).queryKeys }))
 
@@ -60,6 +61,7 @@ beforeEach(() => {
     selectedCatalog({ id: 'b', name: 'Bravo' }),
   ])
   api.fetchCollectionSelection.mockReset().mockResolvedValue([])
+  api.fetchPendingPush.mockReset().mockResolvedValue([])
 })
 
 describe('HomeSelectionProvider', () => {
@@ -99,13 +101,12 @@ describe('HomeSelectionProvider', () => {
     expect(result.current.isDirty).toBe(false)
   })
 
-  it('counts a saved but unpushed collection as pending, but not as dirty', async () => {
-    api.fetchCollectionSelection.mockResolvedValue([
-      collection({ id: 'stale', title: 'Stale', needs_push: true }),
-    ])
+  it('counts a saved but unpushed change as pending, but not as dirty', async () => {
+    api.fetchCollectionSelection.mockResolvedValue([collection({ id: 'stale', title: 'Stale' })])
+    api.fetchPendingPush.mockResolvedValue([{ kind: 'collection', id: 'stale', name: 'Stale', change: 'changed' }])
     const { result } = await renderLoaded()
+    await waitFor(() => expect(result.current.pendingCount).toBe(1))
     expect(result.current.changes.map((c) => c.text)).toEqual(['“Stale” changed since it was last pushed'])
-    expect(result.current.pendingCount).toBe(1)
     expect(result.current.unsavedCount).toBe(0)
     expect(result.current.isDirty).toBe(false)
 
@@ -113,6 +114,32 @@ describe('HomeSelectionProvider', () => {
     expect(result.current.pendingCount).toBe(2)
     expect(result.current.unsavedCount).toBe(1)
     expect(result.current.isDirty).toBe(true)
+  })
+
+  it('counts an edited catalog on the home screen as waiting for a push', async () => {
+    api.fetchPendingPush.mockResolvedValue([{ kind: 'catalog', id: 'a', name: 'Alpha', change: 'changed' }])
+    const { result } = await renderLoaded()
+    await waitFor(() => expect(result.current.pendingCount).toBe(1))
+    expect(result.current.changes.map((c) => c.text)).toEqual(['“Alpha” changed since it was last pushed'])
+  })
+
+  it('drops a row deleted elsewhere from the pending selection, so Push can still go, and lists its removal', async () => {
+    const { result } = await renderLoaded()
+    act(() => result.current.addCatalog('c'))
+
+    api.fetchCatalogSelection.mockResolvedValue([selectedCatalog({ id: 'b', name: 'Bravo' })])
+    api.fetchPendingPush.mockResolvedValue([{ kind: 'catalog', id: 'a', name: 'Alpha', change: 'removed' }])
+    const before = library.current
+    library.current = { ...before, catalogs: before.catalogs.filter((c) => c.id !== 'a') }
+    await act(() => queryClient.refetchQueries())
+
+    await waitFor(() => expect(result.current.catalogs.map((c) => c.id)).toEqual(['b', 'c']))
+    expect(result.current.snapshot().catalogs.map((c) => c.id)).toEqual(['b', 'c'])
+    expect(result.current.changes.map((c) => c.text)).toEqual([
+      'Added “Charlie”, 2nd on your home screen',
+      'Removed “Alpha” from home screen',
+    ])
+    library.current = before
   })
 
   it('reports a selection that never loaded, but not a refetch that fails later', async () => {

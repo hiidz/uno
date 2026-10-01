@@ -57,10 +57,11 @@ func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, catalogs
 }
 
 // StoredPushRecord is what a push of profileID's Home as push last stored it
-// (the Home columns) puts in Nuvio now, read through tx: the v5→v6
-// migration's backfill.
-func StoredPushRecord(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) (PushRecord, error) {
-	listed, err := selectLeanCatalogs(ctx, tx, "c.owner_id = ? AND c.home_sort_order IS NOT NULL", profileID.String())
+// (the Home columns) puts in Nuvio now, read through q: the v5→v6
+// migration's backfill, and what the waiting-for-push list compares the held
+// record with.
+func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (PushRecord, error) {
+	listed, err := selectLeanCatalogs(ctx, q, "c.owner_id = ? AND c.home_sort_order IS NOT NULL", profileID.String())
 	if err != nil {
 		return PushRecord{}, err
 	}
@@ -70,7 +71,7 @@ func StoredPushRecord(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) (Pus
 		catalogs.Catalogs = append(catalogs.Catalogs, SelectedCatalogInput{CatalogID: c.ID, ShowInHome: c.ShowInHome})
 	}
 
-	onHome, err := selectLeanCollections(ctx, tx, "col.owner_id = ? AND col.home_sort_order IS NOT NULL", profileID.String())
+	onHome, err := selectLeanCollections(ctx, q, "col.owner_id = ? AND col.home_sort_order IS NOT NULL", profileID.String())
 	if err != nil {
 		return PushRecord{}, err
 	}
@@ -79,7 +80,7 @@ func StoredPushRecord(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) (Pus
 	for _, c := range onHome {
 		collections.Collections = append(collections.Collections, SelectedCollectionInput{CollectionID: c.ID, PinToTop: c.PinToTop})
 	}
-	return buildPushRecord(ctx, tx, profileID, catalogs, collections)
+	return buildPushRecord(ctx, q, profileID, catalogs, collections)
 }
 
 // buildPushRecord is the push record of catalogs and collections, profileID's
@@ -245,6 +246,83 @@ func WritePushRecord(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, recor
 	return nil
 }
 
+// currentRecords is the push records that still describe their profile's Nuvio
+// profile: the record's stamp is the profile's Nuvio profile id now. A record
+// stamped with another id was pushed to a Nuvio profile the slot has since
+// lost, so Nuvio holds none of it. It names push_records pr and profiles p.
+const currentRecords = `push_records pr JOIN profiles p
+	ON p.id = pr.profile_id AND p.nuvio_profile_uuid = pr.nuvio_profile_uuid`
+
+// heldRecord is what profileID's Nuvio profile holds: the push record, read
+// through q, when it is current (currentRecords). ok is false when there is
+// none, which is what Nuvio holds for a profile that never pushed or whose
+// slot was reused since.
+func heldRecord(ctx context.Context, q querier, profileID uuid.UUID) (record PushRecord, ok bool, err error) {
+	raws, err := queryStrings(ctx, q, "push record",
+		`SELECT pr.record FROM `+currentRecords+` WHERE pr.profile_id = ?`, profileID.String())
+	if err != nil || len(raws) == 0 {
+		return PushRecord{}, false, err
+	}
+	if err := json.Unmarshal([]byte(raws[0]), &record); err != nil {
+		return PushRecord{}, false, fmt.Errorf("decoding push record: %w", err)
+	}
+	return record, true, nil
+}
+
+// PushedCollectionIDs is the id of every collection profileID's last push sent
+// Nuvio, none when Nuvio holds none of it (heldRecord). Push drops these from
+// Nuvio's blob along with the collections the profile owns, so one deleted
+// since is dropped too, however few sources it had.
+func (db *DB) PushedCollectionIDs(ctx context.Context, profileID uuid.UUID) ([]uuid.UUID, error) {
+	record, _, err := heldRecord(ctx, db.conn, profileID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(record.Collections))
+	for _, raw := range record.Collections {
+		head, err := pushedHeadOf(raw)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, head.ID)
+	}
+	return ids, nil
+}
+
+// pushedHead is the id and title of one collection a push sent, as its bytes
+// carry them.
+type pushedHead struct {
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+}
+
+func pushedHeadOf(raw json.RawMessage) (pushedHead, error) {
+	var head pushedHead
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return pushedHead{}, fmt.Errorf("decoding pushed collection: %w", err)
+	}
+	return head, nil
+}
+
+// selectedCatalogs is every catalog the record holds as the addon's manifest
+// lists it, in the record's order: those with a Home row of their own with
+// the Home or Discover the record carries, then the ones only a folder uses,
+// all off Home.
+func (r PushRecord) selectedCatalogs() []SelectedCatalog {
+	showInHome := make(map[uuid.UUID]bool, len(r.Home.Catalogs))
+	for _, c := range r.Home.Catalogs {
+		showInHome[c.CatalogID] = c.ShowInHome
+	}
+	out := make([]SelectedCatalog, len(r.Catalogs))
+	for i, c := range r.Catalogs {
+		out[i] = SelectedCatalog{
+			Catalog:    Catalog{ID: c.ID, Type: c.Type, Name: c.Name, Provider: c.Provider, Params: string(c.Params)},
+			ShowInHome: showInHome[c.ID],
+		}
+	}
+	return out
+}
+
 // markNeedsPush marks each of trees against its owner's push record, read
 // through q, and returns them.
 func markNeedsPush(ctx context.Context, q querier, trees []CollectionWithFolders) ([]CollectionWithFolders, error) {
@@ -273,7 +351,7 @@ func pushedCollections(ctx context.Context, q querier, trees []CollectionWithFol
 		return pushed, nil
 	}
 	records, err := queryStrings(ctx, q, "push record",
-		`SELECT record FROM push_records WHERE profile_id IN (SELECT value FROM json_each(?))`, idsJSON(dedupeUUIDs(owners)))
+		`SELECT pr.record FROM `+currentRecords+` WHERE pr.profile_id IN (SELECT value FROM json_each(?))`, idsJSON(dedupeUUIDs(owners)))
 	if err != nil {
 		return nil, err
 	}

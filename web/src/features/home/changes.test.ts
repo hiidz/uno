@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Catalog, Collection } from '@/api'
+import type { Catalog, Collection, PendingChange } from '@/api'
 import { catalog, collection } from '@/test/fixtures'
 import { computeHomeChanges, showFirstAction } from './changes'
 import type { HomeCatalogEntry, HomeCollectionEntry, HomeState } from './pending'
@@ -17,7 +17,6 @@ const collectionById = new Map<string, Collection>([
   ['p', collection({ id: 'p', title: 'Pinned', pin_to_top: true })],
   ['x', collection({ id: 'x', title: 'X-ray' })],
   ['y', collection({ id: 'y', title: 'Yankee' })],
-  ['stale', collection({ id: 'stale', title: 'Stale', needs_push: true })],
 ])
 
 const shown = (...ids: string[]): HomeCatalogEntry[] => ids.map((id) => ({ id, showInHome: true }))
@@ -37,12 +36,13 @@ function home(catalogs: HomeCatalogEntry[], collections: (string | HomeCollectio
 const first = (id: string): HomeCollectionEntry => ({ id, pinToTop: true })
 const notFirst = (id: string): HomeCollectionEntry => ({ id, pinToTop: false })
 
-function changes(baseline: HomeState, current: HomeState): string[] {
+function changes(baseline: HomeState, current: HomeState, waiting: PendingChange[] = []): string[] {
   return computeHomeChanges({
     baseline,
     current,
     catalogById,
     collectionById,
+    waiting,
   }).map((change) => change.text)
 }
 
@@ -131,17 +131,48 @@ describe('computeHomeChanges', () => {
     })
   })
 
-  describe('collections changed since their last push', () => {
-    it('reports one still on the home screen', () => {
-      const state = home([], ['stale'])
-      expect(changes(state, { ...state })).toEqual(['“Stale” changed since it was last pushed'])
+  describe('what the server says is waiting for a push', () => {
+    const waiting = (kind: PendingChange['kind'], id: string, name: string, change: PendingChange['change']): PendingChange[] => [
+      { kind, id, name, change },
+    ]
+
+    it('reports a collection still on the home screen that changed since its push', () => {
+      const state = home([], ['x'])
+      expect(changes(state, { ...state }, waiting('collection', 'x', 'X-ray', 'changed'))).toEqual([
+        '“X-ray” changed since it was last pushed',
+      ])
     })
 
-    it('reports one put back on the home screen only as added', () => {
-      expect(changes(home([]), home([], ['stale']))).toEqual(['Added “Stale”, 1st on your home screen'])
+    it('reports an edited catalog on the home screen the same way, as already saved', () => {
+      const state = home(shown('a'))
+      const list = computeHomeChanges({ baseline: state, current: { ...state }, catalogById, collectionById, waiting: waiting('catalog', 'a', 'Alpha', 'changed') })
+      expect(list).toEqual([{ key: 'waiting:catalog:a', text: '“Alpha” changed since it was last pushed', saved: true }])
     })
 
-    it('reports nothing for one whose pushed copy is current', () => {
+    it('reports a row on the home screen that Nuvio holds nothing for', () => {
+      const state = home(shown('a'))
+      expect(changes(state, { ...state }, waiting('catalog', 'a', 'Alpha', 'added'))).toEqual(['“Alpha” isn’t in Nuvio yet'])
+    })
+
+    it('reports a deleted row by the name Nuvio still holds it under', () => {
+      const state = home(shown('a'))
+      const list = computeHomeChanges({ baseline: state, current: { ...state }, catalogById, collectionById, waiting: waiting('collection', 'gone', 'Deleted one', 'removed') })
+      expect(list).toEqual([{ key: 'remove:collection:gone', text: 'Removed “Deleted one” from home screen', saved: true }])
+    })
+
+    it('says a removal once when this tab already takes the row off the home screen', () => {
+      expect(changes(home(shown('a')), home([]), waiting('catalog', 'a', 'Alpha', 'removed'))).toEqual([
+        'Removed “Alpha” from home screen',
+      ])
+    })
+
+    it('reports a changed row this tab puts back on the home screen only as added', () => {
+      expect(changes(home([]), home([], ['x']), waiting('collection', 'x', 'X-ray', 'changed'))).toEqual([
+        'Added “X-ray”, 1st on your home screen',
+      ])
+    })
+
+    it('reports nothing when nothing waits', () => {
       const state = home([], ['x'])
       expect(changes(state, { ...state })).toEqual([])
     })
@@ -158,6 +189,10 @@ describe('computeHomeChanges', () => {
     const list = computeHomeChanges({
       baseline: home([...shown('a', 'b'), ...discover('c')], ['x', 'stale', 'y']),
       current: home([...shown('b', 'd'), ...discover('a')], ['stale', first('y'), notFirst('x')]),
+      waiting: [
+        { kind: 'collection', id: 'stale', name: 'Stale', change: 'changed' },
+        { kind: 'catalog', id: 'gone', name: 'Gone', change: 'removed' },
+      ],
       catalogById,
       collectionById,
     })

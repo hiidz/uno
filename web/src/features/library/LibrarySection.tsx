@@ -163,7 +163,6 @@ export function LibrarySection({
             }
             onDuplicate={() => onDuplicateCatalog(catalog)}
             onDelete={() => onDeleteCatalog(catalog)}
-            deleteBlocked={home.deleteBlockers.catalog(catalog.id)}
           />
         ))}
       </LibraryGroup>
@@ -203,7 +202,6 @@ export function LibrarySection({
             }
             onDuplicate={() => onDuplicateCollection(collection)}
             onDelete={() => onDeleteCollection(collection)}
-            deleteBlocked={home.deleteBlockers.collection(collection.id)}
           />
         ))}
       </LibraryGroup>

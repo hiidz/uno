@@ -126,6 +126,7 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/selection", s.requireProfileAuth(s.listCurrentCollectionSelection))
 
 	s.router.HandleFunc("POST /api/p/{profileIndex}/push", s.requireProfileAuth(s.push))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/push/pending", s.requireProfileAuth(s.listPendingPush))
 
 	s.router.HandleFunc("GET /api/genres/{type}", s.requireNuvioAuth(s.listGenres))
 	s.router.HandleFunc("GET /api/certifications/{type}", s.requireNuvioAuth(s.listCertifications))

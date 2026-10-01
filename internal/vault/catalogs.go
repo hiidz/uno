@@ -340,32 +340,22 @@ func checkCatalogRewrite(stored storedCatalog, input CatalogForm) error {
 // provided it's owned by profileID. Returns ErrCatalogNotFound if no such row
 // exists, and ErrInvalidInput for a catalog inside a collection, which is
 // removed by dropping its last folder ref and saving the collection
-// (deleteOrphanedScopedCatalogs). A catalog Nuvio may still hold is
-// ErrConflict, with the reason as its message (catalogDeleteBlocker): one on
-// Home, one a collection on Home uses, and any while a collection on Home
-// needs a push. Deleting a subscribed copy removes its subscription, and
-// deleting a published catalog unpublishes its publication, both by cascade.
-// The collections off Home whose folders used the catalog lose it from those
-// folders by cascade too.
+// (deleteOrphanedScopedCatalogs). It is allowed at any time, Home or not:
+// Nuvio keeps what the last push put there, served from the push record,
+// until the next push drops it. Deleting a subscribed copy removes its
+// subscription, and deleting a published catalog unpublishes its publication,
+// both by cascade. Every collection whose folders used the catalog loses it
+// from those folders by cascade too.
 func (db *DB) DeleteUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID) error {
 	var deleted bool
 	err := db.inTx(ctx, func(tx *sql.Tx) (err error) {
-		deleted, err = deleteUnheldCatalog(ctx, tx, profileID, catalogID)
+		deleted, err = deleteListedCatalog(ctx, tx, profileID, catalogID)
 		return err
 	})
 	if err != nil || deleted {
 		return err
 	}
 	return db.catalogNotDeleted(ctx, profileID, catalogID)
-}
-
-// deleteUnheldCatalog is deleteListedCatalog, once catalogDeleteBlocker has
-// found nothing on Home that holds catalogID.
-func deleteUnheldCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID) (bool, error) {
-	if err := catalogDeleteBlocker(ctx, tx, profileID, catalogID); err != nil {
-		return false, err
-	}
-	return deleteListedCatalog(ctx, tx, profileID, catalogID)
 }
 
 // deleteListedCatalog deletes catalogID when it is a listed catalog owned by
@@ -416,108 +406,6 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 		out[i] = SelectedCatalog{Catalog: c, ShowInHome: c.ShowInHome}
 	}
 	return out, nil
-}
-
-// GetPublishedCatalogs returns profileID's derived published catalog set —
-// the union of listed catalogs on the home screen and every catalog
-// referenced by a folder of a collection on the home screen. This is what
-// the addon's manifest lists; unlike
-// GetCurrentCatalogSelection (the pre-push validation/selection-editor
-// view), it also surfaces folder-only catalogs so nothing a folder tile
-// shows on the TV is missing from the manifest. Deduped by id: a catalog
-// sitting in more than one folder would otherwise appear once per folder.
-// The manifest route reads it on every request and shows no sharing state,
-// so it reads none (leanCatalogColumns).
-func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
-	rows, err := db.conn.QueryContext(ctx, `
-		SELECT `+leanCatalogColumns+`,
-		       c.show_in_home AS derived_show_in_home, 0 AS rank, c.home_sort_order AS o1, 0 AS o2, 0 AS o3
-		FROM `+catalogsWithRecipes+`
-		WHERE c.owner_id = ? AND c.home_sort_order IS NOT NULL
-		UNION
-		SELECT `+leanCatalogColumns+`,
-		       0 AS derived_show_in_home, 1 AS rank, col.home_sort_order AS o1, f.sort_order AS o2, fc.sort_order AS o3
-		FROM `+catalogsWithRecipes+`
-		JOIN folder_catalogs fc ON fc.catalog_id = c.id
-		JOIN folders f          ON f.id = fc.folder_id
-		JOIN collections col    ON col.id = f.collection_id
-		WHERE col.owner_id = ? AND col.home_sort_order IS NOT NULL AND c.home_sort_order IS NULL
-		ORDER BY rank, o1, o2, o3
-	`, profileID.String(), profileID.String())
-	if err != nil {
-		return nil, fmt.Errorf("querying published catalogs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	out := []SelectedCatalog{}
-	seen := map[uuid.UUID]bool{}
-	for rows.Next() {
-		var derivedShowInHome, rank, o2, o3 int
-		var o1 sql.NullInt64
-
-		c, err := scanCatalog(rows, &derivedShowInHome, &rank, &o1, &o2, &o3)
-		if err != nil {
-			return nil, err
-		}
-
-		// The two SELECTs' WHERE clauses are mutually exclusive on
-		// home_sort_order, so a catalog can't match both; seen instead
-		// collapses duplicate folder-derived rows for a catalog sitting in
-		// more than one folder.
-		if seen[c.ID] {
-			continue
-		}
-		seen[c.ID] = true
-
-		out = append(out, SelectedCatalog{Catalog: c, ShowInHome: derivedShowInHome != 0})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating published catalog rows: %w", err)
-	}
-
-	return out, nil
-}
-
-// ServedCatalog is what an addon catalog route serves: a catalog's params,
-// and the Nuvio account that owns its profile with that account's sealed TMDB
-// key, nil when the account has saved none.
-type ServedCatalog struct {
-	Params    string
-	Account   string
-	SealedKey []byte
-}
-
-// ServedCatalog returns the catalog an addon catalog route names: catalogID
-// owned by the profile whose token it is, with catalogType and
-// catalogProvider, and on the TV — in GetPublishedCatalogs' set, checked for
-// this one catalog: it has its own home row (Discover-only included), or a
-// folder of one of the profile's on-home collections references it. It comes
-// with its owner's account and sealed key. It is the route's one lookup and
-// its access check: a catalog off the TV, another profile's catalog, an
-// unknown token and a type or provider the catalog doesn't have are all
-// ErrCatalogNotFound.
-func (db *DB) ServedCatalog(ctx context.Context, token string, catalogID uuid.UUID, catalogType, catalogProvider string) (ServedCatalog, error) {
-	var served ServedCatalog
-	err := db.conn.QueryRowContext(ctx, `
-		SELECT r.params, p.nuvio_user_id, a.tmdb_key_ciphertext
-		FROM profiles p
-		JOIN catalogs c ON c.owner_id = p.id
-		JOIN recipes r  ON r.hash = c.recipe_hash
-		LEFT JOIN accounts a ON a.nuvio_user_id = p.nuvio_user_id
-		WHERE p.token = ? AND c.id = ? AND r.type = ? AND r.provider = ?
-		  AND (c.home_sort_order IS NOT NULL OR EXISTS (
-		      SELECT 1 FROM folder_catalogs fc
-		      JOIN folders f       ON f.id = fc.folder_id
-		      JOIN collections col ON col.id = f.collection_id
-		      WHERE fc.catalog_id = c.id AND col.owner_id = p.id AND col.home_sort_order IS NOT NULL))
-	`, token, catalogID.String(), catalogType, catalogProvider).Scan(&served.Params, &served.Account, &served.SealedKey)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ServedCatalog{}, ErrCatalogNotFound
-	}
-	if err != nil {
-		return ServedCatalog{}, fmt.Errorf("resolving served catalog: %w", err)
-	}
-	return served, nil
 }
 
 // saveCatalogSelectionTx resets this profile's catalog selection to exactly

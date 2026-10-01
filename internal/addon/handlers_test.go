@@ -301,3 +301,52 @@ func TestNewRequiresBothDependencies(t *testing.T) {
 		t.Error("New(nil provider) = nil error, want one")
 	}
 }
+
+// The addon serves what the owner's last push put in Nuvio: after the
+// catalog on Home is edited and then deleted, its manifest entry and catalog
+// route stay as pushed until the next push takes it off.
+func TestAddonServesWhatTheLastPushLeft(t *testing.T) {
+	ctx := t.Context()
+	f := newHandlerFixture(t)
+	var discoverQueries []string
+	fakeTMDB(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/3/discover/") {
+			discoverQueries = append(discoverQueries, r.URL.RawQuery)
+		}
+		tmdbUp(w, r)
+	})
+	manifest := "/u/" + f.owner.Token + "/manifest.json"
+	route := "/u/" + f.owner.Token + "/catalog/movie/" + ManifestID(f.onHome) + ".json"
+	wantServed := func(step string, listed bool, status int) {
+		t.Helper()
+		if body := f.get(t, manifest).Body.String(); strings.Contains(body, ManifestID(f.onHome)) != listed {
+			t.Errorf("%s: manifest lists the catalog = %v, want %v (%s)", step, !listed, listed, body)
+		}
+		if w := f.get(t, route); w.Code != status {
+			t.Errorf("%s: catalog route = %d, want %d", step, w.Code, status)
+		}
+	}
+
+	edited := listedCatalogForm("Edited")
+	edited.Params = `{"sort_by":"vote_average.desc"}`
+	if _, err := f.db.UpdateUserCatalog(ctx, f.owner.ID, f.onHome.ID, edited); err != nil {
+		t.Fatal(err)
+	}
+	wantServed("after an edit", true, http.StatusOK)
+	if body := f.get(t, manifest).Body.String(); !strings.Contains(body, `"name":"On home"`) || strings.Contains(body, "Edited") {
+		t.Errorf("manifest after an edit = %s, want the name as pushed", body)
+	}
+	for _, q := range discoverQueries {
+		if strings.Contains(q, "vote_average") {
+			t.Errorf("discover query %q uses the edited recipe before a push", q)
+		}
+	}
+
+	if err := f.db.DeleteUserCatalog(ctx, f.owner.ID, f.onHome.ID); err != nil {
+		t.Fatalf("deleting a catalog on Home: %v", err)
+	}
+	wantServed("after a delete", true, http.StatusOK)
+
+	savePush(t, f.db, f.owner.ID, vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{})
+	wantServed("after the next push", false, http.StatusNotFound)
+}

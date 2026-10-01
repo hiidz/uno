@@ -121,6 +121,14 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, pushResult{Success: true, ManifestURL: manifestURL})
 }
 
+// listPendingPush serves GET /api/p/{profileIndex}/push/pending: what a push of
+// the Home as Uno stores it would change in Nuvio, the catalogs and
+// collections edited or deleted since the last push among them
+// (vault.PendingPush). The builder adds its own unpushed Home edits to it.
+func (s *Server) listPendingPush(w http.ResponseWriter, r *http.Request) {
+	listByProfile(w, r, "listPendingPush", "failed to load pending push", s.vault.PendingPush)
+}
+
 // pushRecord checks that every id body names is one profileID may push, then
 // builds what the push puts in Nuvio, once: its collections are the bytes
 // sent, and the whole record is what the local write stores. The check is
@@ -223,13 +231,13 @@ func isUnoManaged(c pulledCollection) bool {
 //  1. Pull the current blob as raw JSON per element — never decoded into a
 //     generic map, which would round-trip numbers through float64 and
 //     silently corrupt any collection Uno doesn't own.
-//  2. Drop every pulled entry that is either owned by this profile, or
-//     Uno-managed by the addon-id heuristic (isUnoManaged). With the closed
-//     graph, everything selected is owned, so the owned set alone is what
-//     the old selection-union used to be for; the heuristic covers the
-//     residual case that union existed for — a collection Uno once pushed
-//     but has since forgotten (hard-deleted, or from a recreated database)
-//     — without needing to read the profile's previous selection at all.
+//  2. Drop every pulled entry that is owned by this profile, was sent by
+//     this profile's last push (the push record), or is Uno-managed by the
+//     addon-id heuristic (isUnoManaged). With the closed graph, everything
+//     selected is owned, so the owned set alone covers what the old
+//     selection-union was for. The record covers a collection deleted since
+//     the last push, whatever it held, and the heuristic a collection Uno
+//     once pushed but has forgotten (from a recreated database).
 //  3. Append fresh, the profile's pending selection as the record holds it:
 //     in Home order, each pinned to the top of home as its selection entry
 //     says, as the exact bytes the record keeps.
@@ -242,28 +250,15 @@ func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioP
 		return nil, err
 	}
 
-	ownedIDs, err := s.vault.GetOwnedCollectionIDs(ctx, profileID)
+	managed, err := s.managedCollectionIDs(ctx, profileID)
 	if err != nil {
-		return nil, fmt.Errorf("loading owned collections: %w", err)
+		return nil, err
 	}
-
-	ownedByID := make(map[string]bool, len(ownedIDs))
-	for _, id := range ownedIDs {
-		ownedByID[id.String()] = true
+	foreign, err := dropManaged(pulled, managed)
+	if err != nil {
+		return nil, err
 	}
-
-	kept := make([]json.RawMessage, 0, len(pulled)+len(fresh))
-	for _, raw := range pulled {
-		var parsed pulledCollection
-		if err := json.Unmarshal(raw, &parsed); err != nil {
-			return nil, fmt.Errorf("parsing pulled collection: %w", err)
-		}
-		if ownedByID[parsed.ID] || isUnoManaged(parsed) {
-			continue
-		}
-		kept = append(kept, raw)
-	}
-	kept = append(kept, fresh...)
+	kept := slices.Concat(foreign, fresh)
 
 	if err := s.nuvio.PushCollections(ctx, accessToken, nuvioProfileIndex, kept); err != nil {
 		return nil, err
@@ -279,4 +274,40 @@ func nuvioErrorStatus(err error) int {
 		return http.StatusBadGateway
 	}
 	return http.StatusInternalServerError
+}
+
+// managedCollectionIDs is the id of every collection push owns in Nuvio's blob
+// for profileID: the ones the profile owns and the ones its last push sent,
+// which includes any deleted since.
+func (s *Server) managedCollectionIDs(ctx context.Context, profileID uuid.UUID) (map[string]bool, error) {
+	ownedIDs, err := s.vault.GetOwnedCollectionIDs(ctx, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("loading owned collections: %w", err)
+	}
+	pushedIDs, err := s.vault.PushedCollectionIDs(ctx, profileID)
+	if err != nil {
+		return nil, fmt.Errorf("loading pushed collections: %w", err)
+	}
+	managed := make(map[string]bool, len(ownedIDs)+len(pushedIDs))
+	for _, id := range slices.Concat(ownedIDs, pushedIDs) {
+		managed[id.String()] = true
+	}
+	return managed, nil
+}
+
+// dropManaged is pulled without every entry whose id is in managed or that is
+// Uno-managed by the addon-id heuristic (isUnoManaged): what push leaves in
+// Nuvio's blob untouched.
+func dropManaged(pulled []json.RawMessage, managed map[string]bool) ([]json.RawMessage, error) {
+	kept := make([]json.RawMessage, 0, len(pulled))
+	for _, raw := range pulled {
+		var parsed pulledCollection
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			return nil, fmt.Errorf("parsing pulled collection: %w", err)
+		}
+		if !managed[parsed.ID] && !isUnoManaged(parsed) {
+			kept = append(kept, raw)
+		}
+	}
+	return kept, nil
 }

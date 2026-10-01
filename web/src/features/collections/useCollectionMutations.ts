@@ -26,6 +26,7 @@ export function useCollectionMutations(profileIndex: number) {
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.pendingPush(profileIndex) })
     void queryClient.invalidateQueries({ queryKey: queryKeys.community(profileIndex) })
   }
 
@@ -45,12 +46,9 @@ export function useCollectionMutations(profileIndex: number) {
     },
   })
 
-  // A refused delete refetches too, as a catalog's does: its 409 means this
-  // tab missed a push that put the collection on Home.
   const remove = useMutation({
     mutationFn: (id: string) => deleteCollection(profileIndex, id),
     onSuccess: invalidate,
-    onError: invalidate,
   })
 
   const duplicate = useMutation({

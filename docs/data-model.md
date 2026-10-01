@@ -155,8 +155,10 @@ resolve profiles by `(sub, profileIndex)`, not by UUID.
 full-replace over slots 1..6, so a user can delete slot 2 and create a *different* profile in
 that slot. Uno's link is to a slot *number*, and storing Nuvio's own profile UUID alongside it is
 the only way to detect that a slot's occupant changed. `ResolveOrCreateProfile` **silently
-overwrites** the stored UUID on drift rather than prompting. Each push record is stamped with it
-(`push_records`, below), and nothing acts on a mismatch yet.
+overwrites** the stored UUID on drift rather than prompting, and keeps the library and the Home
+layout. Each push record is stamped with it (`push_records`, below), and a record whose stamp no
+longer matches describes a Nuvio profile that is gone: the addon serves it no more, and Home
+waits for a push.
 
 `profiles.token` has exactly one job: identifying a profile in the public addon URLs. It is not a
 write credential.
@@ -213,8 +215,15 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   accepted the push, replaced whole and stamped with `profiles.nuvio_profile_uuid` as it is then.
   Nothing cascades into it from `catalogs` or `collections`, and it never points into `recipes`,
   so deleting a row never loses what Nuvio holds.
-- **Read by** every collection read, for `needs_push` (*Key rules*). Nothing reads its catalogs
-  or its stamp yet: the addon serves live rows.
+- **Read by** the addon and by the builder's reads. `GetPublishedCatalogs` and `ServedCatalog`
+  serve the manifest and each catalog from its `catalogs` and `home`, so Nuvio is served only
+  what the last push put there; every collection read compares `collections` for `needs_push`
+  (*Key rules*); `PendingPush` compares all of it with what a push would send now; and push's
+  merge drops the collections it lists. All of them read only a **current** record: one whose
+  stamp equals `profiles.nuvio_profile_uuid` now. A record stamped with another id was pushed to
+  a Nuvio profile the slot no longer has, so it counts as none: Nuvio holds nothing, the addon
+  serves an empty manifest and no catalog, everything on Home waits for a push, and the next push
+  replaces the record. A profile that never pushed has no record either.
 
 ## Key rules
 
@@ -290,23 +299,17 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   server-side. Duplicate is the supported way to get a different-typed copy.
 - **Two distinct removal mechanisms — don't conflate them.**
   - **Hard delete** (`DeleteUserCatalog` / `DeleteUserCollection`): owner-scoped, one
-    transaction, all downstream cleanup via `ON DELETE CASCADE`. A deleted catalog answers 404 on
-    the addon at once, and a TV that still shows it gets an empty row or tile until it syncs
-    (`docs/architecture.md`, addon section), so **nothing Nuvio may still hold is deleted**
-    (`internal/vault/delete_guard.go`). Checked in the delete's transaction against the rows'
-    own Home state, it refuses with `ErrConflict`, its message the reason alone:
-    - a catalog with its own Home row (`home_sort_order` set, Discover-only included), or a
-      collection on Home: "Take it off Home and push first.";
-    - a catalog that a collection on Home uses (`tree.Catalogs`, the first in Home order named):
-      "Remove it from “X” and push first.";
-    - any catalog while one of the profile's collections on Home has `needs_push`: "Push first:
-      Nuvio may still show it in a collection." `needs_push` says that collection's pushed
-      version differs, not which catalogs it used, so this one holds every catalog.
-
-    So a deleted listed catalog leaves only folders of collections off Home, by cascade, and no
-    collection on Home ever loses a source to a delete. Deleting a published row unpublishes it, and every
-    copy another profile holds survives, marked unpublished (*Publications and subscriptions*,
-    below). Deleting a subscribed copy removes its subscription.
+    transaction, all downstream cleanup via `ON DELETE CASCADE`, **allowed any time**, Home or
+    not. Nuvio keeps what the last push put there, served from the push record (`push_records`,
+    above), until the next push drops it, so a delete never leaves a Nuvio client with an empty
+    row or tile before it has synced. The record never points into `recipes` and nothing cascades
+    into it, so a deleted row's name, type and params are still there for the addon and for the
+    list of what waits for a push, which names it as removed. A collection whose folders used a
+    deleted listed catalog loses it from those folders by cascade, so one on Home shows as
+    changed. Deleting a published row unpublishes it, and every copy another profile holds
+    survives, marked unpublished (*Publications and subscriptions*, below). Deleting a subscribed
+    copy removes its subscription. The next push drops the deleted collection from Nuvio's
+    blob by the ids the last push sent (`PushedCollectionIDs`).
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
     into `catalogs.home_sort_order`/`show_in_home` and `collections.home_sort_order`
     (`saveCatalogSelectionTx`/`saveCollectionSelectionTx`, `internal/vault`). Every owned row's
@@ -345,10 +348,13 @@ One row per profile: what its last push put in Nuvio, as one JSON document
     holds for it, or the record holds none. Off Home it is always `false`. Only push writes the
     Home columns, so a collection on Home was in the last push and the record holds it. The Home
     pane lists it as "changed since it was last pushed" (`web/src/features/home/changes.ts`).
-  - So Home flags exactly the edits that change what Nuvio holds — a folder's catalogs, genre or
-    images, a title, a setting — and nothing else: a rename
-    and back, a save that changes nothing, or a recipe-only edit (a source names its catalog by
-    id and type; the addon serves the recipe live) leaves it unflagged.
+  - So `needs_push` flags exactly the edits that change a pushed collection — a folder's
+    catalogs, genre or images, a title, a setting — and nothing else: a rename and back, or a
+    save that changes nothing, leaves it unflagged. A catalog's name and recipe are not in the
+    pushed collection (a source names its catalog by id and type), so editing one doesn't set it.
+    The addon serves a catalog from the record, so such an edit, like a delete, reaches Nuvio
+    at the next push, and `GET /api/p/{i}/push/pending` (`PendingPush`) lists it: a catalog on
+    Home as changed, and a collection whose folders use it as changed too.
   - A Save landing between push's build and its local write leaves the row sending something
     other than what the record holds, so it still reads as needing a push.
   - If the push JSON ever gains a field, every collection reads as needing a push once, which is

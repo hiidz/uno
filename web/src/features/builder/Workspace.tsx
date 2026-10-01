@@ -29,7 +29,6 @@ import { accessibleIDs, buildRefOptions, indexRefOptions } from '@/features/coll
 import { useCollectionMutations } from '@/features/collections/useCollectionMutations'
 import type { OpenPublication } from '@/features/community/communityQuery'
 import { HomePane, type HomeView } from '@/features/home/HomePane'
-import { useHomeEdits } from '@/features/home/useHomeSelection'
 import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
@@ -106,10 +105,6 @@ export function Workspace({
   onOpenPublication: (publication: OpenPublication) => void
 }) {
   const library = useLibrary(profileIndex)
-  // Edits only: reading the selection here would re-render the whole
-  // workspace, open editor included, on every change to the home screen.
-  const home = useHomeEdits()
-
   const catalogMutations = useCatalogMutations(profileIndex)
   const collectionMutations = useCollectionMutations(profileIndex)
 
@@ -298,9 +293,9 @@ export function Workspace({
     const id = catalog.id
     catalogMutations.remove.mutate(id, {
       onSuccess: () => {
-        // A deleted catalog can't stay on the home screen — drop it from the
-        // pending selection too, or Push would reject the stale reference.
-        home.removeCatalog(id)
+        // The Home pane drops the deleted row from its pending selection once
+        // the lists refetch (`HomeSelectionProvider`); Nuvio keeps it until the
+        // next push, which the list of changes says.
         setConfirming(null)
         // Nor can it stay in the pane. This is the one close that doesn't ask:
         // the row it was editing is gone, so there is nothing to go back to and
@@ -317,7 +312,6 @@ export function Workspace({
     const id = collection.id
     collectionMutations.remove.mutate(id, {
       onSuccess: () => {
-        home.removeCollection(id)
         setConfirming(null)
         if (target?.id === id) show(null, 'rail')
       },
@@ -482,11 +476,11 @@ export function Workspace({
           // refs go.
           body: (
             <>
-              <strong className="text-ink">{catalog.name}</strong> is deleted permanently.
+              <strong className="text-ink">{catalog.name}</strong> is deleted permanently. {DELETE_RULE}
               {isPublished(catalog) && (
                 <>
                   {' '}
-                  {UNPUBLISHES}
+                  {ADDERS_KEEP}
                 </>
               )}{' '}
               Any references to this catalog from a collection will also be removed. This can't
@@ -539,11 +533,11 @@ export function Workspace({
           body: (
             <>
               <strong className="text-ink">{collection.title}</strong> and its{' '}
-              {folderCount(collection)} are deleted permanently.
+              {folderCount(collection)} are deleted permanently. {DELETE_RULE}
               {isPublished(collection) && (
                 <>
                   {' '}
-                  {UNPUBLISHES}
+                  {ADDERS_KEEP}
                 </>
               )}{' '}
               {scoped > 0
@@ -677,7 +671,6 @@ export function Workspace({
               onClose={close}
               onDuplicate={() => duplicateCatalog(activeCatalog)}
               onDelete={() => deleteCatalog(activeCatalog)}
-              deleteBlocked={home.deleteBlockers.catalog(activeCatalog.id)}
               onUpdate={() =>
                 openPublication({ id: activeCatalog.subscription!.publication_id, kind: 'catalog' })
               }
@@ -690,7 +683,6 @@ export function Workspace({
               onClose={close}
               onDuplicate={() => duplicateCollection(activeCollection)}
               onDelete={() => deleteCollection(activeCollection)}
-              deleteBlocked={home.deleteBlockers.collection(activeCollection.id)}
               onUpdate={() =>
                 openPublication({ id: activeCollection.subscription!.publication_id, kind: 'collection' })
               }
@@ -715,7 +707,6 @@ export function Workspace({
               onRequestClose={close}
               onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
               onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
-              deleteBlocked={home.deleteBlockers.catalog(target.id)}
               onDirtyChange={setDirty}
               {...sharing.catalogSharing(activeCatalog)}
             />
@@ -733,7 +724,6 @@ export function Workspace({
               onRequestClose={close}
               onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
               onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
-              deleteBlocked={home.deleteBlockers.collection(target.id)}
               onDirtyChange={setDirty}
               collectionID={target.id}
               initialCatalogs={editingCollectionCatalogs}
@@ -815,8 +805,11 @@ export function Workspace({
   )
 }
 
-/** What deleting a published row does to Community and to those who added it. */
-const UNPUBLISHES = 'Deleting it unpublishes it. People who added it keep it.'
+/** What Delete does and when, the versions rule's last sentence. */
+const DELETE_RULE = 'Delete removes it from Uno and Community now, and from Nuvio at your next push.'
+
+/** What deleting a published row leaves those who added it. */
+const ADDERS_KEEP = 'People who added it keep it.'
 
 /** What the discard prompt is about: the row as it was opened, which is the
  *  name the rail still shows — a rename is itself one of the changes the

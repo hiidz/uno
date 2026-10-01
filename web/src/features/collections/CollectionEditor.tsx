@@ -147,7 +147,6 @@ export function CollectionEditor({
   onRequestClose,
   onDuplicate,
   onDelete,
-  deleteBlocked = null,
   onDirtyChange,
   collectionID,
   initialCatalogs,
@@ -180,9 +179,6 @@ export function CollectionEditor({
    *  Absent until the library lists a row that was just created. */
   onDuplicate?: () => void
   onDelete?: () => void
-  /** Why Delete is disabled — this collection is on Home — or `null`
-   *  (`EditorShell`). */
-  deleteBlocked?: string | null
   onDirtyChange: (dirty: boolean) => void
   /** This collection's own server id: what a copied or new catalog is scoped
    *  to. */
@@ -533,7 +529,6 @@ export function CollectionEditor({
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
-      deleteBlocked={deleteBlocked}
       footer={
         <EditorFooter
           noun="collection"

@@ -282,23 +282,15 @@ catalog's type, Duplicate included: it copies the source's type, and offering an
 a step of its own before the create fires. (Adding what someone else publishes is a different action,
 `POST /api/p/{i}/community/{id}/subscribe`, whose UI is the Community tab, below.)
 
-**Delete's confirm copy states the real consequence** (`Workspace.tsx`). Deleting a published
-catalog unpublishes it, so a published row's confirm adds "Deleting it unpublishes it. People
-who added it keep it." (`UNPUBLISHES`, shown while `isPublished`). Every confirm states the
-folder-ref cascade within this profile.
+**Delete's confirm copy states the real consequence** (`Workspace.tsx`): "Delete removes it from
+Uno and Community now, and from Nuvio at your next push." (`DELETE_RULE`). Deleting a published
+catalog unpublishes it, so a published row's confirm adds "People who added it keep it."
+(`ADDERS_KEEP`, shown while `isPublished`). Every confirm states the folder-ref cascade within
+this profile.
 
-**Delete is disabled while Nuvio may still hold the row, and says why**
-(`web/src/features/home/deleteBlockers.ts`), in the server's own words (`docs/architecture.md`,
-*Deletes refuse what Nuvio may still hold*). `catalogDeleteBlocker` and `collectionDeleteBlocker`
-read Home as the server holds it: the two selection responses (`pushedHome`), each collection
-through the library's row for a fresh `needs_push` — never the pending Home edits, which Nuvio
-doesn't have yet. `HomeEdits.deleteBlockers` carries them, so Workspace reads them without
-re-rendering on every pending edit. A held row's Delete is disabled with the reason as its title
-(`deleteButton`, `GlyphButton`'s `disabled`/`title`), and `DeleteBlockedNote` says it in words:
-under the selected rail row's actions above `lg`, and at the top of the editor's form below it,
-where the header's Delete is a bare icon. A tab behind the server can still send a delete and get
-the `409`: the confirm dialog shows its sentence (the mutation's error), and the `remove`
-mutations refetch the lists and selections on any error, which disables the Delete beside it.
+**Delete is never disabled for a row on Home.** The server allows it any time
+(`docs/architecture.md`, *Deletes are allowed any time*): Nuvio keeps the row until the next
+push, and the Home pane's list says so (*Home pane*, below).
 
 **Validation rules are enforced structurally where possible**, and this order of preference is
 the point:
@@ -483,16 +475,20 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   header's pending indicator and the navigation guard's dialog both read it, and the indicator
   doubles as the toggle that opens the list itself (`ChangesStrip` in `PushControls.tsx`) — the
   count and the sentences behind it must never disagree, which is why there is only one number.
-- **A collection already in Nuvio can itself be a pending change**, with no selection edit at
-  all: `computeHomeChanges` adds a line for any collection present in *both* `baseline.collections`
-  and `current.collections` that carries `needs_push` — a save to a collection's folders
-  changes the derived manifest immediately, but Nuvio's own folder sources stay stale until the next
-  push (the "Save-to-Push window", accepted rather than closed). The server sets `needs_push` when
-  the hash of what push would send for the collection now differs from the hash of what it last
-  sent (`docs/data-model.md`, *Key rules*), so it fires for exactly the edits that change what
-  Nuvio holds: a rename and back, or a recipe-only edit, adds no line. Restricted to collections in both sets: a collection taken
-  off the home screen, pushed, edited, then put back would otherwise show both "Added …" and "changed
-  since …" for the same collection; only "Added …" should fire.
+- **What the server says waits for a push is a source of lines too**, with no selection edit at
+  all: `computeHomeChanges` takes the list `GET .../push/pending` answers
+  (`HomeSelectionContext`'s `pendingPush` query, `docs/architecture.md`, *HTTP surface*) and adds
+  a saved line for each row in it — a catalog or collection edited since its last push, one on
+  Home that Nuvio holds nothing for ("isn’t in Nuvio yet"), or one **deleted** since ("Removed …
+  from home screen", by the name Nuvio still holds it under). A catalog's name or recipe edit is
+  one, and a collection using an edited catalog is listed as changed, since the addon serves a
+  catalog from what the last push left and a collection's save changes what Nuvio shows only at
+  the next push. A rename and back, which the server finds no difference in, adds no line. A
+  changed or added row counts only while it is in *both* `baseline` and `current`: one taken off
+  the home screen in this tab is the "Removed …" edit instead. A removal says once what the tab
+  already said (the lines share a key). A row deleted here or in another tab leaves `baseline`
+  and `current` both once the lists have refetched without it (`withoutDeleted`), so Push is
+  never refused for naming it.
 
 **Selection is client state until Push, and the one thing enforcing that is the one-shot
 hydration guard** in `web/src/features/home/HomeSelectionContext.tsx`
@@ -832,8 +828,8 @@ button.
   catalogs referenced here are kept" is qualified by
   `scopedCatalogCount`: it names how many of the collection's own scoped catalogs (which have no
   life outside it) go with it, distinct from any listed catalog it merely references and which
-  survives. A collection on Home can't be deleted: its Delete is disabled, "Take it off Home and
-  push first." (see *Catalog authoring*).
+  survives. Delete is allowed on Home too, and its confirm says when Nuvio loses it (see *Catalog
+  authoring*).
 - **The Community setting is the same `SharingRow` as the catalog editor's** (see "Sharing" below), after the
   title. The "All" tab is a `Segmented`, greyed (DESIGN.md's "Greyed" segmented state,
   `Segmented`'s `disabled` prop) rather than hidden while the view mode isn't Tabbed Grids,
@@ -1026,15 +1022,17 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **Selection queries are invalidated on success.** With `staleTime: 30_000`, a successful push
   otherwise leaves them holding pre-push data, so switching profile and returning inside that
   window re-hydrates the baseline from stale data and makes the pushed changes look undone.
-- **The owned-collections query is invalidated on success too.** `needs_push` lives on the
-  `Collection` row from *both* `queryKeys.ownedCollections` and
+- **The owned-collections and pending-push queries are invalidated on success too.**
+  `needs_push` lives on the `Collection` row from *both* `queryKeys.ownedCollections` and
   `queryKeys.collectionSelection`, and `HomeSelectionContext`'s `collectionById` map is built by
   writing the selection response first and the owned list second — so on an id present in both
-  (the ordinary case: a collection that's both owned and currently selected), the owned list's
-  copy always wins. Invalidating only the selection query would leave `collectionById` holding
-  the owned list's pre-push `needs_push`, so the "changed since it was last pushed" line
-  (`computeHomeChanges`, Home pane section above) would never clear after a successful push, and
-  every push would look as if it had failed to update anything.
+  (the ordinary case), the owned list's copy always wins. Invalidating only the selection query
+  would leave `collectionById` holding the owned list's pre-push `needs_push`. The list of what
+  waits for a push (`queryKeys.pendingPush`, `GET .../push/pending`) is read from the server, so
+  without invalidating it the "changed since it was last pushed" lines would never clear after a
+  successful push, and every push would look as if it had failed to update anything. The writes
+  that change what Nuvio holds (`invalidateProfileLists`, and the collection mutations) refresh
+  it too.
 - **`ApiError` carries an optional `body`** (`web/src/api/http.ts`), best-effort JSON-parsed
   from the text it already reads on every non-2xx. Without it, push's structured failure arrives
   as an `ApiError` whose `message` is the raw JSON blob — unusable, and worse, renderable
