@@ -55,11 +55,9 @@ func TestAccountKeyByToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SaveSelectionsForPush(ctx, profile,
+	savePush(t, db, profile,
 		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}},
-		CollectionSelectionForm{}, nil); err != nil {
-		t.Fatal(err)
-	}
+		CollectionSelectionForm{})
 
 	account, sealed, err := db.AccountKeyByToken(ctx, token)
 	if err != nil || account != "owner" || sealed != nil {

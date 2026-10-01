@@ -128,7 +128,7 @@ function draftCatalog(seed: {
  * this editor's own unsaved folder edits survive the round trip.
  *
  * **Every row this editor opens is the profile's own and editable.** A
- * collection taken from Community opens as a view instead
+ * collection added from Community opens as a view instead
  * (`FromCommunityView`). Its sharing setting is `sharingRow`, which the pane
  * builds: the Sharing row.
  *
@@ -660,8 +660,8 @@ export function CollectionEditor({
             {willDelete.length > 0 && (
               <StagedNote tone="danger" onUndo={undoRemoving}>
                 Saving deletes {willDelete.length === 1 ? 'the folder' : 'the folders'}{' '}
-                {andList(willDelete.map((f) => `“${f.title.trim() || 'an untitled folder'}”`))}. Copies others
-                have taken keep theirs.
+                {andList(willDelete.map((f) => `“${f.title.trim() || 'an untitled folder'}”`))}. People who
+                added it keep theirs.
               </StagedNote>
             )}
 

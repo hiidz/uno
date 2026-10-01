@@ -185,7 +185,7 @@ func (s Snapshot) collectionForm(keyed bool) CollectionForm {
 
 // validate runs the form validators a copy of s is written through: a
 // catalog save's for a catalog snapshot, a collection save's for a
-// collection snapshot. A subscribe or a fork runs only this over s, since
+// collection snapshot. A subscribe or a duplicate runs only this over s, since
 // the recipes were checked against TMDB when s was published; a publish runs
 // it before that check, and an Update runs the same validators over the form
 // it writes.

@@ -28,13 +28,14 @@ import { useCommunityMutations, type CommunityAction } from './useCommunityMutat
 const NO_ITEMS: CommunityItem[] = []
 
 /**
- * The Community tab: what other profiles share, loaded in one call and
+ * The Community tab: what other profiles publish, loaded in one call and
  * searched, filtered and sorted here. A row opens its publication's page in
  * place of the list, and the way back returns to the same scroll position.
- * Take adds a read-only copy that follows its owner's updates; Update… opens
- * the page, which shows the new version and applies it; Duplicate adds a copy
- * that is the profile's own. No owner is named anywhere here. `initialOpen`
- * starts on a publication's page: a copy's own Update… lands there.
+ * Add puts it in the library, read-only, following its publisher's updates;
+ * Update… opens the page, which shows the new version and applies it;
+ * Duplicate adds a copy that is the profile's own. No publisher is named
+ * anywhere here. `initialOpen` starts on a publication's page: an added row's
+ * own Update… lands there.
  */
 export function CommunityView({
   profileIndex,
@@ -79,7 +80,7 @@ export function CommunityView({
     mutations[action]
       .mutateAsync(item.id)
       .then(
-        () => setToast({ text: DONE[action][item.kind], tone: 'success' }),
+        () => setToast({ text: doneText(action, item), tone: 'success' }),
         (error: Error) => setToast(failure(action, error)),
       )
       .finally(() =>
@@ -94,7 +95,7 @@ export function CommunityView({
   function actionsFor(item: CommunityItem, onUpdate: () => void, updateLabel: string): RowActions {
     return {
       pending: pending.get(item.id),
-      onTake: () => run(item, 'take'),
+      onSubscribe: () => run(item, 'subscribe'),
       onDuplicate: () => run(item, 'duplicate'),
       onUpdate,
       updateLabel,
@@ -167,10 +168,10 @@ function describeItem(item: CommunityItem, genres: GenreLookups): string {
 const KIND_WORD: Record<CommunityItem['kind'], string> = { catalog: 'catalogs', collection: 'collections' }
 
 /** What an empty list says: that nothing matches the search, or that nobody
- *  has shared anything of this kind. */
+ *  has published anything of this kind. */
 function emptyLabel(filters: CommunityFilters): string {
   if (filters.q.trim()) return `No ${KIND_WORD[filters.kind]} match this search.`
-  return `Nobody has shared any ${KIND_WORD[filters.kind]} yet. Share one of your own from its editor.`
+  return `Nobody has published any ${KIND_WORD[filters.kind]} yet. Publish one of your own from its editor.`
 }
 
 /** "3 of 12 catalogs" while a search narrows a kind that has any rows. */
@@ -230,18 +231,23 @@ function Controls({
   )
 }
 
-const DONE: Record<CommunityAction, Record<CommunityItem['kind'], string>> = {
-  take: { catalog: 'Added to your catalogs', collection: 'Added to your collections' },
-  update: { catalog: 'Updated your copy', collection: 'Updated your copy' },
-  duplicate: { catalog: 'Duplicated to your catalogs', collection: 'Duplicated to your collections' },
+/** An action's word in the UI: a subscribe is Add. */
+const VERB: Record<CommunityAction, string> = { subscribe: 'add', update: 'update', duplicate: 'duplicate' }
+
+/** The toast for an action that worked. */
+function doneText(action: CommunityAction, item: CommunityItem): string {
+  const kinds = KIND_WORD[item.kind]
+  if (action === 'subscribe') return `Added to your ${kinds}`
+  if (action === 'duplicate') return `Duplicated to your ${kinds}`
+  return `Updated “${item.title}”`
 }
 
 /** The toast for a failed action. A stale failure has already refreshed the
- *  lists: a 409 from Take means this profile already holds a copy, and a 404
- *  means the owner stopped sharing it. */
+ *  lists: a 409 from Add means this profile already added it, and a 404 means
+ *  its publisher unpublished it. */
 function failure(action: CommunityAction, error: Error): ToastMessage {
   const status = error instanceof ApiError ? error.status : undefined
-  if (action === 'take' && status === 409) return { text: 'Already taken', tone: 'success' }
-  if (status === 404) return { text: 'Its owner no longer shares it.', tone: 'danger' }
-  return { text: `Couldn’t ${action} it: ${error.message}`, tone: 'danger' }
+  if (action === 'subscribe' && status === 409) return { text: 'Already added', tone: 'success' }
+  if (status === 404) return { text: 'Its publisher unpublished it.', tone: 'danger' }
+  return { text: `Couldn’t ${VERB[action]} it: ${error.message}`, tone: 'danger' }
 }

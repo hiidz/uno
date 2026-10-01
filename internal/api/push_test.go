@@ -517,7 +517,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 		t.Fatalf("saved selection = %v, want the one selected collection", sel)
 	}
 	if sel[0].NeedsPush {
-		t.Errorf("needs_push right after the push = true, want false: push stores the hash of what it sent")
+		t.Errorf("needs_push right after the push = true, want false: push stores the record of what it sent")
 	}
 	if _, err := db.UpdateUserCollection(ctx, profile.ID, selected.ID, vault.CollectionForm{Title: "Renamed"}); err != nil {
 		t.Fatal(err)
@@ -616,7 +616,7 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 		}
 		return all[0].PinToTop
 	}
-	// What push hashed carries the selection's pin; what a read hashes
+	// What push recorded carries the selection's pin; what a read builds
 	// carries the stored one. Once push has stored it, the two agree.
 	pushedClean := func(when string) {
 		t.Helper()

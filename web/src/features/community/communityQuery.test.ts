@@ -82,14 +82,14 @@ describe('row words', () => {
   it('says how many took it and when it last changed', () => {
     const now = new Date(2026, 8, 29, 12)
     expect(itemMeta(communityItem({ published_at: '2026-09-27T10:00:00Z', updated_at: '2026-09-27T10:00:00Z' }), now)).toBe(
-      'Shared 2 days ago',
+      'Published 2 days ago',
     )
     expect(
       itemMeta(
         communityItem({ subscriber_count: 3, published_at: '2026-09-01T10:00:00Z', updated_at: '2026-09-28T10:00:00Z' }),
         now,
       ),
-    ).toBe('Taken by 3 · updated yesterday')
+    ).toBe('Added by 3 · updated yesterday')
   })
 
   it('counts days, weeks, months and years', () => {

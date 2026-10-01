@@ -1,13 +1,11 @@
 // The push payload: one of Uno's own collections in the camelCase shape
-// Nuvio's collections blob holds, which push sends, and the hash push stores
-// of it. A collection needs a push when the hash of what push would send now
-// differs from the hash of what it last sent.
+// Nuvio's collections blob holds, which push sends and the push record keeps
+// (pushrecord.go). A collection needs a push when what push would send for it
+// now differs from what its owner's last push sent.
 
 package vault
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 
 	"github.com/google/uuid"
@@ -140,22 +138,4 @@ func pushSources(refs []FolderRef, catalogs map[uuid.UUID]Catalog) []CatalogSour
 // PushJSON is tree's push payload as the exact bytes push sends for it.
 func (tree CollectionWithFolders) PushJSON() ([]byte, error) {
 	return json.Marshal(tree.PushPayload())
-}
-
-// PushHash is the hash push stores of raw, the bytes it sent for one
-// collection (collections.pushed_hash): sha256, in hex.
-func PushHash(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
-}
-
-// markNeedsPush sets tree's NeedsPush when tree is on Home and what push
-// would send for it now differs from what push last sent. A collection push
-// has never sent has no pushed hash, so it needs one; off Home, nothing does.
-func (tree *CollectionWithFolders) markNeedsPush() {
-	if tree.HomeSortOrder == nil {
-		return
-	}
-	raw, err := tree.PushJSON()
-	tree.NeedsPush = err != nil || PushHash(raw) != tree.pushedHash
 }

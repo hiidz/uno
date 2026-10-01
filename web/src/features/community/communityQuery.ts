@@ -72,12 +72,12 @@ export function itemSummary(item: CommunityItem, recipe: string): string {
   return [pluralCount(item.folder_count, 'folder'), pluralCount(item.catalog_count, 'catalog')].join(' · ')
 }
 
-/** A row's third line: how many have taken it, then when it was shared or
- *  last updated — "Taken by 3 · updated 2 days ago". */
+/** A row's third line: how many have added it, then when it was published or
+ *  last updated — "Added by 3 · updated 2 days ago". */
 export function itemMeta(item: CommunityItem, now: Date): string {
   const updated = item.updated_at !== item.published_at
-  const when = `${updated ? 'updated' : 'shared'} ${relativeDay(updated ? item.updated_at : item.published_at, now)}`
-  return item.subscriber_count > 0 ? `Taken by ${item.subscriber_count} · ${when}` : capitalize(when)
+  const when = `${updated ? 'updated' : 'published'} ${relativeDay(updated ? item.updated_at : item.published_at, now)}`
+  return item.subscriber_count > 0 ? `Added by ${item.subscriber_count} · ${when}` : capitalize(when)
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000

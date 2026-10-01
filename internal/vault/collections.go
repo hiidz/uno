@@ -29,7 +29,7 @@ const collectionRows = `collections col
 // collectionColumns are a collection's own columns, the ones scanCollection
 // reads before the sharing state.
 const collectionColumns = `col.id, col.title, col.owner_id, col.pin_to_top, col.view_mode, col.show_all_tab, col.backdrop_image_url,
-	col.focus_glow_enabled, col.home_sort_order, col.pushed_hash, col.created_at, col.updated_at`
+	col.focus_glow_enabled, col.home_sort_order, col.created_at, col.updated_at`
 
 // selectCollections runs a SELECT over collectionRows through q with the
 // given WHERE clause and args, parsing the result rows, each with its
@@ -70,11 +70,9 @@ func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]Co
 }
 
 // GetCollectionsByIDs batch-loads collections (with folders) by id, no
-// ownership check and no ordering guarantee — push uses this to resolve the
-// pending collection selection straight from the request body rather than
-// reading the persisted selection back, so it needs the same shape
-// GetCurrentCollectionSelection returns, keyed by an explicit id list
-// instead of a home_sort_order filter. Mirrors internal/vault/catalogs.go's
+// ownership check and no ordering guarantee: the shape
+// GetCurrentCollectionSelection returns, keyed by an explicit id list instead
+// of a home_sort_order filter. Mirrors internal/vault/catalogs.go's
 // GetCatalogsByIDs, and like it reads no sharing state.
 func (db *DB) GetCollectionsByIDs(ctx context.Context, ids []uuid.UUID) ([]CollectionWithFolders, error) {
 	if len(ids) == 0 {
@@ -130,7 +128,7 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 // a catalog scoped to it — after checking every existing catalog it
 // references is one of profileID's listed catalogs.
 //
-// It is the one collection create: a save, an import, a subscribe, a fork
+// It is the one collection create: a save, an import, a subscribe, a duplicate
 // and a Duplicate all go through it. The caller validates form first, runs
 // this inside tx and commits. Returns the new collection with its folders,
 // Catalogs unset, and the id of every catalog those folders reference,
@@ -407,27 +405,17 @@ func (db *DB) GetCurrentCollectionSelection(ctx context.Context, profileID uuid.
 }
 
 // saveCollectionSelectionTx resets this profile's collection selection to
-// exactly input, in order, writes each included collection's pin_to_top from
-// its entry, and stamps pushed_hash on every collection it includes with the
-// hash of what pushCollections sent for it — this is push's only caller, so
-// every collection reaching this point is, by definition, being pushed right
-// now. Every owned collection's home_sort_order is cleared first, then each
-// incoming entry is set in turn; a collection left out keeps its pin_to_top,
-// which a later push putting it back on Home starts from. A 0-rows-affected
-// update (an id that isn't owned) is ErrInvalidInput naming the id, the same
-// pattern as saveCatalogSelectionTx.
-//
-// hashes is keyed by collection id, built by pushCollections over the exact
-// bytes it sent — never the row as it stands now, which is what keeps a Save
-// landing between push's read and this write from being mistaken for pushed:
-// the row then hashes to something else, so it still needs a push. A missing
-// entry (the collection vanished between push's read and this write) leaves
-// pushed_hash untouched rather than guessing.
+// exactly input, in order, and writes each included collection's pin_to_top
+// from its entry. Every owned collection's home_sort_order is cleared first,
+// then each incoming entry is set in turn; a collection left out keeps its
+// pin_to_top, which a later push putting it back on Home starts from. A
+// 0-rows-affected update (an id that isn't owned) is ErrInvalidInput naming
+// the id, the same pattern as saveCatalogSelectionTx.
 //
 // Takes a caller-supplied transaction — see saveCatalogSelectionTx in
 // catalogs.go for why, and for why there is no exported single-selection
 // wrapper.
-func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CollectionSelectionForm, hashes map[uuid.UUID]string) error {
+func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CollectionSelectionForm) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE collections SET home_sort_order = NULL WHERE owner_id = ?
 	`, profileID.String()); err != nil {
@@ -436,15 +424,11 @@ func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.U
 
 	for i, entry := range input.Collections {
 		id := entry.CollectionID
-		var pushedHash any
-		if h, ok := hashes[id]; ok {
-			pushedHash = h
-		}
 		result, err := tx.ExecContext(ctx, `
 			UPDATE collections
-			SET home_sort_order = ?, pin_to_top = ?, pushed_hash = COALESCE(?, pushed_hash)
+			SET home_sort_order = ?, pin_to_top = ?
 			WHERE id = ? AND owner_id = ?
-		`, i, entry.PinToTop, pushedHash, id.String(), profileID.String())
+		`, i, entry.PinToTop, id.String(), profileID.String())
 		if err != nil {
 			return fmt.Errorf("saving collection selection: %w", err)
 		}

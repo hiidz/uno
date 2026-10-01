@@ -15,8 +15,9 @@ import (
 
 // assembleCollectionTree fetches folders, folder_catalogs and catalogs for
 // the given collections through q, the catalogs by readCatalogs, and zips
-// everything into the nested response shape. Order of the input collections
-// slice is preserved.
+// everything into the nested response shape, each tree marked against its
+// owner's push record (markNeedsPush, pushrecord.go). Order of the input
+// collections slice is preserved.
 func assembleCollectionTree(ctx context.Context, q querier, collections []Collection, readCatalogs catalogReader) ([]CollectionWithFolders, error) {
 	if len(collections) == 0 {
 		return []CollectionWithFolders{}, nil
@@ -80,10 +81,9 @@ func assembleCollectionTree(ctx context.Context, q querier, collections []Collec
 			Catalogs:   jsonwire.OrEmpty(catalogs),
 		}
 		result[i].markChangedSincePublish()
-		result[i].markNeedsPush()
 	}
 
-	return result, nil
+	return markNeedsPush(ctx, q, result)
 }
 
 // markChangedSincePublish sets tree's ChangedSincePublish when tree no

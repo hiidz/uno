@@ -6,7 +6,7 @@ export {
   deleteCatalog,
   deleteCollection,
   duplicateCollection,
-  forkPublication,
+  duplicatePublication,
   publishCatalog,
   removeTMDBKey,
   saveTMDBKey,
@@ -14,9 +14,9 @@ export {
   subscribe,
   updateCatalog,
   updateCollection,
+  unpublishCatalog,
+  unpublishCollection,
   updateSubscription,
-  withdrawCatalog,
-  withdrawCollection,
 } from './mutations'
 export type {
   CatalogPayload,

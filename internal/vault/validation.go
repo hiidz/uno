@@ -18,7 +18,7 @@ var (
 	ErrCatalogNotFound    = errors.New("catalog not found")
 	ErrCollectionNotFound = errors.New("collection not found")
 	// ErrPublicationNotFound is a publication the caller can't see: none by
-	// that id, one withdrawn, their own for a subscribe or fork, or, for an
+	// that id, one unpublished, their own for a subscribe or duplicate, or, for an
 	// Update, one they don't subscribe to.
 	ErrPublicationNotFound = errors.New("publication not found")
 	ErrInvalidInput        = errors.New("invalid input")
@@ -183,7 +183,7 @@ const maxMediaURLLen = 2048
 //
 // The scheme allowlist is the point: every one of these strings is pushed
 // into Nuvio's collections blob and rendered by its clients, and a
-// collection can reach a profile that never authored it (community take),
+// collection can reach a profile that never authored it (a subscribe),
 // so a javascript: or data: URL must not survive the trip.
 func mediaURLProblem(field, raw string) string {
 	if raw == "" {

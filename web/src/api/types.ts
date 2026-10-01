@@ -33,7 +33,7 @@ export interface Catalog {
   collection_id: string | null
   created_at: string
   updated_at: string
-  /** This catalog's own publication; `null` when it has never been shared.
+  /** This catalog's own publication; `null` when it has never been published.
    *  Only the owner's own reads carry it. */
   publication: PublicationState | null
   /** The publication this listed catalog is a subscribed copy of; `null`
@@ -41,23 +41,23 @@ export interface Catalog {
   subscription: SubscriptionState | null
 }
 
-/** What an owner's row shows of its publication. `changed_since_publish` is
- *  true once the saved row differs from what was published: people who took
- *  it keep getting the published version until the owner publishes an
- *  update. */
+/** What a publisher's row shows of its publication. `changed_since_publish`
+ *  is true once the saved row differs from what was published: people who
+ *  added it keep getting the published version until the publisher publishes
+ *  an update. */
 export interface PublicationState {
   id: string
-  status: 'live' | 'withdrawn'
+  status: 'live' | 'unpublished'
   changed_since_publish: boolean
 }
 
-/** What a subscribed copy shows of the publication it was taken from. Only an
- *  Update changes the copy; a save of it is refused. `withdrawn` means its
- *  owner stopped sharing it, which ends its updates. */
+/** What a subscribed copy shows of the publication it was subscribed from.
+ *  Only an Update changes the copy; a save of it is refused. `unpublished`
+ *  means its publisher unpublished it, which ends its updates. */
 export interface SubscriptionState {
   publication_id: string
   update_available: boolean
-  withdrawn: boolean
+  unpublished: boolean
 }
 
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
@@ -173,7 +173,7 @@ export interface SnapshotCollection {
   folders: SnapshotFolder[] | null
 }
 
-/** What a publication froze when it was published: every catalog it shares,
+/** What a publication froze when it was published: every catalog it publishes,
  *  at the top level, and for a collection its own fields and folders. */
 export interface Snapshot {
   format: string
@@ -183,7 +183,7 @@ export interface Snapshot {
 }
 
 /** One row of `GET /api/p/{i}/community`: a publication someone else
- *  shares, never naming its owner. `catalog_names` names every catalog it
+ *  publishes, never naming its publisher. `catalog_names` names every catalog it
  *  holds, for search. `catalog` is a catalog publication's one catalog, so
  *  its row can be summarized without a detail call; `null` for a
  *  collection. */
@@ -203,13 +203,13 @@ export interface CommunityItem {
 }
 
 /** `GET /api/p/{i}/community/{id}`: one publication with its snapshot. A
- *  withdrawn one is visible only to a profile that subscribes to it. */
+ *  unpublished one is visible only to a profile that subscribes to it. */
 export interface PublicationDetail extends CommunityItem {
-  withdrawn: boolean
+  unpublished: boolean
   snapshot: Snapshot
 }
 
-/** What a subscribe, a fork or an Update answers: the caller's copy, a listed
+/** What a subscribe, a duplicate or an Update answers: the caller's copy, a listed
  *  catalog or a collection by the publication's kind. */
 export interface CommunityCopy {
   kind: 'catalog' | 'collection'

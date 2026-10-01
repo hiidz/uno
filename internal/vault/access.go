@@ -109,7 +109,7 @@ func validateFolderRefs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, co
 // listed — the rule for a home selection. A scoped catalog is never
 // home-selectable (the schema's own CHECK forbids collection_id and
 // home_sort_order both being set), so this pre-check has to reject one
-// before it ever reaches SaveSelectionsForPush's write, not just before a
+// before it ever reaches SavePush's write, not just before a
 // third-party API call: without it, a scoped id would pass validation, push
 // successfully to Nuvio, and only then hit 0 rows affected on the local
 // write's `AND collection_id IS NULL`, forcing a compensating revert after
@@ -143,7 +143,7 @@ func errSubscribedCopy(kind string) error {
 func refuseSubscribedCopy(ctx context.Context, q queryRower, profileID uuid.UUID, kind string, id uuid.UUID) error {
 	var subscribed bool
 	err := q.QueryRowContext(ctx, `
-		SELECT EXISTS (SELECT 1 FROM subscriptions WHERE (catalog_id = ?1 OR collection_id = ?1) AND owner_id = ?2)
+		SELECT EXISTS (SELECT 1 FROM subscriptions WHERE (catalog_id = ?1 OR collection_id = ?1) AND subscriber_id = ?2)
 	`, id.String(), profileID.String()).Scan(&subscribed)
 	if err != nil {
 		return fmt.Errorf("checking subscription: %w", err)

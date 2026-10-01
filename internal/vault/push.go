@@ -27,29 +27,3 @@ func (db *DB) ValidateSelectionAccess(ctx context.Context, profileID uuid.UUID, 
 	}
 	return validateCollectionAccess(ctx, tx, profileID, collectionIDs)
 }
-
-// SaveSelectionsForPush writes both selections in one transaction — the
-// local half of push, run only after both Nuvio calls have already
-// succeeded (internal/api/push.go). The two writes share one transaction
-// so they commit or roll back together. collectionHashes is the hash of what
-// pushCollections sent for each pushed collection (PushHash), forwarded to
-// saveCollectionSelectionTx's pushed_hash stamp — see its own comment.
-func (db *DB) SaveSelectionsForPush(ctx context.Context, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm, collectionHashes map[uuid.UUID]string) error {
-	tx, err := db.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
-
-	if err := saveCatalogSelectionTx(ctx, tx, profileID, catalogs); err != nil {
-		return err
-	}
-	if err := saveCollectionSelectionTx(ctx, tx, profileID, collections, collectionHashes); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction: %w", err)
-	}
-	return nil
-}

@@ -317,9 +317,9 @@
     }
 
     /* Stickers: the small printed labels on a row. Kind is an outline in the
-       shelf's own line; Shared is Community pink, because that is where a
-       shared row turns up; From Community, a copy taken from there, is
-       outlined in the same pink; Update, waiting for that copy, is outlined in
+       shelf's own line; Published is Community pink, because that is where a
+       published row turns up; From Community, a row added from there, is
+       outlined in the same pink; Update, waiting for that row, is outlined in
        ink; Unavailable is outlined in danger red. */
     .stk {
         display: inline-flex;
@@ -336,13 +336,13 @@
         white-space: nowrap;
     }
     /* On a sign, a sticker is printed in sign ink, lettered in the sign's
-       own colour (Shared and From Community keep their Community pink). */
+       own colour (Published and From Community keep their Community pink). */
     .sign .stk {
         background: var(--uno-sign-ink);
         color: var(--accent);
         box-shadow: none;
     }
-    .sign .stk-shared,
+    .sign .stk-published,
     .sign .stk-from {
         color: var(--uno-community);
     }
@@ -350,7 +350,7 @@
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
         color: var(--uno-dim);
     }
-    .stk-shared {
+    .stk-published {
         background: var(--uno-community);
         color: var(--uno-sign-ink);
     }

@@ -58,7 +58,7 @@ func TestSubscribeCatalog(t *testing.T) {
 	if c.Name != "Popular" || c.RecipeHash != source.RecipeHash || c.SubKey != "" {
 		t.Errorf("copy name %q, recipe %s, sub_key %q; want the source's name and recipe, no sub_key", c.Name, c.RecipeHash, c.SubKey)
 	}
-	if s := c.Subscription; s == nil || s.PublicationID != source.Publication.ID || s.UpdateAvailable || s.Withdrawn {
+	if s := c.Subscription; s == nil || s.PublicationID != source.Publication.ID || s.UpdateAvailable || s.Unpublished {
 		t.Errorf("subscription = %+v, want one to %s, in step", s, source.Publication.ID)
 	}
 }
@@ -82,8 +82,8 @@ func TestSubscribeCollection(t *testing.T) {
 	pubID := source.Publication.ID
 
 	c := *subscribe(t, db, subscriber, pubID).Collection
-	if c.Title != "Weekend" || c.pushedHash != "" || c.Publication != nil || c.Subscription == nil || c.Subscription.PublicationID != pubID {
-		t.Errorf("copy = %+v, want Weekend unpushed, subscribed to %s", c.Collection, pubID)
+	if c.Title != "Weekend" || c.HomeSortOrder != nil || c.NeedsPush || c.Publication != nil || c.Subscription == nil || c.Subscription.PublicationID != pubID {
+		t.Errorf("copy = %+v, want Weekend off Home, subscribed to %s", c.Collection, pubID)
 	}
 	if len(c.Catalogs) != 2 {
 		t.Fatalf("copy catalogs = %+v, want two", c.Catalogs)
@@ -106,7 +106,7 @@ func TestSubscribeCollection(t *testing.T) {
 	}
 }
 
-// A subscribe or a fork needs a live publication of someone else's; a second
+// A subscribe or a duplicate needs a live publication of someone else's; a second
 // subscription to one publication is ErrConflict.
 func TestSubscribeRefusals(t *testing.T) {
 	ctx := context.Background()
@@ -116,7 +116,7 @@ func TestSubscribeRefusals(t *testing.T) {
 
 	for name, err := range map[string]error{
 		"own subscribe": second(db.Subscribe(ctx, owner, source.Publication.ID)),
-		"own fork":      second(db.ForkPublication(ctx, owner, source.Publication.ID)),
+		"own duplicate": second(db.DuplicatePublication(ctx, owner, source.Publication.ID)),
 		"unknown":       second(db.Subscribe(ctx, subscriber, uuid.New())),
 	} {
 		if !errors.Is(err, ErrPublicationNotFound) {
@@ -130,26 +130,26 @@ func TestSubscribeRefusals(t *testing.T) {
 	if catalogs, _ := db.GetUserCatalogs(ctx, subscriber); len(catalogs) != 1 {
 		t.Errorf("subscriber holds %d catalogs after the refused second subscribe, want 1", len(catalogs))
 	}
-	if _, err := db.ForkPublication(ctx, subscriber, source.Publication.ID); err != nil {
-		t.Errorf("fork beside a subscription = %v, want nil", err)
+	if _, err := db.DuplicatePublication(ctx, subscriber, source.Publication.ID); err != nil {
+		t.Errorf("duplicate beside a subscription = %v, want nil", err)
 	}
 }
 
-// A publication withdrawn after a subscribe read it, and before the
+// A publication unpublished after a subscribe read it, and before the
 // subscribe wrote, is not subscribed to: the subscription insert checks the
 // publication is live, and the copy rolls back with it.
-func TestSubscribeRaceWithWithdraw(t *testing.T) {
+func TestSubscribeRaceWithUnpublish(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	source := publishCatalog(t, db, owner, "Popular", "{}")
 
-	pub, err := db.takeablePublication(ctx, subscriber, source.Publication.ID)
+	pub, err := db.copyablePublication(ctx, subscriber, source.Publication.ID)
 	if err != nil {
-		t.Fatalf("takeablePublication: %v", err)
+		t.Fatalf("copyablePublication: %v", err)
 	}
-	if _, err := db.WithdrawCatalog(ctx, owner, source.ID); err != nil {
-		t.Fatalf("WithdrawCatalog: %v", err)
+	if _, err := db.UnpublishCatalog(ctx, owner, source.ID); err != nil {
+		t.Fatalf("UnpublishCatalog: %v", err)
 	}
 	err = db.inTx(ctx, func(tx *sql.Tx) error {
 		copyID, err := writeCopy(ctx, tx, subscriber, pub, true)
@@ -159,7 +159,7 @@ func TestSubscribeRaceWithWithdraw(t *testing.T) {
 		return insertSubscription(ctx, tx, subscriber, pub, copyID)
 	})
 	if !errors.Is(err, ErrPublicationNotFound) {
-		t.Fatalf("subscribe after a withdraw = %v, want ErrPublicationNotFound", err)
+		t.Fatalf("subscribe after a unpublish = %v, want ErrPublicationNotFound", err)
 	}
 	if catalogs, _ := db.GetUserCatalogs(ctx, subscriber); len(catalogs) != 0 {
 		t.Errorf("subscriber holds %d catalogs after the refused subscribe, want 0", len(catalogs))
@@ -171,7 +171,7 @@ func TestSubscribeRaceWithWithdraw(t *testing.T) {
 }
 
 // A snapshot today's form rules refuse is not copied: a subscribe and a
-// fork run the form validators, and nothing else, over it.
+// duplicate run the form validators, and nothing else, over it.
 func TestSubscribeChecksTheSnapshot(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -183,7 +183,7 @@ func TestSubscribeChecksTheSnapshot(t *testing.T) {
 	}
 	for name, err := range map[string]error{
 		"subscribe": second(db.Subscribe(ctx, subscriber, source.Publication.ID)),
-		"fork":      second(db.ForkPublication(ctx, subscriber, source.Publication.ID)),
+		"duplicate": second(db.DuplicatePublication(ctx, subscriber, source.Publication.ID)),
 	} {
 		if !errors.Is(err, ErrInvalidInput) {
 			t.Errorf("%s of a snapshot with an unknown view mode = %v, want ErrInvalidInput", name, err)
@@ -417,7 +417,7 @@ func TestUpdateSubscriptionRestampsAnIdenticalCopy(t *testing.T) {
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 	copied := *subscribe(t, db, subscriber, source.Publication.ID).Collection
-	if _, err := db.conn.ExecContext(ctx, `UPDATE subscriptions SET taken_hash = 'stale' WHERE collection_id = ?`, copied.ID.String()); err != nil {
+	if _, err := db.conn.ExecContext(ctx, `UPDATE subscriptions SET subscribed_hash = 'stale' WHERE collection_id = ?`, copied.ID.String()); err != nil {
 		t.Fatal(err)
 	}
 	if s := mustOwnCollection(t, db, subscriber, copied.ID).Subscription; !s.UpdateAvailable {
@@ -537,25 +537,25 @@ func TestUpdateWithoutSubscriptionIsNotFound(t *testing.T) {
 	}
 }
 
-// A fork is the caller's own, fully editable copy: no subscription, no
+// A duplicate is the caller's own, fully editable copy: no subscription, no
 // sub_keys, and a save of it goes through.
-func TestForkPublication(t *testing.T) {
+func TestDuplicatePublication(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
-	owner, forker := newTestProfile(t, db, "owner"), newTestProfile(t, db, "forker")
+	owner, duplicator := newTestProfile(t, db, "owner"), newTestProfile(t, db, "duplicator")
 	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
-	forked, err := db.ForkPublication(ctx, forker, source.Publication.ID)
+	duplicated, err := db.DuplicatePublication(ctx, duplicator, source.Publication.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := *forked.Collection
+	c := *duplicated.Collection
 	if c.Subscription != nil || c.Title != "Shared" || c.Folders[0].SubKey != "" || c.Catalogs[0].SubKey != "" {
-		t.Errorf("fork = %+v, want Shared with no subscription and no sub_keys", c)
+		t.Errorf("duplicate = %+v, want Shared with no subscription and no sub_keys", c)
 	}
-	if _, err := db.UpdateUserCollection(ctx, forker, c.ID, saveFormOf(c)); err != nil {
-		t.Errorf("save a fork = %v, want nil", err)
+	if _, err := db.UpdateUserCollection(ctx, duplicator, c.ID, saveFormOf(c)); err != nil {
+		t.Errorf("save a duplicate = %v, want nil", err)
 	}
 	if detail, _ := db.GetPublication(ctx, owner, source.Publication.ID); detail.SubscriberCount != 0 {
-		t.Errorf("subscriber count after a fork = %d, want 0", detail.SubscriberCount)
+		t.Errorf("subscriber count after a duplicate = %d, want 0", detail.SubscriberCount)
 	}
 }

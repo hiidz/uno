@@ -209,7 +209,7 @@ func TestBundleRoundTripsThroughCreate(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
+	subscriber := newTestProfile(t, db, "subscriber")
 
 	listedForm := listedCatalogForm("Listed")
 	listedForm.Params = `{"sort_by":"popularity.desc","with_genres":"27"}`
@@ -256,7 +256,7 @@ func TestBundleRoundTripsThroughCreate(t *testing.T) {
 
 	t.Run("scopeAll", func(t *testing.T) {
 		want := extractBundle(nil, trees, true)
-		written := writeBundleCollection(t, db, taker, want.Collections[0], nil, true)
+		written := writeBundleCollection(t, db, subscriber, want.Collections[0], nil, true)
 		got := extractBundle(nil, []CollectionWithFolders{written}, true)
 		if g, w := withoutSourceIDs(got), withoutSourceIDs(want); !reflect.DeepEqual(g, w) {
 			t.Fatalf("round trip = %+v, want %+v", g, w)

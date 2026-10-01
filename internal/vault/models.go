@@ -56,9 +56,9 @@ type Catalog struct {
 	Subscription *SubscriptionState `json:"subscription"`
 }
 
-// PublicationState is what an owner's row shows of its publication: its id,
-// whether it is live or withdrawn, and whether the row has changed since it
-// was last published, which is a hint to the owner only.
+// PublicationState is what a publisher's row shows of its publication: its
+// id, whether it is live or unpublished, and whether the row has changed
+// since it was last published, which is a hint to the publisher only.
 type PublicationState struct {
 	ID                  uuid.UUID `json:"id"`
 	Status              string    `json:"status"`
@@ -69,12 +69,12 @@ type PublicationState struct {
 }
 
 // SubscriptionState is what a subscribed copy shows of the publication it
-// was taken from: its id, whether a newer snapshot is published, and whether
-// the publication has been withdrawn, which ends its updates.
+// was subscribed from: its id, whether a newer snapshot is published, and
+// whether the publication has been unpublished, which ends its updates.
 type SubscriptionState struct {
 	PublicationID   uuid.UUID `json:"publication_id"`
 	UpdateAvailable bool      `json:"update_available"`
-	Withdrawn       bool      `json:"withdrawn"`
+	Unpublished     bool      `json:"unpublished"`
 }
 
 // Collection is a Nuvio home-screen collection: a titled group of Folders,
@@ -92,10 +92,6 @@ type Collection struct {
 	FocusGlowEnabled bool      `json:"focus_glow_enabled"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
-	// pushedHash is the hash of the push payload push last sent for this
-	// collection (PushHash), "" when push has never sent one. Never on the
-	// wire: CollectionWithFolders.NeedsPush is what it decides.
-	pushedHash string
 	// HomeSortOrder is this collection's position in its owner's home-screen
 	// selection; nil means it isn't on the TV. Never on the wire — the
 	// selection endpoint (GetCurrentCollectionSelection) returns collections
@@ -224,8 +220,8 @@ type FolderData struct {
 // either kind of entry client-side with no request of its own, and the
 // catalog row (for a New entry) is only ever written here, inside the
 // transaction of the collection write that carries it — so discarding the
-// edit instead of saving leaves nothing behind. A subscribe, a fork or a
-// Duplicate of a whole collection writes its scoped catalog copies as New
+// edit instead of saving leaves nothing behind. A subscribe or a duplicate
+// of a publication, or a Duplicate of a whole collection, writes its scoped catalog copies as New
 // entries too. See docs/frontend.md's "Three sources for a folder's catalog".
 //
 // Genre narrows this one reference to a genre, by name: pushed as the folder

@@ -70,7 +70,7 @@ import {
  * has to say whether there is anything to lose.
  *
  * **Every row this editor opens is the profile's own and editable.** A catalog
- * taken from Community opens as a view instead (`FromCommunityView`). Its
+ * added from Community opens as a view instead (`FromCommunityView`). Its
  * sharing setting is `sharingRow`, which the pane builds: the Sharing row.
  *
  * **`type` is always locked.** It is chosen when the catalog is named, and
@@ -121,9 +121,8 @@ export function CatalogEditor({
    *  is created scoped when the collection saves, so there is nothing to move
    *  until then. */
   canMoveToLibrary?: boolean
-  /** A listed catalog's sharing setting: its Sharing row, or a copy's From
-   *  Community row. Absent in a collection's nested editor, where a scoped
-   *  catalog shows its Scope. */
+  /** A listed catalog's sharing setting, labelled Community. Absent in a
+   *  collection's nested editor, where a scoped catalog shows its Scope. */
   sharingRow?: ReactNode
   /** Its sharing stickers, beside the kind on the sign. */
   sharingBadges?: ReactNode
@@ -400,7 +399,7 @@ export function CatalogEditor({
                 </div>
                 <p className="type-data text-dimmer m-0 pt-1 text-[12.5px] leading-[1.45]">
                   {canMoveToLibrary
-                    ? 'Move to library to reuse or share it. Applies when you save the collection.'
+                    ? 'Move to library to reuse or publish it. Applies when you save the collection.'
                     : 'Save the collection first to move this to your library.'}
                 </p>
               </div>

@@ -128,7 +128,7 @@ steps:
   rows can reach TMDB. This is the one screen that names TMDB, since the user has to go and get a
   key there by name.
 - **Set.** `TMDBKeyShelf` sits under the profiles: TMDB key, a Set sticker (the dim outline;
-  pink would say Shared), "ends in" and the last four characters, Replace (the same form in place,
+  pink would say Published), "ends in" and the last four characters, Replace (the same form in place,
   with Cancel) and Remove. Remove confirms first, saying the home screen can't load Uno's rows and
   the builder can't preview or save catalogs until a key is back; it isn't red, since adding the
   key again undoes it.
@@ -168,7 +168,7 @@ this is two regions rather than several co-equal panes.
 
 | Region | Holds |
 | --- | --- |
-| **Library** — left rail | Every catalog and collection you own, one labelled "Mine" group. One search box at the top of the rail narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — taking what someone else shares is the separate Community tab's job, not a second group in this rail. A copy taken from there is one of your rows, marked From Community |
+| **Library** — left rail | Every catalog and collection you own, one labelled "Mine" group. One search box at the top of the rail narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — adding what someone else publishes is the separate Community tab's job, not a second group in this rail. A row added from there is one of your rows, marked From Community |
 | **Pane** — right | One thing at a time: your home screen (with a `List \| Preview` switch), or the editor for whichever rail row is selected. The page's centre of gravity |
 | **Push** — header | Global action, beside a persistent unpushed-changes indicator. Not a section — it's the commit for Home, so it lives where Home is always visible, whether or not Home is the pane's current occupant |
 
@@ -202,9 +202,9 @@ schema's word and stays in code, types, and endpoint names; it does not appear o
 `GET /api/p/{i}/collections`.** There is no merge and no `owned` field on `LibraryCatalog`/
 `LibraryCollection`: under the closed-graph sharing model, a folder can
 only ever reference your own listed catalogs, so "the library" and "what you own" are one set by
-construction, not two sets reconciled in the frontend. Browsing and taking what someone else
-shares is the separate Community tab's job, not this rail's (see "Community tab" below). A copy
-taken from Community is a library row like any other, marked by its stickers (see "Sharing"
+construction, not two sets reconciled in the frontend. Browsing and adding what someone else
+publishes is the separate Community tab's job, not this rail's (see "Community tab" below). A row
+added from Community is a library row like any other, marked by its stickers (see "Sharing"
 below).
 
 The library's list endpoints are unpaginated; assume small N. Filter and search are **pure client-side
@@ -276,16 +276,16 @@ atomic** — every row in the library is yours, so opening one always edits it; 
 params the instant the confirm dialog is accepted (`catalogForm.ts`'s `duplicatePayload` — no form
 to fill in first, unlike a bare "New catalog"), then opens the finished copy in this same editor
 like any other real row — the same atomic-then-open shape `confirmDuplicateCollection` uses for
-collections. A duplicate is never shared, whatever its source, because sharing is a
+collections. A duplicate is never published, whatever its source, because publishing is a
 deliberate act rather than something inherited from what was duplicated. Nothing changes a
 catalog's type, Duplicate included: it copies the source's type, and offering another would need
-a step of its own before the create fires. (Taking what someone else shares is a different action,
+a step of its own before the create fires. (Adding what someone else publishes is a different action,
 `POST /api/p/{i}/community/{id}/subscribe`, whose UI is the Community tab, below.)
 
-**Delete's confirm copy states the real consequence** (`Workspace.tsx`). Deleting a shared
-catalog withdraws its publication, so a shared row's confirm adds "It stops being
-shared, and copies people took stay theirs" (`STOPS_SHARING`, shown while `isShared`). Every
-confirm states the folder-ref cascade within this profile.
+**Delete's confirm copy states the real consequence** (`Workspace.tsx`). Deleting a published
+catalog unpublishes it, so a published row's confirm adds "Deleting it unpublishes it. People
+who added it keep it." (`UNPUBLISHES`, shown while `isPublished`). Every confirm states the
+folder-ref cascade within this profile.
 
 **Delete is disabled while Nuvio may still hold the row, and says why**
 (`web/src/features/home/deleteBlockers.ts`), in the server's own words (`docs/architecture.md`,
@@ -410,8 +410,8 @@ Other decisions worth keeping:
   persistence models the page has to keep legible: authoring writes immediately, selection is
   pending until Push. Adding from the rail defaults `show_in_home: true`.
 - **Writes invalidate the owned catalog list** (`useCatalogMutations` also invalidates every
-  Community key, through `invalidateProfileLists` — a save can make a shared row changed since
-  publishing, and a delete withdraws its publication). The selection queries refetch with them,
+  Community key, through `invalidateProfileLists` — a save can make a published row changed since
+  publishing, and a delete unpublishes it). The selection queries refetch with them,
   since their keys sit under the owned lists'; `HomeSelectionContext`'s one-shot hydration keeps
   that from clobbering pending edits.
 - **A collection save that moves a catalog to the library invalidates the catalog list**
@@ -422,8 +422,8 @@ Other decisions worth keeping:
   `DELETE FROM catalogs` cascades `folder_catalogs`, so a cached collection tree keeps a phantom
   ref: the overlay lists a folder member that no longer exists, and saving that collection
   `400`s.
-- **A scoped catalog shows a "Scope" row where a listed one shows Sharing**
-  (`CatalogFormState.collectionID`): a scoped catalog is shared only by sharing its collection, so
+- **A scoped catalog shows a "Scope" row where a listed one shows Community**
+  (`CatalogFormState.collectionID`): a scoped catalog is published only by publishing its collection, so
   its nested editor gets no `sharingRow` and shows a note and a "Move to library" button that clears
   `collectionID` instead — promote, always allowed, and like
   every edit made in this nested editor it takes effect when the collection is saved (a
@@ -709,8 +709,8 @@ button.
   something that hasn't happened. Dropping a folder that was never saved is correctly silent.
   "Undo" reinserts the removed rows verbatim — they still carry their original form
   `key`, which is what makes putting them straight back into `state.folders` safe. Its body text
-  is unconditional ("Copies others have taken keep theirs"): a copy someone took changes only when
-  its owner takes an Update of a publication, so removing a folder from your own collection never
+  is unconditional ("People who added it keep theirs"): a row someone added changes only when
+  they apply an Update of a publication, so removing a folder from your own collection never
   reaches it. `Workspace.tsx`'s delete confirms state the same fact.
 - **The save bar's quiet button reads "Discard changes" here, "Cancel" in the catalog editor**
   (`EditorFooter`'s `cancelLabel`) — DESIGN.md's own wording for the heavier thing this editor can
@@ -827,14 +827,14 @@ button.
   scoped catalog this editor knows about would lose its last folder reference on Save — the exact
   condition `UpdateUserCollection`'s GC delete checks server-side, mirrored client-side the
   same way the folder-delete warning already was.
-- **Delete's confirm copy (`Workspace.tsx`) states the real consequence:** a shared
-  collection's adds that it stops being shared and copies people took stay theirs, and "the
+- **Delete's confirm copy (`Workspace.tsx`) states the real consequence:** a published
+  collection's adds that deleting it unpublishes it and people who added it keep it, and "the
   catalogs referenced here are kept" is qualified by
   `scopedCatalogCount`: it names how many of the collection's own scoped catalogs (which have no
   life outside it) go with it, distinct from any listed catalog it merely references and which
   survives. A collection on Home can't be deleted: its Delete is disabled, "Take it off Home and
   push first." (see *Catalog authoring*).
-- **Sharing is the same `SharingRow` as the catalog editor's** (see "Sharing" below), after the
+- **The Community setting is the same `SharingRow` as the catalog editor's** (see "Sharing" below), after the
   title. The "All" tab is a `Segmented`, greyed (DESIGN.md's "Greyed" segmented state,
   `Segmented`'s `disabled` prop) rather than hidden while the view mode isn't Tabbed Grids,
   keeping its value for when it switches back. There is no Show first here: it is the Home pane's
@@ -855,37 +855,44 @@ button.
 
 ## Sharing
 
-What an owner shares is a **publication**: a snapshot of the row as it was saved when it was
-published, which Community lists and others take copies of. Live edits stay private until the owner
-publishes an update. A row taken from Community is a **subscription**: it is read-only, it follows
-its owner's updates, applied when the taker chooses, and it opens as a view, never an editor.
-Duplicate makes a separate row that is the taker's to edit. The model and the routes are
+What an owner publishes is a **publication**: a snapshot of the row as it was saved when it was
+published, which Community lists and others add. Live edits stay private until the publisher
+publishes an update. A row added from Community is a **subscription**: it is read-only, it follows
+its publisher's updates, applied when its subscriber chooses, and it opens as a view, never an
+editor. Duplicate makes a separate copy that is the subscriber's to edit. The words are
+`docs/architecture.md`'s *Sharing vocabulary*: the UI says Publish, Add, Unpublish, Duplicate and
+publisher, and calls only what Duplicate makes a copy. The model and the routes are
 `docs/data-model.md` ("Publications and subscriptions") and `docs/architecture.md`; the pieces here
 live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through one hook,
 `useWorkspaceSharing`.
 
-- **The Sharing row** (`SharingRow.tsx`) sits where a listed catalog's or a collection's editor
-  has its settings, after the name. It says where the row stands (`ownSharing` over the row's
-  `publication`): Private; Shared; "Shared. Your changes since aren't shared yet." once the saved
-  row differs from what was published (`changed_since_publish`); or "Not shared any more" after
-  Stop sharing. Its buttons are quiet — Save stays the editor's one primary: Share…, Publish
-  update… or Share again…, which open the publish dialog, and Stop sharing, which asks first.
-  Sharing publishes the saved row, so Share… is disabled while the form has unsaved changes, with
-  "Save first" beneath it (`sharingNote`).
-- **A collection that uses a catalog added from Community can be shared** like any other. A
-  row added from Community can't be: it opens as a view with no Sharing row (below).
+- **The Community setting** (`SharingRow.tsx`, labelled Community) sits where a listed catalog's
+  or a collection's editor has its settings, after the name. It says where the row stands
+  (`ownSharing` over the row's `publication`): Private; Published; "Published. Your changes since
+  aren't published yet." once the saved row differs from what was published
+  (`changed_since_publish`); or "Unpublished. People who added it keep it." after Unpublish. Its
+  buttons are quiet — Save stays the editor's one primary: Publish…, Publish update… or Publish
+  again…, which open the publish dialog, and Unpublish, which asks first ("Community stops listing
+  it. People who added it keep it, and get no updates until you publish it again."). Only what is
+  saved is published, so Publish… is disabled while the form has unsaved changes, with "Save
+  first: only what's saved is published." beneath it (`sharingNote`).
+- **A collection that uses a catalog added from Community can be published** like any other. A
+  row added from Community can't be: it opens as a view with no Community setting (below).
 - **The publish dialog** (`PublishDialog.tsx`) lists everything the publication will hold, each
   catalog by name over its recipe line: for a collection, its own catalogs under "N folders, N
-  catalogs of its own", then the library catalogs it uses under "From your library, shared as they
-  are now" (`publishGroups`) — sharing a collection shares those as they stand, which is the
+  catalogs of its own", then the library catalogs it uses under "From your library, published as
+  they are now" (`publishGroups`) — publishing a collection publishes those as they stand, which is the
   point to consent to. A catalog added from Community carries the From Community sticker
   (`FROM_COMMUNITY`, the one `rowStickers` uses), so it reads as someone else's catalog being
-  shared as it stands. The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
+  published as it stands. Its heading is "Publish “X”?" (or "Publish your changes to “X”?"), its
+  button Publish (or Publish update), and its line "Anyone on Uno can find it in Community and add
+  it. Your later edits stay private until you publish an update." (or "People who added it are
+  offered this version. Until then they keep the one they have."). The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
   shows in the dialog.
 - **Stickers** (`rowStickers`, drawn by `SharingStickers`) on the library row and the editor's
-  sign: Shared (pink fill) and Changed (dim outline) on an own row; From Community (pink outline)
-  on a row added from Community, with Update (ink outline) while an update waits or No longer
-  shared (dim outline) once its owner stopped sharing it.
+  sign: Published (pink fill) and Changed (dim outline) on an own row; From Community (pink outline)
+  on a row added from Community, with Update (ink outline) while an update waits or Unpublished
+  (dim outline) once its publisher unpublished it.
 - **A row added from Community opens as a view** (`FromCommunityView.tsx`), with no form: `Workspace`
   routes a library row that has a `subscription` to `CatalogFromCommunity` or
   `CollectionFromCommunity` instead of an editor, from the live library row, so an applied Update
@@ -893,7 +900,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   closing never asks. Its place on the home screen, Show first included, is the Home pane's, as
   for any row.
   - **Frame:** `EditorShell`, as for any row: the region's sign (tangerine catalog, green
-    collection) with the From Community sticker (and No longer shared once its publisher
+    collection) with the From Community sticker (and Unpublished once its publisher
     unpublished it), ×, Escape, the phone Library button and the phone header's Duplicate and
     Delete. The sign leaves the Update sticker off, since the Update… button says it. Below `sm`
     the sign hides stickers, so they head the body.
@@ -926,14 +933,14 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   list. Switching tabs in the header opens Community on its list.
 - **Every sharing call refreshes the library and Community** (`invalidateProfileLists`) and
   settles once they have refetched, so a row's stickers and state are current when its toast
-  ("Shared “X”", "Published your changes to “X”", "Stopped sharing “X”",
-  "Updated your copy") shows under the rail's "Mine" header.
+  ("Published “X”", "Published your changes to “X”", "Unpublished “X”") shows under the rail's
+  "Mine" header.
 
 ## Community tab
 
-`web/src/features/community/` — what other profiles share, loaded in one call
-(`GET /api/p/{i}/community`) and searched, filtered and sorted here. No owner, no handle, no
-"copied from" line appears anywhere here: Community never names who shared a row.
+`web/src/features/community/` — what other profiles publish, loaded in one call
+(`GET /api/p/{i}/community`) and searched, filtered and sorted here. No publisher, no handle, no
+"copied from" line appears anywhere here: Community never names who published a row.
 
 - **`CommunityView.tsx`** holds Catalogs / Collections, the search box, and Sort: Name / Newest.
   `useCommunityList` (`useCommunity.ts`) is one query for the whole list, and `visibleItems`
@@ -941,14 +948,17 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   title or one of the catalog names (`catalog_names`), whatever the case and not necessarily all in
   one name, sorted by name or newest first. While
   a search narrows a kind it says "N of M catalogs". An empty list says whether nothing of that
-  kind is shared or nothing matches.
+  kind is published ("Nobody has published any catalogs yet. Publish one of your own from its
+  editor.") or nothing matches.
 - **A row** (`CommunityRow.tsx`) is its name with a kind sticker and, while an update waits for
-  this profile's copy, an Update sticker; a summary (a catalog's type and recipe line, a
-  collection's folders and catalogs — `itemSummary`); and "Taken by N · updated 2 days ago"
-  (`itemMeta`). Its main button is Take, a disabled ✓ Taken while the profile holds a copy, or
-  Update… while one waits, which opens the publication's page; Duplicate, a copy that is the
-  profile's own (`POST .../fork`), waits behind "⋯". While an action is in flight the button says
-  so.
+  this profile's added row, an Update sticker; a summary (a catalog's type and recipe line, a
+  collection's folders and catalogs — `itemSummary`); and "Added by N · updated 2 days ago" or
+  "Published 3 days ago" (`itemMeta`). Its main button is Add (the `subscribe` action), a disabled
+  ✓ Added while the profile has added it, or Update… while an update waits, which opens the
+  publication's page; Duplicate, a copy that is the profile's own (`POST .../duplicate`), waits
+  behind "⋯". Its ⓘ says "Add puts it in your library, read-only, and it gets its publisher's
+  updates. Duplicate (⋯) makes a copy that's yours to edit." While an action is in flight the
+  button says so (Adding…, Updating…, Duplicating…).
 - **A row opens its publication's page in place of the list** (`PublicationPage.tsx`, DESIGN.md's
   One Occupant Rule): the name beside a round back arrow (the One Way Back rule — the arrow and
   Escape both leave), the row's own words and actions, then what it holds from the detail call
@@ -956,21 +966,23 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   (`snapshotAsCollection`, the snapshot read as a `Collection` so `SavedCollectionPreview` draws
   it), or a catalog's spec tiles beside one page of its results (`SavedCatalogPreview`, which
   runs as it mounts) — the same catalog block and bodies a row added from Community opens as
-  (`features/sharing/PublicationBodies.tsx`). While an update waits for this profile's copy, what the page holds is the
+  (`features/sharing/PublicationBodies.tsx`). While an update waits for this profile's added row, what the page holds is the
   new version, and its main button is Update, which applies it (`POST .../update`) and leaves
-  the page on ✓ Taken. Going back restores the list's scroll and puts focus on the row's open
+  the page on ✓ Added. A page that won't load says "Couldn't load this. Its publisher may have
+  unpublished it." Going back restores the list's scroll and puts focus on the row's open
   button (`scroll.ts`).
-- **Take, Update and Duplicate refresh the library and Community** (`useCommunityMutations.ts`);
-  each settles only once they have refetched, so a row never offers Take again for a copy that
-  already exists. Community reads only the genre lookups
+- **Add, Update and Duplicate refresh the library and Community** (`useCommunityMutations.ts`);
+  each settles only once they have refetched, so a row never offers Add again for a row it
+  already added. Community reads only the genre lookups
   of the library (`useGenreLookups`), for its recipe lines. The toast says what happened: "Added to your catalogs"/"collections",
-  "Duplicated to your …", "Updated your copy". A 404 or a 409 means the row was behind the server
-  (`isStale`), and the lists refresh before the toast: a 409 from Take is "Already taken", a 404
-  is "Its owner no longer shares it."
+  "Duplicated to your …", "Updated “X”". A 404 or a 409 means the row was behind the server
+  (`isStale`), and the lists refresh before the toast: a 409 from Add is "Already added", a 404
+  is "Its publisher unpublished it." Any other failure is "Couldn't add it: …" (or update,
+  duplicate).
 - **A 404 inside Community is not "profile not selected".** `http.ts` turns every 404 under
   `/api/p/{i}/` into `ProfileNotSelectedError`, and the list still sends the user back to the
-  picker on one; but a publication's page answers 404 once its owner stops sharing it, so it
-  reads that as "no longer shared" and stays put.
+  picker on one; but a publication's page answers 404 once its publisher unpublishes it, so it
+  reads that as unpublished and stays put.
 - **The tab switch is a `Segmented` in `Builder.tsx`'s header**, not a route — `/configure` stays
   one URL. Above `lg` it sits inline in the header row; below `lg` it drops to its own row
   underneath, because the header row's height is measured to fit exactly what it holds at phone
@@ -1075,10 +1087,10 @@ widest and heaviest is sign lettering only. Both ship as Fontsource packages
 that carries Archivo's width axis), not the Google Fonts CDN: the build is `go:embed`'d, and the CSP allows
 fonts only from `'self'` and `data:`.
 
-**Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Shared
-(`.stk-shared`, community pink, because Community is where a shared row turns up), From Community
-(`.stk-from`, outlined in community pink: a copy taken from there), Update (`.stk-update`, outlined
-in ink: an update waits for that copy), Changed, No longer shared and the TMDB key's Set (the dim `.stk-kind`
+**Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Published
+(`.stk-published`, community pink, because Community is where a published row turns up), From Community
+(`.stk-from`, outlined in community pink: a row added from there), Update (`.stk-update`, outlined
+in ink: an update waits for that row), Changed, Unpublished and the TMDB key's Set (the dim `.stk-kind`
 outline), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.home-sticker`: a dashed empty
 circle while it's off the home screen, a yellow ON NUVIO price sticker (two lines, ON over NUVIO)
 once it's on. A home row's position is a yellow `.pos-sticker`, read out as "3rd on your home
@@ -1142,6 +1154,6 @@ TV, phone or desktop. That is the whole of what they are assumed to know. Four r
 
 **`InfoTip` is for the narrow middle.** A sentence that doesn't survive "is this needed at all"
 is deleted, not moved. The icon holds one a control genuinely needs but that would crowd the page:
-Community's Take button (Take versus Duplicate), the collection's Focus glow, a folder's Focus GIF and
+Community's Add button (Add versus Duplicate), the collection's Focus glow, a folder's Focus GIF and
 Modern Home fields, the catalog picker's link-versus-copy, and the genre chips' three-state cycle.
 It opens on click rather than hover, so it works on touch.

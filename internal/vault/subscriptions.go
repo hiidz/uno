@@ -3,7 +3,7 @@
 // and folder of a collection carrying its snapshot key as sub_key, which
 // Update overwrites by key, keeping its ids. Any other content write to the
 // copy is refused (refuseSubscribedCopy), so Update only ever meets a copy
-// still as it was written; a fork is a copy that never subscribed.
+// still as it was written; a duplicate is a copy that never subscribed.
 
 package vault
 
@@ -18,7 +18,7 @@ import (
 )
 
 // CommunityCopy is the caller's copy of a publication that a subscribe, a
-// fork or an Update wrote: a listed catalog or a collection, by the
+// duplicate or an Update wrote: a listed catalog or a collection, by the
 // publication's kind.
 type CommunityCopy struct {
 	Kind       string                 `json:"kind"`
@@ -26,25 +26,25 @@ type CommunityCopy struct {
 	Collection *CollectionWithFolders `json:"collection,omitempty"`
 }
 
-// storedPublication is a publications row as a subscribe, a fork or an
+// storedPublication is a publications row as a subscribe, a duplicate or an
 // Update reads it.
 type storedPublication struct {
-	id, ownerID                    uuid.UUID
+	id, publisherID                uuid.UUID
 	kind, status, contentHash, raw string
 	snapshot                       Snapshot
 }
 
 // publicationColumns are the columns scanPublication reads, from
 // publications as p.
-const publicationColumns = `p.id, p.owner_id, p.kind, p.status, p.content_hash, p.snapshot`
+const publicationColumns = `p.id, p.publisher_id, p.kind, p.status, p.content_hash, p.snapshot`
 
 // scanPublication reads publicationColumns from row, after dests for any
 // columns the caller's query lists ahead of them. A missing row is
 // ErrPublicationNotFound.
 func scanPublication(row *sql.Row, dests ...any) (storedPublication, error) {
 	var pub storedPublication
-	var id, ownerID string
-	err := row.Scan(append(dests, &id, &ownerID, &pub.kind, &pub.status, &pub.contentHash, &pub.raw)...)
+	var id, publisherID string
+	err := row.Scan(append(dests, &id, &publisherID, &pub.kind, &pub.status, &pub.contentHash, &pub.raw)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storedPublication{}, ErrPublicationNotFound
 	}
@@ -53,7 +53,7 @@ func scanPublication(row *sql.Row, dests ...any) (storedPublication, error) {
 	}
 	var p rowParser
 	pub.id = p.uuid(id, "publication id")
-	pub.ownerID = p.uuid(ownerID, "publication owner id")
+	pub.publisherID = p.uuid(publisherID, "publisher id")
 	if p.err != nil {
 		return storedPublication{}, p.err
 	}
@@ -61,13 +61,13 @@ func scanPublication(row *sql.Row, dests ...any) (storedPublication, error) {
 	return pub, err
 }
 
-// takeablePublication reads publicationID for a subscribe or a fork by
+// copyablePublication reads publicationID for a subscribe or a duplicate by
 // profileID: it must be live and someone else's (ErrPublicationNotFound
 // otherwise).
-func (db *DB) takeablePublication(ctx context.Context, profileID, publicationID uuid.UUID) (storedPublication, error) {
+func (db *DB) copyablePublication(ctx context.Context, profileID, publicationID uuid.UUID) (storedPublication, error) {
 	return scanPublication(db.conn.QueryRowContext(ctx, `
 		SELECT `+publicationColumns+` FROM publications p
-		WHERE p.id = ? AND p.status = 'live' AND p.owner_id <> ?
+		WHERE p.id = ? AND p.status = 'live' AND p.publisher_id <> ?
 	`, publicationID.String(), profileID.String()))
 }
 
@@ -80,20 +80,20 @@ func (db *DB) takeablePublication(ctx context.Context, profileID, publicationID 
 // Returns ErrPublicationNotFound unless the publication is live and someone
 // else's, and ErrConflict when profileID already subscribes to it.
 func (db *DB) Subscribe(ctx context.Context, profileID, publicationID uuid.UUID) (CommunityCopy, error) {
-	return db.takePublication(ctx, profileID, publicationID, true)
+	return db.copyPublication(ctx, profileID, publicationID, true)
 }
 
-// ForkPublication is Subscribe without the subscription: a copy of the
+// DuplicatePublication is Subscribe without the subscription: a copy of the
 // snapshot as profileID's own, fully editable rows, which Community never
 // offers an Update for, and any number of which can sit beside a
 // subscription.
-func (db *DB) ForkPublication(ctx context.Context, profileID, publicationID uuid.UUID) (CommunityCopy, error) {
-	return db.takePublication(ctx, profileID, publicationID, false)
+func (db *DB) DuplicatePublication(ctx context.Context, profileID, publicationID uuid.UUID) (CommunityCopy, error) {
+	return db.copyPublication(ctx, profileID, publicationID, false)
 }
 
-// takePublication runs a subscribe, or a fork when subscribe is false.
-func (db *DB) takePublication(ctx context.Context, profileID, publicationID uuid.UUID, subscribe bool) (CommunityCopy, error) {
-	pub, err := db.takeablePublication(ctx, profileID, publicationID)
+// copyPublication runs a subscribe, or a duplicate when subscribe is false.
+func (db *DB) copyPublication(ctx context.Context, profileID, publicationID uuid.UUID, subscribe bool) (CommunityCopy, error) {
+	pub, err := db.copyablePublication(ctx, profileID, publicationID)
 	if err != nil {
 		return CommunityCopy{}, err
 	}
@@ -138,18 +138,18 @@ func catalogFromSnapshot(profileID uuid.UUID, s Snapshot) Catalog {
 // insertSubscription subscribes copyID, profileID's copy of pub, to it, in
 // step with pub's current snapshot, checking in the same statement that pub
 // is still live. A second subscription to one publication is ErrConflict,
-// and one to a publication withdrawn since it was read is
+// and one to a publication unpublished since it was read is
 // ErrPublicationNotFound (requireInserted).
 func insertSubscription(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pub storedPublication, copyID uuid.UUID) error {
 	catalogID, collectionID := sourceColumns(pub.kind, copyID)
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO subscriptions (id, owner_id, publication_id, catalog_id, collection_id, taken_hash, created_at)
+		INSERT INTO subscriptions (id, subscriber_id, publication_id, catalog_id, collection_id, subscribed_hash, created_at)
 		SELECT ?, ?, ?, ?, ?, ?, ?
 		WHERE EXISTS (SELECT 1 FROM publications WHERE id = ? AND status = 'live')
 	`, uuid.New().String(), profileID.String(), pub.id.String(), catalogID, collectionID, pub.contentHash,
 		time.Now().UTC().Format(time.RFC3339), pub.id.String())
 	if isUniqueConstraintErr(err) {
-		return fmt.Errorf("%w: you already subscribe to this", ErrConflict)
+		return fmt.Errorf("%w: you already added this", ErrConflict)
 	}
 	if err != nil {
 		return fmt.Errorf("inserting subscription: %w", err)
@@ -158,7 +158,7 @@ func insertSubscription(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pu
 }
 
 // requireInserted is ErrPublicationNotFound when insertSubscription wrote
-// no row: the publication was withdrawn after the subscribe read it, so the
+// no row: the publication was unpublished after the subscribe read it, so the
 // transaction rolls the copy back too.
 func requireInserted(result sql.Result) error {
 	rows, err := result.RowsAffected()
@@ -184,22 +184,22 @@ func (db *DB) loadCopy(ctx context.Context, profileID uuid.UUID, kind string, id
 // subscription is one of the caller's subscriptions, with the publication
 // it names.
 type subscription struct {
-	id, copyID uuid.UUID
-	takenHash  string
-	pub        storedPublication
+	id, copyID     uuid.UUID
+	subscribedHash string
+	pub            storedPublication
 }
 
 // loadSubscription reads profileID's subscription to publicationID through
-// q. The publication must be live: a withdrawn one has nothing more to
+// q. The publication must be live: an unpublished one has nothing more to
 // update to. ErrPublicationNotFound otherwise.
 func loadSubscription(ctx context.Context, q queryRower, profileID, publicationID uuid.UUID) (subscription, error) {
 	var sub subscription
 	var id, copyID string
 	pub, err := scanPublication(q.QueryRowContext(ctx, `
-		SELECT s.id, coalesce(s.catalog_id, s.collection_id), s.taken_hash, `+publicationColumns+`
+		SELECT s.id, coalesce(s.catalog_id, s.collection_id), s.subscribed_hash, `+publicationColumns+`
 		FROM subscriptions s JOIN publications p ON p.id = s.publication_id
-		WHERE s.owner_id = ? AND s.publication_id = ? AND p.status = 'live'
-	`, profileID.String(), publicationID.String()), &id, &copyID, &sub.takenHash)
+		WHERE s.subscriber_id = ? AND s.publication_id = ? AND p.status = 'live'
+	`, profileID.String(), publicationID.String()), &id, &copyID, &sub.subscribedHash)
 	if err != nil {
 		return subscription{}, err
 	}
@@ -240,7 +240,7 @@ func (db *DB) UpdateSubscription(ctx context.Context, profileID, publicationID u
 
 // update is UpdateSubscription's write, inside tx.
 func (sub subscription) update(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) error {
-	if sub.takenHash == sub.pub.contentHash {
+	if sub.subscribedHash == sub.pub.contentHash {
 		return nil
 	}
 	if err := sub.rewriteCopy(ctx, tx, profileID); err != nil {
@@ -257,9 +257,9 @@ func (sub subscription) rewriteCopy(ctx context.Context, tx *sql.Tx, profileID u
 	return updateCollectionCopy(ctx, tx, profileID, sub)
 }
 
-// markInStep sets sub's taken_hash to its publication's content hash.
+// markInStep sets sub's subscribed_hash to its publication's content hash.
 func (sub subscription) markInStep(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, `UPDATE subscriptions SET taken_hash = ? WHERE id = ?`, sub.pub.contentHash, sub.id.String()); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE subscriptions SET subscribed_hash = ? WHERE id = ?`, sub.pub.contentHash, sub.id.String()); err != nil {
 		return fmt.Errorf("updating subscription: %w", err)
 	}
 	return nil
@@ -288,7 +288,7 @@ func updateCatalogCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sub
 // catalog save would refuse.
 func catalogCopyProblem(c Catalog, want CatalogForm) error {
 	if want.Type != c.Type {
-		return fmt.Errorf("%w: the publication's type no longer matches your copy's", ErrInvalidInput)
+		return fmt.Errorf("%w: its publisher changed its type, so this update can't apply to your copy; duplicate it from Community instead", ErrInvalidInput)
 	}
 	return want.Validate()
 }

@@ -33,7 +33,7 @@ import { useHomeEdits } from '@/features/home/useHomeSelection'
 import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
-import { isShared } from '@/features/sharing/sharingState'
+import { isPublished } from '@/features/sharing/sharingState'
 import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
 import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
@@ -421,7 +421,7 @@ export function Workspace({
   }
 
   // Duplicating a collection is one server call (`DuplicateCollection`,
-  // which shares `TakeCollection`'s tree copy): a collection's scoped
+  // which shares a subscribe's tree copy): a collection's scoped
   // catalogs can't be represented client-side without fetching them, so the
   // copy happens server-side. The finished copy opens straight into its own
   // editor for review, carrying its catalogs because the library may not
@@ -477,16 +477,16 @@ export function Workspace({
         const { catalog } = confirming
         return {
           title: 'Delete this catalog?',
-          // Deleting a shared catalog withdraws its publication. Copies other
-          // profiles took stay theirs, marked no longer shared; only this row
-          // and its folder refs go.
+          // Deleting a published catalog unpublishes it. Copies other profiles
+          // added stay theirs, marked unpublished; only this row and its folder
+          // refs go.
           body: (
             <>
               <strong className="text-ink">{catalog.name}</strong> is deleted permanently.
-              {isShared(catalog) && (
+              {isPublished(catalog) && (
                 <>
                   {' '}
-                  {STOPS_SHARING}
+                  {UNPUBLISHES}
                 </>
               )}{' '}
               Any references to this catalog from a collection will also be removed. This can't
@@ -532,7 +532,7 @@ export function Workspace({
         const scoped = scopedCatalogCount(collection)
         return {
           title: 'Delete this collection?',
-          // As with a catalog, a taker's own copy is untouched by this — but
+          // As with a catalog, a subscriber's copy is untouched by this — but
           // unlike a catalog, "the catalogs inside it are kept" is only true
           // for listed ones: a scoped catalog has no life outside the
           // collection that scopes it and cascades with it.
@@ -540,10 +540,10 @@ export function Workspace({
             <>
               <strong className="text-ink">{collection.title}</strong> and its{' '}
               {folderCount(collection)} are deleted permanently.
-              {isShared(collection) && (
+              {isPublished(collection) && (
                 <>
                   {' '}
-                  {STOPS_SHARING}
+                  {UNPUBLISHES}
                 </>
               )}{' '}
               {scoped > 0
@@ -598,7 +598,7 @@ export function Workspace({
         {/* The sidebar: every catalog and collection you own, one permanently
             visible section with its own scroll region and its own name/genre
             filter. The closed-graph model means the library is exactly this —
-            there's nothing else to browse here; taking someone else's public
+            there's nothing else to browse here; adding someone else's published
             catalog or collection is the Community tab's job, not this rail's.
 
             Below `lg` the rail is the top of one long page rather than a
@@ -815,8 +815,8 @@ export function Workspace({
   )
 }
 
-/** What deleting a shared row does to the copies others took of it. */
-const STOPS_SHARING = 'It stops being shared, and copies people took stay theirs.'
+/** What deleting a published row does to Community and to those who added it. */
+const UNPUBLISHES = 'Deleting it unpublishes it. People who added it keep it.'
 
 /** What the discard prompt is about: the row as it was opened, which is the
  *  name the rail still shows — a rename is itself one of the changes the

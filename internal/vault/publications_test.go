@@ -153,11 +153,11 @@ func TestPublishRefusals(t *testing.T) {
 	}
 }
 
-// Withdrawing takes a publication out of Community. Its subscribers keep
-// their copies, marked withdrawn with no update to take, and still see its
+// Unpublishing takes a publication out of Community. Its subscribers keep
+// their copies, marked unpublished with no update to take, and still see its
 // last snapshot; nobody else can find it. Publishing again revives the same
 // publication.
-func TestWithdrawAndRevive(t *testing.T) {
+func TestUnpublishAndRevive(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber, stranger := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber"), newTestProfile(t, db, "stranger")
@@ -165,21 +165,21 @@ func TestWithdrawAndRevive(t *testing.T) {
 	c := publishCatalog(t, db, owner, "Popular", "{}")
 	copied := subscribe(t, db, subscriber, c.Publication.ID)
 
-	withdrawn, err := db.WithdrawCatalog(ctx, owner, c.ID)
+	unpublished, err := db.UnpublishCatalog(ctx, owner, c.ID)
 	if err != nil {
-		t.Fatalf("WithdrawCatalog: %v", err)
+		t.Fatalf("UnpublishCatalog: %v", err)
 	}
-	if withdrawn.Publication.Status != "withdrawn" {
-		t.Errorf("withdrawn catalog's publication = %+v", withdrawn.Publication)
+	if unpublished.Publication.Status != "unpublished" {
+		t.Errorf("unpublished catalog's publication = %+v", unpublished.Publication)
 	}
 	if items := listCommunity(t, db, stranger); len(items) != 0 {
-		t.Errorf("Community after a withdraw = %+v, want nothing", items)
+		t.Errorf("Community after a unpublish = %+v, want nothing", items)
 	}
-	if got := reloadCatalog(t, db, copied.Catalog.ID).Subscription; got == nil || !got.Withdrawn || got.UpdateAvailable {
-		t.Errorf("subscriber's copy subscription = %+v, want withdrawn with no update", got)
+	if got := reloadCatalog(t, db, copied.Catalog.ID).Subscription; got == nil || !got.Unpublished || got.UpdateAvailable {
+		t.Errorf("subscriber's copy subscription = %+v, want unpublished with no update", got)
 	}
-	if detail, err := db.GetPublication(ctx, subscriber, c.Publication.ID); err != nil || !detail.Withdrawn {
-		t.Errorf("subscriber's GetPublication = %+v, %v; want the withdrawn publication", detail.CommunityItem, err)
+	if detail, err := db.GetPublication(ctx, subscriber, c.Publication.ID); err != nil || !detail.Unpublished {
+		t.Errorf("subscriber's GetPublication = %+v, %v; want the unpublished publication", detail.CommunityItem, err)
 	}
 	for name, err := range map[string]error{
 		"a stranger's GetPublication": second(db.GetPublication(ctx, stranger, c.Publication.ID)),
@@ -187,11 +187,11 @@ func TestWithdrawAndRevive(t *testing.T) {
 		"the subscriber's Update":     second(db.UpdateSubscription(ctx, subscriber, c.Publication.ID)),
 	} {
 		if !errors.Is(err, ErrPublicationNotFound) {
-			t.Errorf("%s of a withdrawn publication = %v, want ErrPublicationNotFound", name, err)
+			t.Errorf("%s of a unpublished publication = %v, want ErrPublicationNotFound", name, err)
 		}
 	}
-	if _, err := db.WithdrawCatalog(ctx, stranger, c.ID); !errors.Is(err, ErrCatalogNotFound) {
-		t.Errorf("withdraw someone else's catalog = %v, want ErrCatalogNotFound", err)
+	if _, err := db.UnpublishCatalog(ctx, stranger, c.ID); !errors.Is(err, ErrCatalogNotFound) {
+		t.Errorf("unpublish someone else's catalog = %v, want ErrCatalogNotFound", err)
 	}
 
 	revived, err := db.PublishCatalog(ctx, owner, c.ID, allowAnyCatalogParams)
@@ -201,38 +201,38 @@ func TestWithdrawAndRevive(t *testing.T) {
 	if revived.Publication.ID != c.Publication.ID || revived.Publication.Status != statusLive {
 		t.Errorf("revived publication = %+v, want %s live again", revived.Publication, c.Publication.ID)
 	}
-	if got := reloadCatalog(t, db, copied.Catalog.ID).Subscription; got.Withdrawn {
+	if got := reloadCatalog(t, db, copied.Catalog.ID).Subscription; got.Unpublished {
 		t.Errorf("subscription after the revival = %+v, want it live", got)
 	}
 }
 
-// Withdrawing a collection's publication marks its subscribers' copies
-// withdrawn, and another profile can't withdraw it.
-func TestWithdrawCollection(t *testing.T) {
+// Unpublishing a collection's publication marks its subscribers' copies
+// unpublished, and another profile can't unpublish it.
+func TestUnpublishCollection(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared"})
 	copied := subscribe(t, db, subscriber, source.Publication.ID).Collection
 
-	withdrawn, err := db.WithdrawCollection(ctx, owner, source.ID)
-	if err != nil || withdrawn.Publication.Status != "withdrawn" {
-		t.Fatalf("WithdrawCollection = %+v, %v; want its publication withdrawn", withdrawn.Publication, err)
+	unpublished, err := db.UnpublishCollection(ctx, owner, source.ID)
+	if err != nil || unpublished.Publication.Status != "unpublished" {
+		t.Fatalf("UnpublishCollection = %+v, %v; want its publication unpublished", unpublished.Publication, err)
 	}
-	if s := mustOwnCollection(t, db, subscriber, copied.ID).Subscription; s == nil || !s.Withdrawn {
-		t.Errorf("subscriber's copy subscription = %+v, want withdrawn", s)
+	if s := mustOwnCollection(t, db, subscriber, copied.ID).Subscription; s == nil || !s.Unpublished {
+		t.Errorf("subscriber's copy subscription = %+v, want unpublished", s)
 	}
-	if _, err := db.WithdrawCollection(ctx, subscriber, source.ID); !errors.Is(err, ErrCollectionNotFound) {
-		t.Errorf("withdraw someone else's collection = %v, want ErrCollectionNotFound", err)
+	if _, err := db.UnpublishCollection(ctx, subscriber, source.ID); !errors.Is(err, ErrCollectionNotFound) {
+		t.Errorf("unpublish someone else's collection = %v, want ErrCollectionNotFound", err)
 	}
 }
 
 // second is the error of a two-value call.
 func second[T any](_ T, err error) error { return err }
 
-// Deleting a published source withdraws its publication. The subscriber's
-// copy survives, marked withdrawn.
-func TestDeletingASourceWithdraws(t *testing.T) {
+// Deleting a published source unpublishes its publication. The subscriber's
+// copy survives, marked unpublished.
+func TestDeletingASourceUnpublishes(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
@@ -255,8 +255,8 @@ func TestDeletingASourceWithdraws(t *testing.T) {
 		reloadCatalog(t, db, copies[0].Catalog.ID).Subscription,
 		mustOwnCollection(t, db, subscriber, copies[1].Collection.ID).Subscription,
 	} {
-		if sub == nil || !sub.Withdrawn {
-			t.Errorf("copy %d subscription = %+v, want withdrawn", i, sub)
+		if sub == nil || !sub.Unpublished {
+			t.Errorf("copy %d subscription = %+v, want unpublished", i, sub)
 		}
 	}
 }
@@ -305,11 +305,11 @@ func TestCommunityListsEveryLivePublication(t *testing.T) {
 			t.Errorf("%s publications listed = %d, want %d", kind, got, want)
 		}
 	}
-	if _, err := db.WithdrawCatalog(ctx, a, first.ID); err != nil {
+	if _, err := db.UnpublishCatalog(ctx, a, first.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := countKind(listCommunity(t, db, viewer), kindCatalog); got != 1 {
-		t.Errorf("catalog publications listed after a withdraw = %d, want 1", got)
+		t.Errorf("catalog publications listed after a unpublish = %d, want 1", got)
 	}
 }
 
@@ -320,7 +320,7 @@ func TestCommunityListsEveryLivePublication(t *testing.T) {
 func TestPublishAcceptsACollectionWithASubscribedCatalog(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
-	publisher, owner, taker := newTestProfile(t, db, "publisher"), newTestProfile(t, db, "owner"), newTestProfile(t, db, "taker")
+	publisher, owner, subscriber := newTestProfile(t, db, "publisher"), newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	theirs := publishCatalog(t, db, publisher, "Theirs", "{}")
 	added := subscribe(t, db, owner, theirs.Publication.ID).Catalog
 	collection, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Mine", Folders: []FolderData{
@@ -337,13 +337,13 @@ func TestPublishAcceptsACollectionWithASubscribedCatalog(t *testing.T) {
 		t.Error("publishing the collection dropped the subscription of the catalog it uses")
 	}
 
-	copied := subscribe(t, db, taker, published.Publication.ID).Collection
+	copied := subscribe(t, db, subscriber, published.Publication.ID).Collection
 	if len(copied.Catalogs) != 1 || copied.Catalogs[0].Name != "Theirs" {
-		t.Fatalf("the taker's copy holds %+v, want one catalog named Theirs", copied.Catalogs)
+		t.Fatalf("the subscriber's copy holds %+v, want one catalog named Theirs", copied.Catalogs)
 	}
 	scoped := copied.Catalogs[0]
 	if scoped.CollectionID == nil || *scoped.CollectionID != copied.ID || scoped.Subscription != nil {
-		t.Errorf("the taker's catalog = collection %v, subscription %+v, want scoped to its collection and no subscription", scoped.CollectionID, scoped.Subscription)
+		t.Errorf("the subscriber's catalog = collection %v, subscription %+v, want scoped to its collection and no subscription", scoped.CollectionID, scoped.Subscription)
 	}
 	detail, err := db.GetPublication(ctx, publisher, theirs.Publication.ID)
 	if err != nil {

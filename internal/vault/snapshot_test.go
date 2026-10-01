@@ -32,7 +32,7 @@ func fixedTree() CollectionWithFolders {
 }
 
 // A snapshot's bytes are pinned, because every stored content_hash and every
-// subscription's taken_hash was computed from them. Anything that moves them
+// subscription's subscribed_hash was computed from them. Anything that moves them
 // — a field added to, renamed in or reordered in the snapshot or bundle
 // form, another stable key — makes every subscriber see an update that
 // changes nothing. A new value here is a schema change (schemaVersion).
@@ -107,7 +107,7 @@ func TestSnapshotFolderCount(t *testing.T) {
 }
 
 // The keyed form of a collection snapshot writes each catalog and folder
-// with its key as SubKey; the unkeyed one, a fork's, with none.
+// with its key as SubKey; the unkeyed one, a duplicate's, with none.
 func TestSnapshotCollectionForm(t *testing.T) {
 	s := collectionSnapshot(fixedID(9), fixedTree())
 	keyed := s.collectionForm(true)

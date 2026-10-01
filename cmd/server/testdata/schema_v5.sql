@@ -59,7 +59,7 @@ CREATE TABLE "collections" (
     home_sort_order    INTEGER,                    -- NULL = not on the TV
     created_at         TEXT    NOT NULL,           -- RFC3339 UTC
     updated_at         TEXT    NOT NULL            -- RFC3339 UTC
-);
+, pushed_hash TEXT);
 
 CREATE INDEX collections_by_owner ON collections (owner_id);
 
@@ -98,7 +98,7 @@ END;
 
 CREATE TABLE publications (
     id               TEXT    PRIMARY KEY,         -- UUID, kept across republishes
-    publisher_id     TEXT    NOT NULL REFERENCES profiles(id),
+    owner_id         TEXT    NOT NULL REFERENCES profiles(id),
     kind             TEXT    NOT NULL CHECK (kind IN ('catalog', 'collection')),
     catalog_id       TEXT    REFERENCES catalogs(id) ON DELETE SET NULL,    -- the source; NULL once deleted
     collection_id    TEXT    REFERENCES collections(id) ON DELETE SET NULL, -- the source; NULL once deleted
@@ -108,7 +108,7 @@ CREATE TABLE publications (
     catalog_count    INTEGER NOT NULL,
     folder_count     INTEGER NOT NULL,
     subscriber_count INTEGER NOT NULL DEFAULT 0,
-    status           TEXT    NOT NULL CHECK (status IN ('live', 'unpublished')),
+    status           TEXT    NOT NULL CHECK (status IN ('live', 'withdrawn')),
     published_at     TEXT    NOT NULL,            -- RFC3339 UTC, when first published
     updated_at       TEXT    NOT NULL,            -- RFC3339 UTC
     CHECK (kind = 'catalog' OR catalog_id IS NULL),
@@ -121,13 +121,13 @@ CREATE UNIQUE INDEX publications_by_collection ON publications (collection_id) W
 
 CREATE TABLE subscriptions (
     id             TEXT PRIMARY KEY,
-    subscriber_id  TEXT NOT NULL REFERENCES profiles(id),
+    owner_id       TEXT NOT NULL REFERENCES profiles(id),
     publication_id TEXT NOT NULL REFERENCES publications(id),
     catalog_id     TEXT REFERENCES catalogs(id) ON DELETE CASCADE,    -- the copy, for a catalog
     collection_id  TEXT REFERENCES collections(id) ON DELETE CASCADE, -- the copy, for a collection
-    subscribed_hash TEXT NOT NULL,               -- the content hash the copy was last written from
+    taken_hash     TEXT NOT NULL,                -- the content hash the copy was last written from
     created_at     TEXT NOT NULL,                -- RFC3339 UTC
-    UNIQUE (subscriber_id, publication_id),
+    UNIQUE (owner_id, publication_id),
     CHECK ((catalog_id IS NULL) <> (collection_id IS NULL))
 );
 
@@ -135,11 +135,18 @@ CREATE UNIQUE INDEX subscriptions_by_catalog ON subscriptions (catalog_id) WHERE
 
 CREATE UNIQUE INDEX subscriptions_by_collection ON subscriptions (collection_id) WHERE collection_id IS NOT NULL;
 
-CREATE TRIGGER publications_unpublish_on_source_delete AFTER UPDATE OF catalog_id, collection_id ON publications
+CREATE TRIGGER publications_withdraw_on_source_delete AFTER UPDATE OF catalog_id, collection_id ON publications
 WHEN NEW.catalog_id IS NULL AND NEW.collection_id IS NULL AND NEW.status = 'live'
 BEGIN
-    UPDATE publications SET status = 'unpublished', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    UPDATE publications SET status = 'withdrawn', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
     WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER publications_withdraw_on_scope AFTER UPDATE OF collection_id ON catalogs
+WHEN NEW.collection_id IS NOT NULL
+BEGIN
+    UPDATE publications SET status = 'withdrawn', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    WHERE (catalog_id, status) = (NEW.id, 'live');
 END;
 
 CREATE TRIGGER subscriptions_count_on_insert AFTER INSERT ON subscriptions
@@ -160,13 +167,3 @@ CREATE TABLE accounts (
 );
 
 CREATE INDEX folder_catalogs_by_catalog ON folder_catalogs (catalog_id);
-
--- One per profile: what its last push put in Nuvio, as one JSON document
--- (vault.PushRecord), replaced whole by each push. Nothing cascades into it
--- from catalogs or collections, so deleting a row never loses what Nuvio holds.
-CREATE TABLE push_records (
-    profile_id         TEXT PRIMARY KEY REFERENCES profiles(id),
-    nuvio_profile_uuid TEXT NOT NULL, -- the Nuvio profile it was pushed to: profiles.nuvio_profile_uuid then
-    record             TEXT NOT NULL, -- JSON, vault.PushRecord
-    pushed_at          TEXT NOT NULL  -- RFC3339 UTC
-);

@@ -132,7 +132,7 @@ func clientFailureOf(table []clientFailure, err error) (int, string) {
 // accept it. They are a 422, a status nothing else in the builder API
 // answers, so the SPA can tell a key problem from any other failure: not a
 // 401 (the SPA refreshes and retries on one), a 403 (the access refusal) or a
-// 409 (Already taken).
+// 409 (Already added).
 var keyFailures = []clientFailure{
 	{provider.ErrNoKey, http.StatusUnprocessableEntity, "This account has no TMDB key yet."},
 	{provider.ErrKeyRejected, http.StatusUnprocessableEntity, "TMDB didn't accept your key."},

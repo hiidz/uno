@@ -267,9 +267,13 @@ func TestCollectionRoutes(t *testing.T) {
 // SPA shows, and stays.
 func TestDeleteRoutesRefuseWhatNuvioHolds(t *testing.T) {
 	f := newRouteFixture(t)
-	if err := f.db.SaveSelectionsForPush(t.Context(), f.caller.ID,
+	record, err := f.db.BuildPushRecord(t.Context(), f.caller.ID,
 		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: f.mine.ID, ShowInHome: true}}},
-		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: f.mineColl.ID}}}, nil); err != nil {
+		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: f.mineColl.ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.SavePush(t.Context(), f.caller.ID, record); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"/api/p/1/catalogs/" + f.mine.ID.String(), "/api/p/1/collections/" + f.mineColl.ID.String()} {

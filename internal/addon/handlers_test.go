@@ -85,12 +85,7 @@ func newHandlerFixture(t *testing.T) handlerFixture {
 		return c
 	}
 	publish := func(p vault.Profile, c vault.Catalog) {
-		if err := f.db.SaveSelectionsForPush(ctx, p.ID,
-			vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}},
-			vault.CollectionSelectionForm{}, nil,
-		); err != nil {
-			t.Fatalf("SaveSelectionsForPush: %v", err)
-		}
+		savePush(t, f.db, p.ID, vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}}, vault.CollectionSelectionForm{})
 	}
 
 	f.owner, f.other, f.empty = profile("owner"), profile("other"), profile("empty")

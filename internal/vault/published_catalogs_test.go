@@ -56,13 +56,9 @@ func TestGetPublishedCatalogs(t *testing.T) {
 	// Put onHome on the home screen and onTVCollection on the TV.
 	// offTVCollection stays off; folderOnly and offTV are never selected
 	// directly.
-	if err := db.SaveSelectionsForPush(ctx, owner,
+	savePush(t, db, owner,
 		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: onHome.ID, ShowInHome: true}}},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onTVCollection}}},
-		nil,
-	); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
-	}
+		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onTVCollection}}})
 
 	published, err := db.GetPublishedCatalogs(ctx, owner)
 	if err != nil {
@@ -145,18 +141,14 @@ func TestServedCatalog(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := db.SaveSelectionsForPush(ctx, owner,
+	savePush(t, db, owner,
 		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{
 			{CatalogID: homeRow.ID, ShowInHome: true}, {CatalogID: discover.ID},
 		}},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onHome}}}, nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SaveSelectionsForPush(ctx, other,
+		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onHome}}})
+	savePush(t, db, other,
 		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: theirs.ID, ShowInHome: true}}},
-		CollectionSelectionForm{}, nil); err != nil {
-		t.Fatal(err)
-	}
+		CollectionSelectionForm{})
 
 	for _, tc := range []struct {
 		name                  string

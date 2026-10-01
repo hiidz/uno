@@ -62,10 +62,10 @@ describe('CatalogEditor', () => {
     const { onSave } = renderEditor({
       initial: formFromCatalog(catalog({ name: 'Row' })),
       sharingRow: <p>Sharing slot</p>,
-      sharingBadges: <span>Shared sticker</span>,
+      sharingBadges: <span>Published sticker</span>,
     })
     expect(screen.getByText('Sharing slot')).toBeInTheDocument()
-    expect(screen.getByText('Shared sticker')).toBeInTheDocument()
+    expect(screen.getByText('Published sticker')).toBeInTheDocument()
     fireEvent.change(nameInput(), { target: { value: 'Renamed' } })
     save()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Renamed' }))

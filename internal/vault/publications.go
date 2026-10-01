@@ -1,8 +1,8 @@
-// Publications: an owner's catalog or collection shared as a frozen
-// snapshot. Publishing freezes the source's current content; the source's
-// later edits stay private until it is published again, which keeps the
-// publication's id. Withdrawing takes a publication out of Community, and
-// its subscribers keep their copies.
+// Publications: a publisher's catalog or collection put in Community as a
+// frozen snapshot. Publishing freezes the source's current content; the
+// source's later edits stay private until it is published again, which keeps
+// the publication's id. Unpublishing takes a publication out of Community,
+// and its subscribers keep their copies.
 
 package vault
 
@@ -29,7 +29,7 @@ const (
 type publication struct {
 	id          uuid.UUID
 	existing    bool
-	ownerID     uuid.UUID
+	publisherID uuid.UUID
 	kind        string
 	sourceID    uuid.UUID
 	title       string
@@ -39,13 +39,13 @@ type publication struct {
 }
 
 // newPublication is the publication of source as snapshot s.
-func newPublication(kind string, id uuid.UUID, existing bool, ownerID, sourceID uuid.UUID, title string, s Snapshot) (publication, error) {
+func newPublication(kind string, id uuid.UUID, existing bool, publisherID, sourceID uuid.UUID, title string, s Snapshot) (publication, error) {
 	raw, hash, err := s.encode()
 	if err != nil {
 		return publication{}, err
 	}
 	return publication{
-		id: id, existing: existing, ownerID: ownerID, kind: kind, sourceID: sourceID, title: title,
+		id: id, existing: existing, publisherID: publisherID, kind: kind, sourceID: sourceID, title: title,
 		snapshot: s, raw: raw, contentHash: hash,
 	}, nil
 }
@@ -61,7 +61,7 @@ func publicationID(state *PublicationState, newID uuid.UUID) (uuid.UUID, bool) {
 
 // check runs the checks a publish runs: the form validators the snapshot's
 // copies are written through, then validateParams over every distinct
-// recipe it shares, once each.
+// recipe it publishes, once each.
 func (p publication) check(validateParams CatalogParamsValidator) error {
 	if err := p.snapshot.validate(); err != nil {
 		return err
@@ -112,7 +112,7 @@ func (db *DB) PublishCatalog(ctx context.Context, profileID, catalogID uuid.UUID
 }
 
 // publishableCatalog reads profileID's catalog catalogID through q,
-// refusing one inside a collection, which is shared with its collection,
+// refusing one inside a collection, which is published with its collection,
 // and a subscribed copy.
 func publishableCatalog(ctx context.Context, q querier, profileID, catalogID uuid.UUID) (Catalog, error) {
 	c, err := ownCatalog(ctx, q, profileID, catalogID)
@@ -120,7 +120,7 @@ func publishableCatalog(ctx context.Context, q querier, profileID, catalogID uui
 	case err != nil:
 		return Catalog{}, err
 	case c.CollectionID != nil:
-		return Catalog{}, fmt.Errorf("%w: a catalog inside a collection is shared by publishing its collection", ErrInvalidInput)
+		return Catalog{}, fmt.Errorf("%w: a catalog inside a collection is published with its collection", ErrInvalidInput)
 	case c.Subscription != nil:
 		return Catalog{}, errSubscribedCopy("catalog")
 	}
@@ -130,8 +130,8 @@ func publishableCatalog(ctx context.Context, q querier, profileID, catalogID uui
 // PublishCollection publishes profileID's collection collectionID, or
 // publishes it again, as PublishCatalog does a catalog. The snapshot holds
 // every catalog its folders reference, private library catalogs included:
-// publishing is the consent to share them. The collection must not be a
-// subscribed copy (ErrInvalidInput), and every recipe it shares passes
+// publishing is the consent to publish them. The collection must not be a
+// subscribed copy (ErrInvalidInput), and every recipe it publishes passes
 // validateParams, which is required. Returns the collection, with its
 // publication.
 func (db *DB) PublishCollection(ctx context.Context, profileID, collectionID uuid.UUID, validateParams CatalogParamsValidator) (CollectionWithFolders, error) {
@@ -204,10 +204,10 @@ func writePublication(ctx context.Context, tx *sql.Tx, p publication, now string
 func insertPublication(ctx context.Context, tx *sql.Tx, p publication, now string) error {
 	catalogID, collectionID := sourceColumns(p.kind, p.sourceID)
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO publications (id, owner_id, kind, catalog_id, collection_id, title, snapshot, content_hash,
+		INSERT INTO publications (id, publisher_id, kind, catalog_id, collection_id, title, snapshot, content_hash,
 		                          catalog_count, folder_count, status, published_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?)
-	`, p.id.String(), p.ownerID.String(), p.kind, catalogID, collectionID, p.title, p.raw, p.contentHash,
+	`, p.id.String(), p.publisherID.String(), p.kind, catalogID, collectionID, p.title, p.raw, p.contentHash,
 		len(p.snapshot.Catalogs), p.snapshot.folderCount(), now, now); err != nil {
 		return fmt.Errorf("inserting publication: %w", err)
 	}
@@ -215,7 +215,7 @@ func insertPublication(ctx context.Context, tx *sql.Tx, p publication, now strin
 }
 
 // updatePublication rewrites p's existing row with p's snapshot, live again
-// if it was withdrawn. published_at stays the first publish's.
+// if it was unpublished. published_at stays the first publish's.
 func updatePublication(ctx context.Context, tx *sql.Tx, p publication, now string) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE publications
@@ -238,34 +238,34 @@ func sourceColumns(kind string, id uuid.UUID) (any, any) {
 	return nil, id.String()
 }
 
-// WithdrawCatalog withdraws the publication of profileID's catalog
+// UnpublishCatalog unpublishes the publication of profileID's catalog
 // catalogID, if it has a live one: Community stops listing it, and its
-// subscribers keep their copies, marked withdrawn. Publishing the catalog
+// subscribers keep their copies, marked unpublished. Publishing the catalog
 // again revives the same publication. Returns the catalog, or
 // ErrCatalogNotFound if it isn't profileID's.
-func (db *DB) WithdrawCatalog(ctx context.Context, profileID, catalogID uuid.UUID) (Catalog, error) {
-	if err := withdraw(ctx, db.conn, profileID, catalogID); err != nil {
+func (db *DB) UnpublishCatalog(ctx context.Context, profileID, catalogID uuid.UUID) (Catalog, error) {
+	if err := unpublish(ctx, db.conn, profileID, catalogID); err != nil {
 		return Catalog{}, err
 	}
 	return ownCatalog(ctx, db.conn, profileID, catalogID)
 }
 
-// WithdrawCollection is WithdrawCatalog for a collection.
-func (db *DB) WithdrawCollection(ctx context.Context, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {
-	if err := withdraw(ctx, db.conn, profileID, collectionID); err != nil {
+// UnpublishCollection is UnpublishCatalog for a collection.
+func (db *DB) UnpublishCollection(ctx context.Context, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {
+	if err := unpublish(ctx, db.conn, profileID, collectionID); err != nil {
 		return CollectionWithFolders{}, err
 	}
 	return ownCollection(ctx, db.conn, profileID, collectionID)
 }
 
-// withdraw withdraws profileID's live publication of sourceID, a catalog or
-// a collection, if there is one.
-func withdraw(ctx context.Context, e execer, profileID, sourceID uuid.UUID) error {
+// unpublish unpublishes profileID's live publication of sourceID, a catalog
+// or a collection, if there is one.
+func unpublish(ctx context.Context, e execer, profileID, sourceID uuid.UUID) error {
 	if _, err := e.ExecContext(ctx, `
-		UPDATE publications SET status = 'withdrawn', updated_at = ?1
-		WHERE (catalog_id = ?2 OR collection_id = ?2) AND owner_id = ?3 AND status = 'live'
+		UPDATE publications SET status = 'unpublished', updated_at = ?1
+		WHERE (catalog_id = ?2 OR collection_id = ?2) AND publisher_id = ?3 AND status = 'live'
 	`, time.Now().UTC().Format(time.RFC3339), sourceID.String(), profileID.String()); err != nil {
-		return fmt.Errorf("withdrawing publication: %w", err)
+		return fmt.Errorf("unpublishing publication: %w", err)
 	}
 	return nil
 }

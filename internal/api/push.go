@@ -43,8 +43,9 @@ type pushResult struct {
 // sync of this profile's manifest URL and collections into Nuvio, carrying
 // the full pending selection in its body.
 //
-// Ordering is Nuvio-first, local-write-last: validate, push addons, push
-// collections, and only then commit the selection to Uno's own vault. This
+// Ordering is Nuvio-first, local-write-last: validate, build the push record,
+// push addons, push collections, and only then commit the selection and the
+// record to Uno's own vault. This
 // avoids holding a SQLite write transaction open across several sequential
 // Nuvio HTTP calls, and means an ordinary failure leaves nothing written on
 // either side.
@@ -82,16 +83,9 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 
 	manifestURL := s.siteBaseURL + addon.ManifestPath(profile.Token)
 
-	catalogIDs := make([]uuid.UUID, len(body.Catalogs.Catalogs))
-	for i, c := range body.Catalogs.Catalogs {
-		catalogIDs[i] = c.CatalogID
-	}
-
-	// Load-bearing, not a fail-fast nicety: with the write moved to the end,
-	// this is the only check standing between the request body and a
-	// third-party API call.
-	if err := s.vault.ValidateSelectionAccess(ctx, profileID, catalogIDs, body.Collections.CollectionIDs()); err != nil {
-		log.Printf("push: validation failed: %v", err)
+	record, err := s.pushRecord(ctx, profileID, body)
+	if err != nil {
+		log.Printf("push: %v", err)
 		status := http.StatusInternalServerError
 		if errors.Is(err, vault.ErrInvalidInput) {
 			status = http.StatusBadRequest
@@ -106,14 +100,14 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pulled, collectionHashes, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, body.Collections)
+	pulled, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, record.Collections)
 	if err != nil {
 		log.Printf("push: collections push failed: %v", err)
 		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
 		return
 	}
 
-	if err := s.vault.SaveSelectionsForPush(ctx, profileID, body.Catalogs, body.Collections, collectionHashes); err != nil {
+	if err := s.vault.SavePush(ctx, profileID, record); err != nil {
 		log.Printf("push: local commit failed after nuvio succeeded, reverting collections: %v", err)
 		if revertErr := s.nuvio.PushCollections(ctx, accessToken, profile.NuvioProfileIndex, pulled); revertErr != nil {
 			log.Printf("push: compensating revert also failed: %v", revertErr)
@@ -125,6 +119,23 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, pushResult{Success: true, ManifestURL: manifestURL})
+}
+
+// pushRecord checks that every id body names is one profileID may push, then
+// builds what the push puts in Nuvio, once: its collections are the bytes
+// sent, and the whole record is what the local write stores. The check is
+// load-bearing, not a fail-fast nicety: with the write moved to the end, it is
+// the only check standing between the request body and a third-party API
+// call.
+func (s *Server) pushRecord(ctx context.Context, profileID uuid.UUID, body pushRequest) (vault.PushRecord, error) {
+	catalogIDs := make([]uuid.UUID, len(body.Catalogs.Catalogs))
+	for i, c := range body.Catalogs.Catalogs {
+		catalogIDs[i] = c.CatalogID
+	}
+	if err := s.vault.ValidateSelectionAccess(ctx, profileID, catalogIDs, body.Collections.CollectionIDs()); err != nil {
+		return vault.PushRecord{}, fmt.Errorf("validation failed: %w", err)
+	}
+	return s.vault.BuildPushRecord(ctx, profileID, body.Catalogs, body.Collections)
 }
 
 // pushAddons runs the addons read-modify-write cycle: pull the profile's
@@ -200,10 +211,11 @@ func isUnoManaged(c pulledCollection) bool {
 	return found
 }
 
-// pushCollections runs the collections read-modify-write cycle, sourcing
-// the pending selection from the request body rather than reading it back
-// out of the vault — the local write hasn't happened yet at this point in
-// push's sequence (see push above). Nuvio's blob is full-replace and holds
+// pushCollections runs the collections read-modify-write cycle, sending
+// fresh: the push record's collections, built from the pending selection in
+// the request body (vault.BuildPushRecord), since the local write hasn't
+// happened yet at this point in push's sequence (see push above). Nuvio's
+// blob is full-replace and holds
 // collections Uno knows nothing about (its own native UI, or another
 // client), so the merge has to touch only what Uno manages and leave
 // everything else byte-for-byte untouched:
@@ -218,82 +230,45 @@ func isUnoManaged(c pulledCollection) bool {
 //     residual case that union existed for — a collection Uno once pushed
 //     but has since forgotten (hard-deleted, or from a recreated database)
 //     — without needing to read the profile's previous selection at all.
-//  3. Append freshly built entries for the profile's pending selection, each
-//     pinned to the top of home as its selection entry says.
+//  3. Append fresh, the profile's pending selection as the record holds it:
+//     in Home order, each pinned to the top of home as its selection entry
+//     says, as the exact bytes the record keeps.
 //
 // Returns the pulled blob on success so push can use it for a compensating
-// revert if the local commit that follows this call ends up failing, plus
-// each selected collection's hash over the exact bytes Nuvio was sent for it
-// (vault.PushHash) — never recomputed later, since the row may change before
-// the local write (see vault.SaveSelectionsForPush's pushed_hash stamp).
-func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, selection vault.CollectionSelectionForm) ([]json.RawMessage, map[uuid.UUID]string, error) {
+// revert if the local commit that follows this call ends up failing.
+func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, fresh []json.RawMessage) ([]json.RawMessage, error) {
 	pulled, err := s.nuvio.PullCollections(ctx, accessToken, nuvioProfileIndex)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	ownedIDs, err := s.vault.GetOwnedCollectionIDs(ctx, profileID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("loading owned collections: %w", err)
+		return nil, fmt.Errorf("loading owned collections: %w", err)
 	}
-	selected, err := s.vault.GetCollectionsByIDs(ctx, selection.CollectionIDs())
-	if err != nil {
-		return nil, nil, fmt.Errorf("loading pending collection selection: %w", err)
-	}
-	selected = applySelection(selected, selection)
 
 	ownedByID := make(map[string]bool, len(ownedIDs))
 	for _, id := range ownedIDs {
 		ownedByID[id.String()] = true
 	}
 
-	kept := make([]json.RawMessage, 0, len(pulled)+len(selected))
+	kept := make([]json.RawMessage, 0, len(pulled)+len(fresh))
 	for _, raw := range pulled {
 		var parsed pulledCollection
 		if err := json.Unmarshal(raw, &parsed); err != nil {
-			return nil, nil, fmt.Errorf("parsing pulled collection: %w", err)
+			return nil, fmt.Errorf("parsing pulled collection: %w", err)
 		}
 		if ownedByID[parsed.ID] || isUnoManaged(parsed) {
 			continue
 		}
 		kept = append(kept, raw)
 	}
-
-	hashes := make(map[uuid.UUID]string, len(selected))
-	for _, c := range selected {
-		rawFresh, err := c.PushJSON()
-		if err != nil {
-			return nil, nil, fmt.Errorf("marshaling collection for push: %w", err)
-		}
-		hashes[c.ID] = vault.PushHash(rawFresh)
-		kept = append(kept, rawFresh)
-	}
+	kept = append(kept, fresh...)
 
 	if err := s.nuvio.PushCollections(ctx, accessToken, nuvioProfileIndex, kept); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return pulled, hashes, nil
-}
-
-// applySelection sorts collections to match selection's order and gives each
-// the pin its selection entry carries. GetCollectionsByIDs queries by a plain
-// IN clause and doesn't preserve input order, but push needs the client's
-// actual ordering to build the pushed collections in the right sequence; and
-// the pin a push sends is the pending one, which only the local write that
-// follows stores.
-func applySelection(collections []vault.CollectionWithFolders, selection vault.CollectionSelectionForm) []vault.CollectionWithFolders {
-	byID := make(map[uuid.UUID]vault.CollectionWithFolders, len(collections))
-	for _, c := range collections {
-		byID[c.ID] = c
-	}
-	ordered := make([]vault.CollectionWithFolders, 0, len(selection.Collections))
-	for _, entry := range selection.Collections {
-		if c, ok := byID[entry.CollectionID]; ok {
-			c.PinToTop = entry.PinToTop
-			ordered = append(ordered, c)
-		}
-	}
-	return ordered
+	return pulled, nil
 }
 
 // nuvioErrorStatus classifies a push-stage error into a status code: a

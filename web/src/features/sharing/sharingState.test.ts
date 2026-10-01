@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
   errorText,
-  isShared,
+  isPublished,
   ownSharing,
   publishGroups,
   rowStickers,
@@ -11,45 +11,45 @@ import {
 } from './sharingState'
 
 const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
-const subscription = { publication_id: 'p', update_available: false, withdrawn: false }
+const subscription = { publication_id: 'p', update_available: false, unpublished: false }
 
 describe('ownSharing', () => {
   it('reads each publication state', () => {
     expect(ownSharing(null)).toBe('private')
     expect(ownSharing(live)).toBe('live')
     expect(ownSharing({ ...live, changed_since_publish: true })).toBe('changed')
-    expect(ownSharing({ ...live, status: 'withdrawn', changed_since_publish: true })).toBe('withdrawn')
+    expect(ownSharing({ ...live, status: 'unpublished', changed_since_publish: true })).toBe('unpublished')
   })
 
-  it('counts only a live publication as shared', () => {
-    expect(isShared(catalog({ publication: live }))).toBe(true)
-    expect(isShared(catalog({ publication: { ...live, status: 'withdrawn' } }))).toBe(false)
-    expect(isShared(catalog())).toBe(false)
+  it('counts only a live publication as published', () => {
+    expect(isPublished(catalog({ publication: live }))).toBe(true)
+    expect(isPublished(catalog({ publication: { ...live, status: 'unpublished' } }))).toBe(false)
+    expect(isPublished(catalog())).toBe(false)
   })
 })
 
 describe('rowStickers', () => {
   const labels = (row: Parameters<typeof rowStickers>[0]) => rowStickers(row).map((s) => `${s.label}:${s.tone}`)
 
-  it('says an own row is shared, and changed since', () => {
+  it('says an own row is published, and changed since', () => {
     expect(labels({ publication: null, subscription: null })).toEqual([])
-    expect(labels({ publication: live, subscription: null })).toEqual(['Shared:shared'])
+    expect(labels({ publication: live, subscription: null })).toEqual(['Published:published'])
     expect(labels({ publication: { ...live, changed_since_publish: true }, subscription: null })).toEqual([
-      'Shared:shared',
+      'Published:published',
       'Changed:quiet',
     ])
-    expect(labels({ publication: { ...live, status: 'withdrawn' }, subscription: null })).toEqual([])
+    expect(labels({ publication: { ...live, status: 'unpublished' }, subscription: null })).toEqual([])
   })
 
-  it('says a copy came from Community, with its update or its withdrawal', () => {
+  it('says a row came from Community, with its update or its unpublishing', () => {
     expect(labels({ publication: null, subscription })).toEqual(['From Community:from'])
     expect(labels({ publication: null, subscription: { ...subscription, update_available: true } })).toEqual([
       'From Community:from',
       'Update:update',
     ])
-    expect(labels({ publication: null, subscription: { ...subscription, withdrawn: true } })).toEqual([
+    expect(labels({ publication: null, subscription: { ...subscription, unpublished: true } })).toEqual([
       'From Community:from',
-      'No longer shared:quiet',
+      'Unpublished:quiet',
     ])
   })
 })
@@ -77,9 +77,9 @@ describe('publishGroups', () => {
 })
 
 describe('sharingNote', () => {
-  it('asks for a save before sharing what is saved', () => {
-    expect(sharingNote('private', true)).toBe('Save first: sharing shares what’s saved.')
-    expect(sharingNote('changed', true)).toBe('Save first: sharing shares what’s saved.')
+  it('asks for a save before publishing what is saved', () => {
+    expect(sharingNote('private', true)).toBe('Save first: only what’s saved is published.')
+    expect(sharingNote('changed', true)).toBe('Save first: only what’s saved is published.')
     expect(sharingNote('live', true)).toBeNull()
     expect(sharingNote('private', false)).toBeNull()
   })
@@ -92,7 +92,7 @@ describe('errorText and stickerWords', () => {
   })
 
   it('reads stickers as words for a screen reader', () => {
-    expect(stickerWords([{ label: 'Shared', tone: 'shared' }, { label: 'Changed', tone: 'quiet' }])).toBe(', shared, changed')
+    expect(stickerWords([{ label: 'Published', tone: 'published' }, { label: 'Changed', tone: 'quiet' }])).toBe(', published, changed')
     expect(stickerWords([])).toBe('')
   })
 })

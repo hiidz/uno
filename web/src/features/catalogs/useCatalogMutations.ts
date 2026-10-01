@@ -6,8 +6,8 @@ import type { CatalogPayload } from '@/api'
  * Catalog writes, with the invalidation they imply.
  *
  * Invalidates Community too (`invalidateProfileLists`): a save can change
- * whether a shared catalog has changed since it was published, and a delete
- * withdraws its publication.
+ * whether a published catalog has changed since it was published, and a
+ * delete unpublishes it.
  *
  * The collection lists are invalidated too, because of a real cascade:
  * `DELETE FROM catalogs` drops the row's `folder_catalogs` entries

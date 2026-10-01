@@ -97,7 +97,7 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.updateUserCatalog))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/publish", s.requireProfileAuth(s.publishCatalog))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/withdraw", s.requireProfileAuth(s.withdrawCatalog))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/unpublish", s.requireProfileAuth(s.unpublishCatalog))
 
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireProfileAuth(s.listUserCollections))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
@@ -105,14 +105,14 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.updateUserCollection))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.deleteUserCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/publish", s.requireProfileAuth(s.publishCollection))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/withdraw", s.requireProfileAuth(s.withdrawCollection))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/unpublish", s.requireProfileAuth(s.unpublishCollection))
 
 	// Community: other profiles' live publications, by publication id.
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.listCommunity))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}", s.requireProfileAuth(s.getPublication))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/subscribe", s.requireProfileAuth(s.subscribe))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/update", s.requireProfileAuth(s.updateSubscription))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/fork", s.requireProfileAuth(s.forkPublication))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/duplicate", s.requireProfileAuth(s.duplicatePublication))
 
 	s.router.HandleFunc("POST /api/p/{profileIndex}/export", s.requireProfileAuth(s.exportBundle))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/import/check", s.requireProfileAuth(s.checkImport))

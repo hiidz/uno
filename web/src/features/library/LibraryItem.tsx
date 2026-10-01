@@ -36,10 +36,10 @@ const KIND_LABEL: Record<RowKind, string> = {
  * editor's own sticky header carries them there instead.
  *
  * Every row in the rail is yours, so the stickers left to state are about
- * Community (`rowStickers`): Shared, solid pink because Community is where a
- * shared row turns up, and Changed once it has been edited since; or From
- * Community, outlined pink, on a row taken from there, with Update or No
- * longer shared beside it.
+ * Community (`rowStickers`): Published, solid pink because Community is where
+ * a published row turns up, and Changed once it has been edited since; or
+ * From Community, outlined pink, on a row added from there, with Update or
+ * Unpublished beside it.
  */
 export function LibraryItem({
   kind,

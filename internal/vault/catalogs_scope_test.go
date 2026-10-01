@@ -96,19 +96,19 @@ func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
 	db := newTestDB(t)
 
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
+	subscriber := newTestProfile(t, db, "subscriber")
 	source := newTestCollection(t, db, owner, "Source")
-	copied := takeCollection(t, db, owner, taker, source)
+	copied := subscribeCollection(t, db, owner, subscriber, source)
 	if copied.Subscription == nil {
-		t.Fatal("the taken collection has no subscription")
+		t.Fatal("the subscribed collection has no subscription")
 	}
 
-	catalog := publishCatalog(t, db, taker, "Listed", `{"sort_by":"vote_average.desc"}`)
+	catalog := publishCatalog(t, db, subscriber, "Listed", `{"sort_by":"vote_average.desc"}`)
 
 	form := listedCatalogForm("Renamed")
 	form.Params = catalog.Params
 	form.CollectionID = &copied.ID
-	updated, err := db.UpdateUserCatalog(ctx, taker, catalog.ID, form)
+	updated, err := db.UpdateUserCatalog(ctx, subscriber, catalog.ID, form)
 	if err != nil {
 		t.Fatalf("update with a collection_id: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
 	if reloaded := reloadCatalog(t, db, catalog.ID); reloaded.Publication == nil || reloaded.Publication.Status != "live" {
 		t.Errorf("publication after the update = %+v, want live", reloaded.Publication)
 	}
-	if after := mustOwnCollection(t, db, taker, copied.ID); after.Subscription == nil {
+	if after := mustOwnCollection(t, db, subscriber, copied.ID); after.Subscription == nil {
 		t.Error("the collection named in collection_id lost its subscription")
 	}
 }

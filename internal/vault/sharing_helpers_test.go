@@ -60,15 +60,15 @@ func newScoped(key, name, params string) FolderCatalogRef {
 	return FolderCatalogRef{New: &NewScopedCatalog{Key: key, Type: "movie", Name: name, Provider: "tmdb", Params: params}}
 }
 
-// takeCollection publishes owner's collection sourceID and subscribes taker
-// to it, returning taker's copy.
-func takeCollection(t *testing.T, db *DB, owner, taker, sourceID uuid.UUID) CollectionWithFolders {
+// subscribeCollection publishes owner's collection sourceID and subscribes
+// subscriber to it, returning subscriber's copy.
+func subscribeCollection(t *testing.T, db *DB, owner, subscriber, sourceID uuid.UUID) CollectionWithFolders {
 	t.Helper()
 	published, err := db.PublishCollection(context.Background(), owner, sourceID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatalf("PublishCollection: %v", err)
 	}
-	return *subscribe(t, db, taker, published.Publication.ID).Collection
+	return *subscribe(t, db, subscriber, published.Publication.ID).Collection
 }
 
 // reloadCatalog reads catalog id back, listed or scoped, whoever owns it,
@@ -94,36 +94,22 @@ func mustOwnCollection(t *testing.T, db *DB, profileID, id uuid.UUID) Collection
 }
 
 // pushSelection stands in for push's local write: it puts profileID's
-// collections on Home in the order and with the pins entries give, stamps
-// each with the hash of what push would send for it now, and clears every
-// other one's place.
+// collections on Home in the order and with the pins entries give, with no
+// catalog rows, and stores the push record of that Home as it is now.
 func pushSelection(t *testing.T, db *DB, profileID uuid.UUID, entries ...SelectedCollectionInput) {
 	t.Helper()
-	form := CollectionSelectionForm{Collections: entries}
-	trees, err := db.GetCollectionsByIDs(context.Background(), form.CollectionIDs())
-	if err != nil {
-		t.Fatalf("GetCollectionsByIDs: %v", err)
-	}
-	hashes := map[uuid.UUID]string{}
-	for _, tree := range trees {
-		tree.PinToTop = pinOf(entries, tree.ID)
-		raw, err := tree.PushJSON()
-		if err != nil {
-			t.Fatal(err)
-		}
-		hashes[tree.ID] = PushHash(raw)
-	}
-	if err := db.SaveSelectionsForPush(context.Background(), profileID, CatalogSelectionForm{}, form, hashes); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
-	}
+	savePush(t, db, profileID, CatalogSelectionForm{}, CollectionSelectionForm{Collections: entries})
 }
 
-// pinOf is the pin entries give collection id.
-func pinOf(entries []SelectedCollectionInput, id uuid.UUID) bool {
-	for _, e := range entries {
-		if e.CollectionID == id {
-			return e.PinToTop
-		}
+// savePush stands in for push's local write of catalogs and collections:
+// it builds their push record now and stores it.
+func savePush(t *testing.T, db *DB, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm) {
+	t.Helper()
+	record, err := db.BuildPushRecord(context.Background(), profileID, catalogs, collections)
+	if err != nil {
+		t.Fatalf("BuildPushRecord: %v", err)
 	}
-	return false
+	if err := db.SavePush(context.Background(), profileID, record); err != nil {
+		t.Fatalf("SavePush: %v", err)
+	}
 }

@@ -31,7 +31,7 @@ embedded frontend build.
 
 | Package | Owns |
 | --- | --- |
-| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Also the push payload (`pushpayload.go`: the wire types push sends, the addon id and manifest id they carry, and the hash push stores), since what push sends decides whether a collection needs a push. Imports only `jsonwire`. The schema is `schema.sql`, embedded |
+| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Also the push payload (`pushpayload.go`: the wire types push sends, and the addon id and manifest id they carry) and the push record (`pushrecord.go`: what a profile's last push sent), since what push sends decides whether a collection needs a push. Imports only `jsonwire`. The schema is `schema.sql`, embedded |
 | `internal/addon` | Stremio-protocol manifest + catalog responses, `/u/{token}/...` |
 | `internal/api` | Bearer-token auth, CRUD orchestration, push, the route table |
 | `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |
@@ -100,6 +100,32 @@ credentials.
 `profiles.token` is a capability URL for a public, read-only surface. Acceptable in browser
 memory; never log it or place it in a URL the user might share.
 
+## Sharing vocabulary
+
+Code, API, database and docs say publish / subscribe / unpublish / duplicate / publisher. The UI
+says Publish / **Add** / Unpublish / Duplicate / publisher. Add = subscribe is the one place the
+two layers differ.
+
+| Concept | Code, API, database, docs | UI |
+|---|---|---|
+| The feature as a whole | sharing (`features/sharing`, `serveSharingCall`): a name, never a verb or status | never says "share" |
+| Browse tab | Community | Community |
+| Put it out | publish, publication, publisher | Publish…, Publish update…, Publish again…, "Published" |
+| Take it back | unpublish, status `unpublished` | Unpublish, "Unpublished" |
+| Read-only copy that gets updates | subscribe, subscription, subscriber, subscribed copy | **Add**, ✓ Added, "Added by N", the **From Community** sticker |
+| Copy that's yours to edit | duplicate (`DuplicatePublication`, `DuplicateCollection`) | Duplicate |
+| Get the update | update | Update |
+| Who published it | publisher (`publisher_id`) | its publisher |
+| The profile a row belongs to | owner (`owner_id` on catalogs, collections) | — |
+| What subscribe or duplicate produces | copy | copy, for what Duplicate makes only |
+
+- Text a user reads uses the UI words, Go error messages the SPA shows verbatim included.
+- In the UI, "copy" means only what Duplicate makes. A row added from Community is labelled
+  **From Community** everywhere (its sticker, its view, the Publish dialog) and is never called a
+  copy.
+- An own row's editor setting holding Publish and Unpublish is labelled **Community**.
+- Where pushed content shows up is always **Nuvio**, never "TV".
+
 ## HTTP surface
 
 **Public means the addon protocol. Authenticated means everything else** — community/public reads
@@ -162,11 +188,11 @@ Route-semantics facts the client has to honour:
   - `GET /api/p/{i}/community` (`ListCommunity`) answers every live publication not the
     caller's own, newest first, in one array: the SPA searches, filters and sorts it. A row
     carries its counts, dates, `subscribed` and `update_available` for the caller, the names of
-    its catalogs, and for a catalog its recipe, but never its owner.
-  - `GET .../community/{id}` (`GetPublication`) is the row with its `snapshot` and `withdrawn`:
-    a live publication, or a withdrawn one the caller subscribes to. It is also how the SPA
+    its catalogs, and for a catalog its recipe, but never its publisher.
+  - `GET .../community/{id}` (`GetPublication`) is the row with its `snapshot` and `unpublished`:
+    a live publication, or an unpublished one the caller subscribes to. It is also how the SPA
     previews an update: the page shows the new version before Update applies it.
-  - `POST .../community/{id}/subscribe` (`Subscribe`, 201) and `.../fork` (`ForkPublication`,
+  - `POST .../community/{id}/subscribe` (`Subscribe`, 201) and `.../duplicate` (`DuplicatePublication`,
     201) copy a live publication of someone else's into the caller's own rows, as
     `{kind, catalog | collection}`. A second subscribe is a 409. `.../update`
     (`UpdateSubscription`, 200) brings the caller's subscribed copy up to the current snapshot.
@@ -177,17 +203,17 @@ Route-semantics facts the client has to honour:
     params live. An Update that changes what push sends for a collection copy on Home leaves it
     `needs_push`, so it shows on Home as an unpushed change until the next push carries its
     folders to Nuvio.
-- **Sharing an owned row is a call on the row.**
+- **Publishing an owned row is a call on the row.**
   - `POST /api/p/{i}/catalogs/{id}/publish` and `.../collections/{id}/publish`
     (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish or
-    republish it. They run every recipe the snapshot shares through `validateCatalogParams`, so
+    republish it. They run every recipe the snapshot publishes through `validateCatalogParams`, so
     a recipe TMDB refuses is a 400 and TMDB being unreachable a 502. A catalog inside a
     collection and a subscribed copy are 400s, and a source edited while it was being checked a
     409. A collection that references a catalog the caller subscribes to publishes, with that
     catalog frozen as it stands. Two publications of the same content are both listed in
     Community.
-  - `.../withdraw` (`WithdrawCatalog`/`WithdrawCollection`) withdraws its live publication, if
-    any.
+  - `.../unpublish` (`UnpublishCatalog`/`UnpublishCollection`) unpublishes its live publication,
+    if any.
   - A content write to a subscribed copy — `PUT` of the catalog or the collection, a catalog
     created in it — is a 400 (`refuseSubscribedCopy`, run in the write's transaction ahead of
     the write, over the caller's own subscriptions, so another profile's copy still answers
@@ -220,8 +246,8 @@ Route-semantics facts the client has to honour:
     row, Discover-only included ("Take it off Home and push first."); a collection on Home uses it,
     the first in Home order named ("Remove it from “X” and push first."); or any of the profile's
     collections on Home has `needs_push` ("Push first: Nuvio may still show it in a collection.").
-    The last is profile-wide: the pushed hash can't say which catalogs that collection's last
-    pushed version used.
+    The last is profile-wide: `needs_push` says a collection's pushed version differs, not which
+    catalogs that version used.
   - `DELETE /api/p/{i}/collections/{id}` for a collection on Home ("Take it off Home and push
     first.").
 - **Import never trusts its own check step.** Three routes in `internal/api/bundle.go` move
@@ -435,7 +461,7 @@ no key, and each call's comes from its context (`provider.WithKeySource`):
   `tmdbkey.Keys.ForAccount`), so a preview, a save's recipe check, a lookup and a publish's check
   use the caller's key. The catalog route uses the key of the account that owns the token's
   profile, read in its one lookup (`Keys.Sealed`); the manifest route looks it up by token for a
-  cold genre list (`Keys.ForToken`). Take makes no TMDB call. A source runs at most once per
+  cold genre list (`Keys.ForToken`). A subscribe (Add) makes no TMDB call. A source runs at most once per
   request, and only when a call goes out, so a request answered from a cache reads no key.
 - **One client, shared caches.** There is one `TMDBClient`; `request` picks the call's key
   (`keyFor`) and sets `api_key`. The page cache, the memos and the IMDB-id cache stay shared,
@@ -449,7 +475,7 @@ no key, and each call's comes from its context (`provider.WithKeySource`):
   changed) is treated as rejected, since its owner fixes it the same way. The builder answers
   both key problems `422` with fixed words (`keyFailures`): a status nothing else in the API
   answers, so the SPA can tell it apart — not `401` (the SPA refreshes and retries), `403` (the
-  access refusal) or `409` (Already taken). The addon routes answer `502`, as for any
+  access refusal) or `409` (Already added). The addon routes answer `502`, as for any
   upstream failure, but log a key problem as the profile owner's key, apart from TMDB failing
   (`logTMDBFailure`): a keyless owner's TV asks for every row on every load.
 - **Storage.** `internal/tmdbkey` seals a key with AES-256-GCM under `UNO_SECRET`, bound to the
@@ -721,7 +747,8 @@ below guarantees an ordinary failure means nothing changed at all.
    **URL match** (Nuvio's own dedup key is `md5(url)` per user+profile), push the **complete**
    merged list back. Omitting any existing addon would delete it.
 3. `pushCollections` — pull, merge, push (detail below).
-4. One local transaction writing both selections, committing at the very end.
+4. One local transaction writing both selections and the push record, committing at the very
+   end.
 
 Reversing this reopens two problems at once. A write-first design has to hold a SQLite write
 transaction open across up to four sequential Nuvio HTTP calls, each capped at a 10s client
@@ -750,21 +777,27 @@ about (its own native UI, or another client), so the merge must touch only what 
    the only place such a collection could have come from. A pulled collection with no sources at
    all doesn't match the heuristic — there's nothing to compare against `addon.ID`, and treating
    it as a match would risk deleting a Nuvio-native collection whose folders are simply empty.
-3. Append freshly built entries for the pending selection: each collection's
-   `vault.CollectionWithFolders.PushJSON`, the vault's push payload, with the selection's pin.
+3. Append the pending selection's collections as the push record holds them: each
+   collection's `vault.CollectionWithFolders.PushJSON`, the vault's push payload, with the
+   selection's pin.
 
-**Push stores the hash of what it sent.** `pushCollections` returns `map[uuid.UUID]string`
-alongside the pulled blob — for each selected collection, `vault.PushHash` over the exact bytes it
-appended at step 3, before Nuvio was called. The local write (step 4, `SaveSelectionsForPush` →
-`saveCollectionSelectionTx`) stamps `collections.pushed_hash` from that map, never from the row as
-it stands at write time. A collection's reads carry `needs_push` when it is on Home and the hash of
-what push would send for it now differs from that stamp (`markNeedsPush` in
-`internal/vault/pushpayload.go`), so Home flags exactly the edits that change what Nuvio holds:
-a folder's catalogs, genre or images, a title, a setting. A rename and back, or a recipe-only
-edit, changes nothing Nuvio holds and flags nothing. A Save landing between push's read and the
-local write leaves the row hashing to something else, so it still reads as needing a push. A row
-with no entry in the map (vanished between the read and the write) is left untouched rather than
-guessed at.
+**Push stores what it sent: the push record.** After step 1, push builds the profile's push
+record once (`vault.BuildPushRecord`, `internal/vault/pushrecord.go`) from the pending selection:
+each selected collection as the exact bytes `PushJSON` gives, the Home selection, and every catalog
+Nuvio can reach (its own Home row, or a folder of a collection on Home uses it) with name, type,
+provider and params inline, in the manifest's order. Step 3 sends the record's collections, and
+the local write (step 4, `vault.SavePush`) stores the record whole in `push_records`, one row per
+profile replaced by each push and stamped with the Nuvio profile id the profile has then
+(`profiles.nuvio_profile_uuid`). Nothing cascades into it from `catalogs` or `collections`. It is
+never rebuilt from the rows at write time, so a Save landing between the build and the write still
+reads as needing a push. A collection's reads carry `needs_push` when it is on Home and what push
+would send for it now differs from the bytes its owner's record holds for it, or the record holds
+none (`markNeedsPush`, read through the same querier as the tree, so the delete guard's reads see
+it inside the delete's transaction). Home flags exactly the edits that change what Nuvio holds: a
+folder's catalogs, genre or images, a title, a setting. A rename and back, or a recipe-only edit,
+changes nothing Nuvio holds and flags nothing. Only push writes the Home columns, so a collection
+on Home was in the last push and the record holds it. Nothing reads the record's catalogs or its
+stamp yet: the addon still serves live rows.
 
 **The one gap the ordering can't close, and its mitigation.** If the local commit fails *after*
 both Nuvio calls succeeded, Nuvio has the new collections but Uno's vault doesn't record them. On

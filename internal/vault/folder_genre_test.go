@@ -92,14 +92,14 @@ func TestFolderRefsSerializeEmptyAsArray(t *testing.T) {
 	}
 }
 
-// Duplicate and Take both carry every ref's genre onto the copy, including
+// Duplicate and a subscribe both carry every ref's genre onto the copy, including
 // two refs to one catalog, re-keyed to the copy's catalog id where the
 // catalog itself was copied.
-func TestFolderRefGenreSurvivesDuplicateAndTake(t *testing.T) {
+func TestFolderRefGenreSurvivesDuplicateAndSubscribe(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
+	subscriber := newTestProfile(t, db, "subscriber")
 
 	catalog, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Popular"))
 	if err != nil {
@@ -120,9 +120,9 @@ func TestFolderRefGenreSurvivesDuplicateAndTake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DuplicateCollection: %v", err)
 	}
-	taken := takeCollection(t, db, owner, taker, source.ID)
+	subscribed := subscribeCollection(t, db, owner, subscriber, source.ID)
 
-	for name, c := range map[string]CollectionWithFolders{"duplicate": dup, "take": taken} {
+	for name, c := range map[string]CollectionWithFolders{"duplicate": dup, "subscribe": subscribed} {
 		refs := c.Folders[0].Refs
 		if len(refs) != 2 {
 			t.Fatalf("%s: folder has %d refs, want 2", name, len(refs))
@@ -139,12 +139,12 @@ func TestFolderRefGenreSurvivesDuplicateAndTake(t *testing.T) {
 // Every folder of a copied collection keeps its own refs, in its own order:
 // the refs of a whole tree are loaded in one query grouped by folder, so a
 // tree whose folders would interleave if the grouping were wrong comes back
-// unmixed on a reload, a Duplicate and a Take alike.
+// unmixed on a reload, a Duplicate and a subscribe alike.
 func TestCopiedFolderRefsStayGroupedPerFolder(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
+	subscriber := newTestProfile(t, db, "subscriber")
 
 	names := []string{"Alpha", "Beta", "Gamma"}
 	ids := make([]uuid.UUID, len(names))
@@ -184,12 +184,12 @@ func TestCopiedFolderRefsStayGroupedPerFolder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DuplicateCollection: %v", err)
 	}
-	taken := takeCollection(t, db, owner, taker, source.ID)
+	subscribed := subscribeCollection(t, db, owner, subscriber, source.ID)
 
 	// A copy re-keys refs to its own catalog ids, so the genre — carried
 	// verbatim and unique per catalog here — is what identifies each ref.
 	for name, c := range map[string]CollectionWithFolders{
-		"reload": reloaded[0], "duplicate": dup, "take": taken,
+		"reload": reloaded[0], "duplicate": dup, "subscribe": subscribed,
 	} {
 		if len(c.Folders) != len(wantOrder) {
 			t.Fatalf("%s: %d folders, want %d", name, len(c.Folders), len(wantOrder))

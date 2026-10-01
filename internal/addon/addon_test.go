@@ -26,6 +26,19 @@ func newTestVault(t *testing.T) *vault.DB {
 	return db
 }
 
+// savePush stands in for push's local write of catalogs and collections:
+// it builds their push record now and stores it.
+func savePush(t *testing.T, db *vault.DB, profileID uuid.UUID, catalogs vault.CatalogSelectionForm, collections vault.CollectionSelectionForm) {
+	t.Helper()
+	record, err := db.BuildPushRecord(context.Background(), profileID, catalogs, collections)
+	if err != nil {
+		t.Fatalf("BuildPushRecord: %v", err)
+	}
+	if err := db.SavePush(context.Background(), profileID, record); err != nil {
+		t.Fatalf("SavePush: %v", err)
+	}
+}
+
 func listedCatalogForm(name string) vault.CatalogForm {
 	return vault.CatalogForm{Type: "movie", Name: name, Provider: "tmdb", Params: "{}"}
 }
@@ -58,13 +71,8 @@ func TestBuildManifestFolderOnlyCatalogGetsGenreExtra(t *testing.T) {
 		t.Fatalf("saving collection: %v", err)
 	}
 
-	if err := db.SaveSelectionsForPush(ctx, owner.ID,
-		vault.CatalogSelectionForm{},
-		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}},
-		nil,
-	); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
-	}
+	savePush(t, db, owner.ID, vault.CatalogSelectionForm{},
+		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
 
 	selection, err := db.GetPublishedCatalogs(ctx, owner.ID)
 	if err != nil {
@@ -120,13 +128,8 @@ func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testi
 		t.Fatalf("saving collection: %v", err)
 	}
 
-	if err := db.SaveSelectionsForPush(ctx, owner.ID,
-		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}},
-		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}},
-		nil,
-	); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
-	}
+	savePush(t, db, owner.ID, vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}},
+		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
 
 	selection, err := db.GetPublishedCatalogs(ctx, owner.ID)
 	if err != nil {
@@ -302,15 +305,10 @@ func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
 		t.Fatalf("create catalog: %v", err)
 	}
 
-	if err := db.SaveSelectionsForPush(ctx, owner.ID,
-		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
-			{CatalogID: catalog.ID, ShowInHome: true},
-		}},
-		vault.CollectionSelectionForm{},
-		nil,
-	); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
-	}
+	savePush(t, db, owner.ID, vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
+		{CatalogID: catalog.ID, ShowInHome: true},
+	}},
+		vault.CollectionSelectionForm{})
 
 	s, err := New(db, provider.NewTMDBClient("test-key"), nil)
 	if err != nil {

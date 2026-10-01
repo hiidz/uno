@@ -407,7 +407,7 @@ func TestImportBundleStoresNormalizedValues(t *testing.T) {
 func TestSubscribeCopiesStoredValuesAsTheyAre(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
-	owner, taker := newTestProfile(t, db, "owner"), newTestProfile(t, db, "taker")
+	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	scoped := &NewScopedCatalog{Key: "k", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}"}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
 		Title: "Source", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: scoped}}}},
@@ -424,14 +424,14 @@ func TestSubscribeCopiesStoredValuesAsTheyAre(t *testing.T) {
 		}
 	}
 
-	taken := takeCollection(t, db, owner, taker, source.ID)
-	if taken.Title != " Source " || taken.ViewMode != "" || taken.Folders[0].TileShape != "" {
-		t.Errorf("taken title, view mode, tile shape = %q, %q, %q, want the source's as stored", taken.Title, taken.ViewMode, taken.Folders[0].TileShape)
+	subscribed := subscribeCollection(t, db, owner, subscriber, source.ID)
+	if subscribed.Title != " Source " || subscribed.ViewMode != "" || subscribed.Folders[0].TileShape != "" {
+		t.Errorf("subscribed title, view mode, tile shape = %q, %q, %q, want the source's as stored", subscribed.Title, subscribed.ViewMode, subscribed.Folders[0].TileShape)
 	}
-	if taken.Subscription == nil || taken.Subscription.UpdateAvailable {
-		t.Errorf("subscription = %+v, want one with no update available", taken.Subscription)
+	if subscribed.Subscription == nil || subscribed.Subscription.UpdateAvailable {
+		t.Errorf("subscription = %+v, want one with no update available", subscribed.Subscription)
 	}
-	if copyTreeSnapshot(taken).contentHash() != collectionSnapshot(taken.Subscription.PublicationID, mustOwnCollection(t, db, owner, source.ID)).contentHash() {
+	if copyTreeSnapshot(subscribed).contentHash() != collectionSnapshot(subscribed.Subscription.PublicationID, mustOwnCollection(t, db, owner, source.ID)).contentHash() {
 		t.Error("the copy does not snapshot to what its publication holds")
 	}
 }

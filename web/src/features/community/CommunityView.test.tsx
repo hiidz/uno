@@ -29,7 +29,7 @@ const zombies = communityItem({ id: 'zombies', title: 'Zombies', catalog_names: 
 
 const nightDetail: PublicationDetail = {
   ...night,
-  withdrawn: false,
+  unpublished: false,
   snapshot: {
     format: 'uno-publication',
     version: 1,
@@ -95,7 +95,7 @@ describe('CommunityView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
     expect(screen.getByText('Horror Nights')).toBeInTheDocument()
     expect(screen.getByText('1 folder · 1 catalog')).toBeInTheDocument()
-    expect(screen.getByText(/Taken by 4/)).toBeInTheDocument()
+    expect(screen.getByText(/Added by 4/)).toBeInTheDocument()
     expect(screen.getByText('Update')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Update…' })).toBeEnabled()
     expect(calls.filter((call) => call.startsWith('GET /api/p/1/community'))).toEqual(['GET /api/p/1/community'])
@@ -116,58 +116,58 @@ describe('CommunityView', () => {
     expect(titles()).toEqual(['Horror Nights'])
   })
 
-  it('says when nothing is shared, and when nothing matches', async () => {
+  it('says when nothing is published, and when nothing matches', async () => {
     renderView({ 'GET /api/p/1/community': [a24] })
     await screen.findByText('A24 Horror')
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
-    expect(screen.getByText(/Nobody has shared any collections yet/)).toBeInTheDocument()
+    expect(screen.getByText(/Nobody has published any collections yet/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Catalogs' }))
     fireEvent.change(screen.getByLabelText('Search Community'), { target: { value: 'nothing like it' } })
     expect(screen.getByText('No catalogs match this search.')).toBeInTheDocument()
   })
 
-  it('takes a copy, and the row shows it taken once the list refetches', async () => {
-    let taken = false
+  it('adds it, and the row shows it added once the list refetches', async () => {
+    let added = false
     renderView({
-      'GET /api/p/1/community': () => [{ ...a24, subscribed: taken }],
+      'GET /api/p/1/community': () => [{ ...a24, subscribed: added }],
       'POST /api/p/1/community/a24/subscribe': () => {
-        taken = true
+        added = true
         return { kind: 'catalog' }
       },
     })
-    fireEvent.click(await screen.findByRole('button', { name: 'Take' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
     expect(await screen.findByText('Added to your catalogs')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Taken' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Added' })).toBeDisabled()
   })
 
-  it('says what a stale or failed Take means', async () => {
+  it('says what a stale or failed Add means', async () => {
     let answer = failWith(409, 'already subscribed')
     renderView({
       'GET /api/p/1/community': [a24],
       'POST /api/p/1/community/a24/subscribe': () => answer,
     })
-    fireEvent.click(await screen.findByRole('button', { name: 'Take' }))
-    expect(await screen.findByText('Already taken')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
+    expect(await screen.findByText('Already added')).toBeInTheDocument()
 
     answer = failWith(404, 'publication not found')
-    fireEvent.click(await screen.findByRole('button', { name: 'Take' }))
-    expect(await screen.findByText('Its owner no longer shares it.')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
+    expect(await screen.findByText('Its publisher unpublished it.')).toBeInTheDocument()
 
     answer = failWith(500, 'database locked')
-    fireEvent.click(await screen.findByRole('button', { name: 'Take' }))
-    expect(await screen.findByText('Couldn’t take it: database locked')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
+    expect(await screen.findByText('Couldn’t add it: database locked')).toBeInTheDocument()
   })
 
   it('duplicates from the ⋯ menu', async () => {
     const calls = renderView({
       'GET /api/p/1/community': [a24],
-      'POST /api/p/1/community/a24/fork': { kind: 'catalog' },
+      'POST /api/p/1/community/a24/duplicate': { kind: 'catalog' },
     })
     const more = await screen.findByRole('button', { name: 'More for A24 Horror' })
     fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' })
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Duplicate' }))
     expect(await screen.findByText('Duplicated to your catalogs')).toBeInTheDocument()
-    expect(calls).toContain('POST /api/p/1/community/a24/fork')
+    expect(calls).toContain('POST /api/p/1/community/a24/duplicate')
   })
 
   it('opens a publication’s page, and comes back to its row', async () => {
@@ -202,13 +202,13 @@ describe('CommunityView', () => {
       'GET /api/p/1/community/a24': () => failWith(500, 'boom'),
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
-    expect(await screen.findByText('Couldn’t load this. Its owner may have stopped sharing it.')).toBeInTheDocument()
+    expect(await screen.findByText('Couldn’t load this. Its publisher may have unpublished it.')).toBeInTheDocument()
   })
 
   it('shows a catalog publication’s recipe on its page', async () => {
     renderView({
       'GET /api/p/1/community': [a24],
-      'GET /api/p/1/community/a24': { ...a24, withdrawn: false, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
+      'GET /api/p/1/community/a24': { ...a24, unpublished: false, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
     expect(await screen.findByText('One page of results')).toBeInTheDocument()
@@ -233,7 +233,7 @@ describe('CommunityView', () => {
   it('explains Add and Duplicate in the row’s tip', async () => {
     renderView({ 'GET /api/p/1/community': [a24] })
     await screen.findByText('A24 Horror')
-    fireEvent.click(screen.getAllByRole('button', { name: 'About take' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'About add' })[0])
     expect(
       await screen.findByText(
         'Add puts it in your library, read-only, and it gets its publisher’s updates. Duplicate (⋯) makes a copy that’s yours to edit.',
@@ -244,7 +244,7 @@ describe('CommunityView', () => {
   it('draws nothing for a publication whose snapshot holds no catalog', async () => {
     renderView({
       'GET /api/p/1/community': [a24],
-      'GET /api/p/1/community/a24': { ...a24, withdrawn: false, snapshot: { format: 'uno-publication', version: 1, catalogs: null } },
+      'GET /api/p/1/community/a24': { ...a24, unpublished: false, snapshot: { format: 'uno-publication', version: 1, catalogs: null } },
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
     await screen.findByRole('button', { name: 'Back to Community' })
@@ -268,8 +268,8 @@ describe('CommunityView', () => {
     expect(calls).not.toContain('POST /api/p/1/community/night/update')
 
     fireEvent.click(screen.getByRole('button', { name: 'Update' }))
-    expect(await screen.findByText('Updated your copy')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Taken' })).toBeDisabled()
+    expect(await screen.findByText('Updated “Horror Nights”')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Added' })).toBeDisabled()
     expect(screen.getByRole('heading', { name: 'Horror Nights' })).toBeInTheDocument()
   })
 

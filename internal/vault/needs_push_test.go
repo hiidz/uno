@@ -7,27 +7,27 @@ import (
 	"github.com/google/uuid"
 )
 
-// A new collection, and every copy of one — a subscribe, a fork and a
-// Duplicate — has never been pushed, and off Home needs no push.
+// A new collection, and every copy of one — a subscribe, a duplicate of a
+// publication and a Duplicate — is off Home, so it needs no push.
 func TestNewCollectionsAreUnpushed(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	taker := newTestProfile(t, db, "taker")
+	subscriber := newTestProfile(t, db, "subscriber")
 
 	source := publishCollection(t, db, owner, CollectionForm{Title: "Source"})
-	subscribed := subscribe(t, db, taker, source.Publication.ID).Collection
-	forked, err := db.ForkPublication(ctx, taker, source.Publication.ID)
+	subscribed := subscribe(t, db, subscriber, source.Publication.ID).Collection
+	duplicated, err := db.DuplicatePublication(ctx, subscriber, source.Publication.ID)
 	if err != nil {
-		t.Fatalf("ForkPublication: %v", err)
+		t.Fatalf("DuplicatePublication: %v", err)
 	}
 	dup, err := db.DuplicateCollection(ctx, owner, source.ID)
 	if err != nil {
 		t.Fatalf("DuplicateCollection: %v", err)
 	}
-	for _, c := range []CollectionWithFolders{source, *subscribed, *forked.Collection, dup} {
-		if c.pushedHash != "" || c.NeedsPush {
-			t.Errorf("%q: pushed hash %q, needs push %t; want never pushed and no push needed off Home", c.Title, c.pushedHash, c.NeedsPush)
+	for _, c := range []CollectionWithFolders{source, *subscribed, *duplicated.Collection, dup} {
+		if c.HomeSortOrder != nil || c.NeedsPush {
+			t.Errorf("%q: on Home %v, needs push %t; want off Home and no push needed", c.Title, c.HomeSortOrder, c.NeedsPush)
 		}
 	}
 }
@@ -114,9 +114,9 @@ func TestNeedsPushFollowsWhatPushWouldSend(t *testing.T) {
 	}
 }
 
-// Push stores the hash of what it read and sent, never of the row as it
-// stands when it writes: a save landing between the two leaves the
-// collection needing a push.
+// Push stores the record it built and sent, never the row as it stands when
+// it writes: a save landing between the two leaves the collection needing a
+// push.
 func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -125,41 +125,59 @@ func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := c.PushJSON()
+	record, err := db.BuildPushRecord(ctx, owner, CatalogSelectionForm{},
+		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: c.ID}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	saveCollection(t, db, owner, c.ID, CollectionForm{Title: "Saved meanwhile"})
-	if err := db.SaveSelectionsForPush(ctx, owner, CatalogSelectionForm{},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: c.ID}}},
-		map[uuid.UUID]string{c.ID: PushHash(raw)}); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
+	if err := db.SavePush(ctx, owner, record); err != nil {
+		t.Fatalf("SavePush: %v", err)
 	}
 	if !needsPush(t, db, owner, c.ID) {
 		t.Error("after a save during the push: want a push still needed")
 	}
 }
 
-// A push that has no hash for a collection leaves its pushed hash as it
-// was, rather than guessing.
-func TestAPushWithNoHashKeepsTheLastOne(t *testing.T) {
+// What push sends round-trips through the stored record byte for byte, so
+// text JSON escapes — an & in a weserv URL, a < in a title — never reads as a
+// change.
+func TestEscapedTextDoesNotNeedAPush(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Kept"})
+	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{
+		Title:            "Fish & <Chips>",
+		BackdropImageURL: "https://images.weserv.nl/?url=image.tmdb.org/t/p/original/a.jpg&w=1280&output=webp",
+		Folders:          []FolderData{{Title: "A < B > C & D", CoverEmoji: "🎃"}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	pushSelection(t, db, owner, SelectedCollectionInput{CollectionID: c.ID})
-	before := mustOwnCollection(t, db, owner, c.ID).pushedHash
-
-	if err := db.SaveSelectionsForPush(ctx, owner, CatalogSelectionForm{},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: c.ID}}}, nil); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
+	if needsPush(t, db, owner, c.ID) {
+		t.Error("right after a push of escaped text: want no push needed")
 	}
-	if after := mustOwnCollection(t, db, owner, c.ID).pushedHash; after != before || after == "" {
-		t.Errorf("pushed hash = %q, want %q kept", after, before)
+}
+
+// A collection on Home that the last push sent nothing for — Home set by an
+// older push whose record no longer holds it — needs a push.
+func TestOnHomeButNotInTheRecordNeedsAPush(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SavePush(ctx, owner, PushRecord{Home: PushedHome{
+		Collections: []SelectedCollectionInput{{CollectionID: c.ID}},
+	}}); err != nil {
+		t.Fatalf("SavePush: %v", err)
+	}
+	if !needsPush(t, db, owner, c.ID) {
+		t.Error("on Home with no entry in the record: want a push needed")
 	}
 }
 

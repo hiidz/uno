@@ -135,7 +135,7 @@ export function formFromCatalog(catalog: Catalog): CatalogFormState {
  * `confirmDuplicateCatalog`, which posts this directly rather than opening an
  * editor first. A duplicate gets a distinguishable name and is never born
  * shared or scoped — sharing and scoping are deliberate acts, not
- * something inherited from whoever it was forked from; only reachable from
+ * something inherited from whoever it was duplicated from; only reachable from
  * the library, which is listed catalogs only. `type`/`params` are copied
  * verbatim: a duplicate is a straight copy.
  */

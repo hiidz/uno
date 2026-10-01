@@ -12,10 +12,7 @@ import (
 // Home, in order, and takes every other catalog and every collection off.
 func pushCatalogs(t *testing.T, db *DB, profileID uuid.UUID, entries ...SelectedCatalogInput) {
 	t.Helper()
-	if err := db.SaveSelectionsForPush(context.Background(), profileID,
-		CatalogSelectionForm{Catalogs: entries}, CollectionSelectionForm{}, nil); err != nil {
-		t.Fatalf("SaveSelectionsForPush: %v", err)
-	}
+	savePush(t, db, profileID, CatalogSelectionForm{Catalogs: entries}, CollectionSelectionForm{})
 }
 
 // usingCollection creates profileID's collection title, with one folder

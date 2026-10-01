@@ -12,7 +12,7 @@ const api = vi.hoisted(() => ({ current: null as null | ((input: RequestInfo | U
 vi.mock('@/api/client', () => ({ apiFetch: (input: RequestInfo | URL, init?: RequestInit) => api.current!(input, init) }))
 
 const genres = { movie: new Map([[27, 'Horror']]), tv: new Map() }
-const subscription: SubscriptionState = { publication_id: 'pub', update_available: true, withdrawn: false }
+const subscription: SubscriptionState = { publication_id: 'pub', update_available: true, unpublished: false }
 
 /** Renders what the workspace renders from the hook for an own row: its
  *  sharing setting and stickers, and the dialogs. */
@@ -54,19 +54,19 @@ beforeEach(() => {
 describe('useWorkspaceSharing', () => {
   it('shows nothing for a row the library doesn’t list yet', () => {
     renderHarness({}, {})
-    expect(screen.queryByText('Sharing')).toBeNull()
+    expect(screen.queryByText('Community')).toBeNull()
     expect(screen.getByTestId('badges')).toBeEmptyDOMElement()
   })
 
-  it('shares a catalog through the publish dialog', async () => {
+  it('publishes a catalog through the publish dialog', async () => {
     const { onToast, calls } = renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', params: '{"with_genres":"27"}' }) },
       { 'POST /api/p/1/catalogs/c1/publish': catalog({ id: 'c1' }) },
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Share…' }))
-    expect(within(dialog()).getByRole('heading', { name: 'Share “Horror”?' })).toBeInTheDocument()
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Share' }))
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Shared “Horror”', tone: 'success' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Publish…' }))
+    expect(within(dialog()).getByRole('heading', { name: 'Publish “Horror”?' })).toBeInTheDocument()
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Publish' }))
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Published “Horror”', tone: 'success' }))
     expect(calls).toContain('POST /api/p/1/catalogs/c1/publish')
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -97,34 +97,34 @@ describe('useWorkspaceSharing', () => {
     await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Published your changes to “Horror”', tone: 'success' }))
   })
 
-  it('stops sharing once asked', async () => {
+  it('unpublishes once asked', async () => {
     const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
     const { onToast, calls } = renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: live }) },
-      { 'POST /api/p/1/catalogs/c1/withdraw': catalog({ id: 'c1' }) },
+      { 'POST /api/p/1/catalogs/c1/unpublish': catalog({ id: 'c1' }) },
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }))
     expect(within(dialog()).getByText(/Community stops listing it/)).toBeInTheDocument()
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Stop sharing' }))
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Stopped sharing “Horror”', tone: 'success' }))
-    expect(calls).toContain('POST /api/p/1/catalogs/c1/withdraw')
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Unpublished “Horror”', tone: 'success' }))
+    expect(calls).toContain('POST /api/p/1/catalogs/c1/unpublish')
   })
 
   it('keeps a failed stop in the question', async () => {
     const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
     const { onToast } = renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: live }) },
-      { 'POST /api/p/1/catalogs/c1/withdraw': () => failWith(500, 'database locked') },
+      { 'POST /api/p/1/catalogs/c1/unpublish': () => failWith(500, 'database locked') },
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }))
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Stop sharing' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }))
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
     expect(await within(dialog()).findByRole('alert')).toHaveTextContent('database locked')
     expect(onToast).not.toHaveBeenCalled()
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('shares a collection using a catalog added from Community, marking that catalog', async () => {
+  it('publishes a collection using a catalog added from Community, marking that catalog', async () => {
     const added = catalog({ id: 't1', name: 'Giallo', subscription })
     const { onToast, calls } = renderHarness(
       {
@@ -137,23 +137,23 @@ describe('useWorkspaceSharing', () => {
       },
       { 'POST /api/p/1/collections/col2/publish': collection({ id: 'col2' }) },
     )
-    expect(screen.getByRole('button', { name: 'Share…' })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Share…' }))
-    expect(within(dialog()).getByText('From your library, shared as they are now')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Publish…' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Publish…' }))
+    expect(within(dialog()).getByText('From your library, published as they are now')).toBeInTheDocument()
     expect(within(dialog()).getByText('Giallo')).toBeInTheDocument()
     expect(within(dialog()).getByText('From Community')).toBeInTheDocument()
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Share' }))
-    await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Shared “Night”', tone: 'success' }))
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Publish' }))
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Published “Night”', tone: 'success' }))
     expect(calls).toContain('POST /api/p/1/collections/col2/publish')
   })
 
-  it('lists what a collection shares in the publish dialog', () => {
+  it('lists what a collection publishes in the publish dialog', () => {
     const own = catalog({ id: 's1', name: 'Scoped one', collection_id: 'col1' })
     renderHarness(
       { collection: collection({ title: 'Night', folders: [folder({ refs: [{ catalog_id: 's1', genre: '' }] })], catalogs: [own] }) },
       {},
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Share…' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Publish…' }))
     expect(within(dialog()).getByText('1 folder, 1 catalog of its own')).toBeInTheDocument()
   })
 })

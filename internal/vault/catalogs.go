@@ -35,9 +35,9 @@ const leanCatalogColumns = baseCatalogColumns + `, ` + noSharingColumns
 // sharingColumns are a row's sharing columns, which sharingScan reads: the
 // row's own publication (p) and, when it is a subscribed copy, the
 // publication its subscription (s) names (sp), with whether that one has
-// an update and whether it is withdrawn.
+// an update and whether it is unpublished.
 const sharingColumns = `p.id, p.status, p.content_hash,
-	s.publication_id, sp.status = 'live' AND s.taken_hash <> sp.content_hash, sp.status = 'withdrawn'`
+	s.publication_id, sp.status = 'live' AND s.subscribed_hash <> sp.content_hash, sp.status = 'unpublished'`
 
 // noSharingColumns stand in for sharingColumns in a read that doesn't join
 // the sharing tables.
@@ -136,7 +136,7 @@ type execer interface {
 
 // insertCatalog writes c as a new catalogs row, storing its recipe first, and
 // returns c with its RecipeHash. It is the one catalog INSERT in this
-// package: a catalog save, a subscribe or fork of a catalog and a collection
+// package: a catalog save, a subscribe or duplicate of a catalog and a collection
 // save's New entries all go through it, each inside a transaction, so a
 // recipe it stores never outlives a failed insert. home_sort_order and
 // show_in_home are left to their column defaults, since no catalog is born
@@ -163,9 +163,7 @@ func insertCatalogRow(ctx context.Context, tx *sql.Tx, c Catalog) error {
 	return nil
 }
 
-// GetCatalogsByIDs batch-loads catalogs by id, no ownership check — push
-// uses this to resolve a folder's catalog_ids (already access-checked at
-// selection time) into Type/Provider for building catalogSources. It reads
+// GetCatalogsByIDs batch-loads catalogs by id, no ownership check. It reads
 // no sharing state (selectLeanCatalogs).
 func (db *DB) GetCatalogsByIDs(ctx context.Context, ids []uuid.UUID) ([]Catalog, error) {
 	return leanCatalogsByIDs(ctx, db.conn, ids)
@@ -346,7 +344,7 @@ func checkCatalogRewrite(stored storedCatalog, input CatalogForm) error {
 // ErrConflict, with the reason as its message (catalogDeleteBlocker): one on
 // Home, one a collection on Home uses, and any while a collection on Home
 // needs a push. Deleting a subscribed copy removes its subscription, and
-// deleting a published catalog withdraws its publication, both by cascade.
+// deleting a published catalog unpublishes its publication, both by cascade.
 // The collections off Home whose folders used the catalog lose it from those
 // folders by cascade too.
 func (db *DB) DeleteUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID) error {
@@ -530,8 +528,8 @@ func (db *DB) ServedCatalog(ctx context.Context, token string, catalogID uuid.UU
 // WHERE clause both selects and validates.
 //
 // Takes a caller-supplied transaction rather than opening its own: its only
-// caller is SaveSelectionsForPush (push.go), which needs both selection
-// writes to commit or roll back together.
+// caller is SavePush (pushrecord.go), which needs both selection writes and
+// the push record to commit or roll back together.
 func saveCatalogSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CatalogSelectionForm) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs SET home_sort_order = NULL WHERE owner_id = ?

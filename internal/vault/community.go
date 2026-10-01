@@ -17,7 +17,7 @@ import (
 // CommunityItem is one publication as Community lists it: what it is, how
 // big, how many subscribe, when it was published and last updated, whether
 // the caller subscribes and has an update waiting, the names of the catalogs
-// it holds, and for a catalog its recipe. Its owner is never on the wire.
+// it holds, and for a catalog its recipe. Its publisher is never on the wire.
 type CommunityItem struct {
 	ID              uuid.UUID      `json:"id"`
 	Kind            string         `json:"kind"`
@@ -34,18 +34,18 @@ type CommunityItem struct {
 }
 
 // PublicationDetail is one publication with its snapshot, and whether it
-// has been withdrawn, which only a subscriber sees.
+// has been unpublished, which only a subscriber sees.
 type PublicationDetail struct {
 	CommunityItem
-	Withdrawn bool     `json:"withdrawn"`
-	Snapshot  Snapshot `json:"snapshot"`
+	Unpublished bool     `json:"unpublished"`
+	Snapshot    Snapshot `json:"snapshot"`
 }
 
 // communityItemColumns are the columns scanCommunityItem reads, from
 // publications as p and the caller's subscriptions as s.
 const communityItemColumns = `p.id, p.kind, p.title, p.catalog_count, p.folder_count, p.subscriber_count,
 	p.published_at, p.updated_at, p.snapshot,
-	s.id IS NOT NULL, coalesce(p.status = 'live' AND s.taken_hash <> p.content_hash, 0)`
+	s.id IS NOT NULL, coalesce(p.status = 'live' AND s.subscribed_hash <> p.content_hash, 0)`
 
 // ListCommunity is every live publication that isn't profileID's, newest
 // first. Two publications of the same content are both listed.
@@ -53,8 +53,8 @@ func (db *DB) ListCommunity(ctx context.Context, profileID uuid.UUID) ([]Communi
 	rows, err := db.conn.QueryContext(ctx, `
 		SELECT `+communityItemColumns+`
 		FROM publications p
-		LEFT JOIN subscriptions s ON s.publication_id = p.id AND s.owner_id = :me
-		WHERE p.status = 'live' AND p.owner_id <> :me
+		LEFT JOIN subscriptions s ON s.publication_id = p.id AND s.subscriber_id = :me
+		WHERE p.status = 'live' AND p.publisher_id <> :me
 		ORDER BY p.published_at DESC, p.id DESC
 	`, sql.Named("me", profileID.String()))
 	if err != nil {
@@ -131,17 +131,17 @@ func (s Snapshot) listed(kind string) ([]string, *BundleCatalog) {
 }
 
 // GetPublication is publicationID with its snapshot, for profileID: a live
-// publication, or a withdrawn one profileID subscribes to, whose last
+// publication, or an unpublished one profileID subscribes to, whose last
 // snapshot it still shows. ErrPublicationNotFound otherwise.
 func (db *DB) GetPublication(ctx context.Context, profileID, publicationID uuid.UUID) (PublicationDetail, error) {
 	var detail PublicationDetail
 	row := db.conn.QueryRowContext(ctx, `
-		SELECT `+communityItemColumns+`, p.status = 'withdrawn'
+		SELECT `+communityItemColumns+`, p.status = 'unpublished'
 		FROM publications p
-		LEFT JOIN subscriptions s ON s.publication_id = p.id AND s.owner_id = :me
+		LEFT JOIN subscriptions s ON s.publication_id = p.id AND s.subscriber_id = :me
 		WHERE p.id = :id AND (p.status = 'live' OR s.id IS NOT NULL)
 	`, sql.Named("me", profileID.String()), sql.Named("id", publicationID.String()))
-	item, snapshot, err := scanCommunityItem(row, &detail.Withdrawn)
+	item, snapshot, err := scanCommunityItem(row, &detail.Unpublished)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PublicationDetail{}, ErrPublicationNotFound
 	}

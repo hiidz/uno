@@ -26,13 +26,13 @@ function renderDialog(props: Partial<ComponentProps<typeof PublishDialog>> = {})
 }
 
 describe('PublishDialog', () => {
-  it('asks before sharing a catalog, showing its recipe', () => {
+  it('asks before publishing a catalog, showing its recipe', () => {
     const { onConfirm, onClose } = renderDialog()
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByRole('heading', { name: 'Share “Horror nights”?' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: 'Publish “Horror nights”?' })).toBeInTheDocument()
     expect(within(dialog).getByText('Movies')).toBeInTheDocument()
     expect(within(dialog).getByText('Horror')).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Share' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publish' }))
     expect(onConfirm).toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(onClose).toHaveBeenCalled()
@@ -49,13 +49,13 @@ describe('PublishDialog', () => {
       },
     })
     expect(screen.getByText('2 folders, 1 catalog of its own')).toBeInTheDocument()
-    expect(screen.getByText('From your library, shared as they are now')).toBeInTheDocument()
+    expect(screen.getByText('From your library, published as they are now')).toBeInTheDocument()
     expect(screen.getByText('Library one')).toBeInTheDocument()
   })
 
   it('leaves out the library heading when a collection uses none', () => {
     renderDialog({ subject: { kind: 'collection', name: 'Night', folderCount: 1, own: [], library: [] } })
-    expect(screen.queryByText('From your library, shared as they are now')).toBeNull()
+    expect(screen.queryByText('From your library, published as they are now')).toBeNull()
   })
 
   it('publishes an update, and says so while it runs', () => {
@@ -65,13 +65,13 @@ describe('PublishDialog', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('TMDB is unreachable')
   })
 
-  it('says Sharing… while a first share runs, and draws nothing without a subject', () => {
+  it('says Publishing… while a first publish runs, and draws nothing without a subject', () => {
     const { unmount } = render(
       <PublishDialog open subject={null} update={false} genres={genres} pending={false} error={null} onConfirm={vi.fn()} onClose={vi.fn()} />,
     )
     expect(screen.queryByRole('dialog')).toBeNull()
     unmount()
     renderDialog({ pending: true })
-    expect(screen.getByRole('button', { name: 'Sharing…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Publishing…' })).toBeDisabled()
   })
 })

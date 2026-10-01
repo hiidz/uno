@@ -6,7 +6,7 @@ import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import type { CommunityAction } from './useCommunityMutations'
 
 const PENDING_LABEL: Record<CommunityAction, string> = {
-  take: 'Taking…',
+  subscribe: 'Adding…',
   update: 'Updating…',
   duplicate: 'Duplicating…',
 }
@@ -16,33 +16,33 @@ const PENDING_LABEL: Record<CommunityAction, string> = {
  *  `updateLabel` "Update…"; the page's applies it, as "Update". */
 export interface RowActions {
   pending: CommunityAction | undefined
-  onTake: () => void
+  onSubscribe: () => void
   onUpdate: () => void
   updateLabel: string
   onDuplicate: () => void
 }
 
 /**
- * One main button, from the server's own flags — Take; a disabled "✓ Taken"
+ * One main button, from the server's own flags — Add; a disabled "✓ Added"
  * while this profile holds a copy that follows the publication; while an
  * update waits for that copy, the actions' `updateLabel` — and Duplicate, a
  * copy that is the profile's own and follows nothing, behind "⋯".
  */
 export function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActions }) {
   const { pending } = actions
-  const taken = item.subscribed && !item.update_available
+  const added = item.subscribed && !item.update_available
   return (
     <div className="flex shrink-0 items-center gap-1.5">
       <button
         type="button"
-        onClick={item.update_available ? actions.onUpdate : actions.onTake}
-        disabled={pending !== undefined || taken}
+        onClick={item.update_available ? actions.onUpdate : actions.onSubscribe}
+        disabled={pending !== undefined || added}
         className="btn-secondary btn-sm"
       >
         <MainLabel item={item} pending={pending} update={actions.updateLabel} />
       </button>
       <InfoTip
-        label="Take"
+        label="Add"
         text="Add puts it in your library, read-only, and it gets its publisher’s updates. Duplicate (⋯) makes a copy that’s yours to edit."
       />
       <MoreMenu label={item.title}>
@@ -54,8 +54,8 @@ export function ItemActions({ item, actions }: { item: CommunityItem; actions: R
   )
 }
 
-/** The main button's words: what is in flight, else `update`, ✓ Taken or
- *  Take. */
+/** The main button's words: what is in flight, else `update`, ✓ Added or
+ *  Add. */
 function MainLabel({
   item,
   pending,
@@ -67,11 +67,11 @@ function MainLabel({
 }) {
   if (pending) return PENDING_LABEL[pending]
   if (item.update_available) return update
-  if (!item.subscribed) return 'Take'
+  if (!item.subscribed) return 'Add'
   return (
     <>
       <Icon icon={Check} size={14} />
-      Taken
+      Added
     </>
   )
 }
@@ -79,9 +79,9 @@ function MainLabel({
 /**
  * One Community row: its name with its kind, and an Update sticker while an
  * update waits for this profile's copy; what it is in plain words; how many
- * have taken it and when it last changed. The name, summary and meta are one
- * button that opens the publication's page. No owner anywhere: Community
- * never names who shared a row.
+ * have added it and when it last changed. The name, summary and meta are one
+ * button that opens the publication's page. No publisher anywhere: Community
+ * never names who published a row.
  */
 export function CommunityRow({
   item,

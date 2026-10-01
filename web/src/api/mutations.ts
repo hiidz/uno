@@ -1,47 +1,47 @@
 import { sendJSON } from './http'
 import type { Catalog, CatalogType, Collection, CommunityCopy, TileShape, TMDBKeyStatus } from './types'
 
-/** Shares a listed catalog as it is saved now, or publishes its update —
+/** Publishes a listed catalog as it is saved now, or publishes its update —
  *  `POST .../catalogs/{id}/publish`. Republishing keeps the publication's id,
- *  and so does publishing a withdrawn one again. 400s for a subscribed copy,
- *  and 502s when TMDB can't be reached to check the recipe. */
+ *  and so does publishing an unpublished one again. 400s for a subscribed
+ *  copy, and 502s when TMDB can't be reached to check the recipe. */
 export function publishCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/publish`)
 }
 
-/** Stops sharing a catalog — `POST .../catalogs/{id}/withdraw`. Copies other
- *  profiles took stay theirs, marked no longer shared. */
-export function withdrawCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
-  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/withdraw`)
+/** Unpublishes a catalog — `POST .../catalogs/{id}/unpublish`. Copies other
+ *  profiles subscribed to stay theirs, marked unpublished. */
+export function unpublishCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/unpublish`)
 }
 
-/** `publishCatalog` for a collection: shares its tree, with every catalog its
- *  folders use, library catalogs included. 400s for a subscribed copy. */
+/** `publishCatalog` for a collection: publishes its tree, with every catalog
+ *  its folders use, library catalogs included. 400s for a subscribed copy. */
 export function publishCollection(profileIndex: number, collectionID: string): Promise<Collection> {
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/publish`)
 }
 
-export function withdrawCollection(profileIndex: number, collectionID: string): Promise<Collection> {
-  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/withdraw`)
+export function unpublishCollection(profileIndex: number, collectionID: string): Promise<Collection> {
+  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/unpublish`)
 }
 
-/** Take: a read-only copy of a publication that follows its updates —
- *  `POST .../community/{id}/subscribe`. */
+/** Subscribe (the UI's Add): a read-only copy of a publication that follows
+ *  its updates — `POST .../community/{id}/subscribe`. */
 export function subscribe(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
   return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/subscribe`)
 }
 
 /** Rewrites this profile's copy of a publication from its current snapshot,
  *  keeping every id — `POST .../community/{id}/update`. 404s once the
- *  publication is withdrawn or the copy is gone. */
+ *  publication is unpublished or the copy is gone. */
 export function updateSubscription(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
   return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/update`)
 }
 
 /** Duplicate: a copy of a publication that is the profile's own, with no
- *  subscription — `POST .../community/{id}/fork`. */
-export function forkPublication(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
-  return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/fork`)
+ *  subscription — `POST .../community/{id}/duplicate`. */
+export function duplicatePublication(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
+  return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/duplicate`)
 }
 
 /**
@@ -91,8 +91,8 @@ export function updateCatalog(
 }
 
 /** Hard delete of an owned catalog, cascading to the folder refs that point
- *  at it. A shared catalog stops being shared; copies other profiles took
- *  stay theirs, marked no longer shared. */
+ *  at it. A published catalog is unpublished; copies other profiles added
+ *  stay theirs, marked unpublished. */
 export function deleteCatalog(profileIndex: number, catalogID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/catalogs/${catalogID}`)
 }

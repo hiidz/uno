@@ -61,7 +61,7 @@ func acceptAnyRecipe(_, _, _ string) error { return nil }
 // TestSharingRoutes drives the Community, subscription and publication
 // routes through the real router, as the caller, in order: each step's
 // answer depends on what the steps before it did. None of them reaches TMDB:
-// a subscribe, an Update and a fork copy a snapshot checked at publish, and
+// a subscribe, an Update and a duplicate copy a snapshot checked at publish, and
 // the recipes published here need no TMDB list to check.
 func TestSharingRoutes(t *testing.T) {
 	x := newSharingFixture(t)
@@ -74,12 +74,12 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "list", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: x.theirCatalog.String()},
 		{name: "list holds the collection", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: `"title":"Their Weekend"`},
 		{name: "detail", method: http.MethodGet, path: theirCollection, wantStatus: http.StatusOK, wantBody: `"snapshot":{"format":"uno-publication"`},
-		{name: "detail of an unknown publication", method: http.MethodGet, path: community + uuid.NewString(), wantStatus: http.StatusNotFound, wantBody: "publication not found"},
+		{name: "detail of an unknown publication", method: http.MethodGet, path: community + uuid.NewString(), wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
 		{name: "detail with a path id that isn't a uuid", method: http.MethodGet, path: community + "nope", wantStatus: http.StatusBadRequest, wantBody: "invalid publication id"},
-		{name: "update before subscribing", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "publication not found"},
-		{name: "fork", method: http.MethodPost, path: theirCatalog + "/fork", wantStatus: http.StatusCreated, wantBody: `"subscription":null`},
+		{name: "update before subscribing", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
+		{name: "duplicate", method: http.MethodPost, path: theirCatalog + "/duplicate", wantStatus: http.StatusCreated, wantBody: `"subscription":null`},
 		{name: "subscribe to the catalog", method: http.MethodPost, path: theirCatalog + "/subscribe", wantStatus: http.StatusCreated, wantBody: `"subscription":{"publication_id":"` + x.theirCatalog.String()},
-		{name: "subscribe again", method: http.MethodPost, path: theirCatalog + "/subscribe", wantStatus: http.StatusConflict, wantBody: "already subscribe"},
+		{name: "subscribe again", method: http.MethodPost, path: theirCatalog + "/subscribe", wantStatus: http.StatusConflict, wantBody: "already added"},
 		{name: "subscribe to the collection", method: http.MethodPost, path: theirCollection + "/subscribe", wantStatus: http.StatusCreated, wantBody: `"kind":"collection"`},
 		{name: "update in step", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusOK, wantBody: `"update_available":false`},
 		{name: "list after subscribing", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: `"subscribed":true`},
@@ -87,8 +87,8 @@ func TestSharingRoutes(t *testing.T) {
 
 	collectionCopy := subscribedCopy(t, x.f, x.theirCollection)
 	catalogCopy := subscribedCatalog(t, x.f, x.theirCatalog)
-	withTaken, err := x.f.db.CreateUserCollection(t.Context(), x.f.caller.ID, vault.CollectionForm{
-		Title: "With a taken catalog", ViewMode: "ROWS",
+	withSubscribed, err := x.f.db.CreateUserCollection(t.Context(), x.f.caller.ID, vault.CollectionForm{
+		Title: "With a subscribed catalog", ViewMode: "ROWS",
 		Folders: []vault.FolderData{{Title: "F", Catalogs: vault.CatalogRefs(catalogCopy)}},
 	})
 	if err != nil {
@@ -104,13 +104,13 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "save the subscribed catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "create a catalog in the subscribed collection", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"Into it","provider":"tmdb","params":"{}","collection_id":"` + collectionCopy.String() + `"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "the subscribed collection is unchanged", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: `"subscription":{"publication_id":"` + x.theirCollection.String()},
-		{name: "publish a collection with a subscribed catalog", method: http.MethodPost, path: "/api/p/1/collections/" + withTaken.ID.String() + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
+		{name: "publish a collection with a subscribed catalog", method: http.MethodPost, path: "/api/p/1/collections/" + withSubscribed.ID.String() + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
 		{name: "publish my catalog", method: http.MethodPost, path: ownCatalog + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live","changed_since_publish":false`},
-		{name: "withdraw my catalog", method: http.MethodPost, path: ownCatalog + "/withdraw", wantStatus: http.StatusOK, wantBody: `"status":"withdrawn"`},
+		{name: "unpublish my catalog", method: http.MethodPost, path: ownCatalog + "/unpublish", wantStatus: http.StatusOK, wantBody: `"status":"unpublished"`},
 		{name: "publish my collection", method: http.MethodPost, path: ownCollection + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
-		{name: "withdraw my collection", method: http.MethodPost, path: ownCollection + "/withdraw", wantStatus: http.StatusOK, wantBody: `"status":"withdrawn"`},
+		{name: "unpublish my collection", method: http.MethodPost, path: ownCollection + "/unpublish", wantStatus: http.StatusOK, wantBody: `"status":"unpublished"`},
 		{name: "publish another profile's catalog", method: http.MethodPost, path: "/api/p/1/catalogs/" + x.theirCatalogSource.String() + "/publish", wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
-		{name: "withdraw another profile's collection", method: http.MethodPost, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/withdraw", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
+		{name: "unpublish another profile's collection", method: http.MethodPost, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/unpublish", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
 		{name: "publish with a path id that isn't a uuid", method: http.MethodPost, path: "/api/p/1/catalogs/nope/publish", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
 	})
 

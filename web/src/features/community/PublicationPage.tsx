@@ -12,8 +12,8 @@ import { usePublication } from './useCommunity'
 /**
  * One publication's page, in place of the list: its name beside the way back
  * (DESIGN.md's One Way Back rule — the arrow and Escape both leave), how many
- * have taken it, the same actions its row offers, then what it holds. While
- * an update waits for this profile's copy, what it holds is the new version,
+ * have added it, the same actions its row offers, then what it holds. While
+ * an update waits for this profile's added row, what it holds is the new version,
  * and Update applies it. A catalog shows its spec tiles beside one page of
  * its results; a collection shows a card for each folder, its catalogs
  * opening in place, beside its Preview panel (`features/sharing`, the same
@@ -71,7 +71,7 @@ export function PublicationPage({
         isLoading={detail.isPending}
         error={detail.error as Error | null}
         loadingLabel="Loading…"
-        errorLabel="Couldn’t load this. Its owner may have stopped sharing it."
+        errorLabel="Couldn’t load this. Its publisher may have unpublished it."
         onRetry={detail.refetch}
       >
         {detail.data && <PublicationBody detail={detail.data} genres={genres} />}

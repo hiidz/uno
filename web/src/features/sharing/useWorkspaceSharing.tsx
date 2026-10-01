@@ -9,13 +9,13 @@ import { SharingStickers } from './SharingStickers'
 import { errorText, ownSharing, publishGroups, rowStickers } from './sharingState'
 import { useSharingMutations, type SharingTarget } from './useSharingMutations'
 
-/** A row the workspace shares: which one, and its name. */
+/** A row the workspace publishes: which one, and its name. */
 interface Named extends SharingTarget {
   name: string
 }
 
-/** A publish waiting on its dialog: the row, what it shares, and whether it
- *  publishes changes to something already shared. */
+/** A publish waiting on its dialog: the row, what it publishes, and whether
+ *  it publishes changes to something already published. */
 interface Publishing extends Named {
   subject: PublishSubject
   update: boolean
@@ -39,32 +39,34 @@ interface WorkspaceSharingOptions {
 
 /**
  * The workspace's sharing: the stickers an own row's editor shows and its
- * Sharing row, with the dialogs it opens: publish and stop sharing. A row
- * taken from Community has no editor, so none of this applies to it
+ * Community setting, with the dialogs it opens: publish and unpublish. A row
+ * added from Community has no editor, so none of this applies to it
  * (`FromCommunityView`). Every sharing call refreshes the library and
  * Community (`useSharingMutations`), and says what it did through `onToast`.
- * Sharing publishes the saved row, so it waits while `dirty`.
+ * Publishing publishes the saved row, so it waits while `dirty`.
  */
 export function useWorkspaceSharing({ profileIndex, genres, dirty, onToast }: WorkspaceSharingOptions) {
   const onDone = (text: string) => onToast({ text, tone: 'success' })
   const mutations = useSharingMutations(profileIndex)
   const [publishing, setPublishing] = useState<Publishing | null>(null)
-  const [stopping, setStopping] = useState<Named | null>(null)
+  const [unpublishing, setUnpublishing] = useState<Named | null>(null)
 
-  function share(row: Publishing) {
+  function publish(row: Publishing) {
     mutations.publish.reset()
     setPublishing(row)
   }
 
-  function askToStop(row: Named) {
-    mutations.withdraw.reset()
-    setStopping(row)
+  function askToUnpublish(row: Named) {
+    mutations.unpublish.reset()
+    setUnpublishing(row)
   }
 
   function editorSharing(row: SharedRow, subject: PublishSubject): EditorSharing {
     const update = ownSharing(row.publication) === 'changed'
-    const onShare = () => share({ kind: row.kind, id: row.id, name: row.name, subject, update })
-    const sharingRow = <SharingRow publication={row.publication} dirty={dirty} onShare={onShare} onStop={() => askToStop(row)} />
+    const onPublish = () => publish({ kind: row.kind, id: row.id, name: row.name, subject, update })
+    const sharingRow = (
+      <SharingRow publication={row.publication} dirty={dirty} onPublish={onPublish} onUnpublish={() => askToUnpublish(row)} />
+    )
     return { sharingRow, sharingBadges: <SharingStickers stickers={rowStickers(row)} /> }
   }
 
@@ -92,16 +94,16 @@ export function useWorkspaceSharing({ profileIndex, genres, dirty, onToast }: Wo
     mutations.publish.mutate(row, {
       onSuccess: () => {
         setPublishing(null)
-        onDone(row.update ? `Published your changes to “${row.name}”` : `Shared “${row.name}”`)
+        onDone(row.update ? `Published your changes to “${row.name}”` : `Published “${row.name}”`)
       },
     })
   }
 
-  function confirmStop(row: Named) {
-    mutations.withdraw.mutate(row, {
+  function confirmUnpublish(row: Named) {
+    mutations.unpublish.mutate(row, {
       onSuccess: () => {
-        setStopping(null)
-        onDone(`Stopped sharing “${row.name}”`)
+        setUnpublishing(null)
+        onDone(`Unpublished “${row.name}”`)
       },
     })
   }
@@ -120,17 +122,17 @@ export function useWorkspaceSharing({ profileIndex, genres, dirty, onToast }: Wo
           onClose={() => setPublishing(null)}
         />
       )}
-      {stopping && (
+      {unpublishing && (
         <ConfirmDialog
           open
-          title={`Stop sharing “${stopping.name}”?`}
-          body="Community stops listing it. Copies people took stay theirs, and get no updates until you share it again."
-          confirmLabel={mutations.withdraw.isPending ? 'Stopping…' : 'Stop sharing'}
+          title={`Unpublish “${unpublishing.name}”?`}
+          body="Community stops listing it. People who added it keep it, and get no updates until you publish it again."
+          confirmLabel={mutations.unpublish.isPending ? 'Unpublishing…' : 'Unpublish'}
           cancelLabel="Cancel"
-          pending={mutations.withdraw.isPending}
-          error={errorText(mutations.withdraw.error)}
-          onConfirm={() => confirmStop(stopping)}
-          onCancel={() => setStopping(null)}
+          pending={mutations.unpublish.isPending}
+          error={errorText(mutations.unpublish.error)}
+          onConfirm={() => confirmUnpublish(unpublishing)}
+          onCancel={() => setUnpublishing(null)}
         />
       )}
     </>

@@ -6,8 +6,8 @@ import type { CollectionPayload } from '@/api'
  * Collection writes, with the invalidation they imply.
  *
  * Invalidates Community too, as `useCatalogMutations` does: a save can change
- * whether a shared collection has changed since it was published, and delete
- * withdraws its publication. That also refetches the collection selection
+ * whether a published collection has changed since it was published, and delete
+ * unpublishes it. That also refetches the collection selection
  * query, since
  * `['p', i, 'collections']` prefix-matches its `…, 'selection'` child;
  * selection is client state until Push, and the one-shot hydration guard in

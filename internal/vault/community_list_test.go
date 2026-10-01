@@ -10,7 +10,7 @@ import (
 )
 
 // Community lists every live publication of someone else's, newest first:
-// the caller's own and withdrawn ones are never listed. A catalog row
+// the caller's own and unpublished ones are never listed. A catalog row
 // carries its recipe and a collection row none, and every row names the
 // catalogs it holds.
 func TestListCommunity(t *testing.T) {
@@ -21,8 +21,8 @@ func TestListCommunity(t *testing.T) {
 	publishCollection(t, db, owner, CollectionForm{Title: "Movie Night", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{
 		newScoped("k1", "Ghost Stories", `{"with_genres":"27"}`), newScoped("k2", "Slashers", `{"with_genres":"53"}`),
 	}}}})
-	withdrawn := publishCatalog(t, db, owner, "Withdrawn", `{"sort_by":"revenue.desc"}`)
-	if _, err := db.WithdrawCatalog(ctx, owner, withdrawn.ID); err != nil {
+	unpublished := publishCatalog(t, db, owner, "Unpublished", `{"sort_by":"revenue.desc"}`)
+	if _, err := db.UnpublishCatalog(ctx, owner, unpublished.ID); err != nil {
 		t.Fatal(err)
 	}
 	publishCatalog(t, db, viewer, "Viewer's own", `{"sort_by":"vote_average.desc"}`)
@@ -83,7 +83,7 @@ func TestListCommunitySubscriptionFlags(t *testing.T) {
 	}
 }
 
-// A detail reads a live publication, or a withdrawn one the caller
+// A detail reads a live publication, or a unpublished one the caller
 // subscribes to; a publication by an id nobody published is not found.
 func TestGetPublication(t *testing.T) {
 	ctx := context.Background()
@@ -94,7 +94,7 @@ func TestGetPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Title != "Halloween" || detail.Withdrawn || detail.Catalog != nil || detail.Snapshot.Collection.Folders[0].Title != "F" || detail.Snapshot.Catalogs[0].Name != "Ghosts" {
+	if detail.Title != "Halloween" || detail.Unpublished || detail.Catalog != nil || detail.Snapshot.Collection.Folders[0].Title != "F" || detail.Snapshot.Catalogs[0].Name != "Ghosts" {
 		t.Errorf("detail = %+v", detail)
 	}
 	if _, err := db.GetPublication(ctx, viewer, uuid.New()); !errors.Is(err, ErrPublicationNotFound) {

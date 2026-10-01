@@ -36,7 +36,7 @@ type Tab = 'workspace' | 'community'
  * the left, every catalog and collection you own, and a pane on the right
  * holding your home screen or the editor for whichever rail row is selected)
  * and a Community tab (everyone else's public catalogs and collections,
- * browsed and taken). Below `lg` the Workspace
+ * browsed and added). Below `lg` the Workspace
  * tab's own two regions stack into one scrolling document rather than
  * becoming two screens — see `stacked.ts`; Community is already one column at
  * every width, so it needs no such treatment.

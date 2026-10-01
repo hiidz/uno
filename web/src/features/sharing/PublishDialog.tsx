@@ -8,20 +8,21 @@ import { CatalogList, type CatalogListItem } from './CatalogList'
 import { catalogItem } from './listing'
 import { FROM_COMMUNITY } from './sharingState'
 
-/** What a publish shares: one catalog, or a collection's folders with the
+/** What a publish publishes: one catalog, or a collection's folders with the
  *  catalogs it holds (`own`) and the library catalogs it uses (`library`). */
 export type PublishSubject =
   | { kind: 'catalog'; name: string; catalog: Catalog }
   | { kind: 'collection'; name: string; folderCount: number; own: Catalog[]; library: Catalog[] }
 
 /**
- * Asks before sharing a row, or publishing its update, and lists everything
- * the publication will hold, each catalog with its recipe line. A collection's
- * library catalogs sit under their own heading: they are shared as they are
- * now, which someone reading the collection's name alone might not expect. A
- * catalog added from Community carries the From Community sticker, so it is
- * clear it is someone else's catalog being shared as it stands.
- * Sharing makes no copy for anyone; people take one from Community.
+ * Asks before publishing a row, or publishing its update, and lists
+ * everything the publication will hold, each catalog with its recipe line. A
+ * collection's library catalogs sit under their own heading: they are
+ * published as they are now, which someone reading the collection's name
+ * alone might not expect. A catalog added from Community carries the From
+ * Community sticker, so it is clear it is someone else's catalog being
+ * published as it stands. Publishing makes no copy for anyone; people add it
+ * from Community.
  */
 export function PublishDialog({
   open,
@@ -35,7 +36,8 @@ export function PublishDialog({
 }: {
   open: boolean
   subject: PublishSubject | null
-  /** Publishing changes to something already shared, rather than sharing it. */
+  /** Publishing changes to something already published, rather than
+   *  publishing it. */
   update: boolean
   genres: GenreLookups
   pending: boolean
@@ -45,21 +47,21 @@ export function PublishDialog({
 }) {
   const titleID = useId()
   if (!subject) return null
-  const confirm = update ? 'Publish update' : 'Share'
+  const confirm = update ? 'Publish update' : 'Publish'
 
   return (
     <Modal open={open} onClose={onClose} labelledBy={titleID} width="540px">
       <ModalHeader>
         <h2 id={titleID} className="type-display m-0 text-[21px] leading-[28px]">
-          {update ? `Publish your changes to “${subject.name}”?` : `Share “${subject.name}”?`}
+          {update ? `Publish your changes to “${subject.name}”?` : `Publish “${subject.name}”?`}
         </h2>
       </ModalHeader>
       <ModalBody>
         <div className="flex flex-col gap-4 text-[14.5px] leading-relaxed">
           <p className="text-dim m-0">
             {update
-              ? 'People who took a copy are offered this version. Until then they keep the one they have.'
-              : 'Anyone on Uno can find it in Community and take a copy. Your later edits stay private until you publish an update.'}
+              ? 'People who added it are offered this version. Until then they keep the one they have.'
+              : 'Anyone on Uno can find it in Community and add it. Your later edits stay private until you publish an update.'}
           </p>
           {subject.kind === 'catalog' ? (
             <CatalogList items={[catalogItem(subject.catalog, genres, typeLabel(subject.catalog.type))]} />
@@ -72,7 +74,7 @@ export function PublishDialog({
               />
               {subject.library.length > 0 && (
                 <CatalogGroup
-                  title="From your library, shared as they are now"
+                  title="From your library, published as they are now"
                   catalogs={subject.library}
                   genres={genres}
                 />
@@ -91,7 +93,7 @@ export function PublishDialog({
           Cancel
         </button>
         <button type="button" onClick={onConfirm} disabled={pending} className="btn-primary">
-          {pending ? (update ? 'Publishing…' : 'Sharing…') : confirm}
+          {pending ? 'Publishing…' : confirm}
         </button>
       </ModalFooter>
     </Modal>

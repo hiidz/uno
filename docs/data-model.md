@@ -12,7 +12,9 @@ transaction (`sql.TxOptions{ReadOnly: true}`, `ValidateSelectionAccess`) still b
 **Schema version.** `PRAGMA user_version` is the schema version, `schemaVersion` in `db.go`.
 `InitDB` reads it in one transaction. At `0`, an empty file, it creates the schema and sets the
 version in that same transaction; at `schemaVersion` it does nothing; any other version fails the
-start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`.
+start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`. A version 5
+vault moves to 6 through `uno migrate` (`docs/configuration.md`), a one-off deleted once
+prod has run it.
 
 ```mermaid
 erDiagram
@@ -29,10 +31,11 @@ erDiagram
   SUBSCRIPTIONS |o--|| CATALOGS : "copy"
   SUBSCRIPTIONS |o--|| COLLECTIONS : "copy"
   ACCOUNTS ||..o{ PROFILES : "keys every profile of"
+  PROFILES ||--o| PUSH_RECORDS : "last pushed"
 
   PUBLICATIONS {
     uuid id PK "kept across republishes"
-    uuid owner_id FK
+    uuid publisher_id FK
     string kind "catalog | collection"
     uuid catalog_id FK "nullable — the source; NULL once deleted"
     uuid collection_id FK "nullable — the source; NULL once deleted"
@@ -42,17 +45,17 @@ erDiagram
     int catalog_count
     int folder_count
     int subscriber_count
-    string status "live | withdrawn"
+    string status "live | unpublished"
     string published_at
     string updated_at
   }
   SUBSCRIPTIONS {
     uuid id PK
-    uuid owner_id FK
+    uuid subscriber_id FK
     uuid publication_id FK
     uuid catalog_id FK "nullable — the copy, for a catalog"
     uuid collection_id FK "nullable — the copy, for a collection"
-    string taken_hash "the content hash the copy was last written from"
+    string subscribed_hash "the content hash the copy was last written from"
     string created_at
   }
 
@@ -94,7 +97,12 @@ erDiagram
     int home_sort_order "nullable — NULL means not on the TV"
     string created_at
     string updated_at
-    string pushed_hash "nullable — sha256 hex of the push JSON push last sent; NULL means never pushed"
+  }
+  PUSH_RECORDS {
+    uuid profile_id PK_FK
+    string nuvio_profile_uuid "the Nuvio profile it was pushed to"
+    json record "vault.PushRecord: what the last push sent"
+    string pushed_at
   }
   FOLDERS {
     uuid id PK
@@ -147,7 +155,8 @@ resolve profiles by `(sub, profileIndex)`, not by UUID.
 full-replace over slots 1..6, so a user can delete slot 2 and create a *different* profile in
 that slot. Uno's link is to a slot *number*, and storing Nuvio's own profile UUID alongside it is
 the only way to detect that a slot's occupant changed. `ResolveOrCreateProfile` **silently
-overwrites** the stored UUID on drift rather than prompting; nothing acts on the tripwire.
+overwrites** the stored UUID on drift rather than prompting. Each push record is stamped with it
+(`push_records`, below), and nothing acts on a mismatch yet.
 
 `profiles.token` has exactly one job: identifying a profile in the public addon URLs. It is not a
 write credential.
@@ -178,6 +187,35 @@ owner removes the key.
   `UNO_SECRET` can't open any row, and each owner enters the key again.
 - **Shared mode** neither reads nor writes the table; rows stay, unused.
 
+## `push_records`
+
+```sql
+CREATE TABLE push_records (
+    profile_id         TEXT PRIMARY KEY REFERENCES profiles(id),
+    nuvio_profile_uuid TEXT NOT NULL, -- the Nuvio profile it was pushed to: profiles.nuvio_profile_uuid then
+    record             TEXT NOT NULL, -- JSON, vault.PushRecord
+    pushed_at          TEXT NOT NULL  -- RFC3339 UTC
+);
+```
+
+One row per profile: what its last push put in Nuvio, as one JSON document
+(`vault.PushRecord`, `internal/vault/pushrecord.go`).
+
+- **What it holds.** `collections`: each pushed collection as the exact bytes push sent
+  (`PushJSON`), in Home order. `home`: the Home selection the push carried,
+  `{catalogs: [{catalog_id, show_in_home}], collections: [{collection_id, pin_to_top}]}`.
+  `catalogs`: every catalog Nuvio can reach, `{id, name, type, provider, params}` with params
+  inline: those with their own Home row in Home order, then those only the collections' folders
+  use, in collection, folder and ref order, once each, the order `GetPublishedCatalogs` lists.
+- **One builder.** `BuildPushRecord` builds it from a pending selection, reading only the
+  caller's own rows; `StoredPushRecord` builds it from the Home columns, for the v5→v6 backfill.
+- **Written only by push**, in `SavePush`'s transaction with the Home columns, after Nuvio
+  accepted the push, replaced whole and stamped with `profiles.nuvio_profile_uuid` as it is then.
+  Nothing cascades into it from `catalogs` or `collections`, and it never points into `recipes`,
+  so deleting a row never loses what Nuvio holds.
+- **Read by** every collection read, for `needs_push` (*Key rules*). Nothing reads its catalogs
+  or its stamp yet: the addon serves live rows.
+
 ## Key rules
 
 - **A catalog has a scope: listed or scoped to one collection.** `catalogs.collection_id` is
@@ -190,7 +228,7 @@ owner removes the key.
   on the home screen — the
   schema's own `CHECK (collection_id IS NULL OR home_sort_order IS NULL)` exists as a backstop and
   would surface as a 500, so the Go layer rejects it before that CHECK is ever hit. A scoped
-  catalog is never published on its own: it is shared with its collection. A catalog's scope is
+  catalog is never published on its own: it is published with its collection. A catalog's scope is
   not part of `UpdateUserCatalog`: a `collection_id` sent with one is not read, so a listed
   catalog stays listed. Promoting a scoped catalog back to listed is always allowed, and happens
   through its collection's save (a `catalog_edits` entry with `move_to_library`, below).
@@ -212,7 +250,7 @@ owner removes the key.
   catalog's `owner_id` must equal the collection's `owner_id`, and the catalog's `collection_id`
   must be `NULL` (listed) or equal to that same collection (scoped to it already). There is no
   "or public" branch anywhere in a write path — a published catalog can only enter another
-  profile's graph as a copy with fresh ids (a subscribe or a fork), never through a live
+  profile's graph as a copy with fresh ids (a subscribe or a duplicate), never through a live
   reference.
   `CreateUserCollection` has no collection id yet, so its folders may reference listed catalogs
   only. `CollectionWithFolders.Catalogs` carries every catalog a collection's folders reference,
@@ -229,7 +267,7 @@ owner removes the key.
   recipe in, so each catalog still carries `type` and `params` on the wire, and `recipe_hash`
   never reaches it. The import check offers the caller's listed catalogs with the same one. A
   copy shares its snapshot's recipe.
-- **Sharing is by publication.** A row is shared by publishing it as a frozen snapshot, and
+- **Sharing is by publication.** A row is put in Community by publishing it as a frozen snapshot, and
   another profile follows it through a subscribed copy; see *Publications and subscriptions*
   below.
 - **`catalogs.id` is permanent once created** — never rename or recycle it. It is baked into
@@ -262,12 +300,12 @@ owner removes the key.
     - a catalog that a collection on Home uses (`tree.Catalogs`, the first in Home order named):
       "Remove it from “X” and push first.";
     - any catalog while one of the profile's collections on Home has `needs_push`: "Push first:
-      Nuvio may still show it in a collection." The pushed hash can't say which catalogs that
-      collection's last pushed version used, so this one holds every catalog.
+      Nuvio may still show it in a collection." `needs_push` says that collection's pushed
+      version differs, not which catalogs it used, so this one holds every catalog.
 
     So a deleted listed catalog leaves only folders of collections off Home, by cascade, and no
-    collection on Home ever loses a source to a delete. Deleting a published row withdraws its publication, and every
-    copy another profile holds survives, marked withdrawn (*Publications and subscriptions*,
+    collection on Home ever loses a source to a delete. Deleting a published row unpublishes it, and every
+    copy another profile holds survives, marked unpublished (*Publications and subscriptions*,
     below). Deleting a subscribed copy removes its subscription.
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
     into `catalogs.home_sort_order`/`show_in_home` and `collections.home_sort_order`
@@ -295,24 +333,24 @@ owner removes the key.
 - **`collections.pin_to_top` (Show first) is written only by push**, from its selection's entry
   for each collection it puts on Home (`saveCollectionSelectionTx`), in the same statement as
   `home_sort_order`. A collection save never writes it (the form has no pin), a new collection
-  (a create, subscribe, fork, Duplicate or import) starts unpinned, and one push leaves off Home
+  (a create, subscribe, duplicate, Duplicate or import) starts unpinned, and one push leaves off Home
   keeps its last pin, which putting it back on Home starts from. Like Home or Discover for a
   catalog, it is a pending edit on the Home pane until push.
-- **`collections.pushed_hash` is the hash of what push last sent for the collection**:
-  `vault.PushHash`, sha256 hex, over the exact push JSON (`PushJSON`, *Push wire shape*) that
-  `pushCollections` built and sent *before* the local write, stamped by `SaveSelectionsForPush`
-  for every collection in the pushed selection, and only there. `NULL` means never pushed; a new
-  collection (a create, subscribe, fork, Duplicate or import) starts there.
-  - **`needs_push`** is on every collection read: `true` when the collection is on Home and the
-    hash of what push would send for it now, with its stored `pin_to_top`, differs from
-    `pushed_hash` (a `NULL` one included). Off Home it is always `false`. The Home pane lists it
-    as "changed since it was last pushed" (`web/src/features/home/changes.ts`).
+- **What a collection last sent to Nuvio is in its owner's push record** (`push_records`, below):
+  the exact push JSON (`PushJSON`, *Push wire shape*) that push built and sent *before* the local
+  write. A new collection (a create, subscribe, duplicate, Duplicate or import) is off Home, and no
+  record holds it.
+  - **`needs_push`** is on every collection read: `true` when the collection is on Home and what
+    push would send for it now, with its stored `pin_to_top`, differs from the bytes the record
+    holds for it, or the record holds none. Off Home it is always `false`. Only push writes the
+    Home columns, so a collection on Home was in the last push and the record holds it. The Home
+    pane lists it as "changed since it was last pushed" (`web/src/features/home/changes.ts`).
   - So Home flags exactly the edits that change what Nuvio holds — a folder's catalogs, genre or
     images, a title, a setting — and nothing else: a rename
     and back, a save that changes nothing, or a recipe-only edit (a source names its catalog by
     id and type; the addon serves the recipe live) leaves it unflagged.
-  - A Save landing between push's read and its local write leaves the row hashing to something
-    other than what push sent, so it still reads as needing a push.
+  - A Save landing between push's build and its local write leaves the row sending something
+    other than what the record holds, so it still reads as needing a push.
   - If the push JSON ever gains a field, every collection reads as needing a push once, which is
     right: Nuvio lacks the field.
 - **No cascade on `owner_id`** (`catalogs`/`collections`). Irrelevant until
@@ -326,7 +364,7 @@ owner removes the key.
   recipe on save: a later recipe edit can leave a stored genre outside the options (now required
   or excluded), and the addon path then serves that row unfiltered, the same as any unknown
   extra. The collection editor flags that case rather than clearing it. A publication's snapshot,
-  and so every subscribe, fork and Update, and a Duplicate carry it onto the copy
+  and so every subscribe, duplicate and Update, and a Duplicate carry it onto the copy
   (`extractBundle` keeps each ref's genre). On the wire each folder carries an ordered
   `refs: [{catalog_id, genre}]` (`vault.FolderRef`), not a list of catalog ids, because one
   catalog can be two refs. A genre picked in Nuvio's own editor doesn't survive a push, because
@@ -349,7 +387,7 @@ owner removes the key.
   `tile_shape` is stored as `TABBED_GRID` or `POSTER`, which is what every Nuvio client shows
   for one (see "Push wire shape" below). So an untouched editor save writes back exactly what is
   stored, and a published row reads as unchanged after one. A publish snapshots the values it
-  reads, and a subscribe, fork, Update or Duplicate writes the values it reads, without
+  reads, and a subscribe, duplicate, Update or Duplicate writes the values it reads, without
   normalizing them, so a subscribed copy snapshots exactly like its publication. Rows written before
   normalization can still hold `''` or padding; Preview and the editor read an empty value the
   way Nuvio does.
@@ -368,7 +406,7 @@ owner removes the key.
   publication's snapshot and every copy, and pushed. Uno's Preview renders none of them. The two
   flags default to `1` because Nuvio reads an absent flag as on. Every URL among them, plus
   `collections.backdrop_image_url`, must be an absolute `http`/`https` URL under 2048 characters
-  — `CollectionForm.Validate` enforces it on save, on a publish, and on a subscribe, fork, Update
+  — `CollectionForm.Validate` enforces it on save, on a publish, and on a subscribe, duplicate, Update
   or Duplicate against the form built from the snapshot or source. Uno never renders these, but
   Nuvio's clients do, and a subscribe carries them into a profile that didn't author them, so a
   `javascript:` or `data:` value must not reach the push.
@@ -444,10 +482,10 @@ asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes
   never takes one from a caller, so a hash never names content other than its own.
   - `TestRecipeHashIsPinned` holds it to a literal.
   - Changing it or the canonical form changes every stored `recipe_hash`, the params inside
-    every snapshot and the subscriptions' `taken_hash` with them, so it is a schema change.
+    every snapshot and the subscriptions' `subscribed_hash` with them, so it is a schema change.
 - **Stored with the write that uses it.** `ensureRecipe` inserts a recipe unless it is stored
   already, in the same transaction as the catalog write that points at it:
-  - `insertCatalog`, which a catalog save, a subscribe or fork and a collection save's new
+  - `insertCatalog`, which a catalog save, a subscribe or duplicate and a collection save's new
     entries all go through;
   - `UpdateUserCatalog`;
   - a collection save's catalog edit;
@@ -460,15 +498,15 @@ asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes
   deleted catalog, cascades included: a collection's delete, and the orphan cleanup of a
   collection save. `recipes_drop_unused_on_repoint` covers a catalog repointed at another
   recipe. The `catalogs_by_recipe` index keeps their check cheap.
-- **Copies share.** A subscribe, a fork, an Update and a Duplicate write the recipe they copy,
+- **Copies share.** A subscribe, a duplicate, an Update and a Duplicate write the recipe they copy,
   which is the same recipe row whenever it is still stored. `changesNothing` and the import
   check's matches compare `recipe_hash`.
 
 ## Publications and subscriptions
 
-**A row is shared by publishing it, and followed by subscribing to it.** Publishing freezes
-the row's content as a snapshot; the owner's later edits stay private until they publish
-again. Another profile subscribes to a publication and gets a copy of the snapshot as its own
+**A row is put in Community by publishing it, and followed by subscribing to it.** Publishing
+freezes the row's content as a snapshot; the publisher's later edits stay private until they
+publish again. Another profile subscribes to a publication and gets a copy of the snapshot as its own
 rows, which Update brings up to a newer snapshot. `internal/vault/publications.go`,
 `subscriptions.go`, `community.go` and `snapshot.go`.
 
@@ -486,12 +524,12 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     change.
 - **Publish** (`PublishCatalog`, `PublishCollection`) snapshots an owner's listed catalog or
   collection. It runs the form validators the snapshot's copies are written through and the TMDB
-  recipe check over every catalog it shares, which is the consent to share a private library
+  recipe check over every catalog it publishes, which is the consent to publish a private library
   catalog a collection references. It reads and checks through the pool, then reads the source
   again inside the write transaction and writes only if its snapshot is unchanged, so a source
   edited while TMDB was checking it is `ErrConflict` rather than published unchecked. A catalog
   inside a collection and a subscribed copy are refused (`ErrInvalidInput`): only its publisher
-  shares a publication. A copy that is forked or duplicated is the caller's own, and publishes
+  publishes a publication. A copy that is duplicated is the caller's own, and publishes
   like any other row. A collection that references a catalog its owner subscribes to
   publishes: its snapshot freezes that catalog as it stands, under the new publication's own
   keys, so a profile that subscribes to the collection gets a scoped copy with no subscription
@@ -499,22 +537,20 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   catalog, the collection reads as changed since publishing, and the owner publishes it again
   when they choose.
   - **Republishing** rewrites the same publication row: its id and `published_at` are kept, and
-    a withdrawn publication is live again.
+    an unpublished publication is live again.
   - **The owner's row** carries `publication {id, status, changed_since_publish}`. The flag is
     set when the row as it stands no longer snapshots to the stored content hash; it is a hint
     to the owner only. Only the owner's own reads carry sharing state (`selectCatalogs`,
     `selectCollections`), the catalogs of their collection trees included: the addon's
-    `GetPublishedCatalogs` and push's `GetCatalogsByIDs` and `GetCollectionsByIDs`, the trees'
-    catalogs too, read without the joins or the hash (`selectLeanCatalogs`,
-    `selectLeanCollections`), and carry `null`.
-- **Withdraw.** `WithdrawCatalog`/`WithdrawCollection` withdraw a live publication. So does
+    `GetPublishedCatalogs`, push's `BuildPushRecord`, `GetCatalogsByIDs` and
+    `GetCollectionsByIDs`, the trees' catalogs too, read without the joins or the hash
+    (`selectLeanCatalogs`, `selectLeanCollections`), and carry `null`.
+- **Unpublish.** `UnpublishCatalog`/`UnpublishCollection` unpublish a live publication. So does
   deleting its source (the source column is `ON DELETE SET NULL`, and the
-  `publications_withdraw_on_source_delete` trigger sets `status`). A withdrawn publication
-  leaves Community; its subscribers keep their copies, marked withdrawn, and can still read its
-  last snapshot, but Update answers not found. `schema.sql` also holds a
-  `publications_withdraw_on_scope` trigger, which withdraws the live publication of a catalog
-  whose `collection_id` is written non-null; no write scopes a listed catalog, and a scoped one
-  has no publication, so it changes nothing.
+  `publications_unpublish_on_source_delete` trigger sets `status`). An unpublished publication
+  leaves Community; its subscribers keep their copies, marked unpublished, and can still read its
+  last snapshot, but Update answers not found. Nothing else unpublishes: no write scopes a
+  listed catalog.
 - **No collapse.** Two publications of the same content, a recipe two profiles both publish or
   an identical collection, are both listed.
 - **Subscribe** (`Subscribe`) writes a live publication of someone else's as the caller's own
@@ -522,7 +558,7 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   it, each catalog and folder carrying its snapshot key in `sub_key`. The copy is unpublished,
   off Home and never pushed. Only the form validators run: the recipes were checked
   against TMDB at publish, so a subscribe makes no TMDB call. `subscriptions` is unique on
-  `(owner_id, publication_id)`, so a second subscribe is `ErrConflict`, and deleting the copy
+  `(subscriber_id, publication_id)`, so a second subscribe is `ErrConflict`, and deleting the copy
   deletes its subscription by cascade. `subscriber_count` is kept by the
   `subscriptions_count_*` triggers.
 - **Only Update writes a subscribed copy.** A catalog save, a collection save, and a catalog
@@ -532,9 +568,9 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   publish of a subscribed copy is `ErrInvalidInput` too: only its publisher changes or
   publishes it. Its home order, show-in-home and Show first change through push, like any
   row's, and it can be deleted, which removes its subscription by cascade.
-  - **The copy's row** carries `subscription {publication_id, update_available, withdrawn}`.
+  - **The copy's row** carries `subscription {publication_id, update_available, unpublished}`.
     `update_available` is true while the publication is live and the subscription's
-    `taken_hash` differs from its content hash.
+    `subscribed_hash` differs from its content hash.
 - **Update** (`UpdateSubscription`) brings a copy up to the current snapshot, in one
   transaction. A copy whose content already equals the snapshot is only marked in step, with no
   check, since nothing is written. Otherwise the snapshot is written through the validators a
@@ -552,14 +588,14 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
 
   A copy Update reaches is still as it was written, since nothing else writes one: there is
   nothing to conflict with.
-- **Fork** (`ForkPublication`) is a subscribe without the subscription: an editable copy with
+- **Duplicate** (`DuplicatePublication`) is a subscribe without the subscription: an editable copy with
   no `sub_key`s, and any number of them beside a subscription.
 - **Community** (`ListCommunity`) is every live publication not the caller's own, newest first,
   in one call; the SPA searches, filters and sorts it. A row is light: counts, dates,
   `subscribed` and `update_available` from a join with the caller's subscriptions, the names of
   the catalogs it holds (`catalog_names`, read from the snapshot, for search), and for a catalog
-  its recipe. It never carries an owner. `GetPublication` returns one publication with its
-  snapshot: a live one, or a withdrawn one the caller subscribes to.
+  its recipe. It never carries a publisher. `GetPublication` returns one publication with its
+  snapshot: a live one, or an unpublished one the caller subscribes to.
 
 ## Recipe params (TMDB)
 
@@ -643,8 +679,8 @@ describing what a TMDB-backed catalog may ask for.
   rejected with `ErrInvalidParams`, for the same `json.Unmarshal` reason. Validation never reads
   the network export that network search uses (`docs/architecture.md`), so saving a recipe does
   not depend on TMDB's file host.
-- **A publish checks what it shares; a copy re-checks the form rules.** A publish runs the TMDB
-  recipe check over every catalog its snapshot shares, via a validator passed in by `api` —
+- **A publish checks what it publishes; a copy re-checks the form rules.** A publish runs the TMDB
+  recipe check over every catalog its snapshot publishes, via a validator passed in by `api` —
   `internal/vault` is the leaf package and cannot reach `internal/provider` — and requires it:
   nil is a programming error, not "skip the check". One rejected recipe fails the whole publish.
   It first runs the form validators the snapshot's copies are written through, because being
@@ -655,7 +691,7 @@ describing what a TMDB-backed catalog may ask for.
   folder's ref count and ref genres, and every catalog the copy writes as a new row. A stored row
   that never passed one of those checks — an unrecognized `view_mode`, a title past `maxNameLen`,
   a blank catalog name, a `type` or `provider` Uno doesn't accept, params that aren't JSON — is
-  not publishable, and fails with `ErrInvalidInput` → 400. A subscribe, a fork and an Update run
+  not publishable, and fails with `ErrInvalidInput` → 400. A subscribe, a duplicate and an Update run
   the same form validators over what they write from the snapshot, and nothing else: the
   snapshot's recipes were checked against TMDB when it was published, so none of them makes a
   TMDB call. An Update that writes nothing checks nothing.
@@ -752,7 +788,7 @@ Version 1:
   `catalogs` are scoped to it; one that no ref uses is ignored on import.
 - **Never in the bundle:** row ids, `owner_id`, `pin_to_top`, `collection_id`, timestamps,
   `home_sort_order`, `show_in_home`, `sub_key`, a publication or subscription, `recipe_hash` and
-  `pushed_hash`. A publication's snapshot is built on the same form, with its
+  anything from a push record. A publication's snapshot is built on the same form, with its
   own format name and stable keys (*Publications and subscriptions*, above).
 - **Export writes every field.** Booleans are plain bools, and an empty list is `[]`. `params` is
   the stored recipe as a JSON object.
@@ -775,8 +811,7 @@ Version 1:
 
 - Every row id is minted by Uno; the file only ever supplies keys. Importing one file twice gives
   two independent sets.
-- Imported rows are unpublished and off Home, subscribed to nothing, and never pushed
-  (`pushed_hash` NULL). Titles are kept as they are, with no "(copy)" suffix.
+- Imported rows are unpublished and off Home, subscribed to nothing, and in no push record. Titles are kept as they are, with no "(copy)" suffix.
 - **Optional reuse.** `reuse` maps a bundle catalog key, top-level or a collection's own, to one
   of the importer's own *listed* catalogs; its refs then point at that row and no new row is
   written for it. The import check offers the listed catalogs whose recipe matches. A reuse
@@ -799,13 +834,13 @@ from Uno's own Builder API. Push therefore has dedicated types in `internal/vaul
 **never `json.Marshal` a `vault.CollectionWithFolders` into this payload.** `wire_test.go` beside
 it checks every key they write against the samples. A dangling catalog ref (an id the tree's
 catalogs lack) is skipped rather than failing the whole push. `pinToTop` comes from the push's own
-selection entry for the collection (`applySelection`), not from the stored row, which push then
-brings up to it.
+selection entry for the collection (`applySelection`, `internal/vault/pushrecord.go`), not from
+the stored row, which push then brings up to it.
 
-**Push hashes what it sends.** `PushJSON` is the payload's exact bytes, which push both sends and
-hashes (`PushHash`, stored as `collections.pushed_hash`), and which a collection read hashes again
-to decide `needs_push` (*Key rules*). The two can only agree if they marshal the same way, so
-there is one builder, in the vault.
+**Push keeps what it sends.** `PushJSON` is the payload's exact bytes, which push both sends and
+stores in the push record, and which a collection read builds again to decide `needs_push` (*Key
+rules*). The two can only agree if they marshal the same way, so there is one builder, in the
+vault.
 
 **Nuvio fills absent keys with its own defaults**, and they don't all match Uno's (from
 NuvioTV's `CollectionsDataStore` and `domain/model/Collection.kt`): `focusGlowEnabled`,

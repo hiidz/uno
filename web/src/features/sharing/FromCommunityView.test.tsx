@@ -18,7 +18,7 @@ const genres = {
   ]),
   tv: new Map<number, string>(),
 }
-const following: SubscriptionState = { publication_id: 'pub', update_available: false, withdrawn: false }
+const following: SubscriptionState = { publication_id: 'pub', update_available: false, unpublished: false }
 
 const noir = catalog({
   id: 'n1',
@@ -91,9 +91,9 @@ describe('CatalogFromCommunity', () => {
   })
 
   it('has nothing to update once its publisher unpublished it', () => {
-    renderCatalog({ catalog: { ...noir, subscription: { ...following, withdrawn: true } } })
+    renderCatalog({ catalog: { ...noir, subscription: { ...following, unpublished: true } } })
     expect(screen.queryByRole('button', { name: 'Update…' })).toBeNull()
-    expect(screen.getAllByText('No longer shared').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Unpublished').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Duplicate to edit' })).toHaveClass('btn-primary')
   })
 
@@ -186,7 +186,7 @@ describe('CollectionFromCommunity', () => {
   })
 
   it('has nothing to update once its publisher unpublished it', () => {
-    renderCollection({ collection: { ...nightCollection, subscription: { ...following, withdrawn: true } } })
+    renderCollection({ collection: { ...nightCollection, subscription: { ...following, unpublished: true } } })
     expect(screen.queryByRole('button', { name: 'Update…' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Duplicate to edit' })).toHaveClass('btn-primary')
   })

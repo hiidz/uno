@@ -155,16 +155,16 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 // sharingScan is a row's sharing columns as scanned (sharingColumns): its
 // own publication's id, status and content hash, and the publication its
 // subscription names, with whether an update is available and whether that
-// publication is withdrawn. A row without one scans NULLs for it.
+// publication is unpublished. A row without one scans NULLs for it.
 type sharingScan struct {
 	publicationID, status, contentHash sql.NullString
 	subscribedTo                       sql.NullString
-	updateAvailable, withdrawn         sql.NullBool
+	updateAvailable, unpublished       sql.NullBool
 }
 
 // dests are the destinations for s's columns, in sharingColumns' order.
 func (s *sharingScan) dests() []any {
-	return []any{&s.publicationID, &s.status, &s.contentHash, &s.subscribedTo, &s.updateAvailable, &s.withdrawn}
+	return []any{&s.publicationID, &s.status, &s.contentHash, &s.subscribedTo, &s.updateAvailable, &s.unpublished}
 }
 
 // states is the row's publication and subscription, each nil when the row
@@ -176,7 +176,7 @@ func (s sharingScan) states(p *rowParser) (*PublicationState, *SubscriptionState
 	}
 	var subscription *SubscriptionState
 	if id := p.nullableUUID(s.subscribedTo, "subscription's publication id"); id != nil {
-		subscription = &SubscriptionState{PublicationID: *id, UpdateAvailable: s.updateAvailable.Bool, Withdrawn: s.withdrawn.Bool}
+		subscription = &SubscriptionState{PublicationID: *id, UpdateAvailable: s.updateAvailable.Bool, Unpublished: s.unpublished.Bool}
 	}
 	return publication, subscription
 }
@@ -226,12 +226,11 @@ func scanCollection(rows *sql.Rows) (Collection, error) {
 	var idStr, ownerIDStr, createdAtStr, updatedAtStr string
 	var pinToTop, showAllTab, focusGlowEnabled int
 	var homeSortOrder sql.NullInt64
-	var pushedHash sql.NullString
 	var sharing sharingScan
 
 	if err := rows.Scan(append([]any{&idStr, &c.Title, &ownerIDStr,
 		&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
-		&homeSortOrder, &pushedHash, &createdAtStr, &updatedAtStr}, sharing.dests()...)...); err != nil {
+		&homeSortOrder, &createdAtStr, &updatedAtStr}, sharing.dests()...)...); err != nil {
 		return Collection{}, fmt.Errorf("scanning collection row: %w", err)
 	}
 
@@ -245,7 +244,6 @@ func scanCollection(rows *sql.Rows) (Collection, error) {
 	c.ShowAllTab = showAllTab != 0
 	c.FocusGlowEnabled = focusGlowEnabled != 0
 	c.HomeSortOrder = nullableInt(homeSortOrder)
-	c.pushedHash = pushedHash.String
 	return c, p.err
 }
 
