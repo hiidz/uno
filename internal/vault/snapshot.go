@@ -14,10 +14,8 @@ import (
 )
 
 // The snapshot format. Changing what a snapshot holds, or how it is encoded,
-// changes every content hash, so it needs a migration that re-serializes the
-// stored snapshots and remaps every subscription's taken_hash; otherwise
-// every subscriber sees an update that isn't one.
-// migrations/0003_publications.go holds a frozen copy of this format.
+// changes every content hash, and every subscriber would see an update that
+// isn't one, so it is a schema change (schemaVersion).
 const (
 	SnapshotFormat  = "uno-publication"
 	SnapshotVersion = 1

@@ -31,7 +31,7 @@ embedded frontend build.
 
 | Package | Owns |
 | --- | --- |
-| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Also the push payload (`pushpayload.go`: the wire types push sends, the addon id and manifest id they carry, and the hash push stores), since what push sends decides whether a collection needs a push. Imports only `jsonwire` and its own `vault/migrations` (the frozen schema migrations, standard library only) |
+| `internal/vault` | All persisted state. SQLite via `modernc.org/sqlite` (pure Go, `CGO_ENABLED=0`). Also the push payload (`pushpayload.go`: the wire types push sends, the addon id and manifest id they carry, and the hash push stores), since what push sends decides whether a collection needs a push. Imports only `jsonwire`. The schema is `schema.sql`, embedded |
 | `internal/addon` | Stremio-protocol manifest + catalog responses, `/u/{token}/...` |
 | `internal/api` | Bearer-token auth, CRUD orchestration, push, the route table |
 | `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |

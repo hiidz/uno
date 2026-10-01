@@ -89,9 +89,8 @@ func TestUnusedRecipesAreDeleted(t *testing.T) {
 }
 
 // RecipeHash is pinned to a literal: every stored recipe_hash, and every
-// taken_hash built over them, was computed by it, and so was
-// migrations/0002_recipes.go's frozen copy. A change here needs a migration
-// that rewrites them all.
+// taken_hash built over them, was computed by it. A change here is a schema
+// change (schemaVersion).
 func TestRecipeHashIsPinned(t *testing.T) {
 	const want = "e445db512121e490bde38e1f096775df84e1493ded6ebf5e6e1c57a91ad31730"
 	if got := RecipeHash("movie", "tmdb", `{"sort_by":"popularity.desc"}`); got != want {

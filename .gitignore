@@ -9,7 +9,7 @@ lcov.info
 *.db
 *.db-shm
 *.db-wal
-# The backup a migration writes beside the database, vault.db.pre-v<N>-<time>.bak
+# Database backups kept beside vault.db
 *.bak
 
 # Web

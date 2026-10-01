@@ -1,96 +1,18 @@
 # Data model
 
-SQLite. The migrations in `internal/vault/migrations/` build the schema, one frozen file per
-version. `internal/vault/testdata/schema_latest.sql` is the resulting schema as SQLite stores it,
-and a test holds it to a database migrated from empty. Row structs and wire DTOs are in
-`internal/vault/models.go`, all with explicit `snake_case` JSON tags. `internal/vault/db.go`
-opens the database in WAL mode with a 5s `busy_timeout` and foreign keys on, after migrating it.
+SQLite. `internal/vault/schema.sql` is the schema, embedded in the binary. Row structs and wire
+DTOs are in `internal/vault/models.go`, all with explicit `snake_case` JSON tags.
+`internal/vault/db.go` opens the database in WAL mode with a 5s `busy_timeout` and foreign keys
+on, and creates the schema in it when it is empty.
 Every write transaction begins `IMMEDIATE` (`_txlock=immediate`), taking the write lock up front
 and waiting out `busy_timeout` for it: a deferred one that reads before it writes, as most writes
 do, would fail at once with `SQLITE_BUSY` once another write committed. A read-only
 transaction (`sql.TxOptions{ReadOnly: true}`, `ValidateSelectionAccess`) still begins deferred.
 
-**Migrations.** `PRAGMA user_version` is the schema version. On every start, `InitDB` first backs
-the database up, then applies each pending migration in its own transaction on a connection with
-foreign keys off. Each transaction also sets `user_version` and commits only if
-`PRAGMA foreign_key_check` is clean. The runner, the backup and the `migrate --dry-run`
-rehearsal are described in `docs/configuration.md` → *Database lifecycle*.
-
-- **A migration is frozen once it ships.** A schema change is a new file, never an edit to an
-  old one. It imports only the standard library, never live Uno code, so what it does can't
-  drift when that code changes (`TestMigrationsImportOnlyTheStandardLibrary`). A check that needs
-  live code belongs in the dry run and the tests.
-- **A migration makes no network calls, and keeps every id and the push state.** Catalog,
-  collection and folder ids and profile tokens are what Nuvio holds (see *Push wire shape*), and
-  whether a collection needs a push carries over through migration 5's backfill. A migration that
-  changed them would force a re-push.
-- **Migration 1 (`0001_baseline.go`) is the schema from before versioning, with `IF NOT EXISTS`
-  throughout.** A database created before migrations (version 0, tables present) and an empty
-  one take the same path. It then compares every table's columns with the baseline by name, in
-  any order, since a column added by hand-run `ALTER TABLE` sits last. It fails naming every
-  difference, apart from the legacy `is_default` columns. Its test fixture,
-  `internal/vault/testdata/schema_v1.sql`, is a database shaped like prod's before migrations,
-  with seed rows written by live vault code.
-- **Migration 2 (`0002_recipes.go`) moves each catalog's recipe into `recipes`** (see *Recipes*
-  below).
-  - It puts every catalog's params in canonical form with frozen copies of the params structs,
-    and stores one `recipes` row per distinct recipe. `catalogs.recipe_hash` points at it.
-  - It drops `type`, `provider`, `params` and `fingerprint` from `catalogs`, and adds the index
-    and triggers that delete an unused recipe.
-  - Params that don't decode, and any provider but `tmdb`, fail it, naming the catalog. Its
-    notes count the recipes and rewritten params, and name every unknown params key it
-    dropped.
-  - It rewrites every linked copy's `taken_hash`, a link hash over fingerprints, as the same
-    link hash over recipe hashes. A `taken_hash` that matched the copy now matches the copy's new
-    hash, and one that matched the source matches the source's. One that matched neither is
-    kept. So every link compares in Update and Community as it did, and the notes count each
-    case.
-  - `recipe_hash` is nullable in the schema, since `ADD COLUMN` can't add a `NOT NULL` column
-    to a table with rows. The migration fails if any catalog is left without one, and every
-    write sets it.
-  - The dry run checks every catalog's params before migrating against its recipe after
-    (`docs/configuration.md`, *Database lifecycle*).
-- **Migration 3 (`0003_publications.go`) replaces the public flag and linked copies with
-  publications and subscriptions** (see *Publications and subscriptions* below).
-  - Every public row that was not a linked copy becomes a live publication of its content as it
-    stood: a snapshot taken with no validation and no network, exactly what Community showed.
-    Publication ids are derived from the source's id, so a database always migrates to the same
-    ids. A collection that uses a catalog the next step makes a subscription stays unpublished,
-    since only that catalog's publisher shares it (`requireOwnCatalogs` refuses the same
-    publish).
-  - Every linked copy whose source became a publication becomes a subscription to it. It is in
-    step, its `taken_hash` the publication's content hash, when the source still hashes to the
-    copy's `taken_hash` by migration 2's link hashes, or when the copy already equals its source
-    (a `taken_hash` computed under an older hash rule matches neither, and would show an update
-    that changes nothing); otherwise it reads as having an update. A
-    copied collection's scoped catalogs get their `sub_key` from the catalog they were taken
-    from, and its folders theirs by position, the pairing Update used.
-  - Every other link, to a private source, a source that is itself a copy, or a public source
-    left unpublished, is dropped. The copy keeps its content.
-  - `catalogs` and `collections` are rebuilt without `is_public`, `taken_from` and `taken_hash`,
-    copying every row column by column. The rebuild also drops the legacy `is_default` columns
-    where a database still has them, and makes `catalogs.recipe_hash` `NOT NULL`.
-  - Its notes count what it published, the public collections it left unpublished, each kind
-    of link's subscriptions in and out of step (and the in-step ones only because the copy
-    equals its source), and the links it dropped.
-    The dry run runs today's form validators and the offline recipe rules over every
-    publication it creates, and reports any they refuse without failing.
-- **Migration 4 (`0004_accounts.go`) adds `accounts`** (see `accounts` below), empty: the TMDB
-  key each Nuvio account saves on a server in per-account key mode.
-- **Migration 5 (`0005_pushed_hash.go`) replaces the version counters with
-  `collections.pushed_hash`** (see *Key rules*).
-  - A collection whose `version` equals its `pushed_version` is as push last sent it, so it gets
-    the hash of its push JSON as it stands, built by the migration's own frozen copy of the push
-    payload (`sentCollection`: the same keys, order, omitted empties and escaping). Every other
-    collection is left NULL, which reads as needing a push.
-  - It then drops `version` and `pushed_version`, and adds `folder_catalogs_by_catalog`, which the
-    addon's catalog route and a catalog delete look a catalog's folder refs up by.
-  - Its note counts the hashes it backfilled and the collections it left pending. The dry run
-    recomputes every backfilled hash with the vault's live payload and names any it disagrees on.
-  - One case reads wrong: a database whose catalog deletes never bumped `version` (every build
-    before migrations) can hold a collection whose `version` equals `pushed_version` while
-    Nuvio still has a source that delete removed. It backfills as pushed; the next push of that
-    profile, which sends every collection on Home, corrects Nuvio.
+**Schema version.** `PRAGMA user_version` is the schema version, `schemaVersion` in `db.go`.
+`InitDB` reads it in one transaction. At `0`, an empty file, it creates the schema and sets the
+version in that same transaction; at `schemaVersion` it does nothing; any other version fails the
+start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`.
 
 ```mermaid
 erDiagram
@@ -441,11 +363,6 @@ owner removes the key.
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
   the wire. Every insert sets both to the same instant; every update rewrites only `updated_at`.
-- **Legacy `is_default` columns.** `catalogs.is_default` and `collections.is_default`
-  (`INTEGER NOT NULL DEFAULT 0`) are not in the baseline schema and are named nowhere in Go.
-  A database created before they were removed carries them, and migration 1 accepts them with
-  that exact definition and notes them. Migration 3's rebuild of both tables drops them, so no
-  database past it has them.
 - **Nuvio appearance fields.** `collections.focus_glow_enabled` (the TV's focus glow on the
   collection's home-screen folder cards), `folders.focus_gif_url`/`focus_gif_enabled` (an
   animated GIF played over a folder tile while it's focused), and
@@ -528,10 +445,9 @@ asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes
 - **The hash.** `vault.RecipeHash` is sha256 hex over `uno-recipe/1`, the type, the provider and
   the canonical params, separated by newlines. The vault computes it from the bytes it stores and
   never takes one from a caller, so a hash never names content other than its own.
-  - `TestRecipeHashIsPinned` holds it to a literal, and migration 2 holds a frozen copy of it
-    and of the canonical form.
-  - Changing either changes every stored `recipe_hash` and the params inside every snapshot. So it needs a migration that rewrites them, and
-    the subscriptions' `taken_hash` with them.
+  - `TestRecipeHashIsPinned` holds it to a literal.
+  - Changing it or the canonical form changes every stored `recipe_hash`, the params inside
+    every snapshot and the subscriptions' `taken_hash` with them, so it is a schema change.
 - **Stored with the write that uses it.** `ensureRecipe` inserts a recipe unless it is stored
   already, in the same transaction as the catalog write that points at it:
   - `insertCatalog`, which a catalog save, a subscribe or fork and a collection save's new
@@ -568,10 +484,9 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   first referenced, once each.
   - **The content hash** is the sha256 of the snapshot's stored bytes. It is the publication's
     `content_hash`. `TestSnapshotIsPinned` holds the bytes
-    to literal hashes, and migration 3 holds a frozen copy of the format. Changing what a
-    snapshot holds or how it encodes changes every content hash, so it needs a migration that
-    re-serializes the stored snapshots and remaps every subscription's `taken_hash`; otherwise
-    every subscriber sees an update that changes nothing.
+    to literal hashes. Changing what a snapshot holds or how it encodes changes every content
+    hash, and every subscriber would see an update that changes nothing, so it is a schema
+    change.
 - **Publish** (`PublishCatalog`, `PublishCollection`) snapshots an owner's listed catalog or
   collection. It runs the form validators the snapshot's copies are written through and the TMDB
   recipe check over every catalog it shares, which is the consent to share a private library
@@ -804,15 +719,14 @@ describing what a TMDB-backed catalog may ask for.
       silently rejected everywhere. The `api` check is the one that actually parses `params`,
       so it must reject early rather than rely on the vault check alone;
     - its own params type and canonical form, reached by provider in `provider.decodeRecipe`,
-      which `CanonicalParams` and `SameRecipe` go through. `DecodeParams` maps a catalog type to
-      TMDB's params struct only;
+      which `CanonicalParams` goes through. `DecodeParams` maps a catalog type to TMDB's params
+      struct only;
     - its own way to fetch a page, preview a recipe and offer genre options. The addon's
       `CatalogHandler` and `buildManifest` and the preview routes call the TMDB client
       directly;
     - its own editor in the SPA, whose catalog editor and `TMDBParams` type are TMDB's.
   - `recipes.provider` is free text at the schema level (`TEXT`, no `CHECK`); the constraint is
-    app-level only. Migration 2 refuses any provider but `tmdb`, the only one there was when it
-    ran.
+    app-level only.
 
 ## Bundle format
 
@@ -892,8 +806,7 @@ brings up to it.
 **Push hashes what it sends.** `PushJSON` is the payload's exact bytes, which push both sends and
 hashes (`PushHash`, stored as `collections.pushed_hash`), and which a collection read hashes again
 to decide `needs_push` (*Key rules*). The two can only agree if they marshal the same way, so
-there is one builder, in the vault; migration 5 holds a frozen copy of it for its backfill, which
-the dry run checks against this one.
+there is one builder, in the vault.
 
 **Nuvio fills absent keys with its own defaults**, and they don't all match Uno's (from
 NuvioTV's `CollectionsDataStore` and `domain/model/Collection.kt`): `focusGlowEnabled`,

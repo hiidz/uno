@@ -9,6 +9,6 @@ go.sum  text eol=lf
 # get the same treatment — otherwise every docs diff carries a line-ending warning.
 *.md    text eol=lf
 
-# testdata/schema_latest.sql is compared with the schema SQLite stores, which is LF.
+# internal/vault/schema.sql is embedded, and SQLite stores its statements as written: LF.
 *.sql   text eol=lf
 

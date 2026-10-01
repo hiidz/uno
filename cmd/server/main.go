@@ -1,16 +1,13 @@
 // Command server wires up config, vault, TMDB, and Nuvio into an api.Server
-// and starts listening. Its migrate subcommand rehearses the database
-// migrations instead (runMigrate).
+// and starts listening.
 package main
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -33,18 +30,9 @@ import (
 const shutdownGracePeriod = 60 * time.Second
 
 func main() {
-	if err := command(os.Args[1:], os.Stdout); err != nil {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// command runs what args ask for: `migrate …` runs the migrate command, and
-// anything else starts the server.
-func command(args []string, stdout io.Writer) error {
-	if len(args) > 0 && args[0] == "migrate" {
-		return runMigrate(args[1:], stdout)
-	}
-	return run()
 }
 
 // run holds every startup step, so each one's cleanup can unwind through a

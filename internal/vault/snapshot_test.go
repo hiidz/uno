@@ -35,8 +35,7 @@ func fixedTree() CollectionWithFolders {
 // subscription's taken_hash was computed from them. Anything that moves them
 // — a field added to, renamed in or reordered in the snapshot or bundle
 // form, another stable key — makes every subscriber see an update that
-// changes nothing. A new value here needs a migration that re-serializes
-// the stored snapshots and remaps taken_hash first (docs/data-model.md).
+// changes nothing. A new value here is a schema change (schemaVersion).
 func TestSnapshotIsPinned(t *testing.T) {
 	publicationID := fixedID(9)
 	tree := fixedTree()

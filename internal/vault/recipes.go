@@ -12,9 +12,9 @@ import (
 	"fmt"
 )
 
-// recipeHashFormat opens every recipe hash's input. It and the canonical
-// params form are frozen in migrations/0002_recipes.go: changing either
-// changes every stored hash, and needs a migration that rewrites them.
+// recipeHashFormat opens every recipe hash's input. Changing it or the
+// canonical params form changes every stored hash, which makes it a schema
+// change (schemaVersion).
 const recipeHashFormat = "uno-recipe/1"
 
 // RecipeHash is a recipe's content address: sha256 hex over the format, the

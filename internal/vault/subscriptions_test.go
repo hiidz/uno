@@ -408,8 +408,8 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 	}
 }
 
-// A copy whose content already equals its snapshot, marked out of step as a
-// migrated one can be, is only marked in step by Update: no row is written.
+// A copy whose content already equals its snapshot, but is marked out of step,
+// is only marked in step by Update: no row is written.
 func TestUpdateSubscriptionRestampsAnIdenticalCopy(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)

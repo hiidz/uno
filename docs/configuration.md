@@ -156,73 +156,17 @@ service already running there rather than being the one bare-`systemd` outlier.
 
 ## Database lifecycle
 
-The schema is versioned. `PRAGMA user_version` records how far a database has been migrated, and
-the migrations live one file each in `internal/vault/migrations/`. On every start, before it
-opens the connection pool, `vault.InitDB` runs the runner in `internal/vault/migrate.go`:
+The schema is `internal/vault/schema.sql`, embedded in the binary. On every start `vault.InitDB`
+reads `PRAGMA user_version` in one `BEGIN IMMEDIATE` transaction:
 
-1. It opens a connection of its own with foreign keys off and reads `user_version`. A version
-   this build doesn't know (newer than its last migration, or negative) stops the start.
-2. With nothing pending it does nothing more. Otherwise it writes a backup beside the database
-   with `VACUUM INTO`, named `<db>.pre-v<N>-<UTC time>.bak`, where `N` is the version it is
-   about to migrate to (`/data/vault.db.pre-v1-20260928T101500.123Z.bak` on the volume). The
-   backup is taken even of an empty new file.
-   - `VACUUM INTO` writes the same bytes for the same content. So when a restart fails the same
-     way as the start before it, the new copy matches the newest earlier backup for `N`. It is
-     dropped, and a restart loop keeps one copy.
-   - Backups are otherwise never pruned.
-3. It runs each pending migration in its own `BEGIN IMMEDIATE` transaction.
-   - The transaction first re-reads `user_version` under the write lock. If another process has
-     migrated the database in the meantime, the start fails instead of applying the migration a
-     second time.
-   - The transaction also sets `user_version`, and commits only if `PRAGMA foreign_key_check`
-     finds nothing.
-   - A failing migration rolls back, and the ones before it stay applied. `InitDB` then returns
-     the error, and the server exits without serving.
+- at `0`, an empty or new file, it creates the schema and sets `user_version` to
+  `schemaVersion` (`internal/vault/db.go`) in that same transaction;
+- at `schemaVersion` it does nothing;
+- at any other version the start fails, naming both versions, and the server exits without
+  serving.
 
-The log names the backup and every migration applied, with its notes.
+A schema change edits `schema.sql` and bumps `schemaVersion`.
 
-**Local dev:** deleting `vault.db` is still fine; the next start migrates an empty file.
+**Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 
-**The rehearsal.** `migrate --dry-run --db <path>` is a subcommand of the same binary. Locally,
-run `go run ./cmd/server migrate --dry-run --db <path>`; in the image, pass `migrate --dry-run
---db …` to `docker run`, since the binary is the entrypoint. It needs no `.env`. It:
-
-- opens the file read-only and never writes to it. A read-only open of a WAL database creates
-  `-wal` and `-shm` files, and it removes any it created;
-- copies the database into a temporary directory with `VACUUM INTO`;
-- runs every pending migration on the copy;
-- checks recipes while the copy's catalogs still hold their own params (a database before
-  migration 2). It reads each catalog's params before migrating, and after it compares them with
-  the catalog's recipe through the live `provider.SameRecipe`: the same discover query, shuffle,
-  TMDB collection and genre options. It makes no TMDB call;
-- checks publications when the migrations created them (a database before migration 3). It runs
-  the form validators a subscribe runs over every publication's snapshot, then the live
-  `provider.ValidateRecipe` over each recipe: the rules that need no network. A publication they
-  refuse is reported, not an error, since a migration publishes each public row as it stood;
-- checks push hashes when it ran migration 5 (a database before it). Migration 5 stores, for
-  every collection as last pushed, the hash of its push JSON built by its own frozen copy of the
-  push payload; the check recomputes each with the vault's live payload. A collection they
-  disagree on would read as needing a push once deployed, so the check names it;
-- prints the versions, each migration's notes, the recipe check's count and every mismatch, the
-  publication check's count and every publication refused, the push hashes backfilled and left
-  pending with how many the live payload agrees on, and every table's row count before and
-  after. When a migration fails, it prints the report up to that point, then the error.
-
-**Upgrading the deployed `uno-data` volume.** The volume holds real data, so never
-`docker compose down -v` it.
-
-1. Stop the app with `docker compose stop uno`. Copy the volume with
-   `docker run --rm -v <vol>:/data -v "$PWD":/backup alpine cp -a /data/. /backup/uno-<date>/`.
-   `docker volume ls | grep uno-data` gives `<vol>`.
-2. Rehearse on the copy:
-   `docker run --rm -v "$PWD/uno-<date>":/data <new-image> migrate --dry-run --db /data/vault.db`.
-   The row counts should reconcile, every note should be one you expect, the recipe check
-   should find no mismatch, the live payload should agree on every push hash, and any
-   publication the publication check refuses should be one you accept sharing as it stands. If
-   you also run the new build locally against the copy, never push from it: that would add a
-   localhost addon to the real Nuvio profile.
-3. Deploy. The server writes its backup, migrates, and only then serves.
-4. Roll back by restoring the backup and redeploying the previous image. Always restore first.
-   A build with migrations refuses a database newer than it knows. The build from before
-   migrations existed never reads `user_version`, and would start on the migrated file without
-   complaint.
+**The deployed `uno-data` volume** holds real data, so never `docker compose down -v` it.
