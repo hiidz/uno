@@ -36,12 +36,15 @@ embedded frontend build.
 | `internal/api` | Bearer-token auth, CRUD orchestration, push, the route table |
 | `internal/provider` | TMDB queries, recipe param types, IMDB-id resolution |
 | `internal/nuvio` | JWT verification against JWKS; authenticated REST/RPC calls |
+| `internal/tmdbkey` | Per-account TMDB keys: sealing under `UNO_SECRET`, and each request's key source (*TMDB keys*) |
+| `internal/httpx` | Request and response plumbing `api` and `addon` share: JSON writes, path UUIDs |
+| `internal/jsonwire` | Conversions on the way out to JSON, such as `OrEmpty` (a nil slice as `[]`) |
 | `internal/config` | Env loading with defaults (`godotenv`) |
 | `internal/static` | SPA-fallback file serving + CSP/security headers + gzip middleware |
 | `web` | `//go:embed all:dist` — the built frontend |
 
 **`internal/addon` never depends on Nuvio anything**, and this is enforced at the package level: it
-imports only `vault` and `provider`. That keeps the one public-facing surface simple, stateless,
+imports only `vault`, `provider`, `tmdbkey` and `httpx`, never `nuvio` or `api`. That keeps the one public-facing surface simple, stateless,
 and independently scalable. The split exists because these are three surfaces with three different
 trust boundaries — authenticated SPA API, push orchestrator, public unauthenticated addon server.
 
@@ -82,7 +85,7 @@ the decision to abort startup lives in `cmd/server/main.go`, the only place that
 | Password handling | Uno never sees one. The frontend posts credentials straight to Nuvio's auth endpoint. |
 | Token persistence | None. Refresh tokens never touch Uno. Access tokens live only for the duration of a request. |
 | Background/automatic push | No. Push is an explicit user action, while a live token is in hand. |
-| What's public | Addon protocol only (`/u/{token}/...`). Everything else requires a bearer token, community reads included. |
+| What's public | The addon protocol (`/u/{token}/...`), plus `GET /api/health` and `GET /api/config`, which carry no user data. Everything else requires a bearer token, community reads included. |
 
 **Uno is stateless with respect to auth.** No session store, no session cookie, no cookie secret.
 Every authenticated request carries its own bearer token; identity is the verified `sub` claim,
@@ -101,7 +104,9 @@ memory; never log it or place it in a URL the user might share.
 
 **Public means the addon protocol. Authenticated means everything else** — community/public reads
 included, because login gates the entire builder experience, browsing included. The split is
-visible at the URL level (`/u/...` vs `/api/...`), not merely enforced by middleware.
+visible at the URL level (`/u/...` vs `/api/...`), not merely enforced by middleware. Two
+`/api` routes are the exceptions, and neither says anything about an account: `GET /api/health`
+answers `ok`, and `GET /api/config` says the server's TMDB key mode (*TMDB keys*).
 
 Route registration is in `internal/api/server.go`. Everything not matching a registered route
 falls through to the embedded SPA (`static.Gzip(static.Handler(distFS))`); Go's `ServeMux`
@@ -142,7 +147,7 @@ resolved profile ID. It is a **lookup-only** resolver — no create, no drift-ov
 hitting a CRUD route before ever calling `POST /api/profiles/select` gets a clean `404`, not a
 silent auto-provision.
 
-Seven route-semantics facts the client has to honour:
+Route-semantics facts the client has to honour:
 
 - **Selection is read via `GET .../selection` but never written there.** The whole pending
   selection travels in `POST .../push`'s body and is written by that handler, in one transaction,
@@ -384,9 +389,9 @@ same extra. Confirmed on Nuvio desktop and mobile with a hand-edited collection 
 came back filtered), and in Nuvio TV's source, whose folder view sends a source's genre unless it
 is blank or `"None"`. Otherwise the pick is made in Discover.
 
-These client behaviours were read from the clients' source at NuvioTV `62e1d8b`, NuvioMobile
-`cbc921d`, NuvioDesktop `b5c5481` and stremio-core `43427b9` (2026-09-18); installed builds can
-lag them.
+These client behaviours were read from the clients' source at NuvioTV `1a132cb`, NuvioMobile
+`90b58e2`, NuvioDesktop `c5826cb` and stremio-core `43427b9` (checked 2026-10-01); installed
+builds can lag them.
 
 `CatalogHandler` reads the extra props with `parseCatalogPath`, from the still-escaped path.
 `PathValue` is already percent-decoded, so a genre like `Sci-Fi %26 Fantasy`, which Nuvio sends

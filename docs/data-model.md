@@ -262,8 +262,9 @@ owner removes the key.
   `NULL` for a listed catalog (in the library, usable on home and in any of the owner's folders)
   or a collection id for one scoped to exactly that collection (hidden from the library, usable
   only in that collection's folders, deleted with it). `CreateUserCatalog`/`UpdateUserCatalog`
-  enforce that the target collection is owned by the same profile and not a subscribed copy
-  (`requireWritableCollection`), and that a scoped catalog is never on the home screen — the
+  enforce that the target collection is owned by the same profile (`requireOwnedCollection`; a
+  subscribed copy is detached by the write, see *Publications and subscriptions*), and that a
+  scoped catalog is never on the home screen — the
   schema's own `CHECK (collection_id IS NULL OR home_sort_order IS NULL)` exists as a backstop and
   would surface as a 500, so the Go layer rejects it before that CHECK is ever hit. A scoped
   catalog is never published on its own: it is shared with its collection. Demoting a listed

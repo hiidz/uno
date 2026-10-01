@@ -275,17 +275,15 @@ atomic** — every row in the library is yours, so opening one always edits it; 
 `Workspace.tsx`'s `confirmDuplicateCatalog` `POST`s a straight copy of the source's exact type and
 params the instant the confirm dialog is accepted (`catalogForm.ts`'s `duplicatePayload` — no form
 to fill in first, unlike a bare "New catalog"), then opens the finished copy in this same editor
-like any other real row — the same atomic-then-open shape `confirmDuplicateCollection` already
-used for collections. A duplicate is never shared, whatever its source, because sharing is a
-deliberate act rather than something inherited from what was duplicated. There is
-no longer any way to change a catalog's type: duplicate used to be that path (picking a different
-type before the row existed), traded away when duplicate became atomic — a type choice would have
-needed its own step ahead of the create firing, and the tradeoff was to drop the capability rather
-than add one. (Taking what someone else shares is a different action,
+like any other real row — the same atomic-then-open shape `confirmDuplicateCollection` uses for
+collections. A duplicate is never shared, whatever its source, because sharing is a
+deliberate act rather than something inherited from what was duplicated. Nothing changes a
+catalog's type, Duplicate included: it copies the source's type, and offering another would need
+a step of its own before the create fires. (Taking what someone else shares is a different action,
 `POST /api/p/{i}/community/{id}/subscribe`, whose UI is the Community tab, below.)
 
 **Delete's confirm copy states the real consequence** (`Workspace.tsx`). Deleting a shared
-catalog withdraws its publication (Decision 5), so a shared row's confirm adds "It stops being
+catalog withdraws its publication, so a shared row's confirm adds "It stops being
 shared, and copies people took stay theirs" (`STOPS_SHARING`, shown while `isShared`). Every
 confirm states the folder-ref cascade within this profile.
 
@@ -403,9 +401,10 @@ Other decisions worth keeping:
   button is one call per deliberate act. The block is one TMDB page — the same page the row
   itself is, not a sample of it — except for a shuffling recipe, which is labelled as such.
   Every tile links to its TMDB page, which is where "what *is* that one?" gets answered.
-- **Deleting a catalog also drops it from the pending home screen** — the row is gone for
-  everyone, so leaving a reference behind would only fail at Push. Deletion confirm copy says
-  "removes for everyone using it", not "are you sure".
+- **Deleting a catalog also drops it from the pending home screen** — a catalog added there since
+  the last push can still be deleted, and leaving its reference behind would only fail at Push.
+  The confirm says what goes with it, "Any references to this catalog from a collection will also
+  be removed", not "are you sure".
 - **Creating a catalog does not select it.** Auto-adding would silently increment the
   unpushed-changes count as a side effect of a save that already succeeded, blurring the two
   persistence models the page has to keep legible: authoring writes immediately, selection is
@@ -446,11 +445,11 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
 
 - **The baseline is snapshotted at hydration, not read live from the query cache.** A background
   refetch must not move the baseline under the user and silently change the diff.
-- **Selected rows render from the selection response, not by library lookup** — a selected row
-  can be deleted after selection, and the selection response still returns it until the next
-  push clears it from Nuvio. Rendering by library lookup would make those rows vanish from
-  the page while still being live in the user's Nuvio. Such rows are marked "not in library": they
-  work, but removing them is one-way.
+- **Selected rows render from the selection response, not by library lookup** — the two are
+  separate queries, and a row the selection returns is live in the user's Nuvio whatever the
+  library says. The server refuses to delete a row Nuvio holds, so a selected row missing from
+  the library is a transient case, handled defensively rather than expected. Such rows are marked
+  "not in library": they work, but removing them is one-way.
 - **List groups in the same three bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
   a separate derivation): pinned collections, then home-shown catalogs, then unpinned collections,
   numbered with one ordinal straight through all three — a row's number is its place in Nuvio. A
@@ -580,8 +579,8 @@ Decisions that shape the code:
   the folder holds. They are the folder page's spine: one row or one tab each.
 - **"Not in library" and "nothing resolves" are two different conditions here**, and conflating
   them is a real bug. `catalogById`/`collectionById` are assembled from the selection response
-  *as well as* the library, so a row deleted after selection still resolves through the selection
-  response even once it's gone from the library. Per DESIGN.md's Clean Preview Rule,
+  *as well as* the library, so a selected row the library lacks still resolves through the
+  selection response. Per DESIGN.md's Clean Preview Rule,
   `isDetached` marks nothing *inside* the preview
   panel — Nuvio shows a detached row plainly, with no note pinned onto it — but the
   Discover-only list beneath the panel still names it, in List's own wording, because that list is
@@ -756,11 +755,10 @@ button.
   beside "Add catalogs", starts a catalog **new inside this collection**: named first (the same
   two-step the library's own "New catalog" uses), then opened in the nested editor below to fill
   its filters.
-  **Copy and new-inside-this-collection are staged locally, not written until Save.** Both used
-  to `POST /api/catalogs` immediately on click, independent of the collection's own Save — which
-  meant discarding the edit instead of saving it left the row behind forever (nothing in the
-  discard path, or anywhere outside `UpdateUserCollection`'s own next Save, ever cleaned it up).
-  Now the click stages a synthetic `Catalog` client-side, keyed by a `draft:` id sentinel
+  **Copy and new-inside-this-collection are staged locally, not written until Save.** A catalog
+  written on click, independent of the collection's own Save, would outlive a discarded edit:
+  nothing in the discard path, or anywhere outside `UpdateUserCollection`'s own next Save, cleans
+  it up. So the click stages a synthetic `Catalog` client-side, keyed by a `draft:` id sentinel
   (`CollectionEditor.tsx`'s `draftCatalog`), in the same `localCatalogs` registry a real scoped
   catalog lives in — nothing downstream of that registry needs to tell a draft apart from a real
   row to render it. `collectionForm.ts`'s `toCollectionPayload` resolves every `draft:` id into an
@@ -785,8 +783,8 @@ button.
 - **A folder-catalog row's quiet Edit is scoped-catalog only**, DESIGN.md's own spec for the
   affordance. It opens the referenced catalog one level down: for a scoped catalog (real or a
   session's own draft) that's unambiguous, since nothing else can reference it. A *listed* catalog
-  has no inline Edit here at all — it's a live pointer, and editing it from inside a collection
-  used to silently reach every other folder and the library too, which read as a surprise rather
+  has no inline Edit here at all — it's a live pointer, so an edit made from inside a collection
+  would silently reach every other folder and the library too, which reads as a surprise rather
   than a feature. The row instead says how many places it's used (home screen plus every folder
   across every owned collection — the folders from `Workspace`'s `usedInFolders`, the home screen
   read by the row itself) and offers "Copy into this
@@ -873,7 +871,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   update… or Share again…, which open the publish dialog, and Stop sharing, which asks first.
   Sharing publishes the saved row, so Share… is disabled while the form has unsaved changes, with
   "Save first" beneath it (`sharingNote`).
-- **A collection that uses a catalog taken from Community can't be shared** (Decision 11), and the
+- **A collection that uses a catalog taken from Community can't be shared**, and the
   row says so before anything is clicked: `subscribedCatalogsIn` finds the library catalogs its
   folders use that carry a `subscription`, and `blockedReason` names them and says to detach them,
   or duplicate them and use the copies — duplicating the collection doesn't help, since its
@@ -998,15 +996,15 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **Selection queries are invalidated on success.** With `staleTime: 30_000`, a successful push
   otherwise leaves them holding pre-push data, so switching profile and returning inside that
   window re-hydrates the baseline from stale data and makes the pushed changes look undone.
-- **The owned-collections query is invalidated on success too** (found in a
-  dev-loop check). `needs_push` lives on the `Collection` row from *both* `queryKeys.ownedCollections` and
+- **The owned-collections query is invalidated on success too.** `needs_push` lives on the
+  `Collection` row from *both* `queryKeys.ownedCollections` and
   `queryKeys.collectionSelection`, and `HomeSelectionContext`'s `collectionById` map is built by
   writing the selection response first and the owned list second — so on an id present in both
   (the ordinary case: a collection that's both owned and currently selected), the owned list's
-  copy always wins. Invalidating only the selection query left `collectionById` holding the
-  owned list's pre-push `needs_push` forever, so the "changed since it was last pushed"
-  line (`computeHomeChanges`, Home pane section above) never cleared after a successful push —
-  it looked like every push silently failed to update anything.
+  copy always wins. Invalidating only the selection query would leave `collectionById` holding
+  the owned list's pre-push `needs_push`, so the "changed since it was last pushed" line
+  (`computeHomeChanges`, Home pane section above) would never clear after a successful push, and
+  every push would look as if it had failed to update anything.
 - **`ApiError` carries an optional `body`** (`web/src/api/http.ts`), best-effort JSON-parsed
   from the text it already reads on every non-2xx. Without it, push's structured failure arrives
   as an `ApiError` whose `message` is the raw JSON blob — unusable, and worse, renderable

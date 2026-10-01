@@ -71,8 +71,8 @@ admitted by its id when the bypass is on.
 `selectProfile` and `pushAddons` both build the absolute manifest URL pushed into Nuvio from
 `SiteBaseURL`. `config.Load` (`internal/config/config.go`) has no default for `SITE_BASE_URL`
 and includes it in the required-var check alongside `NUVIO_PUBLISHABLE_KEY` (and
-`TMDB_API_KEY` in shared mode), so a deploy that leaves it unset fails startup immediately rather than pushing an unreachable
-URL into the user's real Nuvio profile with no warning. `.env.example` ships
+`TMDB_API_KEY` in shared mode), so a deploy that leaves it unset fails startup immediately
+rather than pushing an unreachable URL into the user's real Nuvio profile with no warning. `.env.example` ships
 `SITE_BASE_URL=http://localhost:8123` as the correct local dev value — that's fine for local dev,
 since the value is explicit there, not defaulted.
 
@@ -218,8 +218,9 @@ run `go run ./cmd/server migrate --dry-run --db <path>`; in the image, pass `mig
    `docker run --rm -v "$PWD/uno-<date>":/data <new-image> migrate --dry-run --db /data/vault.db`.
    The row counts should reconcile, every note should be one you expect, the recipe check
    should find no mismatch, the live payload should agree on every push hash, and any
-   publication the publication check refuses should be one you accept sharing as it stands. If you also run the new build locally against the copy, never push
-   from it: that would add a localhost addon to the real Nuvio profile.
+   publication the publication check refuses should be one you accept sharing as it stands. If
+   you also run the new build locally against the copy, never push from it: that would add a
+   localhost addon to the real Nuvio profile.
 3. Deploy. The server writes its backup, migrates, and only then serves.
 4. Roll back by restoring the backup and redeploying the previous image. Always restore first.
    A build with migrations refuses a database newer than it knows. The build from before
