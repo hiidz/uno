@@ -9,7 +9,7 @@ import { FromCommunityRow } from './FromCommunityRow'
 import { PublishDialog, type PublishSubject } from './PublishDialog'
 import { SharingRow } from './SharingRow'
 import { SharingStickers } from './SharingStickers'
-import { blockedReason, errorText, ownSharing, publishGroups, rowStickers, subscribedCatalogsIn } from './sharingState'
+import { errorText, ownSharing, publishGroups, rowStickers } from './sharingState'
 import { useSharingMutations, type SharingTarget } from './useSharingMutations'
 
 /** A row the workspace shares or detaches: which one, and its name. */
@@ -95,22 +95,21 @@ export function useWorkspaceSharing({
     setAsking({ kind, row, withdrawn })
   }
 
-  function editorSharing(row: SharedRow, subject: PublishSubject, blocked: string | null, duplicate: Action): EditorSharing {
+  function editorSharing(row: SharedRow, subject: PublishSubject, duplicate: Action): EditorSharing {
     return {
-      sharingRow: sharingSetting(row, subject, blocked, duplicate),
+      sharingRow: sharingSetting(row, subject, duplicate),
       sharingBadges: <SharingStickers stickers={rowStickers(row)} />,
     }
   }
 
   /** A copy's From Community row, or an own row's Sharing row. */
-  function sharingSetting(row: SharedRow, subject: PublishSubject, blocked: string | null, duplicate: Action): ReactNode {
+  function sharingSetting(row: SharedRow, subject: PublishSubject, duplicate: Action): ReactNode {
     if (row.subscription) return copySetting(row, row.subscription, duplicate)
     const update = ownSharing(row.publication) === 'changed'
     return (
       <SharingRow
         publication={row.publication}
         dirty={dirty}
-        blocked={blocked}
         onShare={() => share({ kind: row.kind, id: row.id, name: row.name, subject, update })}
         onStop={() => ask('withdraw', row, false)}
       />
@@ -123,7 +122,7 @@ export function useWorkspaceSharing({
   function catalogSharing<C extends Catalog>(catalog: C | undefined, onDuplicate: RowAction<C>): EditorSharing | undefined {
     if (!catalog) return undefined
     const row = { ...catalog, kind: 'catalog' as const }
-    return editorSharing(row, { kind: 'catalog', name: catalog.name, catalog }, null, () => onDuplicate(catalog))
+    return editorSharing(row, { kind: 'catalog', name: catalog.name, catalog }, () => onDuplicate(catalog))
   }
 
   function collectionSharing<C extends Collection>(collection: C | undefined, onDuplicate: RowAction<C>): EditorSharing | undefined {
@@ -135,7 +134,7 @@ export function useWorkspaceSharing({
       folderCount: (collection.folders ?? []).length,
       ...publishGroups(collection),
     }
-    return editorSharing(row, subject, blockedReason(subscribedCatalogsIn(collection)), () => onDuplicate(collection))
+    return editorSharing(row, subject, () => onDuplicate(collection))
   }
 
   function copySetting(row: Named, subscription: SubscriptionState, duplicate: Action): ReactNode {

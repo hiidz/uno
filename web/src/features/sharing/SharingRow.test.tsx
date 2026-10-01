@@ -6,9 +6,9 @@ import { SharingRow } from './SharingRow'
 
 const live: PublicationState = { id: 'p', status: 'live', changed_since_publish: false }
 
-function renderRow(publication: PublicationState | null, { dirty = false, blocked = null as string | null } = {}) {
+function renderRow(publication: PublicationState | null, { dirty = false } = {}) {
   const handlers = { onShare: vi.fn(), onStop: vi.fn() }
-  render(<SharingRow publication={publication} dirty={dirty} blocked={blocked} {...handlers} />)
+  render(<SharingRow publication={publication} dirty={dirty} {...handlers} />)
   return handlers
 }
 
@@ -52,13 +52,6 @@ describe('SharingRow', () => {
 
   it('says nothing about saving while a row is shared as it is', () => {
     renderRow(live, { dirty: true })
-    expect(screen.queryByText('Save first: sharing shares what’s saved.')).toBeNull()
-  })
-
-  it('says why a row can’t be shared at all', () => {
-    renderRow(null, { dirty: true, blocked: 'Uses 1 catalog taken from Community.' })
-    expect(button('Share…')).toBeDisabled()
-    expect(screen.getByText('Uses 1 catalog taken from Community.')).toBeInTheDocument()
     expect(screen.queryByText('Save first: sharing shares what’s saved.')).toBeNull()
   })
 })

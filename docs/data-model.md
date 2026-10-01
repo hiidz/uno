@@ -183,20 +183,17 @@ owner removes the key.
 - **A catalog has a scope: listed or scoped to one collection.** `catalogs.collection_id` is
   `NULL` for a listed catalog (in the library, usable on home and in any of the owner's folders)
   or a collection id for one scoped to exactly that collection (hidden from the library, usable
-  only in that collection's folders, deleted with it). `CreateUserCatalog`/`UpdateUserCatalog`
-  enforce that the target collection is owned by the same profile (`requireOwnedCollection`; a
-  subscribed copy is detached by the write, see *Publications and subscriptions*), and that a
-  scoped catalog is never on the home screen — the
+  only in that collection's folders, deleted with it). A scoped catalog is made only by
+  `CreateUserCatalog` with `collection_id` set, which enforces that the target collection is owned
+  by the same profile (`requireOwnedCollection`; a subscribed copy is detached by the write, see
+  *Publications and subscriptions*), or inline in a collection's save. A scoped catalog is never
+  on the home screen — the
   schema's own `CHECK (collection_id IS NULL OR home_sort_order IS NULL)` exists as a backstop and
   would surface as a 500, so the Go layer rejects it before that CHECK is ever hit. A scoped
-  catalog is never published on its own: it is shared with its collection. Demoting a listed
-  catalog into a collection (`UpdateUserCatalog` with `collection_id` set)
-  additionally requires it to be off the home screen (`requireNotOnHome`, checking
-  `home_sort_order IS NULL` directly on the row) and every existing folder ref to it to already be
-  inside the target collection, and withdraws its publication if it has a live one (the
-  `publications_withdraw_on_scope` trigger); promoting a scoped catalog back to listed is always
-  allowed, and happens through its collection's save (a `catalog_edits` entry with
-  `move_to_library`, below).
+  catalog is never published on its own: it is shared with its collection. A catalog's scope is
+  not part of `UpdateUserCatalog`: a `collection_id` sent with one is not read, so a listed
+  catalog stays listed. Promoting a scoped catalog back to listed is always allowed, and happens
+  through its collection's save (a `catalog_edits` entry with `move_to_library`, below).
   `GetUserCatalogs` (the library) returns listed catalogs
   only — a scoped one is reached through its owning collection's own response instead.
 - **A scoped catalog is written only through its collection's save.** `UpdateUserCatalog` and
@@ -493,12 +490,14 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   catalog a collection references. It reads and checks through the pool, then reads the source
   again inside the write transaction and writes only if its snapshot is unchanged, so a source
   edited while TMDB was checking it is `ErrConflict` rather than published unchecked. A catalog
-  inside a collection and a subscribed copy are refused (`ErrInvalidInput`), and so is a
-  collection that references a catalog its owner subscribes to (`requireOwnCatalogs`): only
-  its publisher shares a publication. A copy that is detached, forked or duplicated is the
-  caller's own, and publishes like any other row. A duplicated collection keeps referencing the
-  same listed catalogs, so a collection using a subscribed one publishes once that catalog is
-  detached, or replaced in its folders by a duplicate of it; the refusal says so.
+  inside a collection and a subscribed copy are refused (`ErrInvalidInput`): only its publisher
+  shares a publication. A copy that is detached, forked or duplicated is the caller's own, and
+  publishes like any other row. A collection that references a catalog its owner subscribes to
+  publishes: its snapshot freezes that catalog as it stands, under the new publication's own
+  keys, so a profile that subscribes to the collection gets a scoped copy with no subscription
+  of its own and nothing linking it to the original publication. When the owner Updates that
+  catalog, the collection reads as changed since publishing, and the owner publishes it again
+  when they choose.
   - **Republishing** rewrites the same publication row: its id and `published_at` are kept, and
     a withdrawn publication is live again.
   - **The owner's row** carries `publication {id, status, changed_since_publish}`. The flag is
@@ -510,10 +509,12 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     `selectLeanCollections`), and carry `null`.
 - **Withdraw.** `WithdrawCatalog`/`WithdrawCollection` withdraw a live publication. So does
   deleting its source (the source column is `ON DELETE SET NULL`, and the
-  `publications_withdraw_on_source_delete` trigger sets `status`) and demoting a published
-  listed catalog into a collection (`publications_withdraw_on_scope`). A withdrawn publication
+  `publications_withdraw_on_source_delete` trigger sets `status`). A withdrawn publication
   leaves Community; its subscribers keep their copies, marked withdrawn, and can still read its
-  last snapshot, but Update answers not found.
+  last snapshot, but Update answers not found. `schema.sql` also holds a
+  `publications_withdraw_on_scope` trigger, which withdraws the live publication of a catalog
+  whose `collection_id` is written non-null; no write scopes a listed catalog, and a scoped one
+  has no publication, so it changes nothing.
 - **No collapse.** Two publications of the same content, a recipe two profiles both publish or
   an identical collection, are both listed.
 - **Subscribe** (`Subscribe`) writes a live publication of someone else's as the caller's own
@@ -525,7 +526,7 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   deletes its subscription by cascade. `subscriber_count` is kept by the
   `subscriptions_count_*` triggers.
 - **Writing a subscribed copy makes it the caller's own.** A catalog save, a collection save, and
-  a catalog created in or demoted into it each detach the copy in the same transaction, after
+  a catalog created in it each detach the copy in the same transaction, after
   their write (`detachTx`): the subscription goes, lowering `subscriber_count`, the `sub_key`s
   inside the copy are cleared, and every id stays. Update shares the collection update core but
   never detaches, so a copy it writes keeps its subscription and keys. A publish of a subscribed

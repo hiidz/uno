@@ -1,6 +1,4 @@
 import type { Catalog, Collection, Folder, PublicationState, SubscriptionState } from '@/api'
-import { andList } from '@/lib/list'
-import { pluralCount } from '@/lib/plural'
 
 /** Where an owner's own row stands with Community: never shared (or shared
  *  and then stopped), shared as it is, or shared with edits made since. */
@@ -56,11 +54,13 @@ export function rowStickers(row: {
   return []
 }
 
+/** The sticker a row added from Community carries wherever it is listed. */
+export const FROM_COMMUNITY: SharingSticker = { label: 'From Community', tone: 'from' }
+
 function subscriptionStickers(subscription: SubscriptionState): SharingSticker[] {
-  const from: SharingSticker = { label: 'From Community', tone: 'from' }
-  if (subscription.update_available) return [from, { label: 'Update', tone: 'update' }]
-  if (subscription.withdrawn) return [from, { label: 'No longer shared', tone: 'quiet' }]
-  return [from]
+  if (subscription.update_available) return [FROM_COMMUNITY, { label: 'Update', tone: 'update' }]
+  if (subscription.withdrawn) return [FROM_COMMUNITY, { label: 'No longer shared', tone: 'quiet' }]
+  return [FROM_COMMUNITY]
 }
 
 /** Every catalog a collection's folders use, once each, in folder order —
@@ -89,30 +89,10 @@ function folderCatalogIDs(folder: Pick<Folder, 'refs'>): string[] {
   return (folder.refs ?? []).map((ref) => ref.catalog_id)
 }
 
-/** The library catalogs a collection uses that its owner subscribes to: a
- *  collection holding any of them can't be shared until each is detached or
- *  swapped for a duplicate. */
-export function subscribedCatalogsIn(collection: Pick<Collection, 'id' | 'folders' | 'catalogs'>): Catalog[] {
-  return publishGroups(collection).library.filter((c) => c.subscription !== null)
-}
-
-/** Why a collection can't be shared: the catalogs it uses that were taken
- *  from Community, which only their owner can share. `null` when none. */
-export function blockedReason(taken: Catalog[]): string | null {
-  if (taken.length === 0) return null
-  const [them, copies] = taken.length === 1 ? ['it', 'copy'] : ['them', 'copies']
-  const names = andList(taken.map((c) => `“${c.name}”`))
-  return `Uses ${pluralCount(taken.length, 'catalog')} taken from Community: ${names}. To share this collection, detach ${them}, or duplicate ${them} and use the ${copies} instead. Duplicating the collection won’t help: its duplicate uses the same catalogs.`
-}
-
-/** The line under an own row's Sharing buttons, if any: why it can't be
- *  shared, or that a share waits for a save. A row shared as it is has
- *  nothing to share until it is saved, so it needs no line. */
-export function sharingNote(state: OwnSharing, dirty: boolean, blocked: string | null): string | null {
-  return blocked ?? saveFirst(state, dirty)
-}
-
-function saveFirst(state: OwnSharing, dirty: boolean): string | null {
+/** The line under an own row's Sharing buttons, if any: that a share waits
+ *  for a save. A row shared as it is has nothing to share until it is saved,
+ *  so it needs no line. */
+export function sharingNote(state: OwnSharing, dirty: boolean): string | null {
   return dirty && state !== 'live' ? 'Save first: sharing shares what’s saved.' : null
 }
 

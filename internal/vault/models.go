@@ -151,9 +151,9 @@ type CatalogForm struct {
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
 	Params   string `json:"params"`
-	// CollectionID scopes the catalog to one collection; nil (or absent on
-	// the wire) means listed. On update, setting it demotes a listed catalog
-	// into that collection — see CreateUserCatalog/UpdateUserCatalog.
+	// CollectionID scopes a new catalog to one collection; nil (or absent on
+	// the wire) means listed. Only CreateUserCatalog reads it: an update
+	// never changes a catalog's scope.
 	CollectionID *uuid.UUID `json:"collection_id"`
 }
 

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
-  blockedReason,
   errorText,
   fromWords,
   isShared,
@@ -10,7 +9,6 @@ import {
   rowStickers,
   sharingNote,
   stickerWords,
-  subscribedCatalogsIn,
 } from './sharingState'
 
 const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
@@ -73,42 +71,18 @@ describe('publishGroups', () => {
     expect(publishGroups(tree)).toEqual({ own: [scoped], library: [listed] })
   })
 
-  it('finds the library catalogs taken from Community', () => {
-    expect(subscribedCatalogsIn(tree)).toEqual([listed])
-    expect(subscribedCatalogsIn(collection())).toEqual([])
-  })
-
   it('reads a tree with nothing in it', () => {
     expect(publishGroups({ id: 'x', folders: null, catalogs: null })).toEqual({ own: [], library: [] })
     expect(publishGroups({ id: 'x', folders: [folder({ refs: null })], catalogs: [] })).toEqual({ own: [], library: [] })
   })
 })
 
-describe('blockedReason', () => {
-  it('is null when nothing blocks the share', () => {
-    expect(blockedReason([])).toBeNull()
-  })
-
-  it('names the taken catalogs and what to do about them', () => {
-    expect(blockedReason([catalog({ name: 'Giallo' })])).toBe(
-      'Uses 1 catalog taken from Community: “Giallo”. To share this collection, detach it, or duplicate it and use the copy instead. Duplicating the collection won’t help: its duplicate uses the same catalogs.',
-    )
-    expect(blockedReason([catalog({ name: 'A' }), catalog({ name: 'B' })])).toContain(
-      'Uses 2 catalogs taken from Community: “A” and “B”. To share this collection, detach them, or duplicate them and use the copies instead.',
-    )
-  })
-})
-
 describe('sharingNote', () => {
-  it('says why a row can’t be shared before anything else', () => {
-    expect(sharingNote('private', true, 'Blocked.')).toBe('Blocked.')
-  })
-
   it('asks for a save before sharing what is saved', () => {
-    expect(sharingNote('private', true, null)).toBe('Save first: sharing shares what’s saved.')
-    expect(sharingNote('changed', true, null)).toBe('Save first: sharing shares what’s saved.')
-    expect(sharingNote('live', true, null)).toBeNull()
-    expect(sharingNote('private', false, null)).toBeNull()
+    expect(sharingNote('private', true)).toBe('Save first: sharing shares what’s saved.')
+    expect(sharingNote('changed', true)).toBe('Save first: sharing shares what’s saved.')
+    expect(sharingNote('live', true)).toBeNull()
+    expect(sharingNote('private', false)).toBeNull()
   })
 })
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -89,108 +88,38 @@ func TestGetUserCatalogsExcludesScoped(t *testing.T) {
 	}
 }
 
-// Demoting a listed catalog into a collection is refused while it's on the
-// home screen.
-func TestUpdateUserCatalogDemoteRefusedWhileOnHome(t *testing.T) {
+// A collection_id sent with an update of a listed catalog changes nothing: the
+// catalog stays listed and published, and a subscribed copy the id names is
+// not detached.
+func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 
 	owner := newTestProfile(t, db, "owner")
-	collectionID := newTestCollection(t, db, owner, "My Collection")
+	taker := newTestProfile(t, db, "taker")
+	source := newTestCollection(t, db, owner, "Source")
+	copied := takeCollection(t, db, owner, taker, source)
+	if copied.Subscription == nil {
+		t.Fatal("the taken collection has no subscription")
+	}
 
-	catalog, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Listed"))
+	catalog := publishCatalog(t, db, taker, "Listed", `{"sort_by":"vote_average.desc"}`)
+
+	form := listedCatalogForm("Renamed")
+	form.Params = catalog.Params
+	form.CollectionID = &copied.ID
+	updated, err := db.UpdateUserCatalog(ctx, taker, catalog.ID, form)
 	if err != nil {
-		t.Fatalf("create listed catalog: %v", err)
+		t.Fatalf("update with a collection_id: %v", err)
 	}
-
-	if _, err := db.conn.ExecContext(ctx, `
-		UPDATE catalogs SET home_sort_order = 0, show_in_home = 1 WHERE id = ?
-	`, catalog.ID.String()); err != nil {
-		t.Fatalf("seeding home selection: %v", err)
+	if updated.Name != "Renamed" || updated.CollectionID != nil {
+		t.Fatalf("updated catalog = name %q, collection_id %v, want %q and listed", updated.Name, updated.CollectionID, "Renamed")
 	}
-
-	form := listedCatalogForm("Listed")
-	form.CollectionID = &collectionID
-	if _, err := db.UpdateUserCatalog(ctx, owner, catalog.ID, form); !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("demote while on home: got %v, want ErrInvalidInput", err)
+	if reloaded := reloadCatalog(t, db, catalog.ID); reloaded.Publication == nil || reloaded.Publication.Status != "live" {
+		t.Errorf("publication after the update = %+v, want live", reloaded.Publication)
 	}
-}
-
-// Demoting a catalog into a collection is refused if a folder outside that
-// collection still references it.
-func TestUpdateUserCatalogDemoteRefusedWhenReferencedOutsideCollection(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-
-	owner := newTestProfile(t, db, "owner")
-	targetCollection := newTestCollection(t, db, owner, "Target")
-	otherCollection := newTestCollection(t, db, owner, "Other")
-
-	catalog, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Listed"))
-	if err != nil {
-		t.Fatalf("create listed catalog: %v", err)
-	}
-
-	// Reference the catalog from a folder in otherCollection.
-	if _, err := db.UpdateUserCollection(ctx, owner, otherCollection, CollectionForm{
-		Title:   "Other",
-		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(catalog.ID)}},
-	}); err != nil {
-		t.Fatalf("adding folder ref in other collection: %v", err)
-	}
-
-	form := listedCatalogForm("Listed")
-	form.CollectionID = &targetCollection
-	if _, err := db.UpdateUserCatalog(ctx, owner, catalog.ID, form); !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("demote while referenced elsewhere: got %v, want ErrInvalidInput", err)
-	}
-}
-
-// Demoting succeeds when the catalog is off the home screen and every
-// existing folder ref to it is already inside the target collection;
-// promoting it back to listed, through the collection's save, always
-// succeeds.
-func TestUpdateUserCatalogDemoteThenPromote(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-
-	owner := newTestProfile(t, db, "owner")
-	collectionID := newTestCollection(t, db, owner, "My Collection")
-
-	catalog, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Listed"))
-	if err != nil {
-		t.Fatalf("create listed catalog: %v", err)
-	}
-
-	demoteForm := listedCatalogForm("Listed")
-	demoteForm.CollectionID = &collectionID
-	demoted, err := db.UpdateUserCatalog(ctx, owner, catalog.ID, demoteForm)
-	if err != nil {
-		t.Fatalf("demote: %v", err)
-	}
-	if demoted.CollectionID == nil || *demoted.CollectionID != collectionID {
-		t.Fatalf("demoted catalog's collection_id = %v, want %s", demoted.CollectionID, collectionID)
-	}
-	// CreatedAt round-trips through an RFC3339 TEXT column (second
-	// precision), so compare at that precision rather than the in-memory
-	// value's sub-second one.
-	if !demoted.CreatedAt.Equal(catalog.CreatedAt.Truncate(time.Second)) {
-		t.Fatalf("demote changed created_at: got %v, want %v", demoted.CreatedAt, catalog.CreatedAt)
-	}
-
-	if _, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title:        "My Collection",
-		Folders:      []FolderData{{Title: "Folder", Catalogs: CatalogRefs(catalog.ID)}},
-		CatalogEdits: []ScopedCatalogEdit{moveToLibraryEdit(demoted)},
-	}); err != nil {
-		t.Fatalf("promote: %v", err)
-	}
-	library, err := db.GetUserCatalogs(ctx, owner)
-	if err != nil {
-		t.Fatalf("GetUserCatalogs: %v", err)
-	}
-	if len(library) != 1 || library[0].ID != catalog.ID || library[0].CollectionID != nil {
-		t.Fatalf("library after promote = %+v, want the catalog listed again", library)
+	if after := mustOwnCollection(t, db, taker, copied.ID); after.Subscription == nil {
+		t.Error("the collection named in collection_id was detached")
 	}
 }
 

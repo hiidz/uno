@@ -4,8 +4,9 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import { typeLabel } from '@/features/library/recipe'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
-import { CatalogList } from './CatalogList'
+import { CatalogList, type CatalogListItem } from './CatalogList'
 import { catalogItem } from './listing'
+import { FROM_COMMUNITY } from './sharingState'
 
 /** What a publish shares: one catalog, or a collection's folders with the
  *  catalogs it holds (`own`) and the library catalogs it uses (`library`). */
@@ -17,7 +18,9 @@ export type PublishSubject =
  * Asks before sharing a row, or publishing its update, and lists everything
  * the publication will hold, each catalog with its recipe line. A collection's
  * library catalogs sit under their own heading: they are shared as they are
- * now, which someone reading the collection's name alone might not expect.
+ * now, which someone reading the collection's name alone might not expect. A
+ * catalog added from Community carries the From Community sticker, so it is
+ * clear it is someone else's catalog being shared as it stands.
  * Sharing makes no copy for anyone; people take one from Community.
  */
 export function PublishDialog({
@@ -99,7 +102,15 @@ function CatalogGroup({ title, catalogs, genres }: { title: string; catalogs: Ca
   return (
     <div>
       <h3 className="type-label m-0">{title}</h3>
-      <CatalogList items={catalogs.map((catalog) => catalogItem(catalog, genres))} />
+      <CatalogList items={catalogs.map((catalog) => groupItem(catalog, genres))} />
     </div>
   )
+}
+
+/** A catalog of a collection's group as a list row, marked From Community
+ *  when it was added from there. */
+function groupItem(catalog: Catalog, genres: GenreLookups): CatalogListItem {
+  const item = catalogItem(catalog, genres)
+  if (!catalog.subscription) return item
+  return { ...item, sticker: FROM_COMMUNITY.label, tone: FROM_COMMUNITY.tone }
 }

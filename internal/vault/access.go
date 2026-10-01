@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// queryRower is the common subset of *sql.DB and *sql.Tx the scope-checking
-// helpers below need, so callers can run them either inside a transaction
-// (UpdateUserCatalog) or straight against the pool (CreateUserCatalog).
+// queryRower is the common subset of *sql.DB and *sql.Tx the single-row
+// lookups below need, so callers can run them either inside a transaction or
+// straight against the pool (CreateUserCatalog).
 type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
@@ -28,48 +28,6 @@ func requireOwnedCollection(ctx context.Context, q queryRower, profileID, collec
 	}
 	if err != nil {
 		return fmt.Errorf("checking collection ownership: %w", err)
-	}
-	return nil
-}
-
-// requireNotOnHome returns ErrInvalidInput if catalogID is on profileID's
-// home-screen catalog selection (catalogs.home_sort_order IS NOT NULL) — a
-// precondition for scoping a catalog to a collection.
-func requireNotOnHome(ctx context.Context, q queryRower, profileID, catalogID uuid.UUID) error {
-	var homeSortOrder sql.NullInt64
-	err := q.QueryRowContext(ctx, `
-		SELECT home_sort_order FROM catalogs WHERE id = ? AND owner_id = ?
-	`, catalogID.String(), profileID.String()).Scan(&homeSortOrder)
-	if errors.Is(err, sql.ErrNoRows) {
-		// The caller already loaded this row to get here; a catalog that no
-		// longer exists can't be "on home" either.
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("checking home selection: %w", err)
-	}
-	if homeSortOrder.Valid {
-		return fmt.Errorf("%w: catalog %s is on the home screen and cannot be scoped to a collection", ErrInvalidInput, catalogID)
-	}
-	return nil
-}
-
-// requireFolderRefsWithinCollection returns ErrInvalidInput if any folder
-// referencing catalogID belongs to a collection other than collectionID —
-// a precondition for scoping a catalog to that collection.
-func requireFolderRefsWithinCollection(ctx context.Context, q queryRower, catalogID, collectionID uuid.UUID) error {
-	var exists int
-	err := q.QueryRowContext(ctx, `
-		SELECT 1 FROM folder_catalogs fc
-		JOIN folders f ON f.id = fc.folder_id
-		WHERE fc.catalog_id = ? AND f.collection_id != ?
-		LIMIT 1
-	`, catalogID.String(), collectionID.String()).Scan(&exists)
-	if err == nil {
-		return fmt.Errorf("%w: catalog %s is referenced by a folder outside the target collection", ErrInvalidInput, catalogID)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("checking folder references: %w", err)
 	}
 	return nil
 }

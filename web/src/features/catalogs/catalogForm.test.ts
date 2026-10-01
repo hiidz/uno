@@ -4,7 +4,9 @@ import {
   MAX_ENTITY_IDS,
   emptyForm,
   formFromCatalog,
+  isSameCatalog,
   paramsString,
+  toPayload,
   validateForm,
   type CatalogFormState,
 } from './catalogForm'
@@ -34,6 +36,20 @@ function filledForm(): CatalogFormState {
     },
   }
 }
+
+describe('scope', () => {
+  const scoped = formFromCatalog(catalog({ name: 'Scoped', collection_id: 'col1' }))
+
+  it('is not part of the payload', () => {
+    expect(scoped.collectionID).toBe('col1')
+    expect(toPayload(scoped)).not.toHaveProperty('collection_id')
+  })
+
+  it('still makes a staged Move to library an edit', () => {
+    expect(isSameCatalog(scoped, { ...scoped })).toBe(true)
+    expect(isSameCatalog(scoped, { ...scoped, collectionID: null })).toBe(false)
+  })
+})
 
 describe('source mode', () => {
   it('sends only the collection and shuffle in collection mode', () => {

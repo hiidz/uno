@@ -70,9 +70,8 @@ export function forkPublication(profileIndex: number, publicationID: string): Pr
  *
  * `params` is a JSON-encoded *string*, not a nested object.
  *
- * `collection_id` scopes the catalog to one collection; omitted or `null`
- * means listed. `PUT` writes it unconditionally, so an update must re-send a
- * scoped catalog's own value — see `catalogForm.ts`'s `toPayload`.
+ * `collection_id` scopes a new catalog to one collection; omitted or `null`
+ * means listed. Only a create reads it: an update leaves the scope as it is.
  */
 export interface CatalogPayload {
   type: CatalogType

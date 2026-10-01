@@ -432,10 +432,11 @@ Other decisions worth keeping:
   standing note above the folders ("Saving moves … into your library", a neutral `StagedNote`)
   with its own Undo. Undo puts the catalog back in `localCatalogs` with its `collection_id` and re-reads it
   through `withCatalogEdit`, so a move that was the only change leaves the form clean and a rename
-  made alongside it survives. This editor never offers the other direction (demote):
-  it's only ever opened on a scoped row from inside `CollectionEditor`, which is where "copy into
-  this collection" and "new inside this collection" already cover getting one scoped in the first
-  place. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
+  made alongside it survives. A catalog is scoped only inside `CollectionEditor`, where "copy into
+  this collection" and "new inside this collection" make one; no editor moves a listed catalog
+  into a collection. `collectionID` is form state only: `toPayload` leaves it out, since a
+  catalog's `PUT` never changes its scope, and `isSameCatalog` compares it so a staged Move to
+  library counts as an edit. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
   promote, so its nested editor leaves the button out and says to save the collection first.
 
 ## Home pane — List view
@@ -871,17 +872,16 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   update… or Share again…, which open the publish dialog, and Stop sharing, which asks first.
   Sharing publishes the saved row, so Share… is disabled while the form has unsaved changes, with
   "Save first" beneath it (`sharingNote`).
-- **A collection that uses a catalog taken from Community can't be shared**, and the
-  row says so before anything is clicked: `subscribedCatalogsIn` finds the library catalogs its
-  folders use that carry a `subscription`, and `blockedReason` names them and says to detach them,
-  or duplicate them and use the copies — duplicating the collection doesn't help, since its
-  duplicate uses the same catalogs. A subscribed copy itself has the From Community row in its
-  place (below).
+- **A collection that uses a catalog added from Community can be shared** like any other. A
+  subscribed copy itself can't be: it has the From Community row in place of the Sharing row
+  (below).
 - **The publish dialog** (`PublishDialog.tsx`) lists everything the publication will hold, each
   catalog by name over its recipe line: for a collection, its own catalogs under "N folders, N
   catalogs of its own", then the library catalogs it uses under "From your library, shared as they
   are now" (`publishGroups`) — sharing a collection shares those as they stand, which is the
-  point to consent to. The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
+  point to consent to. A catalog added from Community carries the From Community sticker
+  (`FROM_COMMUNITY`, the one `rowStickers` uses), so it reads as someone else's catalog being
+  shared as it stands. The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
   shows in the dialog.
 - **Stickers** (`rowStickers`, drawn by `SharingStickers`) on the library row and the editor's
   sign: Shared (pink fill) and Changed (dim outline) on an own row; From Community (pink outline)

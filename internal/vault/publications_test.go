@@ -3,7 +3,6 @@ package vault
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -231,32 +230,22 @@ func TestWithdrawCollection(t *testing.T) {
 // second is the error of a two-value call.
 func second[T any](_ T, err error) error { return err }
 
-// Deleting a published source withdraws its publication, and so does
-// demoting a published catalog into a collection. The subscriber's copy
-// survives, marked withdrawn.
-func TestDeletingOrDemotingASourceWithdraws(t *testing.T) {
+// Deleting a published source withdraws its publication. The subscriber's
+// copy survives, marked withdrawn.
+func TestDeletingASourceWithdraws(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 
 	deleted := publishCatalog(t, db, owner, "Deleted", `{"sort_by":"revenue.desc"}`)
-	demoted := publishCatalog(t, db, owner, "Demoted", `{"sort_by":"vote_average.desc"}`)
 	collection := publishCollection(t, db, owner, CollectionForm{Title: "Gone"})
 	copies := []CommunityCopy{
 		subscribe(t, db, subscriber, deleted.Publication.ID),
-		subscribe(t, db, subscriber, demoted.Publication.ID),
 		subscribe(t, db, subscriber, collection.Publication.ID),
 	}
 
 	if err := db.DeleteUserCatalog(ctx, owner, deleted.ID); err != nil {
 		t.Fatal(err)
-	}
-	form := listedCatalogForm("Demoted")
-	form.Params = `{"sort_by":"vote_average.desc"}`
-	target := newTestCollection(t, db, owner, "Target")
-	form.CollectionID = &target
-	if _, err := db.UpdateUserCatalog(ctx, owner, demoted.ID, form); err != nil {
-		t.Fatalf("demote: %v", err)
 	}
 	if err := db.DeleteUserCollection(ctx, owner, collection.ID); err != nil {
 		t.Fatal(err)
@@ -264,15 +253,11 @@ func TestDeletingOrDemotingASourceWithdraws(t *testing.T) {
 
 	for i, sub := range []*SubscriptionState{
 		reloadCatalog(t, db, copies[0].Catalog.ID).Subscription,
-		reloadCatalog(t, db, copies[1].Catalog.ID).Subscription,
-		mustOwnCollection(t, db, subscriber, copies[2].Collection.ID).Subscription,
+		mustOwnCollection(t, db, subscriber, copies[1].Collection.ID).Subscription,
 	} {
 		if sub == nil || !sub.Withdrawn {
 			t.Errorf("copy %d subscription = %+v, want withdrawn", i, sub)
 		}
-	}
-	if demotedNow := reloadCatalog(t, db, demoted.ID); demotedNow.Publication == nil || demotedNow.Publication.Status != "withdrawn" {
-		t.Errorf("demoted catalog's publication = %+v, want withdrawn", demotedNow.Publication)
 	}
 }
 
@@ -328,29 +313,44 @@ func TestCommunityListsEveryLivePublication(t *testing.T) {
 	}
 }
 
-// A collection that references a catalog its owner subscribes to can't be
-// published: that would share someone else's publication. Once the catalog
-// is detached it is the owner's own, and the collection publishes.
-func TestPublishRefusesACollectionWithASubscribedCatalog(t *testing.T) {
+// A collection that references a catalog its owner subscribes to publishes,
+// with that catalog frozen as it stands. A profile that subscribes to the
+// collection gets a scoped copy of it, which has no subscription of its own
+// and is not counted among the original publication's subscribers.
+func TestPublishAcceptsACollectionWithASubscribedCatalog(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
-	publisher, owner := newTestProfile(t, db, "publisher"), newTestProfile(t, db, "owner")
-	taken := subscribe(t, db, owner, publishCatalog(t, db, publisher, "Theirs", "{}").Publication.ID).Catalog
+	publisher, owner, taker := newTestProfile(t, db, "publisher"), newTestProfile(t, db, "owner"), newTestProfile(t, db, "taker")
+	theirs := publishCatalog(t, db, publisher, "Theirs", "{}")
+	added := subscribe(t, db, owner, theirs.Publication.ID).Catalog
 	collection, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Mine", Folders: []FolderData{
-		{Title: "F", Catalogs: CatalogRefs(taken.ID)},
+		{Title: "F", Catalogs: CatalogRefs(added.ID)},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.PublishCollection(ctx, owner, collection.ID, allowAnyCatalogParams)
-	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "Theirs") {
-		t.Fatalf("publish a collection with a subscribed catalog = %v, want ErrInvalidInput naming Theirs", err)
+	published, err := db.PublishCollection(ctx, owner, collection.ID, allowAnyCatalogParams)
+	if err != nil {
+		t.Fatalf("publish a collection with a subscribed catalog = %v, want nil", err)
 	}
-	if _, err := db.DetachCatalog(ctx, owner, taken.ID); err != nil {
+	if got := reloadCatalog(t, db, added.ID).Subscription; got == nil {
+		t.Error("publishing the collection detached the catalog it uses")
+	}
+
+	copied := subscribe(t, db, taker, published.Publication.ID).Collection
+	if len(copied.Catalogs) != 1 || copied.Catalogs[0].Name != "Theirs" {
+		t.Fatalf("the taker's copy holds %+v, want one catalog named Theirs", copied.Catalogs)
+	}
+	scoped := copied.Catalogs[0]
+	if scoped.CollectionID == nil || *scoped.CollectionID != copied.ID || scoped.Subscription != nil {
+		t.Errorf("the taker's catalog = collection %v, subscription %+v, want scoped to its collection and no subscription", scoped.CollectionID, scoped.Subscription)
+	}
+	detail, err := db.GetPublication(ctx, publisher, theirs.Publication.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCollection(ctx, owner, collection.ID, allowAnyCatalogParams); err != nil {
-		t.Errorf("publish after the detach = %v, want nil", err)
+	if detail.SubscriberCount != 1 {
+		t.Errorf("the original publication's subscribers = %d, want 1 (the owner's)", detail.SubscriberCount)
 	}
 }
 

@@ -255,13 +255,9 @@ func detachScope(ctx context.Context, tx *sql.Tx, collectionID *uuid.UUID) error
 // (checkCatalogRewrite). Writing a subscribed copy detaches it
 // (writeOwnCatalog).
 //
-// input.CollectionID set demotes the catalog into that collection: it must be
-// owned by profileID, the catalog must not be on the home screen, and every
-// existing folder ref to it must already be inside the target collection; a
-// subscribed collection is detached by the write. The way back to listed is
-// the collection's own save (ScopedCatalogEdit.MoveToLibrary). Demoting a
-// published catalog withdraws its publication (the
-// publications_withdraw_on_scope trigger).
+// The catalog's scope is not part of an update: input.CollectionID is not
+// read, and a listed catalog stays listed. A scoped catalog is moved to the
+// library by its collection's save (ScopedCatalogEdit.MoveToLibrary).
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
@@ -285,27 +281,20 @@ func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.
 	if err := checkCatalogRewrite(stored, input); err != nil {
 		return err
 	}
-	if err := checkCatalogDemotion(ctx, tx, profileID, catalogID, input); err != nil {
-		return err
-	}
 	return writeOwnCatalog(ctx, tx, profileID, catalogID, input)
 }
 
-// writeOwnCatalog writes input over catalogID, then detaches it and the
-// collection input moves it into, if any: a content write makes a
-// subscribed copy the profile's own.
+// writeOwnCatalog writes input over catalogID, then detaches it: a content
+// write makes a subscribed copy the profile's own.
 func writeOwnCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
 	if err := writeCatalog(ctx, tx, profileID, catalogID, input); err != nil {
 		return err
 	}
-	if err := detachTx(ctx, tx, kindCatalog, catalogID); err != nil {
-		return err
-	}
-	return detachScope(ctx, tx, input.CollectionID)
+	return detachTx(ctx, tx, kindCatalog, catalogID)
 }
 
 // writeCatalog stores input's recipe, unless it is stored already, and
-// writes input over catalogID; see UpdateUserCatalog.
+// writes input's name and recipe over catalogID; see UpdateUserCatalog.
 func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	hash, err := ensureRecipe(ctx, tx, input.Type, input.Provider, input.Params, nowStr)
@@ -313,9 +302,9 @@ func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUI
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE catalogs SET name = ?, recipe_hash = ?, collection_id = ?, updated_at = ?
+		UPDATE catalogs SET name = ?, recipe_hash = ?, updated_at = ?
 		WHERE id = ? AND owner_id = ?
-	`, input.Name, hash, nullableUUIDString(input.CollectionID), nowStr, catalogID.String(), profileID.String()); err != nil {
+	`, input.Name, hash, nowStr, catalogID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating catalog: %w", err)
 	}
 	return nil
@@ -344,30 +333,12 @@ func loadCatalogForUpdate(ctx context.Context, tx *sql.Tx, profileID, catalogID 
 	return s, nil
 }
 
-// checkCatalogDemotion refuses an UpdateUserCatalog that moves the catalog
-// into a collection (input.CollectionID set) unless the collection is
-// profileID's, the catalog is off the home screen, and no folder outside
-// that collection references it.
-func checkCatalogDemotion(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
-	if input.CollectionID == nil {
-		return nil
-	}
-	if err := requireOwnedCollection(ctx, tx, profileID, *input.CollectionID); err != nil {
-		return err
-	}
-	if err := requireNotOnHome(ctx, tx, profileID, catalogID); err != nil {
-		return err
-	}
-	return requireFolderRefsWithinCollection(ctx, tx, catalogID, *input.CollectionID)
-}
-
 // checkCatalogRewrite refuses an UpdateUserCatalog the stored row can't take:
 //
 //   - A catalog inside a collection is written only through that
 //     collection's save (CollectionForm.CatalogEdits), so an edit made in the
 //     collection editor lands, or is discarded, with the rest of the
-//     collection. Moving a listed catalog into a collection is still this
-//     method's job: the row being written is listed until the write lands.
+//     collection.
 //   - A catalog's type is part of the pushed collections blob (each folder
 //     source names its catalog's type), so changing it here would alter what
 //     Nuvio should have with no save of any collection. The UI locks the

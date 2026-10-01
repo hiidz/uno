@@ -221,14 +221,27 @@ describe('useWorkspaceSharing', () => {
     expect(onReopen).not.toHaveBeenCalled()
   })
 
-  it('refuses to share a collection using a catalog taken from Community', () => {
-    const taken = catalog({ id: 't1', name: 'Giallo', subscription })
-    renderHarness(
-      { collection: collection({ folders: [folder({ refs: [{ catalog_id: 't1', genre: '' }] })], catalogs: [taken] }) },
-      {},
+  it('shares a collection using a catalog added from Community, marking that catalog', async () => {
+    const added = catalog({ id: 't1', name: 'Giallo', subscription })
+    const { onToast, calls } = renderHarness(
+      {
+        collection: collection({
+          id: 'col2',
+          title: 'Night',
+          folders: [folder({ refs: [{ catalog_id: 't1', genre: '' }] })],
+          catalogs: [added],
+        }),
+      },
+      { 'POST /api/p/1/collections/col2/publish': collection({ id: 'col2' }) },
     )
-    expect(screen.getByRole('button', { name: 'Share…' })).toBeDisabled()
-    expect(screen.getByText(/Uses 1 catalog taken from Community: “Giallo”/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Share…' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Share…' }))
+    expect(within(dialog()).getByText('From your library, shared as they are now')).toBeInTheDocument()
+    expect(within(dialog()).getByText('Giallo')).toBeInTheDocument()
+    expect(within(dialog()).getByText('From Community')).toBeInTheDocument()
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Share' }))
+    await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Shared “Night”', tone: 'success' }))
+    expect(calls).toContain('POST /api/p/1/collections/col2/publish')
   })
 
   it('lists what a collection shares in the publish dialog', () => {

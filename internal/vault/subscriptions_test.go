@@ -214,18 +214,13 @@ func TestSavingASubscribedCatalogDetachesIt(t *testing.T) {
 }
 
 // Every content write to a subscribed collection detaches it in the same
-// write: a save, a save moving its catalog to the library, a catalog created
-// in it, and a catalog demoted into it. Each keeps the copy's folder and
-// catalog ids and clears their keys, the moved catalog's included. A delete
-// of a copy is allowed.
+// write: a save, a save moving its catalog to the library, and a catalog
+// created in it. Each keeps the copy's folder and catalog ids and clears their
+// keys, the moved catalog's included. A delete of a copy is allowed.
 func TestWritingASubscribedCollectionDetachesIt(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
-	own, err := db.CreateUserCatalog(ctx, subscriber, listedCatalogForm("Own"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	writes := map[string]func(copied CollectionWithFolders) error{
 		"a save": func(copied CollectionWithFolders) error {
 			form := saveFormOf(copied)
@@ -242,11 +237,6 @@ func TestWritingASubscribedCollectionDetachesIt(t *testing.T) {
 			into := listedCatalogForm("Into the copy")
 			into.CollectionID = &copied.ID
 			return second(db.CreateUserCatalog(ctx, subscriber, into))
-		},
-		"a catalog demoted into it": func(copied CollectionWithFolders) error {
-			into := listedCatalogForm("Own")
-			into.CollectionID = &copied.ID
-			return second(db.UpdateUserCatalog(ctx, subscriber, own.ID, into))
 		},
 	}
 	for name, write := range writes {

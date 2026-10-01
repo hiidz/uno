@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -152,8 +151,7 @@ func (db *DB) PublishCollection(ctx context.Context, profileID, collectionID uui
 }
 
 // publishableCollection reads profileID's collection collectionID through
-// q, refusing a subscribed copy and a collection that references a catalog
-// profileID subscribes to (requireOwnCatalogs).
+// q, refusing a subscribed copy.
 func publishableCollection(ctx context.Context, q querier, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {
 	tree, err := ownCollection(ctx, q, profileID, collectionID)
 	if err != nil {
@@ -162,27 +160,7 @@ func publishableCollection(ctx context.Context, q querier, profileID, collection
 	if tree.Subscription != nil {
 		return CollectionWithFolders{}, errSubscribedCopy("collection")
 	}
-	return tree, requireOwnCatalogs(ctx, q, tree)
-}
-
-// requireOwnCatalogs refuses, as ErrInvalidInput naming them, the catalogs
-// tree's folders reference that are subscribed copies: publishing tree
-// would put someone else's publication in its snapshot. Detaching one makes
-// it the caller's own to share; so does using a duplicate of it in its place.
-func requireOwnCatalogs(ctx context.Context, q querier, tree CollectionWithFolders) error {
-	ids := make([]uuid.UUID, len(tree.Catalogs))
-	for i, c := range tree.Catalogs {
-		ids[i] = c.ID
-	}
-	names, err := queryStrings(ctx, q, "subscribed catalog", `
-		SELECT c.name FROM catalogs c JOIN subscriptions s ON s.catalog_id = c.id
-		WHERE c.id IN (SELECT value FROM json_each(?)) ORDER BY c.name, c.id
-	`, idsJSON(ids))
-	if err != nil || len(names) == 0 {
-		return err
-	}
-	return fmt.Errorf("%w: this collection includes catalogs you subscribe to, which only their publisher can share: %s; detach them, or duplicate them and use the copies",
-		ErrInvalidInput, strings.Join(names, ", "))
+	return tree, nil
 }
 
 // publish runs one publish: load the source as its publication through the

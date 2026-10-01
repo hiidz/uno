@@ -182,15 +182,16 @@ Route-semantics facts the client has to honour:
     (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish or
     republish it. They run every recipe the snapshot shares through `validateCatalogParams`, so
     a recipe TMDB refuses is a 400 and TMDB being unreachable a 502. A catalog inside a
-    collection, a subscribed copy, and a collection that references a catalog the caller
-    subscribes to are 400s, and a source edited while it was being checked a 409. Two
-    publications of the same content are both listed in Community.
+    collection and a subscribed copy are 400s, and a source edited while it was being checked a
+    409. A collection that references a catalog the caller subscribes to publishes, with that
+    catalog frozen as it stands. Two publications of the same content are both listed in
+    Community.
   - `.../withdraw` (`WithdrawCatalog`/`WithdrawCollection`) withdraws its live publication, if
     any.
   - `.../detach` (`DetachCatalog`/`DetachCollection`) drops a subscribed copy's subscription and
     keeps the row; a row that isn't a subscribed copy is a 400.
   - A content write to a subscribed copy — `PUT` of the catalog or the collection, a catalog
-    created in or demoted into it — detaches the copy in the same transaction: its subscription
+    created in it — detaches the copy in the same transaction: its subscription
     goes and every id stays. `POST .../community/{id}/update` never detaches. Placement is not
     content: Home order, Home or Discover and Show first (`pin_to_top`) all travel in push's
     selection (*Push* below), for a copy as for any row.
@@ -209,8 +210,8 @@ Route-semantics facts the client has to honour:
   (`vault.ScopedCatalogEdit`), whose recipes `validateInlineCatalogs` checks alongside the
   folders' inline `new` specs, so a bad recipe is a `400` (or a `502` when TMDB can't judge it)
   on the collection save. It goes away by dropping its last folder ref and saving the collection.
-  `PUT` still accepts a *listed* catalog with `collection_id` set, which moves it into that
-  collection.
+  `PUT` of a *listed* catalog leaves its scope alone: a `collection_id` in the body is accepted
+  and not read, so the catalog stays listed.
 - **Deletes refuse what Nuvio may still hold** (`internal/vault/delete_guard.go`). Each check runs
   inside the delete's own transaction and reads Home as the server holds it, which is what the
   last push sent, never the SPA's pending edits. A refusal is `vault.ErrConflict`, answered `409`
