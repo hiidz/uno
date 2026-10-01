@@ -3,6 +3,7 @@ import type { CommunityItem } from '@/api'
 import { InfoTip } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
+import { STICKER_CLASS, UPDATE_AVAILABLE } from '@/features/sharing/sharingState'
 import type { CommunityAction } from './useCommunityMutations'
 
 const PENDING_LABEL: Record<CommunityAction, string> = {
@@ -77,7 +78,7 @@ function MainLabel({
 }
 
 /**
- * One Community row: its name with its kind, and an Update sticker while an
+ * One Community row: its name with its kind, and an Update available sticker while an
  * update waits for this profile's copy; what it is in plain words; how many
  * have added it and when it last changed. The name, summary and meta are one
  * button that opens the publication's page. No publisher anywhere: Community
@@ -110,7 +111,9 @@ export function CommunityRow({
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[16px] font-bold">{item.title}</span>
           <span className="stk stk-kind shrink-0">{item.kind === 'catalog' ? 'Catalog' : 'Collection'}</span>
-          {item.update_available && <span className="stk stk-update shrink-0">Update</span>}
+          {item.update_available && (
+            <span className={`${STICKER_CLASS[UPDATE_AVAILABLE.tone]} shrink-0`}>{UPDATE_AVAILABLE.label}</span>
+          )}
         </span>
         <span className="text-dim truncate text-[13.5px]">{summary}</span>
         <span className="type-data text-dimmer text-[12.5px]">{meta}</span>

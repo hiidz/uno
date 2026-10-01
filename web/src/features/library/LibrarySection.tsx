@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Download, Plus, Search, Upload } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import { Icon } from '@/components/Icon'
-import { rowStickers } from '@/features/sharing/sharingState'
+import { railStickers } from '@/features/sharing/sharingState'
 import { ListError, ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { describeCollection } from './collection'
@@ -150,7 +150,7 @@ export function LibrarySection({
           <LibraryItem
             key={catalog.id}
             kind={catalog.type}
-            stickers={rowStickers(catalog)}
+            stickers={railStickers(catalog)}
             name={catalog.name}
             summary={summary}
             selected={selectedID === catalog.id}
@@ -189,7 +189,7 @@ export function LibrarySection({
           <LibraryItem
             key={collection.id}
             kind="collection"
-            stickers={rowStickers(collection)}
+            stickers={railStickers(collection)}
             name={collection.title}
             summary={summary}
             selected={selectedID === collection.id}

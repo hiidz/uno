@@ -316,11 +316,13 @@
         }
     }
 
-    /* Stickers: the small printed labels on a row. Kind is an outline in the
-       shelf's own line; Published is Community pink, because that is where a
-       published row turns up; From Community, a row added from there, is
-       outlined in the same pink; Update, waiting for that row, is outlined in
-       ink; Unavailable is outlined in danger red. */
+    /* Stickers: the small printed labels on a row. Filled means act now,
+       outline means information. Kind is an outline in the shelf's own line;
+       Published, Publish changes and From Community are outlined in Community
+       pink, because that is where those rows turn up; Update available is the
+       one filled sticker, in the same pink; Push to Nuvio is outlined in Nuvio
+       yellow, because it is bound for Nuvio; Unavailable is outlined in danger
+       red. */
     .stk {
         display: inline-flex;
         align-items: center;
@@ -336,31 +338,34 @@
         white-space: nowrap;
     }
     /* On a sign, a sticker is printed in sign ink, lettered in the sign's
-       own colour (Published and From Community keep their Community pink). */
+       own colour (the Community stickers keep their pink, Push to Nuvio its
+       yellow). */
     .sign .stk {
         background: var(--uno-sign-ink);
         color: var(--accent);
         box-shadow: none;
     }
-    .sign .stk-published,
-    .sign .stk-from {
+    .sign .stk-community {
         color: var(--uno-community);
+    }
+    .sign .stk-push {
+        color: var(--uno-nuvio-yellow);
     }
     .stk-kind {
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
         color: var(--uno-dim);
     }
-    .stk-published {
-        background: var(--uno-community);
-        color: var(--uno-sign-ink);
-    }
-    .stk-from {
+    .stk-community {
         box-shadow: inset 0 0 0 1.5px var(--uno-community);
         color: var(--uno-community);
     }
     .stk-update {
-        box-shadow: inset 0 0 0 1.5px var(--uno-ink);
-        color: var(--uno-ink);
+        background: var(--uno-community);
+        color: var(--uno-sign-ink);
+    }
+    .stk-push {
+        box-shadow: inset 0 0 0 1.5px var(--uno-nuvio-yellow);
+        color: var(--uno-nuvio-yellow);
     }
     .stk-danger {
         box-shadow: inset 0 0 0 1.5px var(--uno-danger);

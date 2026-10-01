@@ -1,7 +1,7 @@
 import type { SharingSticker } from './sharingState'
 import { STICKER_CLASS } from './sharingState'
 
-/** A row's sharing stickers (`rowStickers`), in its own words. */
+/** A row's stickers and flags (`sharingState.ts`), in their own words. */
 export function SharingStickers({ stickers }: { stickers: SharingSticker[] }) {
   return (
     <>

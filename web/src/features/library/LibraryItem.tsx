@@ -33,11 +33,11 @@ const KIND_LABEL: Record<RowKind, string> = {
  * actions would be a screen-length scroll from the thing they act on; the
  * editor's own sticky header carries them there instead.
  *
- * Every row in the rail is yours, so the stickers left to state are about
- * Community (`rowStickers`): Published, solid pink because Community is where
- * a published row turns up, and Changed once it has been edited since; or
- * From Community, outlined pink, on a row added from there, with Update or
- * Unpublished beside it.
+ * Every row in the rail is yours, so the one sticker left to state is about
+ * Community (`railStickers`), outlined pink: Published, then Publish changes
+ * once it has been edited since; or From Community on a row added from there,
+ * then Update available, the one filled sticker, while its publisher's newer
+ * version waits. What waits for a push is the pending count's to say.
  */
 export function LibraryItem({
   kind,
@@ -52,7 +52,7 @@ export function LibraryItem({
   onDelete,
 }: {
   kind: RowKind
-  /** What the row's sharing state says, in words (`rowStickers`). */
+  /** What the row's sharing state says, in words (`railStickers`). */
   stickers?: SharingSticker[]
   name: string
   /** What the row returns or holds, in plain words. Empty draws no line. */

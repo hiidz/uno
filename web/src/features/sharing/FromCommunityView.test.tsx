@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Catalog, SubscriptionState } from '@/api'
 import { catalog, collection, folder } from '@/test/fixtures'
@@ -32,7 +32,7 @@ function wrap(ui: React.ReactElement) {
 }
 
 function renderCatalog(props: Partial<ComponentProps<typeof CatalogFromCommunity>> = {}) {
-  const handlers = { onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
+  const handlers = { waitingForPush: false, onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
   wrap(<CatalogFromCommunity catalog={noir} genres={genres} {...handlers} {...props} />)
   return handlers
 }
@@ -69,6 +69,14 @@ describe('CatalogFromCommunity', () => {
     expect(screen.getAllByText('From Community').length).toBeGreaterThan(0)
   })
 
+  it('flags Push to Nuvio while a push would change what Nuvio holds for it', () => {
+    renderCatalog()
+    expect(screen.queryByText('Push to Nuvio')).toBeNull()
+    cleanup()
+    renderCatalog({ waitingForPush: true })
+    expect(screen.getAllByText('Push to Nuvio').length).toBeGreaterThan(0)
+  })
+
   it('duplicates to edit, in the region’s colour while no update waits', () => {
     const { onDuplicate } = renderCatalog()
     const button = screen.getByRole('button', { name: 'Duplicate to edit' })
@@ -85,7 +93,8 @@ describe('CatalogFromCommunity', () => {
     const update = screen.getByRole('button', { name: 'Update…' })
     expect(update).toHaveClass('btn-primary')
     expect(screen.getByRole('button', { name: 'Duplicate to edit' })).toHaveClass('btn-secondary')
-    expect(screen.queryByText('Update', { selector: '.stk' })).toBeNull()
+    expect(screen.queryByText('Update available', { selector: '.stk' })).toBeNull()
+    expect(screen.getAllByText('From Community').length).toBeGreaterThan(0)
     fireEvent.click(update)
     expect(onUpdate).toHaveBeenCalledTimes(1)
   })
@@ -128,7 +137,7 @@ const nightCollection = collection({
 })
 
 function renderCollection(props: Partial<ComponentProps<typeof CollectionFromCommunity>> = {}) {
-  const handlers = { onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
+  const handlers = { waitingForPush: false, onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
   wrap(<CollectionFromCommunity collection={nightCollection} genres={genres} {...handlers} {...props} />)
   return handlers
 }

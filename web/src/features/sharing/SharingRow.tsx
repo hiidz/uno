@@ -5,7 +5,7 @@ import { ownSharing, sharingNote, type OwnSharing } from './sharingState'
 const WORDS: Record<OwnSharing, string> = {
   private: 'Private',
   live: 'Published',
-  changed: 'Published. Your changes since aren’t published yet.',
+  changed: 'Published',
   unpublished: 'Unpublished. People who added it keep it.',
 }
 

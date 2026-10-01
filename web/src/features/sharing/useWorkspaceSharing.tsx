@@ -34,18 +34,20 @@ interface WorkspaceSharingOptions {
   profileIndex: number
   genres: GenreLookups
   dirty: boolean
+  /** The ids of the rows a push would change in Nuvio (`usePushWaiting`). */
+  waitingForPush: ReadonlySet<string>
   onToast: Dispatch<ToastMessage>
 }
 
 /**
- * The workspace's sharing: the stickers an own row's editor shows and its
- * Community setting, with the dialogs it opens: publish and unpublish. A row
+ * The workspace's sharing: every flag an own row's editor shows (its Community
+ * sticker and Push to Nuvio) and its Community setting, with the dialogs it opens: publish and unpublish. A row
  * added from Community has no editor, so none of this applies to it
  * (`FromCommunityView`). Every sharing call refreshes the library and
  * Community (`useSharingMutations`), and says what it did through `onToast`.
  * Publishing publishes the saved row, so it waits while `dirty`.
  */
-export function useWorkspaceSharing({ profileIndex, genres, dirty, onToast }: WorkspaceSharingOptions) {
+export function useWorkspaceSharing({ profileIndex, genres, dirty, waitingForPush, onToast }: WorkspaceSharingOptions) {
   const onDone = (text: string) => onToast({ text, tone: 'success' })
   const mutations = useSharingMutations(profileIndex)
   const [publishing, setPublishing] = useState<Publishing | null>(null)
@@ -67,7 +69,7 @@ export function useWorkspaceSharing({ profileIndex, genres, dirty, onToast }: Wo
     const sharingRow = (
       <SharingRow publication={row.publication} dirty={dirty} onPublish={onPublish} onUnpublish={() => askToUnpublish(row)} />
     )
-    return { sharingRow, sharingBadges: <SharingStickers stickers={rowStickers(row)} /> }
+    return { sharingRow, sharingBadges: <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} /> }
   }
 
   /** Undefined until the library lists a row that was just created, which

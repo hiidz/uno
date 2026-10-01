@@ -34,7 +34,7 @@ describe('SharingRow', () => {
 
   it('offers Publish update… once the saved row changed since', () => {
     renderRow({ ...live, changed_since_publish: true })
-    expect(screen.getByText('Published. Your changes since aren’t published yet.')).toBeInTheDocument()
+    expect(screen.getByText('Published')).toBeInTheDocument()
     expect(button('Publish update…')).toBeEnabled()
     expect(button('Unpublish')).toBeInTheDocument()
   })

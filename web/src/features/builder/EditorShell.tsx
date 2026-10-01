@@ -50,8 +50,8 @@ export function EditorShell({
   /** The region this editor belongs to: its header is that region's sign,
    *  and its Save and headings take that region's colour. */
   tone: 'catalog' | 'collection'
-  /** Stickers stating facts about the subject — its kind, whether it's
-   *  shared — beside the title on the sign. From `sm` up only. */
+  /** Stickers stating facts about the subject — its kind, where it stands —
+   *  beside the title on the sign from `sm` up, and heading the body below. */
   badges?: ReactNode
   title: string
   /** Above `lg` this is the × in this header and Escape. Below it, it's also
@@ -164,6 +164,8 @@ export function EditorShell({
           about 700px a form stops being something you read down, and every
           field in it starts looking stretched. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
+        {/* The sign hides its stickers below `sm`, so they head the body. */}
+        {badges && <div className="mb-4 flex flex-wrap items-center gap-1.5 sm:hidden">{badges}</div>}
         <div
           className={`w-full ${docked === 'preview' ? 'max-w-[var(--w-editor-preview)]' : 'max-w-[var(--w-editor-results)]'}`}
         >

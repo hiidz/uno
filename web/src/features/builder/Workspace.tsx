@@ -31,6 +31,7 @@ import type { OpenPublication } from '@/features/community/communityQuery'
 import { HomePane, type HomeView } from '@/features/home/HomePane'
 import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
+import { usePushWaiting } from '@/features/push/usePushWaiting'
 import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
 import { isPublished } from '@/features/sharing/sharingState'
 import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
@@ -124,10 +125,12 @@ export function Workspace({
   const [confirming, setConfirming] = useState<Confirmation | null>(null)
   const [transfer, setTransfer] = useState<'import' | 'export' | null>(null)
   const [toast, setToast] = useToast()
+  const waitingForPush = usePushWaiting(profileIndex)
   const sharing = useWorkspaceSharing({
     profileIndex,
     genres: library.genres,
     dirty,
+    waitingForPush,
     onToast: setToast,
   })
 
@@ -668,6 +671,7 @@ export function Workspace({
               key={activeCatalog.id}
               catalog={activeCatalog}
               genres={library.genres}
+              waitingForPush={waitingForPush.has(activeCatalog.id)}
               onClose={close}
               onDuplicate={() => duplicateCatalog(activeCatalog)}
               onDelete={() => deleteCatalog(activeCatalog)}
@@ -680,6 +684,7 @@ export function Workspace({
               key={activeCollection.id}
               collection={activeCollection}
               genres={library.genres}
+              waitingForPush={waitingForPush.has(activeCollection.id)}
               onClose={close}
               onDuplicate={() => duplicateCollection(activeCollection)}
               onDelete={() => deleteCollection(activeCollection)}

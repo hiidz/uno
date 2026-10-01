@@ -864,9 +864,9 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 
 - **The Community setting** (`SharingRow.tsx`, labelled Community) sits where a listed catalog's
   or a collection's editor has its settings, after the name. It says where the row stands
-  (`ownSharing` over the row's `publication`): Private; Published; "Published. Your changes since
-  aren't published yet." once the saved row differs from what was published
-  (`changed_since_publish`); or "Unpublished. People who added it keep it." after Unpublish. Its
+  (`ownSharing` over the row's `publication`): Private; Published (also once the saved row differs
+  from what was published, `changed_since_publish`, which the sign's Publish changes sticker
+  says); or "Unpublished. People who added it keep it." after Unpublish. Its
   buttons are quiet — Save stays the editor's one primary: Publish…, Publish update… or Publish
   again…, which open the publish dialog, and Unpublish, which asks first ("Community stops listing
   it. People who added it keep it, and get no updates until you publish it again."). Only what is
@@ -879,16 +879,34 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   catalogs of its own", then the library catalogs it uses under "From your library, published as
   they are now" (`publishGroups`) — publishing a collection publishes those as they stand, which is the
   point to consent to. A catalog added from Community carries the From Community sticker
-  (`FROM_COMMUNITY`, the one `rowStickers` uses), so it reads as someone else's catalog being
+  (`FROM_COMMUNITY`, the one `sharingState.ts` draws it from), so it reads as someone else's catalog being
   published as it stands. Its heading is "Publish “X”?" (or "Publish your changes to “X”?"), its
   button Publish (or Publish update), and its line "Anyone on Uno can find it in Community and add
   it. Your later edits stay private until you publish an update." (or "People who added it are
   offered this version. Until then they keep the one they have."). The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
   shows in the dialog.
-- **Stickers** (`rowStickers`, drawn by `SharingStickers`) on the library row and the editor's
-  sign: Published (pink fill) and Changed (dim outline) on an own row; From Community (pink outline)
-  on a row added from Community, with Update (ink outline) while an update waits or Unpublished
-  (dim outline) once its publisher unpublished it.
+- **Stickers and flags** (`sharingState.ts` is the one place a row turns into them; `SharingStickers`
+  draws them). Flags are plain stickers, never buttons, and each says where a row is behind:
+  **Push to Nuvio** (a push would change what Nuvio holds for it), **Publish changes** (an own
+  published row's saved version differs from what it published) and **Update available** (the
+  publisher of a row added from Community published a newer version). Only the incoming one says
+  "update". A row carries **one Community sticker**, changing with its state: an own row reads
+  Published, then Publish changes; a row added from Community reads From Community, then Update
+  available. Filled means act now, outline means information: Update available is the only filled
+  sticker (pink); Published, Publish changes and From Community are pink outlines; Push to Nuvio
+  is a yellow outline; Unpublished, beside From Community once its publisher unpublished the row,
+  is the dim outline.
+  - **Where they show:** the library rail shows the kind and the Community sticker only
+    (`railStickers`) — never Push to Nuvio, which the pending count already covers. An editor's
+    sign, the From Community view's sign and the Home pane's rows, the "Not on home" tray's included, show every flag (`rowStickers`,
+    and `viewStickers` for the view). Below `sm` the sign hides its stickers, so `EditorShell`
+    heads the body with them.
+  - **Push to Nuvio comes from the waiting list** (`GET .../push/pending`, `waitingIDs`: the
+    `added` and `changed` rows, never `removed`), for catalogs and collections alike.
+    `usePushWaiting` reads it for the Workspace, `HomeSelection.waitingForPush` for the Home pane,
+    both from the one query the list of changes reads. A catalog scoped to a collection has no
+    flag of its own: editing one makes the list report its collection `changed`, which flags the
+    collection.
 - **A row added from Community opens as a view** (`FromCommunityView.tsx`), with no form: `Workspace`
   routes a library row that has a `subscription` to `CatalogFromCommunity` or
   `CollectionFromCommunity` instead of an editor, from the live library row, so an applied Update
@@ -897,9 +915,10 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   for any row.
   - **Frame:** `EditorShell`, as for any row: the region's sign (tangerine catalog, green
     collection) with the From Community sticker (and Unpublished once its publisher
-    unpublished it), ×, Escape, the phone Library button and the phone header's Duplicate and
-    Delete. The sign leaves the Update sticker off, since the Update… button says it. Below `sm`
-    the sign hides stickers, so they head the body.
+    unpublished it, Push to Nuvio while a push would change what Nuvio holds for it), ×, Escape,
+    the phone Library button and the phone header's Duplicate and Delete. The sign says From
+    Community in place of Update available, since the Update… button says it. Below `sm` the sign
+    hides stickers, so `EditorShell` heads the body with them.
   - **No explanatory text:** no sentence, no ⓘ. The sticker says where it came from. While an
     update waits, the body's first item is a community-pink **Update…** (`update_available`),
     which opens the publication's page (below); otherwise nothing sits above the content. An
@@ -947,7 +966,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   kind is published ("Nobody has published any catalogs yet. Publish one of your own from its
   editor.") or nothing matches.
 - **A row** (`CommunityRow.tsx`) is its name with a kind sticker and, while an update waits for
-  this profile's added row, an Update sticker; a summary (a catalog's type and recipe line, a
+  this profile's added row, an Update available sticker; a summary (a catalog's type and recipe line, a
   collection's folders and catalogs — `itemSummary`); and "Added by N · updated 2 days ago" or
   "Published 3 days ago" (`itemMeta`). Its main button is Add (the `subscribe` action), a disabled
   ✓ Added while the profile has added it, or Update… while an update waits, which opens the
@@ -1085,11 +1104,12 @@ widest and heaviest is sign lettering only. Both ship as Fontsource packages
 that carries Archivo's width axis), not the Google Fonts CDN: the build is `go:embed`'d, and the CSP allows
 fonts only from `'self'` and `data:`.
 
-**Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Published
-(`.stk-published`, community pink, because Community is where a published row turns up), From Community
-(`.stk-from`, outlined in community pink: a row added from there), Update (`.stk-update`, outlined
-in ink: an update waits for that row), Changed, Unpublished and the TMDB key's Set (the dim `.stk-kind`
-outline), and Unavailable (`.stk-danger`). A library row's home-screen toggle is `.home-sticker`: a dashed empty
+**Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Published,
+Publish changes and From Community (`.stk-community`, outlined in community pink, because
+Community is where those rows turn up), Update available (`.stk-update`, the one filled sticker,
+community pink: a publisher's newer version waits for that row), Push to Nuvio (`.stk-push`,
+outlined in Nuvio yellow), Unpublished and the TMDB key's Set (the dim `.stk-kind` outline), and
+Unavailable (`.stk-danger`). A library row's home-screen toggle is `.home-sticker`: a dashed empty
 circle while it's off the home screen, a yellow ON NUVIO price sticker (two lines, ON over NUVIO)
 once it's on. A home row's position is a yellow `.pos-sticker`, read out as "3rd on your home
 screen"; the pending count and a profile's slot

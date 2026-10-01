@@ -14,6 +14,8 @@ import { describeCollection } from '@/features/library/collection'
 import { recipeLine, typeLabel } from '@/features/library/recipe'
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
 import { noTiles, TileRun, TILE_ASPECT } from '@/features/preview/tiles'
+import { rowStickers } from '@/features/sharing/sharingState'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { ordinal } from '@/lib/ordinal'
 import { showFirstAction } from './changes'
 import { HomePreview } from './HomePreview'
@@ -383,6 +385,15 @@ function RemoveFromHomeItem({ detached, onSelect }: { detached: boolean; onSelec
   )
 }
 
+/** Every flag a Home row carries beside its kind: its Community sticker,
+ *  Unpublished, and Push to Nuvio while a push would change what Nuvio holds
+ *  for it (`rowStickers`). A catalog and a collection never share an id. */
+function HomeFlags({ id }: { id: string }) {
+  const home = useHomeSelection()
+  const row = home.catalogById.get(id) ?? home.collectionById.get(id)
+  return row ? <SharingStickers stickers={rowStickers(row, home.waitingForPush.has(id))} /> : null
+}
+
 function DetachedTag() {
   return (
     <span
@@ -435,11 +446,12 @@ function CatalogRow({
       onMoveDown={() => onMove(1)}
     >
       <RowBody>
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[16.5px] font-bold">{row.name}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="max-w-full truncate text-[16.5px] font-bold">{row.name}</span>
           {catalog && (
             <span className="stk stk-kind shrink-0">{typeLabel(catalog.type)}</span>
           )}
+          <HomeFlags id={row.id} />
           {detached && <DetachedTag />}
         </span>
         <span className="text-dim truncate text-[13.5px]">{detail || 'No filters'}</span>
@@ -488,9 +500,10 @@ function CollectionRow({
       onMoveDown={() => onMove(1)}
     >
       <RowBody>
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[16.5px] font-bold">{collection.title}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="max-w-full truncate text-[16.5px] font-bold">{collection.title}</span>
           <span className="stk stk-kind shrink-0">Collection</span>
+          <HomeFlags id={collection.id} />
           {detached && <DetachedTag />}
         </span>
         <span className="text-dim truncate text-[13.5px]">{detail}</span>
@@ -576,8 +589,9 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
               key={row.id}
               className="border-line flex items-center justify-between gap-3 border-b py-3"
             >
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-[15px] font-semibold">{row.name}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="max-w-full truncate text-[15px] font-semibold">{row.name}</span>
+                <HomeFlags id={row.id} />
                 {detached && <DetachedTag />}
               </div>
               <button

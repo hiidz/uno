@@ -65,7 +65,8 @@ describe('CatalogEditor', () => {
       sharingBadges: <span>Published sticker</span>,
     })
     expect(screen.getByText('Sharing slot')).toBeInTheDocument()
-    expect(screen.getByText('Published sticker')).toBeInTheDocument()
+    // The sign shows it from `sm`; below, the body's first line does.
+    expect(screen.getAllByText('Published sticker')).toHaveLength(2)
     fireEvent.change(nameInput(), { target: { value: 'Renamed' } })
     save()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Renamed' }))

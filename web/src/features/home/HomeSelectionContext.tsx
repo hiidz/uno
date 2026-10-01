@@ -4,6 +4,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { fetchCatalogSelection, fetchCollectionSelection, fetchPendingPush, queryKeys } from '@/api'
 import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
+import { waitingIDs } from '@/features/sharing/sharingState'
 import { computeHomeChanges, countUnsaved } from './changes'
 import type { HomeChange } from './changes'
 import {
@@ -39,6 +40,10 @@ export interface HomeSelection extends HomeEdits {
    *  selected row can be absent from the library — see `isDetached`. */
   catalogById: ReadonlyMap<string, Catalog>
   collectionById: ReadonlyMap<string, Collection>
+
+  /** The ids of the rows a push would change in Nuvio, which the rows flag
+   *  Push to Nuvio (`waitingIDs`). */
+  waitingForPush: ReadonlySet<string>
 
   /** True when a selected item is not in the library, which the lists can show
    *  for the moment between a delete and their refetch: the provider then drops
@@ -230,6 +235,7 @@ export function HomeSelectionProvider({
     () => ({
       catalogById,
       collectionById,
+      waitingForPush: waitingIDs(pendingPush.data),
 
       // Only meaningful once the library has actually loaded; before that, or
       // when it failed to, everything would look detached.
@@ -241,7 +247,17 @@ export function HomeSelectionProvider({
       unsavedCount,
       isDirty: unsavedCount > 0,
     }),
-    [catalogById, collectionById, libraryLoaded, libraryIds, library.genres, changes, pendingCount, unsavedCount],
+    [
+      catalogById,
+      collectionById,
+      pendingPush.data,
+      libraryLoaded,
+      libraryIds,
+      library.genres,
+      changes,
+      pendingCount,
+      unsavedCount,
+    ],
   )
 
   // Every one of these only closes over `edit` — stable for the life of the

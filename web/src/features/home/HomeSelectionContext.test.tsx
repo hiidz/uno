@@ -121,6 +121,14 @@ describe('HomeSelectionProvider', () => {
     const { result } = await renderLoaded()
     await waitFor(() => expect(result.current.pendingCount).toBe(1))
     expect(result.current.changes.map((c) => c.text)).toEqual(['“Alpha” changed since it was last pushed'])
+    expect([...result.current.waitingForPush]).toEqual(['a'])
+  })
+
+  it('flags no row for a removal, which has no row left', async () => {
+    api.fetchPendingPush.mockResolvedValue([{ kind: 'catalog', id: 'gone', name: 'Gone', change: 'removed' }])
+    const { result } = await renderLoaded()
+    await waitFor(() => expect(result.current.pendingCount).toBe(1))
+    expect(result.current.waitingForPush.size).toBe(0)
   })
 
   it('drops a row deleted elsewhere from the pending selection, so Push can still go, and lists its removal', async () => {

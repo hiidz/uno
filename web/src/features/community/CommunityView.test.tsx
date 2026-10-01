@@ -96,7 +96,7 @@ describe('CommunityView', () => {
     expect(screen.getByText('Horror Nights')).toBeInTheDocument()
     expect(screen.getByText('1 folder · 1 catalog')).toBeInTheDocument()
     expect(screen.getByText(/Added by 4/)).toBeInTheDocument()
-    expect(screen.getByText('Update')).toBeInTheDocument()
+    expect(screen.getByText('Update available')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Update…' })).toBeEnabled()
     expect(calls.filter((call) => call.startsWith('GET /api/p/1/community'))).toEqual(['GET /api/p/1/community'])
   })

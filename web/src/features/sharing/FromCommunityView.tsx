@@ -5,13 +5,15 @@ import { Icon } from '@/components/Icon'
 import { EditorShell } from '@/features/builder/EditorShell'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { CatalogBody, CollectionBody } from './PublicationBodies'
-import { rowStickers } from './sharingState'
+import { updateWaits, viewStickers } from './sharingState'
 import { SharingStickers } from './SharingStickers'
 
 /** What the pane does for a row added from Community: the way out, the row's
  *  own Duplicate and Delete, and Update…, which opens its publication's page
  *  in Community. */
 export interface FromCommunityActions {
+  /** A push would change what Nuvio holds for this row: the sign says Push to Nuvio. */
+  waitingForPush: boolean
   onClose: () => void
   onDuplicate?: () => void
   onDelete?: () => void
@@ -53,9 +55,9 @@ export function CollectionFromCommunity({
 }
 
 /**
- * The editor shell around a view. The sign carries the row's stickers except
- * Update, which the Update… button says; below `sm` the sign hides stickers,
- * so they head the body, followed by Update… while an update waits. Nothing
+ * The editor shell around a view. The sign carries the row's flags
+ * (`viewStickers`) with From Community where Update available would be, since
+ * the Update… button, first in the body while an update waits, says it. Nothing
  * here can be unsaved, so closing never asks. While Update… shows, Duplicate
  * to edit is outlined, so one filled button is on screen.
  */
@@ -66,6 +68,7 @@ function ViewFrame({
   row,
   docked,
   children,
+  waitingForPush,
   onClose,
   onDuplicate,
   onDelete,
@@ -78,28 +81,20 @@ function ViewFrame({
   docked: 'results' | 'preview'
   children: (lead: ReactNode) => ReactNode
 } & FromCommunityActions) {
-  const stickers = rowStickers(row).filter((sticker) => sticker.tone !== 'update')
-  const updating = row.subscription?.update_available === true
-  const lead = (
-    <>
-      <div className="flex flex-wrap items-center gap-1.5 sm:hidden">
-        <SharingStickers stickers={stickers} />
-      </div>
-      {updating && (
-        <div className="tone-community">
-          <button type="button" className="btn-primary" onClick={onUpdate}>
-            <Icon icon={RefreshCw} size={16} />
-            Update…
-          </button>
-        </div>
-      )}
-    </>
+  const updating = updateWaits(row)
+  const lead = updating && (
+    <div className="tone-community">
+      <button type="button" className="btn-primary" onClick={onUpdate}>
+        <Icon icon={RefreshCw} size={16} />
+        Update…
+      </button>
+    </div>
   )
   return (
     <EditorShell
       purpose={purpose}
       tone={tone}
-      badges={<SharingStickers stickers={stickers} />}
+      badges={<SharingStickers stickers={viewStickers(row, waitingForPush)} />}
       title={title}
       onRequestClose={onClose}
       onDuplicate={onDuplicate}
