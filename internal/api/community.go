@@ -78,11 +78,6 @@ func (s *Server) withdrawCatalog(w http.ResponseWriter, r *http.Request) {
 		s.vault.WithdrawCatalog)
 }
 
-func (s *Server) detachCatalog(w http.ResponseWriter, r *http.Request) {
-	serveSharingCall(w, r, sharingCall{catalogRow, "detachCatalog", "failed to detach catalog", http.StatusOK},
-		s.vault.DetachCatalog)
-}
-
 func (s *Server) publishCollection(w http.ResponseWriter, r *http.Request) {
 	serveSharingCall(w, r, sharingCall{collectionRow, "publishCollection", "failed to publish collection", http.StatusOK},
 		publishWith(s, s.vault.PublishCollection))
@@ -91,11 +86,6 @@ func (s *Server) publishCollection(w http.ResponseWriter, r *http.Request) {
 func (s *Server) withdrawCollection(w http.ResponseWriter, r *http.Request) {
 	serveSharingCall(w, r, sharingCall{collectionRow, "withdrawCollection", "failed to withdraw collection", http.StatusOK},
 		s.vault.WithdrawCollection)
-}
-
-func (s *Server) detachCollection(w http.ResponseWriter, r *http.Request) {
-	serveSharingCall(w, r, sharingCall{collectionRow, "detachCollection", "failed to detach collection", http.StatusOK},
-		s.vault.DetachCollection)
 }
 
 // listCommunity answers every live publication Community lists, in one

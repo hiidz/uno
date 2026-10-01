@@ -177,7 +177,7 @@ Route-semantics facts the client has to honour:
     params live. An Update that changes what push sends for a collection copy on Home leaves it
     `needs_push`, so it shows on Home as an unpushed change until the next push carries its
     folders to Nuvio.
-- **Sharing an owned row, and detaching a copy, are calls on the row.**
+- **Sharing an owned row is a call on the row.**
   - `POST /api/p/{i}/catalogs/{id}/publish` and `.../collections/{id}/publish`
     (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish or
     republish it. They run every recipe the snapshot shares through `validateCatalogParams`, so
@@ -188,13 +188,13 @@ Route-semantics facts the client has to honour:
     Community.
   - `.../withdraw` (`WithdrawCatalog`/`WithdrawCollection`) withdraws its live publication, if
     any.
-  - `.../detach` (`DetachCatalog`/`DetachCollection`) drops a subscribed copy's subscription and
-    keeps the row; a row that isn't a subscribed copy is a 400.
   - A content write to a subscribed copy — `PUT` of the catalog or the collection, a catalog
-    created in it — detaches the copy in the same transaction: its subscription
-    goes and every id stays. `POST .../community/{id}/update` never detaches. Placement is not
-    content: Home order, Home or Discover and Show first (`pin_to_top`) all travel in push's
-    selection (*Push* below), for a copy as for any row.
+    created in it — is a 400 (`refuseSubscribedCopy`, run in the write's transaction ahead of
+    the write, over the caller's own subscriptions, so another profile's copy still answers
+    404). `POST .../community/{id}/update` is the only writer of a copy; there is no route that
+    ends a subscription short of deleting the copy. Placement is not content: Home order, Home
+    or Discover and Show first (`pin_to_top`) all travel in push's selection (*Push* below), for
+    a copy as for any row.
   - Another profile's row answers 404 on all of them, like one that doesn't exist.
 - **Duplicating a collection you own is one atomic server call, not a client-built copy.**
   `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) extracts the source into

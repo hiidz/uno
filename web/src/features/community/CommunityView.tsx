@@ -31,10 +31,10 @@ const NO_ITEMS: CommunityItem[] = []
  * The Community tab: what other profiles share, loaded in one call and
  * searched, filtered and sorted here. A row opens its publication's page in
  * place of the list, and the way back returns to the same scroll position.
- * Take adds a copy that follows its owner's updates; Update… opens the page,
- * which shows the new version and applies it; Duplicate adds a copy that is
- * the profile's own. No owner is named anywhere here. `initialOpen` starts on
- * a publication's page: a copy's own Update… lands there.
+ * Take adds a read-only copy that follows its owner's updates; Update… opens
+ * the page, which shows the new version and applies it; Duplicate adds a copy
+ * that is the profile's own. No owner is named anywhere here. `initialOpen`
+ * starts on a publication's page: a copy's own Update… lands there.
  */
 export function CommunityView({
   profileIndex,

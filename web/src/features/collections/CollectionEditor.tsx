@@ -127,10 +127,10 @@ function draftCatalog(seed: {
  * be a modal, not a stack. `CollectionEditor` stays mounted underneath, so
  * this editor's own unsaved folder edits survive the round trip.
  *
- * **Every row this editor opens is editable,** a collection taken from
- * Community included. Its sharing setting is `sharingRow`, which the pane
- * builds: an own collection's Sharing row, or a copy's From Community row,
- * and the pane asks before a copy's save, which makes it the profile's own.
+ * **Every row this editor opens is the profile's own and editable.** A
+ * collection taken from Community opens as a view instead
+ * (`FromCommunityView`). Its sharing setting is `sharingRow`, which the pane
+ * builds: the Sharing row.
  *
  * **A staged Move to library has its own Undo.** Once staged, the catalog
  * reads as listed in every folder, which offers no Edit to reopen it, so the

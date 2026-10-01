@@ -192,8 +192,8 @@ func leanCatalogsByIDs(ctx context.Context, q querier, ids []uuid.UUID) ([]Catal
 
 // CreateUserCatalog validates input and inserts a new catalog owned by
 // profileID. If input.CollectionID is set, the catalog is scoped to that
-// collection, which must be profileID's own; a subscribed copy is detached
-// by the write (insertOwnCatalog).
+// collection, which must be profileID's own and not a subscribed copy
+// (ErrInvalidInput).
 func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input CatalogForm) (Catalog, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
@@ -208,8 +208,11 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	now := time.Now().UTC()
 	var created Catalog
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
+		if err := refuseScopeCopy(ctx, tx, profileID, input.CollectionID); err != nil {
+			return err
+		}
 		var err error
-		created, err = insertOwnCatalog(ctx, tx, Catalog{
+		created, err = insertCatalog(ctx, tx, Catalog{
 			ID:           uuid.New(),
 			Type:         input.Type,
 			Name:         input.Name,
@@ -228,32 +231,20 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	return created, nil
 }
 
-// insertOwnCatalog inserts c, then detaches the collection it is scoped to,
-// if any: adding a catalog to a subscribed copy makes the copy the
-// profile's own.
-func insertOwnCatalog(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) {
-	created, err := insertCatalog(ctx, tx, c)
-	if err != nil {
-		return Catalog{}, err
-	}
-	return created, detachScope(ctx, tx, c.CollectionID)
-}
-
-// detachScope detaches collectionID, a collection a catalog write just put a
-// catalog into, when there is one; see detachTx.
-func detachScope(ctx context.Context, tx *sql.Tx, collectionID *uuid.UUID) error {
+// refuseScopeCopy refuses a catalog written into collectionID, when there is
+// one, if that collection is a subscribed copy of profileID's.
+func refuseScopeCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionID *uuid.UUID) error {
 	if collectionID == nil {
 		return nil
 	}
-	return detachTx(ctx, tx, kindCollection, *collectionID)
+	return refuseSubscribedCopy(ctx, tx, profileID, kindCollection, *collectionID)
 }
 
 // UpdateUserCatalog validates input and updates the listed catalog
 // identified by catalogID, provided it's owned by profileID. Returns
 // ErrCatalogNotFound if no such row exists (including one owned by another
 // profile), and ErrInvalidInput for a catalog inside a collection
-// (checkCatalogRewrite). Writing a subscribed copy detaches it
-// (writeOwnCatalog).
+// (checkCatalogRewrite) and for a subscribed copy (refuseSubscribedCopy).
 //
 // The catalog's scope is not part of an update: input.CollectionID is not
 // read, and a listed catalog stays listed. A scoped catalog is moved to the
@@ -278,19 +269,13 @@ func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.
 	if err != nil {
 		return err
 	}
+	if err := refuseSubscribedCopy(ctx, tx, profileID, kindCatalog, catalogID); err != nil {
+		return err
+	}
 	if err := checkCatalogRewrite(stored, input); err != nil {
 		return err
 	}
-	return writeOwnCatalog(ctx, tx, profileID, catalogID, input)
-}
-
-// writeOwnCatalog writes input over catalogID, then detaches it: a content
-// write makes a subscribed copy the profile's own.
-func writeOwnCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
-	if err := writeCatalog(ctx, tx, profileID, catalogID, input); err != nil {
-		return err
-	}
-	return detachTx(ctx, tx, kindCatalog, catalogID)
+	return writeCatalog(ctx, tx, profileID, catalogID, input)
 }
 
 // writeCatalog stores input's recipe, unless it is stored already, and

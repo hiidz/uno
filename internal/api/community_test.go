@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -94,15 +95,16 @@ func TestSharingRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	copyPath := "/api/p/1/collections/" + collectionCopy.String()
+	catalogPath := "/api/p/1/catalogs/" + catalogCopy.String()
 	ownCatalog := "/api/p/1/catalogs/" + x.ownCatalog.String()
 	ownCollection := "/api/p/1/collections/" + x.ownCollection.String()
 	runSteps(t, x.f.s, []routeStep{
-		{name: "publish the subscribed copy", method: http.MethodPost, path: copyPath + "/publish", wantStatus: http.StatusBadRequest, wantBody: "only its publisher can share"},
-		{name: "save the subscribed copy, which detaches it", method: http.MethodPut, path: copyPath, body: `{"title":"Mine now"}`, wantStatus: http.StatusOK, wantBody: `"subscription":null`},
-		{name: "detach the saved copy", method: http.MethodPost, path: copyPath + "/detach", wantStatus: http.StatusBadRequest, wantBody: "not a subscribed copy"},
+		{name: "publish the subscribed copy", method: http.MethodPost, path: copyPath + "/publish", wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
+		{name: "save the subscribed collection", method: http.MethodPut, path: copyPath, body: `{"title":"Mine now"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
+		{name: "save the subscribed catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
+		{name: "create a catalog in the subscribed collection", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"Into it","provider":"tmdb","params":"{}","collection_id":"` + collectionCopy.String() + `"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
+		{name: "the subscribed collection is unchanged", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: `"subscription":{"publication_id":"` + x.theirCollection.String()},
 		{name: "publish a collection with a subscribed catalog", method: http.MethodPost, path: "/api/p/1/collections/" + withTaken.ID.String() + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
-		{name: "detach the subscribed catalog", method: http.MethodPost, path: "/api/p/1/catalogs/" + catalogCopy.String() + "/detach", wantStatus: http.StatusOK, wantBody: `"subscription":null`},
-		{name: "detach a catalog that isn't subscribed", method: http.MethodPost, path: ownCatalog + "/detach", wantStatus: http.StatusBadRequest, wantBody: "not a subscribed copy"},
 		{name: "publish my catalog", method: http.MethodPost, path: ownCatalog + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live","changed_since_publish":false`},
 		{name: "withdraw my catalog", method: http.MethodPost, path: ownCatalog + "/withdraw", wantStatus: http.StatusOK, wantBody: `"status":"withdrawn"`},
 		{name: "publish my collection", method: http.MethodPost, path: ownCollection + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
@@ -111,6 +113,14 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "withdraw another profile's collection", method: http.MethodPost, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/withdraw", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
 		{name: "publish with a path id that isn't a uuid", method: http.MethodPost, path: "/api/p/1/catalogs/nope/publish", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
 	})
+
+	// An /api path no route names falls through to the SPA, so a detach is
+	// gone when it answers no row, not when it answers an error.
+	for _, path := range []string{copyPath + "/detach", catalogPath + "/detach"} {
+		if body := serve(t, x.f.s, http.MethodPost, path, "", false).Body.String(); strings.Contains(body, `"subscription"`) {
+			t.Errorf("POST %s answered a row: %q", path, body)
+		}
+	}
 }
 
 // subscribedCopy is the id of the caller's collection subscribed to

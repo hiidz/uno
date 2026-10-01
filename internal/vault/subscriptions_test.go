@@ -191,33 +191,35 @@ func TestSubscribeChecksTheSnapshot(t *testing.T) {
 	}
 }
 
-// Saving a subscribed catalog makes it the subscriber's own in the same
-// write: the subscription goes, the id stays, and the publication counts
-// one subscriber fewer.
-func TestSavingASubscribedCatalogDetachesIt(t *testing.T) {
+// Saving a subscribed catalog is refused with ErrInvalidInput and changes
+// nothing: the name, the subscription and the subscriber count stay. Someone
+// else's catalog is still not found.
+func TestSavingASubscribedCatalogIsRefused(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	pubID := publishCatalog(t, db, owner, "Popular", "{}").Publication.ID
 	copied := subscribe(t, db, subscriber, pubID).Catalog
 
-	saved, err := db.UpdateUserCatalog(ctx, subscriber, copied.ID, listedCatalogForm("Renamed"))
-	if err != nil {
-		t.Fatalf("save a subscribed catalog: %v", err)
+	if _, err := db.UpdateUserCatalog(ctx, subscriber, copied.ID, listedCatalogForm("Renamed")); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("save a subscribed catalog = %v, want ErrInvalidInput", err)
 	}
-	if saved.ID != copied.ID || saved.Name != "Renamed" || saved.Subscription != nil {
-		t.Errorf("saved = %s %q %+v; want id %s, the new name and no subscription", saved.ID, saved.Name, saved.Subscription, copied.ID)
+	if after := reloadCatalog(t, db, copied.ID); after.Name != copied.Name || after.Subscription == nil {
+		t.Errorf("after the refused save: %q %+v; want %q and its subscription", after.Name, after.Subscription, copied.Name)
 	}
-	if got := subscriberCount(t, db, owner, pubID); got != 0 {
-		t.Errorf("subscriber count after the save = %d, want 0", got)
+	if got := subscriberCount(t, db, owner, pubID); got != 1 {
+		t.Errorf("subscriber count after the refused save = %d, want 1", got)
+	}
+	if _, err := db.UpdateUserCatalog(ctx, owner, copied.ID, listedCatalogForm("Renamed")); !errors.Is(err, ErrCatalogNotFound) {
+		t.Errorf("save someone else's subscribed catalog = %v, want ErrCatalogNotFound", err)
 	}
 }
 
-// Every content write to a subscribed collection detaches it in the same
-// write: a save, a save moving its catalog to the library, and a catalog
-// created in it. Each keeps the copy's folder and catalog ids and clears their
-// keys, the moved catalog's included. A delete of a copy is allowed.
-func TestWritingASubscribedCollectionDetachesIt(t *testing.T) {
+// Every content write to a subscribed collection is refused with
+// ErrInvalidInput and changes nothing: a save, a save moving its catalog to
+// the library, and a catalog created in it. The copy keeps its subscription,
+// its folder and catalog ids and their keys. A delete of a copy is allowed.
+func TestWritingASubscribedCollectionIsRefused(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
@@ -242,19 +244,25 @@ func TestWritingASubscribedCollectionDetachesIt(t *testing.T) {
 	for name, write := range writes {
 		source := publishCollection(t, db, owner, CollectionForm{Title: name, Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 		copied := *subscribe(t, db, subscriber, source.Publication.ID).Collection
-		if err := write(copied); err != nil {
-			t.Fatalf("%s: %v", name, err)
+		if err := write(copied); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("%s = %v, want ErrInvalidInput", name, err)
 		}
 		after := mustOwnCollection(t, db, subscriber, copied.ID)
-		if after.Subscription != nil || after.Folders[0].ID != copied.Folders[0].ID || after.Folders[0].SubKey != "" {
-			t.Errorf("%s: subscription %+v, folder %s keyed %q; want none, folder %s unkeyed", name, after.Subscription, after.Folders[0].ID, after.Folders[0].SubKey, copied.Folders[0].ID)
+		if after.Subscription == nil || after.Title != copied.Title || len(after.Catalogs) != 1 ||
+			after.Folders[0].ID != copied.Folders[0].ID || after.Folders[0].SubKey != copied.Folders[0].SubKey {
+			t.Errorf("%s: left %+v with %d catalogs, folder %s keyed %q; want the copy as it was", name, after.Subscription, len(after.Catalogs), after.Folders[0].ID, after.Folders[0].SubKey)
 		}
-		if scoped := catalogNamed(t, after, "S"); scoped.ID != catalogNamed(t, copied, "S").ID || scoped.SubKey != "" {
-			t.Errorf("%s: scoped catalog %s keyed %q; want its id kept and no key", name, scoped.ID, scoped.SubKey)
+		if scoped := catalogNamed(t, after, "S"); scoped.ID != catalogNamed(t, copied, "S").ID || scoped.SubKey == "" || scoped.CollectionID == nil {
+			t.Errorf("%s: scoped catalog %s keyed %q; want its id, key and scope kept", name, scoped.ID, scoped.SubKey)
 		}
-		if got := subscriberCount(t, db, owner, source.Publication.ID); got != 0 {
-			t.Errorf("%s: subscriber count = %d, want 0", name, got)
+		if got := subscriberCount(t, db, owner, source.Publication.ID); got != 1 {
+			t.Errorf("%s: subscriber count = %d, want 1", name, got)
 		}
+	}
+
+	theirs := *subscribe(t, db, subscriber, publishCollection(t, db, owner, CollectionForm{Title: "Theirs"}).Publication.ID).Collection
+	if err := second(db.UpdateUserCollection(ctx, owner, theirs.ID, saveFormOf(theirs))); !errors.Is(err, ErrCollectionNotFound) {
+		t.Errorf("save of someone else's subscribed collection = %v, want ErrCollectionNotFound", err)
 	}
 
 	doomed := *subscribe(t, db, subscriber, publishCollection(t, db, owner, CollectionForm{Title: "Doomed"}).Publication.ID).Collection
@@ -263,10 +271,10 @@ func TestWritingASubscribedCollectionDetachesIt(t *testing.T) {
 	}
 }
 
-// Saving one subscriber's copy leaves every other copy of the publication
-// subscribed: after the publisher reorders its folders and republishes, the
-// other copy's Update still pairs them by key and keeps their ids.
-func TestSavingACopyLeavesOtherCopiesUpdatingByKey(t *testing.T) {
+// A refused save of one subscriber's copy leaves every copy of the
+// publication subscribed: after the publisher reorders its folders and
+// republishes, each copy's Update pairs them by key and keeps their ids.
+func TestRefusedSaveLeavesCopiesUpdatingByKey(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, first, other := newTestProfile(t, db, "owner"), newTestProfile(t, db, "first"), newTestProfile(t, db, "other")
@@ -280,8 +288,8 @@ func TestSavingACopyLeavesOtherCopiesUpdatingByKey(t *testing.T) {
 
 	edit := saveFormOf(mine)
 	edit.Title = "Mine now"
-	if _, err := db.UpdateUserCollection(ctx, first, mine.ID, edit); err != nil {
-		t.Fatalf("save the first copy: %v", err)
+	if _, err := db.UpdateUserCollection(ctx, first, mine.ID, edit); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("save the first copy = %v, want ErrInvalidInput", err)
 	}
 	reordered := saveFormOf(source)
 	reordered.Folders = []FolderData{reordered.Folders[1], reordered.Folders[0]}
@@ -301,8 +309,11 @@ func TestSavingACopyLeavesOtherCopiesUpdatingByKey(t *testing.T) {
 		t.Errorf("other copy's folders %s, %s, %+v; want %s, %s paired by key and in step",
 			after.Folders[0].ID, after.Folders[1].ID, after.Subscription, theirs.Folders[1].ID, theirs.Folders[0].ID)
 	}
-	if got := subscriberCount(t, db, owner, pubID); got != 1 {
-		t.Errorf("subscriber count = %d, want 1", got)
+	if _, err := db.UpdateSubscription(ctx, first, pubID); err != nil {
+		t.Errorf("Update of the copy whose save was refused: %v", err)
+	}
+	if got := subscriberCount(t, db, owner, pubID); got != 2 {
+		t.Errorf("subscriber count = %d, want 2", got)
 	}
 }
 
@@ -546,49 +557,5 @@ func TestForkPublication(t *testing.T) {
 	}
 	if detail, _ := db.GetPublication(ctx, owner, source.Publication.ID); detail.SubscriberCount != 0 {
 		t.Errorf("subscriber count after a fork = %d, want 0", detail.SubscriberCount)
-	}
-}
-
-// Detach drops the subscription and keeps the copy, ids included, as the
-// caller's own editable row with no sub_keys; the publication can then be
-// subscribed to again. A row that isn't a subscribed copy can't be
-// detached.
-func TestDetach(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
-	catalogSource := publishCatalog(t, db, owner, "Popular", "{}")
-	collectionSource := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
-	catalogCopy := subscribe(t, db, subscriber, catalogSource.Publication.ID).Catalog
-	collectionCopy := subscribe(t, db, subscriber, collectionSource.Publication.ID).Collection
-
-	detachedCatalog, err := db.DetachCatalog(ctx, subscriber, catalogCopy.ID)
-	if err != nil || detachedCatalog.ID != catalogCopy.ID || detachedCatalog.Subscription != nil {
-		t.Errorf("DetachCatalog = %+v, %v; want the same row without a subscription", detachedCatalog, err)
-	}
-	detached, err := db.DetachCollection(ctx, subscriber, collectionCopy.ID)
-	if err != nil || detached.ID != collectionCopy.ID || detached.Subscription != nil || detached.Folders[0].SubKey != "" || detached.Catalogs[0].SubKey != "" {
-		t.Errorf("DetachCollection = %+v, %v; want the same row without a subscription or sub_keys", detached, err)
-	}
-	if _, err := db.UpdateUserCollection(ctx, subscriber, detached.ID, saveFormOf(detached)); err != nil {
-		t.Errorf("save a detached copy = %v, want nil", err)
-	}
-	if _, err := db.Subscribe(ctx, subscriber, catalogSource.Publication.ID); err != nil {
-		t.Errorf("subscribe again after a detach = %v, want nil", err)
-	}
-
-	for name, err := range map[string]error{
-		"a detached catalog":  second(db.DetachCatalog(ctx, subscriber, catalogCopy.ID)),
-		"an owned collection": second(db.DetachCollection(ctx, owner, collectionSource.ID)),
-	} {
-		if !errors.Is(err, ErrInvalidInput) {
-			t.Errorf("detach %s = %v, want ErrInvalidInput", name, err)
-		}
-	}
-	if _, err := db.DetachCatalog(ctx, owner, catalogCopy.ID); !errors.Is(err, ErrCatalogNotFound) {
-		t.Errorf("detach someone else's catalog = %v, want ErrCatalogNotFound", err)
-	}
-	if _, err := db.DetachCollection(ctx, owner, collectionCopy.ID); !errors.Is(err, ErrCollectionNotFound) {
-		t.Errorf("detach someone else's collection = %v, want ErrCollectionNotFound", err)
 	}
 }

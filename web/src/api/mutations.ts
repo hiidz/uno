@@ -15,16 +15,8 @@ export function withdrawCatalog(profileIndex: number, catalogID: string): Promis
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/withdraw`)
 }
 
-/** Ends a subscribed catalog's subscription, keeping its id: it becomes the
- *  owner's own to edit, and gets no more updates —
- *  `POST .../catalogs/{id}/detach`. */
-export function detachCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
-  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/detach`)
-}
-
 /** `publishCatalog` for a collection: shares its tree, with every catalog its
- *  folders use, library catalogs included. 400s for a subscribed copy, and
- *  for a collection using a catalog its owner subscribes to. */
+ *  folders use, library catalogs included. 400s for a subscribed copy. */
 export function publishCollection(profileIndex: number, collectionID: string): Promise<Collection> {
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/publish`)
 }
@@ -33,12 +25,8 @@ export function withdrawCollection(profileIndex: number, collectionID: string): 
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/withdraw`)
 }
 
-export function detachCollection(profileIndex: number, collectionID: string): Promise<Collection> {
-  return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/detach`)
-}
-
-/** Take: a copy of a publication that follows its updates until a save of
- *  it makes it the profile's own — `POST .../community/{id}/subscribe`. */
+/** Take: a read-only copy of a publication that follows its updates —
+ *  `POST .../community/{id}/subscribe`. */
 export function subscribe(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
   return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/subscribe`)
 }

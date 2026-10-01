@@ -98,7 +98,6 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/publish", s.requireProfileAuth(s.publishCatalog))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/withdraw", s.requireProfileAuth(s.withdrawCatalog))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/detach", s.requireProfileAuth(s.detachCatalog))
 
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireProfileAuth(s.listUserCollections))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
@@ -107,7 +106,6 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.deleteUserCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/publish", s.requireProfileAuth(s.publishCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/withdraw", s.requireProfileAuth(s.withdrawCollection))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/detach", s.requireProfileAuth(s.detachCollection))
 
 	// Community: other profiles' live publications, by publication id.
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.listCommunity))

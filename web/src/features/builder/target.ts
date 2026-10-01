@@ -35,8 +35,7 @@ export type EditorTarget =
     }
 
 /** A saved row as the pane's target, its editor seeded from the row as it is
- *  now: a library row being opened, or a copy just detached, reopened from
- *  the row the detach returned. */
+ *  now: a library row being opened. */
 export function catalogTarget(catalog: Catalog): EditorTarget {
   return { kind: 'catalog', id: catalog.id, initial: formFromCatalog(catalog) }
 }

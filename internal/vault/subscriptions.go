@@ -2,9 +2,8 @@
 // Subscribing writes the snapshot as the caller's own rows, each catalog
 // and folder of a collection carrying its snapshot key as sub_key, which
 // Update overwrites by key, keeping its ids. Any other content write to the
-// copy detaches it in the same transaction (detachTx), so Update only ever
-// meets a copy still as it was written. Detach drops the subscription and
-// keeps the copy; a fork is a copy that never subscribed.
+// copy is refused (refuseSubscribedCopy), so Update only ever meets a copy
+// still as it was written; a fork is a copy that never subscribed.
 
 package vault
 
@@ -417,63 +416,4 @@ func foldersByKey(tree CollectionWithFolders) map[string]uuid.UUID {
 		}
 	}
 	return byKey
-}
-
-// DetachCatalog drops the subscription of profileID's catalog catalogID,
-// keeping the catalog and its id as profileID's own, editable row that
-// Update never reaches again. Returns the catalog, ErrCatalogNotFound if it
-// isn't profileID's, and ErrInvalidInput if it isn't a subscribed copy.
-func (db *DB) DetachCatalog(ctx context.Context, profileID, catalogID uuid.UUID) (Catalog, error) {
-	c, err := ownCatalog(ctx, db.conn, profileID, catalogID)
-	if err != nil {
-		return Catalog{}, err
-	}
-	if err := db.detach(ctx, "catalog", catalogID, c.Subscription); err != nil {
-		return Catalog{}, err
-	}
-	return ownCatalog(ctx, db.conn, profileID, catalogID)
-}
-
-// DetachCollection is DetachCatalog for a collection. Its folders and
-// scoped catalogs lose their sub_keys, which only pair a subscribed copy
-// with its snapshot.
-func (db *DB) DetachCollection(ctx context.Context, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {
-	tree, err := ownCollection(ctx, db.conn, profileID, collectionID)
-	if err != nil {
-		return CollectionWithFolders{}, err
-	}
-	if err := db.detach(ctx, "collection", collectionID, tree.Subscription); err != nil {
-		return CollectionWithFolders{}, err
-	}
-	return ownCollection(ctx, db.conn, profileID, collectionID)
-}
-
-// detach drops the subscription of id, a kind the caller has read with its
-// subscription state sub, and clears the sub_keys inside it.
-func (db *DB) detach(ctx context.Context, kind string, id uuid.UUID, sub *SubscriptionState) error {
-	if sub == nil {
-		return fmt.Errorf("%w: this %s is not a subscribed copy", ErrInvalidInput, kind)
-	}
-	return db.inTx(ctx, func(tx *sql.Tx) error {
-		return detachTx(ctx, tx, kind, id)
-	})
-}
-
-// detachTx drops the subscription of id, a catalog or a collection as kind
-// names it, and clears the sub_keys of the folders and scoped catalogs inside
-// it, inside tx. A row that is no subscribed copy has neither, so it changes
-// nothing. Every content write to a catalog or a collection other than
-// Update runs it on the row it wrote: writing a copy makes it the profile's
-// own.
-func detachTx(ctx context.Context, tx *sql.Tx, kind string, id uuid.UUID) error {
-	for _, statement := range []string{
-		`DELETE FROM subscriptions WHERE catalog_id = ?1 OR collection_id = ?1`,
-		`UPDATE catalogs SET sub_key = NULL WHERE collection_id = ?1`,
-		`UPDATE folders SET sub_key = NULL WHERE collection_id = ?1`,
-	} {
-		if _, err := tx.ExecContext(ctx, statement, id.String()); err != nil {
-			return fmt.Errorf("detaching %s: %w", kind, err)
-		}
-	}
-	return nil
 }

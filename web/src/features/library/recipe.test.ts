@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog } from '@/api'
 import { catalog as row } from '@/test/fixtures'
-import { describeRecipe, recipeSentence } from './recipe'
+import { describeRecipe, recipeFacts, recipeSentence } from './recipe'
 
 function catalog(type: Catalog['type'], params: object): Catalog {
   return row({ type, params: JSON.stringify(params) })
@@ -90,5 +90,111 @@ describe('recipeSentence', () => {
 
   it('is empty for a catalog with no filters', () => {
     expect(recipeSentence(catalog('movie', {}), lookup)).toBe('')
+  })
+})
+
+describe('recipeFacts', () => {
+  const lookup = new Map<number, string>([
+    [80, 'Crime'],
+    [53, 'Thriller'],
+  ])
+
+  it('has the type alone for a recipe that sets nothing else', () => {
+    expect(recipeFacts(catalog('movie', {}), lookup)).toEqual([{ label: 'Type', value: 'Movies' }])
+    expect(recipeFacts(catalog('series', {}), lookup)).toEqual([{ label: 'Type', value: 'Series' }])
+  })
+
+  it('lists each filter a movie recipe sets, in reading order', () => {
+    const params = {
+      with_genres: '80,53',
+      primary_release_date_gte: '1940-01-01',
+      primary_release_date_lte: '1959-12-31',
+      vote_average_gte: 7,
+      vote_count_gte: 200,
+      sort_by: 'popularity.desc',
+    }
+    expect(recipeFacts(catalog('movie', params), lookup)).toEqual([
+      { label: 'Type', value: 'Movies' },
+      { label: 'Genres', value: 'Crime and Thriller' },
+      { label: 'Released', value: '1940–1959' },
+      { label: 'Rating', value: '7.0 or more' },
+      { label: 'Votes', value: '200 or more' },
+      { label: 'Order', value: 'Most popular' },
+    ])
+  })
+
+  it('joins genres with "or" when the list is pipe-joined, and names the ones left out', () => {
+    const facts = recipeFacts(catalog('movie', { with_genres: '80|53', without_genres: '53' }), lookup)
+    expect(facts).toContainEqual({ label: 'Genres', value: 'Crime or Thriller' })
+    expect(facts).toContainEqual({ label: 'Without genres', value: 'Thriller' })
+  })
+
+  it('words a series window as Aired, and a rolling or upcoming window as it reads', () => {
+    expect(recipeFacts(catalog('series', { first_air_date_gte: '2000-01-01' }), lookup)).toContainEqual({
+      label: 'Aired',
+      value: '2000 or later',
+    })
+    expect(recipeFacts(catalog('movie', { released_within_days: 730 }), lookup)).toContainEqual({
+      label: 'Released',
+      value: 'In the last 2 years',
+    })
+    expect(recipeFacts(catalog('movie', { released_within_days: 1 }), lookup)).toContainEqual({
+      label: 'Released',
+      value: 'Not out yet',
+    })
+  })
+
+  it('gives runtime, language and certification their own tiles', () => {
+    const params = {
+      with_runtime_lte: 110,
+      with_original_language: 'ja',
+      certification: 'PG-13',
+      certification_country: 'US',
+    }
+    const facts = recipeFacts(catalog('movie', params), lookup)
+    expect(facts).toContainEqual({ label: 'Runtime', value: '110 min or less' })
+    expect(facts).toContainEqual({ label: 'Language', value: expect.stringMatching(/japanese/i) })
+    expect(facts).toContainEqual({ label: 'Rated', value: expect.stringMatching(/^PG-13 in /) })
+    expect(recipeFacts(catalog('movie', { certification_gte: 'R' }), lookup)).toContainEqual({ label: 'Rated', value: 'R' })
+  })
+
+  it('counts streaming services, studios, keywords and networks rather than naming them', () => {
+    const params = {
+      with_watch_providers: '8|337',
+      watch_region: 'US',
+      with_companies: '420|2',
+      without_companies: '9993',
+      with_keywords: '9715',
+      without_keywords: '849,12',
+      with_networks: '213',
+    }
+    const series = recipeFacts(catalog('series', params), lookup)
+    expect(series).toContainEqual({ label: 'Streaming services', value: expect.stringMatching(/^2 in / )})
+    expect(series).toContainEqual({ label: 'Studios', value: '2' })
+    expect(series).toContainEqual({ label: 'Left-out studios', value: '1' })
+    expect(series).toContainEqual({ label: 'Keywords', value: '1' })
+    expect(series).toContainEqual({ label: 'Left-out keywords', value: '2' })
+    expect(series).toContainEqual({ label: 'Networks', value: '1' })
+    expect(recipeFacts(catalog('movie', params), lookup).map((f) => f.label)).not.toContain('Networks')
+    expect(recipeFacts(catalog('movie', { with_watch_providers: '8' }), lookup)).toContainEqual({
+      label: 'Streaming services',
+      value: '1',
+    })
+  })
+
+  it('says an unknown sort as it was stored, and a shuffled recipe as shuffled', () => {
+    const facts = recipeFacts(catalog('movie', { sort_by: 'odd.desc', randomized: true }), lookup)
+    expect(facts).toContainEqual({ label: 'Order', value: 'odd.desc' })
+    expect(facts.at(-1)).toEqual({ label: 'Shuffled', value: 'Yes' })
+  })
+
+  it('reads a movie collection row as the collection alone', () => {
+    const params = { with_collection: '10', sort_by: 'popularity.desc', with_genres: '80', randomized: true }
+    expect(recipeFacts(catalog('movie', params), lookup)).toEqual([
+      { label: 'Type', value: 'Movies' },
+      { label: 'From', value: 'A movie collection' },
+      { label: 'Shuffled', value: 'Yes' },
+    ])
+    expect(recipeFacts(catalog('series', { with_collection: '10' }), lookup)).toEqual([{ label: 'Type', value: 'Series' }])
   })
 })

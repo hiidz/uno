@@ -43,7 +43,7 @@ export function ItemActions({ item, actions }: { item: CommunityItem; actions: R
       </button>
       <InfoTip
         label="Take"
-        text="Take adds a copy to your library that follows its owner's updates until you save a change to it, which makes it yours. Duplicate (⋯) makes a copy that's yours from the start."
+        text="Add puts it in your library, read-only, and it gets its publisher’s updates. Duplicate (⋯) makes a copy that’s yours to edit."
       />
       <MoreMenu label={item.title}>
         <MoreMenuItem disabled={pending !== undefined} onSelect={actions.onDuplicate}>

@@ -38,7 +38,7 @@ const KIND_LABEL: Record<RowKind, string> = {
  * Every row in the rail is yours, so the stickers left to state are about
  * Community (`rowStickers`): Shared, solid pink because Community is where a
  * shared row turns up, and Changed once it has been edited since; or From
- * Community, outlined pink, on a copy taken from there, with Update or No
+ * Community, outlined pink, on a row taken from there, with Update or No
  * longer shared beside it.
  */
 export function LibraryItem({

@@ -131,8 +131,25 @@ func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UU
 	})
 }
 
-// errSubscribedCopy is the ErrInvalidInput for publishing a subscribed copy
-// of kind: only its publisher shares it.
+// errSubscribedCopy is the ErrInvalidInput for writing or publishing a
+// subscribed copy of kind: only its publisher changes or publishes it.
 func errSubscribedCopy(kind string) error {
-	return fmt.Errorf("%w: this %s is a copy taken from Community, which only its publisher can share; save a change to it or detach it to make it yours, or duplicate it to share your own version", ErrInvalidInput, kind)
+	return fmt.Errorf("%w: this %s is from Community, so only its publisher can change or publish it; duplicate it to make a version of your own", ErrInvalidInput, kind)
+}
+
+// refuseSubscribedCopy is errSubscribedCopy when id, a catalog or a collection
+// as kind names it, is one of profileID's subscribed copies. Every content
+// write other than Update runs it inside its transaction, ahead of the write.
+func refuseSubscribedCopy(ctx context.Context, q queryRower, profileID uuid.UUID, kind string, id uuid.UUID) error {
+	var subscribed bool
+	err := q.QueryRowContext(ctx, `
+		SELECT EXISTS (SELECT 1 FROM subscriptions WHERE (catalog_id = ?1 OR collection_id = ?1) AND owner_id = ?2)
+	`, id.String(), profileID.String()).Scan(&subscribed)
+	if err != nil {
+		return fmt.Errorf("checking subscription: %w", err)
+	}
+	if subscribed {
+		return errSubscribedCopy(kind)
+	}
+	return nil
 }

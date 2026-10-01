@@ -5,8 +5,6 @@ export {
   createCollection,
   deleteCatalog,
   deleteCollection,
-  detachCatalog,
-  detachCollection,
   duplicateCollection,
   forkPublication,
   publishCatalog,

@@ -89,8 +89,8 @@ func TestGetUserCatalogsExcludesScoped(t *testing.T) {
 }
 
 // A collection_id sent with an update of a listed catalog changes nothing: the
-// catalog stays listed and published, and a subscribed copy the id names is
-// not detached.
+// catalog stays listed and published, and a subscribed copy the id names
+// keeps its subscription.
 func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -119,7 +119,7 @@ func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
 		t.Errorf("publication after the update = %+v, want live", reloaded.Publication)
 	}
 	if after := mustOwnCollection(t, db, taker, copied.ID); after.Subscription == nil {
-		t.Error("the collection named in collection_id was detached")
+		t.Error("the collection named in collection_id lost its subscription")
 	}
 }
 

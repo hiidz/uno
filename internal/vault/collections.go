@@ -323,7 +323,8 @@ func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID
 // UpdateUserCollection validates input and replaces the collection
 // identified by collectionID (title, settings, and its full folder set),
 // provided it's owned by profileID (ErrCollectionNotFound otherwise).
-// Saving a subscribed copy detaches it (saveCollectionTx).
+// A subscribed copy is ErrInvalidInput (refuseSubscribedCopy): only Update
+// writes one.
 func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID, input CollectionForm) (CollectionWithFolders, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
@@ -338,17 +339,16 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 	return ownCollection(ctx, db.conn, profileID, collectionID)
 }
 
-// saveCollectionTx is UpdateUserCollection's write, inside tx: input is
-// written over profileID's collection through the update core, whose first
-// write answers ErrCollectionNotFound for a collection profileID doesn't
-// own, and then the collection is detached: a save makes a subscribed copy
-// the profile's own. Update shares the core but never detaches, so a copy
-// it writes keeps its subscription and keys.
+// saveCollectionTx is UpdateUserCollection's write, inside tx: a collection
+// that is not a subscribed copy of profileID's has input written over it
+// through the update core, whose first write answers ErrCollectionNotFound
+// for a collection profileID doesn't own. Update shares the core without the
+// refusal.
 func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, input CollectionForm) error {
-	if err := updateCollectionTx(ctx, tx, profileID, collectionID, input, time.Now().UTC().Format(time.RFC3339)); err != nil {
+	if err := refuseSubscribedCopy(ctx, tx, profileID, kindCollection, collectionID); err != nil {
 		return err
 	}
-	return detachTx(ctx, tx, kindCollection, collectionID)
+	return updateCollectionTx(ctx, tx, profileID, collectionID, input, time.Now().UTC().Format(time.RFC3339))
 }
 
 // DeleteUserCollection deletes the collection identified by collectionID,

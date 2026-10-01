@@ -212,6 +212,33 @@ describe('CommunityView', () => {
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
     expect(await screen.findByText('One page of results')).toBeInTheDocument()
+    expect(screen.getByText('Type', { selector: 'dt' })).toBeInTheDocument()
+    expect(screen.getByText('Movies', { selector: 'dd' })).toBeInTheDocument()
+  })
+
+  it('opens a collection publication’s catalogs in place, as the view of an added row does', async () => {
+    renderView({
+      'GET /api/p/1/community': [night],
+      'GET /api/p/1/community/night': nightDetail,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
+    fireEvent.click(screen.getByText('Horror Nights'))
+    const catalog = await screen.findByRole('button', { name: /Slasher classics/ })
+    expect(catalog).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(catalog)
+    expect(catalog).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Narrowed to', { selector: 'dt' })).toBeInTheDocument()
+  })
+
+  it('explains Add and Duplicate in the row’s tip', async () => {
+    renderView({ 'GET /api/p/1/community': [a24] })
+    await screen.findByText('A24 Horror')
+    fireEvent.click(screen.getAllByRole('button', { name: 'About take' })[0])
+    expect(
+      await screen.findByText(
+        'Add puts it in your library, read-only, and it gets its publisher’s updates. Duplicate (⋯) makes a copy that’s yours to edit.',
+      ),
+    ).toBeInTheDocument()
   })
 
   it('draws nothing for a publication whose snapshot holds no catalog', async () => {

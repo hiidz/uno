@@ -185,7 +185,7 @@ owner removes the key.
   or a collection id for one scoped to exactly that collection (hidden from the library, usable
   only in that collection's folders, deleted with it). A scoped catalog is made only by
   `CreateUserCatalog` with `collection_id` set, which enforces that the target collection is owned
-  by the same profile (`requireOwnedCollection`; a subscribed copy is detached by the write, see
+  by the same profile (`requireOwnedCollection`; a subscribed copy is refused, see
   *Publications and subscriptions*), or inline in a collection's save. A scoped catalog is never
   on the home screen — the
   schema's own `CHECK (collection_id IS NULL OR home_sort_order IS NULL)` exists as a backstop and
@@ -491,8 +491,8 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   again inside the write transaction and writes only if its snapshot is unchanged, so a source
   edited while TMDB was checking it is `ErrConflict` rather than published unchecked. A catalog
   inside a collection and a subscribed copy are refused (`ErrInvalidInput`): only its publisher
-  shares a publication. A copy that is detached, forked or duplicated is the caller's own, and
-  publishes like any other row. A collection that references a catalog its owner subscribes to
+  shares a publication. A copy that is forked or duplicated is the caller's own, and publishes
+  like any other row. A collection that references a catalog its owner subscribes to
   publishes: its snapshot freezes that catalog as it stands, under the new publication's own
   keys, so a profile that subscribes to the collection gets a scoped copy with no subscription
   of its own and nothing linking it to the original publication. When the owner Updates that
@@ -525,13 +525,13 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   `(owner_id, publication_id)`, so a second subscribe is `ErrConflict`, and deleting the copy
   deletes its subscription by cascade. `subscriber_count` is kept by the
   `subscriptions_count_*` triggers.
-- **Writing a subscribed copy makes it the caller's own.** A catalog save, a collection save, and
-  a catalog created in it each detach the copy in the same transaction, after
-  their write (`detachTx`): the subscription goes, lowering `subscriber_count`, the `sub_key`s
-  inside the copy are cleared, and every id stays. Update shares the collection update core but
-  never detaches, so a copy it writes keeps its subscription and keys. A publish of a subscribed
-  copy is `ErrInvalidInput`: only its publisher shares it. Its home order, show-in-home and
-  Show first change through push, like any row's, and it can be deleted.
+- **Only Update writes a subscribed copy.** A catalog save, a collection save, and a catalog
+  created in it are `ErrInvalidInput` (`refuseSubscribedCopy`, run in the write's transaction
+  ahead of the write, over the caller's own subscriptions): the copy keeps its subscription, its
+  `sub_key`s and its ids. Update shares the collection update core without the refusal. A
+  publish of a subscribed copy is `ErrInvalidInput` too: only its publisher changes or
+  publishes it. Its home order, show-in-home and Show first change through push, like any
+  row's, and it can be deleted, which removes its subscription by cascade.
   - **The copy's row** carries `subscription {publication_id, update_available, withdrawn}`.
     `update_available` is true while the publication is live and the subscription's
     `taken_hash` differs from its content hash.
@@ -550,12 +550,10 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   - the copy's pin and Home placement stay; on Home, an update that changes what push sends for
     it leaves it `needs_push`, so Home shows the update as a change to push.
 
-  A copy Update reaches is still subscribed, so no save has touched it since it was written:
-  there is nothing to conflict with.
-- **Detach** (`DetachCatalog`, `DetachCollection`) deletes the subscription and keeps the copy,
-  ids included, as the caller's own editable rows, clearing the `sub_key`s inside it. **Fork**
-  (`ForkPublication`) is a subscribe without the subscription: an editable copy with no
-  `sub_key`s, and any number of them beside a subscription.
+  A copy Update reaches is still as it was written, since nothing else writes one: there is
+  nothing to conflict with.
+- **Fork** (`ForkPublication`) is a subscribe without the subscription: an editable copy with
+  no `sub_key`s, and any number of them beside a subscription.
 - **Community** (`ListCommunity`) is every live publication not the caller's own, newest first,
   in one call; the SPA searches, filters and sorts it. A row is light: counts, dates,
   `subscribed` and `update_available` from a join with the caller's subscriptions, the names of

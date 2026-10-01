@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PublicationDetail } from '@/api'
 import { catalog, communityItem } from '@/test/fixtures'
-import { catalogItem, folderItems } from './listing'
+import { catalogItem } from './listing'
 import { asCatalog, snapshotAsCollection, snapshotCatalog, snapshotRecipeLine } from './snapshot'
 
 const genres = { movie: new Map([[27, 'Horror']]), tv: new Map([[10765, 'Sci-Fi & Fantasy']]) }
@@ -100,25 +100,6 @@ describe('listing', () => {
   it('lists a catalog by name over its recipe line', () => {
     expect(catalogItem(horror, genres, 'Movies')).toEqual({ key: 'h', name: 'Horror', line: 'Horror', sticker: 'Movies' })
     expect(catalogItem(scifi, genres)).toMatchObject({ line: 'Sci-Fi & Fantasy' })
-  })
-
-  it('lists a folder’s refs in order, with each narrowed genre, skipping a missing catalog', () => {
-    const items = folderItems(
-      {
-        refs: [
-          { catalog_id: 'h', genre: '' },
-          { catalog_id: 'h', genre: 'Slasher' },
-          { catalog_id: 'gone', genre: '' },
-        ],
-      },
-      new Map([['h', horror]]),
-      genres,
-    )
-    expect(items).toEqual([
-      { key: 'h::', name: 'Horror', line: 'Horror', sticker: undefined },
-      { key: 'h::Slasher', name: 'Horror', line: 'Horror • Slasher', sticker: undefined },
-    ])
-    expect(folderItems({ refs: null }, new Map(), genres)).toEqual([])
   })
 })
 

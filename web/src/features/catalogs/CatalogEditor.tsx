@@ -69,10 +69,9 @@ import {
  * the rail, switching profile — so the pane owns the confirmation and this only
  * has to say whether there is anything to lose.
  *
- * **Every row this editor opens is editable,** a catalog taken from Community
- * included. Its sharing setting is `sharingRow`, which the pane builds: an own
- * row's Sharing row, or a copy's From Community row, and the pane asks before
- * a copy's save, which makes it the profile's own.
+ * **Every row this editor opens is the profile's own and editable.** A catalog
+ * taken from Community opens as a view instead (`FromCommunityView`). Its
+ * sharing setting is `sharingRow`, which the pane builds: the Sharing row.
  *
  * **`type` is always locked.** It is chosen when the catalog is named, and
  * nothing — here or anywhere else — changes an existing row's type.

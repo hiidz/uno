@@ -32,6 +32,7 @@ import { HomePane, type HomeView } from '@/features/home/HomePane'
 import { useHomeEdits } from '@/features/home/useHomeSelection'
 import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
+import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
 import { isShared } from '@/features/sharing/sharingState'
 import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
 import { andList } from '@/lib/list'
@@ -133,16 +134,17 @@ export function Workspace({
     genres: library.genres,
     dirty,
     onToast: setToast,
-    onReopen: setTarget,
-    // Leaving the Workspace tab unmounts the pane, so it passes the editor's
-    // guard like every other way out, and clears its dirty flag as the tab
-    // switch does.
-    onOpenPublication: (publication) =>
-      guard(() => {
-        setDirty(false)
-        onOpenPublication(publication)
-      }),
   })
+
+  // Leaving the Workspace tab unmounts the pane, so it passes the editor's
+  // guard like every other way out, and clears its dirty flag as the tab
+  // switch does.
+  function openPublication(publication: OpenPublication) {
+    guard(() => {
+      setDirty(false)
+      onOpenPublication(publication)
+    })
+  }
 
   const railRef = useRef<HTMLElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -281,27 +283,15 @@ export function Workspace({
     })
   }
 
-  // A copy taken from Community asks before its save, which makes it the
-  // profile's own (`confirmCopySave`); any other row saves at once.
-  function saveCatalog(state: CatalogFormState) {
-    if (target?.kind !== 'catalog') return
-    sharing.confirmCopySave(activeCatalog, updateCatalog, { id: target.id, payload: toPayload(state) })
-  }
-
-  function updateCatalog(update: { id: string; payload: ReturnType<typeof toPayload> }) {
-    catalogMutations.update.mutate(update, { onSuccess: closeAfterSave })
+  function saveCatalog(id: string, state: CatalogFormState) {
+    catalogMutations.update.mutate({ id, payload: toPayload(state) }, { onSuccess: closeAfterSave })
   }
 
   // `payload` already resolved every draft catalog into an inline `new`
   // spec inside `CollectionEditor` itself, which is the one place that has
   // `localCatalogs` to resolve them against — see its own `save`.
-  function saveCollection(payload: CollectionPayload) {
-    if (target?.kind !== 'collection') return
-    sharing.confirmCopySave(activeCollection, updateCollection, { id: target.id, payload })
-  }
-
-  function updateCollection(update: { id: string; payload: CollectionPayload }) {
-    collectionMutations.update.mutate(update, { onSuccess: closeAfterSave })
+  function saveCollection(id: string, payload: CollectionPayload) {
+    collectionMutations.update.mutate({ id, payload }, { onSuccess: closeAfterSave })
   }
 
   function confirmDeleteCatalog(catalog: LibraryCatalog) {
@@ -362,11 +352,11 @@ export function Workspace({
   // The library row the open editor was opened from. Below `lg` the editor's
   // own header carries that row's duplicate and delete — the row itself is a
   // screen-length scroll away — so it has to know which row it stands for. Its
-  // sharing state fills the editor's sharing setting (a copy taken from
-  // Community gets its From Community row, and asks before a save), and is
-  // current after a save or a sharing call because both refetch the library.
-  // Undefined until the library's refetch lists a row that was just created
-  // or duplicated.
+  // sharing state fills the editor's sharing setting, and decides whether the
+  // pane is an editor or the view of a row from Community (`subscription`); it
+  // is current after a save, a sharing call or an Update because each
+  // refetches the library. Undefined until the library's refetch lists a row
+  // that was just created or duplicated.
   const activeCatalog =
     target?.kind === 'catalog' ? library.catalogs.find((catalog) => catalog.id === target.id) : undefined
   const activeCollection =
@@ -679,6 +669,32 @@ export function Workspace({
               onViewChange={setHomeView}
               onShowLibrary={showLibraryFromHome}
             />
+          ) : activeCatalog?.subscription ? (
+            <CatalogFromCommunity
+              key={activeCatalog.id}
+              catalog={activeCatalog}
+              genres={library.genres}
+              onClose={close}
+              onDuplicate={() => duplicateCatalog(activeCatalog)}
+              onDelete={() => deleteCatalog(activeCatalog)}
+              deleteBlocked={home.deleteBlockers.catalog(activeCatalog.id)}
+              onUpdate={() =>
+                openPublication({ id: activeCatalog.subscription!.publication_id, kind: 'catalog' })
+              }
+            />
+          ) : activeCollection?.subscription ? (
+            <CollectionFromCommunity
+              key={activeCollection.id}
+              collection={activeCollection}
+              genres={library.genres}
+              onClose={close}
+              onDuplicate={() => duplicateCollection(activeCollection)}
+              onDelete={() => deleteCollection(activeCollection)}
+              deleteBlocked={home.deleteBlockers.collection(activeCollection.id)}
+              onUpdate={() =>
+                openPublication({ id: activeCollection.subscription!.publication_id, kind: 'collection' })
+              }
+            />
           ) : target.kind === 'catalog' ? (
             <CatalogEditor
               // Remount on a different target rather than re-seeding in place:
@@ -695,13 +711,13 @@ export function Workspace({
               // Duplicate, which can run while this editor is open.
               saving={catalogMutations.update.isPending}
               serverError={catalogMutations.update.error?.message ?? null}
-              onSave={saveCatalog}
+              onSave={(state) => saveCatalog(target.id, state)}
               onRequestClose={close}
               onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
               onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
               deleteBlocked={home.deleteBlockers.catalog(target.id)}
               onDirtyChange={setDirty}
-              {...sharing.catalogSharing(activeCatalog, duplicateCatalog)}
+              {...sharing.catalogSharing(activeCatalog)}
             />
           ) : (
             <CollectionEditor
@@ -713,7 +729,7 @@ export function Workspace({
               // Only `update`, for the same reason as the catalog editor's.
               saving={collectionMutations.update.isPending}
               serverError={collectionMutations.update.error?.message ?? null}
-              onSave={saveCollection}
+              onSave={(payload) => saveCollection(target.id, payload)}
               onRequestClose={close}
               onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
               onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
@@ -727,7 +743,7 @@ export function Workspace({
               countryNames={library.countryNames}
               languages={library.languages}
               usedInFolders={usedInFolders}
-              {...sharing.collectionSharing(activeCollection, duplicateCollection)}
+              {...sharing.collectionSharing(activeCollection)}
             />
           )}
         </div>

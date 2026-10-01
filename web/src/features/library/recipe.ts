@@ -318,3 +318,107 @@ export function catalogListing(
     searchText: `${catalog.name} ${segments.join(' ')}`.toLowerCase(),
   }
 }
+
+/** One fact a recipe sets: a short label and its value, as a spec tile reads. */
+export interface RecipeFact {
+  label: string
+  value: string
+}
+
+/** One fact, or several or none, a recipe sets. */
+type FactBuilder = (source: FactSource) => RecipeFact[]
+
+interface FactSource {
+  type: Catalog['type']
+  p: TMDBParams
+  lookup: GenreLookup
+}
+
+/** A fact for `label` when `value` says something, else none. */
+function fact(label: string, value: string | null | undefined): RecipeFact[] {
+  return value ? [{ label, value }] : []
+}
+
+/** How many ids a list holds, for the facts that count rather than name. */
+function idCount(raw: string | undefined): string | null {
+  const count = countIDs(raw)
+  return count ? String(count) : null
+}
+
+function releaseFact({ type, p }: FactSource): RecipeFact[] {
+  const movie = type === 'movie'
+  const span = movie
+    ? dateWindow(p.primary_release_date_gte, p.primary_release_date_lte, p.released_within_days, '')
+    : dateWindow(p.first_air_date_gte, p.first_air_date_lte, p.aired_within_days, '')
+  return fact(movie ? 'Released' : 'Aired', span && capitalize(span.trim()))
+}
+
+function certificationFact({ p }: FactSource): RecipeFact[] {
+  const cert = p.certification ?? p.certification_gte ?? p.certification_lte
+  if (!cert) return []
+  return fact('Rated', p.certification_country ? `${cert} in ${countryLabel(p.certification_country)}` : cert)
+}
+
+function streamingFact({ p }: FactSource): RecipeFact[] {
+  const count = idCount(p.with_watch_providers)
+  if (!count) return []
+  return fact('Streaming services', p.watch_region ? `${count} in ${countryLabel(p.watch_region)}` : count)
+}
+
+function runtimeFact({ p }: FactSource): RecipeFact[] {
+  return fact('Runtime', range(p.with_runtime_gte, p.with_runtime_lte, (n) => `${n} min`))
+}
+
+function languageFact({ p }: FactSource): RecipeFact[] {
+  return fact('Language', p.with_original_language && displayName('language', p.with_original_language))
+}
+
+function sortFact({ p }: FactSource): RecipeFact[] {
+  return fact('Order', p.sort_by && (SORT_PHRASE[p.sort_by] ?? p.sort_by))
+}
+
+function shuffledFact({ p }: FactSource): RecipeFact[] {
+  return fact('Shuffled', p.randomized ? 'Yes' : null)
+}
+
+/** Every fact a recipe sets, in the order a spec tile grid reads them. */
+const FACTS: FactBuilder[] = [
+  ({ type }) => fact('Type', typeLabel(type)),
+  ({ p, lookup }) => fact('Genres', genreNames(p.with_genres, lookup)),
+  ({ p, lookup }) => fact('Without genres', genreNames(p.without_genres, lookup)),
+  releaseFact,
+  ({ p }) => fact('Rating', range(p.vote_average_gte, p.vote_average_lte, (n) => n.toFixed(1))),
+  ({ p }) => fact('Votes', range(p.vote_count_gte, p.vote_count_lte, (n) => n.toLocaleString())),
+  runtimeFact,
+  languageFact,
+  certificationFact,
+  streamingFact,
+  // Counted, not named, as in `describeParams`: naming needs a TMDB lookup.
+  ({ p }) => fact('Studios', idCount(p.with_companies)),
+  ({ p }) => fact('Left-out studios', idCount(p.without_companies)),
+  ({ p }) => fact('Keywords', idCount(p.with_keywords)),
+  ({ p }) => fact('Left-out keywords', idCount(p.without_keywords)),
+  ({ type, p }) => fact('Networks', type === 'series' ? idCount(p.with_networks) : null),
+  sortFact,
+  shuffledFact,
+]
+
+/** A collection row lists one TMDB collection's films and applies no other
+ *  filter, so the collection is the whole recipe. */
+const COLLECTION_FACTS: FactBuilder[] = [
+  ({ type }) => fact('Type', typeLabel(type)),
+  () => fact('From', 'A movie collection'),
+  shuffledFact,
+]
+
+/**
+ * The recipe as spec tiles: one label and value for each thing it sets, in
+ * the vocabulary of `describeRecipe` (`lookup` is the genre map for this
+ * catalog's kind). The type is always first; a recipe that sets nothing else
+ * has that one fact.
+ */
+export function recipeFacts(catalog: Pick<Catalog, 'type' | 'params'>, lookup: GenreLookup): RecipeFact[] {
+  const source = { type: catalog.type, p: parseParams(catalog.params), lookup }
+  const collection = source.type === 'movie' && countIDs(source.p.with_collection) > 0
+  return (collection ? COLLECTION_FACTS : FACTS).flatMap((build) => build(source))
+}

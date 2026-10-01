@@ -334,7 +334,7 @@ func TestPublishAcceptsACollectionWithASubscribedCatalog(t *testing.T) {
 		t.Fatalf("publish a collection with a subscribed catalog = %v, want nil", err)
 	}
 	if got := reloadCatalog(t, db, added.ID).Subscription; got == nil {
-		t.Error("publishing the collection detached the catalog it uses")
+		t.Error("publishing the collection dropped the subscription of the catalog it uses")
 	}
 
 	copied := subscribe(t, db, taker, published.Publication.ID).Collection

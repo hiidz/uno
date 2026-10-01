@@ -2,8 +2,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   type Catalog,
   type Collection,
-  detachCatalog,
-  detachCollection,
   invalidateProfileLists,
   publishCatalog,
   publishCollection,
@@ -20,15 +18,14 @@ export interface SharingTarget {
 const CALLS = {
   publish: { catalog: publishCatalog, collection: publishCollection },
   withdraw: { catalog: withdrawCatalog, collection: withdrawCollection },
-  detach: { catalog: detachCatalog, collection: detachCollection },
 } as const
 
 /**
- * The owner's own sharing calls: publish (or publish an update), stop
- * sharing, and detach a subscribed copy. Each changes a library row's sharing
- * state and what Community lists, so each refreshes the library and Community
- * together, and settles only once they have refetched: the editor that asked
- * shows its new state as soon as the call resolves.
+ * The owner's own sharing calls: publish (or publish an update) and stop
+ * sharing. Each changes a library row's sharing state and what Community
+ * lists, so each refreshes the library and Community together, and settles
+ * only once they have refetched: the editor that asked shows its new state as
+ * soon as the call resolves.
  */
 export function useSharingMutations(profileIndex: number) {
   const queryClient = useQueryClient()
@@ -44,6 +41,5 @@ export function useSharingMutations(profileIndex: number) {
   return {
     publish: useCall('publish'),
     withdraw: useCall('withdraw'),
-    detach: useCall('detach'),
   }
 }

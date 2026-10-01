@@ -51,10 +51,9 @@ export interface PublicationState {
   changed_since_publish: boolean
 }
 
-/** What a subscribed copy shows of the publication it was taken from. A save
- *  of the copy detaches it, which ends the subscription; only an Update
- *  changes it while it follows its owner. `withdrawn` means its owner stopped
- *  sharing it, which ends its updates. */
+/** What a subscribed copy shows of the publication it was taken from. Only an
+ *  Update changes the copy; a save of it is refused. `withdrawn` means its
+ *  owner stopped sharing it, which ends its updates. */
 export interface SubscriptionState {
   publication_id: string
   update_available: boolean

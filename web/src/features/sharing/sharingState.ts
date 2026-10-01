@@ -100,17 +100,3 @@ export function sharingNote(state: OwnSharing, dirty: boolean): string | null {
 export function errorText(error: Error | null): string | null {
   return error?.message ?? null
 }
-
-const FROM_WORDS = {
-  current: 'Taken from Community. It follows its owner’s updates until you save a change to it.',
-  update: 'Taken from Community. Its owner has published an update.',
-  withdrawn: 'Taken from Community. Its owner stopped sharing it, so it gets no more updates.',
-}
-
-/** Where a copy taken from Community stands, in its From Community row:
- *  following its owner, with an update waiting, or getting no more. */
-export function fromWords(subscription: SubscriptionState): string {
-  if (subscription.update_available) return FROM_WORDS.update
-  if (subscription.withdrawn) return FROM_WORDS.withdrawn
-  return FROM_WORDS.current
-}

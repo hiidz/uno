@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
   errorText,
-  fromWords,
   isShared,
   ownSharing,
   publishGroups,
@@ -95,15 +94,5 @@ describe('errorText and stickerWords', () => {
   it('reads stickers as words for a screen reader', () => {
     expect(stickerWords([{ label: 'Shared', tone: 'shared' }, { label: 'Changed', tone: 'quiet' }])).toBe(', shared, changed')
     expect(stickerWords([])).toBe('')
-  })
-})
-
-describe('fromWords', () => {
-  it('says whether a copy follows its owner, has an update waiting, or gets no more', () => {
-    expect(fromWords(subscription)).toBe('Taken from Community. It follows its owner’s updates until you save a change to it.')
-    expect(fromWords({ ...subscription, update_available: true })).toBe('Taken from Community. Its owner has published an update.')
-    expect(fromWords({ ...subscription, withdrawn: true })).toBe(
-      'Taken from Community. Its owner stopped sharing it, so it gets no more updates.',
-    )
   })
 })

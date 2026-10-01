@@ -11,7 +11,7 @@ export interface CatalogListItem {
 }
 
 /** Catalogs by name over their recipe line, the way the rail lists them: the
- *  publish dialog's lists, and a publication's folders on its page. */
+ *  publish dialog's lists. */
 export function CatalogList({ items }: { items: CatalogListItem[] }) {
   return (
     <ul className="m-0 list-none p-0">
