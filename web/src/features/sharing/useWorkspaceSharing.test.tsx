@@ -110,7 +110,7 @@ describe('useWorkspaceSharing', () => {
     expect(calls).toEqual([])
     fireEvent.click(screen.getByRole('button', { name: 'Publish update…' }))
     expect(await within(dialog()).findByRole('heading', { name: 'Since you last published' })).toBeInTheDocument()
-    expect(await within(dialog()).findByText('Renamed “Scary” to “Horror”')).toBeInTheDocument()
+    expect(await within(dialog()).findByText('Name: “Scary” → “Horror”')).toBeInTheDocument()
     expect(calls).toEqual(['GET /api/p/1/collections/col1/changes-since-publish'])
   })
 

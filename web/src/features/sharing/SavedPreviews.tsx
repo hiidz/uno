@@ -16,7 +16,7 @@ export function SavedCatalogPreview({ type, params }: { type: CatalogType; param
   // stable across renders.
   // oxlint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => preview.run(), [])
-  return <RecipePreview preview={preview} type={type} invalid={false} onRun={preview.run} />
+  return <RecipePreview preview={preview} type={type} invalid={false} onRun={preview.run} readOnly />
 }
 
 /** The collection editor's Preview panel over a saved tree nobody is editing

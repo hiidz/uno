@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SnapshotChange, SubscriptionState } from '@/api'
 import { failWith, fakeApi, type FakeRoute } from '@/test/fakeApi'
 import { communityItem } from '@/test/fixtures'
-import { SinceLastPublished, UpdateChanges, UpdateSummary } from './Changes'
+import { SinceLastPublished, UpdateChanges, UpdateCount } from './Changes'
 
 const api = vi.hoisted(() => ({ current: null as null | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) }))
 vi.mock('@/api/client', () => ({ apiFetch: (input: RequestInfo | URL, init?: RequestInit) => api.current!(input, init) }))
@@ -37,9 +37,10 @@ describe('UpdateChanges', () => {
       { 'GET /api/p/1/community/pub/changes': changes },
       <UpdateChanges profileIndex={1} item={waiting} genres={genres} />,
     )
-    expect(screen.getByRole('heading', { name: 'What this update changes' })).toBeInTheDocument()
-    expect(await screen.findByText('Removed folder “80s”')).toBeInTheDocument()
-    expect(screen.getByText('Added “Ronin” to “Classics”')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'In this update' })).toBeInTheDocument()
+    expect(await screen.findByText('Folder “80s”')).toBeInTheDocument()
+    expect(screen.getByText('“Ronin” to “Classics”')).toBeInTheDocument()
+    expect(screen.getByText('3 changes')).toBeInTheDocument()
     expect(calls).toEqual(['GET /api/p/1/community/pub/changes'])
   })
 
@@ -64,20 +65,20 @@ describe('UpdateChanges', () => {
   })
 })
 
-describe('UpdateSummary', () => {
+describe('UpdateCount', () => {
   const following: SubscriptionState = { publication_id: 'pub', update_available: true, unpublished: false }
 
-  it('sums the list in one line while an update waits', async () => {
-    renderWith({ 'GET /api/p/1/community/pub/changes': changes }, <UpdateSummary profileIndex={1} subscription={following} />)
-    expect(await screen.findByText('1 folder removed · 2 catalogs added')).toBeInTheDocument()
+  it('counts the list’s lines while an update waits', async () => {
+    renderWith({ 'GET /api/p/1/community/pub/changes': changes }, <UpdateCount profileIndex={1} subscription={following} />)
+    expect(await screen.findByText('3 changes')).toBeInTheDocument()
   })
 
   it('shows nothing, and fetches nothing, without an update waiting', () => {
     const calls = renderWith(
       { 'GET /api/p/1/community/pub/changes': changes },
       <>
-        <UpdateSummary profileIndex={1} subscription={{ ...following, update_available: false }} />
-        <UpdateSummary profileIndex={1} subscription={null} />
+        <UpdateCount profileIndex={1} subscription={{ ...following, update_available: false }} />
+        <UpdateCount profileIndex={1} subscription={null} />
       </>,
     )
     expect(document.body).toHaveTextContent('')
@@ -85,7 +86,7 @@ describe('UpdateSummary', () => {
   })
 
   it('shows nothing for an empty list or one that can’t load', async () => {
-    const calls = renderWith({ 'GET /api/p/1/community/pub/changes': [] }, <UpdateSummary profileIndex={1} subscription={following} />)
+    const calls = renderWith({ 'GET /api/p/1/community/pub/changes': [] }, <UpdateCount profileIndex={1} subscription={following} />)
     await waitFor(() => expect(calls).toHaveLength(1))
     expect(document.body).toHaveTextContent('')
   })
@@ -98,7 +99,7 @@ describe('SinceLastPublished', () => {
       <SinceLastPublished profileIndex={1} kind="collection" id="col9" enabled genres={genres} />,
     )
     expect(screen.getByRole('heading', { name: 'Since you last published' })).toBeInTheDocument()
-    expect(await screen.findByText('Added “Heat” to “Classics”')).toBeInTheDocument()
+    expect(await screen.findByText('“Heat” to “Classics”')).toBeInTheDocument()
     expect(calls).toEqual(['GET /api/p/1/collections/col9/changes-since-publish'])
   })
 
@@ -107,7 +108,7 @@ describe('SinceLastPublished', () => {
       { 'GET /api/p/1/catalogs/c1/changes-since-publish': [{ op: 'changed', kind: 'catalog', aspect: 'name', name: 'B', was: 'A' }] },
       <SinceLastPublished profileIndex={1} kind="catalog" id="c1" enabled genres={genres} />,
     )
-    expect(await screen.findByText('Renamed “A” to “B”')).toBeInTheDocument()
+    expect(await screen.findByText('Name: “A” → “B”')).toBeInTheDocument()
     expect(calls).toEqual(['GET /api/p/1/catalogs/c1/changes-since-publish'])
   })
 

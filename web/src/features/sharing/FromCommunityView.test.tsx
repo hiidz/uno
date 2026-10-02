@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog, SubscriptionState } from '@/api'
 import { fakeApi } from '@/test/fakeApi'
-import { catalog, collection, folder } from '@/test/fixtures'
+import { catalog, collection, communityItem, folder } from '@/test/fixtures'
 import { CatalogFromCommunity, CollectionFromCommunity } from './FromCommunityView'
 
 // The live results and the Preview panel are fetches these tests are not
@@ -107,7 +107,7 @@ describe('CatalogFromCommunity', () => {
     expect(onUpdate).toHaveBeenCalledTimes(1)
   })
 
-  it('sums what the update changes in one line under Update…, and no list', async () => {
+  it('counts what the update changes beside Update…, and no list', async () => {
     const fake = fakeApi({
       'GET /api/p/1/community/pub/changes': [
         { op: 'removed', kind: 'folder', name: '80s' },
@@ -117,10 +117,23 @@ describe('CatalogFromCommunity', () => {
     })
     api.current = fake.apiFetch
     renderCatalog({ catalog: { ...noir, subscription: { ...following, update_available: true } } })
-    const summary = await screen.findByText('1 folder removed · 2 catalogs added')
-    expect(summary.previousElementSibling).toContainElement(screen.getByRole('button', { name: 'Update…' }))
-    expect(screen.queryByText('Removed folder “80s”')).toBeNull()
+    const count = await screen.findByText('3 changes')
+    expect(count.previousElementSibling).toBe(screen.getByRole('button', { name: 'Update…' }))
+    expect(screen.queryByText('Folder “80s”')).toBeNull()
     expect(fake.calls).toContain('GET /api/p/1/community/pub/changes')
+  })
+
+  it('leads with how many have added it and when it changed, once Community answers', async () => {
+    api.current = fakeApi({
+      'GET /api/p/1/community': [communityItem({ id: 'pub', subscriber_count: 3, updated_at: '2026-09-22T10:00:00Z' })],
+    }).apiFetch
+    renderCatalog()
+    expect(await screen.findByText(/^Added by 3 · updated /)).toBeInTheDocument()
+  })
+
+  it('leads with nothing before Community answers, or for a publication it does not list', () => {
+    renderCatalog()
+    expect(screen.queryByText(/Added by|ublished|pdated/)).toBeNull()
   })
 
   it('asks for no summary while no update waits', () => {
@@ -225,11 +238,18 @@ describe('CollectionFromCommunity', () => {
     expect(onDuplicate).toHaveBeenCalledTimes(1)
   })
 
-  it('sums what the update changes under Update… for a collection too', async () => {
+  it('counts what the update changes beside Update… for a collection too', async () => {
     const fake = fakeApi({ 'GET /api/p/1/community/pub/changes': [{ op: 'changed', kind: 'collection', aspect: 'order' }] })
     api.current = fake.apiFetch
     renderCollection({ collection: { ...nightCollection, subscription: { ...following, update_available: true } } })
     expect(await screen.findByText('1 change')).toBeInTheDocument()
+  })
+
+  it('counts each folder’s catalogs beside its name', () => {
+    renderCollection()
+    const cards = document.querySelectorAll<HTMLElement>('.fold-detail')
+    expect(cards[0]).toHaveTextContent('2 catalogs')
+    expect(cards[1]).toHaveTextContent('1 catalog')
   })
 
   it('has nothing to update once its publisher unpublished it', () => {

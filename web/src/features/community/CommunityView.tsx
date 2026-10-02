@@ -20,6 +20,7 @@ import {
   type OpenPublication,
 } from './communityQuery'
 import { CommunityRow, type RowActions } from './CommunityRow'
+import { CommunitySign } from './CommunitySign'
 import { PublicationPage } from './PublicationPage'
 import { focusRow, rowButtonID, useScrollMemory } from './scroll'
 import { useCommunityList } from './useCommunity'
@@ -108,14 +109,10 @@ export function CommunityView({
     return <Navigate to="/profiles" replace />
   }
 
-  const describe = (item: CommunityItem) => describeItem(item, genres)
-
   return (
     <div ref={scrollRef} className="tone-community flex w-full flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-      <div className="sign min-h-[64px] px-4 py-3 lg:min-h-[80px] lg:px-6">
-        <h1 className="type-sign m-0 text-[18px] leading-tight lg:text-[25px]">Community</h1>
-      </div>
-      <section className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 p-4 lg:p-6">
+      <CommunitySign open={open} onBack={() => open && back(open.id)} />
+      <section className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 p-4 lg:p-6 [&_.ed]:pt-0">
         <Toast toast={toast} />
 
         {open ? (
@@ -123,11 +120,9 @@ export function CommunityView({
             key={open.id}
             profileIndex={profileIndex}
             item={open}
-            summary={describe(open)}
             meta={itemMeta(open, now)}
             genres={genres}
             actions={actionsFor(open, () => run(open, 'update'), 'Update')}
-            onBack={() => back(open.id)}
           />
         ) : (
           <>
@@ -142,17 +137,20 @@ export function CommunityView({
               onRetry={list.refetch}
               emptyLabel={emptyLabel(filters)}
             >
-              {items.map((item) => (
-                <CommunityRow
-                  key={item.id}
-                  item={item}
-                  summary={describe(item)}
-                  meta={itemMeta(item, now)}
-                  buttonID={rowButtonID(item.id)}
-                  onOpen={() => openItem(item.id)}
-                  actions={actionsFor(item, () => openItem(item.id), 'Update…')}
-                />
-              ))}
+              <div className="flex flex-col gap-1">
+                {items.map((item) => (
+                  <CommunityRow
+                    key={item.id}
+                    item={item}
+                    summary={describeItem(item, genres)}
+                    meta={itemMeta(item, now)}
+                    showKind={filters.kind !== 'collection'}
+                    buttonID={rowButtonID(item.id)}
+                    onOpen={() => openItem(item.id)}
+                    actions={actionsFor(item, () => openItem(item.id), 'Update…')}
+                  />
+                ))}
+              </div>
             </ListState>
           </>
         )}
@@ -210,7 +208,7 @@ function Controls({
           type="search"
           value={filters.q}
           onChange={(event) => patch({ q: event.target.value })}
-          placeholder="Search names and catalogs"
+          placeholder="Search"
           aria-label="Search Community"
           className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:text-[16px]"
         />

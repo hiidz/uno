@@ -34,6 +34,22 @@ beforeEach(() => {
   api.current = null
 })
 
+describe('CatalogBlock tiles', () => {
+  it('lay flat on the ground, the lists on a row of their own', () => {
+    renderBlock({})
+    expect(screen.getByText('Studios', { selector: 'dt' }).parentElement).toHaveClass('bg-raised', 'col-span-full')
+    const type = screen.getByText('Type', { selector: 'dt' }).parentElement
+    expect(type).toHaveClass('bg-raised')
+    expect(type).not.toHaveClass('col-span-full')
+  })
+
+  it('step up to raised-hi in a folded block once it opens', () => {
+    renderBlock({}, { foldable: true })
+    fireEvent.click(screen.getByRole('button', { name: /Ghibli and friends/ }))
+    expect(screen.getByText('Type', { selector: 'dt' }).parentElement).toHaveClass('bg-raised-hi')
+  })
+})
+
 describe('CatalogBlock names', () => {
   const routes = {
     'GET /api/companies/10342': { id: 10342, name: 'Studio Ghibli' },
@@ -45,16 +61,17 @@ describe('CatalogBlock names', () => {
     ],
   }
 
-  it('counts studios, keywords and services while their names load, then names them', async () => {
+  it('shows "…" for studios and keywords while their names load, then names them', async () => {
     const calls = renderBlock(routes)
-    expect(value('Studios')).toHaveTextContent('2')
+    expect(value('Studios')).toHaveTextContent('…')
+    expect(value('Left-out keyword')).toHaveTextContent('…')
     expect(await screen.findByText('Studio Ghibli or Pixar')).toBeInTheDocument()
     expect(value('Left-out keyword')).toHaveTextContent('gore')
     expect(await screen.findByText(/^Netflix or Disney Plus in /)).toBeInTheDocument()
     expect(calls).toContain('GET /api/watch-providers/movie?region=US')
   })
 
-  it('keeps counting a list a lookup can’t name', async () => {
+  it('settles on the count for a list a lookup can’t name', async () => {
     renderBlock({ ...routes, 'GET /api/companies/3': () => failWith(404, 'not found') })
     expect(await screen.findByText('gore')).toBeInTheDocument()
     expect(value('Studios')).toHaveTextContent('2')

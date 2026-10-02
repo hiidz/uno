@@ -614,7 +614,8 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     narrowing a ref reads as one removed and one added; a catalog moved between folders is removed
     from one and added to the other. Additions are the same read the other way;
   - a catalog whose name or recipe changed is one item however many folders use it, carrying the
-    catalog as it is now when its recipe changed and its earlier name (`was`) when its name did;
+    catalog as it is now (`catalog`) and as it was (`was_catalog`) when its recipe changed, and its
+    earlier name (`was`) when its name did;
   - a collection's name and settings (view mode, show-all tab, backdrop, focus glow), a folder's
     name, its art (everything it holds but its title and refs) and the order of its catalogs, and the
     order of the folders, each as an item.

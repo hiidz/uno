@@ -11,33 +11,49 @@ function removed(name: string): SnapshotChange {
   return { op: 'removed', kind: 'catalog', name, folder: 'F' }
 }
 
-const seven = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(removed)
+const eight = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(removed)
 
 describe('ChangeList', () => {
-  it('shows five lines in the server’s order, then "and N more"', () => {
-    render(<ChangeList changes={seven} genres={genres} />)
+  it('shows six lines under their group’s label, then "and N more"', () => {
+    render(<ChangeList changes={eight} genres={genres} />)
+    expect(screen.getByRole('heading', { name: 'Removed' })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      'Removed “a” from “F”',
-      'Removed “b” from “F”',
-      'Removed “c” from “F”',
-      'Removed “d” from “F”',
-      'Removed “e” from “F”',
+      '“a” from “F”',
+      '“b” from “F”',
+      '“c” from “F”',
+      '“d” from “F”',
+      '“e” from “F”',
+      '“f” from “F”',
     ])
     expect(screen.getByRole('button', { name: 'and 2 more' })).toBeInTheDocument()
   })
 
   it('opens the rest in place', () => {
-    render(<ChangeList changes={seven} genres={genres} />)
+    render(<ChangeList changes={eight} genres={genres} />)
     fireEvent.click(screen.getByRole('button', { name: 'and 2 more' }))
-    expect(screen.getAllByRole('listitem')).toHaveLength(7)
-    expect(screen.getByText('Removed “g” from “F”')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(8)
+    expect(screen.getByText('“h” from “F”')).toBeInTheDocument()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('has no button for five lines or fewer', () => {
-    render(<ChangeList changes={seven.slice(0, 5)} genres={genres} />)
-    expect(screen.getAllByRole('listitem')).toHaveLength(5)
+  it('has no button for six lines or fewer', () => {
+    render(<ChangeList changes={eight.slice(0, 6)} genres={genres} />)
+    expect(screen.getAllByRole('listitem')).toHaveLength(6)
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('puts what changed in a recipe under its catalog’s line', () => {
+    const change: SnapshotChange = {
+      op: 'changed',
+      kind: 'catalog',
+      aspect: 'recipe',
+      name: 'Seed Ghibli',
+      was_catalog: { key: 'k', name: 'Seed Ghibli', type: 'movie', provider: 'tmdb', params: { with_companies: '1,2' } },
+      catalog: { key: 'k', name: 'Seed Ghibli', type: 'movie', provider: 'tmdb', params: { with_companies: '1' } },
+    }
+    render(<ChangeList changes={[change]} genres={genres} />)
+    expect(screen.getByRole('heading', { name: 'Changed' })).toBeInTheDocument()
+    expect(screen.getByRole('listitem')).toHaveTextContent('“Seed Ghibli”Studios: 2 → 1')
   })
 })
 
@@ -48,9 +64,16 @@ function result(state: Partial<UseQueryResult<SnapshotChange[]>>) {
 
 describe('ChangesBlock', () => {
   it('titles the list', () => {
-    render(<ChangesBlock title="Since you last published" changes={result({ isSuccess: true, data: seven.slice(0, 1) })} genres={genres} />)
+    render(<ChangesBlock title="Since you last published" changes={result({ isSuccess: true, data: eight.slice(0, 1) })} genres={genres} />)
     expect(screen.getByRole('heading', { name: 'Since you last published' })).toBeInTheDocument()
-    expect(screen.getByText('Removed “a” from “F”')).toBeInTheDocument()
+    expect(screen.getByText('“a” from “F”')).toBeInTheDocument()
+    expect(screen.queryByText(/change/)).toBeNull()
+  })
+
+  it('counts the lines at the end of a shelf’s heading', () => {
+    render(<ChangesBlock shelf title="In this update" changes={result({ isSuccess: true, data: eight.slice(0, 3) })} genres={genres} />)
+    expect(screen.getByText('3 changes')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'In this update' })).toHaveClass('bg-raised')
   })
 
   it('says it is loading, then says nothing once there is nothing to show', () => {

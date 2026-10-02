@@ -1,86 +1,152 @@
 import { describe, expect, it } from 'vitest'
-import type { SnapshotChange } from '@/api'
-import { changeSummary, changeWords } from './changeWords'
+import type { SnapshotCatalog, SnapshotChange } from '@/api'
+import { changeCount, groupChanges, takeLines } from './changeWords'
 
 const genres = { movie: new Map([[27, 'Horror']]), tv: new Map<number, string>() }
 
-const REMOVED_FOLDER: SnapshotChange = { op: 'removed', kind: 'folder', name: '80s' }
-const REMOVED_CATALOG: SnapshotChange = { op: 'removed', kind: 'catalog', name: 'Retro', folder: '80s' }
-const ADDED_FOLDER: SnapshotChange = { op: 'added', kind: 'folder', name: 'Classics' }
-const ADDED_CATALOG: SnapshotChange = { op: 'added', kind: 'catalog', name: 'Heat', folder: 'Classics' }
-const CHANGED_RECIPE: SnapshotChange = {
-  op: 'changed',
-  kind: 'catalog',
-  aspect: 'recipe',
-  name: 'Horror',
-  catalog: {
-    key: 'k',
-    name: 'Horror',
-    type: 'movie',
-    provider: 'tmdb',
-    params: { with_genres: '27', sort_by: 'vote_average.desc' },
-  },
+const REMOVED_FOLDER: SnapshotChange = { op: 'removed', kind: 'folder', name: 'Kids' }
+const REMOVED_CATALOG: SnapshotChange = { op: 'removed', kind: 'catalog', name: 'Gore classics', folder: '80s' }
+const ADDED_FOLDER: SnapshotChange = { op: 'added', kind: 'folder', name: 'Cult' }
+const ADDED_CATALOG: SnapshotChange = { op: 'added', kind: 'catalog', name: 'Predator picks', folder: 'Streaming' }
+
+function catalogWith(params: Record<string, unknown>): SnapshotCatalog {
+  return { key: 'k', name: 'Seed Ghibli', type: 'movie', provider: 'tmdb', params }
 }
 
-describe('changeWords', () => {
-  it('words what a folder and a catalog lose and gain, naming the folder', () => {
-    expect(changeWords(REMOVED_FOLDER, genres)).toBe('Removed folder “80s”')
-    expect(changeWords(REMOVED_CATALOG, genres)).toBe('Removed “Retro” from “80s”')
-    expect(changeWords(ADDED_FOLDER, genres)).toBe('Added folder “Classics”')
-    expect(changeWords(ADDED_CATALOG, genres)).toBe('Added “Heat” to “Classics”')
+function recipeChange(
+  was: Record<string, unknown>,
+  now: Record<string, unknown>,
+  extra: Partial<SnapshotChange> = {},
+): SnapshotChange {
+  return {
+    op: 'changed',
+    kind: 'catalog',
+    aspect: 'recipe',
+    name: 'Seed Ghibli',
+    catalog: catalogWith(now),
+    was_catalog: catalogWith(was),
+    ...extra,
+  }
+}
+
+const lines = (changes: SnapshotChange[]) =>
+  groupChanges(changes, genres).map((group) => [group.label, group.lines.map((line) => line.text)])
+
+describe('groupChanges', () => {
+  it('groups lines under Removed, Added and Changed in the server’s order', () => {
+    expect(
+      lines([
+        REMOVED_FOLDER,
+        REMOVED_CATALOG,
+        ADDED_FOLDER,
+        ADDED_CATALOG,
+        { op: 'changed', kind: 'collection', aspect: 'order' },
+      ]),
+    ).toEqual([
+      ['Removed', ['Folder “Kids”', '“Gore classics” from “80s”']],
+      ['Added', ['Folder “Cult”', '“Predator picks” to “Streaming”']],
+      ['Changed', ['Folder order']],
+    ])
   })
 
-  it('names the genre a folder narrows a catalog to, and a catalog without a folder', () => {
-    expect(changeWords({ ...REMOVED_CATALOG, genre: 'War' }, genres)).toBe('Removed “Retro” (War) from “80s”')
-    expect(changeWords({ op: 'added', kind: 'catalog', name: 'Popular' }, genres)).toBe('Added “Popular”')
-    expect(changeWords({ op: 'removed', kind: 'catalog', name: 'Popular' }, genres)).toBe('Removed “Popular”')
+  it('folds the catalogs of a folder removed or added whole into its line', () => {
+    const inKids = { ...REMOVED_CATALOG, folder: 'Kids' }
+    const inCult: SnapshotChange[] = ['a', 'b', 'c'].map((name) => ({ op: 'added', kind: 'catalog', name, folder: 'Cult' }))
+    expect(lines([REMOVED_FOLDER, inKids, { ...inKids, name: 'Other' }, ADDED_FOLDER, ...inCult, ADDED_CATALOG])).toEqual([
+      ['Removed', ['Folder “Kids” · 2 catalogs']],
+      ['Added', ['Folder “Cult” · 3 catalogs', '“Predator picks” to “Streaming”']],
+    ])
+    expect(lines([REMOVED_FOLDER, { ...inKids, name: 'One' }])[0][1]).toEqual(['Folder “Kids” · 1 catalog'])
   })
 
-  it('shows a changed catalog by its new recipe line, never by what changed in it', () => {
-    expect(changeWords(CHANGED_RECIPE, genres)).toBe('“Horror” now: Highest rated · Horror')
-    expect(changeWords({ ...CHANGED_RECIPE, was: 'Scary' }, genres)).toBe('“Horror” (was “Scary”) now: Highest rated · Horror')
-    expect(changeWords({ ...CHANGED_RECIPE, catalog: { ...CHANGED_RECIPE.catalog!, params: {} } }, genres)).toBe(
-      '“Horror” now: no filters',
-    )
+  it('names the genre a folder narrows a catalog to, and a catalog with no folder', () => {
+    expect(lines([{ ...REMOVED_CATALOG, genre: 'War' }, { op: 'added', kind: 'catalog', name: 'Popular' }])).toEqual([
+      ['Removed', ['“Gore classics” (War) from “80s”']],
+      ['Added', ['“Popular”']],
+    ])
   })
 
-  it('words a rename, and the order, art and settings as one line each', () => {
-    expect(changeWords({ op: 'changed', kind: 'catalog', aspect: 'name', name: 'B', was: 'A' }, genres)).toBe('Renamed “A” to “B”')
-    expect(changeWords({ op: 'changed', kind: 'folder', aspect: 'name', name: 'Family', was: 'Kids' }, genres)).toBe(
-      'Renamed folder “Kids” to “Family”',
+  it('lists what differs in a changed recipe, Studios and Studio as one fact', () => {
+    const groups = groupChanges(
+      [
+        recipeChange(
+          { sort_by: 'popularity.desc', with_companies: '1,2', with_genres: '27' },
+          { sort_by: 'vote_average.desc', with_companies: '1', with_genres: '27', with_keywords: '5' },
+          { was: 'Ghibli' },
+        ),
+      ],
+      genres,
     )
-    expect(changeWords({ op: 'changed', kind: 'collection', aspect: 'name', name: 'Weekend' }, genres)).toBe(
-      'Renamed the collection to “Weekend”',
-    )
-    expect(changeWords({ op: 'changed', kind: 'collection', aspect: 'order' }, genres)).toBe('Folder order changed')
-    expect(changeWords({ op: 'changed', kind: 'collection', aspect: 'settings' }, genres)).toBe('Collection settings changed')
-    expect(changeWords({ op: 'changed', kind: 'folder', aspect: 'art', name: 'Kids' }, genres)).toBe('Art changed on “Kids”')
-    expect(changeWords({ op: 'changed', kind: 'folder', aspect: 'catalog_order', name: 'Kids' }, genres)).toBe(
-      'Catalog order changed in “Kids”',
-    )
+    expect(groups).toEqual([
+      {
+        label: 'Changed',
+        lines: [
+          {
+            text: '“Seed Ghibli”',
+            notes: ['Name: “Ghibli” → “Seed Ghibli”', 'Studios: 2 → 1', 'Keyword added', 'Order: Most popular → Highest rated'],
+          },
+        ],
+      },
+    ])
   })
 
-  it('says nothing for an item it has no words for', () => {
-    expect(changeWords({ op: 'changed', kind: 'folder' }, genres)).toBe('')
+  it('says a fact that came or went as "any", and falls back when it can tell nothing', () => {
+    const notes = (change: SnapshotChange) => groupChanges([change], genres)[0].lines[0].notes
+    expect(notes(recipeChange({}, { vote_average_gte: 7 }))).toEqual(['Rating: any → 7.0 or more'])
+    expect(notes(recipeChange({ vote_average_gte: 7 }, {}))).toEqual(['Rating: 7.0 or more → any'])
+    expect(notes(recipeChange({ with_keywords: '5' }, { with_keywords: '6' }))).toEqual(['Filters changed'])
+    expect(notes({ ...recipeChange({}, {}), was_catalog: undefined })).toEqual(['Filters changed'])
+  })
+
+  it('words a rename, and the collection, folder and catalog changes, one line each', () => {
+    expect(
+      lines([
+        { op: 'changed', kind: 'collection', aspect: 'name', name: 'Weekend', was: 'Night' },
+        { op: 'changed', kind: 'collection', aspect: 'settings' },
+        { op: 'changed', kind: 'folder', aspect: 'name', name: 'Family', was: 'Kids' },
+        { op: 'changed', kind: 'folder', aspect: 'art', name: 'Kids' },
+        { op: 'changed', kind: 'folder', aspect: 'catalog_order', name: 'Kids' },
+        { op: 'changed', kind: 'catalog', aspect: 'name', name: 'B', was: 'A' },
+      ]),
+    ).toEqual([
+      [
+        'Changed',
+        [
+          'Collection name: “Night” → “Weekend”',
+          'Collection settings',
+          'Folder name: “Kids” → “Family”',
+          'Art on “Kids”',
+          'Catalog order in “Kids”',
+          '“B”',
+        ],
+      ],
+    ])
+    const rename: SnapshotChange = { op: 'changed', kind: 'catalog', aspect: 'name', name: 'B', was: 'A' }
+    expect(groupChanges([rename], genres)[0].lines[0].notes).toEqual(['Name: “A” → “B”'])
+  })
+
+  it('leaves out an item it has no words for', () => {
+    expect(groupChanges([{ op: 'changed', kind: 'folder' }], genres)).toEqual([])
   })
 })
 
-describe('changeSummary', () => {
-  it('counts what a list holds, removals first, as the list orders them', () => {
-    expect(changeSummary([REMOVED_FOLDER, REMOVED_CATALOG, ADDED_FOLDER, ADDED_CATALOG, ADDED_CATALOG, CHANGED_RECIPE])).toBe(
-      '1 folder removed · 1 catalog removed · 1 folder added · 2 catalogs added · 1 catalog changed',
-    )
+describe('changeCount', () => {
+  it('counts the lines, with a folder’s catalogs inside its line', () => {
+    expect(changeCount([REMOVED_FOLDER, { ...REMOVED_CATALOG, folder: 'Kids' }, ADDED_CATALOG])).toBe(2)
+    expect(changeCount([])).toBe(0)
+  })
+})
+
+describe('takeLines', () => {
+  const groups = groupChanges([REMOVED_FOLDER, REMOVED_CATALOG, ADDED_FOLDER, ADDED_CATALOG], genres)
+
+  it('keeps the first lines across groups and counts the rest', () => {
+    const { shown, hidden } = takeLines(groups, 3)
+    expect(shown.map((group) => group.lines.length)).toEqual([2, 1])
+    expect(hidden).toBe(1)
   })
 
-  it('counts every other change together, and alone says change', () => {
-    const order: SnapshotChange = { op: 'changed', kind: 'collection', aspect: 'order' }
-    const art: SnapshotChange = { op: 'changed', kind: 'folder', aspect: 'art', name: 'Kids' }
-    expect(changeSummary([ADDED_CATALOG, order, art])).toBe('1 catalog added · 2 other changes')
-    expect(changeSummary([order])).toBe('1 change')
-    expect(changeSummary([order, art])).toBe('2 changes')
-  })
-
-  it('is empty for no changes', () => {
-    expect(changeSummary([])).toBe('')
+  it('shows everything for no limit', () => {
+    expect(takeLines(groups, Infinity)).toEqual({ shown: groups, hidden: 0 })
   })
 })

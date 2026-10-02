@@ -165,7 +165,7 @@ describe('CommunityView', () => {
     })
     const more = await screen.findByRole('button', { name: 'More for A24 Horror' })
     fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Duplicate' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Duplicate/ }))
     expect(await screen.findByText('Duplicated to your catalogs')).toBeInTheDocument()
     expect(calls).toContain('POST /api/p/1/community/a24/duplicate')
   })
@@ -230,15 +230,75 @@ describe('CommunityView', () => {
     expect(screen.getByText('Narrowed to', { selector: 'dt' })).toBeInTheDocument()
   })
 
-  it('explains Add and Duplicate in the row’s tip', async () => {
+  it('says what Duplicate makes inside its ⋯ menu item, with no tip on the row', async () => {
     renderView({ 'GET /api/p/1/community': [a24] })
     await screen.findByText('A24 Horror')
-    fireEvent.click(screen.getAllByRole('button', { name: 'About add' })[0])
-    expect(
-      await screen.findByText(
-        'Add puts it in your library, read-only, and it gets its publisher’s updates. Duplicate (⋯) makes a copy that’s yours to edit.',
-      ),
-    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'About add' })).toBeNull()
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'More for A24 Horror' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    expect(await screen.findByRole('menuitem', { name: /^Duplicate/ })).toHaveTextContent('yours to edit')
+  })
+
+  it('draws a row as one target: a pointer name button covering it, its actions above', async () => {
+    renderView({ 'GET /api/p/1/community': [a24] })
+    await screen.findByText('A24 Horror')
+    const button = rowButton('a24')!
+    expect(button).toHaveClass('cursor-pointer', 'after:absolute', 'after:inset-0')
+    const row = button.closest('.relative')!
+    expect(row).toHaveClass('hover:bg-raised', 'rounded-[12px]')
+    expect(row).not.toHaveClass('border-b')
+    expect(screen.getByRole('button', { name: 'Add' }).closest('.relative')).toHaveClass('z-10')
+    expect(screen.getByPlaceholderText('Search')).toBeInTheDocument()
+  })
+
+  it('shows the kind sticker on a catalog row and not on a collection row', async () => {
+    renderView({ 'GET /api/p/1/community': [night, a24] })
+    await screen.findByText('A24 Horror')
+    expect(screen.getByText('Movies', { selector: '.stk' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
+    expect(screen.queryByText('Collection', { selector: '.stk' })).toBeNull()
+    expect(screen.getByText('Update available', { selector: '.stk' })).toBeInTheDocument()
+  })
+
+  it('opens a page that heads its sign with the way back, the name and its stickers', async () => {
+    renderView({
+      'GET /api/p/1/community': [night],
+      'GET /api/p/1/community/night': nightDetail,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
+    fireEvent.click(screen.getByText('Horror Nights'))
+    const title = await screen.findByRole('heading', { level: 1, name: 'Horror Nights' })
+    const sign = title.closest('.sign')!
+    expect(sign).toContainElement(screen.getByRole('button', { name: 'Back to Community' }))
+    expect(sign).toHaveTextContent('CollectionUpdate available')
+    expect(screen.queryByRole('heading', { name: 'Community' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^More for/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'About add' })).toBeNull()
+  })
+
+  it('leads the page with its meta, then Add in the Community accent beside Duplicate', async () => {
+    const calls = renderView({
+      'GET /api/p/1/community': [{ ...a24, subscriber_count: 1 }],
+      'GET /api/p/1/community/a24': { ...a24, unpublished: false, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
+      'POST /api/p/1/community/a24/duplicate': { kind: 'catalog' },
+    })
+    fireEvent.click(await screen.findByText('A24 Horror'))
+    const add = await screen.findByRole('button', { name: 'Add' })
+    expect(add).toHaveClass('btn-primary')
+    expect(add.closest('.tone-community')).not.toBeNull()
+    expect(screen.getByText(/^Added by 1 · /)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+    expect(await screen.findByText('Duplicated to your catalogs')).toBeInTheDocument()
+    expect(calls).toContain('POST /api/p/1/community/a24/duplicate')
+  })
+
+  it('rests a page on a disabled ✓ Added once its copy is in step', async () => {
+    renderView(
+      { 'GET /api/p/1/community': [{ ...night, update_available: false }], 'GET /api/p/1/community/night': nightDetail },
+      { id: 'night', kind: 'collection' },
+    )
+    const added = await screen.findByRole('button', { name: 'Added' })
+    expect(added).toBeDisabled()
+    expect(added).toHaveClass('btn-secondary')
   })
 
   it('draws nothing for a publication whose snapshot holds no catalog', async () => {
@@ -273,7 +333,7 @@ describe('CommunityView', () => {
     expect(screen.getByRole('heading', { name: 'Horror Nights' })).toBeInTheDocument()
   })
 
-  it('lists what the update changes above the new version, and only while one waits', async () => {
+  it('shelves what the update changes first in the lead, above the new version, only while one waits', async () => {
     const changes = [
       { op: 'removed', kind: 'folder', name: 'Old folder' },
       { op: 'added', kind: 'catalog', name: 'Slasher classics', folder: 'Slashers' },
@@ -284,9 +344,9 @@ describe('CommunityView', () => {
       'GET /api/p/1/community/night/changes': changes,
     }
     const calls = renderView(routes, { id: 'night', kind: 'collection' })
-    const heading = await screen.findByRole('heading', { name: 'What this update changes' })
-    expect(await screen.findByText('Removed folder “Old folder”')).toBeInTheDocument()
-    expect(screen.getByText('Added “Slasher classics” to “Slashers”')).toBeInTheDocument()
+    const heading = await screen.findByRole('heading', { name: 'In this update' })
+    expect(await screen.findByText('Folder “Old folder”')).toBeInTheDocument()
+    expect(screen.getByText('“Slasher classics” to “Slashers”')).toBeInTheDocument()
     const slashers = (await screen.findAllByText('Slashers'))[0]
     expect(heading.compareDocumentPosition(slashers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(calls).toContain('GET /api/p/1/community/night/changes')
@@ -301,7 +361,7 @@ describe('CommunityView', () => {
       { id: 'night', kind: 'collection' },
     )
     expect((await screen.findAllByText('Slashers')).length).toBeGreaterThan(0)
-    expect(screen.queryByRole('heading', { name: 'What this update changes' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'In this update' })).toBeNull()
     expect(calls.some((call) => call.endsWith('/changes'))).toBe(false)
   })
 

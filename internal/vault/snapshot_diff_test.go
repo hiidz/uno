@@ -119,7 +119,7 @@ func TestDiffMatchesRefsByCatalogAndGenre(t *testing.T) {
 }
 
 // A catalog used in two folders and changed is one item, naming the catalog as
-// it is now with its recipe, and its earlier name when that changed too; a
+// it is now and as it was with its recipe, and its earlier name when that changed too; a
 // name alone carries no recipe.
 func TestDiffChangedCatalogIsOneItem(t *testing.T) {
 	folders := []SnapshotFolder{testFolder("fa", "A", ref("c1", ""), ref("c2", "")), testFolder("fb", "B", ref("c1", ""))}
@@ -127,8 +127,16 @@ func TestDiffChangedCatalogIsOneItem(t *testing.T) {
 	to := testCollectionSnapshot("W", folders, testCatalog("c1", "Aliens", `{"a":2}`), testCatalog("c2", "Heats", "{}"))
 
 	assertChanges(t, from, to, "changed catalog/recipe Aliens (was Alien) +recipe", "changed catalog/name Heats (was Heat)")
-	if c := diffSnapshots(from, to)[0].Catalog; c == nil || string(c.Params) != `{"a":2}` {
+	changes := diffSnapshots(from, to)
+	got := changes[0]
+	if c := got.Catalog; c == nil || string(c.Params) != `{"a":2}` {
 		t.Errorf("recipe change carries %+v, want the catalog as it is now", c)
+	}
+	if c := got.WasCatalog; c == nil || c.Name != "Alien" || string(c.Params) != `{"a":1}` {
+		t.Errorf("recipe change was %+v, want the catalog as it was", c)
+	}
+	if c := changes[1]; c.Catalog != nil || c.WasCatalog != nil {
+		t.Errorf("name-only change carries %+v and %+v, want no recipes", c.Catalog, c.WasCatalog)
 	}
 }
 

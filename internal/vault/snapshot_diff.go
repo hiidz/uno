@@ -45,20 +45,22 @@ const (
 //     catalog the other snapshot keeps in another folder is removed from or
 //     added to a folder alone.
 //   - A catalog whose name or recipe changed is one item, however many
-//     folders use it, carrying the catalog as it is now (Catalog) when the
-//     recipe changed; Was is its earlier name when that changed too.
+//     folders use it, carrying the catalog as it is now (Catalog) and as it
+//     was (WasCatalog) when the recipe changed; Was is its earlier name when
+//     that changed too.
 //   - A collection's or a folder's name changed carries its Was. The
 //     folders' order and a collection's settings are one item each, and a
 //     folder's art or the order of its catalogs one item per folder, named.
 type SnapshotChange struct {
-	Op      string         `json:"op"`
-	Kind    string         `json:"kind"`
-	Aspect  string         `json:"aspect,omitempty"`
-	Name    string         `json:"name,omitempty"`
-	Was     string         `json:"was,omitempty"`
-	Folder  string         `json:"folder,omitempty"`
-	Genre   string         `json:"genre,omitempty"`
-	Catalog *BundleCatalog `json:"catalog,omitempty"`
+	Op         string         `json:"op"`
+	Kind       string         `json:"kind"`
+	Aspect     string         `json:"aspect,omitempty"`
+	Name       string         `json:"name,omitempty"`
+	Was        string         `json:"was,omitempty"`
+	Folder     string         `json:"folder,omitempty"`
+	Genre      string         `json:"genre,omitempty"`
+	Catalog    *BundleCatalog `json:"catalog,omitempty"`
+	WasCatalog *BundleCatalog `json:"was_catalog,omitempty"`
 }
 
 // diffSnapshots is what going from one snapshot to the other changes, empty
@@ -311,14 +313,19 @@ func catalogEdit(old, c BundleCatalog) (SnapshotChange, bool) {
 	if old.Key == "" || (!recipe && old.Name == c.Name) {
 		return SnapshotChange{}, false
 	}
-	change := SnapshotChange{Op: changeChanged, Kind: changeCatalog, Aspect: aspectName, Name: c.Name}
-	if old.Name != c.Name {
-		change.Was = old.Name
-	}
+	change := SnapshotChange{Op: changeChanged, Kind: changeCatalog, Aspect: aspectName, Name: c.Name, Was: earlierName(old, c)}
 	if recipe {
-		change.Aspect, change.Catalog = aspectRecipe, &c
+		change.Aspect, change.Catalog, change.WasCatalog = aspectRecipe, &c, &old
 	}
 	return change, true
+}
+
+// earlierName is old's name when c, the same catalog, was renamed.
+func earlierName(old, c BundleCatalog) string {
+	if old.Name == c.Name {
+		return ""
+	}
+	return old.Name
 }
 
 // recipeBytes is what c's recipe is in a snapshot's stored bytes: its type,

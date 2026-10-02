@@ -1,18 +1,20 @@
 import type { ReactNode } from 'react'
 import { RefreshCw } from 'lucide-react'
-import type { Catalog, Collection } from '@/api'
+import type { Catalog, Collection, CommunityItem, SubscriptionState } from '@/api'
 import { Icon } from '@/components/Icon'
 import { EditorShell } from '@/features/builder/EditorShell'
+import { itemMeta } from '@/features/community/communityQuery'
+import { useCommunityList } from '@/features/community/useCommunity'
 import type { GenreLookups } from '@/features/library/useLibrary'
-import { UpdateSummary } from './Changes'
+import { UpdateCount } from './Changes'
 import { CatalogBody, CollectionBody } from './PublicationBodies'
 import { updateWaits, viewStickers } from './sharingState'
 import { SharingStickers } from './SharingStickers'
 
 /** What the pane does for a row added from Community: the way out, the row's
  *  own Duplicate and Delete, and Update…, which opens its publication's page
- *  in Community. Under Update… sits one line of what the update changes,
- *  fetched for `profileIndex`. */
+ *  in Community. Beside Update… sits how many changes the update makes, and
+ *  above it how many have added the row, both fetched for `profileIndex`. */
 export interface FromCommunityActions {
   profileIndex: number
   /** A push would change what Nuvio holds for this row: the sign says To push. */
@@ -60,8 +62,8 @@ export function CollectionFromCommunity({
 /**
  * The editor shell around a view. The sign carries the row's flags
  * (`viewStickers`) with From Community where Update available would be, since
- * the Update… button, first in the body while an update waits, says it. Nothing
- * here can be unsaved, so closing never asks. While Update… shows, Duplicate
+ * the Update… button, first action in the body while an update waits, says it.
+ * Nothing here can be unsaved, so closing never asks. While Update… shows, Duplicate
  * to edit is outlined, so one filled button is on screen.
  */
 function ViewFrame({
@@ -86,17 +88,7 @@ function ViewFrame({
   children: (lead: ReactNode) => ReactNode
 } & FromCommunityActions) {
   const updating = updateWaits(row)
-  const lead = updating && (
-    <div className="flex flex-col gap-2">
-      <div className="tone-community">
-        <button type="button" className="btn-primary" onClick={onUpdate}>
-          <Icon icon={RefreshCw} size={16} />
-          Update…
-        </button>
-      </div>
-      <UpdateSummary profileIndex={profileIndex} subscription={row.subscription} />
-    </div>
-  )
+  const lead = <ViewLead profileIndex={profileIndex} subscription={row.subscription} onUpdate={onUpdate} />
   return (
     <EditorShell
       purpose={purpose}
@@ -122,5 +114,49 @@ function ViewFrame({
     >
       {children(lead)}
     </EditorShell>
+  )
+}
+
+interface ViewLeadProps {
+  profileIndex: number
+  subscription: SubscriptionState | null
+  onUpdate: () => void
+}
+
+/**
+ * The body's lead: how many have added the row and when it last changed, in
+ * dim words once the Community list has answered, and while an update waits a
+ * Community-pink Update… with the number of changes beside it. Nothing when
+ * neither shows.
+ */
+function ViewLead({ profileIndex, subscription, onUpdate }: ViewLeadProps) {
+  const item = useFollowed(profileIndex, subscription)
+  const updating = updateWaits({ subscription })
+  if (!item && !updating) return null
+  return (
+    <div className="flex flex-col gap-3">
+      {item && <p className="type-data text-dim m-0 text-[13px]">{itemMeta(item, new Date())}</p>}
+      {updating && <UpdateRow profileIndex={profileIndex} subscription={subscription} onUpdate={onUpdate} />}
+    </div>
+  )
+}
+
+/** The Community list's row for the publication a subscription follows, once
+ *  the list has answered and while it still lists it. */
+function useFollowed(profileIndex: number, subscription: SubscriptionState | null): CommunityItem | undefined {
+  const list = useCommunityList(profileIndex)
+  return list.data?.find((listed) => listed.id === subscription?.publication_id)
+}
+
+/** Update… in the Community accent, with how many changes it makes beside it. */
+function UpdateRow({ profileIndex, subscription, onUpdate }: ViewLeadProps) {
+  return (
+    <div className="tone-community flex flex-wrap items-center gap-3">
+      <button type="button" className="btn-primary" onClick={onUpdate}>
+        <Icon icon={RefreshCw} size={16} />
+        Update…
+      </button>
+      <UpdateCount profileIndex={profileIndex} subscription={subscription} />
+    </div>
   )
 }

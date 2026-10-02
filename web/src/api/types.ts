@@ -230,7 +230,7 @@ export interface PublicationDetail extends CommunityItem {
  * (`folder` names the folder a catalog goes into or leaves, `genre` the genre
  * it is narrowed to there); a changed one names what changed in `aspect`, with
  * `was` its earlier name when renamed, and a catalog whose recipe changed
- * carries it as it is now in `catalog`.
+ * carries it as it is now in `catalog` and as it was in `was_catalog`.
  */
 export interface SnapshotChange {
   op: 'removed' | 'added' | 'changed'
@@ -241,6 +241,7 @@ export interface SnapshotChange {
   folder?: string
   genre?: string
   catalog?: SnapshotCatalog
+  was_catalog?: SnapshotCatalog
 }
 
 /** What a subscribe, a duplicate or an Update answers: the caller's copy, a listed

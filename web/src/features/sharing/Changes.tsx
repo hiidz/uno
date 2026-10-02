@@ -1,14 +1,15 @@
 import type { CommunityItem, SubscriptionState } from '@/api'
 import type { GenreLookups } from '@/features/library/useLibrary'
-import { changeSummary } from './changeWords'
+import { pluralCount } from '@/lib/plural'
+import { changeCount } from './changeWords'
 import { ChangesBlock } from './ChangeList'
 import { updateWaits } from './sharingState'
 import { useChangesSincePublish, useUpdateChanges } from './useChanges'
 
 /**
- * The full list of what an Update would change, for the Community page of a
- * row this profile added, above what the page shows of the new version. Only
- * while an update waits; nothing otherwise.
+ * The full list of what an Update would change, as a shelf on the Community
+ * page of a row this profile added, first in the lead above what the page
+ * shows of the new version. Only while an update waits; nothing otherwise.
  */
 export function UpdateChanges({
   profileIndex,
@@ -22,16 +23,20 @@ export function UpdateChanges({
   const waiting = item.subscribed && item.update_available
   const changes = useUpdateChanges(profileIndex, item.id, waiting)
   if (!waiting) return null
-  return <ChangesBlock title="What this update changes" changes={changes} genres={genres} />
+  return <ChangesBlock shelf title="In this update" changes={changes} genres={genres} />
+}
+
+/** The publication a subscription follows; none for a row that follows nothing. */
+function publicationID(subscription: SubscriptionState | null): string {
+  return subscription?.publication_id ?? ''
 }
 
 /**
- * One line of what an Update would change, "1 folder removed · 2 catalogs
- * added", under the From Community view's Update…. It is the same list the
- * Community page shows in full, from the same call. Nothing while it loads,
- * if it fails, or if the list is empty.
+ * How many changes an Update would make, "7 changes", beside the From
+ * Community view's Update…: the count the Community page's list shows, from
+ * the same call. Nothing while it loads, if it fails, or if the list is empty.
  */
-export function UpdateSummary({
+export function UpdateCount({
   profileIndex,
   subscription,
 }: {
@@ -39,10 +44,10 @@ export function UpdateSummary({
   subscription: SubscriptionState | null
 }) {
   const waiting = updateWaits({ subscription })
-  const changes = useUpdateChanges(profileIndex, subscription?.publication_id ?? '', waiting)
-  const summary = changeSummary(changes.data ?? [])
-  if (!waiting || !summary) return null
-  return <p className="text-dim m-0 text-[13.5px]">{summary}</p>
+  const changes = useUpdateChanges(profileIndex, publicationID(subscription), waiting)
+  const count = changeCount(changes.data)
+  if (!waiting || count === 0) return null
+  return <span className="type-data text-dim text-[13.5px]">{pluralCount(count, 'change')}</span>
 }
 
 /**
