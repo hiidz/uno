@@ -223,6 +223,26 @@ export interface PublicationDetail extends CommunityItem {
   snapshot: Snapshot
 }
 
+/**
+ * One difference between two snapshots, from `GET .../changes` and
+ * `GET .../changes-since-publish`: removals first, then additions, then
+ * changes, each in folder order. A folder or a catalog is added or removed
+ * (`folder` names the folder a catalog goes into or leaves, `genre` the genre
+ * it is narrowed to there); a changed one names what changed in `aspect`, with
+ * `was` its earlier name when renamed, and a catalog whose recipe changed
+ * carries it as it is now in `catalog`.
+ */
+export interface SnapshotChange {
+  op: 'removed' | 'added' | 'changed'
+  kind: 'collection' | 'folder' | 'catalog'
+  aspect?: 'name' | 'recipe' | 'settings' | 'art' | 'order' | 'catalog_order'
+  name?: string
+  was?: string
+  folder?: string
+  genre?: string
+  catalog?: SnapshotCatalog
+}
+
 /** What a subscribe, a duplicate or an Update answers: the caller's copy, a listed
  *  catalog or a collection by the publication's kind. */
 export interface CommunityCopy {

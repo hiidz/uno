@@ -192,6 +192,10 @@ Route-semantics facts the client has to honour:
   - `GET .../community/{id}` (`GetPublication`) is the row with its `snapshot` and `unpublished`:
     a live publication, or an unpublished one the caller subscribes to. It is also how the SPA
     previews an update: the page shows the new version before Update applies it.
+  - `GET .../community/{id}/changes` (`UpdateChanges`) is what Update would change in the caller's
+    added row: its copy against the publication's current snapshot, as a list of `SnapshotChange`
+    items in the order removals, additions, changes. `[]` for a row in step; 404 unless the caller
+    subscribes and the publication is live.
   - `POST .../community/{id}/subscribe` (`Subscribe`, 201) and `.../duplicate` (`DuplicatePublication`,
     201) copy a live publication of someone else's into the caller's own rows, as
     `{kind, catalog | collection}`. A second subscribe is a 409. `.../update`
@@ -214,6 +218,11 @@ Route-semantics facts the client has to honour:
     Community.
   - `.../unpublish` (`UnpublishCatalog`/`UnpublishCollection`) unpublishes its live publication,
     if any.
+  - `GET .../catalogs/{id}/changes-since-publish` and `.../collections/{id}/changes-since-publish`
+    (`CatalogChangesSincePublish`/`CollectionChangesSincePublish`) answer what publishing the row
+    again would change: the row as saved against what it last published, in the same item list.
+    `[]` for a row never published; a subscribed copy and a catalog inside a collection are 400s,
+    as for a publish. They read the vault only: nothing here compares with the push record.
   - A content write to a subscribed copy — `PUT` of the catalog or the collection, a catalog
     created in it — is a 400 (`refuseSubscribedCopy`, run in the write's transaction ahead of
     the write, over the caller's own subscriptions, so another profile's copy still answers

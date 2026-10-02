@@ -671,6 +671,7 @@ export function Workspace({
               key={activeCatalog.id}
               catalog={activeCatalog}
               genres={library.genres}
+              profileIndex={profileIndex}
               waitingForPush={waitingForPush.has(activeCatalog.id)}
               onClose={close}
               onDuplicate={() => duplicateCatalog(activeCatalog)}
@@ -684,6 +685,7 @@ export function Workspace({
               key={activeCollection.id}
               collection={activeCollection}
               genres={library.genres}
+              profileIndex={profileIndex}
               waitingForPush={waitingForPush.has(activeCollection.id)}
               onClose={close}
               onDuplicate={() => duplicateCollection(activeCollection)}

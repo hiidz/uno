@@ -46,6 +46,15 @@ export const queryKeys = {
   publication: (profileIndex: number, publicationID: string) =>
     ['p', profileIndex, 'community', 'publication', publicationID] as const,
 
+  /** What an Update would change in an added row, and what publishing an own
+   *  row again would change. Under neither the library's nor Community's
+   *  prefix, so a write never waits on them: they are read when shown and kept
+   *  no longer than that (`useChanges`). */
+  updateChanges: (profileIndex: number, publicationID: string) =>
+    ['p', profileIndex, 'changes', 'update', publicationID] as const,
+  changesSincePublish: (profileIndex: number, kind: 'catalog' | 'collection', id: string) =>
+    ['p', profileIndex, 'changes', kind, id] as const,
+
   genres: (type: CatalogType) => ['genres', type] as const,
   certifications: (type: CatalogType) => ['certifications', type] as const,
   languages: () => ['languages'] as const,

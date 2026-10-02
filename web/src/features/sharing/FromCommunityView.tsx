@@ -4,14 +4,17 @@ import type { Catalog, Collection } from '@/api'
 import { Icon } from '@/components/Icon'
 import { EditorShell } from '@/features/builder/EditorShell'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { UpdateSummary } from './Changes'
 import { CatalogBody, CollectionBody } from './PublicationBodies'
 import { updateWaits, viewStickers } from './sharingState'
 import { SharingStickers } from './SharingStickers'
 
 /** What the pane does for a row added from Community: the way out, the row's
  *  own Duplicate and Delete, and Update…, which opens its publication's page
- *  in Community. */
+ *  in Community. Under Update… sits one line of what the update changes,
+ *  fetched for `profileIndex`. */
 export interface FromCommunityActions {
+  profileIndex: number
   /** A push would change what Nuvio holds for this row: the sign says Push to Nuvio. */
   waitingForPush: boolean
   onClose: () => void
@@ -68,6 +71,7 @@ function ViewFrame({
   row,
   docked,
   children,
+  profileIndex,
   waitingForPush,
   onClose,
   onDuplicate,
@@ -83,11 +87,14 @@ function ViewFrame({
 } & FromCommunityActions) {
   const updating = updateWaits(row)
   const lead = updating && (
-    <div className="tone-community">
-      <button type="button" className="btn-primary" onClick={onUpdate}>
-        <Icon icon={RefreshCw} size={16} />
-        Update…
-      </button>
+    <div className="flex flex-col gap-2">
+      <div className="tone-community">
+        <button type="button" className="btn-primary" onClick={onUpdate}>
+          <Icon icon={RefreshCw} size={16} />
+          Update…
+        </button>
+      </div>
+      <UpdateSummary profileIndex={profileIndex} subscription={row.subscription} />
     </div>
   )
   return (

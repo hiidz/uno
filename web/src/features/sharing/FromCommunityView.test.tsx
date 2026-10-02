@@ -2,14 +2,18 @@
 import type { ComponentProps } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog, SubscriptionState } from '@/api'
+import { fakeApi } from '@/test/fakeApi'
 import { catalog, collection, folder } from '@/test/fixtures'
 import { CatalogFromCommunity, CollectionFromCommunity } from './FromCommunityView'
 
 // The live results and the Preview panel are fetches these tests are not
-// about: every request stays pending.
-vi.mock('@/api/client', () => ({ apiFetch: vi.fn(() => new Promise(() => {})) }))
+// about: every request stays pending, but the ones a test routes.
+const api = vi.hoisted(() => ({ current: null as null | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) }))
+vi.mock('@/api/client', () => ({
+  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => api.current?.(input, init) ?? new Promise(() => {}),
+}))
 
 const genres = {
   movie: new Map([
@@ -27,12 +31,16 @@ const noir = catalog({
   subscription: following,
 })
 
+afterEach(() => {
+  api.current = null
+})
+
 function wrap(ui: React.ReactElement) {
   return render(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>)
 }
 
 function renderCatalog(props: Partial<ComponentProps<typeof CatalogFromCommunity>> = {}) {
-  const handlers = { waitingForPush: false, onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
+  const handlers = { profileIndex: 1, waitingForPush: false, onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
   wrap(<CatalogFromCommunity catalog={noir} genres={genres} {...handlers} {...props} />)
   return handlers
 }
@@ -99,6 +107,29 @@ describe('CatalogFromCommunity', () => {
     expect(onUpdate).toHaveBeenCalledTimes(1)
   })
 
+  it('sums what the update changes in one line under Update…, and no list', async () => {
+    const fake = fakeApi({
+      'GET /api/p/1/community/pub/changes': [
+        { op: 'removed', kind: 'folder', name: '80s' },
+        { op: 'added', kind: 'catalog', name: 'Heat', folder: 'Classics' },
+        { op: 'added', kind: 'catalog', name: 'Ronin', folder: 'Classics' },
+      ],
+    })
+    api.current = fake.apiFetch
+    renderCatalog({ catalog: { ...noir, subscription: { ...following, update_available: true } } })
+    const summary = await screen.findByText('1 folder removed · 2 catalogs added')
+    expect(summary.previousElementSibling).toContainElement(screen.getByRole('button', { name: 'Update…' }))
+    expect(screen.queryByText('Removed folder “80s”')).toBeNull()
+    expect(fake.calls).toContain('GET /api/p/1/community/pub/changes')
+  })
+
+  it('asks for no summary while no update waits', () => {
+    const fake = fakeApi({ 'GET /api/p/1/community/pub/changes': [] })
+    api.current = fake.apiFetch
+    renderCatalog()
+    expect(fake.calls.some((call) => call.endsWith('/changes'))).toBe(false)
+  })
+
   it('has nothing to update once its publisher unpublished it', () => {
     renderCatalog({ catalog: { ...noir, subscription: { ...following, unpublished: true } } })
     expect(screen.queryByRole('button', { name: 'Update…' })).toBeNull()
@@ -137,7 +168,7 @@ const nightCollection = collection({
 })
 
 function renderCollection(props: Partial<ComponentProps<typeof CollectionFromCommunity>> = {}) {
-  const handlers = { waitingForPush: false, onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
+  const handlers = { profileIndex: 1, waitingForPush: false, onClose: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn(), onUpdate: vi.fn() }
   wrap(<CollectionFromCommunity collection={nightCollection} genres={genres} {...handlers} {...props} />)
   return handlers
 }
@@ -192,6 +223,13 @@ describe('CollectionFromCommunity', () => {
     expect(onUpdate).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate to edit' }))
     expect(onDuplicate).toHaveBeenCalledTimes(1)
+  })
+
+  it('sums what the update changes under Update… for a collection too', async () => {
+    const fake = fakeApi({ 'GET /api/p/1/community/pub/changes': [{ op: 'changed', kind: 'collection', aspect: 'order' }] })
+    api.current = fake.apiFetch
+    renderCollection({ collection: { ...nightCollection, subscription: { ...following, update_available: true } } })
+    expect(await screen.findByText('1 change')).toBeInTheDocument()
   })
 
   it('has nothing to update once its publisher unpublished it', () => {

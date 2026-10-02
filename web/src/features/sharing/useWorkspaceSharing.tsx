@@ -3,6 +3,7 @@ import type { Catalog, Collection } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import type { ToastMessage } from '@/components/useToast'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { SinceLastPublished } from './Changes'
 import { PublishDialog, type PublishSubject } from './PublishDialog'
 import { SharingRow } from './SharingRow'
 import { SharingStickers } from './SharingStickers'
@@ -117,6 +118,15 @@ export function useWorkspaceSharing({ profileIndex, genres, dirty, waitingForPus
           open
           subject={publishing.subject}
           update={publishing.update}
+          since={
+            <SinceLastPublished
+              profileIndex={profileIndex}
+              kind={publishing.kind}
+              id={publishing.id}
+              enabled={publishing.update}
+              genres={genres}
+            />
+          }
           genres={genres}
           pending={mutations.publish.isPending}
           error={errorText(mutations.publish.error)}

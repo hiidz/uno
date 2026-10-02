@@ -4,6 +4,7 @@ import type { Catalog } from '@/api'
 import { Icon } from '@/components/Icon'
 import { recipeFacts, recipeLine, type RecipeFact } from '@/features/library/recipe'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { useRecipeNames } from '@/features/library/useRecipeNames'
 
 /** The genre lookup for a catalog's own kind: movie and tv ids differ. */
 function lookupFor(catalog: Catalog, genres: GenreLookups) {
@@ -30,9 +31,12 @@ function FactTiles({ facts }: { facts: RecipeFact[] }) {
  * view, in a collection's folders, and on a publication's page.
  *
  * Open, it is the recipe's spec tiles and nothing else; the name is the
- * surrounding page's to show. With `foldable` it is a folder's entry instead:
+ * surrounding page's to show. Studios, keywords, networks and streaming
+ * services are named, from the lookups the catalog editor uses, and counted
+ * until the names arrive. With `foldable` it is a folder's entry instead:
  * collapsed it is a chevron, the catalog's name and its recipe line under it,
- * and the header opens it in place to the same tiles.
+ * and the header opens it in place to the same tiles; a folded block loads no
+ * names.
  */
 export function CatalogBlock({
   catalog,
@@ -49,7 +53,8 @@ export function CatalogBlock({
   const [open, setOpen] = useState(false)
   const panelID = useId()
   const lookup = lookupFor(catalog, genres)
-  const facts = recipeFacts(catalog, lookup)
+  const names = useRecipeNames(catalog, { foldable, open })
+  const facts = recipeFacts(catalog, lookup, names)
   const tiles = <FactTiles facts={narrowedTo ? [...facts, { label: 'Narrowed to', value: narrowedTo }] : facts} />
   if (!foldable) return tiles
 

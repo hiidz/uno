@@ -332,17 +332,58 @@ interface FactSource {
   type: Catalog['type']
   p: TMDBParams
   lookup: GenreLookup
+  names: RecipeNames
+}
+
+/** The names of TMDB entities by id. */
+type NameMap = ReadonlyMap<number, string>
+
+/**
+ * The names a recipe's studios, keywords, networks and streaming services
+ * have, as far as they are known: only the ids a lookup has answered for.
+ * `recipeFacts` names a list once every id in it is here, and counts it until
+ * then.
+ */
+export interface RecipeNames {
+  company?: NameMap
+  keyword?: NameMap
+  network?: NameMap
+  provider?: NameMap
+}
+
+const NO_NAMES: RecipeNames = {}
+
+/** What a list of ids is called, for one and for many. */
+type Noun = readonly [one: string, many: string]
+
+const STUDIO: Noun = ['Studio', 'Studios']
+const LEFT_OUT_STUDIO: Noun = ['Left-out studio', 'Left-out studios']
+const KEYWORD: Noun = ['Keyword', 'Keywords']
+const LEFT_OUT_KEYWORD: Noun = ['Left-out keyword', 'Left-out keywords']
+const NETWORK: Noun = ['Network', 'Networks']
+const STREAMING_SERVICE: Noun = ['Streaming service', 'Streaming services']
+
+/** An id list as its names, joined the way the list is — "A and B", or "A or
+ *  B" for a pipe-joined one — once every id has one; as the number of ids until
+ *  then; null for an empty list. */
+function namesOrCount(raw: string | undefined, known: NameMap | undefined): string | null {
+  const { ids, join } = parseIdList(raw)
+  if (ids.length === 0) return null
+  const names = ids.flatMap((id) => known?.get(id) ?? [])
+  if (names.length < ids.length) return String(ids.length)
+  return (join === 'or' ? orList : andList)(names)
+}
+
+/** A fact naming an id list: `noun` in the form the list's size takes, its
+ *  names (or count) and `suffix` after them. */
+function idsFact(noun: Noun, raw: string | undefined, known: NameMap | undefined, suffix = ''): RecipeFact[] {
+  const value = namesOrCount(raw, known)
+  return fact(countIDs(raw) === 1 ? noun[0] : noun[1], value && value + suffix)
 }
 
 /** A fact for `label` when `value` says something, else none. */
 function fact(label: string, value: string | null | undefined): RecipeFact[] {
   return value ? [{ label, value }] : []
-}
-
-/** How many ids a list holds, for the facts that count rather than name. */
-function idCount(raw: string | undefined): string | null {
-  const count = countIDs(raw)
-  return count ? String(count) : null
 }
 
 function releaseFact({ type, p }: FactSource): RecipeFact[] {
@@ -359,10 +400,9 @@ function certificationFact({ p }: FactSource): RecipeFact[] {
   return fact('Rated', p.certification_country ? `${cert} in ${countryLabel(p.certification_country)}` : cert)
 }
 
-function streamingFact({ p }: FactSource): RecipeFact[] {
-  const count = idCount(p.with_watch_providers)
-  if (!count) return []
-  return fact('Streaming services', p.watch_region ? `${count} in ${countryLabel(p.watch_region)}` : count)
+function streamingFact({ p, names }: FactSource): RecipeFact[] {
+  const where = p.watch_region ? ` in ${countryLabel(p.watch_region)}` : ''
+  return idsFact(STREAMING_SERVICE, p.with_watch_providers, names.provider, where)
 }
 
 function runtimeFact({ p }: FactSource): RecipeFact[] {
@@ -393,12 +433,12 @@ const FACTS: FactBuilder[] = [
   languageFact,
   certificationFact,
   streamingFact,
-  // Counted, not named, as in `describeParams`: naming needs a TMDB lookup.
-  ({ p }) => fact('Studios', idCount(p.with_companies)),
-  ({ p }) => fact('Left-out studios', idCount(p.without_companies)),
-  ({ p }) => fact('Keywords', idCount(p.with_keywords)),
-  ({ p }) => fact('Left-out keywords', idCount(p.without_keywords)),
-  ({ type, p }) => fact('Networks', type === 'series' ? idCount(p.with_networks) : null),
+  // Named, once the lookups have answered; `describeParams` counts them.
+  ({ p, names }) => idsFact(STUDIO, p.with_companies, names.company),
+  ({ p, names }) => idsFact(LEFT_OUT_STUDIO, p.without_companies, names.company),
+  ({ p, names }) => idsFact(KEYWORD, p.with_keywords, names.keyword),
+  ({ p, names }) => idsFact(LEFT_OUT_KEYWORD, p.without_keywords, names.keyword),
+  ({ type, p, names }) => idsFact(NETWORK, type === 'series' ? p.with_networks : undefined, names.network),
   sortFact,
   shuffledFact,
 ]
@@ -415,10 +455,15 @@ const COLLECTION_FACTS: FactBuilder[] = [
  * The recipe as spec tiles: one label and value for each thing it sets, in
  * the vocabulary of `describeRecipe` (`lookup` is the genre map for this
  * catalog's kind). The type is always first; a recipe that sets nothing else
- * has that one fact.
+ * has that one fact. Studios, keywords, networks and streaming services are
+ * named from `names`, and counted while a list's names are not all known.
  */
-export function recipeFacts(catalog: Pick<Catalog, 'type' | 'params'>, lookup: GenreLookup): RecipeFact[] {
-  const source = { type: catalog.type, p: parseParams(catalog.params), lookup }
+export function recipeFacts(
+  catalog: Pick<Catalog, 'type' | 'params'>,
+  lookup: GenreLookup,
+  names: RecipeNames = NO_NAMES,
+): RecipeFact[] {
+  const source = { type: catalog.type, p: parseParams(catalog.params), lookup, names }
   const collection = source.type === 'movie' && countIDs(source.p.with_collection) > 0
   return (collection ? COLLECTION_FACTS : FACTS).flatMap((build) => build(source))
 }

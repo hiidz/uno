@@ -99,6 +99,25 @@ func (s *Server) getPublication(w http.ResponseWriter, r *http.Request) {
 		s.vault.GetPublication)
 }
 
+// updateChanges answers what an Update would change in the caller's added
+// row: the list the Community page and the From Community view show.
+func (s *Server) updateChanges(w http.ResponseWriter, r *http.Request) {
+	serveSharingCall(w, r, sharingCall{publicationRow, "updateChanges", "failed to compare with the publication", http.StatusOK},
+		s.vault.UpdateChanges)
+}
+
+// catalogChanges and collectionChanges answer what publishing the caller's own
+// row again would change in its publication: the Publish dialog's list.
+func (s *Server) catalogChanges(w http.ResponseWriter, r *http.Request) {
+	serveSharingCall(w, r, sharingCall{catalogRow, "catalogChanges", "failed to compare with the publication", http.StatusOK},
+		s.vault.CatalogChangesSincePublish)
+}
+
+func (s *Server) collectionChanges(w http.ResponseWriter, r *http.Request) {
+	serveSharingCall(w, r, sharingCall{collectionRow, "collectionChanges", "failed to compare with the publication", http.StatusOK},
+		s.vault.CollectionChangesSincePublish)
+}
+
 func (s *Server) subscribe(w http.ResponseWriter, r *http.Request) {
 	serveSharingCall(w, r, sharingCall{publicationRow, "subscribe", "failed to add", http.StatusCreated},
 		s.vault.Subscribe)

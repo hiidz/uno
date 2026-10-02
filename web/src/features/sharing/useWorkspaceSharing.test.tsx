@@ -97,6 +97,30 @@ describe('useWorkspaceSharing', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('lists what changed since the last publish in the dialog of a changed row, and only there', async () => {
+    const changed = { id: 'p', status: 'live' as const, changed_since_publish: true }
+    const { calls } = renderHarness(
+      { collection: collection({ id: 'col1', title: 'Night', publication: changed }) },
+      {
+        'GET /api/p/1/collections/col1/changes-since-publish': [
+          { op: 'changed', kind: 'catalog', aspect: 'name', name: 'Horror', was: 'Scary' },
+        ],
+      },
+    )
+    expect(calls).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Publish update…' }))
+    expect(await within(dialog()).findByRole('heading', { name: 'Since you last published' })).toBeInTheDocument()
+    expect(await within(dialog()).findByText('Renamed “Scary” to “Horror”')).toBeInTheDocument()
+    expect(calls).toEqual(['GET /api/p/1/collections/col1/changes-since-publish'])
+  })
+
+  it('lists nothing in the dialog of a first publish', () => {
+    const { calls } = renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror' }) }, {})
+    fireEvent.click(screen.getByRole('button', { name: 'Publish…' }))
+    expect(screen.queryByRole('heading', { name: 'Since you last published' })).toBeNull()
+    expect(calls).toEqual([])
+  })
+
   it('publishes a changed catalog’s update, and shows a refusal in place', async () => {
     const changed = { id: 'p', status: 'live' as const, changed_since_publish: true }
     const { onToast } = renderHarness(

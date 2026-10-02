@@ -4,6 +4,7 @@ import type { CommunityItem, PublicationDetail } from '@/api'
 import { ListState } from '@/components/ListState'
 import { Icon } from '@/components/Icon'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { UpdateChanges } from '@/features/sharing/Changes'
 import { CatalogBody, CollectionBody } from '@/features/sharing/PublicationBodies'
 import { snapshotAsCollection, snapshotCatalog } from '@/features/sharing/snapshot'
 import { ItemActions, type RowActions } from './CommunityRow'
@@ -13,8 +14,9 @@ import { usePublication } from './useCommunity'
  * One publication's page, in place of the list: its name beside the way back
  * (DESIGN.md's One Way Back rule — the arrow and Escape both leave), how many
  * have added it, the same actions its row offers, then what it holds. While
- * an update waits for this profile's added row, what it holds is the new version,
- * and Update applies it. A catalog shows its spec tiles beside one page of
+ * an update waits for this profile's added row, the full list of what the update
+ * changes comes first, then what the page holds, which is the new version, and
+ * Update applies it. A catalog shows its spec tiles beside one page of
  * its results; a collection shows a card for each folder, its catalogs
  * opening in place, beside its Preview panel (`features/sharing`, the same
  * blocks a row added from Community opens as). The header draws from the
@@ -66,6 +68,8 @@ export function PublicationPage({
         </div>
         <ItemActions item={item} actions={actions} />
       </div>
+
+      <UpdateChanges profileIndex={profileIndex} item={item} genres={genres} />
 
       <ListState
         isLoading={detail.isPending}

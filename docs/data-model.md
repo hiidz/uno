@@ -594,6 +594,35 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
 
   A copy Update reaches is still as it was written, since nothing else writes one: there is
   nothing to conflict with.
+- **What changed** (`snapshot_diff.go`, `snapshot_changes.go`) is one comparison, `diffSnapshots`,
+  of two snapshots by snapshot key, returning `SnapshotChange` items (`op` removed, added or
+  changed, a `kind` of collection, folder or catalog, and what changed in `aspect`). It serves
+  two reads, fetched only when shown, and compares nothing with the push record:
+  - `UpdateChanges`: what Update would change in a subscribed copy. The copy as a snapshot under
+    its own `sub_key`s (`copyTreeSnapshot`, `copySnapshot`) against the publication's current
+    one. `ErrPublicationNotFound` unless the caller subscribes and the publication is live.
+  - `CatalogChangesSincePublish`/`CollectionChangesSincePublish`: what publishing an own row
+    again would change. The row as it stands, snapshotted under its publication's keys, against the
+    stored snapshot: a library catalog a collection uses is in it, so editing one alone shows. A row
+    never published is an empty list, a row that can't be published a 400 (`publishableCatalog`,
+    `publishableCollection`), and an unpublished row is compared like a live one.
+
+  The items come in the order removals, additions, changes, each in folder order:
+  - a folder gone from the other side is one item, then each catalog it holds that the other side
+    has nowhere (`folder` names the folder, `genre` the genre it is narrowed to there); in a
+    folder both sides hold, each ref the other side lacks, matched by catalog key and genre, so
+    narrowing a ref reads as one removed and one added; a catalog moved between folders is removed
+    from one and added to the other. Additions are the same read the other way;
+  - a catalog whose name or recipe changed is one item however many folders use it, carrying the
+    catalog as it is now when its recipe changed and its earlier name (`was`) when its name did;
+  - a collection's name and settings (view mode, show-all tab, backdrop, focus glow), a folder's
+    name, its art (everything it holds but its title and refs) and the order of its catalogs, and the
+    order of the folders, each as an item.
+
+  The list is empty exactly when the two snapshots have the same content hash
+  (`TestDiffIsEmptyExactlyWhenTheContentHashMatches`), so a row flagged Publish changes or Update
+  available always has something to show, and an edit and its undo has nothing. The SPA puts the
+  items into words (`docs/frontend.md`, *Sharing*).
 - **Duplicate** (`DuplicatePublication`) is a subscribe without the subscription: an editable copy with
   no `sub_key`s, and any number of them beside a subscription.
 - **Community** (`ListCommunity`) is every live publication not the caller's own, newest first,

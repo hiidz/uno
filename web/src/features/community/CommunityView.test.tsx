@@ -273,6 +273,38 @@ describe('CommunityView', () => {
     expect(screen.getByRole('heading', { name: 'Horror Nights' })).toBeInTheDocument()
   })
 
+  it('lists what the update changes above the new version, and only while one waits', async () => {
+    const changes = [
+      { op: 'removed', kind: 'folder', name: 'Old folder' },
+      { op: 'added', kind: 'catalog', name: 'Slasher classics', folder: 'Slashers' },
+    ]
+    const routes = {
+      'GET /api/p/1/community': [night, a24],
+      'GET /api/p/1/community/night': nightDetail,
+      'GET /api/p/1/community/night/changes': changes,
+    }
+    const calls = renderView(routes, { id: 'night', kind: 'collection' })
+    const heading = await screen.findByRole('heading', { name: 'What this update changes' })
+    expect(await screen.findByText('Removed folder “Old folder”')).toBeInTheDocument()
+    expect(screen.getByText('Added “Slasher classics” to “Slashers”')).toBeInTheDocument()
+    const slashers = (await screen.findAllByText('Slashers'))[0]
+    expect(heading.compareDocumentPosition(slashers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(calls).toContain('GET /api/p/1/community/night/changes')
+  })
+
+  it('asks for no list on a page with no update waiting', async () => {
+    const calls = renderView(
+      {
+        'GET /api/p/1/community': [{ ...night, update_available: false }],
+        'GET /api/p/1/community/night': nightDetail,
+      },
+      { id: 'night', kind: 'collection' },
+    )
+    expect((await screen.findAllByText('Slashers')).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('heading', { name: 'What this update changes' })).toBeNull()
+    expect(calls.some((call) => call.endsWith('/changes'))).toBe(false)
+  })
+
   it('starts on a publication’s page, and comes back to its kind’s list', async () => {
     renderView(
       {

@@ -22,6 +22,7 @@ import type {
   SelectedCatalog,
   SelectedProfile,
   ServerConfig,
+  SnapshotChange,
   TMDBCollection,
   TMDBKeyStatus,
   WatchProvider,
@@ -50,6 +51,22 @@ export function fetchCommunity(profileIndex: number): Promise<CommunityItem[]> {
  *  doesn't subscribe to. */
 export function fetchPublication(profileIndex: number, publicationID: string): Promise<PublicationDetail> {
   return getJSON<PublicationDetail>(`/api/p/${profileIndex}/community/${publicationID}`)
+}
+
+/** What an Update would change in this profile's added row, row by row: its
+ *  copy against the publisher's latest version. Empty for a row in step. */
+export function fetchUpdateChanges(profileIndex: number, publicationID: string): Promise<SnapshotChange[]> {
+  return getList<SnapshotChange>(`/api/p/${profileIndex}/community/${publicationID}/changes`)
+}
+
+/** What publishing an own row again would change in its publication: the saved
+ *  row against what it last published. Empty for a row never published. */
+export function fetchChangesSincePublish(
+  profileIndex: number,
+  kind: 'catalog' | 'collection',
+  id: string,
+): Promise<SnapshotChange[]> {
+  return getList<SnapshotChange>(`/api/p/${profileIndex}/${kind}s/${id}/changes-since-publish`)
 }
 
 /**

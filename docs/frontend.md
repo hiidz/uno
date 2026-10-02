@@ -878,7 +878,12 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   catalog by name over its recipe line: for a collection, its own catalogs under "N folders, N
   catalogs of its own", then the library catalogs it uses under "From your library, published as
   they are now" (`publishGroups`) — publishing a collection publishes those as they stand, which is the
-  point to consent to. A catalog added from Community carries the From Community sticker
+  point to consent to. When it publishes changes to an already published row — the row's
+  Community setting says Publish update… — a **Since you last published** list comes first, under
+  its line: what every follower will be offered (`SinceLastPublished`, from
+  `GET .../changes-since-publish`, fetched as the dialog opens). It is also what explains a
+  collection flagged Publish changes because a library catalog it uses was edited. Publishing a row
+  never published, or again after Unpublish, shows no list, and neither does the editor. A catalog added from Community carries the From Community sticker
   (`FROM_COMMUNITY`, the one `sharingState.ts` draws it from), so it reads as someone else's catalog being
   published as it stands. Its heading is "Publish “X”?" (or "Publish your changes to “X”?"), its
   button Publish (or Publish update), and its line "Anyone on Uno can find it in Community and add
@@ -921,15 +926,23 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     hides stickers, so `EditorShell` heads the body with them.
   - **No explanatory text:** no sentence, no ⓘ. The sticker says where it came from. While an
     update waits, the body's first item is a community-pink **Update…** (`update_available`),
-    which opens the publication's page (below); otherwise nothing sits above the content. An
-    unpublished row has nothing to update.
+    which opens the publication's page (below), with **one summary line** under it in dim text —
+    "1 folder removed · 2 catalogs added · 1 catalog changed" (`UpdateSummary`, `changeSummary`:
+    removals first, as the list orders them) — from the same call as the page's full list; otherwise
+    nothing sits above the content. The line shows nothing while that loads, if it fails or if it
+    is empty. An unpublished row has nothing to update.
   - **The catalog block** (`CatalogBlock.tsx`, shared by both views and the Community
     publication page): open, the recipe as spec tiles — a two-column grid of `raised-hi` tiles,
     a dim 12px label over a bold 15px value, for only the facts the recipe sets (`recipeFacts`
     in `features/library/recipe.ts`: Type, Genres, Released, Rating, Votes, Order, …; studios,
-    keywords, networks and streaming services are counted, as in `recipeLine`, because naming
-    them needs a TMDB lookup); folded, a chevron, the catalog's name and its recipe line under
-    it, as a button with `aria-expanded`.
+    keywords, networks and streaming services are **named** — "Studio: Studio Ghibli or Pixar",
+    the label singular for one id, the names joined with "and"/"or" as the stored list is;
+    `recipeLine` and the rail's summaries keep counts); folded, a chevron, the catalog's name and
+    its recipe line under it, as a button with `aria-expanded`. The names load through the
+    lookups the catalog editor's pickers use (`useRecipeNames`: `fetchCompany`, `fetchKeyword`
+    and `fetchNetwork` under the pickers' own query keys, and the watch-provider list of the
+    recipe's region). A list reads as its count until every one of its names has arrived, and
+    stays a count for one a lookup can't name; a folded block asks for none until it opens.
   - **A catalog:** the open block, without the name (the sign carries it), beside the live
     results (`SavedCatalogPreview`). **A collection:** a card for each folder, its catalogs as
     folded blocks that open in place — a folder's narrowing genre is a "Narrowed to" tile and
@@ -946,6 +959,19 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   `Workspace`'s `openPublication` reaches `Builder`, which switches the tab and hands
   `CommunityView` the publication (`initialOpen`) and its kind, so going back lands on that kind's
   list. Switching tabs in the header opens Community on its list.
+- **A "what changed" list** (`features/sharing/`) draws one server comparison (`GET .../changes`,
+  `GET .../changes-since-publish`; `docs/data-model.md`, *Publications and subscriptions*) in
+  words, only beside the button that applies its changes — never as standing status, so not in the
+  editor and not in the Unpushed changes strip. `changeWords` words an item as a product line, the
+  folder named inside it: "Removed “Retro” from “80s”", "Added folder “Classics”", "Renamed folder
+  “Kids” to “Family”", "“Horror” now: Highest rated · Horror" (a changed catalog shows its new
+  `recipeLine`, never a list of the fields that changed); folder order, a folder's art and the
+  order of its catalogs are one line each. `ChangeList` shows the first five lines in the
+  server's order — removals, then additions, then changes — then "and N more", which opens the rest
+  in place. Plain ink, no colour: pink means Community and red means destructive, so neither marks
+  a removal. The queries (`useChanges`) are fetched when shown and never kept (`gcTime: 0`, under
+  `['p', i, 'changes', …]`, which no write waits on); a list that is loading or can't load says so
+  quietly and never gets in the way of the button, and an empty list shows nothing.
 - **Every sharing call refreshes the library and Community** (`invalidateProfileLists`) and
   settles once they have refetched, so a row's stickers and state are current when its toast
   ("Published “X”", "Published your changes to “X”", "Unpublished “X”") shows under the rail's
@@ -981,9 +1007,10 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   (`snapshotAsCollection`, the snapshot read as a `Collection` so `SavedCollectionPreview` draws
   it), or a catalog's spec tiles beside one page of its results (`SavedCatalogPreview`, which
   runs as it mounts) — the same catalog block and bodies a row added from Community opens as
-  (`features/sharing/PublicationBodies.tsx`). While an update waits for this profile's added row, what the page holds is the
-  new version, and its main button is Update, which applies it (`POST .../update`) and leaves
-  the page on ✓ Added. A page that won't load says "Couldn't load this. Its publisher may have
+  (`features/sharing/PublicationBodies.tsx`). While an update waits for this profile's added row,
+  the page opens with **What this update changes**, the full list (`UpdateChanges`, `GET
+  .../community/{id}/changes`), above what the page holds, which is the new version; its main
+  button is Update, which applies it (`POST .../update`) and leaves the page on ✓ Added. A page that won't load says "Couldn't load this. Its publisher may have
   unpublished it." Going back restores the list's scroll and puts focus on the row's open
   button (`scroll.ts`).
 - **Add, Update and Duplicate refresh the library and Community** (`useCommunityMutations.ts`);

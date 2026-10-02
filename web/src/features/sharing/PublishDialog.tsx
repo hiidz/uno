@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 import type { Catalog } from '@/api'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import { typeLabel } from '@/features/library/recipe'
@@ -22,12 +22,14 @@ export type PublishSubject =
  * alone might not expect. A catalog added from Community carries the From
  * Community sticker, so it is clear it is someone else's catalog being
  * published as it stands. Publishing makes no copy for anyone; people add it
- * from Community.
+ * from Community. When it publishes changes, `since` lists what they are,
+ * above what the publication will hold.
  */
 export function PublishDialog({
   open,
   subject,
   update,
+  since,
   genres,
   pending,
   error,
@@ -39,6 +41,9 @@ export function PublishDialog({
   /** Publishing changes to something already published, rather than
    *  publishing it. */
   update: boolean
+  /** What those changes are (`SinceLastPublished`), which shows only when
+   *  `update` says there are some. */
+  since: ReactNode
   genres: GenreLookups
   pending: boolean
   error: string | null
@@ -63,6 +68,7 @@ export function PublishDialog({
               ? 'People who added it are offered this version. Until then they keep the one they have.'
               : 'Anyone on Uno can find it in Community and add it. Your later edits stay private until you publish an update.'}
           </p>
+          {since}
           {subject.kind === 'catalog' ? (
             <CatalogList items={[catalogItem(subject.catalog, genres, typeLabel(subject.catalog.type))]} />
           ) : (

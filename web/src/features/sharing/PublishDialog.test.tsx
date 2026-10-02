@@ -15,6 +15,7 @@ function renderDialog(props: Partial<ComponentProps<typeof PublishDialog>> = {})
       open
       subject={{ kind: 'catalog', name: 'Horror nights', catalog: horror }}
       update={false}
+      since={null}
       genres={genres}
       pending={false}
       error={null}
@@ -36,6 +37,13 @@ describe('PublishDialog', () => {
     expect(onConfirm).toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('shows what the changes are above what the publication holds, when it publishes changes', () => {
+    renderDialog({ update: true, since: <p>Since you last published: a list</p> })
+    const since = screen.getByText('Since you last published: a list')
+    const recipe = screen.getByText('Horror')
+    expect(since.compareDocumentPosition(recipe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('lists a collection’s own catalogs and its library catalogs apart', () => {
@@ -67,7 +75,7 @@ describe('PublishDialog', () => {
 
   it('says Publishing… while a first publish runs, and draws nothing without a subject', () => {
     const { unmount } = render(
-      <PublishDialog open subject={null} update={false} genres={genres} pending={false} error={null} onConfirm={vi.fn()} onClose={vi.fn()} />,
+      <PublishDialog open subject={null} update={false} since={null} genres={genres} pending={false} error={null} onConfirm={vi.fn()} onClose={vi.fn()} />,
     )
     expect(screen.queryByRole('dialog')).toBeNull()
     unmount()
