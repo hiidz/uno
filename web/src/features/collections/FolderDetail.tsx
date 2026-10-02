@@ -5,7 +5,6 @@ import type { TileShape } from '@/api'
 import { RowIconButton } from '@/components/dnd'
 import { FieldError, InfoTip, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
-import { ordinal } from '@/lib/ordinal'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import { TILE_SHAPES, folderLabel, type FolderErrors, type FolderFormState } from './collectionForm'
 import { refDragID } from './folderDnd'
@@ -18,7 +17,7 @@ const SHAPE_LABEL: Record<TileShape, string> = {
   SQUARE: 'square',
 }
 
-/** One line under the open folder's name, and the closed Appearance row. */
+/** The folder's Appearance shelf, folded. */
 function appearanceSummary(folder: FolderFormState): string {
   const parts = [`${SHAPE_LABEL[folder.tileShape]} tile`, folder.hideTitle ? 'title hidden' : 'title shown']
   if (folder.coverImageURL.trim()) parts.push('cover image')
@@ -63,17 +62,9 @@ export function FolderDetail({
   return (
     <section className="fold-detail" aria-label={`Folder: ${folder.title.trim() || 'untitled'}`}>
       <header className="fold-detail-head">
-        <span aria-hidden="true" className="text-[22px] leading-none">
-          {folder.coverEmoji || '📁'}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className={`m-0 truncate text-[17px] leading-[24px] font-medium ${folder.title.trim() ? '' : 'text-dim'}`}>
-            {folder.title.trim() || 'Untitled folder'}
-          </h3>
-          <p className="type-data text-dim m-0 text-[12px]">
-            {ordinal(position + 1)} of {total} · {appearanceSummary(folder)}
-          </p>
-        </div>
+        <h3 className="type-data m-0 min-w-0 flex-1 text-[15px] leading-[24px] font-semibold">
+          Folder {position + 1} of {total}
+        </h3>
         <div className="fold-detail-actions">
           <RowIconButton
             icon={ChevronLeft}

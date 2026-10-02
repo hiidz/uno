@@ -20,7 +20,7 @@ import { countryName, type CountryLookup } from './countries'
  * the catalog builder's one import site.
  */
 
-export { FieldError, FieldNote, Segmented, Select, TextInput } from '@/components/fields'
+export { FieldNote, Segmented, Select } from '@/components/fields'
 
 /** The type a catalog is named with — the one choice that can't be changed
  *  afterwards, asked by both "New catalog" dialogs. */
@@ -260,6 +260,16 @@ export function GenreCycler({
   )
 }
 
+/** A country's ratings, in TMDB's order; none without a country. */
+function sortedScale(countries: CertificationsByCountry, country: string | undefined): Certification[] {
+  if (!country) return []
+  return [...(countries[country] ?? [])].sort(byOrder)
+}
+
+function byOrder(a: Certification, b: Certification): number {
+  return a.order - b.order
+}
+
 /**
  * Country + min/max age rating, as one control. TMDB's `certification` filter
  * only ever compares against one country's scale — a rating means nothing
@@ -310,9 +320,7 @@ export function CertificationPicker({
     if (b === 'US') return 1
     return countryName(a, countryNames).localeCompare(countryName(b, countryNames))
   })
-  const scale: Certification[] = country
-    ? [...(countries[country] ?? [])].sort((a, b) => a.order - b.order)
-    : []
+  const scale = sortedScale(countries, country)
 
   const indexOf = (code: string | undefined) => {
     const index = code ? scale.findIndex((entry) => entry.certification === code) : -1
@@ -348,7 +356,7 @@ export function CertificationPicker({
               certification_lte: undefined,
             })
           }
-          placeholder="Select a country"
+          placeholder="Country first"
           clearable
           clearLabel="age rating country"
           options={codes.map((code) => ({ value: code, label: countryName(code, countryNames) }))}
@@ -371,7 +379,6 @@ export function CertificationPicker({
           </div>
         )}
       </div>
-      {!country && <FieldNote>Ratings differ by country. Pick one to set a range.</FieldNote>}
       {country && scale.length === 0 && (
         <FieldNote>Couldn't load ratings for {countryName(country, countryNames)}.</FieldNote>
       )}

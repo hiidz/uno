@@ -18,9 +18,11 @@ const KIND_LABEL: Record<RowKind, string> = {
 /**
  * One row in the Library rail, carrying three separate intentions.
  *
- * **The row body opens it in the pane** for editing. Selecting also reveals
- * the row's actions — duplicating and deleting — so they belong to whichever
- * single row the pane is showing. **The ON NUVIO sticker** puts it on the home
+ * **The row body opens it in the pane** for editing, and says whether it is
+ * open (`aria-expanded`); from `lg`, pressing the open row closes its editor
+ * the way × does. Selecting also reveals the row's actions — duplicating and
+ * deleting — so they belong to whichever single row the pane is showing.
+ * **The ON NUVIO sticker** puts it on the home
  * screen or takes it off; it stops the click from reaching the row, because
  * adding something to home is not a request to edit it. Putting a row on the
  * home screen from here slaps the sticker on (`data-slap`, `uno-slap` in `index.css`),
@@ -84,6 +86,7 @@ export function LibraryItem({
           onSelect()
         }}
         aria-current={selected ? 'true' : undefined}
+        aria-expanded={selected}
         title={`Edit ${name}`}
         className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl py-2.5 pr-2 pl-3 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
       >

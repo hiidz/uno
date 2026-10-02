@@ -148,11 +148,18 @@ function folderCatalogIDs(folder: Pick<Folder, 'refs'>): string[] {
   return (folder.refs ?? []).map((ref) => ref.catalog_id)
 }
 
-/** The line under an own row's Community buttons, if any: that a publish
- *  waits for a save. A row published as it is has nothing to publish until it
- *  is saved, so it needs no line. */
-export function sharingNote(state: OwnSharing, dirty: boolean): string | null {
-  return dirty && state !== 'live' ? 'Save first: only what’s saved is published.' : null
+const STEP_LABEL: Record<OwnSharing, string> = {
+  private: 'Publish…',
+  changed: 'Publish update…',
+  unpublished: 'Publish again…',
+  live: 'Unpublish…',
+}
+
+/** An own row's next step with Community, as its editor's sign button names
+ *  it, and why it waits: Community holds the saved row, so every step waits
+ *  while the form has unsaved changes. */
+export function sharingStep(state: OwnSharing, dirty: boolean): { label: string; waiting: string | null } {
+  return { label: STEP_LABEL[state], waiting: dirty ? 'Save first.' : null }
 }
 
 /** A failed call's message, for a dialog's error line. */

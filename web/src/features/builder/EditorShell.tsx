@@ -3,8 +3,42 @@ import type { ReactNode } from 'react'
 import { Copy, Trash2, X } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
-import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
+import { PaneSign, SIGN_TITLE, SignLibraryButton, SignStepButton, type SignStep } from '@/components/PaneSign'
 import { useStackedLayout } from './stacked'
+
+interface EditorShellProps {
+  /** What kind of edit this is — "Edit catalog", "Edit collection". Read out
+   *  ahead of the title; on screen the sign's own colour says it. */
+  purpose: string
+  /** The region this editor belongs to: its header is that region's sign,
+   *  and its Save and headings take that region's colour. */
+  tone: 'catalog' | 'collection'
+  /** Stickers stating facts about the subject — its kind, where it stands —
+   *  beside the title on the sign from `sm` up, and heading the body below. */
+  badges?: ReactNode
+  /** The subject's next step with Community — Publish…, Unpublish… — as the
+   *  sign's one button, before the way out; below `sm` it joins the stickers
+   *  heading the body. Absent where there is none to take. */
+  step: SignStep | undefined
+  title: string
+  /** Above `lg` this is the × in this header and Escape. Below it, it's also
+   *  the mobile Library button — there is no separate scroll-only path back to
+   *  the rail here, because leaving this row *is* an exit: it deselects, which
+   *  a dirty form has to be able to hold and ask about. */
+  onRequestClose: () => void
+  /** The open row's own actions, mirrored here below `lg`. Absent in a
+   *  collection's nested catalog editor, and until the library lists a row
+   *  that was just created. */
+  onDuplicate?: () => void
+  onDelete?: () => void
+  footer: ReactNode
+  /** What docks beside the form, which decides the content cap: the form
+   *  keeps its own `--w-form` column and the extra width goes to that column —
+   *  the catalog editor's results (`--w-editor-results`) or the collection
+   *  editor's preview (`--w-editor-preview`). */
+  docked: 'results' | 'preview'
+  children: ReactNode
+}
 
 /**
  * The frame around an editor filling the builder's pane.
@@ -36,6 +70,7 @@ export function EditorShell({
   purpose,
   tone,
   badges,
+  step,
   title,
   onRequestClose,
   onDuplicate,
@@ -43,35 +78,7 @@ export function EditorShell({
   footer,
   docked,
   children,
-}: {
-  /** What kind of edit this is — "Edit catalog", "Edit collection". Read out
-   *  ahead of the title; on screen the sign's own colour says it. */
-  purpose: string
-  /** The region this editor belongs to: its header is that region's sign,
-   *  and its Save and headings take that region's colour. */
-  tone: 'catalog' | 'collection'
-  /** Stickers stating facts about the subject — its kind, where it stands —
-   *  beside the title on the sign from `sm` up, and heading the body below. */
-  badges?: ReactNode
-  title: string
-  /** Above `lg` this is the × in this header and Escape. Below it, it's also
-   *  the mobile Library button — there is no separate scroll-only path back to
-   *  the rail here, because leaving this row *is* an exit: it deselects, which
-   *  a dirty form has to be able to hold and ask about. */
-  onRequestClose: () => void
-  /** The open row's own actions, mirrored here below `lg`. Absent in a
-   *  collection's nested catalog editor, and until the library lists a row
-   *  that was just created. */
-  onDuplicate?: () => void
-  onDelete?: () => void
-  footer: ReactNode
-  /** What docks beside the form, which decides the content cap: the form
-   *  keeps its own `--w-form` column and the extra width goes to that column —
-   *  the catalog editor's results (`--w-editor-results`) or the collection
-   *  editor's preview (`--w-editor-preview`). */
-  docked: 'results' | 'preview'
-  children: ReactNode
-}) {
+}: EditorShellProps) {
   const stacked = useStackedLayout()
 
   // Escape closes, matching the convention every modal dialog sets — the
@@ -109,13 +116,15 @@ export function EditorShell({
           <h1
             tabIndex={-1}
             data-landing
-            className="m-0 truncate font-[family-name:var(--font-sign)] text-[18px] leading-tight font-extrabold [font-stretch:112%] outline-none lg:text-[25px]"
+            className={`m-0 truncate outline-none ${SIGN_TITLE}`}
           >
             <span className="sr-only">{purpose}: </span>
             {title}
           </h1>
           {badges && <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{badges}</div>}
         </div>
+
+        <SignStepButton step={step} place="sign" />
 
         {/* The row's actions and the way out, below `lg` only. */}
         <div className="flex shrink-0 items-center gap-1 lg:hidden">
@@ -164,8 +173,14 @@ export function EditorShell({
           about 700px a form stops being something you read down, and every
           field in it starts looking stretched. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-        {/* The sign hides its stickers below `sm`, so they head the body. */}
-        {badges && <div className="mb-4 flex flex-wrap items-center gap-1.5 sm:hidden">{badges}</div>}
+        {/* The sign hides its stickers and its step below `sm`, so they head
+            the body. */}
+        {badges && (
+          <div className="mb-4 flex flex-wrap items-center gap-1.5 sm:hidden">
+            {badges}
+            <SignStepButton step={step} place="body" />
+          </div>
+        )}
         <div
           className={`w-full ${docked === 'preview' ? 'max-w-[var(--w-editor-preview)]' : 'max-w-[var(--w-editor-results)]'}`}
         >

@@ -180,12 +180,12 @@ export function describeRecipe(catalog: Pick<Catalog, 'type' | 'params'>, lookup
 function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLookup): string[] {
   const out: string[] = []
 
-  // A collection row lists one TMDB collection's films and applies no other
-  // filter, so the collection is the whole recipe. Unnamed, since naming it
-  // needs a TMDB lookup, and called a movie collection so it can't read as
+  // A film series row lists one TMDB collection's films and applies no other
+  // filter, so the film series is the whole recipe. Unnamed, since naming it
+  // needs a TMDB lookup, and called a film series so it can't read as
   // one of Uno's own collections; movie params only.
   if (type === 'movie' && countIDs(p.with_collection)) {
-    out.push('from a movie collection')
+    out.push('from a film series')
     if (p.randomized) out.push('shuffled')
     return out
   }
@@ -285,7 +285,7 @@ export function recipeSentence(
   const rest = describeParams(catalog.type, p, lookup)
   if (rest.length === 0) return ''
   if (catalog.type === 'movie' && countIDs(p.with_collection)) {
-    return `Shows the films in one movie collection${p.randomized ? ', shuffled' : ''}.`
+    return `Shows the films in one film series${p.randomized ? ', shuffled' : ''}.`
   }
 
   const sort = p.sort_by ? rest.shift() : undefined
@@ -447,7 +447,7 @@ const FACTS: FactBuilder[] = [
  *  filter, so the collection is the whole recipe. */
 const COLLECTION_FACTS: FactBuilder[] = [
   ({ type }) => fact('Type', typeLabel(type)),
-  () => fact('From', 'A movie collection'),
+  () => fact('From', 'A film series'),
   shuffledFact,
 ]
 

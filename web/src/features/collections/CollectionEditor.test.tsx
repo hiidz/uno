@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ComponentProps } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { catalog, collection, folder } from '@/test/fixtures'
 import { CollectionEditor } from './CollectionEditor'
@@ -54,7 +54,7 @@ function renderEditor(props: Partial<ComponentProps<typeof CollectionEditor>> = 
 }
 
 const titleInput = () => screen.getByLabelText('Title')
-const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save collection' }))
+const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
 describe('CollectionEditor', () => {
   it('shows what needs fixing instead of saving a collection with no title', () => {
@@ -89,16 +89,51 @@ describe('CollectionEditor', () => {
     )
   })
 
-  it('shows the Sharing row the pane hands it, and saves without asking', () => {
+  it('carries the step the pane hands it, and saves without asking', () => {
     const { onSave } = renderEditor({
       initial: formFromCollection(saved),
       initialCatalogs: library,
-      sharingRow: <p>Sharing slot</p>,
+      sharingStep: { label: 'Publish…', waiting: null, onClick: vi.fn() },
     })
-    expect(screen.getByText('Sharing slot')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Publish…' })).toHaveLength(2)
     fireEvent.change(titleInput(), { target: { value: 'Mine now' } })
     save()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'Mine now' }))
+  })
+
+  it('folds the collection’s appearance into one shelf after its folders', () => {
+    renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
+    const shelf = screen.getByRole('button', { name: /^Appearance\s*Rows · glow on$/ })
+    const folders = screen.getByRole('heading', { name: 'Folders' })
+    expect(folders.compareDocumentPosition(shelf) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(shelf)
+    fireEvent.click(within(screen.getByRole('group', { name: 'Focus glow' })).getByRole('button', { name: 'Off' }))
+    expect(screen.getByRole('button', { name: /^Appearance\s*Rows$/ })).toBeInTheDocument()
+  })
+
+  it('heads the open folder with where it sits, and states each catalog’s kind', () => {
+    renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
+    expect(screen.getByText('Folder 1 of 1')).toBeInTheDocument()
+    expect(screen.getByText('Movies', { selector: '.stk' })).toHaveClass('stk-neutral')
+    expect(screen.getByRole('combobox', { name: 'Genre' })).toBeInTheDocument()
+  })
+
+  it('asks before the nested editor drops its unsaved edits, and stages them with Done', () => {
+    const scoped = catalog({ id: 's1', name: 'Scoped', collection_id: saved.id })
+    const withScoped = { ...saved, folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 's1', genre: '' }] })] }
+    const { onDirtyChange } = renderEditor({ initial: formFromCollection(withScoped), initialCatalogs: [scoped] })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const nested = () => screen.getByRole('dialog', { name: 'Edit Scoped' })
+    fireEvent.change(within(nested()).getByLabelText('Name'), { target: { value: 'Scoped, renamed' } })
+
+    fireEvent.click(within(nested()).getByRole('button', { name: 'Close' }))
+    expect(screen.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+    expect(within(nested()).getByLabelText('Name')).toHaveValue('Scoped, renamed')
+
+    fireEvent.click(within(nested()).getByRole('button', { name: 'Done' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
   })
 
   it('asks to delete the collection, whatever Nuvio holds', () => {
@@ -106,5 +141,21 @@ describe('CollectionEditor', () => {
     renderEditor({ initial: formFromCollection(saved), onDelete })
     fireEvent.click(screen.getByRole('button', { name: 'Delete Weekend' }))
     expect(onDelete).toHaveBeenCalled()
+  })
+  it('names a new catalog inside the collection, opens it one level down, and stages it with Done', () => {
+    const { onSave } = renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
+    fireEvent.click(screen.getByRole('button', { name: 'New catalog' }))
+    const naming = screen.getByRole('dialog')
+    fireEvent.change(within(naming).getByLabelText('Name'), { target: { value: 'Giallo' } })
+    fireEvent.submit(within(naming).getByLabelText('Name').closest('form')!)
+    const nested = screen.getByRole('dialog', { name: 'Edit Giallo' })
+    expect(within(nested).getByText('Only in this collection')).toBeInTheDocument()
+    fireEvent.click(within(nested).getByRole('button', { name: 'Done' }))
+    save()
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        folders: [expect.objectContaining({ catalogs: expect.arrayContaining([expect.objectContaining({ new: expect.objectContaining({ name: 'Giallo' }) })]) })],
+      }),
+    )
   })
 })

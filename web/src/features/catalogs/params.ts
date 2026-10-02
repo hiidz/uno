@@ -48,7 +48,13 @@ export const DATE_PRESETS: { days: number; label: string }[] = [
   { days: 90, label: '90 days' },
   { days: 182, label: '6 months' },
   { days: 365, label: '1 year' },
+  { days: 730, label: '2 years' },
+  { days: 1825, label: '5 years' },
+  { days: 3650, label: '10 years' },
 ]
+
+/** The window a recent date filter starts on. */
+export const RECENT_DAYS = 90
 
 /** "Upcoming": a one-day window, which over a discover page sorted by
  *  popularity is the unreleased slate. */

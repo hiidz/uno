@@ -94,6 +94,7 @@ function ViewFrame({
       purpose={purpose}
       tone={tone}
       badges={<SharingStickers stickers={viewStickers(row, waitingForPush)} />}
+      step={undefined}
       title={title}
       onRequestClose={onClose}
       onDuplicate={onDuplicate}

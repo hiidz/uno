@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import type { CommunityItem } from '@/api'
 import { Icon } from '@/components/Icon'
+import { SIGN_TITLE } from '@/components/PaneSign'
 import { PageStickers } from './PublicationPage'
 
 /**
@@ -52,7 +53,7 @@ function PageSign({ item, onBack }: { item: CommunityItem; onBack: () => void })
       <h1
         ref={headingRef}
         tabIndex={-1}
-        className="m-0 min-w-0 truncate font-[family-name:var(--font-sign)] text-[18px] leading-tight font-extrabold [font-stretch:112%] outline-none lg:text-[25px]"
+        className={`m-0 min-w-0 truncate outline-none ${SIGN_TITLE}`}
       >
         {item.title}
       </h1>

@@ -2,6 +2,7 @@ import { tmdbKind } from '@/api'
 import type { CatalogType } from '@/api'
 import { CONTENT_TILE_SHAPE, TileGrid } from '@/features/preview/tiles'
 import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles'
+import { andList } from '@/lib/list'
 import { plural } from '@/lib/plural'
 
 interface RecipePreviewProps {
@@ -12,6 +13,9 @@ interface RecipePreviewProps {
   /** The form has errors, so there is no valid recipe to run. The server would
    *  reject it, and the form already knows why. */
   invalid: boolean
+  /** The sections holding those errors, named in the line that stands in for
+   *  results: "Fix Order first." */
+  fixFirst?: string[]
   /** Runs the preview, or reveals the errors standing in its way. Never
    *  nothing: a disabled button beside "fix the highlighted fields" is a dead
    *  end while the fields aren't highlighted yet — the form only reveals its
@@ -37,7 +41,7 @@ interface RecipePreviewProps {
  * Every tile links to its TMDB page, which is where the question a preview
  * raises — "what *is* that one?" — gets answered.
  */
-export function RecipePreview({ preview, type, invalid, onRun, readOnly }: RecipePreviewProps) {
+export function RecipePreview({ preview, type, invalid, fixFirst = [], onRun, readOnly }: RecipePreviewProps) {
   return (
     <aside className="ed-pv" aria-label="Results">
       <div className="ed-pv-head">
@@ -47,7 +51,7 @@ export function RecipePreview({ preview, type, invalid, onRun, readOnly }: Recip
         </button>
       </div>
 
-      <Body preview={preview} type={type} invalid={invalid} readOnly={readOnly} />
+      <Body preview={preview} type={type} invalid={invalid} fixFirst={fixFirst} readOnly={readOnly} />
     </aside>
   )
 }
@@ -63,12 +67,13 @@ interface BodyProps {
   preview: Preview
   type: CatalogType
   invalid: boolean
+  fixFirst: string[]
   readOnly: boolean | undefined
 }
 
-function Body({ preview, type, invalid, readOnly }: BodyProps) {
+function Body({ preview, type, invalid, fixFirst, readOnly }: BodyProps) {
   if (invalid) {
-    return <p>Fix the highlighted filters first, then run the preview.</p>
+    return <p>Fix {andList(fixFirst)} first.</p>
   }
 
   if (preview.idle) {
@@ -79,7 +84,7 @@ function Body({ preview, type, invalid, readOnly }: BodyProps) {
 }
 
 /** What a run came back with: its failure, an empty answer, or the tiles. */
-function Outcome({ preview, type, readOnly }: Omit<BodyProps, 'invalid'>) {
+function Outcome({ preview, type, readOnly }: Omit<BodyProps, 'invalid' | 'fixFirst'>) {
   // Unlike the Home pane, someone is standing here waiting for a result they
   // asked for, so a failed fetch is stated outright rather than degraded past.
   if (preview.tiles.isError) {

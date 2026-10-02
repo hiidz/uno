@@ -173,7 +173,10 @@ this is two regions rather than several co-equal panes.
 | **Push** — header | Global action, beside a persistent unpushed-changes indicator. Not a section — it's the commit for Home, so it lives where Home is always visible, whether or not Home is the pane's current occupant |
 
 **Authoring replaces the pane's occupant rather than opening over it.** Picking a rail row to
-edit swaps Home out for that row's editor; leaving the editor swaps Home back. `Workspace`
+edit swaps Home out for that row's editor; leaving the editor swaps Home back. From `lg`,
+picking the row that is already open is a way out too — the same guarded close as × (`selectionAction`,
+`builder/selection.ts`); below `lg` it scrolls back to the editor. The row says which is open with
+`aria-expanded`. `Workspace`
 (`web/src/features/builder/Workspace.tsx`) owns that one-occupant rule, and `EditorTarget`
 (`web/src/features/builder/target.ts`) is the union describing what the pane currently holds.
 
@@ -279,8 +282,9 @@ message the Community tab shows its outcomes in.
 ## Catalog authoring
 
 Create is a two-field form — name and `type` — plus the TMDB params sub-form.
-`provider` is derived (`"tmdb"`) and never rendered. `type` renders
-read-only unconditionally — there is no path, here or anywhere else, that changes an existing
+`provider` is derived (`"tmdb"`) and never rendered. `type` shows only as the kind sticker
+(Movies, Series) on the editor's sign, never as a setting — there is no path, here or anywhere
+else, that changes an existing
 row's type — and that's backed server-side too: `UpdateUserCatalog` reads the stored `type` and
 rejects a `PUT` that changes it with `ErrInvalidInput` — a catalog's type is part of the pushed
 collections blob, so changing it would alter what Nuvio should have with no save of any
@@ -313,9 +317,13 @@ push, and the Home pane's list says so (*Home pane*, below).
 **Validation rules are enforced structurally where possible**, and this order of preference is
 the point:
 
-1. **Structurally.** The date window is one three-way mode (`Any` / `Range` / `Recent`), so
+1. **Structurally.** The date window is one three-way mode (`DateMode`: `any` / `fixed` /
+   `rolling`), shown as one `Segmented` of four in `DateWindow.tsx` (Any time / Recent / Upcoming / Dates — Upcoming
+   is the one-day rolling window, `UPCOMING_DAYS`), so
    "both fixed and rolling set" — the thing `Validate()` rejects — is *unrepresentable* rather
-   than merely caught. `applyDateMode` (behind `toPayload`) also strips the other type's date
+   than merely caught. Recent opens on `RECENT_DAYS` (90) unless a window is already set, so
+   choosing it raises no error; its chips are `DATE_PRESETS` (30 days to 10 years), and a stored
+   window none of them is keeps a chip of its own ("3 years", "45 days"). `applyDateMode` (behind `toPayload`) also strips the other type's date
    fields entirely, so a series catalog can never ship `primary_release_date_*` or
    `released_within_days`. Certification is shared, not stripped — movies use theatrical
    ratings, series use TV content ratings, both scoped by `certification_country`.
@@ -340,7 +348,7 @@ Other decisions worth keeping:
   still in the payload. Services are stored pipe-joined (`8|337`), which TMDB reads as "on any of
   these"; a comma would mean "on every one of these at once", which is almost never what picking
   several services means.
-- **Production companies and keywords are one server-search picker** (`TMDBEntityPicker`,
+- **Production companies (the Studios section) and keywords are one server-search picker** (`TMDBEntityPicker`,
   `kind="company"` / `kind="keyword"`), the only picker in the editor that searches the server
   rather than filtering a list it already holds: TMDB has no "list them all" endpoint for either.
   The query settles for 300ms (`lib/useDebounce.ts`) and runs against
@@ -364,35 +372,45 @@ Other decisions worth keeping:
   count line is a `role="status"` live region. Section heads and the library summary count these
   rather than name them, for the same reason as streaming services.
 - **Each of those sections holds two pickers, Include and Leave out** (`EntityLists` in
-  `CatalogEditor.tsx`), writing `with_*` and `without_*`. The Leave out picker is the same
+  `CatalogSettings.tsx`), writing `with_*` and `without_*`. The Leave out picker is the same
   component with `exclude`: no all/any `Segmented`, and always comma-joined, because TMDB drops a
   title carrying any of the listed ids whichever separator is used. Each list has its own 20-id
   cap. Each picker takes the other's ids as `hiddenIds` and never offers them in search, so one
   id can't be both included and left out. There is no server rule for that overlap either, the
   same as genres. The closed head reads "1 studio · not 2 studios" (`sumEntities`), and the
   library summary reads "not from 2 studios" / "not tagged with 1 keyword".
-- **A movie catalog's Mode is either Filters or Collection**, a `Segmented` right under the
-  Movie/Series row. The mode is form state (`sourceMode` in `catalogForm.ts`), not a stored field:
-  `formFromCatalog` reads a saved `with_collection` as Collection, anything else as Filters.
-  Filters shows every filter section and no collection picker; Collection shows only the
-  collection picker and Shuffle, every other section — sort order included — hidden rather than
-  disabled. A collection row lists one TMDB collection's films in release order, and the server
-  rejects any other filter beside `with_collection` (`randomized` excepted), so what a save or
-  Preview sends follows the mode (both go through `paramsString` → `recipeParams`): Collection
-  keeps only the `COLLECTION_KEYS` allow-list, so a field added later is dropped by default, and
-  Filters drops `with_collection`. Form state keeps both sides' values, so switching mode back
-  and forth loses nothing until Save. `validateForm` checks the sent params, so a dropped field
-  raises no error, and Collection mode with nothing picked is an error ("Pick a collection."),
-  which also stops Preview from running. Series catalogs have no switch and no collection
-  picker, since TMDB has no collections for series.
+- **A movie catalog shows either Filters or a Film series**, a `Segmented` that is the first
+  control under the "What the row shows" heading. A TMDB collection is called a film series on
+  screen, since "collection" is Uno's word for a group of catalogs. The mode is form state
+  (`sourceMode` in `catalogForm.ts`, `'filters' | 'collection'`), not a stored field:
+  `formFromCatalog` reads a saved `with_collection` as Film series, anything else as Filters.
+  Filters shows every filter section and no Film series section; Film series shows only that
+  section, its picker with Shuffle under it, every other section — sort order included — hidden
+  rather than disabled. A film series row lists one TMDB collection's films in release order, and
+  the server rejects any other filter beside `with_collection` (`randomized` excepted), so what a
+  save or Preview sends follows the mode (both go through `paramsString` → `recipeParams`): Film
+  series keeps only the `COLLECTION_KEYS` allow-list, so a field added later is dropped by
+  default, and Filters drops `with_collection`. Form state keeps both sides' values, so switching
+  mode back and forth loses nothing until Save. `validateForm` checks the sent params, so a
+  dropped field raises no error, and Film series mode with nothing picked is an error ("Pick a
+  film series."), which also stops Preview from running. Series catalogs have no switch and no
+  Film series section, since TMDB has no collections for series.
+- **Shuffle is the last control of the Order section** (of the Film series section in that
+  mode), with "New set each time" (or "New order each time" for a film series, which always holds
+  the same films) beside it once on, and the section's summary ends "· shuffled" (`withShuffle`).
+- **The results panel names what to fix.** While the recipe has errors, the line standing in for
+  results reads "Fix Order first." (or "Fix Order and Studios first."), the sections named
+  through `roleLabelFor` (`recipeSections` in `CatalogEditor.tsx`); `name` is left out, being no
+  part of a recipe.
 - **The collection picker is the same server-search picker, single-pick** (`kind="collection"`,
   over `GET /api/collections/{search,{id}}`, stored as `with_collection`). TMDB takes one
   collection id, so the kind's table entry marks it `single`: a pick replaces the chip rather
   than adding one, and there is no all/any toggle. Its section head names the pick rather than
   counting it: the editor reads the same `staleTime: Infinity` by-id key the chip does, so the
   name costs no extra request. "Collection" is also Uno's word for a group of catalogs, so the
-  TMDB kind is `TMDBCollection` in code, and the library summary describes a collection row as
-  "from a movie collection" (plus "shuffled"), with none of the other filters.
+  TMDB kind is `TMDBCollection` in code, the picker says "film series", and the library summary
+  describes a film series row as "from a film series" (plus "shuffled"), with none of the other
+  filters.
 - **A series catalog's Networks section is the same server-search picker again**
   (`kind="network"`, over `GET /api/networks/{search,{id}}`, stored as `with_networks`). It is
   series only, since `/discover/movie` has no network filter. A movie catalog has no Networks
@@ -432,10 +450,11 @@ Other decisions worth keeping:
   `DELETE FROM catalogs` cascades `folder_catalogs`, so a cached collection tree keeps a phantom
   ref: the overlay lists a folder member that no longer exists, and saving that collection
   `400`s.
-- **A scoped catalog shows a "Scope" row where a listed one shows Community**
+- **A scoped catalog shows a "Scope" setting, and no publish button**
   (`CatalogFormState.collectionID`): a scoped catalog is published only by publishing its collection, so
-  its nested editor gets no `sharingRow` and shows a note and a "Move to library" button that clears
-  `collectionID` instead — promote, always allowed, and like
+  its nested editor gets no `sharingStep` and reads "Only in this collection" with a "Move to
+  library" button beside it, and an InfoTip ("Applies when you save the collection."), that clears
+  `collectionID` — promote, always allowed, and like
   every edit made in this nested editor it takes effect when the collection is saved (a
   `catalog_edits` entry with `move_to_library`). Once staged, the catalog reads as listed in every
   folder, whose rows offer no Edit to reopen it, so `CollectionEditor` states each staged move as a
@@ -447,7 +466,8 @@ Other decisions worth keeping:
   into a collection. `collectionID` is form state only: `toPayload` leaves it out, since a
   catalog's `PUT` never changes its scope, and `isSameCatalog` compares it so a staged Move to
   library counts as an edit. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
-  promote, so its nested editor leaves the button out and says to save the collection first.
+  promote, so its nested editor leaves the button out and its InfoTip says to save the collection
+  first. The nested editor's Save reads Done, since it only stages the edit.
 
 ## Home pane — List view
 
@@ -727,11 +747,15 @@ button.
   is unconditional ("People who added it keep theirs"): a row someone added changes only when
   they apply an Update of a publication, so removing a folder from your own collection never
   reaches it. `Workspace.tsx`'s delete confirms state the same fact.
-- **The save bar's quiet button reads "Discard changes" here, "Cancel" in the catalog editor**
-  (`EditorFooter`'s `cancelLabel`) — DESIGN.md's own wording for the heavier thing this editor can
-  lose. Both route through the same call, this editor's own `onRequestClose`, and from there
-  through the one shared `EditorGuard` confirm every exit from a dirty editor already goes
-  through — there is no second, folder-aware confirm layered on top of it.
+- **The save bar reads Close and Save in every editor** (`EditorFooter`), the nested catalog
+  editor's Save reading Done. Close routes through the editor's own `onRequestClose`, and from
+  there through the one shared `EditorGuard` confirm every exit from a dirty editor goes through
+  (×, Escape, Close, the phone Library pill, and from `lg` pressing the open library row) — there
+  is no second, folder-aware confirm layered on top of it. The nested catalog editor
+  (`NestedCatalogEditor.tsx`) has its own `EditorGuardProvider`, since its
+  unsaved edits aren't the pane's: its ×, Close, Escape and scrim pass that guard, and
+  `DiscardPrompt` (`EditorGuard.tsx`) asks the same "Discard unsaved changes?" with Keep editing
+  and Discard.
 - **`view_mode` and `tile_shape` are the server's enums, with no "unset" option.** The server
   stores an empty value as `TABBED_GRID` or `POSTER`, what every Nuvio client shows for one
   (`docs/data-model.md`), so a new folder starts as Poster and an empty or unrecognised value in
@@ -750,7 +774,8 @@ button.
   (holding "Add folder"), `FolderTiles` draws each folder at its own `tile_shape` with its cover,
   name and catalog count — the editor's list and the Preview panel's row are the same picture. One
   folder is always selected (the one picked, else the first), and `FolderDetail` shows it below
-  the strip as one raised panel: a heading with its name, "1st of 2" and an appearance summary,
+  the strip as one raised panel: a heading reading "Folder 1 of 2" (the name is the title field's,
+  the appearance summary the folded row's),
   ←/→ and Remove; then its title, then its catalogs (a `.setting.is-head` heading with "New catalog" and
   "Add catalogs"), then an "Appearance" `.sec-head` that folds away hide-title, tile shape,
   cover, the focus GIF (URL plus an on/off) and the three Modern Home hero URLs (backdrop, video,
@@ -820,7 +845,8 @@ button.
   catalogs only), Move up/down, and "Remove from folder". The grip reorders by pointer,
   touch and keyboard (`useDragSensors`' `KeyboardSensor`), so the menu's moves are the fallback,
   and the name keeps the row's width at phone size.
-- **Each catalog row has a genre select under its recipe line** (`RefGenrePicker`), narrowing that
+- **Each catalog row names its catalog with its kind sticker (Movies, Series) after it, and has a
+  genre select under its recipe line** (`RefGenrePicker`, labelled Genre), narrowing that
   one reference: "All genres", or "Only Western" and so on. Its options come from
   `POST /api/catalogs/genre-options` for the catalog's own recipe, not the whole TMDB list, so
   every choice actually narrows the row. It is keyed on the recipe, so editing a scoped catalog's
@@ -849,8 +875,11 @@ button.
   life outside it) go with it, distinct from any listed catalog it merely references and which
   survives. Delete is allowed on Home too, and its confirm says when Nuvio loses it (see *Catalog
   authoring*).
-- **The Community setting is the same `SharingRow` as the catalog editor's** (see "Sharing" below), after the
-  title. The "All" tab is a `Segmented`, greyed (DESIGN.md's "Greyed" segmented state,
+- **The form runs Title, Folders, then one folding Appearance shelf** (`CollectionAppearance.tsx`, a
+  `.sec-head` like a folder's): How folders open, the "All" tab, Background image and Focus glow,
+  summarised on the closed head ("Tabbed Grids · All tab · glow on", `appearanceSummary`). The
+  publish button is on the sign (see "Sharing" below).
+  The "All" tab is a `Segmented`, greyed (DESIGN.md's "Greyed" segmented state,
   `Segmented`'s `disabled` prop) rather than hidden while the view mode isn't Tabbed Grids,
   keeping its value for when it switches back. There is no Pin here: it is the Home pane's
   pending edit, which push writes (see "Home pane — List view").
@@ -881,24 +910,24 @@ publisher, and calls only what Duplicate makes a copy. The model and the routes 
 live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through one hook,
 `useWorkspaceSharing`.
 
-- **The Community setting** (`SharingRow.tsx`, labelled Community) sits where a listed catalog's
-  or a collection's editor has its settings, after the name. It says where the row stands
-  (`ownSharing` over the row's `publication`): Private; Published (also once the saved row differs
-  from what was published, `changed_since_publish`, which the sign's To publish sticker
-  says); or "Unpublished. People who added it keep it." after Unpublish. Its
-  buttons are quiet — Save stays the editor's one primary: Publish…, Publish update… or Publish
-  again…, which open the publish dialog, and Unpublish, which asks first ("Community stops listing
-  it. People who added it keep it, and get no updates until you publish it again."). Only what is
-  saved is published, so Publish… is disabled while the form has unsaved changes, with "Save
-  first: only what's saved is published." beneath it (`sharingNote`).
+- **The publish button** is a listed catalog's or a collection's one step with Community, on its
+  editor's sign before × (`SignStepButton` in `components/PaneSign.tsx`, from the editor's
+  `sharingStep`). It names the next step from where the row stands (`sharingStep` over
+  `ownSharing`): Publish… while private, Publish update… once the saved row differs from what was
+  published (`changed_since_publish`, which the sign's To publish sticker also says), Publish
+  again… after Unpublish, and Unpublish… while live and unchanged. The publishes open the publish
+  dialog; Unpublish… asks first ("Community stops listing it. People who added it keep it, and get
+  no updates until you publish it again."). Community holds the saved row, so while the form has
+  unsaved changes the button is greyed (`aria-disabled`) and pressing it shows "Save first." as a
+  one-line toast under it. Below `sm` it sits in the sticker row heading the body.
 - **A collection that uses a catalog added from Community can be published** like any other. A
-  row added from Community can't be: it opens as a view with no Community setting (below).
+  row added from Community can't be: it opens as a view with no publish button (below).
 - **The publish dialog** (`PublishDialog.tsx`) lists everything the publication will hold, each
   catalog by name over its recipe line: for a collection, its own catalogs under "N folders, N
   catalogs of its own", then the library catalogs it uses under "From your library, published as
   they are now" (`publishGroups`) — publishing a collection publishes those as they stand, which is the
   point to consent to. When it publishes changes to an already published row — the row's
-  Community setting says Publish update… — a **Since you last published** list comes first, under
+  publish button says Publish update… — a **Since you last published** list comes first, under
   its line: what every follower will be offered (`SinceLastPublished`, from
   `GET .../changes-since-publish`, fetched as the dialog opens). It is also what explains a
   collection flagged To publish because a library catalog it uses was edited. Publishing a row
@@ -908,7 +937,8 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   button Publish (or Publish update), and its line "Anyone on Uno can find it in Community and add
   it. Your later edits stay private until you publish an update." (or "People who added it are
   offered this version. Until then they keep the one they have."). The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
-  shows in the dialog.
+  shows in the dialog. The dialog of a published row (Publish update…) also has a red text
+  Unpublish at its footer's start, which closes it and asks the Unpublish question.
 - **Stickers and flags** (`sharingState.ts` is the one place a row turns into them; `SharingStickers`
   draws them). Flags are plain stickers, never buttons, and each names a state, never a verb, where
   a row is behind: **To push** (a push would change what Nuvio holds for it), **To publish** (an

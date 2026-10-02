@@ -45,6 +45,7 @@ import {
   useStackedScroll,
   type ScrollDestination,
 } from './stacked'
+import { selectionAction } from './selection'
 import { catalogTarget, collectionTarget, type EditorTarget } from './target'
 
 
@@ -189,19 +190,19 @@ export function Workspace({
     [setDirty, resetCatalogUpdate, resetCollectionUpdate, requestScroll],
   )
 
+  /** Selecting a library row (`selectionAction`): another row opens through
+   *  the guard; the open one closes as × does from `lg`, and scrolls back to
+   *  its editor stacked. */
   const open = useCallback(
     (next: EditorTarget) => {
-      if (target?.kind === next.kind && target.id === next.id) {
-        // Re-selecting the open row must not re-seed the form from its saved
-        // state — that would silently discard edits. Stacked, though, tapping
-        // the row you already have open is how you ask to be taken back to it,
-        // so the one thing it still does is scroll.
-        requestScroll('pane')
-        return
+      const actions = {
+        open: () => guard(() => show(next)),
+        close: () => guard(() => show(null, 'rail')),
+        scroll: () => requestScroll('pane'),
       }
-      guard(() => show(next))
+      actions[selectionAction(target, next, stacked)]()
     },
-    [guard, show, target, requestScroll],
+    [guard, show, target, requestScroll, stacked],
   )
 
   /**

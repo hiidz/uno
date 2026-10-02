@@ -6,6 +6,8 @@ import { Grip } from '@/components/dnd'
 import { Select } from '@/components/fields'
 import { MoreMenu, MoreMenuItem, MoreMenuSeparator } from '@/components/MoreMenu'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
+import { kindStickers } from '@/features/sharing/sharingState'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { pluralCount } from '@/lib/plural'
 import type { FolderRefState } from './collectionForm'
 import { refDragID } from './folderDnd'
@@ -106,14 +108,16 @@ export function RefRow({
 
         {option ? (
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-[13px] font-medium">{option.name}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[13px] font-medium">{option.name}</span> <SharingStickers stickers={kindStickers(option.catalog)} />
+            </span>
             <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
-              {option.recipe} · {option.catalog.type}
+              {option.recipe}
               {!isScoped && ` · used in ${pluralCount(places, 'place')}`}
             </span>
             <RefGenrePicker
               query={genreOptions}
-              name={option.name}
+              name="Genre"
               genre={refState.genre}
               siblingGenres={siblingGenres}
               onChange={onGenreChange}
@@ -215,7 +219,7 @@ function RefGenrePicker({
         onChange={onChange}
         options={options}
         width="var(--w-pick)"
-        ariaLabel={`Genre shown from ${name}`}
+        ariaLabel={name}
       />
       {stale && (
         <span className="type-data text-danger text-[12.5px] leading-[1.45]">

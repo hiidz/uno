@@ -11,7 +11,7 @@ describe('describeRecipe', () => {
   it('mentions a collection on movie catalogs only', () => {
     const lookup = new Map<number, string>()
     expect(describeRecipe(catalog('movie', { with_collection: '10' }), lookup)).toEqual([
-      'from a movie collection',
+      'from a film series',
     ])
     expect(describeRecipe(catalog('series', { with_collection: '10' }), lookup)).toEqual([])
   })
@@ -40,9 +40,9 @@ describe('describeRecipe', () => {
   it('describes a collection row by the collection and shuffle alone', () => {
     const lookup = new Map<number, string>([[28, 'Action']])
     const params = { with_collection: '10', sort_by: 'popularity.desc', with_genres: '28' }
-    expect(describeRecipe(catalog('movie', params), lookup)).toEqual(['from a movie collection'])
+    expect(describeRecipe(catalog('movie', params), lookup)).toEqual(['from a film series'])
     expect(describeRecipe(catalog('movie', { ...params, randomized: true }), lookup)).toEqual([
-      'from a movie collection',
+      'from a film series',
       'shuffled',
     ])
   })
@@ -84,7 +84,7 @@ describe('recipeSentence', () => {
   it('describes a collection row by its collection', () => {
     const params = { with_collection: '10', randomized: true }
     expect(recipeSentence(catalog('movie', params), lookup)).toBe(
-      'Shows the films in one movie collection, shuffled.',
+      'Shows the films in one film series, shuffled.',
     )
   })
 
@@ -220,11 +220,11 @@ describe('recipeFacts', () => {
     expect(facts.at(-1)).toEqual({ label: 'Shuffled', value: 'Yes' })
   })
 
-  it('reads a movie collection row as the collection alone', () => {
+  it('reads a film series row as the film series alone', () => {
     const params = { with_collection: '10', sort_by: 'popularity.desc', with_genres: '80', randomized: true }
     expect(recipeFacts(catalog('movie', params), lookup)).toEqual([
       { label: 'Type', value: 'Movies' },
-      { label: 'From', value: 'A movie collection' },
+      { label: 'From', value: 'A film series' },
       { label: 'Shuffled', value: 'Yes' },
     ])
     expect(recipeFacts(catalog('series', { with_collection: '10' }), lookup)).toEqual([{ label: 'Type', value: 'Series' }])

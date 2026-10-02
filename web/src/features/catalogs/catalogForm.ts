@@ -231,69 +231,97 @@ export type FieldErrors = Partial<Record<string, string>>
  * render errors in place instead of as a banner.
  */
 export function validateForm(state: CatalogFormState): FieldErrors {
-  const errors: FieldErrors = {}
   // Checked against what is sent, so a field the current mode drops can't
   // raise an error.
   const p = recipeParams(state)
-  const collectionRow = isCollectionRow(state)
+  return {
+    ...nameErrors(state, p),
+    ...sortErrors(state, p),
+    ...certificationErrors(p),
+    ...watchErrors(p),
+    ...windowErrors(state, p),
+    ...rangeErrors(p),
+    ...capErrors(p),
+  }
+}
 
+/** The name, and a film series row's pick. */
+function nameErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
+  const errors: FieldErrors = {}
   if (!state.name.trim()) errors.name = 'Give this catalog a name.'
-
-  if (collectionRow && parseIdList(p.with_collection).ids.length === 0) {
-    errors.with_collection = 'Pick a collection.'
+  if (isCollectionRow(state) && parseIdList(p.with_collection).ids.length === 0) {
+    errors.with_collection = 'Pick a film series.'
   }
+  return errors
+}
 
-  if (p.sort_by && !SORT_OPTIONS[state.type].includes(p.sort_by)) {
-    errors.sort_by = `${state.type === 'movie' ? 'Movies' : 'Series'} can't be sorted this way.`
-  }
+function sortErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
+  if (!p.sort_by || SORT_OPTIONS[state.type].includes(p.sort_by)) return {}
+  return { sort_by: `${typeNoun(state.type)} can't be sorted this way.` }
+}
 
-  // "required together" pairs. Both are grouped controls in the form, so these
-  // should be unreachable — they're the backstop, not the mechanism.
+function typeNoun(type: CatalogType): string {
+  return type === 'movie' ? 'Movies' : 'Series'
+}
+
+// The "required together" pairs. Both are grouped controls in the form, so
+// these should be unreachable — they're the backstop, not the mechanism.
+
+function certificationErrors(p: TMDBParams): FieldErrors {
   const hasCert = Boolean(p.certification ?? p.certification_gte ?? p.certification_lte)
-  if (hasCert && !p.certification_country) {
-    errors.certification_country = 'Pick a country — age ratings differ by country.'
-  }
-  if (p.with_watch_providers && !p.watch_region) {
-    errors.watch_region = 'Pick a country — streaming services differ by country.'
-  }
+  if (!hasCert || p.certification_country) return {}
+  return { certification_country: 'Pick a country — age ratings differ by country.' }
+}
 
-  if (state.dateMode === 'rolling' && !collectionRow) {
-    const days = state.type === 'movie' ? p.released_within_days : p.aired_within_days
-    if (!days || days < 1) errors.within_days = 'Pick how far back to look.'
-  }
+function watchErrors(p: TMDBParams): FieldErrors {
+  if (!p.with_watch_providers || p.watch_region) return {}
+  return { watch_region: 'Pick a country — streaming services differ by country.' }
+}
 
-  const ratingLow = p.vote_average_gte
-  const ratingHigh = p.vote_average_lte
-  if (ratingLow != null && ratingHigh != null && ratingLow > ratingHigh) {
-    errors.vote_average = 'The first number is higher than the second.'
-  }
-  const runtimeLow = p.with_runtime_gte
-  const runtimeHigh = p.with_runtime_lte
-  if (runtimeLow != null && runtimeHigh != null && runtimeLow > runtimeHigh) {
-    errors.with_runtime = 'The first number is higher than the second.'
-  }
-  const votesLow = p.vote_count_gte
-  const votesHigh = p.vote_count_lte
-  if (votesLow != null && votesHigh != null && votesLow > votesHigh) {
-    errors.vote_count = 'The first number is higher than the second.'
-  }
+function windowErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
+  if (state.dateMode !== 'rolling' || isCollectionRow(state)) return {}
+  const days = rollingDays(state.type, p)
+  return days && days >= 1 ? {} : { within_days: 'Pick how far back to look.' }
+}
 
-  if (parseIdList(p.with_companies).ids.length > MAX_ENTITY_IDS) {
-    errors.with_companies = `Pick at most ${MAX_ENTITY_IDS} production companies.`
-  }
-  if (parseIdList(p.with_keywords).ids.length > MAX_ENTITY_IDS) {
-    errors.with_keywords = `Pick at most ${MAX_ENTITY_IDS} keywords.`
-  }
-  if (parseIdList(p.without_companies).ids.length > MAX_ENTITY_IDS) {
-    errors.without_companies = `Leave out at most ${MAX_ENTITY_IDS} production companies.`
-  }
-  if (parseIdList(p.without_keywords).ids.length > MAX_ENTITY_IDS) {
-    errors.without_keywords = `Leave out at most ${MAX_ENTITY_IDS} keywords.`
-  }
-  if (parseIdList(p.with_networks).ids.length > MAX_ENTITY_IDS) {
-    errors.with_networks = `Pick at most ${MAX_ENTITY_IDS} networks.`
-  }
+/** The rolling window of this type's own date. */
+function rollingDays(type: CatalogType, p: TMDBParams): number | undefined {
+  return type === 'movie' ? p.released_within_days : p.aired_within_days
+}
 
+const RANGES: [string, keyof TMDBParams, keyof TMDBParams][] = [
+  ['vote_average', 'vote_average_gte', 'vote_average_lte'],
+  ['with_runtime', 'with_runtime_gte', 'with_runtime_lte'],
+  ['vote_count', 'vote_count_gte', 'vote_count_lte'],
+]
+
+/** A range whose low end is above its high end. */
+function rangeErrors(p: TMDBParams): FieldErrors {
+  const errors: FieldErrors = {}
+  for (const [key, low, high] of RANGES) {
+    if (inverted(p[low], p[high])) errors[key] = 'The first number is higher than the second.'
+  }
+  return errors
+}
+
+function inverted(low: unknown, high: unknown): boolean {
+  return typeof low === 'number' && typeof high === 'number' && low > high
+}
+
+const CAPS: [keyof TMDBParams, string][] = [
+  ['with_companies', `Pick at most ${MAX_ENTITY_IDS} production companies.`],
+  ['with_keywords', `Pick at most ${MAX_ENTITY_IDS} keywords.`],
+  ['without_companies', `Leave out at most ${MAX_ENTITY_IDS} production companies.`],
+  ['without_keywords', `Leave out at most ${MAX_ENTITY_IDS} keywords.`],
+  ['with_networks', `Pick at most ${MAX_ENTITY_IDS} networks.`],
+]
+
+/** An id list over the server's cap. */
+function capErrors(p: TMDBParams): FieldErrors {
+  const errors: FieldErrors = {}
+  for (const [key, message] of CAPS) {
+    if (parseIdList(p[key] as string | undefined).ids.length > MAX_ENTITY_IDS) errors[key] = message
+  }
   return errors
 }
 

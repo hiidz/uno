@@ -9,7 +9,7 @@ const genres = { movie: new Map([[27, 'Horror']]), tv: new Map() }
 const horror = catalog({ id: 'h', name: 'Horror nights', params: '{"with_genres":"27"}' })
 
 function renderDialog(props: Partial<ComponentProps<typeof PublishDialog>> = {}) {
-  const handlers = { onConfirm: vi.fn(), onClose: vi.fn() }
+  const handlers = { onConfirm: vi.fn(), onClose: vi.fn(), onUnpublish: vi.fn() }
   render(
     <PublishDialog
       open
@@ -46,6 +46,17 @@ describe('PublishDialog', () => {
     expect(since.compareDocumentPosition(recipe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('offers Unpublish for a published row', () => {
+    const { onUnpublish } = renderDialog({ update: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }))
+    expect(onUnpublish).toHaveBeenCalled()
+  })
+
+  it('has no Unpublish for a row not yet published', () => {
+    renderDialog()
+    expect(screen.queryByRole('button', { name: 'Unpublish' })).toBeNull()
+  })
+
   it('lists a collection’s own catalogs and its library catalogs apart', () => {
     renderDialog({
       subject: {
@@ -75,7 +86,7 @@ describe('PublishDialog', () => {
 
   it('says Publishing… while a first publish runs, and draws nothing without a subject', () => {
     const { unmount } = render(
-      <PublishDialog open subject={null} update={false} since={null} genres={genres} pending={false} error={null} onConfirm={vi.fn()} onClose={vi.fn()} />,
+      <PublishDialog open subject={null} update={false} since={null} genres={genres} pending={false} error={null} onConfirm={vi.fn()} onClose={vi.fn()} onUnpublish={vi.fn()} />,
     )
     expect(screen.queryByRole('dialog')).toBeNull()
     unmount()

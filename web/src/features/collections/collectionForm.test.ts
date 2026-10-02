@@ -4,6 +4,7 @@ import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catal
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
+  appearanceSummary,
   emptyCollectionForm,
   formFromCollection,
   isSameCollection,
@@ -160,5 +161,19 @@ describe('view mode', () => {
     for (const mode of ['FOLLOW_LAYOUT', 'TABBED_GRID', 'ROWS']) {
       expect(toCollectionPayload(formFromCollection(stored(mode))).view_mode).toBe(mode)
     }
+  })
+})
+
+describe('appearanceSummary', () => {
+  const base = { viewMode: 'TABBED_GRID' as const, showAllTab: false, backdropImageURL: '', focusGlowEnabled: false }
+
+  it('names the view mode, then what else is on', () => {
+    expect(appearanceSummary(base)).toBe('Tabbed Grids')
+    expect(appearanceSummary({ ...base, showAllTab: true, focusGlowEnabled: true })).toBe('Tabbed Grids · All tab · glow on')
+    expect(appearanceSummary({ ...base, backdropImageURL: ' https://x ' })).toBe('Tabbed Grids · background image')
+  })
+
+  it('leaves the All tab out where there are no tabs', () => {
+    expect(appearanceSummary({ ...base, viewMode: 'ROWS', showAllTab: true })).toBe('Rows')
   })
 })

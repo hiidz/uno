@@ -201,14 +201,19 @@ export function sumEntities(
  *  lookup answers, the id stands in. */
 export function sumCollection(raw: string | undefined, name: string | undefined): string {
   const id = parseIdList(raw).ids[0]
-  if (id === undefined) return 'No collection picked'
-  return name ?? `Collection ${id}`
+  if (id === undefined) return 'No film series picked'
+  return name ?? `Film series ${id}`
 }
 
-/** What shuffle does once it's on. A collection row always holds the same
- *  films, so shuffling it only changes their order. */
+/** What shuffle does once it's on. A film series always holds the same films,
+ *  so shuffling it only changes their order. */
 export const sumShuffle = (collectionRow = false): string =>
   collectionRow ? 'New order each time' : 'New set each time'
+
+/** A section's summary, ending "· shuffled" while Shuffle is on. */
+export function withShuffle(summary: string, randomized: boolean | undefined): string {
+  return randomized ? `${summary} · shuffled` : summary
+}
 
 /** The detail a company or network search result shows after its name —
  *  "US · 176 films" — counted for the catalog's type. */

@@ -2,28 +2,7 @@ import { TriangleAlert } from 'lucide-react'
 import { Icon } from '@/components/Icon'
 import { pluralCount } from '@/lib/plural'
 
-/**
- * The band an editor ends on: what is stopping the save, the way out, and the
- * save itself — DESIGN.md's save bar, shared by both builders.
- *
- * Both builders end the same way, so what varies is the noun, what the status
- * line names, and the labels; `cancelLabel` falls back to "Cancel". The Save
- * button takes the editor's region colour from the `tone-*` class
- * `EditorShell` sets around it.
- */
-export function EditorFooter({
-  noun,
-  saving,
-  errorCount,
-  errorLabels,
-  dirty,
-  notes = [],
-  onCancel,
-  onSubmit,
-  saveLabel,
-  cancelLabel,
-  saveError,
-}: {
+interface EditorFooterProps {
   /** What is being saved, named in a failed save's message. */
   noun: string
   saving: boolean
@@ -37,14 +16,9 @@ export function EditorFooter({
   notes?: string[]
   onCancel: () => void
   onSubmit: () => void
-  /** DESIGN.md's Save bar reads "Save" (or "Save collection"). */
+  /** DESIGN.md's Save bar reads "Save", and "Done" in a collection's nested
+   *  catalog editor, whose save only stages the edit. */
   saveLabel: string
-  /** Overrides the quiet button's label — the collection editor's own save bar
-   *  reads "Discard changes" (DESIGN.md's Collection editor spec), not
-   *  "Cancel". Both still route through `onCancel`, i.e. this editor's own
-   *  `onRequestClose` and the shared `EditorGuard`'s leave-with-unsaved-changes
-   *  prompt behind it — a second, editor-specific confirm isn't added here. */
-  cancelLabel?: string
   /**
    * Plain-text body of a server rejection of the last save. Both builders
    * mirror every server rule, so this should be unreachable, and a 400 that
@@ -54,35 +28,37 @@ export function EditorFooter({
    * failed looked like a press that did nothing.
    */
   saveError?: string | null
-}) {
+}
+
+/**
+ * The band an editor ends on: what is stopping the save, the way out, and the
+ * save itself — DESIGN.md's save bar, shared by both builders.
+ *
+ * Both builders end the same way, so what varies is the noun, what the status
+ * line names, and Save's label. The quiet button reads Close in every editor
+ * and leaves through `onCancel`, the editor's own `onRequestClose`, so unsaved
+ * edits get the same "Discard unsaved changes?" every other exit asks. The
+ * Save button takes the editor's region colour from the `tone-*` class
+ * `EditorShell` sets around it.
+ */
+export function EditorFooter({
+  noun,
+  saving,
+  errorCount,
+  errorLabels,
+  dirty,
+  notes = [],
+  onCancel,
+  onSubmit,
+  saveLabel,
+  saveError,
+}: EditorFooterProps) {
   return (
     <>
-      {saveError && (
-        <p role="alert" className="callout-danger type-data basis-full">
-          Couldn't save this {noun}: {saveError}
-        </p>
-      )}
-      {/* DESIGN.md's status text: "N things need fixing: …", else "Unsaved
-          changes" or "No changes yet". */}
-      {errorCount > 0 ? (
-        <span className="ed-status is-error">
-          <Icon icon={TriangleAlert} size={16} />
-          {pluralCount(errorCount, 'thing')} {errorCount === 1 ? 'needs' : 'need'} fixing
-          {errorLabels.length > 0 && `: ${errorLabels.join(', ')}`}
-        </span>
-      ) : (
-        <span className={dirty ? 'ed-status' : 'ed-status is-muted'}>
-          {dirty ? 'Unsaved changes' : 'No changes yet'}
-          {notes.map((note) => (
-            <span key={note} className="text-dim">
-              {' '}
-              · {note}
-            </span>
-          ))}
-        </span>
-      )}
+      <SaveError noun={noun} error={saveError} />
+      <SaveStatus errorCount={errorCount} errorLabels={errorLabels} dirty={dirty} notes={notes} />
       <button type="button" onClick={onCancel} className="btn-ghost">
-        {cancelLabel ?? 'Cancel'}
+        Close
       </button>
       <button
         type="button"
@@ -94,5 +70,49 @@ export function EditorFooter({
         {saving ? 'Saving…' : saveLabel}
       </button>
     </>
+  )
+}
+
+/** A save the server rejected, on its own line above the buttons. */
+function SaveError({ noun, error }: { noun: string; error: string | null | undefined }) {
+  if (!error) return null
+  return (
+    <p role="alert" className="callout-danger type-data basis-full">
+      {`Couldn't save this ${noun}: ${error}`}
+    </p>
+  )
+}
+
+interface SaveStatusProps {
+  errorCount: number
+  errorLabels: string[]
+  dirty: boolean
+  notes: string[]
+}
+
+/** DESIGN.md's status text: "N things need fixing: …", else "Unsaved
+ *  changes" or "No changes yet", with the notes after it. */
+function SaveStatus({ errorCount, errorLabels, dirty, notes }: SaveStatusProps) {
+  if (errorCount > 0) return <ErrorStatus count={errorCount} labels={errorLabels} />
+  return (
+    <span className={dirty ? 'ed-status' : 'ed-status is-muted'}>
+      {dirty ? 'Unsaved changes' : 'No changes yet'}
+      {notes.map((note) => (
+        <span key={note} className="text-dim">
+          {' '}
+          · {note}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function ErrorStatus({ count, labels }: { count: number; labels: string[] }) {
+  return (
+    <span className="ed-status is-error">
+      <Icon icon={TriangleAlert} size={16} />
+      {pluralCount(count, 'thing')} {count === 1 ? 'needs' : 'need'} fixing
+      {labels.length > 0 && `: ${labels.join(', ')}`}
+    </span>
   )
 }

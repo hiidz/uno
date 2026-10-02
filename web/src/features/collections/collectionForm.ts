@@ -67,6 +67,20 @@ export const VIEW_MODE_LABELS: Record<ViewMode, string> = {
   TABBED_GRID: 'Tabbed Grids',
   ROWS: 'Rows',
 }
+
+/** The collection's Appearance shelf folded: "Tabbed Grids · All tab ·
+ *  background image · glow on". The All tab counts only where Tabbed Grids
+ *  has tabs to add it to. */
+export function appearanceSummary(
+  state: Pick<CollectionFormState, 'viewMode' | 'showAllTab' | 'backdropImageURL' | 'focusGlowEnabled'>,
+): string {
+  const parts = [VIEW_MODE_LABELS[state.viewMode]]
+  if (state.viewMode === 'TABBED_GRID' && state.showAllTab) parts.push('All tab')
+  if (state.backdropImageURL.trim()) parts.push('background image')
+  if (state.focusGlowEnabled) parts.push('glow on')
+  return parts.join(' · ')
+}
+
 export const TILE_SHAPES: TileShape[] = ['POSTER', 'LANDSCAPE', 'SQUARE']
 
 export interface FolderFormState {

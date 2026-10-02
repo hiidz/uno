@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog, Collection, SubscriptionState } from '@/api'
+import { SignStepButton } from '@/components/PaneSign'
 import type { ToastMessage } from '@/components/useToast'
 import { failWith, fakeApi, type FakeRoute } from '@/test/fakeApi'
 import { catalog, collection, folder } from '@/test/fixtures'
@@ -15,7 +16,7 @@ const genres = { movie: new Map([[27, 'Horror']]), tv: new Map() }
 const subscription: SubscriptionState = { publication_id: 'pub', update_available: true, unpublished: false }
 
 /** Renders what the workspace renders from the hook for an own row: its
- *  sharing setting and stickers, and the dialogs. */
+ *  sign button and stickers, and the dialogs. */
 function Harness(props: {
   catalog?: Catalog
   collection?: Collection
@@ -35,7 +36,7 @@ function Harness(props: {
   return (
     <>
       <div data-testid="badges">{own?.sharingBadges}</div>
-      {own?.sharingRow}
+      <SignStepButton step={own?.sharingStep} place="sign" />
       {sharing.dialogs}
     </>
   )
@@ -153,7 +154,7 @@ describe('useWorkspaceSharing', () => {
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: live }) },
       { 'POST /api/p/1/catalogs/c1/unpublish': catalog({ id: 'c1' }) },
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Unpublish…' }))
     expect(within(dialog()).getByText(/Community stops listing it/)).toBeInTheDocument()
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
     await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Unpublished “Horror”', tone: 'success' }))
@@ -166,7 +167,7 @@ describe('useWorkspaceSharing', () => {
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: live }) },
       { 'POST /api/p/1/catalogs/c1/unpublish': () => failWith(500, 'database locked') },
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Unpublish…' }))
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
     expect(await within(dialog()).findByRole('alert')).toHaveTextContent('database locked')
     expect(onToast).not.toHaveBeenCalled()
@@ -195,6 +196,33 @@ describe('useWorkspaceSharing', () => {
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Publish' }))
     await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Published “Night”', tone: 'success' }))
     expect(calls).toContain('POST /api/p/1/collections/col2/publish')
+  })
+
+  it('waits for a save: the step is greyed and says so when pressed', async () => {
+    renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror' }), dirty: true }, {})
+    const step = screen.getByRole('button', { name: 'Publish…' })
+    expect(step).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(step)
+    expect(await screen.findByRole('status')).toHaveTextContent('Save first.')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('names the step Publish again… after Unpublish', () => {
+    const unpublished = { id: 'p', status: 'unpublished' as const, changed_since_publish: false }
+    renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror', publication: unpublished }) }, {})
+    expect(screen.getByRole('button', { name: 'Publish again…' })).toBeInTheDocument()
+  })
+
+  it('turns the publish dialog of a changed row into the Unpublish question', async () => {
+    const changed = { id: 'p', status: 'live' as const, changed_since_publish: true }
+    renderHarness(
+      { catalog: catalog({ id: 'c1', name: 'Horror', publication: changed }) },
+      { 'GET /api/p/1/catalogs/c1/changes-since-publish': [] },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Publish update…' }))
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
+    expect(within(dialog()).getByText(/Community stops listing it/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Publish your changes to “Horror”?' })).toBeNull()
   })
 
   it('lists what a collection publishes in the publish dialog', () => {

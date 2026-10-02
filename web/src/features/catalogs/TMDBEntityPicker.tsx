@@ -99,8 +99,8 @@ const SOURCES: Record<EntityKind, EntitySource> = {
     oneKey: queryKeys.keyword,
   },
   collection: {
-    plural: 'collections',
-    singular: 'Collection',
+    plural: 'film series',
+    singular: 'Film series',
     defaultJoin: 'and',
     single: true,
     search: searchCollections,

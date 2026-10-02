@@ -1,13 +1,13 @@
 import { useState, type Dispatch, type ReactNode } from 'react'
 import type { Catalog, Collection } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import type { SignStep } from '@/components/PaneSign'
 import type { ToastMessage } from '@/components/useToast'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { SinceLastPublished } from './Changes'
 import { PublishDialog, type PublishSubject } from './PublishDialog'
-import { SharingRow } from './SharingRow'
 import { SharingStickers } from './SharingStickers'
-import { errorText, ownSharing, publishGroups, rowStickers } from './sharingState'
+import { errorText, ownSharing, publishGroups, rowStickers, sharingStep, type OwnSharing } from './sharingState'
 import { useSharingMutations, type SharingTarget } from './useSharingMutations'
 
 /** A row the workspace publishes: which one, and its name. */
@@ -22,10 +22,23 @@ interface Publishing extends Named {
   update: boolean
 }
 
-/** What an open editor shows of its own row's sharing. */
+/** What an open editor shows of its own row's sharing: its next step as the
+ *  sign's button, and its stickers. */
 export interface EditorSharing {
-  sharingRow: ReactNode
+  sharingStep: SignStep
   sharingBadges: ReactNode
+}
+
+/** The two things the sign's button can do. */
+interface StepActions {
+  publish: () => void
+  unpublish: () => void
+}
+
+/** What the sign's button does: a live row's next step is Unpublish…, which
+ *  asks first; every other is a publish, through its dialog. */
+function stepAction(state: OwnSharing, actions: StepActions) {
+  return state === 'live' ? actions.unpublish : actions.publish
 }
 
 /** A library row as the editor's sharing reads it. */
@@ -42,11 +55,12 @@ interface WorkspaceSharingOptions {
 
 /**
  * The workspace's sharing: every flag an own row's editor shows (its Community
- * sticker and To push) and its Community setting, with the dialogs it opens: publish and unpublish. A row
- * added from Community has no editor, so none of this applies to it
+ * sticker and To push) and its next step with Community as the sign's button,
+ * with the dialogs that step opens: publish and unpublish. A row added from
+ * Community has no editor, so none of this applies to it
  * (`FromCommunityView`). Every sharing call refreshes the library and
  * Community (`useSharingMutations`), and says what it did through `onToast`.
- * Publishing publishes the saved row, so it waits while `dirty`.
+ * Community holds the saved row, so the step waits while `dirty`.
  */
 export function useWorkspaceSharing({ profileIndex, genres, dirty, waitingForPush, onToast }: WorkspaceSharingOptions) {
   const onDone = (text: string) => onToast({ text, tone: 'success' })
@@ -64,13 +78,21 @@ export function useWorkspaceSharing({ profileIndex, genres, dirty, waitingForPus
     setUnpublishing(row)
   }
 
+  /** The publish dialog's own Unpublish: the dialog gives way to the
+   *  Unpublish confirmation. */
+  function unpublishInstead(row: Named) {
+    setPublishing(null)
+    askToUnpublish(row)
+  }
+
   function editorSharing(row: SharedRow, subject: PublishSubject): EditorSharing {
-    const update = ownSharing(row.publication) === 'changed'
-    const onPublish = () => publish({ kind: row.kind, id: row.id, name: row.name, subject, update })
-    const sharingRow = (
-      <SharingRow publication={row.publication} dirty={dirty} onPublish={onPublish} onUnpublish={() => askToUnpublish(row)} />
-    )
-    return { sharingRow, sharingBadges: <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} /> }
+    const state = ownSharing(row.publication)
+    const onPublish = () => publish({ kind: row.kind, id: row.id, name: row.name, subject, update: state === 'changed' })
+    const onUnpublish = () => askToUnpublish(row)
+    return {
+      sharingStep: { ...sharingStep(state, dirty), onClick: stepAction(state, { publish: onPublish, unpublish: onUnpublish }) },
+      sharingBadges: <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} />,
+    }
   }
 
   /** Undefined until the library lists a row that was just created, which
@@ -132,6 +154,7 @@ export function useWorkspaceSharing({ profileIndex, genres, dirty, waitingForPus
           error={errorText(mutations.publish.error)}
           onConfirm={() => confirmPublish(publishing)}
           onClose={() => setPublishing(null)}
+          onUnpublish={() => unpublishInstead(publishing)}
         />
       )}
       {unpublishing && (

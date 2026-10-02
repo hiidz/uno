@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
-import { TriangleAlert } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type {
   Catalog,
   CatalogType,
@@ -10,15 +9,12 @@ import type {
   Language,
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { FieldError, InfoTip, Segmented, TextInput } from '@/components/fields'
-import { Icon } from '@/components/Icon'
-import { Modal } from '@/components/Modal'
+import type { SignStep } from '@/components/PaneSign'
+import { FieldError, TextInput } from '@/components/fields'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { NewItemDialog } from '@/features/builder/NewItemDialog'
 import { useEditorForm } from '@/features/builder/useEditorForm'
-import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
 import {
   emptyForm,
   formFromCatalog,
@@ -31,13 +27,12 @@ import type { GenreLookups } from '@/features/library/useLibrary'
 import { andList } from '@/lib/list'
 import { moveByOne, orderByKeys } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
+import { CollectionAppearance } from './CollectionAppearance'
 import { CollectionPreview } from './CollectionPreview'
 import { FolderDetail } from './FolderDetail'
 import { FolderTiles, FolderTreeDnd } from './FolderTree'
 import {
   DRAFT_ID_PREFIX,
-  VIEW_MODES,
-  VIEW_MODE_LABELS,
   countErrors,
   folderLabel,
   isDraftCatalogID,
@@ -55,6 +50,8 @@ import {
   type FolderRefState,
 } from './collectionForm'
 import { errorRoleLabels, nestedCatalogForm, withGenreRef, withRefs } from './folderEdits'
+import { NestedCatalogEditor } from './NestedCatalogEditor'
+import { StagedNote } from './StagedNote'
 import { buildRefOptions, indexRefOptions, type RefOption } from './refs'
 
 /** A catalog staged locally by "copy into this collection"/"new inside this
@@ -84,81 +81,7 @@ function draftCatalog(seed: {
   }
 }
 
-/**
- * Edit a collection, folders and catalog refs included, filling the builder's
- * right pane. Always a saved row: a collection is titled into existence
- * before this editor opens, and Duplicate is one server call
- * (`DuplicateCollection`) whose finished copy opens here like any other row.
- *
- * **The whole tree, one save.** `POST`/`PUT` replace the collection, its
- * folders, every folder's refs and every edit to its scoped catalogs in a
- * single transaction, so this editor has one dirty state and one Save button
- * rather than a save per folder or per catalog.
- *
- * The consequence the UI has to state: **a folder dropped from the tree is
- * deleted server-side**, along with its refs. Nothing is committed until Save,
- * so it shows a standing note of what the next save would destroy rather than a
- * confirm on the remove button.
- *
- * **Dirtiness is reported, not handled.** Every way out originates outside this
- * component, so the pane owns the discard confirmation and this only says
- * whether there is anything to lose.
- *
- * **Three sources for a folder's catalogs**, per the closed-graph sharing
- * model: **link** one of your listed catalogs
- * (the original picker — a live pointer, edits to it reach every folder that
- * references it); **copy into this collection** (a fresh, scoped catalog only
- * this collection references, which nothing else can drift); **new inside
- * this collection** (the same, named first). The last two are staged as drafts
- * scoped to this collection and written by its Save.
- *
- * **This editor keeps its own catalog registry** (`localCatalogs`), seeded
- * from `initialCatalogs` and grown by every scoped create/edit it makes —
- * `GET /api/p/{i}/catalogs` is listed catalogs only, so the library-wide
- * `options`/`optionByID`/`accessibleIDs` this editor is handed never contain
- * a scoped one. Folder rows render from this merged registry, never the
- * library alone, which is what makes a scoped catalog show at all.
- *
- * **Quiet Edit opens a catalog one level down**, and its Save writes nothing:
- * it stages the change in this editor's own form (`catalogEdits`), which this
- * collection's Save sends as `catalog_edits`. It sits in a `Modal` layered
- * over this editor rather than a second pane — the builder's pane holds one
- * occupant (`EditorShell`'s own doc comment), so a second, real editor has to
- * be a modal, not a stack. `CollectionEditor` stays mounted underneath, so
- * this editor's own unsaved folder edits survive the round trip.
- *
- * **Every row this editor opens is the profile's own and editable.** A
- * collection added from Community opens as a view instead
- * (`FromCommunityView`). Its sharing setting is `sharingRow`, which the pane
- * builds: the Sharing row.
- *
- * **A staged Move to library has its own Undo.** Once staged, the catalog
- * reads as listed in every folder, which offers no Edit to reopen it, so the
- * standing note naming it is the way back short of discarding the whole form.
- */
-export function CollectionEditor({
-  initial,
-  options,
-  optionByID,
-  accessibleIDs,
-  saving,
-  serverError,
-  onSave,
-  onRequestClose,
-  onDuplicate,
-  onDelete,
-  onDirtyChange,
-  collectionID,
-  initialCatalogs,
-  genres,
-  genreLookups,
-  certifications,
-  countryNames,
-  languages,
-  usedInFolders,
-  sharingRow,
-  sharingBadges,
-}: {
+interface CollectionEditorProps {
   /** The form as the row stands. A new identity re-seeds the editor (see
    *  `useEditorForm`), so callers hand over a stable object. */
   initial: CollectionFormState
@@ -201,11 +124,87 @@ export function CollectionEditor({
    *  computed in `Workspace`, which is the level that has the whole library.
    *  Meaningful only for a listed catalog. */
   usedInFolders: (catalogID: string) => number
-  /** Its sharing setting: its Sharing row, or a copy's From Community row. */
-  sharingRow?: ReactNode
+  /** Its next step with Community, as the sign's button. */
+  sharingStep?: SignStep
   /** Its sharing stickers, on the sign beside the kind. */
   sharingBadges?: ReactNode
-}) {
+}
+
+/**
+ * Edit a collection, folders and catalog refs included, filling the builder's
+ * right pane. Always a saved row: a collection is titled into existence
+ * before this editor opens, and Duplicate is one server call
+ * (`DuplicateCollection`) whose finished copy opens here like any other row.
+ *
+ * **The whole tree, one save.** `POST`/`PUT` replace the collection, its
+ * folders, every folder's refs and every edit to its scoped catalogs in a
+ * single transaction, so this editor has one dirty state and one Save button
+ * rather than a save per folder or per catalog.
+ *
+ * The consequence the UI has to state: **a folder dropped from the tree is
+ * deleted server-side**, along with its refs. Nothing is committed until Save,
+ * so it shows a standing note of what the next save would destroy rather than a
+ * confirm on the remove button.
+ *
+ * **Dirtiness is reported, not handled.** Every way out originates outside this
+ * component, so the pane owns the discard confirmation and this only says
+ * whether there is anything to lose.
+ *
+ * **Three sources for a folder's catalogs**, per the closed-graph sharing
+ * model: **link** one of your listed catalogs
+ * (the original picker — a live pointer, edits to it reach every folder that
+ * references it); **copy into this collection** (a fresh, scoped catalog only
+ * this collection references, which nothing else can drift); **new inside
+ * this collection** (the same, named first). The last two are staged as drafts
+ * scoped to this collection and written by its Save.
+ *
+ * **This editor keeps its own catalog registry** (`localCatalogs`), seeded
+ * from `initialCatalogs` and grown by every scoped create/edit it makes —
+ * `GET /api/p/{i}/catalogs` is listed catalogs only, so the library-wide
+ * `options`/`optionByID`/`accessibleIDs` this editor is handed never contain
+ * a scoped one. Folder rows render from this merged registry, never the
+ * library alone, which is what makes a scoped catalog show at all.
+ *
+ * **Quiet Edit opens a catalog one level down**, and its Done writes nothing:
+ * it stages the change in this editor's own form (`catalogEdits`), which this
+ * collection's Save sends as `catalog_edits`. It sits in a `Modal` layered
+ * over this editor rather than a second pane — the builder's pane holds one
+ * occupant (`EditorShell`'s own doc comment), so a second, real editor has to
+ * be a modal, not a stack. `CollectionEditor` stays mounted underneath, so
+ * this editor's own unsaved folder edits survive the round trip.
+ *
+ * **Every row this editor opens is the profile's own and editable.** A
+ * collection added from Community opens as a view instead
+ * (`FromCommunityView`). Its next step with Community is `sharingStep`, which
+ * the pane builds and the sign carries as its one button.
+ *
+ * **A staged Move to library has its own Undo.** Once staged, the catalog
+ * reads as listed in every folder, which offers no Edit to reopen it, so the
+ * standing note naming it is the way back short of discarding the whole form.
+ */
+export function CollectionEditor({
+  initial,
+  options,
+  optionByID,
+  accessibleIDs,
+  saving,
+  serverError,
+  onSave,
+  onRequestClose,
+  onDuplicate,
+  onDelete,
+  onDirtyChange,
+  collectionID,
+  initialCatalogs,
+  genres,
+  genreLookups,
+  certifications,
+  countryNames,
+  languages,
+  usedInFolders,
+  sharingStep,
+  sharingBadges,
+}: CollectionEditorProps) {
   const baseline = initial
   const { state, setState, dirty, showErrors, submit } = useEditorForm(
     baseline,
@@ -287,10 +286,6 @@ export function CollectionEditor({
   // The nested catalog editor — a modal layered over this pane, not a second
   // occupant of it. `null` means closed.
   const [nestedCatalogID, setNestedCatalogID] = useState<string | null>(null)
-  // The nested form's unsaved edits aren't this pane's, so they don't reach
-  // the pane's `EditorGuard`; closing the modal asks about them here instead.
-  const [nestedDirty, setNestedDirty] = useState(false)
-  const [confirmingNestedDiscard, setConfirmingNestedDiscard] = useState(false)
   const nestedCatalog = nestedCatalogID === null ? undefined : localCatalogs.get(nestedCatalogID)
   // Keyed on the catalog object, which only changes when `rememberCatalog`
   // replaces it: a fresh form on every render of this editor would re-seed the
@@ -305,17 +300,8 @@ export function CollectionEditor({
     setNestedCatalogID(catalogID)
   }
 
-  /** Every way out of the nested modal — ×, Cancel, Escape, the scrim. */
+  /** The nested modal's way out, once its own guard has let it go. */
   function closeNestedCatalog() {
-    if (nestedDirty) {
-      setConfirmingNestedDiscard(true)
-      return
-    }
-    setNestedCatalogID(null)
-  }
-
-  function discardNestedCatalog() {
-    setConfirmingNestedDiscard(false)
     setNestedCatalogID(null)
   }
 
@@ -471,6 +457,13 @@ export function CollectionEditor({
     )
   }
 
+  /** A new, untitled folder at the end, selected so its panel opens. */
+  function addFolder() {
+    const folder = newFolder()
+    setSelectedFolderKey(folder.key)
+    patchFolders((folders) => [...folders, folder])
+  }
+
   /** Re-inserts what the next Save would delete, at the end of the list —
    *  the removal warning's "Undo". The folders still carry their original
    *  `key`, which is safe to reinsert: `willDelete` is exactly the baseline
@@ -520,6 +513,13 @@ export function CollectionEditor({
       : []),
   ]
 
+  // One standing note per catalog the next Save moves into the library.
+  const movingNotes = movingToLibrary.map((catalog) => (
+    <StagedNote key={catalog.id} tone="neutral" onUndo={() => undoMoveToLibrary(catalog.id)}>
+      Saving moves “{catalog.name}” out of this collection and into your library.
+    </StagedNote>
+  ))
+
   return (
     <EditorShell
       purpose="Edit collection"
@@ -530,6 +530,7 @@ export function CollectionEditor({
           {sharingBadges}
         </>
       }
+      step={sharingStep}
       title={state.title.trim() || 'Untitled collection'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
@@ -544,8 +545,7 @@ export function CollectionEditor({
           notes={statusNotes}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
-          saveLabel="Save collection"
-          cancelLabel="Discard changes"
+          saveLabel="Save"
           saveError={serverError}
         />
       }
@@ -570,88 +570,10 @@ export function CollectionEditor({
               </div>
             </div>
 
-            {sharingRow}
-
-            <div className="setting">
-              <span className="setting-label type-label">How folders open</span>
-              <div className="setting-value">
-                <div className="choices" role="group" aria-label="How folders open">
-                  {VIEW_MODES.map((viewMode) => (
-                    <button
-                      key={viewMode}
-                      type="button"
-                      className="choice"
-                      aria-pressed={state.viewMode === viewMode}
-                      onClick={() => patch({ viewMode })}
-                    >
-                      {VIEW_MODE_LABELS[viewMode]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="setting">
-              <span className="setting-label type-label">“All” tab</span>
-              <div className="setting-value ed-line">
-                {/* Only Tabbed Grids has tabs to add one to. The value is left
-                    alone while it's greyed — it's still what this collection
-                    is set to, and applies again the moment the view mode goes
-                    back to Tabbed Grids. */}
-                <Segmented
-                  ariaLabel='"All" tab'
-                  value={state.showAllTab ? 'on' : 'off'}
-                  onChange={(value) => patch({ showAllTab: value === 'on' })}
-                  disabled={state.viewMode !== 'TABBED_GRID'}
-                  options={[
-                    { value: 'off', label: 'Off' },
-                    { value: 'on', label: 'On' },
-                  ]}
-                />
-              </div>
-            </div>
-
-            <div className="setting">
-              <span className="setting-label type-label">Background image</span>
-              <div className="setting-value">
-                <TextInput
-                  value={state.backdropImageURL}
-                  onChange={(backdropImageURL) => patch({ backdropImageURL })}
-                  placeholder="https://…"
-                />
-              </div>
-            </div>
-
-            <div className="setting">
-              <span className="setting-label type-label">Focus glow</span>
-              <div className="setting-value ed-line">
-                <Segmented
-                  ariaLabel="Focus glow"
-                  value={state.focusGlowEnabled ? 'on' : 'off'}
-                  onChange={(value) => patch({ focusGlowEnabled: value === 'on' })}
-                  options={[
-                    { value: 'off', label: 'Off' },
-                    { value: 'on', label: 'On' },
-                  ]}
-                />
-                <InfoTip label="Focus glow" text="Glow around a folder tile while it's selected." />
-              </div>
-            </div>
-
             <div className="setting is-head">
               <h2 className="setting-label type-label">Folders</h2>
               <div className="setting-value flex justify-end">
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() =>
-                    patchFolders((folders) => {
-                      const folder = newFolder()
-                      setSelectedFolderKey(folder.key)
-                      return [...folders, folder]
-                    })
-                  }
-                >
+                <button type="button" className="btn-secondary btn-sm" onClick={addFolder}>
                   Add folder
                 </button>
               </div>
@@ -665,11 +587,7 @@ export function CollectionEditor({
               </StagedNote>
             )}
 
-            {movingToLibrary.map((catalog) => (
-              <StagedNote key={catalog.id} tone="neutral" onUndo={() => undoMoveToLibrary(catalog.id)}>
-                Saving moves “{catalog.name}” out of this collection and into your library.
-              </StagedNote>
-            ))}
+            {movingNotes}
 
             {selectedFolder === undefined ? (
               <div className="py-4">
@@ -723,76 +641,30 @@ export function CollectionEditor({
                 />
               </FolderTreeDnd>
             )}
+
+            <CollectionAppearance state={state} onChange={patch} />
           </div>
 
           <CollectionPreview collection={preview} />
         </div>
       </div>
 
-      {nestedCatalogID !== null &&
-        (() => {
-          // This modal only ever opens on a scoped catalog, real or draft —
-          // `RefRow` has no quiet Edit for a listed one — and every scoped
-          // catalog this editor knows about is
-          // already in `localCatalogs` (seeded from `initialCatalogs`, grown
-          // by copy/new-in-collection), so there is no library fallback here.
-          const catalog = nestedCatalog
-          if (!catalog || !nestedInitial) return null
-          return (
-            <Modal
-              open
-              onClose={closeNestedCatalog}
-              labelledBy="nested-catalog-title"
-              width="min(860px, 100%)"
-            >
-              {/* Resets the sticky offset `EditorShell` computes for the
-                  outer app header — inside this modal there is no such
-                  header to clear, and inheriting the real one would leave a
-                  stray gap once the form scrolls on a narrow screen. `flex`
-                  plus `overflow-hidden` gives `EditorShell`'s own
-                  `lg:h-full` a bounded parent, the same shape the real app
-                  shell gives it, so its internal header/footer stay put and
-                  only the form between them scrolls. */}
-              <div
-                style={{ '--app-h': '0px' } as CSSProperties}
-                className="flex max-h-[85vh] flex-col overflow-hidden"
-              >
-                <h2 id="nested-catalog-title" className="sr-only">
-                  Edit {catalog.name}
-                </h2>
-                <CatalogEditor
-                  key={catalog.id}
-                  initial={nestedInitial}
-                  genres={genres}
-                  certifications={certifications}
-                  countryNames={countryNames}
-                  languages={languages}
-                  saving={false}
-                  serverError={null}
-                  onSave={saveNestedCatalog}
-                  onRequestClose={closeNestedCatalog}
-                  onDirtyChange={setNestedDirty}
-                  canMoveToLibrary={!isDraftCatalogID(catalog.id)}
-                />
-              </div>
-              <ConfirmDialog
-                open={confirmingNestedDiscard}
-                title="Discard unsaved changes?"
-                body={
-                  <>
-                    Your changes to <strong className="text-ink">{catalog.name}</strong> haven't
-                    been saved. Leaving discards them.
-                  </>
-                }
-                confirmLabel="Discard"
-                cancelLabel="Keep editing"
-                destructive
-                onConfirm={discardNestedCatalog}
-                onCancel={() => setConfirmingNestedDiscard(false)}
-              />
-            </Modal>
-          )
-        })()}
+      {/* Only ever a scoped catalog, real or draft — `RefRow` has no quiet
+          Edit for a listed one — and every scoped catalog this editor knows
+          about is already in `localCatalogs` (seeded from `initialCatalogs`,
+          grown by copy/new-in-collection), so there is no library fallback. */}
+      {nestedCatalog && nestedInitial && (
+        <NestedCatalogEditor
+          catalog={nestedCatalog}
+          initial={nestedInitial}
+          genres={genres}
+          certifications={certifications}
+          countryNames={countryNames}
+          languages={languages}
+          onSave={saveNestedCatalog}
+          onClose={closeNestedCatalog}
+        />
+      )}
 
       <NewItemDialog
         open={namingNewFolderKey !== null}
@@ -808,35 +680,5 @@ export function CollectionEditor({
         onClose={() => setNamingNewFolderKey(null)}
       />
     </EditorShell>
-  )
-}
-
-/**
- * DESIGN.md's "Standing removal warning": a note stating what the next Save
- * does, with an Undo, since nothing has been written yet. `danger` is a saved
- * folder dropped from the tree, which the Save deletes server-side, cascading
- * its refs; `neutral` is a staged Move to library, which the catalog survives.
- */
-function StagedNote({
-  tone,
-  onUndo,
-  children,
-}: {
-  tone: 'danger' | 'neutral'
-  onUndo: () => void
-  children: ReactNode
-}) {
-  return (
-    <div className="setting flex-row gap-3">
-      <span className="shrink-0 pt-0.5">
-        <Icon icon={TriangleAlert} size={16} className={tone === 'danger' ? 'text-danger' : 'text-dim'} />
-      </span>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[14px] leading-[20px]">{children}</span>
-        <button type="button" onClick={onUndo} className="btn-ghost h-auto px-0 text-[13px]">
-          Undo
-        </button>
-      </div>
-    </div>
   )
 }

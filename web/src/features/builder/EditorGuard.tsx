@@ -1,5 +1,6 @@
 import { createContext, use, useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 /**
  * Unsaved work in the pane's editor, and the single gate everything that would
@@ -82,4 +83,31 @@ export function useEditorGuard(): EditorGuardValue {
   const value = use(EditorGuardContext)
   if (!value) throw new Error('useEditorGuard must be used inside an EditorGuardProvider')
   return value
+}
+
+/**
+ * The question a held exit asks: "Discard unsaved changes?", naming what is
+ * being edited, with Keep editing and Discard. Draws nothing while no exit is
+ * held. A collection's nested catalog editor asks it through a provider of its
+ * own; the pane asks the same words through `Workspace`'s prompt.
+ */
+export function DiscardPrompt({ subject }: { subject: string }) {
+  const { blocked, proceed, cancel } = useEditorGuard()
+  return (
+    <ConfirmDialog
+      open={blocked}
+      title="Discard unsaved changes?"
+      body={
+        <>
+          Your changes to <strong className="text-ink">{subject}</strong> haven't been saved. Leaving
+          discards them.
+        </>
+      }
+      confirmLabel="Discard"
+      cancelLabel="Keep editing"
+      destructive
+      onConfirm={proceed}
+      onCancel={cancel}
+    />
+  )
 }

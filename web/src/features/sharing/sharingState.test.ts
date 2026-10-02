@@ -9,7 +9,7 @@ import {
   publishGroups,
   railStickers,
   rowStickers,
-  sharingNote,
+  sharingStep,
   stickerClass,
   stickerWords,
   viewStickers,
@@ -140,12 +140,18 @@ describe('publishGroups', () => {
   })
 })
 
-describe('sharingNote', () => {
-  it('asks for a save before publishing what is saved', () => {
-    expect(sharingNote('private', true)).toBe('Save first: only what’s saved is published.')
-    expect(sharingNote('changed', true)).toBe('Save first: only what’s saved is published.')
-    expect(sharingNote('live', true)).toBeNull()
-    expect(sharingNote('private', false)).toBeNull()
+describe('sharingStep', () => {
+  it('names the next step for each state', () => {
+    expect(sharingStep('private', false).label).toBe('Publish…')
+    expect(sharingStep('changed', false).label).toBe('Publish update…')
+    expect(sharingStep('unpublished', false).label).toBe('Publish again…')
+    expect(sharingStep('live', false).label).toBe('Unpublish…')
+  })
+
+  it('waits for a save while the form has unsaved changes', () => {
+    expect(sharingStep('private', true).waiting).toBe('Save first.')
+    expect(sharingStep('live', true).waiting).toBe('Save first.')
+    expect(sharingStep('changed', false).waiting).toBeNull()
   })
 })
 
