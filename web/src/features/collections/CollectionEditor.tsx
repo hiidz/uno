@@ -96,7 +96,7 @@ interface CollectionEditorProps {
    *  draft catalog into its inline `new` spec needs this editor's own
    *  `localCatalogs`, which the caller (`Workspace.tsx`) doesn't have. */
   onSave: (payload: CollectionPayload) => void
-  /** Also backs the mobile Library button below `lg` — see `EditorShell`. */
+  /** The × on the sign, Escape and the footer's Close — see `EditorShell`. */
   onRequestClose: () => void
   /** This collection's own row actions, carried in the header below `lg`.
    *  Absent until the library lists a row that was just created. */

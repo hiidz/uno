@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { ComponentProps } from 'react'
+import type { ComponentProps, RefObject } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
 import type { CatalogType, CollectionPayload, ImportResult } from '@/api'
@@ -39,13 +39,9 @@ import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
 import { useEditorGuard } from './EditorGuard'
 import { NewItemDialog } from './NewItemDialog'
-import {
-  useScrollRequests,
-  useStackedLayout,
-  useStackedScroll,
-  type ScrollDestination,
-} from './stacked'
-import { selectionAction } from './selection'
+import { EditorLayer } from './EditorLayer'
+import { useScrollRequests, useStackedLayout, useStackedScroll } from './stacked'
+import { homeMounted, selectionAction } from './selection'
 import { catalogTarget, collectionTarget, type EditorTarget } from './target'
 
 
@@ -74,29 +70,18 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  * rail row fills the pane with its editor; closing the editor gives the pane
  * back to home.
  *
- * **Below `lg` the same two regions stack into one scrolling document** — rail
- * on top, pane underneath, both always mounted. Selecting a row scrolls the
- * page to the pane rather than replacing what's on screen with it. That is the
- * whole of the narrow layout: there is no second view, nothing is hidden, and
- * so there is no state here describing which of them is up.
- *
- * What replaces that state is a scroll request, because two of the regions'
- * destinations are not derivable from the target alone — emptying the pane
- * after a save goes back to the rail, while asking for home goes down to it.
- * Requests are made **inside** the guarded callback, never in the handler that
- * started it, which is what keeps a held confirmation from scrolling the page
- * out from under itself. See `stacked.ts`.
+ * **Below `lg` the rail and the Home pane stack into one scrolling document**,
+ * both always mounted, and an open editor covers that document as a layer
+ * (`EditorLayer`) instead of joining it. Closing the layer leaves the reader
+ * where they were. The two shortcuts between rail and Home are scroll requests
+ * (`stacked.ts`); opening and closing an editor scroll nothing.
  *
  * **This owns every way out of an editor**, because every one of them starts
- * outside the editor: selecting a different row in the rail, the rail's link to
- * home, switching profile in the header, and — above `lg`, where they exist —
- * the × in the editor's header and Escape. An editor only reports whether it
- * has unsaved changes; the decision to warn is made here, once, so no exit can
- * be added later that quietly skips the check.
- *
- * Scrolling is not one of them. Below `lg` the Library button moves the
- * viewport and nothing else: the editor stays mounted and stays dirty, exactly
- * as it does above `lg` while the rail sits beside it.
+ * outside the editor: selecting a row in the rail, switching profile in the
+ * header, the × in the editor's header, Escape, and below `lg` the browser's
+ * Back. An editor only reports whether it has unsaved changes; the decision to
+ * warn is made here, once, so no exit can be added later that quietly skips
+ * the check.
  */
 export function Workspace({
   profileIndex,
@@ -166,79 +151,52 @@ export function Workspace({
   const resetCollectionUpdate = collectionMutations.update.reset
 
   /**
-   * Hand the pane to something else, and say where that leaves the reader.
+   * Hand the pane to something else, or empty it.
    *
    * Clears the dirty flag: the incoming editor reports its own, and a stale
    * `true` would guard a form that no longer exists. Clears the saves' errors
    * for the same reason — a save that failed leaves its message behind, and
    * the next editor would open showing a rejection of something else.
-   *
-   * `scrollTo` is the caller's decision because emptying the pane means two
-   * different things: a save is finished with the pane and belongs back at the
-   * list, while asking for home is a request to look at what's now there.
-   * Opening something is always a request to look at it, so that's the default.
-   * Above `lg` both regions are already on screen and the request is ignored.
    */
   const show = useCallback(
-    (next: EditorTarget | null, scrollTo: ScrollDestination = 'pane') => {
+    (next: EditorTarget | null) => {
       setDirty(false)
       resetCatalogUpdate()
       resetCollectionUpdate()
       setTarget(next)
-      requestScroll(scrollTo)
     },
-    [setDirty, resetCatalogUpdate, resetCollectionUpdate, requestScroll],
+    [setDirty, resetCatalogUpdate, resetCollectionUpdate],
   )
 
   /** Selecting a library row (`selectionAction`): another row opens through
-   *  the guard; the open one closes as × does from `lg`, and scrolls back to
-   *  its editor stacked. */
+   *  the guard; the open one closes as × does. */
   const open = useCallback(
     (next: EditorTarget) => {
       const actions = {
         open: () => guard(() => show(next)),
-        close: () => guard(() => show(null, 'rail')),
-        scroll: () => requestScroll('pane'),
+        close: () => guard(() => show(null)),
       }
-      actions[selectionAction(target, next, stacked)]()
+      actions[selectionAction(target, next)]()
     },
-    [guard, show, target, requestScroll, stacked],
+    [guard, show, target],
   )
 
-  /**
-   * Close the editor, giving the pane back to home.
-   *
-   * Above `lg` this is the × in the editor's header and Escape. Below it it's
-   * also the editor header's Library button — leaving this row is an exit
-   * either way, so it goes through the same guard rather than a scroll-only
-   * shortcut that would silently drop unsaved edits. Lands on the rail rather
-   * than the pane, because emptying the pane by leaving it is not a request to
-   * go and look at what replaced it — the same reasoning `closeAfterSave`
-   * below already uses.
-   */
-  const close = useCallback(() => guard(() => show(null, 'rail')), [guard, show])
+  /** Close the editor, giving the pane back to home: ×, Escape, the footer's
+   *  Close, and below `lg` the browser's Back. */
+  const close = useCallback(() => guard(() => show(null)), [guard, show])
 
-  /** Saved, so there is nothing left to warn about — straight back to the list,
-   *  which is where the next thing to work on is. */
+  /** Saved, so there is nothing left to warn about. */
   function closeAfterSave() {
-    show(null, 'rail')
+    show(null)
   }
 
-  /** The rail's link to home: a scroll down to the pane, not a way across to
-   *  it. Still guarded, because home replaces whatever editor is open. */
-  function showHome() {
-    guard(() => show(null, 'pane'))
-  }
+  /** The rail's shortcut down to Home, below `lg`. Not an exit: while an
+   *  editor is open its layer covers the rail, so this moves the page and
+   *  nothing else. */
+  const showHome = useCallback(() => requestScroll('pane'), [requestScroll])
 
-  /**
-   * Home's own way back up to the list, below `lg`.
-   *
-   * **Not an exit**, so it doesn't guard: home has nothing of the editor's to
-   * discard, and pushing the pane's content isn't unmounting anything. It moves
-   * the viewport and nothing else. An open editor's own Library button is a
-   * different case — reusing `close` above, not this — because leaving *that*
-   * row means deselecting it.
-   */
+  /** Home's shortcut back up to the rail, below `lg`. Moves the page and
+   *  nothing else. */
   const showLibraryFromHome = useCallback(() => requestScroll('rail'), [requestScroll])
 
   /**
@@ -303,11 +261,8 @@ export function Workspace({
         setConfirming(null)
         // Nor can it stay in the pane. This is the one close that doesn't ask:
         // the row it was editing is gone, so there is nothing to go back to and
-        // nothing left to save. Back to the rail rather than the home screen
-        // that takes the pane's place — deleting is finished with the pane, and
-        // stacked, the alternative is leaving the reader parked at a region
-        // that just changed under them into something they didn't ask for.
-        if (target?.id === id) show(null, 'rail')
+        // nothing left to save.
+        if (target?.id === id) show(null)
       },
     })
   }
@@ -317,7 +272,7 @@ export function Workspace({
     collectionMutations.remove.mutate(id, {
       onSuccess: () => {
         setConfirming(null)
-        if (target?.id === id) show(null, 'rail')
+        if (target?.id === id) show(null)
       },
     })
   }
@@ -348,8 +303,8 @@ export function Workspace({
   }
 
   // The library row the open editor was opened from. Below `lg` the editor's
-  // own header carries that row's duplicate and delete — the row itself is a
-  // screen-length scroll away — so it has to know which row it stands for. Its
+  // own header carries that row's duplicate and delete — the row itself is
+  // under the editor's layer — so it has to know which row it stands for. Its
   // sharing state fills the editor's sharing setting, and decides whether the
   // pane is an editor or the view of a row from Community (`subscription`); it
   // is current after a save, a sharing call or an Update because each
@@ -600,7 +555,7 @@ export function Workspace({
             catalog or collection is the Community tab's job, not this rail's.
 
             Below `lg` the rail is the top of one long page rather than a
-            column, with the pane stacked underneath it, and it ends in a
+            column, with the Home pane stacked underneath it, and it ends in a
             shortcut *down* to home. */}
         <aside
           ref={railRef}
@@ -639,112 +594,112 @@ export function Workspace({
               this is a shortcut down to it — hence `↓` and not `›`. Sticky
               as the rail's last child: it pins to the bottom of the viewport
               while the rail is on screen, and leaves with the rail's end as
-              the pane scrolls in. It still guards, because arriving at home
-              means the open editor is replaced by it. */}
+              the pane scrolls in. `z-30` keeps it over the rail's own sticky
+              signs (`z-20`) as they scroll past it. */}
           <button
             type="button"
             onClick={showHome}
-            className="btn-secondary bg-raised-hi sticky bottom-4 z-10 mb-4 self-center lg:hidden"
+            className="btn-secondary bg-raised-hi sticky bottom-4 z-30 mb-4 self-center lg:hidden"
           >
             Your home screen
             <Icon icon={ArrowDown} size={16} />
           </button>
         </aside>
 
-        {/* `min-h` below `lg` is what makes the pane scrollable *to*: a short
-            form is shorter than the viewport, and the browser cannot scroll a
-            document past its own end — without a full screen of pane to travel
-            into, asking for its top lands somewhere short of it and reads as
-            the scroll having failed. Above `lg` the pane is a grid column of a
-            fixed-height shell and `min-h-0` restores that. */}
-        <div
-          ref={paneRef}
-          className="flex min-h-[calc(100svh_-_var(--app-h))] min-w-0 scroll-mt-[var(--app-h)] flex-col lg:min-h-0"
-        >
-          {target === null ? (
-            <HomePane
-              view={homeView}
-              onViewChange={setHomeView}
-              onShowLibrary={showLibraryFromHome}
-            />
-          ) : activeCatalog?.subscription ? (
-            <CatalogFromCommunity
-              key={activeCatalog.id}
-              catalog={activeCatalog}
-              genres={library.genres}
-              profileIndex={profileIndex}
-              waitingForPush={waitingForPush.has(activeCatalog.id)}
-              onClose={close}
-              onDuplicate={() => duplicateCatalog(activeCatalog)}
-              onDelete={() => deleteCatalog(activeCatalog)}
-              onUpdate={() =>
-                openPublication({ id: activeCatalog.subscription!.publication_id, kind: 'catalog' })
-              }
-            />
-          ) : activeCollection?.subscription ? (
-            <CollectionFromCommunity
-              key={activeCollection.id}
-              collection={activeCollection}
-              genres={library.genres}
-              profileIndex={profileIndex}
-              waitingForPush={waitingForPush.has(activeCollection.id)}
-              onClose={close}
-              onDuplicate={() => duplicateCollection(activeCollection)}
-              onDelete={() => deleteCollection(activeCollection)}
-              onUpdate={() =>
-                openPublication({ id: activeCollection.subscription!.publication_id, kind: 'collection' })
-              }
-            />
-          ) : target.kind === 'catalog' ? (
-            <CatalogEditor
-              // Remount on a different target rather than re-seeding in place:
-              // the form, its validation and its preview are all per-catalog,
-              // and a key is the honest way to say "this is a different
-              // subject".
-              key={target.id}
-              initial={target.initial}
-              genres={library.genreLists}
-              certifications={library.certifications}
-              countryNames={library.countryNames}
-              languages={library.languages}
-              // Only `update`: `create` belongs to the naming dialog and to
-              // Duplicate, which can run while this editor is open.
-              saving={catalogMutations.update.isPending}
-              serverError={catalogMutations.update.error?.message ?? null}
-              onSave={(state) => saveCatalog(target.id, state)}
-              onRequestClose={close}
-              onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
-              onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
-              onDirtyChange={setDirty}
-              {...sharing.catalogSharing(activeCatalog)}
-            />
-          ) : (
-            <CollectionEditor
-              key={target.id}
-              initial={target.initial}
-              options={refOptions}
-              optionByID={refOptionByID}
-              accessibleIDs={refAccessible}
-              // Only `update`, for the same reason as the catalog editor's.
-              saving={collectionMutations.update.isPending}
-              serverError={collectionMutations.update.error?.message ?? null}
-              onSave={(payload) => saveCollection(target.id, payload)}
-              onRequestClose={close}
-              onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
-              onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
-              onDirtyChange={setDirty}
-              collectionID={target.id}
-              initialCatalogs={editingCollectionCatalogs}
-              genres={library.genreLists}
-              genreLookups={library.genres}
-              certifications={library.certifications}
-              countryNames={library.countryNames}
-              languages={library.languages}
-              usedInFolders={usedInFolders}
-              {...sharing.collectionSharing(activeCollection)}
-            />
-          )}
-        </div>
+        <HomeSlot
+          shown={homeMounted(target, stacked)}
+          paneRef={paneRef}
+          view={homeView}
+          onViewChange={setHomeView}
+          onShowLibrary={showLibraryFromHome}
+        />
+
+        {target === null ? null : (
+          <EditorLayer
+            stacked={stacked}
+            label={editorSubject(target)}
+            onRequestClose={close}
+            fallbackFocus={railRef}
+          >
+            {activeCatalog?.subscription ? (
+              <CatalogFromCommunity
+                key={activeCatalog.id}
+                catalog={activeCatalog}
+                genres={library.genres}
+                profileIndex={profileIndex}
+                waitingForPush={waitingForPush.has(activeCatalog.id)}
+                onClose={close}
+                onDuplicate={() => duplicateCatalog(activeCatalog)}
+                onDelete={() => deleteCatalog(activeCatalog)}
+                onUpdate={() =>
+                  openPublication({ id: activeCatalog.subscription!.publication_id, kind: 'catalog' })
+                }
+              />
+            ) : activeCollection?.subscription ? (
+              <CollectionFromCommunity
+                key={activeCollection.id}
+                collection={activeCollection}
+                genres={library.genres}
+                profileIndex={profileIndex}
+                waitingForPush={waitingForPush.has(activeCollection.id)}
+                onClose={close}
+                onDuplicate={() => duplicateCollection(activeCollection)}
+                onDelete={() => deleteCollection(activeCollection)}
+                onUpdate={() =>
+                  openPublication({ id: activeCollection.subscription!.publication_id, kind: 'collection' })
+                }
+              />
+            ) : target.kind === 'catalog' ? (
+              <CatalogEditor
+                // Remount on a different target rather than re-seeding in place:
+                // the form, its validation and its preview are all per-catalog,
+                // and a key is the honest way to say "this is a different
+                // subject".
+                key={target.id}
+                initial={target.initial}
+                genres={library.genreLists}
+                certifications={library.certifications}
+                countryNames={library.countryNames}
+                languages={library.languages}
+                // Only `update`: `create` belongs to the naming dialog and to
+                // Duplicate, which can run while this editor is open.
+                saving={catalogMutations.update.isPending}
+                serverError={catalogMutations.update.error?.message ?? null}
+                onSave={(state) => saveCatalog(target.id, state)}
+                onRequestClose={close}
+                onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
+                onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
+                onDirtyChange={setDirty}
+                {...sharing.catalogSharing(activeCatalog)}
+              />
+            ) : (
+              <CollectionEditor
+                key={target.id}
+                initial={target.initial}
+                options={refOptions}
+                optionByID={refOptionByID}
+                accessibleIDs={refAccessible}
+                // Only `update`, for the same reason as the catalog editor's.
+                saving={collectionMutations.update.isPending}
+                serverError={collectionMutations.update.error?.message ?? null}
+                onSave={(payload) => saveCollection(target.id, payload)}
+                onRequestClose={close}
+                onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
+                onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
+                onDirtyChange={setDirty}
+                collectionID={target.id}
+                initialCatalogs={editingCollectionCatalogs}
+                genres={library.genreLists}
+                genreLookups={library.genres}
+                certifications={library.certifications}
+                countryNames={library.countryNames}
+                languages={library.languages}
+                usedInFolders={usedInFolders}
+                {...sharing.collectionSharing(activeCollection)}
+              />
+            )}
+          </EditorLayer>
+        )}
       </div>
 
       {/* Two fields, because two of them are hard to change later: a name is
@@ -848,4 +803,35 @@ function folderCount(collection: LibraryCollection): string {
  *  here survives deletion. */
 function scopedCatalogCount(collection: LibraryCollection): number {
   return (collection.catalogs ?? []).filter((c) => c.collection_id === collection.id).length
+}
+
+interface HomeSlotProps {
+  shown: boolean
+  paneRef: RefObject<HTMLDivElement | null>
+  view: HomeView
+  onViewChange: (view: HomeView) => void
+  onShowLibrary: () => void
+}
+
+/**
+ * The Home pane's place in the grid: the pane column from `lg` while no editor
+ * is open, and below `lg` the lower half of the page, under any editor's layer.
+ *
+ * `min-h` below `lg` is what makes the pane scrollable *to*: a short home
+ * screen is shorter than the viewport, and the browser cannot scroll a document
+ * past its own end — without a full screen of pane to travel into, asking for
+ * its top lands somewhere short of it and reads as the scroll having failed.
+ * Above `lg` the pane is a grid column of a fixed-height shell and `min-h-0`
+ * restores that.
+ */
+function HomeSlot({ shown, paneRef, view, onViewChange, onShowLibrary }: HomeSlotProps) {
+  if (!shown) return null
+  return (
+    <div
+      ref={paneRef}
+      className="flex min-h-[calc(100svh_-_var(--app-h))] min-w-0 scroll-mt-[var(--app-h)] flex-col lg:min-h-0"
+    >
+      <HomePane view={view} onViewChange={onViewChange} onShowLibrary={onShowLibrary} />
+    </div>
+  )
 }

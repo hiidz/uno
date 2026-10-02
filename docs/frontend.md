@@ -172,18 +172,31 @@ this is two regions rather than several co-equal panes.
 | **Pane** — right | One thing at a time: your home screen (with a `List \| Preview` switch), or the editor for whichever rail row is selected. The page's centre of gravity |
 | **Push** — header | Global action, beside a persistent unpushed-changes indicator. Not a section — it's the commit for Home, so it lives where Home is always visible, whether or not Home is the pane's current occupant |
 
-**Authoring replaces the pane's occupant rather than opening over it.** Picking a rail row to
-edit swaps Home out for that row's editor; leaving the editor swaps Home back. From `lg`,
-picking the row that is already open is a way out too — the same guarded close as × (`selectionAction`,
-`builder/selection.ts`); below `lg` it scrolls back to the editor. The row says which is open with
-`aria-expanded`. `Workspace`
+**From `lg`, authoring replaces the pane's occupant rather than opening over it.** Picking a rail
+row to edit swaps Home out for that row's editor; leaving the editor swaps Home back. Picking the
+row that is already open is a way out too — the same guarded close as × (`selectionAction`,
+`builder/selection.ts`). The row says which is open with `aria-expanded`. `Workspace`
 (`web/src/features/builder/Workspace.tsx`) owns that one-occupant rule, and `EditorTarget`
 (`web/src/features/builder/target.ts`) is the union describing what the pane currently holds.
 
-**Below `lg` the two regions stack into one scrolling document**, not two screens —
-`web/src/features/builder/stacked.ts` owns the threshold (`matchMedia` against
-`--breakpoint-lg`), the scroll requests that move focus between rail and pane, and the published
-header height the sticky offsets need. The breakpoint value is asserted explicitly as
+**Below `lg` the rail and Home stack into one scrolling document, and an open editor covers it
+as a layer.** `EditorLayer` (`web/src/features/builder/EditorLayer.tsx`) is the pane's slot for
+an editor or From Community view at every width — the same element, so crossing `lg` keeps the
+editor and its unsaved edits. Below `lg` it is `fixed inset-0` at `z-[35]` (over the app header's
+`z-30`, under menus' `z-40` and dialogs' `z-50`), with `role="dialog"`, `aria-modal` and
+`data-editor-layer`; Home stays mounted underneath it, so closing leaves the page where it was.
+While it covers the page, every sibling of the layer and of its ancestors up to `<body>` (the
+rail, Home, the header and tab row) is `inert`, as a modal dialog shuts out the page behind it;
+`<html>` stops scrolling; focus
+lands on the editor's title and returns to what opened it, or to the rail when that is gone (a
+deleted row). Opening fades it in over 160ms, off under reduced motion (`.layer-in`,
+`index.css`). The browser's Back closes it through the same guard as × (`useLayerHistory.ts`, a
+`unoEditor` history entry from `lib/historyEntry.ts`): Keep editing puts the entry back, so the
+next Back asks again, and every other way out consumes the entry. The entry drops `unoFolder`
+from the state it copies, so a Home folder page open underneath keeps its own entry and closes
+only on the next Back. `web/src/features/builder/stacked.ts` owns the threshold (`matchMedia`
+against `--breakpoint-lg`), the two scroll shortcuts between rail and Home (the rail's "Your home
+screen ↓" and Home's Library button), and the published header height the sticky offsets need. The breakpoint value is asserted explicitly as
 `--breakpoint-lg` in `web/src/index.css` and mirrored as `LG_BREAKPOINT` in
 `web/src/lib/breakpoints.ts`, because `stacked.ts` needs the same threshold as a `matchMedia`
 query and Tailwind's CSS output doesn't expose it to JS. Change one and you must change the
@@ -673,11 +686,14 @@ Clean Preview spec and the owner's instruction that Uno pin nothing between the 
 **The folder page's back arrow lives in the preview panel, beside the folder's own title**, per
 DESIGN.md's One Way Back rule, not as a button in Uno's own chrome above it. Escape and the
 browser's own Back do the same thing. `HomePreview.tsx`'s `useFolderPage` hook owns this: opening
-a folder pushes one `history.pushState({unoFolder: true}, '')` entry (a `try`/`catch` — a
-sandboxed frame can throw, and Escape/the arrow still work without it, only the browser's own
-Back doesn't); a `popstate` listener closes the folder when that entry is popped. Leaving any
+a folder pushes one `unoFolder` history entry (`pushEntry`, `lib/historyEntry.ts`; a sandboxed
+frame can throw, and Escape/the arrow still work without it, only the browser's own Back
+doesn't); a `popstate` listener closes the folder once the current entry no longer carries the
+flag, so stepping back off an editor layer's entry above it leaves the folder open. Its Escape
+listens on `window`, after `EditorShell`'s on `document`, so an Escape that closed an editor's
+layer over the folder page leaves the folder alone. Leaving any
 other way — the arrow, Escape, the target becoming unresolvable, or this view unmounting entirely
-(the List | Preview switch, or an editor opening) — consumes the pushed entry with one more
+(the List | Preview switch, or an editor taking the pane from `lg`) — consumes the pushed entry with one more
 `history.back()` rather than leaving it to `popstate`, so a later physical Back press never lands
 on a dead entry nobody is listening for. It does so only while that entry is still the current
 one: an in-app navigation away (Switch profile) has already pushed past it, and stepping back
@@ -750,7 +766,7 @@ button.
 - **The save bar reads Close and Save in every editor** (`EditorFooter`), the nested catalog
   editor's Save reading Done. Close routes through the editor's own `onRequestClose`, and from
   there through the one shared `EditorGuard` confirm every exit from a dirty editor goes through
-  (×, Escape, Close, the phone Library pill, and from `lg` pressing the open library row) — there
+  (×, Escape, Close, the browser's Back below `lg`, and from `lg` pressing the open library row) — there
   is no second, folder-aware confirm layered on top of it. The nested catalog editor
   (`NestedCatalogEditor.tsx`) has its own `EditorGuardProvider`, since its
   unsaved edits aren't the pane's: its ×, Close, Escape and scrim pass that guard, and
@@ -836,7 +852,8 @@ button.
   be a modal rather than a stack. `CollectionEditor` stays mounted underneath it, so this editor's
   own unsaved folder edits survive the round trip; the modal resets `--app-h` to `0` locally so the
   nested `CatalogEditor`'s sticky header doesn't try to clear the outer app header's height a
-  second time. The modal's own catalog lookup reads `localCatalogs` only — every scoped catalog
+  second time. It is `Modal`'s `sheet` shape: below `lg` it fills the screen over the outer
+  editor's layer, and from `lg` it is the usual dialog. The modal's own catalog lookup reads `localCatalogs` only — every scoped catalog
   (real or draft) this editor can open here is already in it by construction, so there is no
   library fallback to reach for.
 - **A catalog row shows one inline action — Edit for a scoped catalog, Remove for an unavailable
@@ -971,7 +988,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   - **Frame:** `EditorShell`, as for any row: the region's sign (tangerine catalog, green
     collection) with the From Community sticker (and Unpublished once its publisher
     unpublished it, To push while a push would change what Nuvio holds for it), ×, Escape,
-    the phone Library button and the phone header's Duplicate and Delete. The sign says From
+    and below `lg` Duplicate and Delete on the sign and the editor layer. The sign says From
     Community in place of Update available, since the Update… button says it. Below `sm` the sign
     hides stickers, so `EditorShell` heads the body with them.
   - **No explanatory text:** no sentence, no ⓘ. The sticker says where it came from. The body

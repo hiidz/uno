@@ -7,12 +7,14 @@ import { prefersReducedMotion } from '@/lib/motion'
  *
  * Above `lg` the rail and the pane are two columns of a fixed-height grid, each
  * scrolling on its own, and nothing in here applies. Below it there is a single
- * column and a single scrolling document: the rail on top, the pane underneath,
- * **both always mounted**. Selecting a row doesn't hide anything — it scrolls
- * the page to the pane, so the pane sitting far down the document never leaves
- * the user to find it themselves.
+ * column and a single scrolling document: the rail on top, the Home pane
+ * underneath, **both always mounted**. An open editor does not join that
+ * document; it covers it as a layer (`EditorLayer`), and the page underneath
+ * stays where it was.
  *
- * Two things have to be true for that to work, and both live here: the sticky
+ * What moves the page is the pair of shortcuts between the two regions: the
+ * rail's "Your home screen" down to Home, and Home's Library button back up.
+ * Two things have to be true for those to work, and both live here: the sticky
  * app header's height has to be known (it is measured, not assumed), and the
  * scroll has to happen after the browser has laid out whatever it is scrolling
  * to.
@@ -87,13 +89,13 @@ export function usePublishedHeaderHeight(ref: RefObject<HTMLElement | null>) {
 }
 
 /** Which region a scroll is asking for. */
-export type ScrollDestination = 'pane' | 'rail'
+type ScrollDestination = 'pane' | 'rail'
 
 export interface ScrollRequest {
   to: ScrollDestination
-  /** Two requests for the same destination are still two requests — re-tapping
-   *  the open row has to scroll again. Identity is what the effect keys on, so
-   *  this only has to differ. */
+  /** Two requests for the same destination are still two requests — pressing
+   *  the same shortcut twice has to scroll twice. Identity is what the effect
+   *  keys on, so this only has to differ. */
   seq: number
 }
 
@@ -110,18 +112,9 @@ export function useScrollRequests() {
 /**
  * Perform a requested scroll, once the thing being scrolled to exists.
  *
- * **Requests are made after the state that motivates them has been committed,
- * never in the event handler that started it.** That is what keeps the
- * unsaved-changes guard honest: `guard` holds its callback until the
- * confirmation is answered, so a held action makes no request, a cancelled one
- * makes no request, and a discarded one makes exactly one — after the target
- * has actually changed. A scroll fired from the tap instead would move the page
- * out from under a dialog the user hasn't answered yet.
- *
- * The `requestAnimationFrame` is not a delay for its own sake. The editor
- * remounts on every target change (`key` in `Workspace`), so at the moment the
- * effect runs the pane still has the outgoing editor's height; reading the
- * destination in the next frame reads it after layout.
+ * The `requestAnimationFrame` reads the destination in the next frame, after
+ * layout, so a region whose height has just changed is scrolled to where it
+ * now is.
  *
  * The rail is reached by scrolling to the top of the page rather than to the
  * rail itself: the tab row sits above the rail and outside the sticky header,
@@ -157,12 +150,12 @@ export function useStackedScroll({
  * Move focus to whatever the region nominates with `data-landing`.
  *
  * A scroll moves the viewport and nothing else, so on its own it leaves a
- * keyboard or screen-reader user behind in the rail while the page travels
- * somewhere they were never told about. `preventScroll` because the scroll is
- * already happening — letting focus scroll too fights the smooth animation and
- * lands short.
+ * keyboard or screen-reader user behind while the page travels somewhere they
+ * were never told about; the editor layer lands the same way when it opens.
+ * `preventScroll` because the scroll, if any, is already happening — letting
+ * focus scroll too fights the smooth animation and lands short.
  */
-function land(region: HTMLElement) {
+export function land(region: HTMLElement) {
   const target = region.matches('[data-landing]')
     ? region
     : region.querySelector<HTMLElement>('[data-landing]')

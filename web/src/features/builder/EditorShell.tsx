@@ -3,8 +3,11 @@ import type { ReactNode } from 'react'
 import { Copy, Trash2, X } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
-import { PaneSign, SIGN_TITLE, SignLibraryButton, SignStepButton, type SignStep } from '@/components/PaneSign'
-import { useStackedLayout } from './stacked'
+import { PaneSign, SIGN_TITLE, SignStepButton, type SignStep } from '@/components/PaneSign'
+
+/** A dialog or menu in front of the editor — any `role="dialog"` but the
+ *  editor's own layer below `lg` (`EditorLayer`). */
+const DIALOG_IN_FRONT = '[role="dialog"]:not([data-editor-layer])'
 
 interface EditorShellProps {
   /** What kind of edit this is — "Edit catalog", "Edit collection". Read out
@@ -21,10 +24,7 @@ interface EditorShellProps {
    *  heading the body. Absent where there is none to take. */
   step: SignStep | undefined
   title: string
-  /** Above `lg` this is the × in this header and Escape. Below it, it's also
-   *  the mobile Library button — there is no separate scroll-only path back to
-   *  the rail here, because leaving this row *is* an exit: it deselects, which
-   *  a dirty form has to be able to hold and ask about. */
+  /** The × in this header and Escape. */
   onRequestClose: () => void
   /** The open row's own actions, mirrored here below `lg`. Absent in a
    *  collection's nested catalog editor, and until the library lists a row
@@ -49,22 +49,15 @@ interface EditorShellProps {
  *
  * **Closing is a request, not an act.** `onRequestClose` may raise a discard
  * confirmation instead of closing, which is why Escape routes through the same
- * call rather than closing directly — and why the mobile Library button below
- * does too, rather than getting a scroll-only callback of its own.
+ * call as × rather than closing directly.
  *
- * **Below `lg` the header is this editor's only chrome**, and it changes job:
- * pinned under the app header, it is the one thing on screen for as long as the
- * form is, so it carries the library row's own duplicate and delete. Those
- * actions live on the row itself above `lg`, where the rail is beside the pane
- * and the row is a glance away; stacked, the row is a screen-length scroll up,
- * and this is the only surface that stays.
+ * **Below `lg` the header carries the library row's own duplicate and
+ * delete.** Those actions live on the row itself above `lg`, where the rail is
+ * beside the pane; below it the editor is a layer over the rail
+ * (`EditorLayer`), and this header is the one place they can be.
  *
- * The × itself is hidden below `lg` rather than duplicated: **the Library
- * button in that position is the same exit**, not a second one. Tapping it
- * deselects this row exactly as × does above `lg` — same `onRequestClose`, same
- * guard, same landing on home — and the workspace's own scroll request is what
- * then carries the reader up to the rail. It reads as "back" only because
- * deselecting below `lg` and scrolling to the rail happen to land together.
+ * The body scrolls between a header and a footer that stay put, at every
+ * width: the pane column holds the editor from `lg`, and the layer below it.
  */
 export function EditorShell({
   purpose,
@@ -79,17 +72,10 @@ export function EditorShell({
   docked,
   children,
 }: EditorShellProps) {
-  const stacked = useStackedLayout()
-
   // Escape closes, matching the convention every modal dialog sets — the
   // muscle memory is already there and there's no reason to take it away.
   // Routed through `onRequestClose` so a dirty form still confirms.
   useEffect(() => {
-    // Stacked there is no × for it to be the shortcut *to*, and the pane may
-    // not even be what's on screen — emptying it from the rail would be a
-    // change with no visible cause.
-    if (stacked) return
-
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape') return
       // A dialog or menu is in front of the editor and Escape belongs to it.
@@ -98,21 +84,23 @@ export function EditorShell({
       // the dialog may already be gone from the DOM: without both checks,
       // dismissing a discard prompt would immediately ask again, and
       // dismissing a delete confirmation would also try to close the editor
-      // behind it.
-      if (event.defaultPrevented || document.querySelector('[role="dialog"]')) return
+      // behind it. The editor's own layer below `lg` is a dialog too, and is
+      // not one in front of it.
+      if (event.defaultPrevented || document.querySelector(DIALOG_IN_FRONT)) return
+      // Handled: a Home folder page open under the layer listens on `window`,
+      // after this, and leaves an Escape that closed the editor alone.
+      event.preventDefault()
       onRequestClose()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onRequestClose, stacked])
+  }, [onRequestClose])
 
   return (
-    <main className={`tone-${tone} flex min-w-0 flex-1 flex-col lg:h-full lg:min-h-0`}>
+    <main className={`tone-${tone} flex h-full min-h-0 min-w-0 flex-1 flex-col`}>
       <PaneSign as="header" className="shrink-0 gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {/* Where focus lands when the page scrolls here. A scroll moves the
-              viewport and nothing else, so without this a keyboard or
-              screen-reader user is left behind in the rail. */}
+          {/* Where focus lands when the editor's layer opens below `lg`. */}
           <h1
             tabIndex={-1}
             data-landing
@@ -126,7 +114,7 @@ export function EditorShell({
 
         <SignStepButton step={step} place="sign" />
 
-        {/* The row's actions and the way out, below `lg` only. */}
+        {/* The row's actions, below `lg` only. */}
         <div className="flex shrink-0 items-center gap-1 lg:hidden">
           {onDuplicate && (
             <GlyphButton
@@ -145,18 +133,14 @@ export function EditorShell({
               variant="icon"
             />
           )}
-          {/* Same call as the desktop ×, not a scroll of its own — see the
-              doc comment on `onRequestClose` above. A held discard prompt has
-              to be able to stop this exactly as it stops that one. */}
-          <SignLibraryButton onClick={onRequestClose} title="Close editor (back to the library)" className="ml-1" />
         </div>
 
         <button
           type="button"
           onClick={onRequestClose}
-          aria-label="Close editor and go back to your home screen"
-          title="Close editor (Esc)"
-          className="tap hover:bg-sign-ink/15 ml-auto hidden h-10 w-10 shrink-0 place-items-center rounded-full transition-colors lg:grid"
+          aria-label="Close editor"
+          title="Close (Esc)"
+          className="tap hover:bg-sign-ink/15 ml-auto grid h-10 w-10 shrink-0 place-items-center rounded-full transition-colors"
         >
           <Icon icon={X} size={20} />
         </button>
@@ -188,11 +172,8 @@ export function EditorShell({
         </div>
       </div>
 
-      {/* Sticky below `lg`, where the page scrolls as one document and Save
-          would otherwise sit at the far end of a form as long as the catalog
-          editor. It needs a ground of its own to sit over the form; above `lg`
-          the flex column pins it and the band is transparent. */}
-      <div className="border-line bg-ground sticky bottom-0 z-20 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 py-4 lg:static lg:bg-transparent lg:px-6">
+      {/* The flex column pins it under the scrolling body at every width. */}
+      <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 py-4 lg:px-6">
         {footer}
       </div>
     </main>

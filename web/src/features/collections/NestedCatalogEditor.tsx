@@ -50,15 +50,17 @@ function NestedCatalogModal({
   const close = () => guard(onClose)
 
   return (
-    <Modal open onClose={close} labelledBy="nested-catalog-title" width="min(860px, 100%)">
-      {/* Resets the sticky offset `EditorShell` computes for the outer app
-          header — inside this modal there is no such header to clear, and
-          inheriting the real one would leave a stray gap once the form
-          scrolls on a narrow screen. `flex` plus `overflow-hidden` gives
-          `EditorShell`'s own `lg:h-full` a bounded parent, the same shape the
-          real app shell gives it, so its internal header/footer stay put and
-          only the form between them scrolls. */}
-      <div style={{ '--app-h': '0px' } as CSSProperties} className="flex max-h-[85vh] flex-col overflow-hidden">
+    <Modal open onClose={close} labelledBy="nested-catalog-title" width="min(860px, 100%)" shape="sheet">
+      {/* Resets the sticky offset `PaneSign` takes from the outer app header —
+          inside this modal there is no such header to clear. `flex` plus
+          `overflow-hidden` gives `EditorShell`'s own `h-full` a bounded
+          parent, the whole screen below `lg` and at most 85vh from it, so its
+          header and footer stay put and only the form between them
+          scrolls. */}
+      <div
+        style={{ '--app-h': '0px' } as CSSProperties}
+        className="flex flex-col overflow-hidden max-lg:h-full lg:max-h-[85vh]"
+      >
         <h2 id="nested-catalog-title" className="sr-only">
           Edit {catalog.name}
         </h2>

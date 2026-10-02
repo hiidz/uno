@@ -3,6 +3,7 @@ import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { queryKeys } from '@/api'
 import { Icon } from '@/components/Icon'
+import { consumeEntry, leftEntry, pushEntry } from '@/lib/historyEntry'
 import { plural } from '@/lib/plural'
 import { folderRecipes } from '@/features/preview/model'
 import { noTiles } from '@/features/preview/tiles'
@@ -53,6 +54,9 @@ export function HomePreview() {
  * collection or folder in the List view falls back to home rather than
  * pointing at whatever now sits in the same slot.
  */
+/** The flag on a folder page's history entry (`historyEntry.ts`). */
+const FOLDER_ENTRY = 'unoFolder'
+
 function useFolderPage(preview: HomeScreenPreview) {
   const [target, setTarget] = useState<FolderPageTarget | null>(null)
   const page = target ? findFolderPage(preview, target) : null
@@ -63,14 +67,7 @@ function useFolderPage(preview: HomeScreenPreview) {
   const pushed = useRef(false)
 
   const openFolder = useCallback((next: FolderPageTarget) => {
-    try {
-      // Carries React Router's own state along, so a browser Forward onto this
-      // entry still hands Builder its profile.
-      window.history.pushState({ ...window.history.state, unoFolder: true }, '')
-      pushed.current = true
-    } catch {
-      pushed.current = false
-    }
+    pushed.current = pushEntry(FOLDER_ENTRY)
     setTarget(next)
   }, [])
 
@@ -86,9 +83,12 @@ function useFolderPage(preview: HomeScreenPreview) {
     }
   }, [])
 
+  // Only a step back off the folder's own entry closes it: stepping back off
+  // the editor layer's entry above it lands on the folder's, which still
+  // carries the flag.
   useEffect(() => {
-    function onPopState() {
-      if (pushed.current) {
+    function onPopState(event: PopStateEvent) {
+      if (leftEntry(pushed.current, event.state, FOLDER_ENTRY)) {
         pushed.current = false
         setTarget(null)
       }
@@ -102,17 +102,20 @@ function useFolderPage(preview: HomeScreenPreview) {
     function onKeyDown(e: KeyboardEvent) {
       // A Radix layer over the folder page (a dialog, a menu) handles Escape
       // first, in the capture phase, and marks it handled. It has usually
-      // already unmounted by now, so it can't be looked up in the DOM.
+      // already unmounted by now, so it can't be looked up in the DOM. On
+      // `window`, so an editor's Escape on `document` runs first: below `lg`
+      // the editor's layer can cover an open folder page, and an Escape that
+      // closed the editor arrives here handled too.
       if (e.key !== 'Escape' || e.defaultPrevented) return
       closeFolder()
     }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [target, closeFolder])
 
   // Leaving any other way — the target stopped resolving (removed in List
   // view), or this view unmounts entirely (the List | Preview switch, or an
-  // editor opens) — still has to consume a pushed entry, or a later physical
+  // editor taking the pane from `lg`) — still has to consume a pushed entry, or a later physical
   // Back press does nothing: the history stack would hold a dead entry this
   // component is no longer listening for. Only while that entry is still the
   // current one: an in-app navigation away (Switch profile) has already pushed
@@ -141,7 +144,7 @@ function useFolderPage(preview: HomeScreenPreview) {
 
 /** Steps back off the folder's history entry, if it is the current one. */
 function consumeFolderEntry() {
-  if ((window.history.state as { unoFolder?: boolean } | null)?.unoFolder) window.history.back()
+  consumeEntry(FOLDER_ENTRY)
 }
 
 function FolderPageView({

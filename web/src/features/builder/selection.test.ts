@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { selectionAction } from './selection'
+import { homeMounted, selectionAction } from './selection'
 import type { EditorTarget } from './target'
 
 const target = (kind: 'catalog' | 'collection', id: string) => ({ kind, id }) as EditorTarget
@@ -7,13 +7,21 @@ const a = target('catalog', 'a')
 
 describe('selectionAction', () => {
   it('opens another row', () => {
-    expect(selectionAction(null, a, false)).toBe('open')
-    expect(selectionAction(a, target('catalog', 'b'), false)).toBe('open')
-    expect(selectionAction(a, target('collection', 'a'), true)).toBe('open')
+    expect(selectionAction(null, a)).toBe('open')
+    expect(selectionAction(a, target('catalog', 'b'))).toBe('open')
+    expect(selectionAction(a, target('collection', 'a'))).toBe('open')
   })
 
-  it('closes the open row from lg, and scrolls back to it stacked', () => {
-    expect(selectionAction(a, target('catalog', 'a'), false)).toBe('close')
-    expect(selectionAction(a, target('catalog', 'a'), true)).toBe('scroll')
+  it('closes the open row', () => {
+    expect(selectionAction(a, target('catalog', 'a'))).toBe('close')
+  })
+})
+
+describe('homeMounted', () => {
+  it('keeps Home mounted under an open editor only below lg', () => {
+    expect(homeMounted(null, false)).toBe(true)
+    expect(homeMounted(null, true)).toBe(true)
+    expect(homeMounted(a, true)).toBe(true)
+    expect(homeMounted(a, false)).toBe(false)
   })
 })

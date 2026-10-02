@@ -31,9 +31,8 @@ const KIND_LABEL: Record<RowKind, string> = {
  *
  * The actions are `lg` and up only. There the rail sits beside the pane and the
  * selected row stays in view for as long as its editor is open. Below `lg` the
- * two are stacked and selecting a row scrolls the page away from it, so the
- * actions would be a screen-length scroll from the thing they act on; the
- * editor's own sticky header carries them there instead.
+ * row's editor opens as a layer over the rail, so the editor's own header
+ * carries them there instead.
  *
  * Every row in the rail is yours, so the one sticker left to state is about
  * Community (`railStickers`), in pink: Published, outlined, then To publish,

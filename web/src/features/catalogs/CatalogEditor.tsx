@@ -552,7 +552,7 @@ interface CatalogEditorProps {
    *  every rule — so it renders as an unexpected-case banner, not a field. */
   serverError: string | null
   onSave: (state: CatalogFormState) => void
-  /** Also backs the mobile Library button below `lg` — see `EditorShell`. */
+  /** The × on the sign, Escape and the footer's Close — see `EditorShell`. */
   onRequestClose: () => void
   /** This catalog's own row actions, carried in the header below `lg`. Absent
    *  in a collection's nested editor, and until the library lists a row that

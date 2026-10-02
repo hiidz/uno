@@ -287,7 +287,7 @@
         background: color-mix(in srgb, var(--uno-sign-ink) 82%, black);
     }
     /* A way back out of a region, drawn on its sign: an outlined pill in sign
-       ink — the Library button over the Home pane and an editor. */
+       ink — the Library button over the Home pane. */
     .sign-btn-outline {
         display: inline-flex;
         flex-shrink: 0;
@@ -488,6 +488,25 @@
 
     @media (prefers-reduced-motion: reduce) {
         .home-sticker[data-slap] {
+            animation: none;
+        }
+    }
+
+    /* An editor's layer below `lg` (DESIGN.md, "Editor") fades in on the one
+       easing curve; nothing about it slides. `64rem` is `--breakpoint-lg`,
+       mirrored in `src/lib/breakpoints.ts`. */
+    @media (width < 64rem) {
+        .layer-in {
+            animation: uno-layer-in 160ms var(--uno-ease);
+        }
+    }
+    @keyframes uno-layer-in {
+        from {
+            opacity: 0;
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .layer-in {
             animation: none;
         }
     }
