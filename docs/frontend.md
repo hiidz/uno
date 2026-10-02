@@ -229,13 +229,31 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
 - **`ExportDialog`** has two checkbox groups, Catalogs and Collections, filled from `useLibrary`'s
   lists, each with **All** and **None**. The row open in the pane starts ticked. A note says
   collections include the catalogs they use, and the server exports those whether or not they are
-  ticked. Export is disabled while nothing is ticked. The response is saved as
-  `uno-export-YYYY-MM-DD.json` in local time, pretty-printed, through an object URL (`download.ts`).
+  ticked. The footer is Cancel, **Copy text** and **Download** (the one primary); both are
+  disabled while nothing is ticked or a request is in flight. One mutation runs either, with one
+  `exportBundle` call.
+  - **Download** saves the response as `uno-export-YYYY-MM-DD.json` in local time through an
+    object URL (`download.ts`), then closes the dialog.
+  - **Copy text** writes the same text to the clipboard and leaves the dialog open, the button
+    reading "Copied" for 1.6s. `copyText` (`text.ts`) hands the clipboard the request's own
+    promise as a `ClipboardItem` where the browser has one, so Safari keeps the click's gesture
+    across the fetch. It never throws: with no clipboard or a refused write, the dialog shows
+    "Couldn't copy. Copy the text below." over a read-only textarea holding the text, focused and
+    selected. Download still works beside it, and changing the ticks clears the textarea.
+  - Both outputs are `bundleText` (`JSON.stringify(value, null, 2)`), so the copied text and the
+    file are byte-identical.
 - **`ImportDialog`** has three steps.
-  1. **Pick a file.** A file over 4 MiB is refused before it is read (`MAX_BUNDLE_BYTES`, the twin
-     of the server's `maxBundleBodyBytes`), and a `JSON.parse` failure is shown in place. Neither
-     sends a request. A 400 or 502 from `/import/check` is shown in place too.
-  2. **Review.** The dialog shows the file's counts, then one row per match. Each row is
+  1. **Pick a file or paste text.** A **File | Paste text** control, on File, shows one input at a
+     time. Both end in `parseBundleText` (`text.ts`) and the same check, review and import. A
+     file over 4 MiB is refused before it is read, and pasted text over 4 MiB before it is sent
+     (`MAX_BUNDLE_BYTES`, the twin of the server's `maxBundleBodyBytes`). A `JSON.parse` failure is
+     shown in place, worded "Pasted text isn't valid JSON: …" for the paste box and with the
+     file's name for a file. None of these sends a request, and the paste box keeps its text.
+     Editing the text or switching mode clears the message. In the paste box **Check text**
+     starts the check, and is disabled while the box is blank. A 400 or 502 from `/import/check`
+     is shown in place too, as "This text can't be imported: …" or "This file can't be imported: …".
+  2. **Review.** The dialog names the source, the file's name or "Pasted text", with its counts,
+     then one row per match. Each row is
      **Import a copy** (the default) or the reuse choice. A top-level catalog reads **Skip, I
      already have it**. A collection's own catalog reads **Use my existing one**, with a hint that
      the collection will then share the library catalog. Several existing matches get a `Select`,

@@ -7,20 +7,19 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import { typeLabel } from '@/features/library/recipe'
 import { pluralCount } from '@/lib/plural'
 import { choicesForAll, reuseMap, type ReuseChoice, type ReuseChoices } from './reuse'
+import { MAX_BUNDLE_BYTES, parseBundleText, tooLargeMessage } from './text'
 import { useImport } from './useImport'
 
-/** The largest file the dialog reads. The twin of `maxBundleBodyBytes` in
- *  `internal/api/bundle.go`, the most either import route accepts; change one
- *  and you must change the other. */
-const MAX_BUNDLE_BYTES = 4 << 20 // 4 MiB
+/** What the review calls a bundle that came from the paste box. */
+const PASTED = 'Pasted text'
 
 /**
- * Imports a bundle file as new, private catalogs and collections, in three
- * steps: pick a file, review the catalogs it shares a recipe with ones you
- * already have, import.
+ * Imports a bundle as new, private catalogs and collections, in three steps:
+ * pick a file or paste its text, review the catalogs it shares a recipe with
+ * ones you already have, import.
  *
  * Every catalog is imported as a copy unless the review says otherwise.
- * Importing the same file twice gives two sets.
+ * Importing the same bundle twice gives two sets.
  */
 export function ImportDialog({
   open,
@@ -47,7 +46,8 @@ export function ImportDialog({
 }
 
 interface Review {
-  fileName: string
+  /** Where the bundle came from: the file's name, or "Pasted text". */
+  source: string
   bundle: unknown
   check: ImportCheck
   choices: ReuseChoices
@@ -65,30 +65,40 @@ function ImportFlow({
   onImported: (result: ImportResult) => void
 }) {
   const [review, setReview] = useState<Review | null>(null)
-  const [fileError, setFileError] = useState<string | null>(null)
+  const [inputError, setInputError] = useState<string | null>(null)
   const checking = useMutation({
     mutationFn: (bundle: unknown) => checkImport(profileIndex, bundle),
   })
   const importing = useImport(profileIndex)
 
-  async function pick(file: File) {
-    setFileError(null)
+  function clearErrors() {
+    setInputError(null)
     checking.reset()
-    if (file.size > MAX_BUNDLE_BYTES) {
-      setFileError(`${file.name} is over 4 MiB, the most an import can carry.`)
+  }
+
+  /** The one path a file and pasted text share: parse, check with the
+   *  server, open the review. */
+  function submit(source: string, text: string) {
+    clearErrors()
+    const parsed = parseBundleText(text, source)
+    if (!parsed.ok) {
+      setInputError(parsed.message)
       return
     }
-    let bundle: unknown
-    try {
-      bundle = JSON.parse(await file.text())
-    } catch (err) {
-      setFileError(`${file.name} isn't valid JSON: ${(err as Error).message}`)
-      return
-    }
+    const { bundle } = parsed
     checking.mutate(bundle, {
       onSuccess: (check) =>
-        setReview({ fileName: file.name, bundle, check, choices: choicesForAll(check.matches, false) }),
+        setReview({ source, bundle, check, choices: choicesForAll(check.matches, false) }),
     })
+  }
+
+  async function submitFile(file: File) {
+    if (file.size > MAX_BUNDLE_BYTES) {
+      clearErrors()
+      setInputError(tooLargeMessage(file.name))
+      return
+    }
+    submit(file.name, await file.text())
   }
 
   function write() {
@@ -110,8 +120,11 @@ function ImportFlow({
         ) : (
           <PickStep
             checking={checking.isPending}
-            error={fileError ?? (checking.error && `This file can't be imported: ${checking.error.message}`)}
-            onPick={(file) => void pick(file)}
+            inputError={inputError}
+            checkError={checking.error?.message ?? null}
+            onClear={clearErrors}
+            onFile={(file) => void submitFile(file)}
+            onText={(text) => submit(PASTED, text)}
           />
         )}
         {importing.error && (
@@ -142,39 +155,67 @@ function ImportFlow({
   )
 }
 
+type PickMode = 'file' | 'paste'
+
+/** The line under the input: the bundle's own refusal, else the server's,
+ *  named for the input it came from. */
+function pickError(mode: PickMode, inputError: string | null, checkError: string | null) {
+  if (inputError) return inputError
+  if (!checkError) return null
+  return `This ${mode === 'paste' ? 'text' : 'file'} can't be imported: ${checkError}`
+}
+
 function PickStep({
   checking,
-  error,
-  onPick,
+  inputError,
+  checkError,
+  onClear,
+  onFile,
+  onText,
 }: {
   checking: boolean
-  error: string | null
-  onPick: (file: File) => void
+  inputError: string | null
+  checkError: string | null
+  onClear: () => void
+  onFile: (file: File) => void
+  onText: (text: string) => void
 }) {
+  const [mode, setMode] = useState<PickMode>('file')
+  const [text, setText] = useState('')
+  const error = pickError(mode, inputError, checkError)
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-dim m-0 text-[13px] leading-relaxed">
-        Pick an Uno export file. Everything in it is added to your library as new, private
-        catalogs and collections.
+        Pick an Uno export file or paste its text. Everything in it is added to your library as
+        new, private catalogs and collections.
       </p>
-      {/* The input stays in the accessibility tree, visually hidden inside
-          its label, so the label is what is seen and clicked while the
-          input still takes focus and a file. */}
-      <label className="btn-secondary has-[:focus-visible]:outline-ink w-fit cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2">
-        {checking ? 'Checking…' : 'Choose a file…'}
-        <input
-          type="file"
-          accept=".json,application/json"
-          disabled={checking}
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            // Cleared so picking the same file again still fires a change.
-            event.target.value = ''
-            if (file) onPick(file)
+      <Segmented
+        ariaLabel="Where the export comes from"
+        value={mode}
+        onChange={(next) => {
+          onClear()
+          setMode(next)
+        }}
+        options={[
+          { value: 'file', label: 'File' },
+          { value: 'paste', label: 'Paste text' },
+        ]}
+      />
+      {mode === 'file' ? (
+        <FilePicker checking={checking} onFile={onFile} />
+      ) : (
+        <PasteBox
+          text={text}
+          checking={checking}
+          invalid={inputError !== null}
+          onEdit={(next) => {
+            onClear()
+            setText(next)
           }}
+          onCheck={() => onText(text)}
         />
-      </label>
+      )}
       {error && (
         <p
           role="alert"
@@ -183,6 +224,68 @@ function PickStep({
           {error}
         </p>
       )}
+    </div>
+  )
+}
+
+function FilePicker({ checking, onFile }: { checking: boolean; onFile: (file: File) => void }) {
+  return (
+    /* The input stays in the accessibility tree, visually hidden inside its
+       label, so the label is what is seen and clicked while the input still
+       takes focus and a file. */
+    <label className="btn-secondary has-[:focus-visible]:outline-ink w-fit cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2">
+      {checking ? 'Checking…' : 'Choose a file…'}
+      <input
+        type="file"
+        accept=".json,application/json"
+        disabled={checking}
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          // Cleared so picking the same file again still fires a change.
+          event.target.value = ''
+          if (file) onFile(file)
+        }}
+      />
+    </label>
+  )
+}
+
+function PasteBox({
+  text,
+  checking,
+  invalid,
+  onEdit,
+  onCheck,
+}: {
+  text: string
+  checking: boolean
+  invalid: boolean
+  onEdit: (text: string) => void
+  onCheck: () => void
+}) {
+
+  return (
+    <div className="flex flex-col items-start gap-3">
+      <textarea
+        rows={8}
+        value={text}
+        readOnly={checking}
+        spellCheck={false}
+        placeholder={'{ "format": …'}
+        aria-label="Export text"
+        aria-invalid={invalid || undefined}
+        onChange={(event) => onEdit(event.target.value)}
+        className="field block h-auto w-full resize-none py-2.5 font-mono text-[13px] leading-snug pointer-coarse:text-[16px]"
+      />
+      <button
+        type="button"
+        onClick={onCheck}
+        disabled={checking || text.trim() === ''}
+        className="btn-secondary"
+      >
+        {checking ? 'Checking…' : 'Check text'}
+      </button>
     </div>
   )
 }
@@ -200,7 +303,7 @@ function ReviewStep({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-dim m-0 text-[13px] leading-relaxed break-words">
-        <strong className="text-ink">{review.fileName}</strong> holds{' '}
+        <strong className="text-ink">{review.source}</strong> holds{' '}
         {pluralCount(check.catalogs, 'catalog')}, {pluralCount(check.collections, 'collection')}{' '}
         and {pluralCount(check.folders, 'folder')}.
       </p>

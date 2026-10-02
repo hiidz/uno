@@ -1,3 +1,5 @@
+import { bundleText } from './text'
+
 /** `uno-export-YYYY-MM-DD.json`, dated in the viewer's own time zone. */
 export function exportFilename(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -10,7 +12,7 @@ export function exportFilename(date: Date): string {
  * which some browsers answer by starting the download asynchronously.
  */
 export function downloadJSON(value: unknown, filename: string): void {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  const blob = new Blob([bundleText(value)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
