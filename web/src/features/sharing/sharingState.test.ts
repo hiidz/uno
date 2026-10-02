@@ -4,11 +4,13 @@ import { catalog, collection, folder } from '@/test/fixtures'
 import {
   errorText,
   isPublished,
+  kindStickers,
   ownSharing,
   publishGroups,
   railStickers,
   rowStickers,
   sharingNote,
+  stickerClass,
   stickerWords,
   viewStickers,
   waitingIDs,
@@ -34,7 +36,7 @@ describe('ownSharing', () => {
 })
 
 type StickerRow = Parameters<typeof rowStickers>[0]
-const words = (stickers: SharingSticker[]) => stickers.map((s) => `${s.label}:${s.tone}`)
+const words = (stickers: SharingSticker[]) => stickers.map((s) => `${s.label}:${stickerClass(s.tone)}`)
 
 const updating: StickerRow = { publication: null, subscription: { ...subscription, update_available: true } }
 const unpublishedByPublisher: StickerRow = { publication: null, subscription: { ...subscription, unpublished: true } }
@@ -45,34 +47,34 @@ describe('railStickers', () => {
 
   it('carries one Community sticker, changing with the row’s state', () => {
     expect(rail({ publication: null, subscription: null })).toEqual([])
-    expect(rail({ publication: live, subscription: null })).toEqual(['Published:community'])
-    expect(rail(changed)).toEqual(['Publish changes:community'])
+    expect(rail({ publication: live, subscription: null })).toEqual(['Published:stk stk-community'])
+    expect(rail(changed)).toEqual(['To publish:stk stk-community stk-fill'])
     expect(rail({ publication: { ...live, status: 'unpublished' }, subscription: null })).toEqual([])
-    expect(rail({ publication: null, subscription })).toEqual(['From Community:community'])
-    expect(rail(updating)).toEqual(['Update available:update'])
+    expect(rail({ publication: null, subscription })).toEqual(['From Community:stk stk-community'])
+    expect(rail(updating)).toEqual(['Update available:stk stk-community stk-fill'])
   })
 
   it('leaves the publisher’s unpublishing to the editor and the Home pane', () => {
-    expect(rail(unpublishedByPublisher)).toEqual(['From Community:community'])
+    expect(rail(unpublishedByPublisher)).toEqual(['From Community:stk stk-community'])
   })
 })
 
 describe('rowStickers', () => {
   const all = (row: StickerRow, waiting = false) => words(rowStickers(row, waiting))
 
-  it('adds Push to Nuvio to the Community sticker while a push would change Nuvio', () => {
+  it('adds To push to the Community sticker while a push would change Nuvio', () => {
     expect(all({ publication: null, subscription: null })).toEqual([])
-    expect(all({ publication: null, subscription: null }, true)).toEqual(['Push to Nuvio:push'])
-    expect(all(changed, true)).toEqual(['Publish changes:community', 'Push to Nuvio:push'])
-    expect(all(updating, true)).toEqual(['Update available:update', 'Push to Nuvio:push'])
+    expect(all({ publication: null, subscription: null }, true)).toEqual(['To push:stk stk-nuvio stk-fill'])
+    expect(all(changed, true)).toEqual(['To publish:stk stk-community stk-fill', 'To push:stk stk-nuvio stk-fill'])
+    expect(all(updating, true)).toEqual(['Update available:stk stk-community stk-fill', 'To push:stk stk-nuvio stk-fill'])
   })
 
   it('says a publisher unpublished a row added from Community', () => {
-    expect(all(unpublishedByPublisher)).toEqual(['From Community:community', 'Unpublished:quiet'])
+    expect(all(unpublishedByPublisher)).toEqual(['From Community:stk stk-community', 'Unpublished:stk stk-community'])
     expect(all(unpublishedByPublisher, true)).toEqual([
-      'From Community:community',
-      'Unpublished:quiet',
-      'Push to Nuvio:push',
+      'From Community:stk stk-community',
+      'Unpublished:stk stk-community',
+      'To push:stk stk-nuvio stk-fill',
     ])
   })
 
@@ -80,15 +82,15 @@ describe('rowStickers', () => {
     const labels = [changed, updating, unpublishedByPublisher, { publication: live, subscription: null }]
       .flatMap((row) => rowStickers(row, true))
       .filter((s) => /update/i.test(s.label))
-    expect(words(labels)).toEqual(['Update available:update'])
+    expect(words(labels)).toEqual(['Update available:stk stk-community stk-fill'])
   })
 })
 
 describe('viewStickers', () => {
   it('says From Community where Update available would be, since Update… says it', () => {
-    expect(words(viewStickers(updating, false))).toEqual(['From Community:community'])
-    expect(words(viewStickers(updating, true))).toEqual(['From Community:community', 'Push to Nuvio:push'])
-    expect(words(viewStickers({ publication: null, subscription }, false))).toEqual(['From Community:community'])
+    expect(words(viewStickers(updating, false))).toEqual(['From Community:stk stk-community'])
+    expect(words(viewStickers(updating, true))).toEqual(['From Community:stk stk-community', 'To push:stk stk-nuvio stk-fill'])
+    expect(words(viewStickers({ publication: null, subscription }, false))).toEqual(['From Community:stk stk-community'])
   })
 })
 
@@ -154,7 +156,14 @@ describe('errorText and stickerWords', () => {
   })
 
   it('reads stickers as words for a screen reader', () => {
-    expect(stickerWords(rowStickers(changed, true))).toBe(', publish changes, push to nuvio')
+    expect(stickerWords(rowStickers(changed, true))).toBe(', to publish, to push')
     expect(stickerWords([])).toBe('')
+  })
+})
+
+describe('kindStickers', () => {
+  it('names a catalog’s kind as a neutral sticker, and nothing for an unknown one', () => {
+    expect(words(kindStickers({ type: 'series' }))).toEqual(['Series:stk stk-neutral'])
+    expect(kindStickers(undefined)).toEqual([])
   })
 })

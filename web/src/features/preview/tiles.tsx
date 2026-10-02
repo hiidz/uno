@@ -4,8 +4,9 @@ import type { PreviewItem, TileShape, TMDBKind } from '@/api'
  * Drawing a catalog's content in Uno's own look: the tiles themselves and the
  * shapes they're drawn at.
  *
- * Shared by the Home pane's List strips and the catalog editor's results
- * panel, which is why it lives outside `features/home`. The preview rows draw
+ * Drawn by the catalog editor's results panel; the Home pane's Preview and the
+ * collection editor's folder tree share its types and shapes, which is why it
+ * lives outside `features/home`. The preview rows draw
  * their own captioned tiles (`features/home/previewScreen.tsx`). Everything here is presentational
  * and takes `CatalogTiles` — how those tiles were fetched (for a saved
  * catalog, or for a recipe still being typed) is the caller's problem.
@@ -69,12 +70,12 @@ export function TileGrid({
 
 /**
  * Real posters once they land, placeholders until then — wrapped into a grid
- * (`TileGrid`), or clipped to one strip of whole tiles (a Home list row).
+ * (`TileGrid`), or clipped to one strip of whole tiles without `wrap`.
  *
  * Placeholders are drawn at `TILES_PER_PAGE`, matching a full page, so the row
  * doesn't reflow when content arrives.
  */
-export function TileRun({
+function TileRun({
   tiles,
   width,
   height,

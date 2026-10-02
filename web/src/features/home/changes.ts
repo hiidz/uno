@@ -108,15 +108,15 @@ function collectionTitle(collectionById: ReadonlyMap<string, Collection>, id: st
   return collectionById.get(id)?.title ?? 'Unavailable collection'
 }
 
-/** A collection row's Show first action, by its pending pin: the edit it
+/** A collection row's Pin or Unpin action, by its pending pin: the edit it
  *  makes, which the list of changes then reports. */
 export function showFirstAction(pinned: boolean): string {
-  return pinned ? 'Don’t show first' : 'Show first'
+  return pinned ? 'Unpin' : 'Pin'
 }
 
 /**
  * A line for each collection on the home screen both before and after whose
- * Show first changed — the one change that moves a row from one group to the
+ * pin changed — the one change that moves a row from one group to the
  * other — and those rows' keys. Moves are found within each group, so a row
  * that changed group is left out of them rather than read as moved.
  */
@@ -132,7 +132,7 @@ function pinFlips(
   return {
     list: flipped.map(({ row, pinToTop }) => ({
       key: `pin:${keyOf(row)}`,
-      text: pinToTop ? `Showing ${quoted(row)} first` : `No longer showing ${quoted(row)} first`,
+      text: pinToTop ? `Pinned ${quoted(row)}` : `Unpinned ${quoted(row)}`,
     })),
     keys: new Set(flipped.map(({ row }) => keyOf(row))),
   }
@@ -218,8 +218,8 @@ function waitingText(change: 'added' | 'changed', name: string): string {
 
 /**
  * Every change a push would make, additions and removals, moves between home
- * and Discover, Show first turned on or off, and the fewest moves that explain
- * the new order within each group. Only Show first moves a row from one group
+ * and Discover, a pin or unpin, and the fewest moves that explain
+ * the new order within each group. Only a pin moves a row from one group
  * to another, and it is reported as that, so moves are found group by group.
  * `waiting` is what the server says is waiting for a push beyond those edits.
  */

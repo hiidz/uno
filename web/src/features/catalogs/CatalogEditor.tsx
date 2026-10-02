@@ -299,7 +299,7 @@ export function CatalogEditor({
       tone="catalog"
       badges={
         <>
-          <span className="stk">{typeLabel(state.type)}</span>
+          <span className="stk stk-neutral">{typeLabel(state.type)}</span>
           {sharingBadges}
         </>
       }

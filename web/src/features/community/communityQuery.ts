@@ -63,12 +63,16 @@ function byNewest(a: CommunityItem, b: CommunityItem): number {
   return b.published_at.localeCompare(a.published_at)
 }
 
-/** A row's second line: a catalog's type and recipe, or a collection's size.
- *  `recipe` is the catalog's recipe line, when it has one. */
+/** A row's kind sticker: a catalog's type (Movies, Series), or Collection. */
+export function itemKind(item: CommunityItem): string {
+  return item.catalog ? typeLabel(item.catalog.type) : 'Collection'
+}
+
+/** A row's second line: a catalog's recipe, or a collection's size. The kind
+ *  sticker says a catalog's type. `recipe` is the catalog's recipe line, when
+ *  it has one. */
 export function itemSummary(item: CommunityItem, recipe: string): string {
-  if (item.kind === 'catalog' && item.catalog) {
-    return [typeLabel(item.catalog.type), recipe].filter(Boolean).join(' · ')
-  }
+  if (item.kind === 'catalog') return recipe || 'No filters'
   return [pluralCount(item.folder_count, 'folder'), pluralCount(item.catalog_count, 'catalog')].join(' · ')
 }
 

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -11,17 +10,15 @@ import { ListState } from '@/components/ListState'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
 import { describeCollection } from '@/features/library/collection'
-import { recipeLine, typeLabel } from '@/features/library/recipe'
-import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
-import { noTiles, TileRun, TILE_ASPECT } from '@/features/preview/tiles'
-import { rowStickers } from '@/features/sharing/sharingState'
+import { recipeLine } from '@/features/library/recipe'
+import type { PreviewCollection } from '@/features/preview/model'
+import { DELETED, kindStickers, rowStickers } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { ordinal } from '@/lib/ordinal'
 import { showFirstAction } from './changes'
 import { HomePreview } from './HomePreview'
 import type { PreviewRow } from './preview'
 import { SortableList } from './SortableList'
-import { useCatalogTiles } from './useCatalogTiles'
 import { useHomeEdits, useHomePreview, useHomeSelection } from './useHomeSelection'
 
 export type HomeView = 'list' | 'preview'
@@ -29,9 +26,9 @@ export type HomeView = 'list' | 'preview'
 /**
  * What is actually on the profile's home screen: selected collections (each a
  * row whose tiles are its folders) and selected catalogs (each a row of
- * content), both ordered. Collections shown first — Show first, a pending
- * edit in each collection row's menu, like Move to Discover for a catalog —
- * sit above the catalog rows, the rest below; Preview is where that order is
+ * content), both ordered. Pinned collections — Pin, a pending edit in each
+ * collection row's menu, like Move to Discover for a catalog — sit above the
+ * catalog rows, the rest below; Preview is where that order is
  * visible. This view
  * groups by Nuvio's own three bands too — see `HomeList` — because the
  * running order's numbering only makes sense in that order.
@@ -61,11 +58,6 @@ export function HomePane({
   onShowLibrary: () => void
 }) {
   const home = useHomeSelection()
-  // Not part of the pushed state — a display preference for this view, not an
-  // edit to the home screen. Held here, above `HomeList`, for the same reason
-  // `view` is: it must survive `HomeList` unmounting under an editor.
-  const [compact, setCompact] = useState(false)
-  const isEmpty = home.catalogs.length === 0 && home.collections.length === 0
 
   return (
     <main className="tone-home flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
@@ -93,38 +85,16 @@ export function HomePane({
         <SignLibraryButton onClick={onShowLibrary} title="Back up to the library" className="ml-auto lg:hidden" />
       </PaneSign>
 
-      <div
-        className={`flex max-w-[calc(var(--w-home)+3rem)] flex-wrap items-center gap-x-5 gap-y-3 px-4 pt-5 lg:px-6 ${
-          view === 'list' ? '' : 'lg:hidden'
-        }`}
-      >
-        <div className="lg:hidden">
-          <Segmented
-            ariaLabel="Home screen view"
-            value={view}
-            onChange={onViewChange}
-            options={[
-              { value: 'list', label: 'List' },
-              { value: 'preview', label: 'Preview' },
-            ]}
-          />
-        </div>
-        {/* Only once there's something to show strips for — DESIGN.md's
-            Home-screen pane spec. */}
-        {view === 'list' && !isEmpty && (
-          <div className="flex items-center gap-2.5">
-            <span className="type-label">Rows</span>
-            <Segmented
-              ariaLabel="Row display"
-              value={compact ? 'compact' : 'strips'}
-              onChange={(value) => setCompact(value === 'compact')}
-              options={[
-                { value: 'strips', label: 'Strips' },
-                { value: 'compact', label: 'Compact' },
-              ]}
-            />
-          </div>
-        )}
+      <div className="px-4 pt-5 lg:hidden">
+        <Segmented
+          ariaLabel="Home screen view"
+          value={view}
+          onChange={onViewChange}
+          options={[
+            { value: 'list', label: 'List' },
+            { value: 'preview', label: 'Preview' },
+          ]}
+        />
       </div>
 
       <div className="flex flex-col px-4 py-5 lg:px-6 lg:pt-6 lg:pb-8">
@@ -139,7 +109,7 @@ export function HomePane({
           loadingLabel="Loading your home screen…"
           errorLabel="Couldn't load your home screen."
         >
-          {view === 'list' ? <HomeList compact={compact} /> : <HomePreview />}
+          {view === 'list' ? <HomeList /> : <HomePreview />}
         </ListState>
       </div>
     </main>
@@ -176,15 +146,14 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
  * own group: reordering hands `HomeSelectionContext` only that group's ids,
  * which reconstructs the full list itself (see `reorderWithinBand`).
  */
-function HomeList({ compact }: { compact: boolean }) {
+function HomeList() {
   const home = useHomeSelection()
   const preview = useHomePreview()
-  const tiles = useCatalogTiles(preview.rows.map((row) => row.id))
 
   if (preview.isEmpty) {
     return (
       <p className="text-dim m-0 max-w-[48ch] py-2 text-[15px] leading-[1.5]">
-        Nothing on your home screen yet. Tap + beside anything in the Library.
+        Nothing on your home screen yet. Add rows from the Library with +.
       </p>
     )
   }
@@ -201,7 +170,7 @@ function HomeList({ compact }: { compact: boolean }) {
   return (
     <div className="flex max-w-[var(--w-home)] flex-col gap-8">
       {preview.pinnedCollections.length > 0 && (
-        <Group label="Shown first">
+        <Group label="Pinned">
           <SortableList
             ids={preview.pinnedCollections.map((c) => c.id)}
             onReorder={(ids) => home.reorderCollections('pinned', ids)}
@@ -216,9 +185,7 @@ function HomeList({ compact }: { compact: boolean }) {
                   last={i === group.length - 1}
                   groupWord="the pinned collections"
                   onMove={(direction) => home.moveCollection(collection.id, direction)}
-                >
-                  {!compact && <FolderStrip folders={collection.folders} />}
-                </CollectionRow>
+                />
               ))}
             </ol>
           </SortableList>
@@ -240,16 +207,7 @@ function HomeList({ compact }: { compact: boolean }) {
                   last={i === group.length - 1}
                   groupWord="the catalogs"
                   onMove={(direction) => home.moveCatalog(row.id, direction)}
-                >
-                  {!compact && (
-                    <TileRun
-                      tiles={tiles.get(row.id) ?? noTiles()}
-                      width={84}
-                      height={126}
-                      wrap={false}
-                    />
-                  )}
-                </CatalogRow>
+                />
               ))}
             </ol>
           </SortableList>
@@ -257,7 +215,7 @@ function HomeList({ compact }: { compact: boolean }) {
       </Group>
 
       {preview.unpinnedCollections.length > 0 && (
-        <Group label="After the catalogs">
+        <Group label="Collections">
           <SortableList
             ids={preview.unpinnedCollections.map((c) => c.id)}
             onReorder={(ids) => home.reorderCollections('unpinned', ids)}
@@ -270,11 +228,9 @@ function HomeList({ compact }: { compact: boolean }) {
                   position={positionOf('collection', collection.id)}
                   first={i === 0}
                   last={i === group.length - 1}
-                  groupWord="the other collections"
+                  groupWord="the collections"
                   onMove={(direction) => home.moveCollection(collection.id, direction)}
-                >
-                  {!compact && <FolderStrip folders={collection.folders} />}
-                </CollectionRow>
+                />
               ))}
             </ol>
           </SortableList>
@@ -302,10 +258,11 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Grip, ↑, ↓, the position as a yellow sticker, the name and its summary line, a
- * strip of whole tiles, then ⋯. The frame draws the grip, the ↑/↓ pair and the
- * position; a catalog or collection row composes the rest into its four-column
- * grid as a `RowBody` and a `RowMenu`.
+ * One line of the running order: the grip and the position as a yellow
+ * sticker at the left, the name over its summary line, then ↑ and ↓ side by
+ * side and ⋯ at the right, with the stickers on their own line below `sm`. A
+ * catalog or collection row hands in its `RowBody`
+ * as `children` and its ⋯ menu as `menu`.
  */
 function HomeRow({
   id,
@@ -316,6 +273,7 @@ function HomeRow({
   groupWord,
   onMoveUp,
   onMoveDown,
+  menu,
   children,
 }: {
   id: string
@@ -328,6 +286,7 @@ function HomeRow({
   groupWord: string
   onMoveUp: () => void
   onMoveDown: () => void
+  menu: ReactNode
   children: ReactNode
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -338,12 +297,25 @@ function HomeRow({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`border-line grid grid-cols-[32px_32px_minmax(0,1fr)_34px] items-start gap-x-3 border-b py-4 pr-1 pl-0 transition-colors ${
+      className={`border-line grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-1 border-b py-3 pr-1 pl-0 transition-colors sm:gap-x-3 ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >
-      <div className="flex flex-col gap-0.5">
+      <div className="col-start-1 row-start-1 flex items-center gap-2.5">
         <Grip label={`Reorder ${name}, ${ordinal(position)} on your home screen`} sortable={{ attributes, listeners }} />
+        <span className="relative">
+          <span aria-hidden="true" className="pos-sticker">
+            {position}
+          </span>
+          <span className="sr-only">{ordinal(position)} on your home screen</span>
+        </span>
+      </div>
+
+      {children}
+
+      {/* On touch each button's `.tap` box grows to 44px, so the pair spreads
+          apart rather than let one swallow the other's taps. */}
+      <div className="col-start-3 row-start-1 flex gap-0.5 pointer-coarse:gap-3">
         <MoveUpButton
           label={`Move ${name} up${first ? `, already first of ${groupWord}` : ''}`}
           disabled={first}
@@ -356,22 +328,26 @@ function HomeRow({
         />
       </div>
 
-      <span className="relative mt-1">
-        <span aria-hidden="true" className="pos-sticker">
-          {position}
-        </span>
-        <span className="sr-only">{ordinal(position)} on your home screen</span>
-      </span>
-
-      {children}
+      <div className="col-start-4 row-start-1 flex">{menu}</div>
     </li>
   )
 }
 
-/** The row's third grid column: the name, the summary line, and the strip when
- *  one is composed in. */
-function RowBody({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-col gap-1.5 pt-0.5">{children}</div>
+/** The row's name, its stickers and its summary line. From `sm` they are the
+ *  second grid column: the name with its stickers on one wrapping line, over
+ *  the summary. Below it the body dissolves into the row's grid, so the name
+ *  keeps the first line beside ↑, ↓ and ⋯, and the stickers and the summary
+ *  each take a full-width line under them. */
+function RowBody({ name, stickers, detail }: { name: string; stickers: ReactNode; detail: string }) {
+  return (
+    <div className="contents sm:flex sm:min-w-0 sm:flex-col sm:gap-1">
+      <span className="contents sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
+        <span className="min-w-0 truncate text-[16.5px] font-bold sm:max-w-full">{name}</span>
+        <span className="col-[2/-1] flex flex-wrap items-center gap-x-2 gap-y-1 sm:contents">{stickers}</span>
+      </span>
+      <span className="text-dim col-[2/-1] truncate text-[13.5px]">{detail}</span>
+    </div>
+  )
 }
 
 /** One name for the action everywhere, matching the add button's own "Remove
@@ -386,7 +362,7 @@ function RemoveFromHomeItem({ detached, onSelect }: { detached: boolean; onSelec
 }
 
 /** Every flag a Home row carries beside its kind: its Community sticker,
- *  Unpublished, and Push to Nuvio while a push would change what Nuvio holds
+ *  Unpublished, and To push while a push would change what Nuvio holds
  *  for it (`rowStickers`). A catalog and a collection never share an id. */
 function HomeFlags({ id }: { id: string }) {
   const home = useHomeSelection()
@@ -394,15 +370,15 @@ function HomeFlags({ id }: { id: string }) {
   return row ? <SharingStickers stickers={rowStickers(row, home.waitingForPush.has(id))} /> : null
 }
 
+/** A row whose catalog or collection was deleted: it still works on the home
+ *  screen, but there is nothing left to edit. */
 function DetachedTag() {
-  return (
-    <span
-      className="stk stk-danger shrink-0"
-      title="Deleted. It still works here, but you can't edit it."
-    >
-      Unavailable
-    </span>
-  )
+  return <SharingStickers stickers={[DELETED]} />
+}
+
+/** A catalog row's kind, Movies or Series, once the catalog is known. */
+function CatalogKind({ id }: { id: string }) {
+  return <SharingStickers stickers={kindStickers(useHomeSelection().catalogById.get(id))} />
 }
 
 /* -------------------------------------------------------------------------- */
@@ -416,7 +392,6 @@ function CatalogRow({
   last,
   groupWord,
   onMove,
-  children,
 }: {
   row: PreviewRow
   position: number
@@ -424,8 +399,6 @@ function CatalogRow({
   last: boolean
   groupWord: string
   onMove: (direction: -1 | 1) => void
-  /** The row's strip of poster tiles, in Strips mode. */
-  children: ReactNode
 }) {
   const home = useHomeSelection()
   const catalog = home.catalogById.get(row.id)
@@ -444,24 +417,24 @@ function CatalogRow({
       groupWord={groupWord}
       onMoveUp={() => onMove(-1)}
       onMoveDown={() => onMove(1)}
+      menu={
+        <MoreMenu label={row.name}>
+          <MoreMenuItem onSelect={() => home.toggleShowInHome(row.id)}>Move to Discover</MoreMenuItem>
+          <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCatalog(row.id)} />
+        </MoreMenu>
+      }
     >
-      <RowBody>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="max-w-full truncate text-[16.5px] font-bold">{row.name}</span>
-          {catalog && (
-            <span className="stk stk-kind shrink-0">{typeLabel(catalog.type)}</span>
-          )}
-          <HomeFlags id={row.id} />
-          {detached && <DetachedTag />}
-        </span>
-        <span className="text-dim truncate text-[13.5px]">{detail || 'No filters'}</span>
-        <div className="mt-1.5">{children}</div>
-      </RowBody>
-
-      <MoreMenu label={row.name}>
-        <MoreMenuItem onSelect={() => home.toggleShowInHome(row.id)}>Move to Discover</MoreMenuItem>
-        <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCatalog(row.id)} />
-      </MoreMenu>
+      <RowBody
+        name={row.name}
+        stickers={
+          <>
+            <CatalogKind id={row.id} />
+            <HomeFlags id={row.id} />
+            {detached && <DetachedTag />}
+          </>
+        }
+        detail={detail || 'No filters'}
+      />
     </HomeRow>
   )
 }
@@ -473,7 +446,6 @@ function CollectionRow({
   last,
   groupWord,
   onMove,
-  children,
 }: {
   collection: PreviewCollection
   position: number
@@ -481,8 +453,6 @@ function CollectionRow({
   last: boolean
   groupWord: string
   onMove: (direction: -1 | 1) => void
-  /** The collection's strip of folder tiles, in Strips mode. */
-  children: ReactNode
 }) {
   const home = useHomeSelection()
   const detached = home.isDetached(collection.id)
@@ -498,68 +468,25 @@ function CollectionRow({
       groupWord={groupWord}
       onMoveUp={() => onMove(-1)}
       onMoveDown={() => onMove(1)}
+      menu={
+        <MoreMenu label={collection.title}>
+          <PinItem collection={collection} />
+          <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
+        </MoreMenu>
+      }
     >
-      <RowBody>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="max-w-full truncate text-[16.5px] font-bold">{collection.title}</span>
-          <span className="stk stk-kind shrink-0">Collection</span>
-          <HomeFlags id={collection.id} />
-          {detached && <DetachedTag />}
-        </span>
-        <span className="text-dim truncate text-[13.5px]">{detail}</span>
-        <div className="mt-1.5">{children}</div>
-      </RowBody>
-
-      <MoreMenu label={collection.title}>
-        <ShowFirstItem collection={collection} />
-        <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
-      </MoreMenu>
+      <RowBody
+        name={collection.title}
+        stickers={
+          <>
+            <span className="stk stk-neutral shrink-0">Collection</span>
+            <HomeFlags id={collection.id} />
+            {detached && <DetachedTag />}
+          </>
+        }
+        detail={detail}
+      />
     </HomeRow>
-  )
-}
-
-/** A collection's strip: its folders at the catalog rows' 126px poster height,
- *  each as wide as its own tile shape. */
-function FolderStrip({ folders }: { folders: PreviewFolder[] }) {
-  if (folders.length === 0) return null
-  return (
-    <div className="flex gap-2 overflow-hidden">
-      {folders.map((folder) => (
-        <FolderStripTile key={folder.id} folder={folder} />
-      ))}
-    </div>
-  )
-}
-
-function FolderStripTile({ folder }: { folder: PreviewFolder }) {
-  const height = 126
-  const width = height * TILE_ASPECT[folder.tileShape]
-  const name = folder.title || 'Untitled folder'
-
-  return (
-    <span
-      style={{ width: `${width}px`, height: `${height}px` }}
-      title={name}
-      className="bg-raised-hi relative grid shrink-0 place-items-center overflow-hidden rounded-md px-1"
-    >
-      {folder.coverEmoji ? (
-        <span aria-hidden="true" className="text-[18px] leading-none">
-          {folder.coverEmoji}
-        </span>
-      ) : (
-        <span aria-hidden="true" className="type-data text-dimmer text-center text-[10px] leading-tight">
-          {name}
-        </span>
-      )}
-      {folder.coverImageUrl && (
-        <img
-          src={folder.coverImageUrl}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
-    </span>
   )
 }
 
@@ -574,38 +501,40 @@ function FolderStripTile({ folder }: { folder: PreviewFolder }) {
  * enforces this by marking the catalog's genre filter `isRequired`.
  */
 function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
-  const home = useHomeSelection()
-
   return (
     <section className="flex flex-col gap-2">
       <div className="border-line-hi border-b pb-2.5">
         <h2 className="text-ink m-0 text-[16px] font-bold">Not on home</h2>
       </div>
       <ul className="flex flex-col">
-        {rows.map((row) => {
-          const detached = home.isDetached(row.id)
-          return (
-            <li
-              key={row.id}
-              className="border-line flex items-center justify-between gap-3 border-b py-3"
-            >
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <span className="max-w-full truncate text-[15px] font-semibold">{row.name}</span>
-                <HomeFlags id={row.id} />
-                {detached && <DetachedTag />}
-              </div>
-              <button
-                type="button"
-                onClick={() => home.toggleShowInHome(row.id)}
-                className="btn-secondary btn-sm shrink-0"
-              >
-                Move to home
-              </button>
-            </li>
-          )
-        })}
+        {rows.map((row) => (
+          <TrayRow key={row.id} row={row} />
+        ))}
       </ul>
     </section>
+  )
+}
+
+/** One Discover-only catalog: its name with its kind and flags, and Move to
+ *  home. */
+function TrayRow({ row }: { row: PreviewRow }) {
+  const home = useHomeSelection()
+  return (
+    <li className="border-line flex items-center justify-between gap-3 border-b py-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="max-w-full truncate text-[15px] font-semibold">{row.name}</span>
+        <CatalogKind id={row.id} />
+        <HomeFlags id={row.id} />
+        {home.isDetached(row.id) && <DetachedTag />}
+      </div>
+      <button
+        type="button"
+        onClick={() => home.toggleShowInHome(row.id)}
+        className="btn-secondary btn-sm shrink-0"
+      >
+        Move to home
+      </button>
+    </li>
   )
 }
 
@@ -613,9 +542,9 @@ function EmptyBlock({ children }: { children: ReactNode }) {
   return <p className="text-dim m-0 py-3 text-[14px]">{children}</p>
 }
 
-/** A collection row's Show first: a pending edit, like Move to Discover for a
- *  catalog, that moves the row to the other collection group until Push. */
-function ShowFirstItem({ collection }: { collection: PreviewCollection }) {
+/** A collection row's Pin or Unpin: a pending edit, like Move to Discover for
+ *  a catalog, that moves the row to the other collection group until Push. */
+function PinItem({ collection }: { collection: PreviewCollection }) {
   const home = useHomeEdits()
   return (
     <MoreMenuItem onSelect={() => home.togglePinToTop(collection.id)}>

@@ -66,22 +66,22 @@ describe('useWorkspaceSharing', () => {
     expect(screen.getByTestId('badges')).toBeEmptyDOMElement()
   })
 
-  it('flags Push to Nuvio beside the Community sticker while a push would change the row', () => {
+  it('flags To push beside the Community sticker while a push would change the row', () => {
     const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
     const row = catalog({ id: 'c1', name: 'Horror', publication: live })
     renderHarness({ catalog: row, waiting: ['c1'] }, {})
     expect(within(screen.getByTestId('badges')).getAllByText(/./).map((s) => s.textContent)).toEqual([
       'Published',
-      'Push to Nuvio',
+      'To push',
     ])
     cleanup()
     renderHarness({ catalog: row, waiting: ['other'] }, {})
-    expect(screen.queryByText('Push to Nuvio')).toBeNull()
+    expect(screen.queryByText('To push')).toBeNull()
   })
 
-  it('flags a collection Push to Nuvio when a catalog scoped to it changed', () => {
+  it('flags a collection To push when a catalog scoped to it changed', () => {
     renderHarness({ collection: collection({ id: 'col1', title: 'Night' }), waiting: ['col1'] }, {})
-    expect(screen.getByText('Push to Nuvio')).toBeInTheDocument()
+    expect(screen.getByText('To push')).toBeInTheDocument()
   })
 
   it('publishes a catalog through the publish dialog', async () => {
@@ -127,7 +127,7 @@ describe('useWorkspaceSharing', () => {
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: changed }) },
       { 'POST /api/p/1/catalogs/c1/publish': () => failWith(502, 'TMDB is unreachable') },
     )
-    expect(screen.getByText('Publish changes')).toBeInTheDocument()
+    expect(screen.getByText('To publish')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Publish update…' }))
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Publish update' }))
     expect(await within(dialog()).findByRole('alert')).toHaveTextContent('TMDB is unreachable')

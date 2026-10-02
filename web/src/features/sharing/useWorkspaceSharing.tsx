@@ -42,7 +42,7 @@ interface WorkspaceSharingOptions {
 
 /**
  * The workspace's sharing: every flag an own row's editor shows (its Community
- * sticker and Push to Nuvio) and its Community setting, with the dialogs it opens: publish and unpublish. A row
+ * sticker and To push) and its Community setting, with the dialogs it opens: publish and unpublish. A row
  * added from Community has no editor, so none of this applies to it
  * (`FromCommunityView`). Every sharing call refreshes the library and
  * Community (`useSharingMutations`), and says what it did through `onToast`.

@@ -89,7 +89,7 @@ erDiagram
     uuid id PK
     string title
     uuid owner_id FK
-    bool pin_to_top "Show first, as last pushed; only push writes it"
+    bool pin_to_top "Pin, as last pushed; only push writes it"
     string view_mode
     bool show_all_tab
     string backdrop_image_url
@@ -333,7 +333,7 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   remains the pre-push validation/selection-editor view; only the manifest needs the wider
   published set. The addon's catalog route checks that same set for the one catalog it is asked
   for (`ServedCatalog`), so it serves exactly what the manifest lists.
-- **`collections.pin_to_top` (Show first) is written only by push**, from its selection's entry
+- **`collections.pin_to_top` (Pin) is written only by push**, from its selection's entry
   for each collection it puts on Home (`saveCollectionSelectionTx`), in the same statement as
   `home_sort_order`. A collection save never writes it (the form has no pin), a new collection
   (a create, subscribe, duplicate, Duplicate or import) starts unpinned, and one push leaves off Home
@@ -572,7 +572,7 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   ahead of the write, over the caller's own subscriptions): the copy keeps its subscription, its
   `sub_key`s and its ids. Update shares the collection update core without the refusal. A
   publish of a subscribed copy is `ErrInvalidInput` too: only its publisher changes or
-  publishes it. Its home order, show-in-home and Show first change through push, like any
+  publishes it. Its home order, show-in-home and pin change through push, like any
   row's, and it can be deleted, which removes its subscription by cascade.
   - **The copy's row** carries `subscription {publication_id, update_available, unpublished}`.
     `update_available` is true while the publication is live and the subscription's
@@ -620,7 +620,7 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     order of the folders, each as an item.
 
   The list is empty exactly when the two snapshots have the same content hash
-  (`TestDiffIsEmptyExactlyWhenTheContentHashMatches`), so a row flagged Publish changes or Update
+  (`TestDiffIsEmptyExactlyWhenTheContentHashMatches`), so a row flagged To publish or Update
   available always has something to show, and an edit and its undo has nothing. The SPA puts the
   items into words (`docs/frontend.md`, *Sharing*).
 - **Duplicate** (`DuplicatePublication`) is a subscribe without the subscription: an editable copy with

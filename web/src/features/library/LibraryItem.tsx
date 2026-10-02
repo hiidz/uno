@@ -34,9 +34,9 @@ const KIND_LABEL: Record<RowKind, string> = {
  * editor's own sticky header carries them there instead.
  *
  * Every row in the rail is yours, so the one sticker left to state is about
- * Community (`railStickers`), outlined pink: Published, then Publish changes
- * once it has been edited since; or From Community on a row added from there,
- * then Update available, the one filled sticker, while its publisher's newer
+ * Community (`railStickers`), in pink: Published, outlined, then To publish,
+ * filled, once it has been edited since; or From Community, outlined, on a row
+ * added from there, then Update available, filled, while its publisher's newer
  * version waits. What waits for a push is the pending count's to say.
  */
 export function LibraryItem({
@@ -98,7 +98,7 @@ export function LibraryItem({
           </span>
           {summary && <span className="text-dim truncate text-[13px]">{summary}</span>}
           <span aria-hidden="true" className="mt-0.5 flex flex-wrap gap-1.5">
-            <span className="stk stk-kind">{kind === 'collection' ? 'Collection' : typeLabel(kind)}</span>
+            <span className="stk stk-neutral">{kind === 'collection' ? 'Collection' : typeLabel(kind)}</span>
             <SharingStickers stickers={stickers} />
           </span>
         </div>

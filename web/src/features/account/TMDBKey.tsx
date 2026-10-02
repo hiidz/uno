@@ -181,7 +181,7 @@ export function TMDBKeyGate({ step }: { step: KeyStep }) {
 }
 
 /**
- * The saved key, under the profiles: set, its last four characters, and
+ * The saved key, under the profiles: its last four characters, and
  * Replace and Remove. Replace opens the same form in place.
  */
 export function TMDBKeyShelf({ step }: { step: KeyStep }) {
@@ -195,7 +195,6 @@ export function TMDBKeyShelf({ step }: { step: KeyStep }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Icon icon={KeyRound} className="text-dim" />
         <span className="text-[15px] font-semibold">TMDB key</span>
-        <span className="stk stk-kind">Set</span>
         <span className="type-data text-dim text-[14px]">ends in {step.last4}</span>
         <span hidden={replacing} className="ml-auto flex gap-1">
           <button type="button" className="btn-secondary btn-sm" onClick={() => setReplacing(true)}>

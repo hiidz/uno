@@ -203,7 +203,7 @@ export function CollectionEditor({
   usedInFolders: (catalogID: string) => number
   /** Its sharing setting: its Sharing row, or a copy's From Community row. */
   sharingRow?: ReactNode
-  /** Its sharing stickers, on the sign. */
+  /** Its sharing stickers, on the sign beside the kind. */
   sharingBadges?: ReactNode
 }) {
   const baseline = initial
@@ -524,7 +524,12 @@ export function CollectionEditor({
     <EditorShell
       purpose="Edit collection"
       tone="collection"
-      badges={sharingBadges}
+      badges={
+        <>
+          <span className="stk stk-neutral">Collection</span>
+          {sharingBadges}
+        </>
+      }
       title={state.title.trim() || 'Untitled collection'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}

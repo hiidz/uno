@@ -4,8 +4,7 @@ import { useRecipesTiles, type TileRecipe } from '@/features/preview/useRecipesT
 import { useHomeSelection } from './useHomeSelection'
 
 /**
- * Tiles for the Home pane's catalog rows — the List view's strips and the
- * Preview's rows.
+ * Tiles for the Home pane's catalog rows in the Preview.
  *
  * Resolution only: `ids` are catalog ids, and the recipe behind each is looked
  * up in `catalogById`, which merges the library with the selection response. An

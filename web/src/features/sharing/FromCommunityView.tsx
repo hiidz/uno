@@ -15,7 +15,7 @@ import { SharingStickers } from './SharingStickers'
  *  fetched for `profileIndex`. */
 export interface FromCommunityActions {
   profileIndex: number
-  /** A push would change what Nuvio holds for this row: the sign says Push to Nuvio. */
+  /** A push would change what Nuvio holds for this row: the sign says To push. */
   waitingForPush: boolean
   onClose: () => void
   onDuplicate?: () => void

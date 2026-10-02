@@ -42,7 +42,7 @@ export interface HomeSelection extends HomeEdits {
   collectionById: ReadonlyMap<string, Collection>
 
   /** The ids of the rows a push would change in Nuvio, which the rows flag
-   *  Push to Nuvio (`waitingIDs`). */
+   *  To push (`waitingIDs`). */
   waitingForPush: ReadonlySet<string>
 
   /** True when a selected item is not in the library, which the lists can show

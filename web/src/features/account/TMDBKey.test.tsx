@@ -95,11 +95,10 @@ describe('TMDBKeyGate', () => {
 describe('TMDBKeyShelf', () => {
   const set: KeyStep = { kind: 'set', last4: 'cdef' }
 
-  it('shows only that a key is set and its last four, and opens a replacement in place', async () => {
+  it('shows only the saved key’s last four, and opens a replacement in place', async () => {
     api.saveTMDBKey.mockResolvedValue({ set: true, last4: '9999' })
     renderWith(<TMDBKeyShelf step={set} />)
     const shelf = screen.getByRole('region', { name: 'Your TMDB key' })
-    expect(within(shelf).getByText('Set')).toBeInTheDocument()
     expect(within(shelf).getByText('ends in cdef')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }))

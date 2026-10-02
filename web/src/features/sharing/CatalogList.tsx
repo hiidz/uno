@@ -1,7 +1,7 @@
-import { STICKER_CLASS, type SharingSticker } from './sharingState'
+import { NEUTRAL, stickerClass, type SharingSticker } from './sharingState'
 
 /** One row of a `CatalogList`: a catalog's name over its recipe line, with
- *  an optional sticker, a quiet kind sticker unless `tone` says otherwise. */
+ *  an optional sticker, a neutral one unless `tone` says otherwise. */
 export interface CatalogListItem {
   key: string
   name: string
@@ -30,5 +30,5 @@ export function CatalogList({ items }: { items: CatalogListItem[] }) {
 
 function ItemSticker({ item }: { item: CatalogListItem }) {
   if (!item.sticker) return null
-  return <span className={STICKER_CLASS[item.tone ?? 'quiet']}>{item.sticker}</span>
+  return <span className={stickerClass(item.tone ?? NEUTRAL)}>{item.sticker}</span>
 }

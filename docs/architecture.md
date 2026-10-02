@@ -228,7 +228,7 @@ Route-semantics facts the client has to honour:
     the write, over the caller's own subscriptions, so another profile's copy still answers
     404). `POST .../community/{id}/update` is the only writer of a copy; there is no route that
     ends a subscription short of deleting the copy. Placement is not content: Home order, Home
-    or Discover and Show first (`pin_to_top`) all travel in push's selection (*Push* below), for
+    or Discover and the pin (`pin_to_top`) all travel in push's selection (*Push* below), for
     a copy as for any row.
   - Another profile's row answers 404 on all of them, like one that doesn't exist.
 - **Duplicating a collection you own is one atomic server call, not a client-built copy.**
@@ -756,7 +756,7 @@ when anything here disagrees with it. The facts Uno's integration leans on:
 `{collections: [{collection_id, pin_to_top}]}`, each in Home order. The body is decoded strictly
 (`decodeStrictJSON`): a field it doesn't have is a 400 before anything reaches Nuvio. A lenient
 read would take a body in an older shape, from a tab loaded before a deploy, as an empty
-selection, and a full-replace push of that clears every Uno collection. Show first (`pin_to_top`)
+selection, and a full-replace push of that clears every Uno collection. The pin (`pin_to_top`)
 is part of the selection, not of a collection save: push builds each collection it sends with
 its entry's pin and stores that pin in its local write, which is the only place `pin_to_top` is
 written. A collection push leaves off Home keeps its last pin. Response, past auth and

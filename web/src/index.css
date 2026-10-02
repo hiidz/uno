@@ -123,9 +123,9 @@
        window allows, and a row of controls spread across 1100px stops being a
        row you can read across. */
     --w-form: 44rem;
-    /* The Home list's own column: wider than a form, because its rows are
-       poster strips and the front shelf should fill the pane rather than end
-       a third of the way across it. */
+    /* The Home list's own column: wider than a form, because the Preview's
+       rows and the running order should fill the pane rather than end a third
+       of the way across it. */
     --w-home: 68rem;
     /* The catalog editor: the form's column, the 40px gutter, and a docked
        results column up to 360px beside it. */
@@ -316,13 +316,13 @@
         }
     }
 
-    /* Stickers: the small printed labels on a row. Filled means act now,
-       outline means information. Kind is an outline in the shelf's own line;
-       Published, Publish changes and From Community are outlined in Community
-       pink, because that is where those rows turn up; Update available is the
-       one filled sticker, in the same pink; Push to Nuvio is outlined in Nuvio
-       yellow, because it is bound for Nuvio; Unavailable is outlined in danger
-       red. */
+    /* Stickers: the small printed pills on a row, stating a state in words.
+       One hue class names where the fact points — `.stk-neutral` a plain fact
+       like the kind, in the shelf's own line; `.stk-community` pink, where
+       Community turns it up; `.stk-nuvio` yellow, bound for Nuvio;
+       `.stk-danger` red. An outline only states; `.stk-fill` fills the pill in
+       its hue while it waits on you, until one action clears it (To publish,
+       To push, Update available). */
     .stk {
         display: inline-flex;
         align-items: center;
@@ -337,39 +337,41 @@
         text-transform: uppercase;
         white-space: nowrap;
     }
-    /* On a sign, a sticker is printed in sign ink, lettered in the sign's
-       own colour (the Community stickers keep their pink, Push to Nuvio its
-       yellow). */
-    .sign .stk {
-        background: var(--uno-sign-ink);
-        color: var(--accent);
-        box-shadow: none;
-    }
-    .sign .stk-community {
-        color: var(--uno-community);
-    }
-    .sign .stk-push {
-        color: var(--uno-nuvio-yellow);
-    }
-    .stk-kind {
+    .stk-neutral {
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
         color: var(--uno-dim);
     }
     .stk-community {
-        box-shadow: inset 0 0 0 1.5px var(--uno-community);
-        color: var(--uno-community);
+        --stk-hue: var(--uno-community);
     }
-    .stk-update {
-        background: var(--uno-community);
-        color: var(--uno-sign-ink);
-    }
-    .stk-push {
-        box-shadow: inset 0 0 0 1.5px var(--uno-nuvio-yellow);
-        color: var(--uno-nuvio-yellow);
+    .stk-nuvio {
+        --stk-hue: var(--uno-nuvio-yellow);
     }
     .stk-danger {
-        box-shadow: inset 0 0 0 1.5px var(--uno-danger);
-        color: var(--uno-danger);
+        --stk-hue: var(--uno-danger);
+    }
+    .stk-community,
+    .stk-nuvio,
+    .stk-danger {
+        box-shadow: inset 0 0 0 1.5px var(--stk-hue);
+        color: var(--stk-hue);
+    }
+    .stk-fill {
+        background: var(--stk-hue);
+        color: var(--uno-sign-ink);
+        box-shadow: none;
+    }
+    /* On a sign, the pills are printed in sign ink: an outline pill is a
+       sign-ink outline lettered in sign ink, and a filled one is a sign-ink
+       pill lettered in its own hue. */
+    .sign .stk {
+        box-shadow: inset 0 0 0 1.5px var(--uno-sign-ink);
+        color: var(--uno-sign-ink);
+    }
+    .sign .stk-fill {
+        background: var(--uno-sign-ink);
+        color: var(--stk-hue);
+        box-shadow: none;
     }
 
     /* The home-screen toggle on a row. On the home screen it is a yellow price sticker,

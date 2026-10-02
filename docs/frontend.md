@@ -32,7 +32,7 @@ while `web/src/features/catalogs/fields.tsx` re-exports them and keeps `NumberIn
 editors sit in, so a catalog and a collection get the same header, dirty state, footer, and
 save/discard behaviour from one place. `web/src/features/preview/` holds the preview model
 (`model.ts`), the tile queries, and the Figtree-styled tiles the catalog editor's results panel
-and the Home list's strips draw. The preview rows — the Home pane's Preview tab, the collection
+draws. The preview rows — the Home pane's Preview tab, the collection
 editor's Preview panel and Community's collection preview — are `web/src/features/home/previewScreen.tsx`:
 Nuvio's layout (scrolling rows, captions, folder tiles that open folder pages) in the same Figtree
 and tonal steps as the rest of the app, with no note pinned between the rows (see "Home pane —
@@ -442,9 +442,10 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   separate queries, and a row the selection returns is live in the user's Nuvio whatever the
   library says. The server refuses to delete a row Nuvio holds, so a selected row missing from
   the library is a transient case, handled defensively rather than expected. Such rows are marked
-  "not in library": they work, but removing them is one-way.
+  "not in library" and carry the red Deleted sticker: they work, but removing them is one-way.
 - **List groups in the same three bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
-  a separate derivation): pinned collections, then home-shown catalogs, then unpinned collections,
+  a separate derivation), under the headings Pinned, Catalogs and Collections: pinned collections,
+  then home-shown catalogs, then unpinned collections,
   numbered with one ordinal straight through all three — a row's number is its place in Nuvio. A
   reorder (drag, keyboard, or a row's own ↑/↓) only ever moves a row within its own band;
   `HomeSelectionContext`'s `reorderCollections`/`reorderCatalogs`/`moveCollection`/`moveCatalog`
@@ -456,20 +457,20 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   render outside the numbered bands entirely, in their own "Not on home" tray (no drag, no
   ordinal — they have no place in Nuvio's order); the flip itself is a row's ⋯ menu
   ("Move to Discover" / the tray's "Move to home"), not a dedicated toggle control.
-- **Show first (`pin_to_top`) is a pending edit here, like Home or Discover**, and nowhere else:
-  a collection row's ⋯ menu offers "Show first" / "Don’t show first" (`showFirstAction`), which
+- **Pin (`pin_to_top`) is a pending edit here, like Home or Discover**, and nowhere else:
+  a collection row's ⋯ menu offers "Pin" / "Unpin" (`showFirstAction`), which
   flips the entry's `pinToTop` in `HomeState.collections` (`{id, pinToTop}`, as `catalogs` holds
   `{id, showInHome}`) and moves the row to the other collection band at its place in the
   selection order. The baseline takes each collection's stored pin, the one it was last pushed
   with; a collection added to the home screen starts from its stored pin too. Push sends the pins
-  in its selection and is the only thing that writes them — the collection editor has no Show
-  first. The band-aware edits (`reorderCollectionBand`, `moveCollectionInBand`,
+  in its selection and is the only thing that writes them — the collection editor has no Pin.
+  The band-aware edits (`reorderCollectionBand`, `moveCollectionInBand`,
   `togglePinToTop` in `pending.ts`) read each row's pin from the state they edit.
 - **The pending count is the list of changes' length, not a separate tally.** `changes.ts`'s
   `computeHomeChanges` diffs `baseline` against `current` into named, per-row sentences ("Moved
   “X” from 5th to 3rd"), using a longest-increasing-subsequence pass per band so a drag reports
-  only the row that actually moved. Each state carries its own pins, so a collection whose Show
-  first changed is reported once, as "Showing “X” first" or "No longer showing “X” first"
+  only the row that actually moved. Each state carries its own pins, so a collection whose pin
+  changed is reported once, as "Pinned “X”" or "Unpinned “X”"
   (`pinFlips`), and left out of the moves: it changed band, which a per-band pass would
   otherwise read as moving it and every row it passed. `HomeSelectionContext.pendingCount` is `changes.length`; the
   header's pending indicator and the navigation guard's dialog both read it, and the indicator
@@ -534,13 +535,13 @@ come from `POST /api/catalogs/preview`. The derivation lives in
 **The model being previewed.** *Home* is **one page** in three bands:
 
 ```
-pinned collection rows      Show first (the pending pin) hoists above everything
+pinned collection rows      Pin (the pending pin) hoists above everything
 catalog rows                tiles = content
 unpinned collection rows    tiles = folders
 ```
 
 The bands follow the pending pins in `HomeState.collections`, not the pins last pushed, so a
-Show first flipped in the List view moves the row in Preview at once.
+pin flipped in the List view moves the row in Preview at once.
 
 A collection is **one row whose tiles are its folders**, drawn from folder metadata
 (`cover_emoji`, `cover_image_url`, `title`) at each folder's own `tile_shape`. No TMDB content is
@@ -833,7 +834,7 @@ button.
 - **The Community setting is the same `SharingRow` as the catalog editor's** (see "Sharing" below), after the
   title. The "All" tab is a `Segmented`, greyed (DESIGN.md's "Greyed" segmented state,
   `Segmented`'s `disabled` prop) rather than hidden while the view mode isn't Tabbed Grids,
-  keeping its value for when it switches back. There is no Show first here: it is the Home pane's
+  keeping its value for when it switches back. There is no Pin here: it is the Home pane's
   pending edit, which push writes (see "Home pane — List view").
 - **The Preview panel is a working client screen, docked beside the form.** The collection editor has
   its own layout (`.ed.ed-preview`, `EditorShell`'s `docked="preview"`, capped at `--w-editor-preview`): the form keeps
@@ -865,7 +866,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 - **The Community setting** (`SharingRow.tsx`, labelled Community) sits where a listed catalog's
   or a collection's editor has its settings, after the name. It says where the row stands
   (`ownSharing` over the row's `publication`): Private; Published (also once the saved row differs
-  from what was published, `changed_since_publish`, which the sign's Publish changes sticker
+  from what was published, `changed_since_publish`, which the sign's To publish sticker
   says); or "Unpublished. People who added it keep it." after Unpublish. Its
   buttons are quiet — Save stays the editor's one primary: Publish…, Publish update… or Publish
   again…, which open the publish dialog, and Unpublish, which asks first ("Community stops listing
@@ -882,7 +883,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   Community setting says Publish update… — a **Since you last published** list comes first, under
   its line: what every follower will be offered (`SinceLastPublished`, from
   `GET .../changes-since-publish`, fetched as the dialog opens). It is also what explains a
-  collection flagged Publish changes because a library catalog it uses was edited. Publishing a row
+  collection flagged To publish because a library catalog it uses was edited. Publishing a row
   never published, or again after Unpublish, shows no list, and neither does the editor. A catalog added from Community carries the From Community sticker
   (`FROM_COMMUNITY`, the one `sharingState.ts` draws it from), so it reads as someone else's catalog being
   published as it stands. Its heading is "Publish “X”?" (or "Publish your changes to “X”?"), its
@@ -891,22 +892,23 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   offered this version. Until then they keep the one they have."). The server's refusal (a 400, or a 502 when TMDB can't check a recipe)
   shows in the dialog.
 - **Stickers and flags** (`sharingState.ts` is the one place a row turns into them; `SharingStickers`
-  draws them). Flags are plain stickers, never buttons, and each says where a row is behind:
-  **Push to Nuvio** (a push would change what Nuvio holds for it), **Publish changes** (an own
-  published row's saved version differs from what it published) and **Update available** (the
+  draws them). Flags are plain stickers, never buttons, and each names a state, never a verb, where
+  a row is behind: **To push** (a push would change what Nuvio holds for it), **To publish** (an
+  own published row's saved version differs from what it published) and **Update available** (the
   publisher of a row added from Community published a newer version). Only the incoming one says
   "update". A row carries **one Community sticker**, changing with its state: an own row reads
-  Published, then Publish changes; a row added from Community reads From Community, then Update
-  available. Filled means act now, outline means information: Update available is the only filled
-  sticker (pink); Published, Publish changes and From Community are pink outlines; Push to Nuvio
-  is a yellow outline; Unpublished, beside From Community once its publisher unpublished the row,
-  is the dim outline.
+  Published, then To publish; a row added from Community reads From Community, then Update
+  available. A sticker's `tone` is `{hue, fill}` (DESIGN.md's *Sticker Rule*), drawn by
+  `stickerClass` as `.stk` with one hue class and `.stk-fill`: a pill is filled only while it
+  waits on you, until one action clears it — To publish and Update available (pink), To push
+  (yellow); Published, From Community and Unpublished (beside From Community once its publisher
+  unpublished the row) are pink outlines.
   - **Where they show:** the library rail shows the kind and the Community sticker only
-    (`railStickers`) — never Push to Nuvio, which the pending count already covers. An editor's
+    (`railStickers`) — never To push, which the pending count already covers. An editor's
     sign, the From Community view's sign and the Home pane's rows, the "Not on home" tray's included, show every flag (`rowStickers`,
     and `viewStickers` for the view). Below `sm` the sign hides its stickers, so `EditorShell`
     heads the body with them.
-  - **Push to Nuvio comes from the waiting list** (`GET .../push/pending`, `waitingIDs`: the
+  - **To push comes from the waiting list** (`GET .../push/pending`, `waitingIDs`: the
     `added` and `changed` rows, never `removed`), for catalogs and collections alike.
     `usePushWaiting` reads it for the Workspace, `HomeSelection.waitingForPush` for the Home pane,
     both from the one query the list of changes reads. A catalog scoped to a collection has no
@@ -916,11 +918,11 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   routes a library row that has a `subscription` to `CatalogFromCommunity` or
   `CollectionFromCommunity` instead of an editor, from the live library row, so an applied Update
   shows at once. Only the row's publisher changes it, so nothing in the view can be unsaved and
-  closing never asks. Its place on the home screen, Show first included, is the Home pane's, as
+  closing never asks. Its place on the home screen, its pin included, is the Home pane's, as
   for any row.
   - **Frame:** `EditorShell`, as for any row: the region's sign (tangerine catalog, green
     collection) with the From Community sticker (and Unpublished once its publisher
-    unpublished it, Push to Nuvio while a push would change what Nuvio holds for it), ×, Escape,
+    unpublished it, To push while a push would change what Nuvio holds for it), ×, Escape,
     the phone Library button and the phone header's Duplicate and Delete. The sign says From
     Community in place of Update available, since the Update… button says it. Below `sm` the sign
     hides stickers, so `EditorShell` heads the body with them.
@@ -1131,12 +1133,13 @@ widest and heaviest is sign lettering only. Both ship as Fontsource packages
 that carries Archivo's width axis), not the Google Fonts CDN: the build is `go:embed`'d, and the CSP allows
 fonts only from `'self'` and `data:`.
 
-**Stickers.** Small printed labels state a row's facts in words: its kind (`.stk-kind`), Published,
-Publish changes and From Community (`.stk-community`, outlined in community pink, because
-Community is where those rows turn up), Update available (`.stk-update`, the one filled sticker,
-community pink: a publisher's newer version waits for that row), Push to Nuvio (`.stk-push`,
-outlined in Nuvio yellow), Unpublished and the TMDB key's Set (the dim `.stk-kind` outline), and
-Unavailable (`.stk-danger`). A library row's home-screen toggle is `.home-sticker`: a dashed empty
+**Stickers.** Small printed pills state a row's states in words, following DESIGN.md's *Sticker
+Rule*: every pill is `.stk` plus one hue — `.stk-neutral` (the kind: Movies, Series, Collection),
+`.stk-community` (Published, From Community, Unpublished, To publish, Update available, because
+Community is where those rows turn up), `.stk-nuvio` (To push, bound for Nuvio) and `.stk-danger`
+(Deleted) — and `.stk-fill` while it waits on you, until one action clears it (To publish, Update
+available, To push); every other pill is an outline. On a sign an outline pill turns sign ink and
+a filled one becomes a sign-ink pill lettered in its hue. A library row's home-screen toggle is `.home-sticker`: a dashed empty
 circle while it's off the home screen, a yellow ON NUVIO price sticker (two lines, ON over NUVIO)
 once it's on. A home row's position is a yellow `.pos-sticker`, read out as "3rd on your home
 screen"; the pending count and a profile's slot

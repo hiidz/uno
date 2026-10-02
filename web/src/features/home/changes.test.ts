@@ -100,34 +100,34 @@ describe('computeHomeChanges', () => {
     })
   })
 
-  describe('Show first', () => {
-    it('reports turning it on as its own line, not as a move of the row or of those it passed', () => {
+  describe('Pin', () => {
+    it('reports pinning as its own line, not as a move of the row or of those it passed', () => {
       expect(changes(home(shown('a'), ['x', 'y']), home(shown('a'), [first('x'), 'y']))).toEqual([
-        'Showing “X-ray” first',
+        'Pinned “X-ray”',
       ])
     })
 
-    it('reports turning it off', () => {
+    it('reports unpinning', () => {
       expect(changes(home(shown('a'), ['p', 'x']), home(shown('a'), [notFirst('p'), 'x']))).toEqual([
-        'No longer showing “Pinned” first',
+        'Unpinned “Pinned”',
       ])
     })
 
     it('still reports a real move inside a group beside a flip', () => {
       expect(
         changes(home(shown('a'), ['p', 'x', 'y']), home(shown('a'), [notFirst('p'), 'y', 'x'])),
-      ).toEqual(['No longer showing “Pinned” first', 'Moved “Yankee” from 4th to 3rd'])
+      ).toEqual(['Unpinned “Pinned”', 'Moved “Yankee” from 4th to 3rd'])
     })
 
-    it('reports a collection added already shown first only as added, at its place among the first', () => {
+    it('reports a collection added already pinned only as added, at its place among the pinned', () => {
       expect(changes(home(shown('a')), home(shown('a'), [first('x')]))).toEqual([
         'Added “X-ray”, 1st on your home screen',
       ])
     })
 
     it('names the row action by the edit it makes', () => {
-      expect(showFirstAction(false)).toBe('Show first')
-      expect(showFirstAction(true)).toBe('Don’t show first')
+      expect(showFirstAction(false)).toBe('Pin')
+      expect(showFirstAction(true)).toBe('Unpin')
     })
   })
 

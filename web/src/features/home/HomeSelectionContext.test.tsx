@@ -177,7 +177,7 @@ describe('HomeSelectionProvider', () => {
     ])
   })
 
-  it('starts each collection from the pin it was pushed with, and holds Show first as a pending edit', async () => {
+  it('starts each collection from the pin it was pushed with, and holds its pin as a pending edit', async () => {
     api.fetchCollectionSelection.mockResolvedValue([
       collection({ id: 'x', title: 'X-ray', pin_to_top: true }),
       collection({ id: 'y', title: 'Yankee' }),
@@ -201,7 +201,7 @@ describe('HomeSelectionProvider', () => {
     ])
     expect(result.current.changes.map((c) => c.text)).toEqual([
       'Added “Zulu”, 3rd on your home screen',
-      'Showing “Yankee” first',
+      'Pinned “Yankee”',
     ])
 
     act(() => result.current.moveCollection('z', -1))

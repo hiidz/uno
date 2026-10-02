@@ -77,12 +77,12 @@ describe('CatalogFromCommunity', () => {
     expect(screen.getAllByText('From Community').length).toBeGreaterThan(0)
   })
 
-  it('flags Push to Nuvio while a push would change what Nuvio holds for it', () => {
+  it('flags To push while a push would change what Nuvio holds for it', () => {
     renderCatalog()
-    expect(screen.queryByText('Push to Nuvio')).toBeNull()
+    expect(screen.queryByText('To push')).toBeNull()
     cleanup()
     renderCatalog({ waitingForPush: true })
-    expect(screen.getAllByText('Push to Nuvio').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('To push').length).toBeGreaterThan(0)
   })
 
   it('duplicates to edit, in the region’s colour while no update waits', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { communityItem } from '@/test/fixtures'
 import {
   DEFAULT_FILTERS,
+  itemKind,
   itemMeta,
   itemSummary,
   ofKind,
@@ -71,12 +72,17 @@ describe('visibleItems', () => {
 })
 
 describe('row words', () => {
-  it('summarizes a catalog by type and recipe, and a collection by size', () => {
-    expect(itemSummary(communityItem(), 'Most popular · Horror')).toBe('Movies · Most popular · Horror')
-    expect(itemSummary(communityItem(), '')).toBe('Movies')
+  it('summarizes a catalog by its recipe, and a collection by size', () => {
+    expect(itemSummary(communityItem(), 'Most popular · Horror')).toBe('Most popular · Horror')
+    expect(itemSummary(communityItem(), '')).toBe('No filters')
     expect(
       itemSummary(communityItem({ kind: 'collection', catalog: null, folder_count: 1, catalog_count: 3 }), ''),
     ).toBe('1 folder · 3 catalogs')
+  })
+
+  it('names a catalog’s kind by its type, and a collection as a collection', () => {
+    expect(itemKind(communityItem())).toBe('Movies')
+    expect(itemKind(communityItem({ kind: 'collection', catalog: null }))).toBe('Collection')
   })
 
   it('says how many took it and when it last changed', () => {
