@@ -371,7 +371,7 @@ Other decisions worth keeping:
   still in the payload. Services are stored pipe-joined (`8|337`), which TMDB reads as "on any of
   these"; a comma would mean "on every one of these at once", which is almost never what picking
   several services means.
-- **Production companies (the Studios section) and keywords are one server-search picker** (`TMDBEntityPicker`,
+- **Production companies and keywords are one server-search picker** (`TMDBEntityPicker`,
   `kind="company"` / `kind="keyword"`), the only picker in the editor that searches the server
   rather than filtering a list it already holds: TMDB has no "list them all" endpoint for either.
   The query settles for 300ms (`lib/useDebounce.ts`) and runs against
@@ -400,8 +400,8 @@ Other decisions worth keeping:
   title carrying any of the listed ids whichever separator is used. Each list has its own 20-id
   cap. Each picker takes the other's ids as `hiddenIds` and never offers them in search, so one
   id can't be both included and left out. There is no server rule for that overlap either, the
-  same as genres. The closed head reads "1 studio · not 2 studios" (`sumEntities`), and the
-  library summary reads "not from 2 studios" / "not tagged with 1 keyword".
+  same as genres. The closed head reads "1 production company · not 2 production companies" (`sumEntities`), and the
+  library summary reads "not from 2 production companies" / "not tagged with 1 keyword".
 - **A movie catalog shows either Filters or a TMDB collection**, a `Segmented` that is the first
   control under the "What the row shows" heading. On screen a TMDB collection is always called
   "TMDB collection", never bare "collection", since "collection" is Uno's word for a group of
@@ -424,7 +424,7 @@ Other decisions worth keeping:
   holds the same films) beside it once on, and the section's summary ends "· shuffled"
   (`withShuffle`).
 - **The results panel names what to fix.** While the recipe has errors, the line standing in for
-  results reads "Fix Order first." (or "Fix Order and Studios first."), the sections named
+  results reads "Fix Order first." (or "Fix Order and Production companies first."), the sections named
   through `roleLabelFor` (`recipeSections` in `CatalogEditor.tsx`); `name` is left out, being no
   part of a recipe.
 - **The collection picker is the same server-search picker, single-pick** (`kind="collection"`,
@@ -478,7 +478,7 @@ Other decisions worth keeping:
 - **A scoped catalog shows a "Scope" setting, and no publish button**
   (`CatalogFormState.collectionID`): a scoped catalog is published only by publishing its collection, so
   its nested editor gets no `sharingStep` and reads "Only in this collection" with a "Move to
-  library" button beside it, and an InfoTip ("Applies when you save the collection."), that clears
+  library" button under it, the note "Applies when you save the collection." beside it, that clears
   `collectionID` — promote, always allowed, and like
   every edit made in this nested editor it takes effect when the collection is saved (a
   `catalog_edits` entry with `move_to_library`). Once staged, the catalog reads as listed in every
@@ -491,7 +491,7 @@ Other decisions worth keeping:
   into a collection. `collectionID` is form state only: `toPayload` leaves it out, since a
   catalog's `PUT` never changes its scope, and `isSameCatalog` compares it so a staged Move to
   library counts as an edit. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
-  promote, so its nested editor leaves the button out and its InfoTip says to save the collection
+  promote, so its nested editor leaves the button out and a note says to save the collection
   first. The nested editor's Save reads Done, since it only stages the edit.
 
 ## Home pane — List view
@@ -1008,21 +1008,19 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     and below `lg` Duplicate and Delete on the sign and the editor layer. The sign says From
     Community in place of Update available, since the Update… button says it. Below `sm` the sign
     hides stickers, so `EditorShell` heads the body with them.
-  - **No explanatory text:** no sentence, no ⓘ. The sticker says where it came from. The body
-    leads with a dim line of how many have added it and when it last changed — "Added by 3 ·
-    updated 2 days ago" (`ViewLead`, `itemMeta`), read from the Community list
-    (`useCommunityList`) by the subscription's `publication_id`; nothing until the list has
-    loaded, or for a publication it no longer lists. While an update waits, a community-pink
-    **Update…** (`update_available`) follows, which opens the publication's page (below), with a
+  - **No explanatory text:** no sentence, no ⓘ, and no "Added by N · updated …" line — that
+    stays on the Community page. The sticker says where it came from. While an update waits, the
+    body leads with a community-pink **Update…** (`ViewLead`, `update_available`), which opens
+    the publication's page (below), with a
     dim **"7 changes"** beside it (`UpdateCount`, `changeCount`: the lines the page's shelf
     shows, from the same call). The count shows nothing while that loads, if it fails or if it is
     empty. An unpublished row has nothing to update.
   - **The catalog block** (`CatalogBlock.tsx`, shared by both views and the Community
     publication page): open, the recipe as spec tiles — flat `raised` tiles on the ground in an
-    auto-fill grid (140px minimum), the list facts (genres, studios, keywords, networks, streaming
+    auto-fill grid (140px minimum), the list facts (genres, production companies, keywords, networks, streaming
     services) a row each, a dim 12px label over a bold 15px value, for only the facts the recipe sets (`recipeFacts`
-    in `features/library/recipe.ts`: Type, Genres, Released, Rating, Votes, Order, …; studios,
-    keywords, networks and streaming services are **named** — "Studio: Studio Ghibli or Pixar",
+    in `features/library/recipe.ts`: Type, Genres, Released, Rating, Votes, Order, …; production companies,
+    keywords, networks and streaming services are **named** — "Production companies: Studio Ghibli or Pixar",
     the label singular for one id, the names joined with "and"/"or" as the stored list is;
     `recipeLine` and the rail's summaries keep counts); folded, a chevron, the catalog's name and
     its recipe line under it, as a button with `aria-expanded`. The names load through the
@@ -1057,7 +1055,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   `Folder name: “Kids” → “Family”`, `Folder order`. A catalog removed from or added to a folder
   that is itself removed or added is not a line of its own: the folder's line counts it. A changed
   catalog is its name with sub-lines for what differs, from `recipeFacts` of the recipe it was
-  (`was_catalog`, `docs/data-model.md`) against the one it is — `Studios: 2 → 1`, `Keyword added`,
+  (`was_catalog`, `docs/data-model.md`) against the one it is — `Production companies: 2 → 1`, `Keyword added`,
   `Order: Most popular → Highest rated`, `Rating: any → 7.0 or more` — with a singular and plural
   label read as one fact, lists counted as the lookups are not asked, and "Filters changed" when
   nothing shows. `ChangeList` shows the first six lines in the server's order — removals, then
@@ -1268,11 +1266,9 @@ number are `.count-sticker`s.
 **Settings — label above control.** Every editor setting is a `.setting`: its label
 (`.setting-label`) above the control, on the form's one left edge. Folding sections (`.sec-head`
 and `.sec-body`) are shelves that open in place; a heading inside a form (`.setting.is-head`) is
-sign lettering in the region's colour over a rule of the same colour. The catalog editor opens
-with a `.talker`: the recipe as a sentence (`recipeSentence`, `web/src/features/library/recipe.ts`),
-kept current as the settings below it change. The rail, the Home rows and a folder's catalog
-picker show the same recipe as one line (`recipeLine`, or `catalogListing` where the list is also
-searched).
+sign lettering in the region's colour over a rule of the same colour. The rail, the Home rows
+and a folder's catalog picker show a catalog's recipe as one line (`recipeLine`, or
+`catalogListing` where the list is also searched).
 
 **Shapes and depth.** Buttons, stickers and segmented controls are pills; fields are
 10px-rounded wells; shelves, panels and dialogs round at 14–20px. Depth is tonal — ground, then

@@ -53,7 +53,7 @@ describe('ChangeList', () => {
     }
     render(<ChangeList changes={[change]} genres={genres} />)
     expect(screen.getByRole('heading', { name: 'Changed' })).toBeInTheDocument()
-    expect(screen.getByRole('listitem')).toHaveTextContent('“Seed Ghibli”Studios: 2 → 1')
+    expect(screen.getByRole('listitem')).toHaveTextContent('“Seed Ghibli”Production companies: 2 → 1')
   })
 })
 

@@ -37,7 +37,7 @@ beforeEach(() => {
 describe('CatalogBlock tiles', () => {
   it('lay flat on the ground, the lists on a row of their own', () => {
     renderBlock({})
-    expect(screen.getByText('Studios', { selector: 'dt' }).parentElement).toHaveClass('bg-raised', 'col-span-full')
+    expect(screen.getByText('Production companies', { selector: 'dt' }).parentElement).toHaveClass('bg-raised', 'col-span-full')
     const type = screen.getByText('Type', { selector: 'dt' }).parentElement
     expect(type).toHaveClass('bg-raised')
     expect(type).not.toHaveClass('col-span-full')
@@ -61,9 +61,9 @@ describe('CatalogBlock names', () => {
     ],
   }
 
-  it('shows "…" for studios and keywords while their names load, then names them', async () => {
+  it('shows "…" for production companies and keywords while their names load, then names them', async () => {
     const calls = renderBlock(routes)
-    expect(value('Studios')).toHaveTextContent('…')
+    expect(value('Production companies')).toHaveTextContent('…')
     expect(value('Left-out keyword')).toHaveTextContent('…')
     expect(await screen.findByText('Studio Ghibli or Pixar')).toBeInTheDocument()
     expect(value('Left-out keyword')).toHaveTextContent('gore')
@@ -74,7 +74,7 @@ describe('CatalogBlock names', () => {
   it('settles on the count for a list a lookup can’t name', async () => {
     renderBlock({ ...routes, 'GET /api/companies/3': () => failWith(404, 'not found') })
     expect(await screen.findByText('gore')).toBeInTheDocument()
-    expect(value('Studios')).toHaveTextContent('2')
+    expect(value('Production companies')).toHaveTextContent('2')
   })
 
   it('loads no names for a folded block until it opens', async () => {

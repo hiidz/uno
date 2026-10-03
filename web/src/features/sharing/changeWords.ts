@@ -101,10 +101,10 @@ function catalogLine({ change }: Item, joiner: 'from' | 'to'): ChangeLine {
   return { text: `${quoted(change.name)}${genre}${folder}`, notes: [] }
 }
 
-/** A fact's label as one key for its singular and its plural: "Studio" and
- *  "Studios" are one fact. */
+/** A fact's label as one key for its singular and its plural: "Production
+ *  company" and "Production companies" are one fact. */
 function factKey(label: string): string {
-  return label.toLowerCase().replace(/s$/, '')
+  return label.toLowerCase().replace(/ies$/, 'y').replace(/s$/, '')
 }
 
 /** A list recipeFacts could not name, which it counts. */

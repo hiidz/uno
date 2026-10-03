@@ -54,12 +54,12 @@ function useProviderNames(catalog: Pick<Catalog, 'type'>, region: string, ids: n
 }
 
 /**
- * The names of a recipe's studios, keywords, networks and streaming services,
- * for `recipeFacts`. They load from the lookups the catalog editor's pickers
- * use, once `wanted` says they are shown: a folded catalog in a collection's
- * folder asks for none until it opens. Until a list has all its names,
- * `recipeFacts` counts it; `loading` says a lookup is still answering, so a
- * count shown meanwhile is not final.
+ * The names of a recipe's production companies, keywords, networks and
+ * streaming services, for `recipeFacts`. They load from the lookups the
+ * catalog editor's pickers use, once `wanted` says they are shown: a folded
+ * catalog in a collection's folder asks for none until it opens. Until a list
+ * has all its names, `recipeFacts` counts it; `loading` says a lookup is still
+ * answering, so a count shown meanwhile is not final.
  */
 export function useRecipeNames(
   catalog: Pick<Catalog, 'type' | 'params'>,

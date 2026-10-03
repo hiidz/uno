@@ -220,7 +220,7 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   date: (isMovie) => (isMovie ? 'Release date' : 'First aired'),
   age: () => 'Age rating',
   watch: () => 'Where to watch',
-  companies: () => 'Studios',
+  companies: () => 'Production companies',
   keywords: () => 'Keywords',
   networks: () => 'Networks',
   collection: () => 'TMDB collection',
@@ -452,8 +452,8 @@ function buildSections(args: SectionArgs) {
       summary: sumEntities(
         state.params.with_companies,
         state.params.without_companies,
-        'studio',
-        'Any studio',
+        'production company',
+        'Any production company',
       ),
       body: (
         <EntityLists

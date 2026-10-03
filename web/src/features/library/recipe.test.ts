@@ -24,8 +24,8 @@ describe('describeRecipe', () => {
       without_keywords: '849,12',
     }
     expect(describeRecipe(catalog('series', params), new Map())).toEqual([
-      'from 2 studios',
-      'not from 1 studio',
+      'from 2 production companies',
+      'not from 1 production company',
       'tagged with 1 keyword',
       'not tagged with 2 keywords',
     ])
@@ -113,7 +113,7 @@ describe('recipeFacts', () => {
     expect(recipeFacts(catalog('movie', { certification_gte: 'R' }), lookup)).toContainEqual({ label: 'Rated', value: 'R' })
   })
 
-  it('counts streaming services, studios, keywords and networks until their names are known', () => {
+  it('counts streaming services, production companies, keywords and networks until their names are known', () => {
     const params = {
       with_watch_providers: '8|337',
       watch_region: 'US',
@@ -125,8 +125,8 @@ describe('recipeFacts', () => {
     }
     const series = recipeFacts(catalog('series', params), lookup)
     expect(series).toContainEqual({ label: 'Streaming services', value: expect.stringMatching(/^2 in / )})
-    expect(series).toContainEqual({ label: 'Studios', value: '2' })
-    expect(series).toContainEqual({ label: 'Left-out studio', value: '1' })
+    expect(series).toContainEqual({ label: 'Production companies', value: '2' })
+    expect(series).toContainEqual({ label: 'Left-out production company', value: '1' })
     expect(series).toContainEqual({ label: 'Keyword', value: '1' })
     expect(series).toContainEqual({ label: 'Left-out keywords', value: '2' })
     expect(series).toContainEqual({ label: 'Network', value: '1' })
@@ -137,7 +137,7 @@ describe('recipeFacts', () => {
     })
   })
 
-  it('names studios, keywords, networks and streaming services once every name is known', () => {
+  it('names production companies, keywords, networks and streaming services once every name is known', () => {
     const params = {
       with_watch_providers: '8|337',
       watch_region: 'US',
@@ -154,8 +154,8 @@ describe('recipeFacts', () => {
       provider: new Map([[8, 'Netflix'], [337, 'Disney Plus']]),
     }
     const series = recipeFacts(catalog('series', params), lookup, names)
-    expect(series).toContainEqual({ label: 'Studios', value: 'Studio Ghibli or Pixar' })
-    expect(series).toContainEqual({ label: 'Left-out studio', value: 'Troma' })
+    expect(series).toContainEqual({ label: 'Production companies', value: 'Studio Ghibli or Pixar' })
+    expect(series).toContainEqual({ label: 'Left-out production company', value: 'Troma' })
     expect(series).toContainEqual({ label: 'Keywords', value: 'slasher and zombie' })
     expect(series).toContainEqual({ label: 'Left-out keyword', value: 'gore' })
     expect(series).toContainEqual({ label: 'Network', value: 'Netflix' })
@@ -165,7 +165,7 @@ describe('recipeFacts', () => {
   it('counts a list until all its names are known, and leaves a movie recipe’s networks out', () => {
     const params = { with_companies: '420|2', with_networks: '213' }
     const partial = { company: new Map([[420, 'Studio Ghibli']]), network: new Map([[213, 'Netflix']]) }
-    expect(recipeFacts(catalog('series', params), lookup, partial)).toContainEqual({ label: 'Studios', value: '2' })
+    expect(recipeFacts(catalog('series', params), lookup, partial)).toContainEqual({ label: 'Production companies', value: '2' })
     expect(recipeFacts(catalog('movie', params), lookup, partial).map((f) => f.label)).not.toContain('Network')
   })
 

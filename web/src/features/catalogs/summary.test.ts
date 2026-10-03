@@ -160,15 +160,15 @@ describe('sumWatch', () => {
 
 describe('sumEntities', () => {
   it('counts ids and names the join once there are two', () => {
-    expect(sumEntities(undefined, undefined, 'studio', 'Any studio')).toBe('Any studio')
-    expect(sumEntities('420', undefined, 'studio', 'Any studio')).toBe('1 studio')
-    expect(sumEntities('420|2', undefined, 'studio', 'Any studio')).toBe('2 studios, any of them')
+    expect(sumEntities(undefined, undefined, 'production company', 'Any production company')).toBe('Any production company')
+    expect(sumEntities('420', undefined, 'production company', 'Any production company')).toBe('1 production company')
+    expect(sumEntities('420|2', undefined, 'production company', 'Any production company')).toBe('2 production companies, any of them')
     expect(sumEntities('420,2', '', 'keyword', 'Any keywords')).toBe('2 keywords, all of them')
   })
 
   it('counts the left-out ids after the included ones', () => {
-    expect(sumEntities(undefined, '2', 'studio', 'Any studio')).toBe('not 1 studio')
-    expect(sumEntities('420', '2,7', 'studio', 'Any studio')).toBe('1 studio · not 2 studios')
+    expect(sumEntities(undefined, '2', 'production company', 'Any production company')).toBe('not 1 production company')
+    expect(sumEntities('420', '2,7', 'production company', 'Any production company')).toBe('1 production company · not 2 production companies')
     expect(sumEntities('420|3', '2', 'keyword', 'Any keywords')).toBe(
       '2 keywords, any of them · not 1 keyword',
     )

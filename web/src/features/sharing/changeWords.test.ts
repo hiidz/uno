@@ -66,7 +66,7 @@ describe('groupChanges', () => {
     ])
   })
 
-  it('lists what differs in a changed recipe, Studios and Studio as one fact', () => {
+  it('lists what differs in a changed recipe, Production companies and Production company as one fact', () => {
     const groups = groupChanges(
       [
         recipeChange(
@@ -83,7 +83,7 @@ describe('groupChanges', () => {
         lines: [
           {
             text: '“Seed Ghibli”',
-            notes: ['Name: “Ghibli” → “Seed Ghibli”', 'Studios: 2 → 1', 'Keyword added', 'Order: Most popular → Highest rated'],
+            notes: ['Name: “Ghibli” → “Seed Ghibli”', 'Production companies: 2 → 1', 'Keyword added', 'Order: Most popular → Highest rated'],
           },
         ],
       },

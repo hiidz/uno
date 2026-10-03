@@ -242,9 +242,9 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   // Counted for the same reason: naming a company, keyword or network needs a
   // TMDB lookup per id.
   const companies = countIDs(p.with_companies)
-  if (companies) out.push(`from ${pluralCount(companies, 'studio')}`)
+  if (companies) out.push(`from ${pluralCount(companies, 'production company')}`)
   const notCompanies = countIDs(p.without_companies)
-  if (notCompanies) out.push(`not from ${pluralCount(notCompanies, 'studio')}`)
+  if (notCompanies) out.push(`not from ${pluralCount(notCompanies, 'production company')}`)
   const keywords = countIDs(p.with_keywords)
   if (keywords) out.push(`tagged with ${pluralCount(keywords, 'keyword')}`)
   const notKeywords = countIDs(p.without_keywords)
@@ -303,10 +303,10 @@ interface FactSource {
 type NameMap = ReadonlyMap<number, string>
 
 /**
- * The names a recipe's studios, keywords, networks and streaming services
- * have, as far as they are known: only the ids a lookup has answered for.
- * `recipeFacts` names a list once every id in it is here, and counts it until
- * then.
+ * The names a recipe's production companies, keywords, networks and streaming
+ * services have, as far as they are known: only the ids a lookup has answered
+ * for. `recipeFacts` names a list once every id in it is here, and counts it
+ * until then.
  */
 export interface RecipeNames {
   company?: NameMap
@@ -320,8 +320,8 @@ const NO_NAMES: RecipeNames = {}
 /** What a list of ids is called, for one and for many. */
 type Noun = readonly [one: string, many: string]
 
-const STUDIO: Noun = ['Studio', 'Studios']
-const LEFT_OUT_STUDIO: Noun = ['Left-out studio', 'Left-out studios']
+const COMPANY: Noun = ['Production company', 'Production companies']
+const LEFT_OUT_COMPANY: Noun = ['Left-out production company', 'Left-out production companies']
 const KEYWORD: Noun = ['Keyword', 'Keywords']
 const LEFT_OUT_KEYWORD: Noun = ['Left-out keyword', 'Left-out keywords']
 const NETWORK: Noun = ['Network', 'Networks']
@@ -398,8 +398,8 @@ const FACTS: FactBuilder[] = [
   certificationFact,
   streamingFact,
   // Named, once the lookups have answered; `describeParams` counts them.
-  ({ p, names }) => idsFact(STUDIO, p.with_companies, names.company),
-  ({ p, names }) => idsFact(LEFT_OUT_STUDIO, p.without_companies, names.company),
+  ({ p, names }) => idsFact(COMPANY, p.with_companies, names.company),
+  ({ p, names }) => idsFact(LEFT_OUT_COMPANY, p.without_companies, names.company),
   ({ p, names }) => idsFact(KEYWORD, p.with_keywords, names.keyword),
   ({ p, names }) => idsFact(LEFT_OUT_KEYWORD, p.without_keywords, names.keyword),
   ({ type, p, names }) => idsFact(NETWORK, type === 'series' ? p.with_networks : undefined, names.network),
@@ -419,8 +419,9 @@ const COLLECTION_FACTS: FactBuilder[] = [
  * The recipe as spec tiles: one label and value for each thing it sets, in
  * the vocabulary of `describeRecipe` (`lookup` is the genre map for this
  * catalog's kind). The type is always first; a recipe that sets nothing else
- * has that one fact. Studios, keywords, networks and streaming services are
- * named from `names`, and counted while a list's names are not all known.
+ * has that one fact. Production companies, keywords, networks and streaming
+ * services are named from `names`, and counted while a list's names are not
+ * all known.
  */
 export function recipeFacts(
   catalog: Pick<Catalog, 'type' | 'params'>,

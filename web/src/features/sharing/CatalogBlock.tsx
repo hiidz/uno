@@ -16,7 +16,16 @@ const NAMES_PENDING = '…'
 
 /** The facts that list things — genres and named entities — and so run long:
  *  each takes a row of its own. */
-const LIST_LABELS = ['Genres', 'Without genres', 'Left-out', 'Studio', 'Keyword', 'Network', 'Streaming service']
+const LIST_LABELS = [
+  'Genres',
+  'Without genres',
+  'Left-out',
+  'Production company',
+  'Production companies',
+  'Keyword',
+  'Network',
+  'Streaming service',
+]
 
 function isListFact(label: string): boolean {
   return LIST_LABELS.some((prefix) => label.startsWith(prefix))
@@ -87,9 +96,9 @@ function FactValue({ value }: { value: string }) {
  * view, in a collection's folders, and on a publication's page.
  *
  * Open, it is the recipe's spec tiles and nothing else; the name is the
- * surrounding page's to show. Studios, keywords, networks and streaming
- * services are named, from the lookups the catalog editor uses, and show "…"
- * until the names arrive (a count, if a lookup cannot name them). With
+ * surrounding page's to show. Production companies, keywords, networks and
+ * streaming services are named, from the lookups the catalog editor uses, and
+ * show "…" until the names arrive (a count, if a lookup cannot name them). With
  * `foldable` it is a folder's entry instead: collapsed it is a chevron, the
  * catalog's name and its recipe line under it, and the header opens it in
  * place to the same tiles; a folded block loads no names.
