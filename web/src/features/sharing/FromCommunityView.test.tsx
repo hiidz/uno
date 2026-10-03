@@ -123,17 +123,14 @@ describe('CatalogFromCommunity', () => {
     expect(fake.calls).toContain('GET /api/p/1/community/pub/changes')
   })
 
-  it('leads with how many have added it and when it changed, once Community answers', async () => {
-    api.current = fakeApi({
+  it('leaves who added it and when it changed to Community', () => {
+    const fake = fakeApi({
       'GET /api/p/1/community': [communityItem({ id: 'pub', subscriber_count: 3, updated_at: '2026-09-22T10:00:00Z' })],
-    }).apiFetch
-    renderCatalog()
-    expect(await screen.findByText(/^Added by 3 · updated /)).toBeInTheDocument()
-  })
-
-  it('leads with nothing before Community answers, or for a publication it does not list', () => {
+    })
+    api.current = fake.apiFetch
     renderCatalog()
     expect(screen.queryByText(/Added by|ublished|pdated/)).toBeNull()
+    expect(fake.calls).not.toContain('GET /api/p/1/community')
   })
 
   it('asks for no summary while no update waits', () => {
