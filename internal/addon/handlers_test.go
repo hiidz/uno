@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -37,9 +38,11 @@ func fakeTMDB(t *testing.T, handler http.HandlerFunc) *atomic.Int32 {
 }
 
 // tmdbUp serves one discover page holding one film, its IMDB id, and a
-// two-genre list.
+// two-genre list. A later page is empty, as TMDB answers past the last.
 func tmdbUp(w http.ResponseWriter, r *http.Request) {
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/3/discover/") && r.URL.Query().Get("page") != "1":
+		fmt.Fprint(w, `{"results":[],"total_results":1,"total_pages":1}`)
 	case strings.HasPrefix(r.URL.Path, "/3/discover/"):
 		fmt.Fprint(w, `{"results":[{"id":155,"title":"The Dark Knight","genre_ids":[80],"release_date":"2008-07-16"}],"total_results":1,"total_pages":1}`)
 	case strings.HasSuffix(r.URL.Path, "/external_ids"):
@@ -109,13 +112,14 @@ func newHandlerFixture(t *testing.T) handlerFixture {
 // another's cached lists.
 func (f handlerFixture) get(t *testing.T, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	s, err := New(f.db, provider.NewTMDBClient("test-key"), nil)
+	s, err := New(f.db, provider.NewTMDBClient("test-key"), nil, "https://uno.example")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+ManifestPathPattern, s.Public(s.ManifestHandler))
 	mux.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", s.Public(s.CatalogHandler))
+	mux.HandleFunc("GET "+ConfigurePathPattern, s.Public(s.ConfigureHandler))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
 	return w
@@ -164,6 +168,9 @@ func TestManifestHandler(t *testing.T) {
 			if m.ID != ID {
 				t.Fatalf("manifest id = %q, want %q", m.ID, ID)
 			}
+			if m.Logo != "https://uno.example/logo.png" || !m.BehaviorHints.Configurable {
+				t.Fatalf("logo = %q, configurable = %v; want the site's logo.png and true", m.Logo, m.BehaviorHints.Configurable)
+			}
 			if tc.token == f.empty.Token {
 				if len(m.Catalogs) != 0 || !strings.Contains(w.Body.String(), `"catalogs":[]`) {
 					t.Fatalf("body = %s, want an empty catalogs array", w.Body.String())
@@ -186,11 +193,109 @@ func TestManifestHandler(t *testing.T) {
 	}
 }
 
+// TestConfigureHandler: the addon's Configure route, whatever the token,
+// sends the browser to the builder's profile picker.
+func TestConfigureHandler(t *testing.T) {
+	f := newHandlerFixture(t)
+	for _, token := range []string{f.owner.Token, "no-such-token"} {
+		w := f.get(t, "/u/"+token+"/configure")
+		if w.Code != http.StatusFound || w.Header().Get("Location") != "/profiles" {
+			t.Errorf("token %q: status %d, Location %q; want 302 to /profiles", token, w.Code, w.Header().Get("Location"))
+		}
+	}
+}
+
 // TestCatalogHandler covers the catalog route. It serves a catalog the
 // token's profile has on the TV. Its own catalog off the TV or deleted,
 // another profile's catalog, live or deleted, a type or provider the catalog
 // doesn't have, and an id ManifestID can't have written are the same 404 as
 // one that doesn't exist, and are never fetched. A TMDB failure is a 502.
+// tmdbSparse serves three discover pages of twenty films, a fifth of them
+// without an IMDB id, so each page leaves sixteen titles once those are
+// dropped; a later page is empty.
+func tmdbSparse(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/3/discover/"):
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		var results []string
+		for i := 0; page <= 3 && i < 20; i++ {
+			results = append(results, fmt.Sprintf(`{"id":%d,"title":"Film %d"}`, page*100+i, page*100+i))
+		}
+		fmt.Fprintf(w, `{"results":[%s],"total_results":60,"total_pages":3}`, strings.Join(results, ","))
+	case strings.HasSuffix(r.URL.Path, "/external_ids"):
+		id, _ := strconv.Atoi(strings.Split(r.URL.Path, "/")[3])
+		if id%5 == 0 {
+			fmt.Fprint(w, `{"imdb_id":null}`)
+			return
+		}
+		fmt.Fprintf(w, `{"imdb_id":"tt%d"}`, id)
+	case strings.HasPrefix(r.URL.Path, "/3/genre/"):
+		fmt.Fprint(w, `{"genres":[]}`)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// A client pages through a catalog by the number of titles it holds, and
+// TMDB pages run short once titles without an IMDB id are dropped. Each skip
+// gets the next twenty titles, every one exactly once and in order, until
+// the catalog runs out: 16 + 16 + 16 titles over three TMDB pages come back
+// as 20, 20, 8, then nothing.
+func TestCatalogHandlerServesTheTitlesAfterSkip(t *testing.T) {
+	f := newHandlerFixture(t)
+	fakeTMDB(t, tmdbSparse)
+
+	var all []string
+	for _, tc := range []struct{ skip, want int }{{0, 20}, {20, 20}, {40, 8}, {48, 0}} {
+		w := f.get(t, "/u/"+f.owner.Token+"/catalog/movie/"+ManifestID(f.onHome)+"/skip="+strconv.Itoa(tc.skip)+".json")
+		if w.Code != http.StatusOK {
+			t.Fatalf("skip=%d: status %d (%s)", tc.skip, w.Code, w.Body.String())
+		}
+		var got catalogResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Metas) != tc.want {
+			t.Fatalf("skip=%d: %d titles, want %d", tc.skip, len(got.Metas), tc.want)
+		}
+		for _, m := range got.Metas {
+			all = append(all, m.ID)
+		}
+	}
+
+	var want []string
+	for page := 1; page <= 3; page++ {
+		for i := 0; i < 20; i++ {
+			if id := page*100 + i; id%5 != 0 {
+				want = append(want, "tt"+strconv.Itoa(id))
+			}
+		}
+	}
+	if strings.Join(all, ",") != strings.Join(want, ",") {
+		t.Errorf("titles across the pages =\n%v\nwant every kept title once, in order:\n%v", all, want)
+	}
+}
+
+// titlesFrom is a page from a title on: all of it from before its start,
+// none from past its end.
+func TestTitlesFrom(t *testing.T) {
+	page := []provider.Meta{{ID: "a"}, {ID: "b"}, {ID: "c"}}
+	for from, want := range map[int]int{-5: 3, 0: 3, 2: 1, 3: 0, 9: 0} {
+		if got := titlesFrom(page, from); len(got) != want {
+			t.Errorf("titlesFrom(page, %d) has %d titles, want %d", from, len(got), want)
+		}
+	}
+}
+
+// A randomized recipe picks its page at random, so it has no order to walk.
+func TestRandomizedRecipe(t *testing.T) {
+	for params, want := range map[string]bool{`{"randomized":true}`: true, `{}`: false, `not json`: false} {
+		if got := randomizedRecipe("movie", params); got != want {
+			t.Errorf("randomizedRecipe(%s) = %v, want %v", params, got, want)
+		}
+	}
+}
+
 func TestCatalogHandler(t *testing.T) {
 	f := newHandlerFixture(t)
 	path := func(token, catalogType string, c vault.Catalog) string {
@@ -267,7 +372,7 @@ func TestHandlersVaultFailure(t *testing.T) {
 // origin, and turns a handler panic into a 500 — nothing else on this
 // unauthenticated path would recover it.
 func TestPublic(t *testing.T) {
-	s, err := New(newTestVault(t), provider.NewTMDBClient("test-key"), nil)
+	s, err := New(newTestVault(t), provider.NewTMDBClient("test-key"), nil, "https://uno.example")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -294,10 +399,10 @@ func TestPublic(t *testing.T) {
 }
 
 func TestNewRequiresBothDependencies(t *testing.T) {
-	if _, err := New(nil, provider.NewTMDBClient("test-key"), nil); err == nil {
+	if _, err := New(nil, provider.NewTMDBClient("test-key"), nil, ""); err == nil {
 		t.Error("New(nil vault) = nil error, want one")
 	}
-	if _, err := New(newTestVault(t), nil, nil); err == nil {
+	if _, err := New(newTestVault(t), nil, nil, ""); err == nil {
 		t.Error("New(nil provider) = nil error, want one")
 	}
 }

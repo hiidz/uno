@@ -15,8 +15,10 @@ import { CommunityView } from '@/features/community/CommunityView'
 import { HomeSelectionProvider } from '@/features/home/HomeSelectionContext'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { useUnloadGuard } from '@/features/home/useUnloadGuard'
-import { AddonURLButton, ChangesStrip, PushBanner, PushButton } from '@/features/push/PushControls'
+import { BlockablePushButton, PushBlockNote } from '@/features/push/PushBlockControls'
+import { AddonURLButton, ChangesStrip, PushBanner } from '@/features/push/PushControls'
 import { usePush } from '@/features/push/usePush'
+import { usePushBlock } from '@/features/push/usePushBlock'
 import { useCountDown } from '@/lib/useCountDown'
 import { plural, pluralCount } from '@/lib/plural'
 
@@ -27,6 +29,9 @@ export interface BuilderProfile {
    *  Optional because navigation state is the only source, and a history entry
    *  may not carry it. */
   manifestURL?: string
+  /** The profile uses profile 1's addons in Nuvio, so Push is off for it
+   *  (`usePushBlock`). Optional for the same reason as `manifestURL`. */
+  sharesAddons?: boolean
 }
 
 type Tab = 'workspace' | 'community'
@@ -103,6 +108,7 @@ function BuilderHeader({
   const home = useHomeSelection()
   const editor = useEditorGuard()
   const push = usePush(profile.profileIndex)
+  const block = usePushBlock(profile.sharesAddons)
   // The pending indicator's count: it rings down only as a push succeeds.
   const pendingShown = useCountDown(
     home.pendingCount,
@@ -228,7 +234,7 @@ function BuilderHeader({
             {profile.manifestURL && (
               <AddonURLButton url={profile.manifestURL} className="hidden lg:inline-flex" />
             )}
-            <PushButton {...push} className={home.ready ? 'max-lg:rounded-l-none' : ''} />
+            <BlockablePushButton push={push} block={block} className={home.ready ? 'max-lg:rounded-l-none' : ''} />
           </div>
         </header>
 
@@ -237,6 +243,7 @@ function BuilderHeader({
           open={changesOpen && home.pendingCount > 0}
           onHide={() => setChangesOpen(false)}
         />
+        <PushBlockNote block={block} />
         <PushBanner {...push} />
         {/* The account's TMDB key is unusable, on a server where each account
             brings one; it is fixed on the picker, reached as switching profile

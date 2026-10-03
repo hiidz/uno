@@ -104,3 +104,41 @@ func TestPushPayloadAppearanceFields(t *testing.T) {
 		}
 	}
 }
+
+// A collection's folders and a folder's catalogSources go out as JSON arrays,
+// [] when there are none, never null: Nuvio TV's parser throws on a null one,
+// drops the whole blob it was in, and keeps showing its stale copy. A folder's
+// sources go out under "catalogSources" alone: Nuvio TV reads "sources"
+// whenever the key is there, even empty, where Nuvio's other apps fall back to
+// "catalogSources".
+func TestPushPayloadSendsArraysNeverNull(t *testing.T) {
+	for _, tree := range []CollectionWithFolders{
+		{Collection: Collection{ID: uuid.New(), Title: "No folders"}},
+		{
+			Collection: Collection{ID: uuid.New(), Title: "An empty folder"},
+			Folders:    []FolderWithCatalogs{{Folder: Folder{ID: uuid.New(), Title: "F"}}},
+		},
+	} {
+		raw, err := tree.PushJSON()
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var pushed struct {
+			Folders []map[string]json.RawMessage `json:"folders"`
+		}
+		if err := json.Unmarshal(raw, &pushed); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if pushed.Folders == nil {
+			t.Errorf("%s: folders = null, want []: %s", tree.Title, raw)
+		}
+		for _, folder := range pushed.Folders {
+			if string(folder["catalogSources"]) != "[]" {
+				t.Errorf("%s: catalogSources = %s, want []: %s", tree.Title, folder["catalogSources"], raw)
+			}
+			if _, ok := folder["sources"]; ok {
+				t.Errorf("%s: folder carries a sources key: %s", tree.Title, raw)
+			}
+		}
+	}
+}

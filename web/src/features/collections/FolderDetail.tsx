@@ -3,7 +3,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TileShape } from '@/api'
 import { RowIconButton } from '@/components/dnd'
-import { FieldError, InfoTip, Segmented, TextInput } from '@/components/fields'
+import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import { TILE_SHAPES, folderLabel, type FolderErrors, type FolderFormState } from './collectionForm'
@@ -196,7 +196,10 @@ export function FolderDetail({
                     { value: 'on', label: 'On' },
                   ]}
                 />
-                <InfoTip label="Focus GIF" text="Plays over the tile while it's selected." />
+                <InfoTip
+                  label="Focus GIF"
+                  text="Nuvio TV plays it over the tile while it's selected. Nuvio's phone and desktop apps ignore this switch and show the GIF as the tile itself, unless it's turned off in that device's settings."
+                />
               </div>
             </div>
           </div>
@@ -208,7 +211,7 @@ export function FolderDetail({
             onChange={(heroBackdropURL) => onChange({ heroBackdropURL })}
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home hero backdrop URL for ${label}`}
-            note="Hero backdrop, hero video and title logo are used by Nuvio's Modern Home layout."
+            note="Hero backdrop, hero video and title logo are used only by Nuvio TV's Modern Home layout."
           />
           <HeroURLRow
             id={`${idBase}-hero-video`}
@@ -257,6 +260,7 @@ function HeroURLRow({
         <label htmlFor={id} className="setting-label type-label text-ink">
           {role}
         </label>
+        <OnlyIn where="Nuvio TV, Modern layout" />
         {note && <InfoTip label="Modern Home" text={note} />}
       </div>
       <div className="setting-value flex max-w-[360px] flex-col gap-2">

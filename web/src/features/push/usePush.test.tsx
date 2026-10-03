@@ -132,6 +132,18 @@ describe('usePush', () => {
     expect(result.current.outcome).toEqual({ kind: 'undo-failed' })
   })
 
+  it.each([
+    ['empty_collection', 'empty-collection'],
+    ['shares_addons', 'shares-addons'],
+    ['profile_changed', 'profile-changed'],
+  ] as const)('reports a push the server refused as %s in its own words', async (refused, kind) => {
+    api.pushSelection.mockResolvedValue({ success: false, error: 'push failed', refused })
+    const { result } = renderPush()
+    await act(async () => result.current.push())
+    expect(result.current.outcome).toEqual({ kind })
+    expect(home.markPushed).not.toHaveBeenCalled()
+  })
+
   it('reports no answer as unknown, never as failed', async () => {
     api.pushSelection.mockRejectedValue(new TypeError('Failed to fetch'))
     const { result } = renderPush()

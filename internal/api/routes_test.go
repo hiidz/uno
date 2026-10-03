@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -389,6 +390,49 @@ func TestProfileRoutes(t *testing.T) {
 				if provisioned := err == nil; provisioned != (slot == tc.wantSlot) {
 					t.Fatalf("slot %d provisioned = %v (%v), want %v", slot, provisioned, err, slot == tc.wantSlot)
 				}
+			}
+		})
+	}
+}
+
+// GET /api/profiles names the picture each profile shows: its own upload,
+// else its built-in avatar's image, else none. Nuvio's avatar list is asked
+// for only when a profile uses a built-in avatar, and a failure to read it
+// leaves every profile its colour rather than failing the list.
+func TestProfileListCarriesAvatarImages(t *testing.T) {
+	uploaded := nuvio.NuvioProfile{ID: "n1", UserID: "test-sub", ProfileIndex: 1, Name: "Up", AvatarURL: "https://img.example/up.png", AvatarID: "avatar_lalo"}
+	builtIn := nuvio.NuvioProfile{ID: "n2", UserID: "test-sub", ProfileIndex: 2, Name: "Built", AvatarID: "avatar_lalo"}
+	plain := nuvio.NuvioProfile{ID: "n3", UserID: "test-sub", ProfileIndex: 3, Name: "Plain", AvatarColorHex: "#1E88E5"}
+	lalo := map[string]string{"avatar_lalo": "https://nuvio.example/storage/v1/object/public/avatars/animals/bram-v1.png"}
+
+	tests := []struct {
+		name      string
+		fake      *fakeNuvio
+		wantCalls int
+		want      []string
+	}{
+		{"uploads and built-in avatars", &fakeNuvio{profiles: []nuvio.NuvioProfile{uploaded, builtIn, plain}, avatarImages: lalo}, 1,
+			[]string{"https://img.example/up.png", lalo["avatar_lalo"], ""}},
+		{"no built-in avatar in use", &fakeNuvio{profiles: []nuvio.NuvioProfile{plain}}, 0, []string{""}},
+		{"the avatar list failing", &fakeNuvio{profiles: []nuvio.NuvioProfile{builtIn}, avatarImagesErr: errors.New("boom")}, 1, []string{""}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newTestServer(t, newTestVaultDB(t), tc.fake)
+			w := serve(t, s, http.MethodGet, "/api/profiles", "", false)
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d (%s)", w.Code, w.Body.String())
+			}
+			var got []pickerProfile
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			images := make([]string, len(got))
+			for i, p := range got {
+				images[i] = p.AvatarImageURL
+			}
+			if !slices.Equal(images, tc.want) || tc.fake.avatarCalls != tc.wantCalls {
+				t.Errorf("images = %q, avatar list read %d times; want %q and %d", images, tc.fake.avatarCalls, tc.want, tc.wantCalls)
 			}
 		})
 	}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { InfoTip, Segmented, TextInput } from '@/components/fields'
+import { InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { VIEW_MODES, VIEW_MODE_LABELS, appearanceSummary, type CollectionFormState } from './collectionForm'
 
@@ -78,16 +78,26 @@ export function CollectionAppearance({ state, onChange }: CollectionAppearancePr
         </div>
 
         <div className="setting">
-          <label htmlFor="col-backdrop" className="setting-label type-label">
-            Background image
-          </label>
+          <div className="flex items-center gap-2">
+            <label htmlFor="col-backdrop" className="setting-label type-label text-ink">
+              Background image
+            </label>
+            <OnlyIn where="Nuvio TV, Modern layout" />
+            <InfoTip
+              label="Background image"
+              text="Fills the tile of any folder without a cover image, in place of its emoji, and sits behind its hero when it has no hero backdrop."
+            />
+          </div>
           <div className="setting-value">
             <TextInput id="col-backdrop" value={state.backdropImageURL} onChange={setBackdrop} placeholder="https://…" />
           </div>
         </div>
 
         <div className="setting">
-          <span className="setting-label type-label">Focus glow</span>
+          <div className="flex items-center gap-2">
+            <span className="setting-label type-label text-ink">Focus glow</span>
+            <OnlyIn where="Nuvio TV" />
+          </div>
           <div className="setting-value ed-line">
             <Segmented ariaLabel="Focus glow" value={onOff(state.focusGlowEnabled)} onChange={setGlow} options={OFF_ON} />
             <InfoTip label="Focus glow" text="Glow around a folder tile while it's selected." />

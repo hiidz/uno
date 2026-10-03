@@ -17,17 +17,25 @@ export interface PushRequest {
  * covers success and failure alike.
  *
  * No per-stage flags: the handler attempts Nuvio *before* writing anything
- * locally, so an ordinary failure means nothing changed anywhere and there is
- * no partial state to report. `undo_failed` marks the one case that guarantee
- * doesn't cover — the local write failed after Nuvio had accepted the push, and
- * the compensating revert failed too.
+ * locally, and puts back what Nuvio already took when a later step fails, so an
+ * ordinary failure means nothing changed anywhere and there is no partial state
+ * to report. `undo_failed` marks the one case that guarantee doesn't cover —
+ * putting back what Nuvio took failed too. `refused` names why the server
+ * turned the push away before contacting Nuvio, when it is one the builder has
+ * words for.
  */
 export interface PushResult {
   success: boolean
   manifest_url?: string
   error?: string
   undo_failed?: boolean
+  refused?: PushRefusal
 }
+
+/** A collection on Home has no folders, the Nuvio profile uses profile 1's
+ *  addons, or the profile's Nuvio slot is empty or holds another Nuvio profile
+ *  now — the `refused…` values in `internal/api/push.go`. */
+export type PushRefusal = 'empty_collection' | 'shares_addons' | 'profile_changed'
 
 function isPushResult(value: unknown): value is PushResult {
   return typeof value === 'object' && value !== null && typeof (value as PushResult).success === 'boolean'

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hiidz/uno/internal/jsonwire"
@@ -26,6 +27,11 @@ var ErrNuvioRequestFailed = errors.New("nuvio: request failed")
 // upstream can't make Uno buffer without limit. A truncated body fails the
 // decode, which is already an ErrNuvioRequestFailed.
 const maxResponseBytes = 8 << 20 // 8 MiB
+
+// userAgent names Uno on every request it makes to Nuvio. Nuvio's audit log
+// of addon and collection pushes records the caller's User-Agent, so Uno's
+// pushes read there as Uno's.
+const userAgent = "Uno/1.0.0"
 
 // Client wraps a Verifier with the publishable key and HTTP client needed
 // to call Nuvio's authenticated REST/RPC surface on a caller's behalf,
@@ -74,6 +80,46 @@ func (c *Client) ListProfiles(ctx context.Context, accessToken string) ([]NuvioP
 	return jsonwire.OrEmpty(profiles), nil
 }
 
+// AvatarImages calls POST /rest/v1/rpc/get_avatar_catalog, Nuvio's list of
+// built-in profile avatars, and returns each one's image URL by avatar id.
+// The RPC needs no sign-in; accessToken is forwarded like any other call's.
+func (c *Client) AvatarImages(ctx context.Context, accessToken string) (map[string]string, error) {
+	resp, err := c.doRPC(ctx, accessToken, "get_avatar_catalog", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+	}
+
+	var entries []avatarEntry
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&entries); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
+	}
+	return avatarImageURLs(c.baseURL, entries), nil
+}
+
+// avatarEntry is the part of a get_avatar_catalog row an image URL needs.
+type avatarEntry struct {
+	ID          string `json:"id"`
+	StoragePath string `json:"storage_path"`
+}
+
+// avatarImageURLs is each entry's image by its id: Nuvio's public storage
+// bucket "avatars" at the entry's storage_path, as Nuvio's own apps build it
+// (NuvioMobile's ProfileModels). An entry without a path has no image.
+func avatarImageURLs(baseURL string, entries []avatarEntry) map[string]string {
+	images := make(map[string]string, len(entries))
+	for _, e := range entries {
+		if path := strings.TrimLeft(e.StoragePath, "/"); path != "" {
+			images[e.ID] = baseURL + "/storage/v1/object/public/avatars/" + path
+		}
+	}
+	return images
+}
+
 // do issues one authenticated request against Nuvio: method and path as
 // given, the caller's bearer token and the publishable key attached, and
 // body marshaled to JSON when it is non-nil — a nil body sends none and no
@@ -100,6 +146,7 @@ func (c *Client) do(ctx context.Context, method, accessToken, path string, body 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("apikey", c.publishableKey)
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := c.http.Do(req)
 	if err != nil {

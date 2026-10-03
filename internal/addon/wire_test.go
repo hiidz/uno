@@ -74,7 +74,9 @@ func TestManifestKeysMatchSample(t *testing.T) {
 		selectedWithParams("{}", true),
 		selectedWithParams("{}", false),
 	}
-	raw, err := json.Marshal(buildManifest(selection, actionComedy))
+	m := buildManifest(selection, actionComedy)
+	m.Logo = "https://uno.example" + LogoPath
+	raw, err := json.Marshal(m)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}

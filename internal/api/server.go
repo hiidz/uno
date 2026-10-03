@@ -63,7 +63,7 @@ func New(d Deps) (*Server, error) {
 		return nil, errors.New("api: Deps.SiteBaseURL is empty")
 	}
 
-	addonServer, err := addon.New(d.Vault, d.Provider, d.Keys)
+	addonServer, err := addon.New(d.Vault, d.Provider, d.Keys, d.SiteBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("api: building addon server: %w", err)
 	}
@@ -159,6 +159,7 @@ func (s *Server) routes() error {
 
 	s.router.HandleFunc("GET "+addon.ManifestPathPattern, s.addon.Public(s.addon.ManifestHandler))
 	s.router.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", s.addon.Public(s.addon.CatalogHandler))
+	s.router.HandleFunc("GET "+addon.ConfigurePathPattern, s.addon.Public(s.addon.ConfigureHandler))
 
 	// Everything else: the embedded SPA build (web:embed.go), with the
 	// existing routes above taking precedence since ServeMux matches the

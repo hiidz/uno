@@ -35,7 +35,7 @@ func (f handlerFixture) perAccountServer(t *testing.T) (*http.ServeMux, *Server)
 	if err := f.db.SetAccountKey(t.Context(), "owner", stored); err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(f.db, provider.NewTMDBClient(""), keys)
+	s, err := New(f.db, provider.NewTMDBClient(""), keys, "https://uno.example")
 	if err != nil {
 		t.Fatal(err)
 	}

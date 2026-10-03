@@ -1,10 +1,13 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"slices"
 
 	"github.com/hiidz/uno/internal/addon"
 	"github.com/hiidz/uno/internal/httpx"
@@ -62,7 +65,40 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, profiles)
+	httpx.WriteJSON(w, http.StatusOK, s.withAvatarImages(r.Context(), token, profiles))
+}
+
+// pickerProfile is one profile as GET /api/profiles answers it: Nuvio's row,
+// plus the picture Nuvio's apps show for it, "" when they show its colour.
+type pickerProfile struct {
+	nuvio.NuvioProfile
+	AvatarImageURL string `json:"avatar_image_url"`
+}
+
+// withAvatarImages is profiles with the picture each shows: its own upload,
+// else its built-in avatar's image.
+func (s *Server) withAvatarImages(ctx context.Context, token string, profiles []nuvio.NuvioProfile) []pickerProfile {
+	images := s.avatarImages(ctx, token, profiles)
+	out := make([]pickerProfile, len(profiles))
+	for i, p := range profiles {
+		out[i] = pickerProfile{NuvioProfile: p, AvatarImageURL: cmp.Or(p.AvatarURL, images[p.AvatarID])}
+	}
+	return out
+}
+
+// avatarImages is Nuvio's built-in avatar images by id, asked for only when
+// a profile uses one. A failure to list them is logged and leaves every
+// profile its colour: the picker still works without them.
+func (s *Server) avatarImages(ctx context.Context, token string, profiles []nuvio.NuvioProfile) map[string]string {
+	if !slices.ContainsFunc(profiles, func(p nuvio.NuvioProfile) bool { return p.AvatarID != "" }) {
+		return nil
+	}
+	images, err := s.nuvio.AvatarImages(ctx, token)
+	if err != nil {
+		log.Printf("listProfiles: avatar images: %v", err)
+		return nil
+	}
+	return images
 }
 
 func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {

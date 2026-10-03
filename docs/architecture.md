@@ -299,7 +299,12 @@ Route-semantics facts the client has to honour:
 
 Two routes: `GET /u/{token}/manifest.json` and `GET /u/{token}/catalog/{type}/{rest...}`, where
 `rest` is `{id}.json` or `{id}/{extra}.json`, where `{extra}` is a query string of `skip`
-(pagination) and `genre` (a pick from the catalog's genre extra).
+(pagination) and `genre` (a pick from the catalog's genre extra). A third, `GET
+/u/{token}/configure`, is where Nuvio's addon managers send the addon's Configure action (the
+manifest declares `behaviorHints.configurable`); it redirects to the builder's `/profiles`, which
+asks for sign-in, without looking the token up. The manifest's `logo` is the SPA build's
+`logo.png` on `SITE_BASE_URL` (`addon.LogoPath`, `web/public/logo.png`), which the addon managers
+show beside the addon's name.
 
 **Both routes serve the profile's push record, never its live rows.** What the addon tells Nuvio
 is what the profile's last push put there (`PushRecord`, *Push* below): a Save, an Update or a
@@ -328,6 +333,19 @@ past TMDB's own pagination ceiling (`maxCatalogPage`, page 500) answers **200 wi
 `metas`** and makes no TMDB call: an empty page past the end is the honest answer, and TMDB would
 refuse the request anyway.
 
+**`skip` is a count of titles, and a page is the next twenty** (`catalogWindow`). Nuvio's apps
+and Stremio send `skip` as the number of titles they already hold, and a TMDB page holds fewer
+than twenty of them whenever a title without an IMDB id was dropped (below), which happens on a
+page or two in every few of a sparse recipe: 12–19 of 20 measured on Korean, documentary and
+Tamil recipes on 2026-10-03. Serving TMDB page `skip/20+1` would hand a client that holds 18 the
+same page again, a scroll that loads nothing new, and a row whose pages ran down to six or fewer
+would end, since the clients give up after three pages with nothing new. So the route walks the
+recipe's pages from page 1 (`walkWindow`), each from the page cache once a client has scrolled
+past it, and serves the twenty titles after the first `skip`, fewer only where the catalog ends.
+The walk stops at twice as many pages as full ones would take, which bounds a cold request deep
+into a sparse recipe. A randomized recipe has no order to walk, so it keeps serving the one random
+page it picks.
+
 **A catalog leaves Nuvio's addon when a push takes it off**, whether it was taken off Home or
 deleted: until then it is served as pushed, so a deleted catalog never leaves a Nuvio client with
 an empty row or tile before it has synced. A client keeps showing what it was last pushed until it
@@ -351,7 +369,7 @@ The tile flow is `CatalogHandler` → `TMDBClient.FetchCatalogPage` → TMDB `/d
 per-item `/external_ids` → `Meta`. A discover page is served from the **page cache**
 (`internal/provider/pagecache.go`): the finished metas, keyed by the discover request — its path
 and sorted query, genre pick and page included, `api_key` not — for 30 minutes
-(`catalogPageTTL`), well under the three-hour `cacheMaxAge`. So profiles showing the same recipe
+(`catalogPageTTL`). So profiles showing the same recipe
 cost TMDB one fetch per half hour, not one each. It holds at most `maxCatalogPageEntries` (1,000,
 near 20 MB), evicting the least recently used. Requests for a key whose fetch is in flight wait
 for that fetch; it runs detached from the request that started it (bounded by
@@ -378,7 +396,7 @@ re-derive. The whole-list memos stay unbounded; their key spaces are a handful o
 regions.
 `resolveMetas` bounds the per-page `/external_ids` fan-out at 8 concurrent lookups. A title TMDB
 has no IMDB id for is dropped from the page; a lookup that *fails* fails the whole page, so the
-502 goes to Stremio instead of a short row under a three-hour cache header. `releaseInfo`
+502 goes to the client instead of a short row the page cache would keep. `releaseInfo`
 is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
 `docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
 per-item `external_ids` resolution exists at all.
@@ -443,8 +461,9 @@ came back filtered), and in Nuvio TV's source, whose folder view sends a source'
 is blank or `"None"`. Otherwise the pick is made in Discover.
 
 These client behaviours were read from the clients' source at NuvioTV `1a132cb`, NuvioMobile
-`90b58e2`, NuvioDesktop `c5826cb` and stremio-core `43427b9` (checked 2026-10-01); installed
-builds can lag them.
+`90b58e2`, NuvioDesktop `c5826cb` and stremio-core `43427b9` (checked 2026-10-01), and read again
+at NuvioTV `e374881`, NuvioMobile `7be1b56` and NuvioDesktop `ed77003` (2026-10-03), all but
+Nuvio TV Discover's "Default" entry; installed builds can lag them.
 
 `CatalogHandler` reads the extra props with `parseCatalogPath`, from the still-escaped path.
 `PathValue` is already percent-decoded, so a genre like `Sci-Fi %26 Fantasy`, which Nuvio sends
@@ -456,9 +475,12 @@ unfiltered. A collection recipe (`with_collection`, `docs/data-model.md`) has no
 offers every genre, and its pick filters the collection's films by `genre_ids` instead of
 narrowing a discover query.
 
-Cache headers: `cacheMaxAge` 10800s / `staleRevalidate` 3600s — the same values the Cinemeta
-sample carries. They keep Stremio from asking again on every reopen; the page cache only shares a
-page between the clients that do ask.
+A catalog page carries `cacheMaxAge` 10800s / `staleRevalidate` 3600s, the same values the
+Cinemeta sample carries. They are hints the Stremio addon SDK turns into a `Cache-Control` header
+(stremio-core `response.rs`); no Nuvio app reads them from the body, and Uno sends no such header
+on `/u/` routes, so Nuvio's apps fetch every catalog page afresh on every view. The page cache is
+what keeps that from reaching TMDB. A long header would keep a pre-push row on the TV for as long
+as it said, and the manifest must never get one.
 
 **Rate limit.** Every TMDB API call the process makes goes through `TMDBClient.get`, and so
 through one token bucket (`internal/provider/ratelimit.go`): Uno's own ceiling of 40 requests a
@@ -673,7 +695,7 @@ policy limits the page to its own origin, which stops such a script from loading
 sending the token anywhere except Uno and Nuvio. Each exception has a concrete cause:
 
 - `style-src 'unsafe-inline'`: Radix injects `<style>` elements at runtime.
-- `img-src https: data:`: collection and folder art are arbitrary user-supplied URLs.
+- `img-src https: data:`: collection and folder art are arbitrary user-supplied URLs, and the profile picker shows avatars from Nuvio's storage.
 - `font-src data:`: Vite inlines the smallest `@fontsource` subsets.
 - `connect-src` allows the origin of `NUVIO_BASE_URL`, because login and refresh go from the
   browser straight to Nuvio.
@@ -715,6 +737,43 @@ when anything here disagrees with it. The facts Uno's integration leans on:
   profiles, and collections — everything Uno pushes — are **full replace**: anything omitted from
   the payload is **deleted**. (Nuvio's other resources use incremental mutations, atomic blob
   upserts, or non-destructive merges; Uno touches none of them.)
+- **A profile can use profile 1's addons** (`uses_primary_addons` on `sync_pull_profiles`). Every
+  Nuvio app then reads and writes profile 1's addon list for it, never its own (NuvioTV
+  `AddonSyncService`/`AddonPreferences`, NuvioMobile and NuvioDesktop `AddonRepository`);
+  collections stay per profile. Uno's addon pushed to such a profile would show nowhere, so push
+  refuses it (*Push*), and the picker and the builder say so before anyone tries.
+- **The picker draws a profile as Nuvio's apps do.** `sync_pull_profiles` carries
+  `avatar_color_hex`, `avatar_url` (an upload), `avatar_id` (one of Nuvio's built-in avatars) and
+  `pin_enabled`. `GET /api/profiles` answers each profile with `avatar_image_url`
+  (`pickerProfile`, `internal/api/profiles.go`): its upload, else its built-in avatar's image,
+  else `""`. A built-in avatar's image is Nuvio's public storage,
+  `{NUVIO_BASE_URL}/storage/v1/object/public/avatars/{storage_path}`, with `storage_path` from
+  `get_avatar_catalog`, the URL NuvioMobile builds (`ProfileModels`). The hosted list's paths are
+  bare (`animals/bram-v1.png`, read 2026-10-03), unlike the vendor doc's `avatars/…` example.
+  The list is read only when a profile uses a built-in avatar, and a failure to read it leaves
+  every profile its colour. Uno shows a PIN as a badge and never asks for it: PIN checks are
+  app-specific, not public.
+- **Sign-out ends Uno's session alone.** GoTrue's `POST /auth/v1/logout` revokes every session the
+  account holds unless told `scope=local`, which the vendor doc doesn't mention. The SPA
+  (`web/src/auth/client.ts`) sends `?scope=local`, so signing out of Uno leaves the account signed
+  in to Nuvio on its other devices.
+- **Uno names itself.** Every request Uno's server sends Nuvio carries `User-Agent: Uno/1.0.0`
+  (`internal/nuvio`); Nuvio's audit log of addon and collection pushes records the User-Agent.
+- **`p_origin_client_id` is not sent.** Nuvio's apps tag their pushes with an id of their
+  installation, which selects a three-argument overload of each push RPC. It is meant to let the
+  device that made a change skip the live-update notice that change causes for every other device.
+  In the self-host build nothing reads the tag or sends those notices, no Nuvio app listens for
+  them, and the vendor doc documents the tag on the library RPCs alone. Uno doesn't listen for
+  notices either, so the tag would gain it nothing: revisit if Nuvio ships live updates that it
+  changes something for.
+- **Nuvio TV keeps its own copy when the pulled collections blob is empty**, or fails to parse
+  (`CollectionSyncService`, `CollectionsDataStore`). So a push that leaves a profile with no
+  collections at all doesn't clear the TV, and the next collection edit made on the TV pushes its
+  old copy back, until a push leaves at least one collection. Nothing on the wire changes this.
+  NuvioMobile and NuvioDesktop apply an empty blob.
+
+These were read at NuvioTV `e374881`, NuvioMobile `7be1b56`, NuvioDesktop `ed77003` and the
+self-host build `39ea2bd` (2026-10-03).
 
 ### Endpoints Uno uses
 
@@ -726,8 +785,10 @@ when anything here disagrees with it. The facts Uno's integration leans on:
 | `/rest/v1/rpc/sync_push_addons` | POST | Full-replace the profile's addon list | `Client.PushAddons` |
 | `/rest/v1/rpc/sync_pull_collections` | POST | Read current collections blob | `Client.PullCollections` |
 | `/rest/v1/rpc/sync_push_collections` | POST | Full-replace the collections blob | `Client.PushCollections` |
+| `/rest/v1/rpc/get_avatar_catalog` | POST | Nuvio's built-in profile avatars (no sign-in needed) | `Client.AvatarImages` |
 | `/auth/v1/token?grant_type=password` | POST | Login — **frontend only**, never Uno | — |
 | `/auth/v1/token?grant_type=refresh_token` | POST | Refresh — **frontend only**, never Uno | — |
+| `/auth/v1/logout?scope=local` | POST | Sign out of this session alone — **frontend only** | — |
 
 ### `internal/nuvio` shape
 
@@ -761,23 +822,43 @@ is part of the selection, not of a collection save: push builds each collection 
 its entry's pin and stores that pin in its local write, which is the only place `pin_to_top` is
 written. A collection push leaves off Home keeps its last pin. Response, past auth and
 profile resolution, is always JSON and deliberately flat:
-`{success, manifest_url, error?, undo_failed?}` — no partial-progress flags, because the ordering
-below guarantees an ordinary failure means nothing changed at all.
+`{success, manifest_url, error?, undo_failed?, refused?}` — no partial-progress flags, because the
+ordering below and the undo of what Nuvio already took guarantee an ordinary failure means
+nothing changed at all. `refused` names a refusal of step 2 the SPA has words for:
+`empty_collection`, `shares_addons` or `profile_changed`.
 
 **Ordering is Nuvio-first, local-write-last**, and this is load-bearing in two independent ways:
 
 1. Validate access to every id in the body. *Load-bearing, not a fail-fast nicety* — with the
    write moved to the end, this is the only check standing between the request body and a
    third-party API call.
-2. `pushAddons` — read the profile's current addons, upsert Uno's manifest URL into that list by
-   **URL match** (Nuvio's own dedup key is `md5(url)` per user+profile), push the **complete**
-   merged list back. Omitting any existing addon would delete it.
-3. `pushCollections` — pull, merge, push (detail below).
-4. One local transaction writing both selections and the push record, committing at the very
+2. `refusePush` — turn the push away before any write reaches Nuvio when:
+   - a collection it sends has no folders (`400`, `refused: empty_collection`): Nuvio's phone and
+     desktop apps leave one off Home, and Nuvio TV has no guard against one;
+   - the profile's Nuvio slot, read live with `ListProfiles`, is empty or holds a Nuvio profile
+     other than the one the profile was selected as (`409`, `refused: profile_changed`; picking
+     the profile again stamps the slot's Nuvio profile afresh). Pushing there would hand Uno's
+     addon and collections to whoever takes the slot next: deleting a Nuvio profile deletes its
+     rows, nothing stops a push recreating them, and a new profile in that slot keeps them;
+   - that Nuvio profile uses profile 1's addons (`409`, `refused: shares_addons`; *Nuvio
+     integration*).
+3. `pushAddons` — read the profile's current addons, merge Uno's entry in (`mergeAddon`), push
+   the **complete** merged list back. Omitting any existing addon would delete it. Entries match
+   the way Nuvio's apps compare addon URLs (`addonKey`: trimmed, no trailing slash or final
+   `/manifest.json`, case-folded), because Nuvio TV saves Uno's URL without `/manifest.json` and
+   Nuvio's own dedup key is `md5(url)` per user+profile, so an exact match would add Uno a second
+   time. The first entry for this profile's manifest URL stays where it is, with the URL and the
+   name it has (a name is the user's own, set in a Nuvio app), and is switched on, since pressing
+   Push means "show this". A further entry for it is dropped, and so is one for another Uno addon
+   URL under the same `SITE_BASE_URL` (another token's): every Uno addon has the one addon id,
+   which Nuvio apps resolve collection sources by. With no entry, one named `addon.Name` is
+   appended.
+4. `pushCollections` — pull, merge, push (detail below).
+5. One local transaction writing both selections and the push record, committing at the very
    end.
 
 Reversing this reopens two problems at once. A write-first design has to hold a SQLite write
-transaction open across up to four sequential Nuvio HTTP calls, each capped at a 10s client
+transaction open across up to five sequential Nuvio HTTP calls, each capped at a 10s client
 timeout — a concurrent vault write in that window waits out the 5s `busy_timeout` and then fails.
 It also means a failed push can still leave the catalog manifest live, which is the atomicity gap
 this ordering *deletes* rather than documents.
@@ -793,15 +874,15 @@ about (its own native UI, or another client), so the merge must touch only what 
 1. Pull the current blob as **raw `json.RawMessage` per element** — never decoded into a generic
    map. Round-tripping through `map[string]any` converts JSON numbers to `float64` and would
    silently corrupt any collection Uno doesn't own.
-2. Drop every pulled entry that is **owned by this profile**, **sent by this profile's last push**
-   (the push record's collections, `vault.PushedCollectionIDs`), or **Uno-managed by the addon-id
-   heuristic** (`isUnoManaged`, `internal/api/push.go`): every source in every folder carries
-   this addon's id. With the closed graph, everything selected is owned, so the owned set alone
-   covers a deselected collection. The record covers a collection deleted since the last push,
-   whatever it held: a deleted collection with no folders has no source for the heuristic to
-   match, and treating a source-less collection as a match would risk deleting a Nuvio-native one.
-   The heuristic covers a collection Uno *once* pushed but no longer knows the id of (from a
-   recreated database): nothing else ever writes a source pointing at this addon's id.
+2. Drop every pulled entry that is **owned by this profile** or **sent by this profile's last
+   push** (the push record's collections, `vault.PushedCollectionIDs`), by id alone. With the
+   closed graph, everything selected is owned, so the owned set alone covers a deselected
+   collection. The record covers a collection deleted since the last push, whatever it held. A
+   collection is never dropped for what its folders hold: Nuvio's own collection editors build
+   folders from every installed addon's catalogs, Uno's included (*Addon server*), so a
+   collection made in a Nuvio app entirely from Uno catalogs is the user's. A collection Uno
+   pushed from a database since recreated is the one case this leaves in Nuvio, to be removed
+   there by hand.
 3. Append the pending selection's collections as the push record holds them: each
    collection's `vault.CollectionWithFolders.PushJSON`, the vault's push payload, with the
    selection's pin.
@@ -810,8 +891,8 @@ about (its own native UI, or another client), so the merge must touch only what 
 record once (`vault.BuildPushRecord`, `internal/vault/pushrecord.go`) from the pending selection:
 each selected collection as the exact bytes `PushJSON` gives, the Home selection, and every catalog
 Nuvio can reach (its own Home row, or a folder of a collection on Home uses it) with name, type,
-provider and params inline, in the manifest's order. Step 3 sends the record's collections, and
-the local write (step 4, `vault.SavePush`) stores the record whole in `push_records`, one row per
+provider and params inline, in the manifest's order. Step 4 sends the record's collections, and
+the local write (step 5, `vault.SavePush`) stores the record whole in `push_records`, one row per
 profile replaced by each push and stamped with the Nuvio profile id the profile has then
 (`profiles.nuvio_profile_uuid`). Nothing cascades into it from `catalogs` or `collections`. It is
 never rebuilt from the rows at write time, so a Save landing between the build and the write still
@@ -833,13 +914,15 @@ using an edited catalog is listed as changed there. Only push writes the Home co
 Home was in the last push and the record holds it, until a delete takes the row and leaves the
 record holding it: the next push drops it.
 
-**The one gap the ordering can't close, and its mitigation.** If the local commit fails *after*
-both Nuvio calls succeeded, Nuvio has the new collections but Uno's vault doesn't record them. On
-that failure the handler re-pushes the collections blob it pulled at the very start (still held
-in memory), restoring Nuvio to its prior state. If that compensating push *also* fails — two
-independent failures back to back — the response sets `undo_failed` and the user gets distinct
-copy. Retry is always safe: every local write is diff-replace and every Nuvio push is
-upsert/full-replace.
+**The gaps the ordering can't close, and their mitigation** (`sendPush`, `undoPush`). If the
+collections step fails after the addons push succeeded, Nuvio holds Uno's addon entry as this push
+left it; if the local commit fails *after* both Nuvio pushes succeeded, Nuvio has the new
+collections too but Uno's vault doesn't record them. On either failure the handler re-pushes what
+it pulled before writing (still held in memory) — the collections blob when that push went
+through, then the addon list — restoring Nuvio to its prior state. If a compensating push *also*
+fails — two independent failures back to back — the response sets `undo_failed` and the user
+gets distinct copy. Retry is always safe: every local write is diff-replace and every Nuvio push
+is upsert/full-replace.
 
 **Lost update, accepted.** A reorder on the user's TV between pull and push gets clobbered. The
 window is seconds and push is a manual click, so this is accepted — but **the pull must sit

@@ -148,6 +148,7 @@ func (v *Verifier) fetchKeys(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrJWKSUnavailable, err)
 	}
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := v.http.Do(req)
 	if err != nil {

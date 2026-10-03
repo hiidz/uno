@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -35,6 +36,10 @@ func newTestVaultDB(t *testing.T) *vault.DB {
 type fakeNuvio struct {
 	profiles        []nuvio.NuvioProfile
 	listProfilesErr error
+
+	avatarImages    map[string]string
+	avatarImagesErr error
+	avatarCalls     int
 
 	// addons is the profile's addon list as Nuvio holds it before a push.
 	addons        []nuvio.NuvioAddon
@@ -64,6 +69,13 @@ func (f *fakeNuvio) ListProfiles(ctx context.Context, accessToken string) ([]nuv
 		return nil, f.listProfilesErr
 	}
 	return f.profiles, nil
+}
+
+// AvatarImages answers avatarImages, or fails with avatarImagesErr, and
+// counts its calls.
+func (f *fakeNuvio) AvatarImages(ctx context.Context, accessToken string) (map[string]string, error) {
+	f.avatarCalls++
+	return f.avatarImages, f.avatarImagesErr
 }
 
 func (f *fakeNuvio) ListAddons(ctx context.Context, accessToken string, profileID int) ([]nuvio.NuvioAddon, error) {
@@ -97,6 +109,23 @@ func (f *fakeNuvio) PushCollections(ctx context.Context, accessToken string, pro
 	return nil
 }
 
+// liveAs is the profile list Nuvio answers with when profile's slot holds the
+// Nuvio profile it was selected as: what push checks before it pushes.
+func liveAs(profile vault.Profile) []nuvio.NuvioProfile {
+	return []nuvio.NuvioProfile{{ID: profile.NuvioProfileUUID, UserID: profile.NuvioUserID, ProfileIndex: profile.NuvioProfileIndex}}
+}
+
+// createPushableCollection creates a collection with one folder, which push
+// needs every collection on Home to have.
+func createPushableCollection(t *testing.T, ctx context.Context, db *vault.DB, profileID uuid.UUID, title string) vault.CollectionWithFolders {
+	t.Helper()
+	coll, err := db.CreateUserCollection(ctx, profileID, vault.CollectionForm{Title: title, Folders: []vault.FolderData{{Title: "Folder"}}})
+	if err != nil {
+		t.Fatalf("creating collection %q: %v", title, err)
+	}
+	return coll
+}
+
 func newPushRequest(t *testing.T, ctx context.Context, body pushRequest) *http.Request {
 	t.Helper()
 	raw, err := json.Marshal(body)
@@ -127,7 +156,7 @@ func TestPush_NuvioUnreachable(t *testing.T) {
 		t.Fatalf("creating profile: %v", err)
 	}
 
-	fake := &fakeNuvio{listAddonsErr: fmt.Errorf("%w: dial tcp: connection refused", nuvio.ErrNuvioRequestFailed)}
+	fake := &fakeNuvio{profiles: liveAs(profile), listAddonsErr: fmt.Errorf("%w: dial tcp: connection refused", nuvio.ErrNuvioRequestFailed)}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
 	reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
@@ -160,9 +189,11 @@ func TestPush_NuvioUnreachable(t *testing.T) {
 
 // Either half of the two-push sequence being rejected must fail the whole
 // push, and (per the addons-before-collections ordering) a rejected addons
-// push must stop before collections is ever attempted.
+// push must stop before collections is ever attempted. A rejected collections
+// push puts the addon list back as it was pulled, so nothing changed.
 func TestPush_OnePushRejected(t *testing.T) {
 	rejected := fmt.Errorf("%w: status 400", nuvio.ErrNuvioRequestFailed)
+	existing := []nuvio.NuvioAddon{{URL: "https://other.example/manifest.json", Name: "Other", Enabled: true}}
 
 	for _, tc := range []struct {
 		name                 string
@@ -172,20 +203,14 @@ func TestPush_OnePushRejected(t *testing.T) {
 	}{
 		{
 			name:                 "addons push rejected",
-			fake:                 &fakeNuvio{pushAddonsErr: rejected},
+			fake:                 &fakeNuvio{addons: existing, pushAddonsErr: rejected},
 			wantAddonsCalls:      1,
 			wantCollectionsCalls: 0,
 		},
 		{
-			// No compensating action exists for this case: pushAddons
-			// discards the addon list it read before merging in Uno's own
-			// entry, so there is nothing to revert Nuvio's already-accepted
-			// addons push to. The manifest addon stays installed in Nuvio
-			// even though this push reports failure and writes nothing
-			// locally.
 			name:                 "collections push rejected",
-			fake:                 &fakeNuvio{pushCollectionsErrs: []error{rejected}},
-			wantAddonsCalls:      1,
+			fake:                 &fakeNuvio{addons: existing, pushCollectionsErrs: []error{rejected}},
+			wantAddonsCalls:      2,
 			wantCollectionsCalls: 1,
 		},
 	} {
@@ -198,6 +223,7 @@ func TestPush_OnePushRejected(t *testing.T) {
 				t.Fatalf("creating profile: %v", err)
 			}
 
+			tc.fake.profiles = liveAs(profile)
 			s := &Server{vault: db, nuvio: tc.fake, siteBaseURL: "http://example.com"}
 
 			reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
@@ -218,6 +244,9 @@ func TestPush_OnePushRejected(t *testing.T) {
 			if len(tc.fake.pushCollectionsCalls) != tc.wantCollectionsCalls {
 				t.Fatalf("PushCollections calls = %d, want %d", len(tc.fake.pushCollectionsCalls), tc.wantCollectionsCalls)
 			}
+			if last := tc.fake.pushAddonsCalls[len(tc.fake.pushAddonsCalls)-1]; tc.wantAddonsCalls > 1 && !reflect.DeepEqual(last, existing) {
+				t.Fatalf("addons put back as %+v, want the pulled list %+v", last, existing)
+			}
 
 			sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID)
 			if err != nil {
@@ -231,8 +260,9 @@ func TestPush_OnePushRejected(t *testing.T) {
 }
 
 // When both Nuvio pushes succeed but the local commit that follows fails,
-// push must attempt a compensating revert of the collections push — and
-// report whether that revert itself succeeded, via UndoFailed.
+// push must attempt a compensating revert of the collections push and the
+// addons push — and report whether that revert itself succeeded, via
+// UndoFailed.
 func TestPush_CompensatingRevert(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -250,10 +280,7 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			if err != nil {
 				t.Fatalf("creating profile: %v", err)
 			}
-			coll, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Mine"})
-			if err != nil {
-				t.Fatalf("creating collection: %v", err)
-			}
+			coll := createPushableCollection(t, ctx, db, profile.ID, "Mine")
 
 			// A foreign entry already sitting in Nuvio's blob before this
 			// push, unrelated to the collection push is about to add — this
@@ -264,6 +291,7 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			}
 
 			fake := &fakeNuvio{
+				profiles:            liveAs(profile),
 				pullCollections:     []json.RawMessage{priorRaw},
 				pushCollectionsErrs: []error{nil, tc.revertErr},
 				// Simulate the collection being deleted (e.g. by a concurrent
@@ -314,25 +342,25 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			if reflect.DeepEqual(pushedBlob, revertBlob) {
 				t.Fatalf("revert pushed the same blob as the original push instead of restoring prior state")
 			}
+			if len(fake.pushAddonsCalls) != 2 || len(fake.pushAddonsCalls[1]) != 0 {
+				t.Fatalf("PushAddons calls = %+v, want the push, then the pulled (empty) list put back", fake.pushAddonsCalls)
+			}
 		})
 	}
 }
 
-// A pulled collection this profile doesn't own, but whose every source
-// carries this addon's id, is dropped from the pushed blob — the signal that
-// Uno once pushed it but has since forgotten it (hard-deleted locally, or a
-// recreated database). Tested under both "sources" (real pulled data's key)
-// and "catalogSources" (the key Uno's own push writes under), since which
-// key a previously-Uno-pushed collection round-trips under isn't confirmed.
-// A pulled collection with a foreign addon id, or no sources at all, must
-// survive untouched.
-func TestPush_DropsForgottenUnoManagedCollections(t *testing.T) {
+// A pulled collection this profile neither owns nor last pushed survives the
+// push untouched, even when every source in it carries this addon's id: Nuvio's
+// own collection editors build collections from Uno's catalogs. Tested under
+// both "sources" (the key Nuvio's apps write) and "catalogSources" (the key
+// Uno's own push writes under).
+func TestPush_KeepsCollectionsMadeInNuvioFromUnoCatalogs(t *testing.T) {
 	for _, sourcesKey := range []string{"sources", "catalogSources"} {
 		t.Run(sourcesKey, func(t *testing.T) {
 			db := newTestVaultDB(t)
 			ctx := context.Background()
 
-			profile, err := db.ResolveOrCreateProfile(ctx, "user-forgotten-"+sourcesKey, 1, "nuvio-uuid-forgotten-"+sourcesKey)
+			profile, err := db.ResolveOrCreateProfile(ctx, "user-made-in-nuvio-"+sourcesKey, 1, "nuvio-uuid-made-in-nuvio-"+sourcesKey)
 			if err != nil {
 				t.Fatalf("creating profile: %v", err)
 			}
@@ -345,15 +373,16 @@ func TestPush_DropsForgottenUnoManagedCollections(t *testing.T) {
 				return raw
 			}
 
-			forgottenRaw := marshalCollection(uuid.New().String(), []map[string]any{
+			unoSourcedRaw := marshalCollection(uuid.New().String(), []map[string]any{
 				{sourcesKey: []map[string]string{{"addonId": addon.ID}, {"addonId": addon.ID}}},
 			})
 			foreignRaw := marshalCollection(uuid.New().String(), []map[string]any{
 				{sourcesKey: []map[string]string{{"addonId": "some.other.addon"}}},
 			})
 			emptyRaw := marshalCollection(uuid.New().String(), []map[string]any{})
+			pulled := []json.RawMessage{unoSourcedRaw, foreignRaw, emptyRaw}
 
-			fake := &fakeNuvio{pullCollections: []json.RawMessage{forgottenRaw, foreignRaw, emptyRaw}}
+			fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: pulled}
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
 			reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
@@ -368,28 +397,25 @@ func TestPush_DropsForgottenUnoManagedCollections(t *testing.T) {
 			if len(fake.pushCollectionsCalls) != 1 {
 				t.Fatalf("PushCollections calls = %d, want 1", len(fake.pushCollectionsCalls))
 			}
-			pushed := fake.pushCollectionsCalls[0]
-			if len(pushed) != 2 {
-				t.Fatalf("pushed blob has %d entries, want 2 (foreign + empty kept, forgotten dropped): %s", len(pushed), pushed)
-			}
-			for _, raw := range pushed {
-				if string(raw) == string(forgottenRaw) {
-					t.Fatalf("forgotten Uno-managed collection survived in the pushed blob: %s", raw)
-				}
+			if pushed := fake.pushCollectionsCalls[0]; !reflect.DeepEqual(pushed, pulled) {
+				t.Fatalf("pushed blob = %s, want every pulled collection back untouched: %s", pushed, pulled)
 			}
 		})
 	}
 }
 
 // The addons push is a full replace, so push sends back every addon the
-// profile already has, unchanged and in order, with Uno's own entry upserted
-// by manifest URL: appended when absent, refreshed in place when present,
-// never duplicated. An addon with Uno's name at another URL is a different
-// addon.
+// profile already has, unchanged and in order, with Uno's own entry merged in
+// once: appended when absent, switched on in place when present — under the
+// URL and name it has, whether Nuvio TV saved it without /manifest.json or a
+// user renamed it. A second entry for it is dropped, as is another token's
+// Uno addon on this site. An addon at another site is a different addon,
+// whatever it is called.
 func TestPush_MergesUnoIntoExistingAddons(t *testing.T) {
 	other := nuvio.NuvioAddon{URL: "https://other.example/manifest.json", Name: "Other", Enabled: true, SortOrder: 0}
 	disabled := nuvio.NuvioAddon{URL: "https://off.example/manifest.json", Name: "Off", Enabled: false, SortOrder: 1}
-	lookalike := nuvio.NuvioAddon{URL: "https://uno.example/u/another-token/manifest.json", Name: addon.Name, Enabled: true, SortOrder: 2}
+	oldToken := nuvio.NuvioAddon{URL: "https://uno.example/u/another-token/manifest.json", Name: addon.Name, Enabled: true, SortOrder: 2}
+	elsewhere := nuvio.NuvioAddon{URL: "https://uno.elsewhere/u/a-token/manifest.json", Name: addon.Name, Enabled: true, SortOrder: 3}
 
 	tests := []struct {
 		name     string
@@ -404,21 +430,36 @@ func TestPush_MergesUnoIntoExistingAddons(t *testing.T) {
 			},
 		},
 		{
-			name: "appended after the profile's other addons",
+			name: "appended after the profile's other addons, another token's dropped",
 			existing: func(string) []nuvio.NuvioAddon {
-				return []nuvio.NuvioAddon{other, disabled, lookalike}
+				return []nuvio.NuvioAddon{other, disabled, oldToken, elsewhere}
 			},
 			want: func(manifestURL string) []nuvio.NuvioAddon {
-				return []nuvio.NuvioAddon{other, disabled, lookalike, {URL: manifestURL, Name: addon.Name, Enabled: true, SortOrder: 3}}
+				return []nuvio.NuvioAddon{other, disabled, elsewhere, {URL: manifestURL, Name: addon.Name, Enabled: true, SortOrder: 4}}
 			},
 		},
 		{
-			name: "refreshed in place where it already is",
+			name: "switched on in place, keeping the user's name",
 			existing: func(manifestURL string) []nuvio.NuvioAddon {
 				return []nuvio.NuvioAddon{other, {URL: manifestURL, Name: "Renamed by the user", Enabled: false, SortOrder: 1}, disabled}
 			},
 			want: func(manifestURL string) []nuvio.NuvioAddon {
-				return []nuvio.NuvioAddon{other, {URL: manifestURL, Name: addon.Name, Enabled: true, SortOrder: 1}, disabled}
+				return []nuvio.NuvioAddon{other, {URL: manifestURL, Name: "Renamed by the user", Enabled: true, SortOrder: 1}, disabled}
+			},
+		},
+		{
+			name: "found as Nuvio TV saves it, its duplicate dropped",
+			existing: func(manifestURL string) []nuvio.NuvioAddon {
+				tvForm := strings.TrimSuffix(manifestURL, "/manifest.json")
+				return []nuvio.NuvioAddon{
+					{URL: tvForm, Enabled: false, SortOrder: 0},
+					other,
+					{URL: manifestURL, Name: addon.Name, Enabled: true, SortOrder: 2},
+				}
+			},
+			want: func(manifestURL string) []nuvio.NuvioAddon {
+				tvForm := strings.TrimSuffix(manifestURL, "/manifest.json")
+				return []nuvio.NuvioAddon{{URL: tvForm, Enabled: true, SortOrder: 0}, other}
 			},
 		},
 	}
@@ -433,7 +474,7 @@ func TestPush_MergesUnoIntoExistingAddons(t *testing.T) {
 			}
 			manifestURL := "https://uno.example" + addon.ManifestPath(profile.Token)
 
-			fake := &fakeNuvio{addons: tc.existing(manifestURL)}
+			fake := &fakeNuvio{profiles: liveAs(profile), addons: tc.existing(manifestURL)}
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 			w := httptest.NewRecorder()
 			s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{}))
@@ -454,6 +495,20 @@ func TestPush_MergesUnoIntoExistingAddons(t *testing.T) {
 	}
 }
 
+// addonKey compares addon URLs the way Nuvio TV's canonicalizeUrl does.
+func TestAddonKey(t *testing.T) {
+	for url, want := range map[string]string{
+		"https://Uno.example/u/T/manifest.json":  "https://uno.example/u/t",
+		" https://uno.example/u/t/ ":             "https://uno.example/u/t",
+		"https://uno.example/u/t/MANIFEST.JSON/": "https://uno.example/u/t",
+		"https://a.example/manifest.json?x=1":    "https://a.example?x=1",
+	} {
+		if got := addonKey(url); got != want {
+			t.Errorf("addonKey(%q) = %q, want %q", url, got, want)
+		}
+	}
+}
+
 // The collections push is a full replace too. A pulled collection this
 // profile owns is dropped whether or not it is still selected, since the
 // fresh copy of each selected one is appended after everything kept; one it
@@ -466,22 +521,18 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating profile: %v", err)
 	}
-	selected, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Selected"})
-	if err != nil {
-		t.Fatalf("creating selected collection: %v", err)
-	}
+	selected := createPushableCollection(t, ctx, db, profile.ID, "Selected")
 	deselected, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Deselected"})
 	if err != nil {
 		t.Fatalf("creating deselected collection: %v", err)
 	}
 
 	foreign := json.RawMessage(`{"id":"foreign-1",  "title":"Theirs","n":12345678901234567890,"folders":[{"sources":[{"addonId":"some.other.addon"}]}]}`)
-	// Owned entries are dropped by id: their sources name another addon, so
-	// the Uno-managed heuristic alone would keep them.
+	// Owned entries are dropped by id, whatever their sources name.
 	staleSelected := json.RawMessage(`{"id":"` + selected.ID.String() + `","title":"Stale","folders":[{"sources":[{"addonId":"some.other.addon"}]}]}`)
 	staleDeselected := json.RawMessage(`{"id":"` + deselected.ID.String() + `","title":"Deselected","folders":[{"sources":[{"addonId":"some.other.addon"}]}]}`)
 
-	fake := &fakeNuvio{pullCollections: []json.RawMessage{staleSelected, foreign, staleDeselected}}
+	fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: []json.RawMessage{staleSelected, foreign, staleDeselected}}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
 	s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{
@@ -539,11 +590,8 @@ func TestPush_RefusesABodyInAnotherShape(t *testing.T) {
 		t.Fatalf("creating profile: %v", err)
 	}
 	ctx := withNuvioToken(withProfileID(t.Context(), profile.ID), "token")
-	onHome, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "On Home"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := &Server{vault: db, nuvio: &fakeNuvio{}, siteBaseURL: "https://uno.example"}
+	onHome := createPushableCollection(t, ctx, db, profile.ID, "On Home")
+	s := &Server{vault: db, nuvio: &fakeNuvio{profiles: liveAs(profile)}, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
 	s.push(w, newPushRequest(t, ctx, pushRequest{Collections: vault.CollectionSelectionForm{
 		Collections: []vault.SelectedCollectionInput{{CollectionID: onHome.ID}},
@@ -578,18 +626,12 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating profile: %v", err)
 	}
-	first, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "First"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	later, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Later"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := createPushableCollection(t, ctx, db, profile.ID, "First")
+	later := createPushableCollection(t, ctx, db, profile.ID, "Later")
 	s := &Server{vault: db, siteBaseURL: "https://uno.example"}
 	push := func(entries ...vault.SelectedCollectionInput) []json.RawMessage {
 		t.Helper()
-		fake := &fakeNuvio{}
+		fake := &fakeNuvio{profiles: liveAs(profile)}
 		s.nuvio = fake
 		w := httptest.NewRecorder()
 		s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{
@@ -646,8 +688,8 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 }
 
 // A collection the last push sent, deleted since, is dropped from Nuvio's blob
-// by the next push even with no folders, which the addon-id heuristic can't
-// tell from a Nuvio-native one. A foreign collection with no folders stays.
+// by the next push: the push record still names it. A foreign collection with
+// no folders stays.
 func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	db := newTestVaultDB(t)
 	ctx := context.Background()
@@ -655,22 +697,19 @@ func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating profile: %v", err)
 	}
-	empty, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Empty", ViewMode: "ROWS"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	gone := createPushableCollection(t, ctx, db, profile.ID, "Gone")
 	foreign := json.RawMessage(`{"id":"` + uuid.NewString() + `","folders":[]}`)
-	fake := &fakeNuvio{pullCollections: []json.RawMessage{foreign}}
+	fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: []json.RawMessage{foreign}}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 	reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
 
-	first := vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: empty.ID}}}
+	first := vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: gone.ID}}}
 	s.push(httptest.NewRecorder(), newPushRequest(t, reqCtx, pushRequest{Collections: first}))
 	if got := fake.pushCollectionsCalls[0]; len(got) != 2 {
-		t.Fatalf("first push sent %d collections, want the foreign one and Empty", len(got))
+		t.Fatalf("first push sent %d collections, want the foreign one and Gone", len(got))
 	}
 
-	if err := db.DeleteUserCollection(ctx, profile.ID, empty.ID); err != nil {
+	if err := db.DeleteUserCollection(ctx, profile.ID, gone.ID); err != nil {
 		t.Fatalf("deleting a collection on Home: %v", err)
 	}
 	fake.pullCollections = fake.pushCollectionsCalls[0]
@@ -718,6 +757,65 @@ func TestPush_TurnsAwayWhatItCannotRun(t *testing.T) {
 			}
 			if len(fake.pushAddonsCalls) != 0 || len(fake.pushCollectionsCalls) != 0 {
 				t.Error("Nuvio was contacted")
+			}
+		})
+	}
+}
+
+// A push that can't go ahead as it stands is answered before any addon or
+// collection reaches Nuvio: a collection on Home with no folders, a Nuvio
+// profile slot that is empty or holds another Nuvio profile now, a Nuvio
+// profile using profile 1's addons, and Nuvio failing to list the profiles.
+func TestPush_RefusesBeforeNuvio(t *testing.T) {
+	db := newTestVaultDB(t)
+	ctx := context.Background()
+	profile, err := db.ResolveOrCreateProfile(ctx, "user-refused", 2, "nuvio-uuid-refused")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+	empty, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Empty"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := createPushableCollection(t, ctx, db, profile.ID, "Full")
+	onHome := func(ids ...uuid.UUID) pushRequest {
+		var form vault.CollectionSelectionForm
+		for _, id := range ids {
+			form.Collections = append(form.Collections, vault.SelectedCollectionInput{CollectionID: id})
+		}
+		return pushRequest{Collections: form}
+	}
+	sharing := liveAs(profile)
+	sharing[0].UsesPrimaryAddons = true
+	replaced := liveAs(profile)
+	replaced[0].ID = "nuvio-uuid-someone-new"
+
+	tests := []struct {
+		name        string
+		fake        *fakeNuvio
+		body        pushRequest
+		wantStatus  int
+		wantRefused string
+	}{
+		{"a collection with no folders", &fakeNuvio{profiles: liveAs(profile)}, onHome(full.ID, empty.ID), http.StatusBadRequest, refusedEmptyCollection},
+		{"the slot is empty", &fakeNuvio{}, onHome(full.ID), http.StatusConflict, refusedProfileChanged},
+		{"the slot holds another Nuvio profile", &fakeNuvio{profiles: replaced}, onHome(full.ID), http.StatusConflict, refusedProfileChanged},
+		{"the profile uses profile 1's addons", &fakeNuvio{profiles: sharing}, onHome(full.ID), http.StatusConflict, refusedSharesAddons},
+		{"Nuvio can't list the profiles", &fakeNuvio{listProfilesErr: fmt.Errorf("%w: status 503", nuvio.ErrNuvioRequestFailed)}, onHome(full.ID), http.StatusBadGateway, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Server{vault: db, nuvio: tc.fake, siteBaseURL: "http://example.com"}
+			w := httptest.NewRecorder()
+			s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), tc.body))
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (%s)", w.Code, tc.wantStatus, w.Body.String())
+			}
+			if result := decodePushResult(t, w); result.Success || result.Refused != tc.wantRefused {
+				t.Errorf("result = %+v, want a failure refused as %q", result, tc.wantRefused)
+			}
+			if len(tc.fake.pushAddonsCalls) != 0 || len(tc.fake.pushCollectionsCalls) != 0 {
+				t.Error("Nuvio was pushed to")
 			}
 		})
 	}

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type SyntheticEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowRight, TriangleAlert } from 'lucide-react'
+import { ArrowRight, Lock, TriangleAlert } from 'lucide-react'
 import { ApiError, fetchProfiles, queryKeys, selectProfile } from '@/api'
 import type { NuvioProfile } from '@/api'
 import { logout } from '@/auth'
@@ -49,6 +49,88 @@ function cardNote(isChoosing: boolean, gated: boolean, noteId: string): string |
   return undefined
 }
 
+/** Said on the card of a profile that uses profile 1's addons in Nuvio: it
+ *  opens like any other, but Push is off for it (`usePushBlock`). */
+function SharesAddonsNote({ profile }: { profile: NuvioProfile }) {
+  if (!profile.uses_primary_addons) return null
+  return <span className="text-dim truncate text-[13px]">Uses profile 1&rsquo;s addons in Nuvio · Push is off</span>
+}
+
+interface ProfileProps {
+  profile: NuvioProfile
+}
+
+/**
+ * The profile's picture as Nuvio's apps draw it: its image when it has one
+ * (its own upload, or one of Nuvio's built-in avatars), else a circle in its
+ * colour with its initial. Decorative: the card's name already says whose it
+ * is. An image that fails to load leaves the coloured circle showing.
+ */
+function ProfileAvatar({ profile }: ProfileProps) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{ backgroundColor: avatarColor(profile) }}
+      className="text-ink relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full text-[18px] font-bold"
+    >
+      {initialOf(profile.name)}
+      <AvatarImage url={profile.avatar_image_url} />
+    </span>
+  )
+}
+
+function AvatarImage({ url }: { url: string }) {
+  if (!url) return null
+  return (
+    <img
+      src={url}
+      alt=""
+      className="absolute inset-0 size-full object-cover"
+      onError={hideImage}
+    />
+  )
+}
+
+function hideImage(event: SyntheticEvent<HTMLImageElement>) {
+  event.currentTarget.hidden = true
+}
+
+/** Nuvio's own default colour for a profile that has none. */
+const DEFAULT_AVATAR_COLOR = '#1E88E5'
+
+function avatarColor(profile: NuvioProfile): string {
+  if (!profile.avatar_color_hex) return DEFAULT_AVATAR_COLOR
+  return profile.avatar_color_hex
+}
+
+function initialOf(name: string): string {
+  return Array.from(name.trim())[0]?.toUpperCase() ?? ''
+}
+
+/** Said on the card of a profile with a PIN in Nuvio. Uno doesn't ask for
+ *  the PIN: the badge only tells the profile apart the way Nuvio does. */
+function PinBadge({ profile }: ProfileProps) {
+  if (!profile.pin_enabled) return null
+  return (
+    <span className="type-sign text-dim flex items-center gap-1 text-[11px]">
+      <Icon icon={Lock} size={12} />
+      PIN in Nuvio
+    </span>
+  )
+}
+
+/** The card's accessible name names what `PinBadge` shows. */
+function pinLabel(profile: NuvioProfile): string {
+  if (!profile.pin_enabled) return ''
+  return ', PIN in Nuvio'
+}
+
+/** The card's accessible name names what `SharesAddonsNote` shows. */
+function sharesAddonsLabel(profile: NuvioProfile): string {
+  if (!profile.uses_primary_addons) return ''
+  return ', uses profile 1’s addons in Nuvio, Push is off'
+}
+
 export function ProfilePicker() {
   const navigate = useNavigate()
   const [selecting, setSelecting] = useState<number | null>(null)
@@ -81,6 +163,7 @@ export function ProfilePicker() {
             profileIndex: profile.profile_index,
             profileName: profile.name,
             manifestURL: selected.manifest_url,
+            sharesAddons: profile.uses_primary_addons,
           },
         })
       },
@@ -165,7 +248,7 @@ export function ProfilePicker() {
                       disabled={isOff}
                       aria-disabled={isOff || undefined}
                       aria-describedby={cardNote(isChoosing, keyStep.kind === 'needed', noteId)}
-                      aria-label={`Profile ${profile.profile_index}, ${profile.name}${isChosen ? ', signing in' : ''}`}
+                      aria-label={`Profile ${profile.profile_index}, ${profile.name}${pinLabel(profile)}${sharesAddonsLabel(profile)}${isChosen ? ', signing in' : ''}`}
                       onClick={() => choose(profile)}
                       className={`group flex h-[168px] w-full flex-col overflow-hidden rounded-2xl text-left transition-[background-color,opacity] duration-200 ease-[var(--uno-ease)] ${
                         isChosen
@@ -176,18 +259,22 @@ export function ProfilePicker() {
                       }`}
                     >
                       {/* A membership card: the shop's fascia across the top,
-                          the slot Nuvio shows it in, the member's name. */}
+                          the slot Nuvio shows it in, the member's picture and
+                          name as Nuvio shows them. */}
                       <Fascia className="h-2.5 shrink-0" />
                       <span className="flex min-h-0 flex-1 flex-col px-4 pt-3.5 pb-4">
                         <span className="flex items-center justify-between gap-3">
                           <Wordmark className="text-dim h-[11px] w-auto" />
-                          <span className="type-sign text-dim text-[11px]">
-                            Profile {profile.profile_index}
+                          <span className="flex items-center gap-2">
+                            <PinBadge profile={profile} />
+                            <span className="type-sign text-dim text-[11px]">Profile {profile.profile_index}</span>
                           </span>
                         </span>
-                        <span className="mt-auto truncate text-[28px] leading-tight font-bold">
-                          {profile.name}
+                        <span className="mt-auto flex min-w-0 items-center gap-3">
+                          <ProfileAvatar profile={profile} />
+                          <span className="truncate text-[28px] leading-tight font-bold">{profile.name}</span>
                         </span>
+                        <SharesAddonsNote profile={profile} />
                         <span className="mt-2 flex items-center justify-between gap-3 text-[14px]">
                           <span className={isChosen ? 'text-ink' : 'text-dim'}>
                             {isChosen ? 'Signing in…' : 'Open its home screen'}

@@ -439,6 +439,18 @@ export interface NuvioProfile {
   user_id: string
   profile_index: number
   name: string
+  /** The profile uses profile 1's addons in Nuvio: Nuvio's apps read profile
+   *  1's addon list for it, so Uno's addon pushed here would show nowhere,
+   *  and push refuses it. */
+  uses_primary_addons: boolean
+  /** The circle Nuvio draws for a profile without a picture. */
+  avatar_color_hex: string
+  /** The picture Nuvio's apps show for the profile: its own upload, else its
+   *  built-in avatar's image in Nuvio's storage; `''` when they show its
+   *  colour. Added by Uno (`pickerProfile`), not one of Nuvio's fields. */
+  avatar_image_url: string
+  /** The profile has a PIN in Nuvio. Uno doesn't ask for it. */
+  pin_enabled: boolean
 }
 
 /**

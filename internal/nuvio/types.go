@@ -13,11 +13,23 @@ type Claims struct {
 
 // NuvioProfile is the subset of sync_pull_profiles's response fields Uno
 // currently needs. See Nuvio's public API doc for the full response shape.
+//
+// UsesPrimaryAddons is set on a profile Nuvio's apps give profile 1's addon
+// list in place of its own: an addon pushed to that profile is in a list no
+// app reads. The avatar fields and PinEnabled are how Nuvio's apps draw the
+// profile: a picture (AvatarURL, its own upload, or AvatarID, one of
+// Nuvio's built-in avatars), else a circle in AvatarColorHex, and a lock
+// when it has a PIN. A null avatar field reads as "".
 type NuvioProfile struct {
-	ID           string `json:"id"`
-	UserID       string `json:"user_id"`
-	ProfileIndex int    `json:"profile_index"`
-	Name         string `json:"name"`
+	ID                string `json:"id"`
+	UserID            string `json:"user_id"`
+	ProfileIndex      int    `json:"profile_index"`
+	Name              string `json:"name"`
+	UsesPrimaryAddons bool   `json:"uses_primary_addons"`
+	AvatarColorHex    string `json:"avatar_color_hex"`
+	AvatarID          string `json:"avatar_id"`
+	AvatarURL         string `json:"avatar_url"`
+	PinEnabled        bool   `json:"pin_enabled"`
 }
 
 // NuvioAddon is one row from GET /rest/v1/addons — the subset Uno needs to

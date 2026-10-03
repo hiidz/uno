@@ -82,14 +82,15 @@ succeeds, and the wrong URL still gets pushed to Nuvio with no warning. `SITE_BA
 set correctly, not merely set, at deploy time.
 
 **Correcting a profile already pushed with the wrong URL takes more than re-pushing.**
-`pushAddons` (`internal/api/push.go`) reads the profile's current addon list, upserts Uno's entry
-**by URL match**, and pushes the complete merged list back — every entry that doesn't match is
-carried forward verbatim, because `sync_push_addons` is full-replace and omitting an addon would
-delete someone else's. So after fixing the variable, the next push finds no entry matching the
-*new* URL, appends it, and re-pushes a list that still contains the stale localhost entry as an
-unmatched existing addon. The result is two Uno entries, one of them dead, and every subsequent
-push preserves it. The stale entry has to be removed in Nuvio's own UI, or by a one-off push of a
-list that omits it.
+`pushAddons` (`internal/api/push.go`) reads the profile's current addon list, merges Uno's entry
+in (`mergeAddon`), and pushes the complete merged list back — every other entry is carried
+forward verbatim, because `sync_push_addons` is full-replace and omitting an addon would delete
+someone else's. The merge drops another token's Uno entry only under the **current**
+`SITE_BASE_URL`. So after fixing the variable, the next push finds no entry for the *new* URL,
+appends it, and re-pushes a list that still contains the stale localhost entry as someone else's
+addon. The result is two Uno entries, one of them dead, and every subsequent push preserves it.
+The stale entry has to be removed in Nuvio's own UI, or by a one-off push of a list that omits
+it.
 
 ## The dev auth bypass
 
@@ -118,9 +119,10 @@ What the bypass reaches, and what it does not:
 
 - **Reaches**: every path that ends in Uno's own vault or in TMDB — catalog and collection CRUD,
   selection, preview, the pickers.
-- **Reaches partially**: push. The handler's ordering, the access validation, the
-  owned-collection-ids-only merge and its addon-id heuristic for forgotten collections, and the
-  compensating revert all run; what they run *against* is the in-memory fake, not Nuvio.
+- **Reaches partially**: push. The handler's ordering, the access validation, the live profile
+  check, the addon merge, the owned-or-last-pushed collections merge, and the compensating
+  revert all run; what they run *against* is the in-memory fake, not Nuvio. The fake's profiles
+  never use profile 1's addons.
 - **Does not reach**: anything depending on Nuvio's own behaviour — the addon URL round-trip
   through a real account, and every push failure branch whose failure originates upstream.
 - The fake's fixed `sub = "dev-user"` alongside a real account is two subjects over one vault,

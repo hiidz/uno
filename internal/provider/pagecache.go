@@ -10,9 +10,8 @@ import (
 	"time"
 )
 
-// catalogPageTTL is how long a finished catalog page is served from memory.
-// It sits well under the addon's three-hour cacheMaxAge, so a client that
-// asks again after its own cache lapses gets a ranking at most this old.
+// catalogPageTTL is how long a finished catalog page is served from memory,
+// so a client asking again gets a ranking at most this old.
 const catalogPageTTL = 30 * time.Minute
 
 // maxCatalogPageEntries bounds the page cache. A page is about twenty metas

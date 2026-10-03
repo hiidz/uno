@@ -173,6 +173,15 @@ func (v *devBypassNuvio) PushCollections(ctx context.Context, accessToken string
 	return v.next.PushCollections(ctx, accessToken, profileID, collections)
 }
 
+// AvatarImages answers the bypass account with no built-in avatars: its
+// fake profiles use none.
+func (v *devBypassNuvio) AvatarImages(ctx context.Context, accessToken string) (map[string]string, error) {
+	if isBypassToken(accessToken, v.token) {
+		return map[string]string{}, nil
+	}
+	return v.next.AvatarImages(ctx, accessToken)
+}
+
 // LogDevBypassEnabled logs a loud, impossible-to-miss warning that auth is
 // bypassed for a fixed token — called once at startup when the bypass is
 // configured, so it can never silently end up active in a deployed server.

@@ -192,6 +192,9 @@ const HEADLINE: Record<PushOutcomeKind, string> = {
   'undo-failed': "Push failed, and we couldn't fully undo it.",
   unknown: "Couldn't confirm what happened.",
   'rate-limited': 'Too many pushes — nothing changed.',
+  'empty-collection': 'A collection on Home has no folders — nothing changed.',
+  'shares-addons': "This profile uses profile 1's addons in Nuvio — nothing changed.",
+  'profile-changed': 'This profile changed in Nuvio — nothing changed.',
 }
 
 const DETAIL: Record<PushOutcomeKind, string> = {
@@ -201,6 +204,11 @@ const DETAIL: Record<PushOutcomeKind, string> = {
     "Nuvio may be out of step with what's saved here. Push again to put them back in line.",
   unknown: "We couldn't tell whether this push worked. Reload to see what's live.",
   'rate-limited': 'Your edits are still here. Wait a few seconds, then try again.',
+  'empty-collection': "Nuvio can't show a collection without folders. Add a folder to it, or take it off Home, then push.",
+  'shares-addons':
+    'Nothing pushed from here would show in Nuvio. Turn sharing off for this profile in Nuvio, then pick it again.',
+  'profile-changed':
+    'It was deleted or replaced in Nuvio since you opened it. Your edits are still here; pick the profile again to push.',
 }
 
 type PushOutcomeKind = NonNullable<Push['outcome']>['kind']

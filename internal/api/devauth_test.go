@@ -65,6 +65,18 @@ func TestDevBypassNuvio(t *testing.T) {
 		}
 	})
 
+	t.Run("avatar images", func(t *testing.T) {
+		upstream.avatarImages = map[string]string{"avatar_lalo": "https://nuvio.example/a.png"}
+		images, err := n.AvatarImages(ctx, "dev-secret")
+		if err != nil || len(images) != 0 || upstream.avatarCalls != 0 {
+			t.Fatalf("bypass avatar images = %v, %v (upstream asked %d times); want none, without Nuvio", images, err, upstream.avatarCalls)
+		}
+		images, err = n.AvatarImages(ctx, "a-real-jwt")
+		if err != nil || !reflect.DeepEqual(images, upstream.avatarImages) {
+			t.Fatalf("real-token avatar images = %v, %v; want the real client's", images, err)
+		}
+	})
+
 	t.Run("each fake profile stores its own push", func(t *testing.T) {
 		addons := []nuvio.NuvioAddon{{URL: "https://uno.example/u/t/manifest.json", Name: "Uno Catalog", Enabled: true}}
 		if err := n.PushAddons(ctx, "dev-secret", 1, addons); err != nil {

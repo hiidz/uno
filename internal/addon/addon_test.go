@@ -210,25 +210,25 @@ func TestParseCatalogPath(t *testing.T) {
 	tests := []struct {
 		path      string
 		wantID    string
-		wantPage  int
+		wantSkip  int
 		wantGenre string
 	}{
-		{"/u/t/catalog/movie/tmdb-x.json", "tmdb-x", 1, ""},
-		{"/u/t/catalog/movie/tmdb-x/skip=40.json", "tmdb-x", 3, ""},
-		{"/u/t/catalog/movie/tmdb-x/genre=Action.json", "tmdb-x", 1, "Action"},
-		{"/u/t/catalog/series/tmdb-x/genre=Sci-Fi%20%26%20Fantasy&skip=20.json", "tmdb-x", 2, "Sci-Fi & Fantasy"},
+		{"/u/t/catalog/movie/tmdb-x.json", "tmdb-x", 0, ""},
+		{"/u/t/catalog/movie/tmdb-x/skip=40.json", "tmdb-x", 40, ""},
+		{"/u/t/catalog/movie/tmdb-x/genre=Action.json", "tmdb-x", 0, "Action"},
+		{"/u/t/catalog/series/tmdb-x/genre=Sci-Fi%20%26%20Fantasy&skip=20.json", "tmdb-x", 20, "Sci-Fi & Fantasy"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			var id, genre string
-			var page int
+			var skip int
 			mux := http.NewServeMux()
 			mux.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", func(_ http.ResponseWriter, r *http.Request) {
-				id, page, genre = parseCatalogPath(r)
+				id, skip, genre = parseCatalogPath(r)
 			})
 			mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, tt.path, nil))
-			if id != tt.wantID || page != tt.wantPage || genre != tt.wantGenre {
-				t.Fatalf("parseCatalogPath = (%q, %d, %q), want (%q, %d, %q)", id, page, genre, tt.wantID, tt.wantPage, tt.wantGenre)
+			if id != tt.wantID || skip != tt.wantSkip || genre != tt.wantGenre {
+				t.Fatalf("parseCatalogPath = (%q, %d, %q), want (%q, %d, %q)", id, skip, genre, tt.wantID, tt.wantSkip, tt.wantGenre)
 			}
 		})
 	}
@@ -310,7 +310,7 @@ func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
 	}},
 		vault.CollectionSelectionForm{})
 
-	s, err := New(db, provider.NewTMDBClient("test-key"), nil)
+	s, err := New(db, provider.NewTMDBClient("test-key"), nil, "https://uno.example")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

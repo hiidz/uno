@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -29,32 +30,42 @@ type pushRequest struct {
 
 // pushResult is the always-JSON response, past auth/profile resolution.
 // Flat by design — success or failure, not partial-progress flags — since
-// push's ordering (validate → Nuvio → local write) guarantees an ordinary
-// failure means nothing changed. UndoFailed marks the one case that
-// guarantee doesn't cover: see the final commit step below.
+// push's ordering (validate → Nuvio → local write) and its undo of what Nuvio
+// already took guarantee an ordinary failure means nothing changed.
+// UndoFailed marks the one case that guarantee doesn't cover: an undo that
+// failed too (undoPush). Refused names why push turned the selection away
+// before contacting Nuvio, when the SPA has words of its own for it.
 type pushResult struct {
 	Success     bool   `json:"success"`
 	ManifestURL string `json:"manifest_url,omitempty"`
 	Error       string `json:"error,omitempty"`
 	UndoFailed  bool   `json:"undo_failed,omitempty"`
+	Refused     string `json:"refused,omitempty"`
 }
+
+// The pushResult.Refused values.
+const (
+	// refusedEmptyCollection: the selection puts a collection with no
+	// folders on Home.
+	refusedEmptyCollection = "empty_collection"
+	// refusedSharesAddons: the Nuvio profile uses profile 1's addons.
+	refusedSharesAddons = "shares_addons"
+	// refusedProfileChanged: the profile's Nuvio slot is empty now, or holds
+	// another Nuvio profile.
+	refusedProfileChanged = "profile_changed"
+)
 
 // push serves POST /api/p/{profileIndex}/push: an explicit, user-triggered
 // sync of this profile's manifest URL and collections into Nuvio, carrying
 // the full pending selection in its body.
 //
 // Ordering is Nuvio-first, local-write-last: validate, build the push record,
-// push addons, push collections, and only then commit the selection and the
-// record to Uno's own vault. This
-// avoids holding a SQLite write transaction open across several sequential
-// Nuvio HTTP calls, and means an ordinary failure leaves nothing written on
-// either side.
-//
-// Addons before collections: a pushed collection's catalogSources reference
-// this addon's manifest id, so installing the addon first means a client
-// that reads collections right after a push already has something to
-// resolve those references against. If addons push fails, collections is
-// never attempted.
+// check the selection and the live Nuvio profile (refusePush), push addons,
+// push collections, and only then commit the selection and the record to
+// Uno's own vault. This avoids holding a SQLite write transaction open across
+// several sequential Nuvio HTTP calls, and with the undo of what Nuvio already
+// took (sendPush) means an ordinary failure leaves nothing written on either
+// side.
 func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -81,8 +92,6 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manifestURL := s.siteBaseURL + addon.ManifestPath(profile.Token)
-
 	record, err := s.pushRecord(ctx, profileID, body)
 	if err != nil {
 		log.Printf("push: %v", err)
@@ -94,31 +103,125 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.pushAddons(ctx, accessToken, profile.NuvioProfileIndex, manifestURL); err != nil {
-		log.Printf("push: addons push failed: %v", err)
-		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
+	if s.refusePush(ctx, w, accessToken, profile, record) {
 		return
 	}
+	status, result := s.sendPush(ctx, accessToken, profile, record)
+	httpx.WriteJSON(w, status, result)
+}
 
-	pulled, err := s.pushCollections(ctx, accessToken, profile.NuvioProfileIndex, profileID, record.Collections)
-	if err != nil {
-		log.Printf("push: collections push failed: %v", err)
-		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
-		return
+// refusePush answers a push that can't go ahead as it stands, and reports
+// whether it did, before anything reaches Nuvio:
+//   - a collection on Home with no folders: Nuvio's phone and desktop apps
+//     leave one off Home, and Nuvio TV has no guard against one;
+//   - a Nuvio profile slot that is empty now, or holds a Nuvio profile other
+//     than the one this profile was selected as. Pushing there would leave
+//     Uno's addon and collections to whoever takes the slot next; picking
+//     the profile again stamps the slot's Nuvio profile afresh;
+//   - a Nuvio profile that uses profile 1's addons: no Nuvio app reads its
+//     own addon list, so the push would land where nothing shows it.
+func (s *Server) refusePush(ctx context.Context, w http.ResponseWriter, accessToken string, profile vault.Profile, record vault.PushRecord) bool {
+	if hasEmptyCollection(record) {
+		httpx.WriteJSON(w, http.StatusBadRequest, pushResult{Error: "push failed", Refused: refusedEmptyCollection})
+		return true
 	}
+	live, found, err := s.liveProfile(ctx, accessToken, profile)
+	switch {
+	case err != nil:
+		log.Printf("push: reading the live profile: %v", err)
+		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
+	case !found:
+		httpx.WriteJSON(w, http.StatusConflict, pushResult{Error: "push failed", Refused: refusedProfileChanged})
+	case live.UsesPrimaryAddons:
+		httpx.WriteJSON(w, http.StatusConflict, pushResult{Error: "push failed", Refused: refusedSharesAddons})
+	default:
+		return false
+	}
+	return true
+}
 
-	if err := s.vault.SavePush(ctx, profileID, record); err != nil {
-		log.Printf("push: local commit failed after nuvio succeeded, reverting collections: %v", err)
-		if revertErr := s.nuvio.PushCollections(ctx, accessToken, profile.NuvioProfileIndex, pulled); revertErr != nil {
-			log.Printf("push: compensating revert also failed: %v", revertErr)
-			httpx.WriteJSON(w, http.StatusInternalServerError, pushResult{Error: "push failed", UndoFailed: true})
-			return
+// hasEmptyCollection reports whether record sends a collection with no
+// folders.
+func hasEmptyCollection(record vault.PushRecord) bool {
+	for _, raw := range record.Collections {
+		var c struct {
+			Folders []json.RawMessage `json:"folders"`
 		}
-		httpx.WriteJSON(w, http.StatusInternalServerError, pushResult{Error: "push failed"})
-		return
+		if json.Unmarshal(raw, &c) == nil && len(c.Folders) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// liveProfile is the Nuvio profile in profile's slot as Nuvio lists it now,
+// read with the caller's token. found is false when the slot is empty or
+// holds a Nuvio profile other than the one profile was selected as.
+func (s *Server) liveProfile(ctx context.Context, accessToken string, profile vault.Profile) (live nuvio.NuvioProfile, found bool, err error) {
+	profiles, err := s.nuvio.ListProfiles(ctx, accessToken)
+	if err != nil {
+		return nuvio.NuvioProfile{}, false, err
+	}
+	for _, p := range profiles {
+		if p.ProfileIndex == profile.NuvioProfileIndex && p.ID == profile.NuvioProfileUUID {
+			return p, true, nil
+		}
+	}
+	return nuvio.NuvioProfile{}, false, nil
+}
+
+// sendPush pushes record to profile's Nuvio profile and stores it, and
+// answers how that went.
+//
+// Addons before collections: a pushed collection's catalogSources reference
+// this addon's manifest id, so installing the addon first means a client
+// that reads collections right after a push already has something to
+// resolve those references against. If addons push fails, collections is
+// never attempted. A failure after Nuvio took part of the push puts back
+// what it took, each as it was pulled (undoPush).
+func (s *Server) sendPush(ctx context.Context, accessToken string, profile vault.Profile, record vault.PushRecord) (int, pushResult) {
+	slot := profile.NuvioProfileIndex
+	manifestURL := s.siteBaseURL + addon.ManifestPath(profile.Token)
+
+	pulledAddons, err := s.pushAddons(ctx, accessToken, slot, manifestURL)
+	if err != nil {
+		log.Printf("push: addons push failed: %v", err)
+		return nuvioErrorStatus(err), pushResult{Error: "push failed"}
+	}
+	revertAddons := func() error { return s.nuvio.PushAddons(ctx, accessToken, slot, pulledAddons) }
+
+	pulledCollections, err := s.pushCollections(ctx, accessToken, slot, profile.ID, record.Collections)
+	if err != nil {
+		log.Printf("push: collections push failed, reverting addons: %v", err)
+		return undoPush(nuvioErrorStatus(err), revertAddons)
+	}
+	revertCollections := func() error {
+		return s.nuvio.PushCollections(ctx, accessToken, slot, pulledCollections)
 	}
 
-	httpx.WriteJSON(w, http.StatusOK, pushResult{Success: true, ManifestURL: manifestURL})
+	if err := s.vault.SavePush(ctx, profile.ID, record); err != nil {
+		log.Printf("push: local commit failed after nuvio succeeded, reverting: %v", err)
+		return undoPush(http.StatusInternalServerError, revertCollections, revertAddons)
+	}
+	return http.StatusOK, pushResult{Success: true, ManifestURL: manifestURL}
+}
+
+// undoPush runs every revert of a failed push and answers it with status. A
+// revert that fails too — two independent failures back to back — leaves
+// Nuvio holding part of the push, which the answer says with a 500 and
+// UndoFailed.
+func undoPush(status int, reverts ...func() error) (int, pushResult) {
+	undone := true
+	for _, revert := range reverts {
+		if err := revert(); err != nil {
+			log.Printf("push: compensating revert also failed: %v", err)
+			undone = false
+		}
+	}
+	if !undone {
+		return http.StatusInternalServerError, pushResult{Error: "push failed", UndoFailed: true}
+	}
+	return status, pushResult{Error: "push failed"}
 }
 
 // listPendingPush serves GET /api/p/{profileIndex}/push/pending: what a push of
@@ -147,76 +250,69 @@ func (s *Server) pushRecord(ctx context.Context, profileID uuid.UUID, body pushR
 }
 
 // pushAddons runs the addons read-modify-write cycle: pull the profile's
-// current addons, upsert Uno's own manifest URL into that list by URL
-// match (Nuvio's own dedup key — see the "Push" section of
-// docs/architecture.md), and push the complete merged list back —
-// omitting any existing addon would delete it.
+// current addons, merge Uno's own entry into that list (mergeAddon), and push
+// the complete merged list back — omitting any existing addon would delete
+// it. Returns the pulled list, which a failed push puts back.
 // Has no dependency on the pending selection, so it's unaffected by push's
 // Nuvio-first ordering.
-func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfileIndex int, manifestURL string) error {
+func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfileIndex int, manifestURL string) ([]nuvio.NuvioAddon, error) {
 	current, err := s.nuvio.ListAddons(ctx, accessToken, nuvioProfileIndex)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	merged := slices.Clone(current)
-	found := false
-	for i := range merged {
-		if merged[i].URL == manifestURL {
-			merged[i].Name = addon.Name
-			merged[i].Enabled = true
-			found = true
-		}
+	if err := s.nuvio.PushAddons(ctx, accessToken, nuvioProfileIndex, mergeAddon(current, manifestURL, s.siteBaseURL)); err != nil {
+		return nil, err
 	}
-	if !found {
-		merged = append(merged, nuvio.NuvioAddon{
-			URL: manifestURL, Name: addon.Name, Enabled: true, SortOrder: len(current),
-		})
-	}
-
-	return s.nuvio.PushAddons(ctx, accessToken, nuvioProfileIndex, merged)
+	return current, nil
 }
 
-// pulledCollection is the subset of a pulled Nuvio collection's fields push's
-// merge needs to decide whether to drop it: its id, for the owned-set match,
-// and each folder's sources, for the addon-id heuristic below (isUnoManaged).
-// Confirmed against a real Nuvio profile: a collection Uno has pushed
-// round-trips its folder sources under "catalogSources", the
-// same key Uno's own push writes (and the name the public doc documents —
-// see the "Push wire shape" section of docs/data-model.md). "sources" is
-// still parsed too, defensively, in case a Nuvio-native collection (never
-// pushed by Uno) uses it instead — that case wasn't exercised by this check.
+// mergeAddon is current with this profile's addon in it once and switched
+// on, every other addon as it was, in order. Entries are matched the way
+// Nuvio's apps match addon URLs (addonKey): Nuvio TV saves Uno's URL without
+// /manifest.json, and Nuvio's own dedup key is md5(url), so an exact match
+// would add Uno a second time.
+//   - The first entry for manifestURL stays where it is, with the URL and
+//     name it has: a name is the user's own, set in a Nuvio app.
+//   - Any further entry for it is dropped, as is one for another Uno addon
+//     URL on this site (another token's): its catalogs share this addon's id,
+//     which Nuvio apps resolve collection sources by.
+//   - With no entry for it, one named addon.Name is appended.
+func mergeAddon(current []nuvio.NuvioAddon, manifestURL, siteBaseURL string) []nuvio.NuvioAddon {
+	own := addonKey(manifestURL)
+	first := slices.IndexFunc(current, func(a nuvio.NuvioAddon) bool { return addonKey(a.URL) == own })
+	if first < 0 {
+		first = len(current)
+		current = append(slices.Clone(current), nuvio.NuvioAddon{URL: manifestURL, Name: addon.Name, SortOrder: first})
+	}
+	unoPrefix := addonKey(siteBaseURL) + "/u/"
+	merged := make([]nuvio.NuvioAddon, 0, len(current))
+	for i, a := range current {
+		if i == first {
+			a.Enabled = true
+		} else if strings.HasPrefix(addonKey(a.URL), unoPrefix) {
+			continue
+		}
+		merged = append(merged, a)
+	}
+	return merged
+}
+
+// addonKey is url as Nuvio TV compares addon URLs: trimmed, without trailing
+// slashes or a final /manifest.json, case-folded.
+func addonKey(url string) string {
+	key := strings.ToLower(strings.TrimRight(strings.TrimSpace(url), "/"))
+	path, query, hasQuery := strings.Cut(key, "?")
+	path = strings.TrimRight(strings.TrimSuffix(strings.TrimRight(path, "/"), "/manifest.json"), "/")
+	if hasQuery {
+		return path + "?" + query
+	}
+	return path
+}
+
+// pulledCollection is the one field of a pulled Nuvio collection push's
+// merge reads: its id, for the managed-set match.
 type pulledCollection struct {
-	ID      string `json:"id"`
-	Folders []struct {
-		Sources        []pulledSource `json:"sources"`
-		CatalogSources []pulledSource `json:"catalogSources"`
-	} `json:"folders"`
-}
-
-type pulledSource struct {
-	AddonID string `json:"addonId"`
-}
-
-// isUnoManaged reports whether every source in every folder of a pulled
-// collection carries this addon's id — the signal that Uno once pushed the
-// collection but no longer knows its id (hard-deleted locally, or from a
-// recreated database). Nothing but Uno's own push ever writes a source
-// pointing at addon.ID, so this has nowhere else to come from. A collection
-// with no sources at all (no folders, or folders with none) is not treated
-// as Uno-managed — there's nothing to match on, and a false positive here
-// would silently delete a Nuvio-native collection from the pushed blob.
-func isUnoManaged(c pulledCollection) bool {
-	found := false
-	for _, f := range c.Folders {
-		for _, src := range slices.Concat(f.Sources, f.CatalogSources) {
-			found = true
-			if src.AddonID != addon.ID {
-				return false
-			}
-		}
-	}
-	return found
+	ID string `json:"id"`
 }
 
 // pushCollections runs the collections read-modify-write cycle, sending
@@ -231,19 +327,18 @@ func isUnoManaged(c pulledCollection) bool {
 //  1. Pull the current blob as raw JSON per element — never decoded into a
 //     generic map, which would round-trip numbers through float64 and
 //     silently corrupt any collection Uno doesn't own.
-//  2. Drop every pulled entry that is owned by this profile, was sent by
-//     this profile's last push (the push record), or is Uno-managed by the
-//     addon-id heuristic (isUnoManaged). With the closed graph, everything
-//     selected is owned, so the owned set alone covers what the old
-//     selection-union was for. The record covers a collection deleted since
-//     the last push, whatever it held, and the heuristic a collection Uno
-//     once pushed but has forgotten (from a recreated database).
+//  2. Drop every pulled entry that is owned by this profile or was sent by
+//     this profile's last push (the push record). With the closed graph,
+//     everything selected is owned, so the owned set alone covers what the
+//     old selection-union was for. The record covers a collection deleted
+//     since the last push, whatever it held. A collection is never dropped
+//     for what its folders hold: Nuvio's own collection editors build
+//     sources from Uno's catalogs too.
 //  3. Append fresh, the profile's pending selection as the record holds it:
 //     in Home order, each pinned to the top of home as its selection entry
 //     says, as the exact bytes the record keeps.
 //
-// Returns the pulled blob on success so push can use it for a compensating
-// revert if the local commit that follows this call ends up failing.
+// Returns the pulled blob on success, which a failed push puts back.
 func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, fresh []json.RawMessage) ([]json.RawMessage, error) {
 	pulled, err := s.nuvio.PullCollections(ctx, accessToken, nuvioProfileIndex)
 	if err != nil {
@@ -295,9 +390,8 @@ func (s *Server) managedCollectionIDs(ctx context.Context, profileID uuid.UUID) 
 	return managed, nil
 }
 
-// dropManaged is pulled without every entry whose id is in managed or that is
-// Uno-managed by the addon-id heuristic (isUnoManaged): what push leaves in
-// Nuvio's blob untouched.
+// dropManaged is pulled without every entry whose id is in managed: what push
+// leaves in Nuvio's blob untouched.
 func dropManaged(pulled []json.RawMessage, managed map[string]bool) ([]json.RawMessage, error) {
 	kept := make([]json.RawMessage, 0, len(pulled))
 	for _, raw := range pulled {
@@ -305,7 +399,7 @@ func dropManaged(pulled []json.RawMessage, managed map[string]bool) ([]json.RawM
 		if err := json.Unmarshal(raw, &parsed); err != nil {
 			return nil, fmt.Errorf("parsing pulled collection: %w", err)
 		}
-		if !managed[parsed.ID] && !isUnoManaged(parsed) {
+		if !managed[parsed.ID] {
 			kept = append(kept, raw)
 		}
 	}

@@ -47,6 +47,18 @@ export function Field({
 }
 
 /**
+ * Which Nuvio app shows a setting, as a small tag beside its label: for a
+ * setting not every Nuvio app reads, so the user knows where to look for it.
+ */
+export function OnlyIn({ where }: { where: string }) {
+  return (
+    <span className="type-data text-dimmer border-line rounded-full border px-2 text-[12px] leading-[18px]">
+      {where}
+    </span>
+  )
+}
+
+/**
  * A control's secondary explanation, behind an icon beside it.
  *
  * **Not a place to move hints to.** A sentence that doesn't survive "is this

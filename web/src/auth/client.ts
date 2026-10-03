@@ -67,9 +67,11 @@ export function refreshWithToken(refreshToken: string): Promise<NuvioTokenRespon
 
 // Fire-and-forget from the caller's side (session.ts clears local state
 // regardless of whether this succeeds) — errors are left for the caller to
-// decide whether they matter.
+// decide whether they matter. `scope=local` ends this session alone: GoTrue's
+// default revokes every session the account holds, which would sign it out of
+// Nuvio on every device.
 export async function signOut(accessToken: string): Promise<void> {
-  await fetch(`${NUVIO_BASE_URL}/auth/v1/logout`, {
+  await fetch(`${NUVIO_BASE_URL}/auth/v1/logout?scope=local`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

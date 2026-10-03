@@ -14,7 +14,7 @@ import (
 
 // nuvioRequest is what a fake Nuvio server saw of the last request it served.
 type nuvioRequest struct {
-	method, uri, contentType, authorization, apikey, body string
+	method, uri, contentType, authorization, apikey, userAgent, body string
 }
 
 // fakeNuvioServer answers every request with status and body, recording the
@@ -33,6 +33,7 @@ func fakeNuvioServer(t *testing.T, status int, body string) (*Client, *nuvioRequ
 			contentType:   r.Header.Get("Content-Type"),
 			authorization: r.Header.Get("Authorization"),
 			apikey:        r.Header.Get("apikey"),
+			userAgent:     r.Header.Get("User-Agent"),
 			body:          string(raw),
 		}
 		w.WriteHeader(status)
@@ -65,15 +66,19 @@ var (
 	pushAddons = clientCall{"PushAddons", func(c *Client) error {
 		return c.PushAddons(context.Background(), "access-token", 3, nil)
 	}}
+	avatarImages = clientCall{"AvatarImages", func(c *Client) error {
+		_, err := c.AvatarImages(context.Background(), "access-token")
+		return err
+	}}
 	pushCollections = clientCall{"PushCollections", func(c *Client) error {
 		return c.PushCollections(context.Background(), "access-token", 3, nil)
 	}}
 )
 
 // TestClientSendsNuvioRequests pins each method's request: the method and
-// path Nuvio serves it on, the caller's token and the publishable key on
-// every call, and the exact JSON body, with a Content-Type only when there is
-// one. A nil list pushes as [], never null: the push is a full replace, and
+// path Nuvio serves it on, the caller's token, the publishable key and Uno's
+// User-Agent on every call, and the exact JSON body, with a Content-Type only
+// when there is one. A nil list pushes as [], never null: the push is a full replace, and
 // the empty array is what says "no addons".
 func TestClientSendsNuvioRequests(t *testing.T) {
 	bigNumber := json.RawMessage(`{"id":"foreign","n":12345678901234567890}`)
@@ -96,6 +101,11 @@ func TestClientSendsNuvioRequests(t *testing.T) {
 				method: http.MethodGet,
 				uri:    "/rest/v1/addons?select=url,name,enabled,sort_order&profile_id=eq.3&order=sort_order",
 			},
+		},
+		{
+			name: "AvatarImages", status: http.StatusOK,
+			call:    avatarImages.call,
+			wantReq: nuvioRequest{method: http.MethodPost, uri: "/rest/v1/rpc/get_avatar_catalog"},
 		},
 		{
 			name: "PullCollections", status: http.StatusOK,
@@ -148,6 +158,7 @@ func TestClientSendsNuvioRequests(t *testing.T) {
 			want := tc.wantReq
 			want.authorization = "Bearer access-token"
 			want.apikey = "publishable-key"
+			want.userAgent = userAgent
 			want.body = tc.wantBody
 			if tc.wantBody != "" {
 				want.contentType = "application/json"
@@ -172,6 +183,7 @@ func TestClientSuccessStatus(t *testing.T) {
 		{listProfiles, http.StatusOK},
 		{listAddons, http.StatusOK},
 		{pullCollections, http.StatusOK},
+		{avatarImages, http.StatusOK},
 		{pushAddons, http.StatusNoContent},
 		{pushCollections, http.StatusNoContent},
 	}
@@ -223,17 +235,22 @@ func TestClientUpstreamFailures(t *testing.T) {
 	}
 }
 
-// TestListProfilesDecodes reads the fields Uno uses and ignores the rest. An
-// empty or null list comes back as an empty, non-nil slice, which the API
-// writes as [] rather than null.
+// TestListProfilesDecodes reads the fields Uno uses and ignores the rest; a
+// null avatar field reads as "". An empty or null list comes back as an
+// empty, non-nil slice, which the API writes as [] rather than null.
 func TestListProfilesDecodes(t *testing.T) {
 	c, _ := fakeNuvioServer(t, http.StatusOK,
-		`[{"id":"p-1","user_id":"u-1","profile_index":2,"name":"Kids","avatar_url":"x"}]`)
+		`[{"id":"p-1","user_id":"u-1","profile_index":2,"name":"Kids","uses_primary_addons":true,`+
+			`"avatar_color_hex":"#1E88E5","avatar_id":null,"avatar_url":"https://img.example/k.png",`+
+			`"pin_enabled":true,"created_at":"2026-01-01T00:00:00Z"}]`)
 	profiles, err := c.ListProfiles(context.Background(), "access-token")
 	if err != nil {
 		t.Fatalf("ListProfiles: %v", err)
 	}
-	want := []NuvioProfile{{ID: "p-1", UserID: "u-1", ProfileIndex: 2, Name: "Kids"}}
+	want := []NuvioProfile{{
+		ID: "p-1", UserID: "u-1", ProfileIndex: 2, Name: "Kids", UsesPrimaryAddons: true,
+		AvatarColorHex: "#1E88E5", AvatarURL: "https://img.example/k.png", PinEnabled: true,
+	}}
 	if !reflect.DeepEqual(profiles, want) {
 		t.Fatalf("profiles = %+v, want %+v", profiles, want)
 	}
@@ -286,5 +303,23 @@ func TestPullCollectionsUnwrapsTheBlob(t *testing.T) {
 	}
 	if len(pulled) != 2 || string(pulled[0]) != foreign || string(pulled[1]) != `{"id":"b"}` {
 		t.Fatalf("pulled = %s, want [%s {\"id\":\"b\"}]", pulled, foreign)
+	}
+}
+
+// TestAvatarImagesBuildsStorageURLs turns each built-in avatar's storage_path
+// into its image in Nuvio's public "avatars" bucket, as Nuvio's apps do, and
+// leaves out an avatar with no path.
+func TestAvatarImagesBuildsStorageURLs(t *testing.T) {
+	c, _ := fakeNuvioServer(t, http.StatusOK,
+		`[{"id":"avatar_lalo","storage_path":"animals/bram-v1.png","bg_color":"#F45392"},`+
+			`{"id":"slash","storage_path":"/x.png"},{"id":"none","storage_path":""}]`)
+	images, err := c.AvatarImages(context.Background(), "access-token")
+	if err != nil {
+		t.Fatalf("AvatarImages: %v", err)
+	}
+	base := c.baseURL + "/storage/v1/object/public/avatars/"
+	want := map[string]string{"avatar_lalo": base + "animals/bram-v1.png", "slash": base + "x.png"}
+	if !reflect.DeepEqual(images, want) {
+		t.Fatalf("images = %v, want %v", images, want)
 	}
 }

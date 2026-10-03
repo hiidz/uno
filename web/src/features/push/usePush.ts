@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ProfileNotSelectedError, RateLimitedError, pushSelection, queryKeys } from '@/api'
+import type { PushResult } from '@/api'
 import { toPushPayload } from '@/features/home/pending'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 
@@ -25,12 +26,33 @@ type PushOutcome =
   /** The server turned the push away before running it: this account has
    *  pushed too often lately. Nothing changed; it can go again shortly. */
   | { kind: 'rate-limited' }
+  /** The server turned the push away before contacting Nuvio: a collection on
+   *  Home has no folders. Nothing changed. */
+  | { kind: 'empty-collection' }
+  /** The server turned the push away before contacting Nuvio: the Nuvio
+   *  profile uses profile 1's addons. Nothing changed. */
+  | { kind: 'shares-addons' }
+  /** The server turned the push away before contacting Nuvio: the profile's
+   *  Nuvio slot is empty or holds another Nuvio profile now. Nothing changed;
+   *  picking the profile again fixes it. */
+  | { kind: 'profile-changed' }
 
 /** What a push that threw is reported as: one the server turned away for
  *  pushing too often is rate-limited, anything else unknown. */
 function thrownOutcome(err: unknown): PushOutcome {
   if (err instanceof RateLimitedError) return { kind: 'rate-limited' }
   return { kind: 'unknown' }
+}
+
+/** What a push that came back unsuccessful is reported as: undo-failed when
+ *  Nuvio was left holding part of it, the refusal when the server turned it
+ *  away for one the builder has words for, failed otherwise. */
+export function failedOutcome(result: PushResult): PushOutcome {
+  if (result.undo_failed) return { kind: 'undo-failed' }
+  if (result.refused === 'empty_collection') return { kind: 'empty-collection' }
+  if (result.refused === 'shares_addons') return { kind: 'shares-addons' }
+  if (result.refused === 'profile_changed') return { kind: 'profile-changed' }
+  return { kind: 'failed' }
 }
 
 export interface Push {
@@ -94,7 +116,7 @@ export function usePush(profileIndex: number): Push {
           void queryClient.invalidateQueries({ queryKey: queryKeys.pendingPush(profileIndex) })
           setOutcome({ kind: 'success', manifestURL: result.manifest_url })
         } else {
-          setOutcome({ kind: result.undo_failed ? 'undo-failed' : 'failed' })
+          setOutcome(failedOutcome(result))
         }
       } catch (err) {
         // A 404 here means the profile slot was never selected — there's

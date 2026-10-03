@@ -374,7 +374,7 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   (`extractBundle` keeps each ref's genre). On the wire each folder carries an ordered
   `refs: [{catalog_id, genre}]` (`vault.FolderRef`), not a list of catalog ids, because one
   catalog can be two refs. A genre picked in Nuvio's own editor doesn't survive a push, because
-  push rebuilds every Uno-managed collection from Uno's data.
+  push rebuilds every collection the profile owns from Uno's data.
 - **`folder_catalogs` is `PRIMARY KEY (folder_id, catalog_id, genre)`.** One catalog can appear
   in a folder more than once under different genres, and push sends each as its own source with
   the same `catalogId`. Confirmed on Nuvio desktop and mobile with a hand-edited collection: both
@@ -398,8 +398,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   normalization can still hold `''` or padding; Preview and the editor read an empty value the
   way Nuvio does.
 - **`folders.tile_shape` defaults to `'LANDSCAPE'` at the schema level**, but every write sends
-  the column, so the default is unreachable in practice. Nuvio's `SQUARE` default applies only
-  when the key is absent, which a Uno push never produces.
+  the column, so the default is unreachable in practice. Nuvio's apps read an absent key as a
+  poster tile (see "Push wire shape" below), which a Uno push never produces.
 - **`catalogs.created_at`/`updated_at` and `collections.created_at`/`updated_at` are `TEXT`
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
@@ -878,24 +878,34 @@ stores in the push record, and which a collection read builds again to decide `n
 rules*). The two can only agree if they marshal the same way, so there is one builder, in the
 vault.
 
-**Nuvio fills absent keys with its own defaults**, and they don't all match Uno's (from
-NuvioTV's `CollectionsDataStore` and `domain/model/Collection.kt`): `focusGlowEnabled`,
-`focusGifEnabled` and `showAllTab` default to `true`, and `tileShape` defaults to `SQUARE`.
-So every boolean and `tileShape` goes out on every push, never `omitempty`: an omitted `false`
-would read as `true` on the TV. The appearance URLs, `coverImageUrl`, `coverEmoji` and
-`backdropImageUrl` are `omitempty`, since an absent URL and an empty one mean the same thing
-there. A present but empty or unrecognised `tileShape` is `POSTER` (`PosterShape.fromString`),
-and a present but empty or unrecognised `viewMode` is `TABBED_GRID` (`FolderViewMode.fromString`
-in NuvioTV `1a132cb`; NuvioMobile `90b58e2` and NuvioDesktop `c5826cb` read it the same way).
+**Nuvio's apps fill absent keys with defaults of their own, and disagree.** NuvioTV parses the
+blob with Gson (`CollectionsDataStore`), which builds its Kotlin classes without running their
+declared defaults: an absent boolean reads as `false` (`showAllTab`, `hideTitle`, `pinToTop`), an
+absent `tileShape` as `POSTER` and an absent `viewMode` as `TABBED_GRID`; only `focusGlowEnabled`
+and `focusGifEnabled`, read as `?: true`, default to `true`. NuvioMobile and NuvioDesktop parse
+with kotlinx, which does run them: `showAllTab` and `focusGifEnabled` default to `true`, and
+`tileShape` to a poster. So every boolean and `tileShape` goes out on every push, never
+`omitempty`: an omitted value means different things on different apps. The appearance URLs,
+`coverImageUrl`, `coverEmoji` and `backdropImageUrl` are `omitempty`, since an absent URL and an
+empty one mean the same thing there. A present but empty or unrecognised `tileShape` is `POSTER`
+(`PosterShape.fromString`), and a present but empty or unrecognised `viewMode` is `TABBED_GRID`
+(`FolderViewMode.fromString`). Read at NuvioTV `e374881`, NuvioMobile `7be1b56` and NuvioDesktop
+`ed77003`.
 
-**Field name:** the code sends `catalogSources`, as the public doc documents. **Confirmed against
-a real Nuvio profile:** a collection Uno has pushed round-trips its folder sources
-under that same key, `catalogSources` — pulling it back after a push shows `catalogSources`
-populated and `sources` empty. A Nuvio-native collection (built in Nuvio's own UI, never pushed
-by Uno) may still use `sources` — the two sample files below, which predate any Uno push, use it
-— so push's own merge (`pushCollections`, `internal/api/push.go`) still parses **both** keys when
-deciding whether a pulled collection is Uno-managed (`isUnoManaged`); the Uno-pushed case is
-confirmed to use `catalogSources` only.
+**Arrays go out as arrays, never `null`.** `folders` and each folder's `catalogSources` are `[]`
+when empty (`PushPayload` and `pushSources` build them with `make`;
+`TestPushPayloadSendsArraysNeverNull` pins it). NuvioTV's parser throws on a null one, and a
+throw empties the whole blob it was reading, which the TV then ignores, keeping its local copy
+(see *Nuvio integration* in `docs/architecture.md`).
+
+**Field name:** the code sends `catalogSources`, as the public doc documents, and never
+`sources`. NuvioTV reads `sources` whenever the key is present, even as `[]`, while NuvioMobile,
+NuvioDesktop and nuvio-web fall back to `catalogSources` when `sources` is empty, so a folder
+carrying both would be empty on the TV alone. **Confirmed against a real Nuvio profile:** a
+collection Uno has pushed round-trips its folder sources under `catalogSources`. A collection
+built or re-saved in a Nuvio app writes `sources` — the two sample files below use it. Push's
+merge (`pushCollections`, `internal/api/push.go`) reads only a pulled collection's `id`, so the
+key doesn't matter there.
 
 **The real `sources[]` entry is wider than what Uno emits.** The entries in
 `docs/api/samples/collections-basic.json` carry five keys — `addonId`, `catalogId`, `type`,

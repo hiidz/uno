@@ -28,6 +28,7 @@ type NuvioClient interface {
 	PushAddons(ctx context.Context, accessToken string, profileID int, addons []nuvio.NuvioAddon) error
 	PullCollections(ctx context.Context, accessToken string, profileID int) ([]json.RawMessage, error)
 	PushCollections(ctx context.Context, accessToken string, profileID int, collections []json.RawMessage) error
+	AvatarImages(ctx context.Context, accessToken string) (map[string]string, error)
 }
 
 // Compile-time assertions: a signature drift in internal/nuvio becomes a

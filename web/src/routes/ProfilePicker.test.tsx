@@ -39,7 +39,16 @@ function renderPicker() {
   )
 }
 
-const main = { id: 'p1', user_id: 'u', profile_index: 1, name: 'Main' } as NuvioProfile
+const main: NuvioProfile = {
+  id: 'p1',
+  user_id: 'u',
+  profile_index: 1,
+  name: 'Main',
+  uses_primary_addons: false,
+  avatar_color_hex: '#1E88E5',
+  avatar_image_url: '',
+  pin_enabled: false,
+}
 
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset()
@@ -51,6 +60,37 @@ describe('ProfilePicker', () => {
     api.fetchProfiles.mockResolvedValue([main])
     renderPicker()
     expect(await screen.findByRole('button', { name: /Profile 1, Main/ })).toBeInTheDocument()
+  })
+
+  it('marks a profile that uses profile 1’s addons in Nuvio, and still opens it', async () => {
+    const kids = { ...main, id: 'p2', profile_index: 2, name: 'Kids', uses_primary_addons: true }
+    api.fetchProfiles.mockResolvedValue([main, kids])
+    renderPicker()
+    const card = await screen.findByRole('button', { name: /Profile 2, Kids, uses profile 1’s addons in Nuvio/ })
+    expect(card).toBeEnabled()
+    expect(within(card).getByText(/Uses profile 1’s addons in Nuvio/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Profile 1, Main' })).toBeEnabled()
+  })
+
+  it('draws each profile as Nuvio does: its picture, else its colour and initial, and a PIN badge', async () => {
+    const pictured = { ...main, id: 'p2', profile_index: 2, name: 'Kids', avatar_image_url: 'https://img.example/k.png' }
+    const locked = { ...main, id: 'p3', profile_index: 3, name: 'émile', avatar_color_hex: '', pin_enabled: true }
+    api.fetchProfiles.mockResolvedValue([main, pictured, locked])
+    renderPicker()
+
+    const mainCard = await screen.findByRole('button', { name: 'Profile 1, Main' })
+    expect(within(mainCard).getByText('M')).toHaveStyle({ backgroundColor: '#1E88E5' })
+    expect(mainCard.querySelector('img')).toBeNull()
+
+    const kidsCard = screen.getByRole('button', { name: 'Profile 2, Kids' })
+    const img = kidsCard.querySelector('img')
+    expect(img).toHaveAttribute('src', 'https://img.example/k.png')
+    fireEvent.error(img!)
+    expect(img).not.toBeVisible()
+
+    const lockedCard = screen.getByRole('button', { name: 'Profile 3, émile, PIN in Nuvio' })
+    expect(within(lockedCard).getByText('PIN in Nuvio')).toBeInTheDocument()
+    expect(within(lockedCard).getByText('É')).toHaveStyle({ backgroundColor: '#1E88E5' })
   })
 
   it('says plainly when this server doesn’t admit the account, with the way to another one', async () => {

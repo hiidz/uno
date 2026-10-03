@@ -29,15 +29,15 @@ import (
 const (
 	ID = vault.AddonID
 	// Name is also the display name Nuvio's own UI shows for this addon —
-	// api/push.go's pushAddons sets it when upserting Uno's manifest URL
-	// into a profile's addon list.
+	// api/push.go's mergeAddon names Uno's entry with it when adding it to a
+	// profile's addon list.
 	Name        = "Uno Catalog"
 	version     = "1.0.0"
 	description = "Personal catalog rows for this profile."
 
 	// catalogPageSize is TMDB's own fixed discover page size — declared to
-	// Stremio as a hint, and used again in the catalog route's skip->page
-	// conversion.
+	// Stremio as a hint, and the most titles the catalog route serves at once
+	// (catalogWindow).
 	catalogPageSize = 20
 
 	// maxCatalogPage is TMDB's own ceiling on discover pagination: it rejects
@@ -45,12 +45,13 @@ const (
 	// empty page instead of a request TMDB refuses.
 	maxCatalogPage = 500
 
-	// catalogCacheMaxAge/catalogStaleRevalidate tell Stremio how long it may
-	// serve a catalog response before refetching — the same values (3h / 1h)
-	// as the real sample in docs/api/samples/catalog-response.json.
-	// They keep Stremio from asking again on every reopen of the app; the
-	// provider's page cache, far shorter, only shares a page between the
-	// clients that do ask.
+	// catalogCacheMaxAge/catalogStaleRevalidate are the catalog response's
+	// cacheMaxAge/staleRevalidate, the same values (3h / 1h) as the real
+	// sample in docs/api/samples/catalog-response.json. They are hints the
+	// Stremio addon SDK turns into a Cache-Control header; no Nuvio app reads
+	// them from the body, and Uno sends no such header, so Nuvio's apps fetch
+	// every catalog page afresh. The provider's page cache is what saves TMDB
+	// the repeat.
 	catalogCacheMaxAge     = 10800
 	catalogStaleRevalidate = 3600
 )
@@ -60,6 +61,11 @@ const (
 // HTTP method. Shared with ManifestPath below so the pattern and the
 // concrete-URL builder can't drift apart.
 const ManifestPathPattern = "/u/{token}/manifest.json"
+
+// ConfigurePathPattern is the addon's Configure route pattern, in the same
+// method-less form: the manifest's path with /manifest.json swapped for
+// /configure, which is where Nuvio's addon managers send Configure.
+const ConfigurePathPattern = "/u/{token}/configure"
 
 // ManifestPath is the concrete manifest path for one profile's token.
 func ManifestPath(token string) string {
@@ -75,17 +81,24 @@ type Server struct {
 	vault    *vault.DB
 	provider *provider.TMDBClient
 	keys     *tmdbkey.Keys
+	// logoURL is the manifest's logo: LogoPath on this site.
+	logoURL string
 }
+
+// LogoPath is the addon's logo on Uno's site: the SPA build's logo.png
+// (web/public), which Nuvio's addon managers show beside the addon's name.
+const LogoPath = "/logo.png"
 
 // New builds a Server. v and p are required — the caller (api.New) already
 // guarantees non-nil, but New is exported, so it checks again rather than
 // relying on that guarantee holding for every future caller. keys is nil on
-// a server with one shared TMDB key.
-func New(v *vault.DB, p *provider.TMDBClient, keys *tmdbkey.Keys) (*Server, error) {
+// a server with one shared TMDB key. siteBaseURL is the site's public base
+// URL, which the manifest's logo is named under.
+func New(v *vault.DB, p *provider.TMDBClient, keys *tmdbkey.Keys, siteBaseURL string) (*Server, error) {
 	if v == nil || p == nil {
 		return nil, errors.New("addon: vault and provider must not be nil")
 	}
-	return &Server{vault: v, provider: p, keys: keys}, nil
+	return &Server{vault: v, provider: p, keys: keys, logoURL: siteBaseURL + LogoPath}, nil
 }
 
 // Public wraps a handler on the public, unauthenticated addon surface:
@@ -129,10 +142,19 @@ type manifest struct {
 	Version     string            `json:"version"`
 	Name        string            `json:"name"`
 	Description string            `json:"description"`
+	Logo        string            `json:"logo,omitempty"`
 	Types       []string          `json:"types"`
 	Resources   []string          `json:"resources"`
 	IDPrefixes  []string          `json:"idPrefixes"`
 	Catalogs    []manifestCatalog `json:"catalogs"`
+	// BehaviorHints.Configurable gives the addon a Configure action in Nuvio's
+	// addon managers, which open the manifest URL with /manifest.json swapped
+	// for /configure (ConfigureHandler).
+	BehaviorHints manifestHints `json:"behaviorHints"`
+}
+
+type manifestHints struct {
+	Configurable bool `json:"configurable"`
 }
 
 // ManifestID is the manifest-facing id for one catalog, vault.ManifestID:
@@ -170,6 +192,9 @@ func buildManifest(selection []vault.SelectedCatalog, genreNames func(vault.Sele
 		Resources:   []string{"catalog"},
 		IDPrefixes:  []string{"tt"},
 		Catalogs:    catalogs,
+		BehaviorHints: manifestHints{
+			Configurable: true,
+		},
 	}
 }
 
@@ -226,9 +251,19 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 	// A cold genre list is fetched with the profile owner's own TMDB key, on
 	// a server where each account brings one.
 	ctx := provider.WithKeySource(r.Context(), s.keys.ForToken(r.Context(), token))
-	httpx.WriteJSON(w, http.StatusOK, buildManifest(selection, func(sc vault.SelectedCatalog) []string {
+	m := buildManifest(selection, func(sc vault.SelectedCatalog) []string {
 		return s.genreNames(ctx, sc)
-	}))
+	})
+	m.Logo = s.logoURL
+	httpx.WriteJSON(w, http.StatusOK, m)
+}
+
+// ConfigureHandler serves ConfigurePathPattern, which Nuvio's addon managers
+// open for the addon's Configure action: it sends the browser to the
+// builder's profile picker, which asks for sign-in first. The token is not
+// looked up, since the redirect says nothing about its profile.
+func (s *Server) ConfigureHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/profiles", http.StatusFound)
 }
 
 // genreNames is a catalog's genre-extra option names. A TMDB failure (the
@@ -290,30 +325,88 @@ func (s *Server) catalogPage(ctx context.Context, catalogType, params, genre str
 	return []provider.Meta{}, nil
 }
 
+// catalogWindow is the catalog's titles from the skip-th on, at most
+// catalogPageSize of them: what a client holding skip titles asks for next.
+// Nuvio's apps and Stremio send skip as the number of titles they hold, and a
+// TMDB page holds fewer than catalogPageSize of them whenever a title without
+// an IMDB id was dropped (provider.resolveMetas), so the window can start
+// partway into a page and run on into the next: walkWindow finds it from page
+// 1. A randomized recipe has no order to walk, and a skip past TMDB's
+// pagination ceiling nothing to find, so both keep the one page skip lands
+// on.
+func (s *Server) catalogWindow(ctx context.Context, catalogType, params, genre string, skip int) ([]provider.Meta, error) {
+	page := skip/catalogPageSize + 1
+	if page > maxCatalogPage || randomizedRecipe(catalogType, params) {
+		return s.catalogPage(ctx, catalogType, params, genre, page)
+	}
+	return s.walkWindow(ctx, catalogType, params, genre, skip)
+}
+
+// walkWindow is catalogWindow for a recipe with a fixed order: it walks the
+// catalog's pages from page 1, each from the provider's page cache once a
+// client has scrolled past it, until it holds catalogPageSize titles past
+// skip, the catalog runs out, or it has walked twice as many pages as full
+// ones would take, which bounds a cold request deep into a sparse recipe.
+func (s *Server) walkWindow(ctx context.Context, catalogType, params, genre string, skip int) ([]provider.Meta, error) {
+	window := []provider.Meta{}
+	seen := 0
+	lastPage := min(2*(skip/catalogPageSize+1), maxCatalogPage)
+	for page := 1; page <= lastPage; page++ {
+		metas, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
+		if err != nil {
+			return nil, err
+		}
+		if len(metas) == 0 {
+			break
+		}
+		window = append(window, titlesFrom(metas, skip-seen)...)
+		seen += len(metas)
+		if len(window) >= catalogPageSize {
+			break
+		}
+	}
+	return window[:min(len(window), catalogPageSize)], nil
+}
+
+// titlesFrom is page from its from-th title on: all of it when from is
+// negative, none when from is past its end.
+func titlesFrom(page []provider.Meta, from int) []provider.Meta {
+	if from >= len(page) {
+		return nil
+	}
+	return page[max(from, 0):]
+}
+
+// randomizedRecipe reports whether params is a randomized recipe, whose page
+// is a random pick whatever page is asked for.
+func randomizedRecipe(catalogType, params string) bool {
+	p, err := provider.DecodeParams(catalogType, params)
+	return err == nil && p.IsRandomized()
+}
+
 // parseCatalogPath splits the catalog route's {rest...} tail into the
-// manifest id and the extra props it carries: the TMDB page (from skip) and
-// the picked genre ("" when none). The extra props are parsed from the
+// manifest id and the extra props it carries: skip, the number of titles the
+// client already holds, and the picked genre ("" when none). The extra props are parsed from the
 // still-escaped path, because PathValue is already percent-decoded — a genre
 // sent as "Sci-Fi%20%26%20Fantasy" would otherwise reach url.ParseQuery with
 // a bare "&" and split in two.
-func parseCatalogPath(r *http.Request) (manifestID string, page int, genre string) {
+func parseCatalogPath(r *http.Request) (manifestID string, skip int, genre string) {
 	rest := strings.TrimSuffix(r.PathValue("rest"), ".json")
 	manifestID, _, hasExtra := strings.Cut(rest, "/")
-	page = 1
 	if !hasExtra {
-		return manifestID, page, ""
+		return manifestID, 0, ""
 	}
 
 	escaped := r.URL.EscapedPath()
 	extra := strings.TrimSuffix(escaped[strings.LastIndex(escaped, "/")+1:], ".json")
 	vals, err := url.ParseQuery(extra)
 	if err != nil {
-		return manifestID, page, ""
+		return manifestID, 0, ""
 	}
-	if skip, err := strconv.Atoi(vals.Get("skip")); err == nil && skip > 0 {
-		page = skip/catalogPageSize + 1
+	if n, err := strconv.Atoi(vals.Get("skip")); err == nil && n > 0 {
+		skip = n
 	}
-	return manifestID, page, vals.Get("genre")
+	return manifestID, skip, vals.Get("genre")
 }
 
 // CatalogHandler serves GET /u/{token}/catalog/{type}/{rest...}, where rest
@@ -327,7 +420,7 @@ func parseCatalogPath(r *http.Request) (manifestID string, page int, genre strin
 // catalogs on the TV (vault.ServedCatalog) — and answers 404 for any other.
 func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 	catalogType := r.PathValue("type")
-	manifestID, page, genre := parseCatalogPath(r)
+	manifestID, skip, genre := parseCatalogPath(r)
 
 	served, err := s.served(r.Context(), r.PathValue("token"), catalogType, manifestID)
 	if err != nil {
@@ -338,7 +431,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 	// TMDB is reached with the owner's own key, on a server where each
 	// account brings one.
 	ctx := provider.WithKeySource(r.Context(), s.keys.Sealed(served.Account, served.SealedKey))
-	metas, err := s.catalogPage(ctx, catalogType, served.Params, genre, page)
+	metas, err := s.catalogWindow(ctx, catalogType, served.Params, genre, skip)
 	if err != nil {
 		// manifestID comes from the request path, so it is quoted: an
 		// unescaped newline in it would otherwise forge a log line.

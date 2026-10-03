@@ -87,8 +87,18 @@ Entirely frontend code. Uno's Go side never mints, refreshes, or stores a Nuvio 
 ## Profile selection
 
 `/profiles` renders `ProfilePicker`: `GET /api/profiles` (Nuvio's live list) → pick →
-`POST /api/profiles/select` → navigate to `/configure` with `{profileIndex, profileName}` as
-React Router **navigation state**, not a URL param.
+`POST /api/profiles/select` → navigate to `/configure` with `{profileIndex, profileName,
+manifestURL, sharesAddons}` as React Router **navigation state**, not a URL param.
+
+**Each card draws the profile as Nuvio does** (`ProfileAvatar`, `PinBadge`): its picture
+(`avatar_image_url`, an upload or one of Nuvio's built-in avatars) in a circle beside its name,
+else that circle in the profile's Nuvio colour with its initial, and "PIN in Nuvio" beside the slot
+when the profile has a PIN. A picture that fails to load leaves the coloured circle. The circle is
+decorative: the card's name already says whose it is, and the PIN joins that name.
+
+**A profile that uses profile 1's addons in Nuvio** (`uses_primary_addons`, *Nuvio integration* in
+`docs/architecture.md`) opens like any other, but its card says "Uses profile 1's addons in Nuvio
+· Push is off" (`SharesAddonsNote`), and `sharesAddons` keeps Push off in the builder (*Push UI*).
 
 `profileIndex` deliberately does not live in the URL. A bookmarkable `/p/:profileIndex` would let
 a user land on `/configure` for an arbitrary index without going through selection. Router state
@@ -796,7 +806,12 @@ button.
   "Add catalogs"), then an "Appearance" `.sec-head` that folds away hide-title, tile shape,
   cover, the focus GIF (URL plus an on/off) and the three Modern Home hero URLs (backdrop, video,
   title logo). Preview renders none of the focus or hero fields; they only reach Nuvio through
-  push. Catalogs come before appearance because they're what a folder is opened for. The panel is
+  push. A setting not every Nuvio app reads carries an `OnlyIn` tag beside its label: "Nuvio TV,
+  Modern layout" on the hero URLs and the collection's background image, "Nuvio TV" on its focus
+  glow. The background image's InfoTip says it fills the tile of a folder without a cover image in
+  place of its emoji, which Preview doesn't show. The focus GIF's InfoTip says Nuvio's phone and
+  desktop apps ignore its on/off and show the GIF as the tile itself unless the device's own
+  setting turns it off. Catalogs come before appearance because they're what a folder is opened for. The panel is
   a shelf of its own, so the folder's settings read as inside the folder rather than as more of
   the collection's; its fields and folding sections step to `ground` and `raised-hi` so they
   don't vanish into it. A failed Save selects the first folder with errors, and every other
@@ -1133,10 +1148,19 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
   full stop, catalog selection included. One generic message: "Push failed — nothing changed.
   Your edits are still here; try again." True for every ordinary failure mode because of the
   backend ordering.
-- **Rare compound failure** (`undo_failed`) — both Nuvio calls succeeded, the local commit
+- **Rare compound failure** (`undo_failed`) — Nuvio took part or all of the push, a later step
   failed, *and* the compensating undo also failed. The one case where "nothing changed" isn't
   true. Copy: "Push failed, and we couldn't fully undo it — your collections in Nuvio may be
   temporarily out of sync. Push again to reconcile."
+- **A refusal the server names is an ordinary failure in its own words** (`failedOutcome`):
+  `refused: empty_collection` is the outcome `empty-collection` ("A collection on Home has no
+  folders — nothing changed."), and `refused: shares_addons` is `shares-addons` ("This profile
+  uses profile 1's addons in Nuvio — nothing changed."). The builder blocks both before they're
+  sent (below); these words are for a tab that missed one. `refused: profile_changed` is
+  `profile-changed` ("This profile changed in Nuvio — nothing changed."): the profile was
+  deleted or replaced in Nuvio since it was picked. The builder stays put with every pending edit,
+  and the words send the user back to pick the profile again, rather than the builder navigating
+  away and losing them.
 - **A 429 is an ordinary failure in its own words** (`RateLimitedError`, outcome `rate-limited`):
   Uno's server answers none, but a proxy in front of it could, and one would have turned the
   push away before running it, so nothing changed. Copy: "Too many pushes
@@ -1149,6 +1173,12 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **Push is blocked until the home selection has loaded** (`home.ready`), both on the button
   and inside `push()`. Before then `snapshot()` returns `EMPTY_HOME`, and a full-replace push
   of it would remove every Uno catalog row and collection from the profile.
+- **Push is off while something blocks it** (`usePushBlock` → `pushBlock`,
+  `BlockablePushButton`): the profile uses profile 1's addons in Nuvio, or a collection on Home
+  has no folders. `PushBlockNote`, a strip under the header beside the push outcome, says which
+  and what to do: turn sharing off in Nuvio and pick the profile again, or add a folder to the
+  named collection or take it off Home. The server refuses both too (*Push* in
+  `docs/architecture.md`).
 - **A second push is blocked while one is in flight**, via a **ref**, not render-captured
   state — the guard has to reject a second call raised before a re-render. Two overlapping
   `PullCollections`→`PushCollections` cycles can clobber each other.
@@ -1290,6 +1320,6 @@ TV, phone or desktop. That is the whole of what they are assumed to know. Four r
 
 **`InfoTip` is for the narrow middle.** A sentence that doesn't survive "is this needed at all"
 is deleted, not moved. The icon holds one a control genuinely needs but that would crowd the page:
-Community's Add button (Add versus Duplicate), the collection's Focus glow, a folder's Focus GIF and
+Community's Add button (Add versus Duplicate), the collection's Focus glow and Background image, a folder's Focus GIF and
 Modern Home fields, the catalog picker's link-versus-copy, and the genre chips' three-state cycle.
 It opens on click rather than hover, so it works on touch.
