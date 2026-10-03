@@ -1,8 +1,6 @@
 import { useMemo } from 'react'
 import type { TMDBParams } from '@/api'
-import { Tag } from 'lucide-react'
 import { FieldError, FieldNote, InfoTip, Segmented, TextInput } from '@/components/fields'
-import { Icon } from '@/components/Icon'
 import type { CatalogFormState, SourceMode } from './catalogForm'
 import { parseIdList } from './params'
 import { sumShuffle } from './summary'
@@ -190,17 +188,6 @@ export function ShuffleControl({
   )
 }
 
-
-/** What this row puts in Nuvio, in the same words the rail and the home
- *  screen use, kept current as the settings below change. */
-export function Talker({ words }: { words: string }) {
-  return (
-    <p className="talker">
-      <Icon icon={Tag} size={20} />
-      <span>{words || 'No filters yet. Set what this row shows below.'}</span>
-    </p>
-  )
-}
 
 interface NameSettingProps {
   value: string

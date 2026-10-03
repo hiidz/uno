@@ -100,14 +100,10 @@ function countryLabel(code: string): string {
 
 /** A stored genre list's names, joined the way the list is — "Action and
  *  Comedy", or "Action or Comedy" for a pipe-joined one. An id the lookup
- *  can't name stands in for its name, or with `knownOnly` is left out. */
-function genreNames(raw: string | undefined, lookup: GenreLookup, knownOnly = false): string | null {
+ *  can't name stands in for its name. */
+function genreNames(raw: string | undefined, lookup: GenreLookup): string | null {
   const { ids, join } = parseIdList(raw)
-  const names = ids.flatMap((id) => {
-    const name = lookup.get(id)
-    if (name) return [name]
-    return knownOnly ? [] : [String(id)]
-  })
+  const names = ids.map((id) => lookup.get(id) ?? String(id))
   if (names.length === 0) return null
   return join === 'or' ? orList(names) : andList(names)
 }
@@ -268,38 +264,6 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
  *  line — the form the rail and the home screen's rows show. */
 export function recipeLine(catalog: Pick<Catalog, 'type' | 'params'>, lookup: GenreLookup): string {
   return capitalize(describeRecipe(catalog, lookup).join(' · '))
-}
-
-/**
- * The recipe as one sentence — "Shows horror movies, highest rated, 30 or more
- * ratings." — for the top of the catalog editor. Built from `describeRecipe`'s
- * own segments, which lead with the sort phrase and then the genres whenever
- * each is set; those two become the sentence's subject and first clause.
- * Empty when the catalog has no filters at all.
- */
-export function recipeSentence(
-  catalog: Pick<Catalog, 'type' | 'params'>,
-  lookup: GenreLookup,
-): string {
-  const p = parseParams(catalog.params)
-  const rest = describeParams(catalog.type, p, lookup)
-  if (rest.length === 0) return ''
-  if (catalog.type === 'movie' && countIDs(p.with_collection)) {
-    return `Shows the films in one TMDB collection${p.randomized ? ', shuffled' : ''}.`
-  }
-
-  const sort = p.sort_by ? rest.shift() : undefined
-  if (countIDs(p.with_genres)) rest.shift()
-  // Only the genres the lookup can name. An id standing in for a name — the
-  // genre list still loading, or an id TMDB has retired — would read as a
-  // count of titles as the subject ("27 movies"), so it is left out instead.
-  const genres = genreNames(p.with_genres, lookup, true)
-  const noun = catalog.type === 'movie' ? 'movies' : 'series'
-  const subject = genres ? `${genres.toLowerCase()} ${noun}` : noun
-  // "A-Z" and "Z-A" keep their capitals, with or without "by original
-  // title"; every other sort phrase reads mid-sentence.
-  const order = sort && !/^[A-Z]-[A-Z]\b/.test(sort) ? sort.toLowerCase() : sort
-  return `Shows ${[subject, order, ...rest].filter(Boolean).join(', ')}.`
 }
 
 /**

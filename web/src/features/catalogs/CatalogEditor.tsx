@@ -8,7 +8,7 @@ import type { SignStep } from '@/components/PaneSign'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { useEditorForm } from '@/features/builder/useEditorForm'
-import { buildGenreLookup, recipeSentence, typeLabel } from '@/features/library/recipe'
+import { typeLabel } from '@/features/library/recipe'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
 import type { CountryLookup } from './countries'
 import {
@@ -28,7 +28,7 @@ import {
   serializeIdList,
   type IdJoin,
 } from './params'
-import { EntityLists, NameSetting, ScopeSetting, ShuffleControl, SourceModeSetting, Talker } from './CatalogSettings'
+import { EntityLists, NameSetting, ScopeSetting, ShuffleControl, SourceModeSetting } from './CatalogSettings'
 import { DateWindow } from './DateWindow'
 import { RecipePreview } from './RecipePreview'
 import {
@@ -674,11 +674,6 @@ export function CatalogEditor({
     typeFacts(state, certifications)
   // Genre ids differ between movie and tv, so the list follows `type`.
   const activeGenres = genres[TYPE_KEY[state.type]]
-  const genreLookup = useMemo(() => buildGenreLookup(activeGenres), [activeGenres])
-  const recipeWords = useMemo(
-    () => recipeSentence({ type: state.type, params }, genreLookup),
-    [state.type, params, genreLookup],
-  )
   const withGenres = parseIdList(state.params.with_genres)
   const withoutGenres = parseIdList(state.params.without_genres)
 
@@ -796,7 +791,6 @@ export function CatalogEditor({
       <div className="ed-container">
         <div className="ed ed-results">
           <div className="ed-form">
-            <Talker words={recipeWords} />
             <NameSetting value={state.name} error={errorFor('name')} onChange={patch} />
 
             <ScopeSetting

@@ -1235,26 +1235,6 @@
         grid-column: 2;
     }
 
-    /* What a catalog returns, in one sentence, at the top of its editor — the
-       card a shop hangs off a shelf to say what is on it. */
-    .talker {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        margin: 0 0 22px;
-        padding: 15px 18px;
-        border-radius: 14px;
-        background: var(--uno-raised-hi);
-        font-size: 16.5px;
-        font-weight: 550;
-        line-height: 1.45;
-    }
-    .talker svg {
-        flex: none;
-        margin-top: 3px;
-        color: var(--accent);
-    }
-
     /* Every setting: its label above, the control below, on the form's one
        left edge. */
     .setting {
