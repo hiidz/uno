@@ -594,12 +594,12 @@ export function Workspace({
               this is a shortcut down to it — hence `↓` and not `›`. Sticky
               as the rail's last child: it pins to the bottom of the viewport
               while the rail is on screen, and leaves with the rail's end as
-              the pane scrolls in. `z-30` keeps it over the rail's own sticky
-              signs (`z-20`) as they scroll past it. */}
+              the pane scrolls in. `z-20` ties the rail's sticky signs and wins on
+              document order; the sticky header band (`z-30`) stays over it. */}
           <button
             type="button"
             onClick={showHome}
-            className="btn-secondary bg-raised-hi sticky bottom-4 z-30 mb-4 self-center lg:hidden"
+            className="btn-secondary bg-raised-hi sticky bottom-4 z-20 mb-4 self-center lg:hidden"
           >
             Your home screen
             <Icon icon={ArrowDown} size={16} />
