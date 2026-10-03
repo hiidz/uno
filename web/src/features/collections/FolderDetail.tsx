@@ -179,13 +179,6 @@ export function FolderDetail({
               Focus GIF
             </label>
             <div className="setting-value flex max-w-[360px] flex-col gap-2">
-              <TextInput
-                id={`${idBase}-gif`}
-                value={folder.focusGIFURL}
-                onChange={(focusGIFURL) => onChange({ focusGIFURL })}
-                placeholder="GIF URL, https://…"
-                ariaLabel={`Focus GIF URL for ${label}`}
-              />
               <div className="ed-line">
                 <Segmented
                   ariaLabel={`Play the focus GIF on ${label}`}
@@ -201,6 +194,13 @@ export function FolderDetail({
                   text="Nuvio TV plays it over the tile while it's selected. Nuvio's phone and desktop apps ignore this switch and show the GIF as the tile itself, unless it's turned off in that device's settings."
                 />
               </div>
+              <TextInput
+                id={`${idBase}-gif`}
+                value={folder.focusGIFURL}
+                onChange={(focusGIFURL) => onChange({ focusGIFURL })}
+                placeholder="GIF URL, https://…"
+                ariaLabel={`Focus GIF URL for ${label}`}
+              />
             </div>
           </div>
 
