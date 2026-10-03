@@ -99,8 +99,8 @@ const SOURCES: Record<EntityKind, EntitySource> = {
     oneKey: queryKeys.keyword,
   },
   collection: {
-    plural: 'film series',
-    singular: 'Film series',
+    plural: 'TMDB collections',
+    singular: 'TMDB collection',
     defaultJoin: 'and',
     single: true,
     search: searchCollections,

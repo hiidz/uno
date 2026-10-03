@@ -201,12 +201,12 @@ export function sumEntities(
  *  lookup answers, the id stands in. */
 export function sumCollection(raw: string | undefined, name: string | undefined): string {
   const id = parseIdList(raw).ids[0]
-  if (id === undefined) return 'No film series picked'
-  return name ?? `Film series ${id}`
+  if (id === undefined) return 'No TMDB collection picked'
+  return name ?? `TMDB collection ${id}`
 }
 
-/** What shuffle does once it's on. A film series always holds the same films,
- *  so shuffling it only changes their order. */
+/** What shuffle does once it's on. A TMDB collection always holds the same
+ *  films, so shuffling it only changes their order. */
 export const sumShuffle = (collectionRow = false): string =>
   collectionRow ? 'New order each time' : 'New set each time'
 

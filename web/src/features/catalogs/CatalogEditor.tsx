@@ -91,7 +91,7 @@ const DATE_KEYS = {
 } as const
 
 /** What the form's type decides: which age-rating scales apply,
- *  which date fields it reads, and the picked film series. */
+ *  which date fields it reads, and the picked TMDB collection. */
 function typeFacts(state: CatalogFormState, certifications: CatalogEditorProps['certifications']) {
   const activeCertifications = certifications[TYPE_KEY[state.type]]
   const [gteKey, lteKey, daysKey] = DATE_KEYS[state.type]
@@ -119,8 +119,9 @@ function filmSeriesID(state: CatalogFormState): number | undefined {
   return parseIdList(state.params.with_collection).ids[0]
 }
 
-/** The picked film series' name, through the same by-id key the picker's chip
- *  reads, so the section head names it without a request of its own. */
+/** The picked TMDB collection's name, through the same by-id key the
+ *  picker's chip reads, so the section head names it without a request of
+ *  its own. */
 function useFilmSeriesName(id: number | undefined): string | undefined {
   const seriesID = id ?? 0
   const query = useQuery({
@@ -222,7 +223,7 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   companies: () => 'Studios',
   keywords: () => 'Keywords',
   networks: () => 'Networks',
-  collection: () => 'Film series',
+  collection: () => 'TMDB collection',
 }
 
 /** Builds the collapsible sections: each carries the plain-English
@@ -532,8 +533,8 @@ function buildSections(args: SectionArgs) {
       : []),
   ]
 
-  // Film series mode shows the film series section alone and filters mode
-  // everything else, matching what `recipeParams` in catalogForm.ts sends.
+  // TMDB collection mode shows the TMDB collection section alone and filters
+  // mode everything else, matching what `recipeParams` in catalogForm.ts sends.
   const collectionRow = isCollectionRow(state)
   return sections.filter((section) => (section.key === 'collection') === collectionRow)
 }

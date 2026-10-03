@@ -402,25 +402,27 @@ Other decisions worth keeping:
   id can't be both included and left out. There is no server rule for that overlap either, the
   same as genres. The closed head reads "1 studio · not 2 studios" (`sumEntities`), and the
   library summary reads "not from 2 studios" / "not tagged with 1 keyword".
-- **A movie catalog shows either Filters or a Film series**, a `Segmented` that is the first
-  control under the "What the row shows" heading. A TMDB collection is called a film series on
-  screen, since "collection" is Uno's word for a group of catalogs. The mode is form state
-  (`sourceMode` in `catalogForm.ts`, `'filters' | 'collection'`), not a stored field:
-  `formFromCatalog` reads a saved `with_collection` as Film series, anything else as Filters.
-  Filters shows every filter section and no Film series section; Film series shows only that
-  section, its picker with Shuffle under it, every other section — sort order included — hidden
-  rather than disabled. A film series row lists one TMDB collection's films in release order, and
-  the server rejects any other filter beside `with_collection` (`randomized` excepted), so what a
-  save or Preview sends follows the mode (both go through `paramsString` → `recipeParams`): Film
-  series keeps only the `COLLECTION_KEYS` allow-list, so a field added later is dropped by
-  default, and Filters drops `with_collection`. Form state keeps both sides' values, so switching
-  mode back and forth loses nothing until Save. `validateForm` checks the sent params, so a
-  dropped field raises no error, and Film series mode with nothing picked is an error ("Pick a
-  film series."), which also stops Preview from running. Series catalogs have no switch and no
-  Film series section, since TMDB has no collections for series.
-- **Shuffle is the last control of the Order section** (of the Film series section in that
-  mode), with "New set each time" (or "New order each time" for a film series, which always holds
-  the same films) beside it once on, and the section's summary ends "· shuffled" (`withShuffle`).
+- **A movie catalog shows either Filters or a TMDB collection**, a `Segmented` that is the first
+  control under the "What the row shows" heading. On screen a TMDB collection is always called
+  "TMDB collection", never bare "collection", since "collection" is Uno's word for a group of
+  catalogs. The mode is form state (`sourceMode` in `catalogForm.ts`, `'filters' | 'collection'`),
+  not a stored field: `formFromCatalog` reads a saved `with_collection` as TMDB collection,
+  anything else as Filters. Filters shows every filter section and no TMDB collection section;
+  TMDB collection shows only that section, its picker with Shuffle under it, every other section
+  — sort order included — hidden rather than disabled. A TMDB collection row lists that
+  collection's films in release order, and the server rejects any other filter beside
+  `with_collection` (`randomized` excepted), so what a save or Preview sends follows the mode
+  (both go through `paramsString` → `recipeParams`): TMDB collection keeps only the
+  `COLLECTION_KEYS` allow-list, so a field added later is dropped by default, and Filters drops
+  `with_collection`. Form state keeps both sides' values, so switching mode back and forth loses
+  nothing until Save. `validateForm` checks the sent params, so a dropped field raises no error,
+  and TMDB collection mode with nothing picked is an error ("Pick a TMDB collection."), which
+  also stops Preview from running. Series catalogs have no switch and no TMDB collection section,
+  since TMDB has no collections for series.
+- **Shuffle is the last control of the Order section** (of the TMDB collection section in that
+  mode), with "New set each time" (or "New order each time" for a TMDB collection, which always
+  holds the same films) beside it once on, and the section's summary ends "· shuffled"
+  (`withShuffle`).
 - **The results panel names what to fix.** While the recipe has errors, the line standing in for
   results reads "Fix Order first." (or "Fix Order and Studios first."), the sections named
   through `roleLabelFor` (`recipeSections` in `CatalogEditor.tsx`); `name` is left out, being no
@@ -431,9 +433,9 @@ Other decisions worth keeping:
   than adding one, and there is no all/any toggle. Its section head names the pick rather than
   counting it: the editor reads the same `staleTime: Infinity` by-id key the chip does, so the
   name costs no extra request. "Collection" is also Uno's word for a group of catalogs, so the
-  TMDB kind is `TMDBCollection` in code, the picker says "film series", and the library summary
-  describes a film series row as "from a film series" (plus "shuffled"), with none of the other
-  filters.
+  TMDB kind is `TMDBCollection` in code, the picker says "TMDB collection", and the library
+  summary describes a TMDB collection row as "from a TMDB collection" (plus "shuffled"), with none
+  of the other filters.
 - **A series catalog's Networks section is the same server-search picker again**
   (`kind="network"`, over `GET /api/networks/{search,{id}}`, stored as `with_networks`). It is
   series only, since `/discover/movie` has no network filter. A movie catalog has no Networks
@@ -804,7 +806,7 @@ button.
   the appearance summary the folded row's),
   ←/→ and Remove; then its title, then its catalogs (a `.setting.is-head` heading with "New catalog" and
   "Add catalogs"), then an "Appearance" `.sec-head` that folds away hide-title, tile shape,
-  cover, the focus GIF (URL plus an on/off) and the three Modern Home hero URLs (backdrop, video,
+  cover, the focus GIF (an on/off above its URL) and the three Modern Home hero URLs (backdrop, video,
   title logo). Preview renders none of the focus or hero fields; they only reach Nuvio through
   push. A setting not every Nuvio app reads carries an `OnlyIn` tag beside its label: "Nuvio TV,
   Modern layout" on the hero URLs and the collection's background image, "Nuvio TV" on its focus

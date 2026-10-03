@@ -132,7 +132,7 @@ function MoveToLibrary({
 
 const SOURCE_MODES: { value: SourceMode; label: string }[] = [
   { value: 'filters', label: 'Filters' },
-  { value: 'collection', label: 'Film series' },
+  { value: 'collection', label: 'TMDB collection' },
 ]
 
 interface SourceModeSettingProps {
@@ -142,7 +142,7 @@ interface SourceModeSettingProps {
 }
 
 /** A movie catalog's first choice under "What the row shows": filters, or one
- *  film series. Series have no film series, so no choice. */
+ *  TMDB collection. TMDB has no collections for series, so no choice there. */
 export function SourceModeSetting({
   isMovie,
   value,
@@ -167,7 +167,7 @@ interface ShuffleControlProps {
   onParams: PatchParams
 }
 
-/** Shuffle, the last control of the Order section (or the Film series
+/** Shuffle, the last control of the Order section (or the TMDB collection
  *  section), with what it does beside it once on. */
 export function ShuffleControl({
   randomized,

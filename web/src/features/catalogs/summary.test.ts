@@ -177,10 +177,10 @@ describe('sumEntities', () => {
 
 describe('sumCollection', () => {
   it('names the one pick, falling back to its id until the name loads', () => {
-    expect(sumCollection(undefined, undefined)).toBe('No film series picked')
-    expect(sumCollection('', 'Star Wars Collection')).toBe('No film series picked')
+    expect(sumCollection(undefined, undefined)).toBe('No TMDB collection picked')
+    expect(sumCollection('', 'Star Wars Collection')).toBe('No TMDB collection picked')
     expect(sumCollection('10', 'Star Wars Collection')).toBe('Star Wars Collection')
-    expect(sumCollection('10', undefined)).toBe('Film series 10')
+    expect(sumCollection('10', undefined)).toBe('TMDB collection 10')
   })
 })
 

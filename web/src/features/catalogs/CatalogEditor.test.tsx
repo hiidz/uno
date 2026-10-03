@@ -129,7 +129,7 @@ describe('CatalogEditor', () => {
     const initial = formFromCatalog(catalog({ name: 'Row', params: '{"with_collection":""}' }))
     renderEditor({ initial: { ...initial, sourceMode: 'collection' } })
     fireEvent.click(screen.getByRole('button', { name: 'Run preview' }))
-    expect(screen.getByText('Fix Film series first.')).toBeInTheDocument()
+    expect(screen.getByText('Fix TMDB collection first.')).toBeInTheDocument()
   })
 
   it('states a scoped catalog’s place, and saves as Done in a collection', () => {

@@ -245,12 +245,12 @@ export function validateForm(state: CatalogFormState): FieldErrors {
   }
 }
 
-/** The name, and a film series row's pick. */
+/** The name, and a TMDB collection row's pick. */
 function nameErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
   const errors: FieldErrors = {}
   if (!state.name.trim()) errors.name = 'Give this catalog a name.'
   if (isCollectionRow(state) && parseIdList(p.with_collection).ids.length === 0) {
-    errors.with_collection = 'Pick a film series.'
+    errors.with_collection = 'Pick a TMDB collection.'
   }
   return errors
 }
