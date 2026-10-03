@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { TMDBParams } from '@/api'
-import { FieldError, FieldNote, InfoTip, Segmented, TextInput } from '@/components/fields'
+import { FieldError, FieldNote, Segmented, TextInput } from '@/components/fields'
 import type { CatalogFormState, SourceMode } from './catalogForm'
 import { parseIdList } from './params'
 import { sumShuffle } from './summary'
@@ -84,7 +84,7 @@ interface ScopeSettingProps {
 
 /**
  * A scoped catalog's place, in its collection's nested editor: only in that
- * collection, with Move to library beside it, which takes effect with the
+ * collection, with Move to library under it, which takes effect with the
  * collection's Save. Draws nothing for a listed catalog.
  */
 export function ScopeSetting({
@@ -96,7 +96,7 @@ export function ScopeSetting({
   return (
     <div className="setting">
       <span className="setting-label type-label">Scope</span>
-      <div className="setting-value ed-line">
+      <div className="setting-value flex flex-col items-start gap-2">
         <span className="type-data text-[15px]">Only in this collection</span>
         <MoveToLibrary canMove={canMoveToLibrary} onChange={onChange} />
       </div>
@@ -109,22 +109,22 @@ interface MoveToLibraryProps {
   onChange: PatchForm
 }
 
-/** Move to library, and when it applies; a draft has no row to move until
- *  the collection is saved, so it says that instead. */
+/** Move to library, with when it applies beside it; a draft has no row to
+ *  move until the collection is saved, so it says that instead. */
 function MoveToLibrary({
   canMove,
   onChange,
 }: MoveToLibraryProps) {
   if (!canMove) {
-    return <InfoTip label="Scope" text="Save the collection first to move this to your library." />
+    return <span className="ed-note">Save the collection first to move this to your library.</span>
   }
   return (
-    <>
+    <div className="ed-line">
       <button type="button" className="btn-secondary btn-sm" onClick={() => onChange({ collectionID: null })}>
         Move to library
       </button>
-      <InfoTip label="Move to library" text="Applies when you save the collection." />
-    </>
+      <span className="ed-note">Applies when you save the collection.</span>
+    </div>
   )
 }
 
