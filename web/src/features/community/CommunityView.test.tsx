@@ -238,6 +238,13 @@ describe('CommunityView', () => {
     expect(await screen.findByRole('menuitem', { name: /^Duplicate/ })).toHaveTextContent('yours to edit')
   })
 
+  it('says Duplicate makes the latest version while an update waits for the added row', async () => {
+    renderView({ 'GET /api/p/1/community': [night] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'More for Horror Nights' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    expect(await screen.findByRole('menuitem', { name: /^Duplicate/ })).toHaveTextContent('the latest version')
+  })
+
   it('draws a row as one target: a pointer name button covering it, its actions above', async () => {
     renderView({ 'GET /api/p/1/community': [a24] })
     await screen.findByText('A24 Horror')

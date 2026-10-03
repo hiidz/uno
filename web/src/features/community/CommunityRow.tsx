@@ -28,7 +28,7 @@ export interface RowActions {
  * disabled "✓ Added" while this profile holds a copy that follows the
  * publication; while an update waits for that copy, the actions' `updateLabel`
  * — and Duplicate, a copy that is the profile's own and follows nothing, behind
- * "⋯", with what it makes said beside it.
+ * "⋯", with what it makes said beside it (`duplicateReason`).
  */
 function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActions }) {
   const { pending } = actions
@@ -44,12 +44,19 @@ function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActio
         <MainLabel item={item} pending={pending} update={actions.updateLabel} />
       </button>
       <MoreMenu label={item.title}>
-        <MoreMenuItem disabled={pending !== undefined} onSelect={actions.onDuplicate} reason="yours to edit">
+        <MoreMenuItem disabled={pending !== undefined} onSelect={actions.onDuplicate} reason={duplicateReason(item)}>
           Duplicate
         </MoreMenuItem>
       </MoreMenu>
     </div>
   )
+}
+
+/** What Duplicate makes, beside it in the row's "⋯": the latest version while
+ *  an update waits for this profile's older added row, otherwise a copy that
+ *  is yours to edit. */
+function duplicateReason(item: CommunityItem): string {
+  return item.update_available ? 'the latest version' : 'yours to edit'
 }
 
 /**

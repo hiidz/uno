@@ -1097,7 +1097,8 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   their own line) and a touch screen adds a chevron to the name line. Its main button is Add (the
   `subscribe` action), a disabled ✓ Added while the profile has added it, or Update… while an
   update waits, which opens the publication's page; Duplicate, a copy that is the profile's own
-  (`POST .../duplicate`), waits behind "⋯" with "yours to edit" beside it. No ⓘ. While an action is
+  (`POST .../duplicate`), waits behind "⋯" with "yours to edit" beside it, or "the latest version"
+  while an update waits, since it copies the publication and not the older added row. No ⓘ. While an action is
   in flight the button says so (Adding…, Updating…, Duplicating…). The search box says "Search".
 - **A row opens its publication's page in place of the list** (`PublicationPage.tsx`, DESIGN.md's
   One Occupant Rule). `CommunitySign` turns Community's sign into the page's: a round back arrow
