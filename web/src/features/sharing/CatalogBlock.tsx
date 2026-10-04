@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { Catalog } from '@/api'
 import { Icon } from '@/components/Icon'
-import { recipeFacts, recipeLine, type RecipeFact } from '@/features/library/recipe'
+import { openFacts, recipeFacts, recipeLine, type RecipeFact } from '@/features/library/recipe'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { useRecipeNames } from '@/features/library/useRecipeNames'
 
@@ -62,17 +62,19 @@ function useFacts(
 const TILE = 'flex min-w-0 flex-col gap-1 rounded-[10px] px-3 py-2.5'
 
 /** One tile's classes: flat on the ground and, for a list, a row of its own;
- *  in a folder card, raised-hi. */
+ *  in a folder card, a ground well. */
 function tileClass(label: string, inFolder: boolean): string {
-  if (inFolder) return `${TILE} bg-raised-hi`
+  if (inFolder) return `${TILE} bg-ground`
   return `${TILE} bg-raised ${isListFact(label) ? 'col-span-full' : ''}`
 }
 
 /** A catalog's facts as spec tiles: a dim label over a bold value. Open on
  *  its own they sit flat on the ground and flow as far as 140px allows, the
- *  lists on a row each; a folded block's, inside a folder card, step up to
- *  raised-hi in two columns. */
-function FactTiles({ facts, inFolder }: { facts: RecipeFact[]; inFolder: boolean }) {
+ *  short ones first and then the lists on a row each; a folded block's,
+ *  inside a folder card, step down to ground wells in two columns. After
+ *  them come the filters the recipe leaves `open`, outlined and unfilled,
+ *  in dimmer type. */
+function FactTiles({ facts, open, inFolder }: { facts: RecipeFact[]; open: RecipeFact[]; inFolder: boolean }) {
   const grid = inFolder ? 'grid-cols-2' : 'grid-cols-[repeat(auto-fill,minmax(140px,1fr))]'
   return (
     <dl className={`m-0 grid gap-2 ${grid}`}>
@@ -80,6 +82,12 @@ function FactTiles({ facts, inFolder }: { facts: RecipeFact[]; inFolder: boolean
         <div key={fact.label} className={tileClass(fact.label, inFolder)}>
           <dt className="text-dim text-[12px] font-semibold">{fact.label}</dt>
           <FactValue value={fact.value} />
+        </div>
+      ))}
+      {open.map((fact) => (
+        <div key={fact.label} className={`${TILE} shadow-[inset_0_0_0_1px_var(--uno-line)]`}>
+          <dt className="text-dimmer text-[12px] font-semibold">{fact.label}</dt>
+          <dd className="text-dimmer m-0 text-[15px] font-semibold">{fact.value}</dd>
         </div>
       ))}
     </dl>
@@ -95,7 +103,9 @@ function FactValue({ value }: { value: string }) {
  * A catalog block, the one way a catalog added from Community is read: in its
  * view, in a collection's folders, and on a publication's page.
  *
- * Open, it is the recipe's spec tiles and nothing else; the name is the
+ * Open, it is the recipe's spec tiles and nothing else: what the recipe sets,
+ * then every filter it leaves open ("Genres: Any"), so a reader who never
+ * opened the editor sees what a catalog could filter on; the name is the
  * surrounding page's to show. Production companies, keywords, networks and
  * streaming services are named, from the lookups the catalog editor uses, and
  * show "…" until the names arrive (a count, if a lookup cannot name them). With
@@ -122,9 +132,16 @@ export function CatalogBlock({
   )
 }
 
+/** `facts` with the one-value facts ahead of the lists, so the short tiles
+ *  share rows above the lists' full-width ones instead of leaving gaps
+ *  between them. */
+function shortFactsFirst(facts: RecipeFact[]): RecipeFact[] {
+  return [...facts.filter((fact) => !isListFact(fact.label)), ...facts.filter((fact) => isListFact(fact.label))]
+}
+
 function OpenBlock({ catalog, genres }: { catalog: Catalog; genres: GenreLookups }) {
   const facts = useFacts(catalog, genres, '', { foldable: false, open: true })
-  return <FactTiles facts={facts} inFolder={false} />
+  return <FactTiles facts={shortFactsFirst(facts)} open={openFacts(catalog, facts)} inFolder={false} />
 }
 
 function FoldedBlock({ catalog, genres, narrowedTo }: { catalog: Catalog; genres: GenreLookups; narrowedTo: string }) {
@@ -143,7 +160,7 @@ function FoldedBlock({ catalog, genres, narrowedTo }: { catalog: Catalog; genres
         onToggle={toggle}
       />
       <div id={panelID} hidden={!open} className="pt-2 pl-[26px]">
-        {open && <FactTiles facts={facts} inFolder />}
+        {open && <FactTiles facts={facts} open={openFacts(catalog, facts)} inFolder />}
       </div>
     </div>
   )

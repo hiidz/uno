@@ -103,7 +103,7 @@ function catalogLine({ change }: Item, joiner: 'from' | 'to'): ChangeLine {
 
 /** A fact's label as one key for its singular and its plural: "Production
  *  company" and "Production companies" are one fact. */
-function factKey(label: string): string {
+export function factKey(label: string): string {
   return label.toLowerCase().replace(/ies$/, 'y').replace(/s$/, '')
 }
 

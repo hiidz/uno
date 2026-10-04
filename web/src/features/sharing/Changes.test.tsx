@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SnapshotChange, SubscriptionState } from '@/api'
+import type { SnapshotChange, SnapshotFolder, SubscriptionState } from '@/api'
 import { failWith, fakeApi, type FakeRoute } from '@/test/fakeApi'
 import { communityItem } from '@/test/fixtures'
 import { SinceLastPublished, UpdateChanges, UpdateCount } from './Changes'
@@ -35,11 +35,13 @@ describe('UpdateChanges', () => {
   it('lists what the update changes, fetched while an update waits', async () => {
     const calls = renderWith(
       { 'GET /api/p/1/community/pub/changes': changes },
-      <UpdateChanges profileIndex={1} item={waiting} genres={genres} />,
+      <UpdateChanges profileIndex={1} item={waiting} folders={[]} genres={genres} />,
     )
     expect(screen.getByRole('heading', { name: 'In this update' })).toBeInTheDocument()
-    expect(await screen.findByText('Folder “80s”')).toBeInTheDocument()
-    expect(screen.getByText('“Ronin” to “Classics”')).toBeInTheDocument()
+    expect(await screen.findByText('folder removed')).toBeInTheDocument()
+    expect(screen.getByText('Classics')).toBeInTheDocument()
+    expect(screen.getByText('Ronin')).toBeInTheDocument()
+    expect(screen.getAllByText('added')).toHaveLength(2)
     expect(screen.getByText('3 changes')).toBeInTheDocument()
     expect(calls).toEqual(['GET /api/p/1/community/pub/changes'])
   })
@@ -48,18 +50,29 @@ describe('UpdateChanges', () => {
     const calls = renderWith(
       { 'GET /api/p/1/community/pub/changes': changes },
       <>
-        <UpdateChanges profileIndex={1} item={{ ...waiting, update_available: false }} genres={genres} />
-        <UpdateChanges profileIndex={1} item={{ ...waiting, subscribed: false }} genres={genres} />
+        <UpdateChanges profileIndex={1} item={{ ...waiting, update_available: false }} folders={[]} genres={genres} />
+        <UpdateChanges profileIndex={1} item={{ ...waiting, subscribed: false }} folders={[]} genres={genres} />
       </>,
     )
     expect(screen.queryByRole('heading')).toBeNull()
     expect(calls).toEqual([])
   })
 
+  it('orders its folders as the new version does', async () => {
+    const folders = [{ title: 'Classics', refs: [] }, { title: '80s', refs: [] }] as unknown as SnapshotFolder[]
+    renderWith(
+      { 'GET /api/p/1/community/pub/changes': changes },
+      <UpdateChanges profileIndex={1} item={waiting} folders={folders} genres={genres} />,
+    )
+    await screen.findByText('Classics')
+    const headings = [...document.querySelectorAll('.font-bold')].map((el) => el.textContent)
+    expect(headings).toEqual(['Classics', '80s'])
+  })
+
   it('says so when the list can’t load, and stays on the page', async () => {
     renderWith(
       { 'GET /api/p/1/community/pub/changes': () => failWith(404, 'not in Community any more') },
-      <UpdateChanges profileIndex={1} item={waiting} genres={genres} />,
+      <UpdateChanges profileIndex={1} item={waiting} folders={[]} genres={genres} />,
     )
     expect(await screen.findByText('Couldn’t load what changed.')).toBeInTheDocument()
   })

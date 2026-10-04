@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicationDetail } from '@/api'
@@ -352,8 +352,11 @@ describe('CommunityView', () => {
     }
     const calls = renderView(routes, { id: 'night', kind: 'collection' })
     const heading = await screen.findByRole('heading', { name: 'In this update' })
-    expect(await screen.findByText('Folder “Old folder”')).toBeInTheDocument()
-    expect(screen.getByText('“Slasher classics” to “Slashers”')).toBeInTheDocument()
+    const shelf = screen.getByRole('region', { name: 'In this update' })
+    expect(await within(shelf).findByText('Old folder')).toBeInTheDocument()
+    expect(within(shelf).getByText('folder removed')).toBeInTheDocument()
+    expect(within(shelf).getByText('Slasher classics')).toBeInTheDocument()
+    expect(within(shelf).getByText('added')).toBeInTheDocument()
     const slashers = (await screen.findAllByText('Slashers'))[0]
     expect(heading.compareDocumentPosition(slashers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(calls).toContain('GET /api/p/1/community/night/changes')

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { SnapshotChange } from '@/api'
 import type { GenreLookups } from '@/features/library/useLibrary'
@@ -56,30 +56,38 @@ function Group({ group }: { group: ChangeGroup }) {
 const NO_CHANGES: SnapshotChange[] = []
 
 const SECTION = 'flex flex-col gap-2'
-const SHELF = `${SECTION} bg-raised rounded-[14px] p-4`
+const SHELF = 'flex flex-col gap-3.5 bg-raised-hi rounded-[16px] px-[18px] pt-4 pb-[18px]'
 
 interface ChangesBlockProps {
   title: string
   changes: UseQueryResult<SnapshotChange[]>
   genres: GenreLookups
   shelf?: boolean
+  /** The list drawn under the heading; `ChangeList` unless given. */
+  renderList?: (changes: SnapshotChange[], genres: GenreLookups) => ReactNode
+}
+
+function changeList(changes: SnapshotChange[], genres: GenreLookups): ReactNode {
+  return <ChangeList changes={changes} genres={genres} />
 }
 
 /**
  * A titled "what changed" list for a call that fetches it: the heading, then
- * the list. Nothing while the call has no changes to show; a quiet line while
- * it loads or if it fails — a list that can't load never stands in the way of
- * the button it sits beside. As a `shelf` it is a raised card with the number
- * of changes at the heading's end.
+ * the list (`renderList`). Nothing while the call has no changes to show; a
+ * quiet line while it loads or if it fails — a list that can't load never
+ * stands in the way of the button it sits beside. As a `shelf` it is a
+ * raised-hi card, a step above the folder cards beside it, its heading in sign
+ * lettering in the region's accent with the number of changes at the heading's
+ * end.
  */
-export function ChangesBlock({ title, changes, genres, shelf }: ChangesBlockProps) {
+export function ChangesBlock({ title, changes, genres, shelf, renderList = changeList }: ChangesBlockProps) {
   const list = changes.data ?? NO_CHANGES
   if (changes.isSuccess && list.length === 0) return null
   return (
     <section aria-label={title} className={sectionClass(shelf)}>
       <ChangesHeading title={title} list={list} shelf={shelf} />
       <ChangesStatus changes={changes} />
-      <ChangeList changes={list} genres={genres} />
+      {renderList(list, genres)}
     </section>
   )
 }
@@ -88,12 +96,18 @@ function sectionClass(shelf: boolean | undefined): string {
   return shelf ? SHELF : SECTION
 }
 
+/** A shelf's heading is sign lettering in the region's accent; a plain list's
+ *  is a label. */
+function headingClass(shelf: boolean | undefined): string {
+  return shelf ? 'type-sign m-0 text-[12.5px] leading-none text-[var(--accent)]' : 'type-label m-0'
+}
+
 /** A list's title, with how many changes it holds at the end of a shelf's. */
 function ChangesHeading({ title, list, shelf }: { title: string; list: readonly SnapshotChange[]; shelf?: boolean }) {
   const count = shelf ? changeCount(list) : 0
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <h3 className="type-label m-0">{title}</h3>
+      <h3 className={headingClass(shelf)}>{title}</h3>
       {count > 0 && <span className="type-data text-dim text-[13px]">{pluralCount(count, 'change')}</span>}
     </div>
   )

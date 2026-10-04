@@ -73,7 +73,13 @@ describe('ChangesBlock', () => {
   it('counts the lines at the end of a shelf’s heading', () => {
     render(<ChangesBlock shelf title="In this update" changes={result({ isSuccess: true, data: eight.slice(0, 3) })} genres={genres} />)
     expect(screen.getByText('3 changes')).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'In this update' })).toHaveClass('bg-raised')
+    expect(screen.getByRole('region', { name: 'In this update' })).toHaveClass('bg-raised-hi')
+    expect(screen.getByRole('heading', { name: 'In this update' })).toHaveClass('type-sign')
+  })
+
+  it('heads a plain list with a label', () => {
+    render(<ChangesBlock title="Since you last published" changes={result({ isSuccess: true, data: eight.slice(0, 3) })} genres={genres} />)
+    expect(screen.getByRole('heading', { name: 'Since you last published' })).toHaveClass('type-label')
   })
 
   it('says it is loading, then says nothing once there is nothing to show', () => {

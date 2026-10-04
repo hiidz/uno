@@ -61,8 +61,8 @@ function catalogsByID(collection: Collection | undefined): Map<string, Catalog> 
   return new Map((collection?.catalogs ?? []).map((catalog) => [catalog.id, catalog]))
 }
 
-/** One folder: its name with how many catalogs it holds at the end, then those
- *  catalogs as blocks that open in place. */
+/** One folder: its name with how many catalogs it holds at the end, ruled off
+ *  from those catalogs as blocks that open in place. */
 function FolderCard({
   folder,
   catalogs,
@@ -75,14 +75,14 @@ function FolderCard({
   const refs = folder.refs ?? []
   return (
     <div className="fold-detail pb-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="flex min-w-0 items-center gap-2 text-[15px] font-bold">
+      <div className="border-line-hi mb-1 flex items-baseline justify-between gap-3 border-b pb-3">
+        <span className="flex min-w-0 items-center gap-2 text-[16.5px] font-bold">
           {folder.cover_emoji && <span aria-hidden="true">{folder.cover_emoji}</span>}
           {folder.title}
         </span>
         <span className="type-data text-dim shrink-0 text-[12.5px]">{pluralCount(refs.length, 'catalog')}</span>
       </div>
-      <div className="mt-2">
+      <div className="mt-1">
         {refs.map((ref, index) => {
           const key = `${ref.catalog_id}::${ref.genre}::${index}`
           return <FolderEntry key={key} catalog={catalogs.get(ref.catalog_id)} genre={ref.genre} genres={genres} />

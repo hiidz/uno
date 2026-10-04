@@ -1,29 +1,41 @@
-import type { CommunityItem, SubscriptionState } from '@/api'
+import type { CommunityItem, SnapshotFolder, SubscriptionState } from '@/api'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
 import { changeCount } from './changeWords'
 import { ChangesBlock } from './ChangeList'
 import { updateWaits } from './sharingState'
+import { UpdateList } from './UpdateList'
 import { useChangesSincePublish, useUpdateChanges } from './useChanges'
 
 /**
  * The full list of what an Update would change, as a shelf on the Community
  * page of a row this profile added, first in the lead above what the page
- * shows of the new version. Only while an update waits; nothing otherwise.
+ * shows of the new version: by folder, in the order of the new version's
+ * `folders` (`UpdateList`). Only while an update waits; nothing otherwise.
  */
 export function UpdateChanges({
   profileIndex,
   item,
+  folders,
   genres,
 }: {
   profileIndex: number
   item: Pick<CommunityItem, 'id' | 'subscribed' | 'update_available'>
+  folders: readonly SnapshotFolder[]
   genres: GenreLookups
 }) {
   const waiting = item.subscribed && item.update_available
   const changes = useUpdateChanges(profileIndex, item.id, waiting)
   if (!waiting) return null
-  return <ChangesBlock shelf title="In this update" changes={changes} genres={genres} />
+  return (
+    <ChangesBlock
+      shelf
+      title="In this update"
+      changes={changes}
+      genres={genres}
+      renderList={(list) => <UpdateList changes={list} folders={folders} genres={genres} />}
+    />
+  )
 }
 
 /** The publication a subscription follows; none for a row that follows nothing. */

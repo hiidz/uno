@@ -361,7 +361,7 @@ function releaseFact({ type, p }: FactSource): RecipeFact[] {
 function certificationFact({ p }: FactSource): RecipeFact[] {
   const cert = p.certification ?? p.certification_gte ?? p.certification_lte
   if (!cert) return []
-  return fact('Rated', p.certification_country ? `${cert} in ${countryLabel(p.certification_country)}` : cert)
+  return fact('Age rating', p.certification_country ? `${cert} in ${countryLabel(p.certification_country)}` : cert)
 }
 
 function streamingFact({ p, names }: FactSource): RecipeFact[] {
@@ -431,4 +431,47 @@ export function recipeFacts(
   const source = { type: catalog.type, p: parseParams(catalog.params), lookup, names }
   const collection = source.type === 'movie' && countIDs(source.p.with_collection) > 0
   return (collection ? COLLECTION_FACTS : FACTS).flatMap((build) => build(source))
+}
+
+/** A filter a recipe can leave open: the labels its fact takes when set, and
+ *  the tile it reads as when not. */
+interface OpenFilter {
+  set: readonly string[]
+  open: RecipeFact
+}
+
+const ANY = 'Any'
+
+function openFilters(type: Catalog['type']): OpenFilter[] {
+  const released = type === 'movie' ? 'Released' : 'Aired'
+  const filters: OpenFilter[] = [
+    { set: ['Genres'], open: { label: 'Genres', value: ANY } },
+    { set: [released], open: { label: released, value: 'Any time' } },
+    { set: ['Rating'], open: { label: 'Rating', value: ANY } },
+    { set: ['Votes'], open: { label: 'Votes', value: ANY } },
+    { set: ['Runtime'], open: { label: 'Runtime', value: 'Any length' } },
+    { set: ['Language'], open: { label: 'Language', value: ANY } },
+    { set: ['Age rating'], open: { label: 'Age rating', value: ANY } },
+    { set: STREAMING_SERVICE, open: { label: STREAMING_SERVICE[0], value: ANY } },
+    { set: COMPANY, open: { label: COMPANY[0], value: ANY } },
+    { set: KEYWORD, open: { label: KEYWORD[1], value: ANY } },
+    { set: NETWORK, open: { label: NETWORK[0], value: ANY } },
+    { set: ['Order'], open: { label: 'Order', value: SORT_PHRASE['popularity.desc'] } },
+  ]
+  return type === 'series' ? filters : filters.filter((filter) => filter.set !== NETWORK)
+}
+
+/**
+ * The filters `facts` (the recipe's own, from `recipeFacts`) leave open, as
+ * tiles: "Genres: Any", "Released: Any time", and Order as TMDB's own most
+ * popular first, so a reader sees every filter a catalog could set beside the
+ * ones it does. A TMDB collection row has none: the collection is its whole
+ * recipe.
+ */
+export function openFacts(catalog: Pick<Catalog, 'type' | 'params'>, facts: readonly RecipeFact[]): RecipeFact[] {
+  if (catalog.type === 'movie' && countIDs(parseParams(catalog.params).with_collection) > 0) return []
+  const labels = new Set(facts.map((fact) => fact.label))
+  return openFilters(catalog.type)
+    .filter((filter) => !filter.set.some((label) => labels.has(label)))
+    .map((filter) => filter.open)
 }

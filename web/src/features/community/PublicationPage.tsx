@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import type { Catalog, Collection, CommunityItem, PublicationDetail } from '@/api'
+import type { Catalog, Collection, CommunityItem, PublicationDetail, SnapshotFolder } from '@/api'
 import { ListState } from '@/components/ListState'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { UpdateChanges } from '@/features/sharing/Changes'
@@ -44,7 +44,7 @@ export function PublicationPage({
       </div>
       <p className="type-data text-dim m-0 text-[13px]">{meta}</p>
       <PageActions item={item} actions={actions} />
-      <UpdateChanges profileIndex={profileIndex} item={item} genres={genres} />
+      <UpdateChanges profileIndex={profileIndex} item={item} folders={foldersOf(detail.data)} genres={genres} />
       <ListState
         isLoading={detail.isPending}
         error={detail.error as Error | null}
@@ -76,6 +76,11 @@ function PublicationBody({
   const collection = useMemo(() => collectionOf(detail), [detail])
   if (kind === 'collection') return <CollectionBody collection={collection} genres={genres} lead={lead} />
   return <CatalogBody catalog={catalogOf(detail)} genres={genres} lead={lead} />
+}
+
+/** The new version's folders, which order the In this update shelf. */
+function foldersOf(detail: PublicationDetail | undefined): SnapshotFolder[] {
+  return detail?.snapshot.collection?.folders ?? []
 }
 
 function collectionOf(detail: PublicationDetail | undefined): Collection | undefined {

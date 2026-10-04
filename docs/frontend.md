@@ -1017,9 +1017,9 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     empty. An unpublished row has nothing to update.
   - **The catalog block** (`CatalogBlock.tsx`, shared by both views and the Community
     publication page): open, the recipe as spec tiles — flat `raised` tiles on the ground in an
-    auto-fill grid (140px minimum), the list facts (genres, production companies, keywords, networks, streaming
-    services) a row each, a dim 12px label over a bold 15px value, for only the facts the recipe sets (`recipeFacts`
-    in `features/library/recipe.ts`: Type, Genres, Released, Rating, Votes, Order, …; production companies,
+    auto-fill grid (140px minimum), the one-value facts first so they share rows, then the list facts
+    (genres, production companies, keywords, networks, streaming services) a row each, a dim 12px label over a bold 15px value, for the facts the recipe sets (`recipeFacts`
+    in `features/library/recipe.ts`: Type, Genres, Released, Rating, Votes, Age rating, Order, …; production companies,
     keywords, networks and streaming services are **named** — "Production companies: Studio Ghibli or Pixar",
     the label singular for one id, the names joined with "and"/"or" as the stored list is;
     `recipeLine` and the rail's summaries keep counts); folded, a chevron, the catalog's name and
@@ -1028,11 +1028,18 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     and `fetchNetwork` under the pickers' own query keys, and the watch-provider list of the
     recipe's region). A list shows "…" while its lookups are answering (`useRecipeNames`' `loading`), then
     its names once every one has arrived, and settles on its count for one a lookup can't name; a
-    folded block asks for none until it opens, and its tiles stay `raised-hi` in two columns
-    inside the folder card.
+    folded block asks for none until it opens, and its tiles step down to `ground` wells in two
+    columns inside the folder card. After the recipe's own tiles, open or folded, come the
+    filters it leaves open (`openFacts`): Genres, Released (Aired for series), Rating, Votes,
+    Runtime, Language, Age rating, Streaming service, Production company, Keywords, Network
+    (series only) and Order, each reading "Any" ("Any time", "Any length") and Order as TMDB's
+    own "Most popular", outlined in `line` with no fill and set in dimmer type — so someone who
+    only ever adds rows from Community sees every filter a catalog could set beside the ones it
+    does. A TMDB collection row has none: the collection is its whole recipe.
   - **A catalog:** the open block, without the name (the sign carries it), beside the live
     results (`SavedCatalogPreview`). **A collection:** a card for each folder, its catalogs as
-    folded blocks that open in place, the folder's catalog count dim at the end of its name — a folder's narrowing genre is a "Narrowed to" tile and
+    folded blocks that open in place, the folder's name at 16.5px with its catalog count dim at the
+    end, ruled off from the blocks by a `line-hi` rule — a folder's narrowing genre is a "Narrowed to" tile and
     follows the recipe line when folded — beside the Preview panel (`SavedCollectionPreview`). A
     catalog inside it never opens an editor. `CatalogBody` and `CollectionBody`
     (`PublicationBodies.tsx`) draw both, and `PublicationPage` too.
@@ -1060,10 +1067,24 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   label read as one fact, lists counted as the lookups are not asked, and "Filters changed" when
   nothing shows. `ChangeList` shows the first six lines in the server's order — removals, then
   additions, then changes — then "and N more", which opens the rest in place (`takeLines`). Plain
-  ink, no colour: pink means Community and red means destructive, so neither marks a removal. On the
-  Community page the list is the **In this update** shelf (`UpdateChanges`, `ChangesBlock` with
-  `shelf`): a raised card, 14px corners, the heading and a dim "7 changes" (`changeCount`) at its
-  ends; the Publish dialog's **Since you last published** is the same list without the card. The
+  ink, no colour: pink means Community and red means destructive, so neither marks a removal. That
+  list is the Publish dialog's **Since you last published**, with no card.
+- **The In this update shelf** (`UpdateChanges` on the Community page, `ChangesBlock` with `shelf`):
+  a `raised-hi` card with 16px corners, a step above the folder cards under it, the heading in
+  sign lettering in the region's accent and a dim "7 changes" (`changeCount`) at its ends. Its
+  list (`UpdateList`, `groupByFolder` in `updateWords.ts`) reads by folder rather than by kind of
+  change: each folder the update touches under the name the new version gives it, in the new
+  version's folder order (the snapshot's folders, which `PublicationPage` passes in; the
+  collection's own changes first, folders the update drops last), with what happens to the folder
+  dim at its right — `renamed · was 80s`, `new folder · 4 catalogs`, `folder removed · 1 catalog`,
+  `new art`, `new catalog order` — and, ruled off under it, each catalog that changes with
+  `removed`, `added`, `changed` or `renamed · was …` dim at its line's end. A changed catalog
+  with no folder of its own in the comparison sits under the folder the new version holds it in;
+  one published alone sits under no folder. A changed recipe lists each filter whose value differs
+  (`recipeChanges`), the new value bold and the old dim after "was", both recipes read as
+  `recipeFacts` plus `openFacts` so a filter that comes or goes reads against "Any" or "Most
+  popular", and lists named through `useRecipeNames` as the tiles are. No quote marks and no
+  arrows. The first six lines show, then "and N more" (`takeRows`). The
   queries (`useChanges`) are fetched when shown and never kept (`gcTime: 0`, under
   `['p', i, 'changes', …]`, which no write waits on); a list that is loading or can't load says so
   quietly and never gets in the way of the button, and an empty list shows nothing.

@@ -53,7 +53,7 @@ function expectNoForm() {
 }
 
 describe('CatalogFromCommunity', () => {
-  it('shows the recipe as spec tiles, for only the facts it sets', () => {
+  it('shows the recipe as spec tiles, the filters it leaves open as Any', () => {
     renderCatalog()
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Noir after midnight')
     const genresTile = screen.getByText('Genres', { selector: 'dt' }).closest('div')!
@@ -63,7 +63,7 @@ describe('CatalogFromCommunity', () => {
     }
     expect(screen.getByText('Movies', { selector: 'dd' })).toBeInTheDocument()
     expect(screen.getByText('7.0 or more', { selector: 'dd' })).toBeInTheDocument()
-    expect(screen.queryByText('Votes', { selector: 'dt' })).toBeNull()
+    expect(screen.getByText('Votes', { selector: 'dt' }).nextElementSibling).toHaveTextContent('Any')
   })
 
   it('has no form: no inputs, no Save, no sentence or note about what it is', () => {

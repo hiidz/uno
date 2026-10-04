@@ -43,10 +43,32 @@ describe('CatalogBlock tiles', () => {
     expect(type).not.toHaveClass('col-span-full')
   })
 
-  it('step up to raised-hi in a folded block once it opens', () => {
+  it('put the one-value facts ahead of the lists', () => {
+    const sorted = catalog({ id: 's', params: JSON.stringify({ with_companies: '10342|3', sort_by: 'vote_average.desc' }) })
+    renderBlock({}, { catalog: sorted })
+    const labels = screen.getAllByText(/./, { selector: 'dt' }).map((dt) => dt.textContent)
+    expect(labels.slice(0, 3)).toEqual(['Type', 'Order', 'Production companies'])
+  })
+
+  it('end with the filters the recipe leaves open, outlined and dimmer', () => {
+    renderBlock({})
+    const labels = screen.getAllByText(/./, { selector: 'dt' }).map((dt) => dt.textContent)
+    expect(labels.indexOf('Genres')).toBeGreaterThan(labels.indexOf('Production companies'))
+    expect(value('Genres')).toHaveTextContent('Any')
+    expect(value('Genres')).toHaveClass('text-dimmer')
+    expect(labels).not.toContain('Production company')
+  })
+
+  it('show the open filters inside a folder too', () => {
     renderBlock({}, { foldable: true })
     fireEvent.click(screen.getByRole('button', { name: /Ghibli and friends/ }))
-    expect(screen.getByText('Type', { selector: 'dt' }).parentElement).toHaveClass('bg-raised-hi')
+    expect(value('Order')).toHaveTextContent('Most popular')
+  })
+
+  it('step down to ground wells in a folded block once it opens', () => {
+    renderBlock({}, { foldable: true })
+    fireEvent.click(screen.getByRole('button', { name: /Ghibli and friends/ }))
+    expect(screen.getByText('Type', { selector: 'dt' }).parentElement).toHaveClass('bg-ground')
   })
 })
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog } from '@/api'
 import { catalog as row } from '@/test/fixtures'
-import { describeRecipe, recipeFacts } from './recipe'
+import { describeRecipe, openFacts, recipeFacts } from './recipe'
 
 function catalog(type: Catalog['type'], params: object): Catalog {
   return row({ type, params: JSON.stringify(params) })
@@ -109,8 +109,8 @@ describe('recipeFacts', () => {
     const facts = recipeFacts(catalog('movie', params), lookup)
     expect(facts).toContainEqual({ label: 'Runtime', value: '110 min or less' })
     expect(facts).toContainEqual({ label: 'Language', value: expect.stringMatching(/japanese/i) })
-    expect(facts).toContainEqual({ label: 'Rated', value: expect.stringMatching(/^PG-13 in /) })
-    expect(recipeFacts(catalog('movie', { certification_gte: 'R' }), lookup)).toContainEqual({ label: 'Rated', value: 'R' })
+    expect(facts).toContainEqual({ label: 'Age rating', value: expect.stringMatching(/^PG-13 in /) })
+    expect(recipeFacts(catalog('movie', { certification_gte: 'R' }), lookup)).toContainEqual({ label: 'Age rating', value: 'R' })
   })
 
   it('counts streaming services, production companies, keywords and networks until their names are known', () => {
@@ -183,5 +183,48 @@ describe('recipeFacts', () => {
       { label: 'Shuffled', value: 'Yes' },
     ])
     expect(recipeFacts(catalog('series', { with_collection: '10' }), lookup)).toEqual([{ label: 'Type', value: 'Series' }])
+  })
+})
+
+describe('openFacts', () => {
+  const lookup = new Map<number, string>()
+  const open = (type: Catalog['type'], params: object) => {
+    const row = catalog(type, params)
+    return openFacts(row, recipeFacts(row, lookup))
+  }
+
+  it('reads every filter a movie recipe leaves unset as Any, Order as most popular', () => {
+    expect(open('movie', {})).toEqual([
+      { label: 'Genres', value: 'Any' },
+      { label: 'Released', value: 'Any time' },
+      { label: 'Rating', value: 'Any' },
+      { label: 'Votes', value: 'Any' },
+      { label: 'Runtime', value: 'Any length' },
+      { label: 'Language', value: 'Any' },
+      { label: 'Age rating', value: 'Any' },
+      { label: 'Streaming service', value: 'Any' },
+      { label: 'Production company', value: 'Any' },
+      { label: 'Keywords', value: 'Any' },
+      { label: 'Order', value: 'Most popular' },
+    ])
+  })
+
+  it('leaves out what the recipe sets, in either the singular or the plural', () => {
+    const labels = open('movie', { with_companies: '420|2', with_keywords: '9715', sort_by: 'vote_average.desc' }).map((f) => f.label)
+    expect(labels).not.toContain('Production company')
+    expect(labels).not.toContain('Keywords')
+    expect(labels).not.toContain('Order')
+    expect(labels).toContain('Genres')
+  })
+
+  it('reads a series recipe as aired, with networks', () => {
+    const labels = open('series', {}).map((f) => f.label)
+    expect(labels).toContain('Aired')
+    expect(labels).toContain('Network')
+    expect(labels).not.toContain('Released')
+  })
+
+  it('has none for a TMDB collection row', () => {
+    expect(open('movie', { with_collection: '10' })).toEqual([])
   })
 })
