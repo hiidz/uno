@@ -112,7 +112,7 @@ export function CommunityView({
   return (
     <div ref={scrollRef} className="tone-community flex w-full flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
       <CommunitySign open={open} onBack={() => open && back(open.id)} />
-      <section className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 p-4 lg:p-6 [&_.ed]:pt-0">
+      <section className="community-body mx-auto flex w-full flex-col gap-4 p-4 lg:p-6 [&_.ed]:pt-0">
         <Toast toast={toast} />
 
         {open ? (

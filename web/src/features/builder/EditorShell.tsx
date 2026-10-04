@@ -32,11 +32,6 @@ interface EditorShellProps {
   onDuplicate?: () => void
   onDelete?: () => void
   footer: ReactNode
-  /** What docks beside the form, which decides the content cap: the form
-   *  keeps its own `--w-form` column and the extra width goes to that column —
-   *  the catalog editor's results (`--w-editor-results`) or the collection
-   *  editor's preview (`--w-editor-preview`). */
-  docked: 'results' | 'preview'
   children: ReactNode
 }
 
@@ -69,7 +64,6 @@ export function EditorShell({
   onDuplicate,
   onDelete,
   footer,
-  docked,
   children,
 }: EditorShellProps) {
   // Escape closes, matching the convention every modal dialog sets — the
@@ -165,11 +159,7 @@ export function EditorShell({
             <SignStepButton step={step} place="body" />
           </div>
         )}
-        <div
-          className={`w-full ${docked === 'preview' ? 'max-w-[var(--w-editor-preview)]' : 'max-w-[var(--w-editor-results)]'}`}
-        >
-          {children}
-        </div>
+        {children}
       </div>
 
       {/* The flex column pins it under the scrolling body at every width. */}

@@ -168,7 +168,7 @@ function HomeList() {
     order.indexOf(`${kind}:${id}`) + 1
 
   return (
-    <div className="flex max-w-[var(--w-home)] flex-col gap-8">
+    <div className="flex flex-col gap-8">
       {preview.pinnedCollections.length > 0 && (
         <Group label="Pinned">
           <SortableList

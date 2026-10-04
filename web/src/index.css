@@ -123,16 +123,6 @@
        window allows, and a row of controls spread across 1100px stops being a
        row you can read across. */
     --w-form: 44rem;
-    /* The Home list's own column: wider than a form, because the Preview's
-       rows and the running order should fill the pane rather than end a third
-       of the way across it. */
-    --w-home: 68rem;
-    /* The catalog editor: the form's column, the 40px gutter, and a docked
-       results column up to 360px beside it. */
-    --w-editor-results: calc(var(--w-form) + 40px + 360px);
-    /* The collection editor: the form's column, the 40px gutter, and a docked
-       Preview panel up to 620px beside it. */
-    --w-editor-preview: calc(var(--w-form) + 40px + 620px);
 
     /* The sticky app header's height, below `lg`, where the builder is one
        scrolling document and every offset is measured from under it. Overwritten
@@ -848,7 +838,6 @@
        keep clear of. */
     .pv-panel {
         --pv-edge: 20px;
-        max-width: var(--w-home);
         padding: 20px 0 20px var(--pv-edge);
         border-radius: 16px;
         background: var(--uno-raised);
@@ -1223,10 +1212,10 @@
     }
 
     /* The catalog editor's layout: the form takes whatever the pane gives it up
-       to `--w-form` (the shell caps the whole at `--w-editor-results`), and the
-       results column takes a share, 290–360px, beside it. */
+       to `--w-form`, and the results column takes the rest of the pane, never
+       under 290px, so the page runs to the pane's right edge under the sign. */
     .ed.ed-results {
-        grid-template-columns: minmax(0, 1fr) clamp(290px, 30cqw, 360px);
+        grid-template-columns: minmax(0, var(--w-form)) minmax(290px, 1fr);
     }
     .ed-results > .ed-form {
         max-width: var(--w-form);
@@ -1341,6 +1330,15 @@
         line-height: 20px;
         min-width: 0;
         color: var(--uno-dim);
+    }
+    /* A catalog section's summary: ink once it narrows the row, dimmer while
+       it reads as nothing set, so the filters in play stand out down the
+       stack (`summaryClass`, `features/catalogs/summary.ts`). */
+    .sec-sum.is-set {
+        color: var(--uno-ink);
+    }
+    .sec-sum.is-unset {
+        color: var(--uno-dimmer);
     }
     .sec-head .ico {
         grid-column: 2;
@@ -1536,14 +1534,13 @@
         color: var(--uno-dim);
     }
 
-    /* The collection editor's layout: its docked column holds the
-       collection's row and folder pages, not a results list, so it takes a
-       share of the pane (380–620px) instead of a fixed 290px, and the form
-       keeps its own `--w-form` cap beside it. It undocks earlier than the
-       catalog editor's panel, under 960px of pane, where a 380px column would
-       squeeze the form. */
+    /* The collection editor's layout: the form keeps its `--w-form` column and
+       the Preview panel takes the rest of the pane, never under 380px, since it
+       holds the collection's row and folder pages rather than a results list.
+       It undocks earlier than the catalog editor's panel, under 960px of pane,
+       where a 380px column would squeeze the form. */
     .ed.ed-preview {
-        grid-template-columns: minmax(0, 1fr) clamp(380px, 42cqw, 620px);
+        grid-template-columns: minmax(0, var(--w-form)) minmax(380px, 1fr);
     }
     .ed-preview .ed-form {
         max-width: var(--w-form);
@@ -1717,6 +1714,41 @@
             grid-column: auto;
             position: static;
             margin-top: 24px;
+        }
+    }
+
+    /* One page of results: as many columns at least `--tile-min` wide as fit,
+       stretched to the panel's edges. */
+    .tile-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 104px), 1fr));
+        gap: 8px;
+    }
+
+    /* Community (DESIGN.md, "Community rows and pages"): the list keeps an
+       1100px column; a publication page takes 1320px, its details in a
+       narrow column beside what the publication shows. The details are a few
+       lines and tiles, not a form, so the results take the room and their
+       posters grow to 130px. Under the editors' undock widths the page stacks
+       as they do. */
+    .community-body {
+        max-width: 1100px;
+    }
+    .community-body:has(.ed) {
+        max-width: 1320px;
+    }
+    @container (min-width: 901px) {
+        .community-body .ed.ed-results {
+            grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+        }
+        .community-body .ed-results .tile-grid {
+            --tile-min: 130px;
+            gap: 10px;
+        }
+    }
+    @container (min-width: 961px) {
+        .community-body .ed.ed-preview {
+            grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
         }
     }
     @media (max-width: 640px) {

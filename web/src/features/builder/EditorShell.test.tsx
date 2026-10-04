@@ -13,7 +13,6 @@ function renderShell() {
       title="Mob two"
       onRequestClose={onRequestClose}
       footer={null}
-      docked="results"
     >
       form
     </EditorShell>,

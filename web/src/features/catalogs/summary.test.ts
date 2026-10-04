@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  ANY_KEYWORDS,
   companyDetail,
   formatWindowStart,
   sumAge,
@@ -12,6 +13,8 @@ import {
   sumRatings,
   sumShuffle,
   sumWatch,
+  summaryClass,
+  withShuffle,
 } from './summary'
 
 // The catalog form's one value import from the API barrel, which would
@@ -200,5 +203,32 @@ describe('companyDetail', () => {
 
   it('leaves out a missing country', () => {
     expect(companyDetail({ origin_country: '', title_count: 9 }, 'movie')).toBe('9 films')
+  })
+})
+
+describe('summaryClass', () => {
+  it('marks a head still reading as nothing set', () => {
+    for (const summary of [
+      sumGenres([], [], 'or', []),
+      sumRatings(undefined, undefined, undefined, undefined, undefined, undefined),
+      sumLanguage(undefined, []),
+      sumDate('movie', 'any', undefined, undefined, undefined),
+      sumAge(undefined, countries, undefined, undefined, []),
+      sumWatch(undefined, countries, 0),
+      sumEntities(undefined, undefined, 'keyword', ANY_KEYWORDS),
+      sumCollection(undefined, undefined),
+      sumOrder('series', '', 'desc'),
+    ]) {
+      expect(summaryClass(summary, 'movie')).toBe('sec-sum is-unset')
+    }
+  })
+
+  it('marks a head the section narrows the row with', () => {
+    expect(summaryClass('Action', 'movie')).toBe('sec-sum is-set')
+    expect(summaryClass(sumOrder('movie', 'vote_average', 'desc'), 'movie')).toBe('sec-sum is-set')
+    expect(summaryClass(withShuffle(sumOrder('movie', '', 'desc'), true), 'movie')).toBe('sec-sum is-set')
+    expect(summaryClass(sumRatings(7, undefined, undefined, undefined, undefined, undefined), 'movie')).toBe(
+      'sec-sum is-set',
+    )
   })
 })

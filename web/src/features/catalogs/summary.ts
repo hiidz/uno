@@ -22,6 +22,17 @@ import { plural, pluralCount } from '@/lib/plural'
  * itself can be shared (`SORT_FIELDS`) it is imported, not re-typed.
  */
 
+// What each section's head says while nothing in it is set.
+const ANY_GENRE = 'Any genre'
+const ANY_LANGUAGE = 'Any language'
+const ANY_TIME = 'Any time'
+const ANY_AGE = 'Any age rating'
+const ANY_SERVICE = 'Any service'
+const NO_COLLECTION = 'No TMDB collection picked'
+export const ANY_COMPANY = 'Any production company'
+export const ANY_KEYWORDS = 'Any keywords'
+export const ANY_NETWORK = 'Any network'
+
 const TITLE_LIKE = new Set(['title', 'name', 'original_title', 'original_name'])
 const DATE_LIKE = new Set(['primary_release_date', 'first_air_date'])
 
@@ -43,7 +54,7 @@ export function sumGenres(
   withJoin: IdJoin,
   withoutIds: number[],
 ): string {
-  if (!withIds.length && !withoutIds.length) return 'Any genre'
+  if (!withIds.length && !withoutIds.length) return ANY_GENRE
   const nameOf = new Map(genres.map((genre) => [genre.id, genre.name]))
   const withNames = withIds.map((id) => nameOf.get(id) ?? String(id))
   const withoutNames = withoutIds.map((id) => nameOf.get(id) ?? String(id))
@@ -98,7 +109,7 @@ export function sumRatings(
 }
 
 export function sumLanguage(code: string | undefined, languages: Language[]): string {
-  if (!code) return 'Any language'
+  if (!code) return ANY_LANGUAGE
   const name = languages.find((lang) => lang.iso_639_1 === code)?.english_name ?? code
   return `In ${name}`
 }
@@ -126,7 +137,7 @@ export function sumDate(
   days: number | undefined,
 ): string {
   const verb = type === 'movie' ? 'Released' : 'First aired'
-  if (mode === 'any') return 'Any time'
+  if (mode === 'any') return ANY_TIME
   if (mode === 'fixed') {
     if (gte && lte) return `${verb} ${fmtShortDate(gte)} to ${fmtShortDate(lte)}`
     if (gte) return `${verb} from ${fmtShortDate(gte)}`
@@ -156,7 +167,7 @@ export function sumAge(
   lte: string | undefined,
   scale: Certification[],
 ): string {
-  if (!country) return 'Any age rating'
+  if (!country) return ANY_AGE
   const name = countryName(country, countryNames)
   if (!gte && !lte) return `${name} · any age rating`
   const sorted = [...scale].sort((a, b) => a.order - b.order)
@@ -170,7 +181,7 @@ export function sumWatch(
   countryNames: CountryLookup,
   selectedCount: number,
 ): string {
-  if (!region) return 'Any service'
+  if (!region) return ANY_SERVICE
   const name = countryName(region, countryNames)
   if (selectedCount === 0) return `${name} · any service`
   return `${name} · ${selectedCount} streaming ${plural(selectedCount, 'service')}`
@@ -201,7 +212,7 @@ export function sumEntities(
  *  lookup answers, the id stands in. */
 export function sumCollection(raw: string | undefined, name: string | undefined): string {
   const id = parseIdList(raw).ids[0]
-  if (id === undefined) return 'No TMDB collection picked'
+  if (id === undefined) return NO_COLLECTION
   return name ?? `TMDB collection ${id}`
 }
 
@@ -213,6 +224,28 @@ export const sumShuffle = (collectionRow = false): string =>
 /** A section's summary, ending "· shuffled" while Shuffle is on. */
 export function withShuffle(summary: string, randomized: boolean | undefined): string {
   return randomized ? `${summary} · shuffled` : summary
+}
+
+const UNSET_SUMMARIES = new Set([
+  ANY_GENRE,
+  sumRatings(undefined, undefined, undefined, undefined, undefined, undefined),
+  ANY_LANGUAGE,
+  ANY_TIME,
+  ANY_AGE,
+  ANY_SERVICE,
+  ANY_COMPANY,
+  ANY_KEYWORDS,
+  ANY_NETWORK,
+  NO_COLLECTION,
+])
+
+/** A closed section's summary classes: `is-set` once the section narrows the
+ *  row, `is-unset` while its head still reads as nothing set — Order's being
+ *  TMDB's own popularity order — so what a catalog filters on stands out down
+ *  the stack of heads. */
+export function summaryClass(summary: string, type: CatalogType): string {
+  const unset = UNSET_SUMMARIES.has(summary) || summary === sumOrder(type, '', 'desc')
+  return unset ? 'sec-sum is-unset' : 'sec-sum is-set'
 }
 
 /** The detail a company or network search result shows after its name —

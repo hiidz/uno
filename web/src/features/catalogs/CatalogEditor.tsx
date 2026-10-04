@@ -32,6 +32,9 @@ import { EntityLists, NameSetting, ScopeSetting, ShuffleControl, SourceModeSetti
 import { DateWindow } from './DateWindow'
 import { RecipePreview } from './RecipePreview'
 import {
+  ANY_COMPANY,
+  ANY_KEYWORDS,
+  ANY_NETWORK,
   sumAge,
   sumCollection,
   sumDate,
@@ -41,6 +44,7 @@ import {
   sumOrder,
   sumRatings,
   sumWatch,
+  summaryClass,
   withShuffle,
 } from './summary'
 import { TMDBEntityPicker } from './TMDBEntityPicker'
@@ -453,7 +457,7 @@ function buildSections(args: SectionArgs) {
         state.params.with_companies,
         state.params.without_companies,
         'production company',
-        'Any production company',
+        ANY_COMPANY,
       ),
       body: (
         <EntityLists
@@ -474,7 +478,7 @@ function buildSections(args: SectionArgs) {
         state.params.with_keywords,
         state.params.without_keywords,
         'keyword',
-        'Any keywords',
+        ANY_KEYWORDS,
       ),
       body: (
         <EntityLists
@@ -495,7 +499,7 @@ function buildSections(args: SectionArgs) {
       : [
           {
             key: 'networks' as const,
-            summary: sumEntities(state.params.with_networks, undefined, 'network', 'Any network'),
+            summary: sumEntities(state.params.with_networks, undefined, 'network', ANY_NETWORK),
             body: <>
                 <TMDBEntityPicker
                   kind="network"
@@ -773,7 +777,6 @@ export function CatalogEditor({
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
-      docked="results"
       footer={
         <EditorFooter
           noun="catalog"
@@ -818,7 +821,7 @@ export function CatalogEditor({
                   }
                 >
                   <span className="setting-label type-label">{SECTION_ROLE[section.key](isMovie)}</span>
-                  <span className="sec-sum">{section.summary}</span>
+                  <span className={summaryClass(section.summary, state.type)}>{section.summary}</span>
                   <Icon icon={ChevronDown} size={16} className="ico" />
                 </button>
                 <div

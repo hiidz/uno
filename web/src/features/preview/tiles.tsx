@@ -53,6 +53,14 @@ export function noTiles(): CatalogTiles {
   return EMPTY
 }
 
+/**
+ * Real posters once they land, placeholders until then, in a grid whose tiles
+ * stretch to fill the column edge to edge (`.tile-grid`): as many columns as
+ * fit at 104px or wider, the width the preview rows' posters are drawn at.
+ *
+ * Placeholders are drawn at `TILES_PER_PAGE`, matching a full page, so the grid
+ * doesn't reflow when content arrives.
+ */
 export function TileGrid({
   shape,
   tiles,
@@ -62,67 +70,41 @@ export function TileGrid({
   tiles: CatalogTiles
   kind?: TMDBKind
 }) {
-  const width = 88
-  return (
-    <TileRun tiles={tiles} width={width} height={width / TILE_ASPECT[shape]} wrap kind={kind} />
-  )
+  return <TileRun tiles={tiles} style={{ aspectRatio: TILE_ASPECT[shape] }} kind={kind} />
 }
 
-/**
- * Real posters once they land, placeholders until then — wrapped into a grid
- * (`TileGrid`), or clipped to one strip of whole tiles without `wrap`.
- *
- * Placeholders are drawn at `TILES_PER_PAGE`, matching a full page, so the row
- * doesn't reflow when content arrives.
- */
-function TileRun({
-  tiles,
-  width,
-  height,
-  wrap,
-  kind,
-}: {
-  tiles: CatalogTiles
-  width: number
-  height: number
-  wrap: boolean
-  kind?: TMDBKind
-}) {
-  // A strip (`wrap` off) is one row of whole tiles: fixed-width columns fill
-  // the row only as far as a tile fits entire, and the tiles past them fall to
-  // rows the strip's own height clips away — never a poster cut at the edge.
-  const className = wrap ? 'flex flex-wrap gap-2 overflow-hidden' : 'grid gap-x-2 overflow-hidden'
-  const style = wrap
-    ? undefined
-    : {
-        gridTemplateColumns: `repeat(auto-fill, ${width}px)`,
-        gridAutoRows: `${height}px`,
-        height: `${height}px`,
-      }
-
-  // A settled, empty result draws nothing at all — placeholders there would
-  // read as perpetual loading, and the caller's own note has already said why
-  // it's empty.
-  if (!tiles.isLoading && !tiles.isError && tiles.items.length === 0) return null
-
-  if (tiles.items.length === 0) {
-    return (
-      <div aria-hidden="true" className={className} style={style}>
-        {Array.from({ length: TILES_PER_PAGE }, (_, i) => (
-          <PlaceholderTile key={i} width={width} height={height} />
-        ))}
-      </div>
-    )
-  }
+function TileRun({ tiles, style, kind }: { tiles: CatalogTiles; style: TileStyle; kind?: TMDBKind }) {
+  if (settledEmpty(tiles)) return null
+  if (tiles.items.length === 0) return <Placeholders style={style} />
 
   return (
-    <div className={className} style={style}>
+    <div className="tile-grid">
       {tiles.items.map((item) => (
-        <ContentTile key={item.tmdb_id} item={item} width={width} height={height} kind={kind} />
+        <ContentTile key={item.tmdb_id} item={item} style={style} kind={kind} />
       ))}
     </div>
   )
 }
+
+
+/** A settled, empty result draws nothing at all — placeholders there would
+ *  read as perpetual loading, and the caller's own note has already said why
+ *  it's empty. */
+function settledEmpty(tiles: CatalogTiles): boolean {
+  return !tiles.isLoading && !tiles.isError && tiles.items.length === 0
+}
+
+function Placeholders({ style }: { style: TileStyle }) {
+  return (
+    <div aria-hidden="true" className="tile-grid">
+      {Array.from({ length: TILES_PER_PAGE }, (_, i) => (
+        <PlaceholderTile key={i} style={style} />
+      ))}
+    </div>
+  )
+}
+
+type TileStyle = { aspectRatio: number }
 
 /**
  * One real title. The title sits behind the poster rather than beside it, so a
@@ -136,13 +118,11 @@ function TileRun({
  */
 function ContentTile({
   item,
-  width,
-  height,
+  style,
   kind,
 }: {
   item: PreviewItem
-  width: number
-  height: number
+  style: TileStyle
   kind?: TMDBKind
 }) {
   const name = item.year ? `${item.title} (${item.year})` : item.title
@@ -161,8 +141,7 @@ function ContentTile({
       )}
     </>
   )
-  const box = 'bg-raised border-line relative grid shrink-0 place-items-center overflow-hidden rounded-md border'
-  const style = { width: `${width}px`, height: `${height}px` }
+  const box = 'bg-raised border-line relative grid min-w-0 place-items-center overflow-hidden rounded-md border'
 
   if (!kind) {
     return (
@@ -186,11 +165,6 @@ function ContentTile({
   )
 }
 
-function PlaceholderTile({ width, height }: { width: number; height: number }) {
-  return (
-    <span
-      className="bg-raised border-line shrink-0 rounded-md border"
-      style={{ width: `${width}px`, height: `${height}px` }}
-    />
-  )
+function PlaceholderTile({ style }: { style: TileStyle }) {
+  return <span className="bg-raised border-line rounded-md border" style={style} />
 }

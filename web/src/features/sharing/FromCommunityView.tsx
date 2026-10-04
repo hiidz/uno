@@ -34,7 +34,7 @@ export function CatalogFromCommunity({
   ...actions
 }: { catalog: Catalog; genres: GenreLookups } & FromCommunityActions) {
   return (
-    <ViewFrame tone="catalog" purpose="View catalog" title={catalog.name} row={catalog} docked="results" {...actions}>
+    <ViewFrame tone="catalog" purpose="View catalog" title={catalog.name} row={catalog} {...actions}>
       {(lead) => <CatalogBody catalog={catalog} genres={genres} lead={lead} />}
     </ViewFrame>
   )
@@ -51,7 +51,7 @@ export function CollectionFromCommunity({
   ...actions
 }: { collection: Collection; genres: GenreLookups } & FromCommunityActions) {
   return (
-    <ViewFrame tone="collection" purpose="View collection" title={collection.title} row={collection} docked="preview" {...actions}>
+    <ViewFrame tone="collection" purpose="View collection" title={collection.title} row={collection} {...actions}>
       {(lead) => <CollectionBody collection={collection} genres={genres} lead={lead} />}
     </ViewFrame>
   )
@@ -69,7 +69,6 @@ function ViewFrame({
   purpose,
   title,
   row,
-  docked,
   children,
   profileIndex,
   waitingForPush,
@@ -82,7 +81,6 @@ function ViewFrame({
   purpose: string
   title: string
   row: Pick<Catalog, 'publication' | 'subscription'>
-  docked: 'results' | 'preview'
   children: (lead: ReactNode) => ReactNode
 } & FromCommunityActions) {
   const updating = updateWaits(row)
@@ -97,7 +95,6 @@ function ViewFrame({
       onRequestClose={onClose}
       onDuplicate={onDuplicate}
       onDelete={onDelete}
-      docked={docked}
       footer={
         <>
           <button type="button" className="btn-secondary" onClick={onClose}>

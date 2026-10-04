@@ -549,7 +549,6 @@ export function CollectionEditor({
           saveError={serverError}
         />
       }
-      docked="preview"
     >
       <div className="ed-container">
         <div className="ed ed-preview">

@@ -918,8 +918,8 @@ button.
   keeping its value for when it switches back. There is no Pin here: it is the Home pane's
   pending edit, which push writes (see "Home pane — List view").
 - **The Preview panel is a working client screen, docked beside the form.** The collection editor has
-  its own layout (`.ed.ed-preview`, `EditorShell`'s `docked="preview"`, capped at `--w-editor-preview`): the form keeps
-  its `--w-form` column and the panel takes `clamp(380px, 42cqw, 620px)` beside it, undocking under
+  its own layout (`.ed.ed-preview`): the form keeps
+  its `--w-form` column and the panel takes the rest of the pane, at least 380px, beside it, undocking under
   the form below 960px of pane. It draws the live draft with the Home Preview's own components
   (`PreviewCollectionRow`, `PreviewFolderPage` from `features/home/previewScreen.tsx`), so a folder tile opens the same
   folder page Home does — tabs or rows per `view_mode`, real titles per catalog. The rows sit in
@@ -1114,7 +1114,10 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   it), or a catalog's spec tiles beside one page of its results (`SavedCatalogPreview`, which runs
   as it mounts) — the same catalog block and bodies a row added from Community opens as
   (`features/sharing/PublicationBodies.tsx`, which take the lead and draw it alone while the detail
-  loads). Update applies the new version (`POST .../update`) and leaves the page on ✓ Added. A
+  loads). The list sits in an 1100px column and a page in a 1320px one (`.community-body`,
+  `index.css`); once the page is wide enough to dock, its details take a 300px column (380px for
+  a collection) and the results or Preview the rest, with posters at least 130px
+  (`--tile-min`), and below that it stacks as the editors do. Update applies the new version (`POST .../update`) and leaves the page on ✓ Added. A
   saved recipe with no results says "Nothing matches these filters." (`RecipePreview`'s
   `readOnly`). A page that won't load says "Couldn't load this. Its publisher may have
   unpublished it." Going back restores the list's scroll and puts focus on the row's open button
