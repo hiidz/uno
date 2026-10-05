@@ -1,46 +1,32 @@
-/** The largest bundle the import dialog takes, as a file or as pasted text. The
+/** The largest bundle the import dialog takes, as pasted text. The
  *  twin of `maxBundleBodyBytes` in `internal/api/bundle.go`, the most either
  *  import route accepts; change one and you must change the other. */
 export const MAX_BUNDLE_BYTES = 4 << 20 // 4 MiB
 
-/** The refusal for a bundle over `MAX_BUNDLE_BYTES`, named for where it came from. */
-export function tooLargeMessage(label: string): string {
-  return `${label} is over 4 MiB, the most an import can carry.`
-}
-
-/** A bundle as text, pretty-printed. The downloaded file and the copied text
- *  are this one string. */
+/** A bundle as text, pretty-printed. */
 export function bundleText(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
-/** What a bundle that came from the paste box is called in a message. */
+/** What a bundle is called in a message. */
 export const PASTED_JSON = 'Pasted JSON'
 
 /**
- * Parses bundle text. `label` names where it came from ("export.json",
- * `PASTED_JSON`) and leads the message of a refusal. Returns the parsed value
- * on success and the message on failure, told apart by `ok`.
+ * Parses bundle text. Returns the parsed value on success and the message of a
+ * refusal on failure, told apart by `ok`.
  */
 export function parseBundleText(
   text: string,
-  label: string,
 ): { ok: true; bundle: unknown } | { ok: false; message: string } {
   const trimmed = text.trim()
   if (new Blob([trimmed]).size > MAX_BUNDLE_BYTES) {
-    return { ok: false, message: tooLargeMessage(label) }
+    return { ok: false, message: `${PASTED_JSON} is over 4 MiB, the most an import can carry.` }
   }
   try {
     return { ok: true, bundle: JSON.parse(trimmed) }
   } catch (err) {
-    return { ok: false, message: invalidMessage(label, (err as Error).message) }
+    return { ok: false, message: `${PASTED_JSON} isn't valid: ${(err as Error).message}` }
   }
-}
-
-/** The refusal for text that isn't JSON. Pasted JSON already says JSON. */
-function invalidMessage(label: string, detail: string): string {
-  const noun = label === PASTED_JSON ? '' : ' JSON'
-  return `${label} isn't valid${noun}: ${detail}`
 }
 
 /** Writes through a `ClipboardItem` that holds the text as a promise, so the

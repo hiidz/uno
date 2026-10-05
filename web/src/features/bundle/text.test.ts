@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MAX_BUNDLE_BYTES, PASTED_JSON, bundleText, copyText, parseBundleText } from './text'
+import { MAX_BUNDLE_BYTES, bundleText, copyText, parseBundleText } from './text'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -10,28 +10,26 @@ describe('bundleText', () => {
     const bundle = { format: 'uno-bundle', catalogs: [{ name: 'A' }] }
     const text = bundleText(bundle)
     expect(text).toBe('{\n  "format": "uno-bundle",\n  "catalogs": [\n    {\n      "name": "A"\n    }\n  ]\n}')
-    expect(parseBundleText(text, 'x')).toEqual({ ok: true, bundle })
+    expect(parseBundleText(text)).toEqual({ ok: true, bundle })
   })
 })
 
 describe('parseBundleText', () => {
   it('accepts surrounding whitespace', () => {
-    expect(parseBundleText('\n  {"a": 1}  \n', 'x')).toEqual({ ok: true, bundle: { a: 1 } })
+    expect(parseBundleText('\n  {"a": 1}  \n')).toEqual({ ok: true, bundle: { a: 1 } })
   })
 
-  it('names the source in a JSON refusal, empty text included', () => {
-    const bad = parseBundleText('{nope', PASTED_JSON)
-    expect(bad.ok).toBe(false)
-    if (!bad.ok) expect(bad.message).toMatch(/^Pasted JSON isn't valid: /)
-
-    const empty = parseBundleText('   ', 'export.json')
-    expect(empty.ok).toBe(false)
-    if (!empty.ok) expect(empty.message).toMatch(/^export\.json isn't valid JSON: /)
+  it('refuses text that is not JSON, empty text included', () => {
+    for (const text of ['{nope', '   ']) {
+      const bad = parseBundleText(text)
+      expect(bad.ok).toBe(false)
+      if (!bad.ok) expect(bad.message).toMatch(/^Pasted JSON isn't valid: /)
+    }
   })
 
   it('refuses text over the size limit before parsing it', () => {
     const big = `"${'a'.repeat(MAX_BUNDLE_BYTES)}"`
-    expect(parseBundleText(big, PASTED_JSON)).toEqual({
+    expect(parseBundleText(big)).toEqual({
       ok: false,
       message: 'Pasted JSON is over 4 MiB, the most an import can carry.',
     })

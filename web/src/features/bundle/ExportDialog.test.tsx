@@ -1,18 +1,13 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { catalog, collection } from '@/test/fixtures'
 import { ExportDialog } from './ExportDialog'
-import { downloadJSON } from './download'
 import { bundleText } from './text'
 
 const api = vi.hoisted(() => ({ exportBundle: vi.fn() }))
 vi.mock('@/api', () => api)
-vi.mock('./download', () => ({
-  downloadJSON: vi.fn(),
-  exportFilename: () => 'uno-export-test.json',
-}))
 
 const BUNDLE = { format: 'uno-bundle', catalogs: [{ name: 'Popular' }] }
 const catalogs = [catalog({ id: 'c1', name: 'Popular' }), catalog({ id: 'c2', name: 'Quiet' })]
@@ -45,7 +40,6 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
   api.exportBundle.mockReset()
   api.exportBundle.mockResolvedValue(BUNDLE)
-  vi.mocked(downloadJSON).mockReset()
 })
 
 afterEach(() => {
@@ -67,8 +61,7 @@ describe('ExportDialog', () => {
       collection_ids: ['k1'],
     })
     expect(writeText).toHaveBeenCalledWith(bundleText(BUNDLE))
-    expect(downloadJSON).not.toHaveBeenCalled()
-    expect(onClose).not.toHaveBeenCalled()
+      expect(onClose).not.toHaveBeenCalled()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 
     // The label reverts on its own.
@@ -94,14 +87,6 @@ describe('ExportDialog', () => {
     expect(await screen.findByRole('textbox', { name: 'Export JSON' })).toBeInTheDocument()
   })
 
-  it('downloads the file and closes on Download', async () => {
-    const { onClose } = renderDialog()
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }))
-
-    await waitFor(() => expect(onClose).toHaveBeenCalled())
-    expect(downloadJSON).toHaveBeenCalledWith(BUNDLE, 'uno-export-test.json')
-  })
-
   it('shows a failed export in place and copies nothing', async () => {
     const writeText = vi.fn()
     setClipboard({ writeText })
@@ -123,9 +108,8 @@ describe('ExportDialog', () => {
     expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeDisabled()
   })
 
-  it('disables both buttons while nothing is ticked', () => {
+  it('disables Copy JSON while nothing is ticked', () => {
     renderDialog(null)
     expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled()
   })
 })

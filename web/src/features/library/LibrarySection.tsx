@@ -110,8 +110,8 @@ export function LibrarySection({
           />
         </div>
         <MoreMenu label="your library">
-          <MoreMenuItem onSelect={onImport}>Import JSON…</MoreMenuItem>
-          <MoreMenuItem onSelect={onExport}>Export JSON…</MoreMenuItem>
+          <MoreMenuItem onSelect={onImport}>Import JSON</MoreMenuItem>
+          <MoreMenuItem onSelect={onExport}>Export JSON</MoreMenuItem>
         </MoreMenu>
       </div>
       {notice}

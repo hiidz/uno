@@ -178,7 +178,7 @@ this is two regions rather than several co-equal panes.
 
 | Region | Holds |
 | --- | --- |
-| **Library** — left rail | Every catalog and collection you own, no heading above them. One search box at the top of the rail, with a ⋯ menu beside it for Import JSON… and Export JSON…, narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — adding what someone else publishes is the separate Community tab's job, not a second group in this rail. A row added from there is one of your rows, marked From Community |
+| **Library** — left rail | Every catalog and collection you own, no heading above them. One search box at the top of the rail, with a ⋯ menu beside it for Import JSON and Export JSON, narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — adding what someone else publishes is the separate Community tab's job, not a second group in this rail. A row added from there is one of your rows, marked From Community |
 | **Pane** — right | One thing at a time: your home screen (with a `List \| Preview` switch), or the editor for whichever rail row is selected. The page's centre of gravity |
 | **Push** — header | Global action, beside a persistent unpushed-changes indicator. Not a section — it's the commit for Home, so it lives where Home is always visible, whether or not Home is the pane's current occupant |
 
@@ -243,7 +243,7 @@ to raw ids rather than failing the list, so the rail never blocks on TMDB being 
 
 ### Import and export
 
-**Import JSON…** and **Export JSON…** are the two items of the ⋯ `MoreMenu` ("More for your
+**Import JSON** and **Export JSON** are the two items of the ⋯ `MoreMenu` ("More for your
 library") beside the rail's search field (`LibrarySection`'s `onImport`/`onExport`). `Workspace` owns both dialogs' open state, as it does
 the naming dialogs and the confirms. Neither dialog goes through `EditorGuard`: both open over the
 pane without replacing what it holds. Both are `Modal`s, so below `lg` they fill the viewport width
@@ -255,33 +255,29 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
 - **`ExportDialog`** has two checkbox groups, Catalogs and Collections, filled from `useLibrary`'s
   lists, each with **All** and **None**. The row open in the pane starts ticked. A note says
   collections include the catalogs they use, and the server exports those whether or not they are
-  ticked. The footer is Cancel, **Copy JSON** and **Download** (the one primary); both are
-  disabled while nothing is ticked or a request is in flight. One mutation runs either, with one
-  `exportBundle` call.
-  - **Download** saves the response as `uno-export-YYYY-MM-DD.json` in local time through an
-    object URL (`download.ts`), then closes the dialog.
-  - **Copy JSON** writes the same text to the clipboard and leaves the dialog open, the button
-    reading "Copied" for 1.6s. `copyText` (`text.ts`) hands the clipboard the request's own
-    promise as a `ClipboardItem` where the browser has one, so Safari keeps the click's gesture
-    across the fetch. It never throws: with no clipboard or a refused write, the dialog shows
-    "Couldn't copy. Copy the JSON below." over a read-only textarea holding the text, focused and
-    selected. Download still works beside it, and changing the ticks clears the textarea.
-  - Both outputs are `bundleText` (`JSON.stringify(value, null, 2)`), so the copied text and the
-    file are byte-identical.
-- **`ImportDialog`** is one screen, 760px wide (`Modal`'s `width`), with **File | Paste JSON**
-  above one input, an **Import** button in the footer, and the state in `useImportFlow`.
-  - **The input.** On File, **Choose a file…** reads the file and shows its name; on Paste JSON, a
-    `JsonField` shows the text with a line number beside each line. It grows with its text from 8
-    lines up to 60% of the viewport height, then scrolls; lines don't wrap, so a number always sits
-    on its line, and the gutter scrolls with the text. Both inputs end in `parseBundleText`
-    (`text.ts`). A file over 4 MiB is refused before it is read, and text over 4 MiB before it is
-    sent (`MAX_BUNDLE_BYTES`, the twin of the server's `maxBundleBodyBytes`).
-  - **Validate JSON** (the paste box's button, disabled while the box is blank) is `parseBundleText`
-    alone: instant, no request. Picking a file runs the same parse. The result shows under the
-    field, "Valid JSON." or "Pasted JSON isn't valid: …" (a file's name leads its message instead:
-    "mine.json isn't valid JSON: …"). The field is never taken away, stays editable, and any
-    edit, new file or mode switch clears the result. Validate says nothing about whether the JSON
-    is a bundle: that is checked by the server, when Import is pressed.
+  ticked. The footer is Cancel and **Copy JSON** (the one primary);
+  it is disabled while nothing is ticked or a request is in flight. There is no file download:
+  the export is text only.
+  - **Copy JSON** calls `exportBundle`, writes the response to the clipboard and leaves the dialog
+    open, the button reading "Copied" for 1.6s. `copyText` (`text.ts`) hands the clipboard the
+    request's own promise as a `ClipboardItem` where the browser has one, so Safari keeps the
+    click's gesture across the fetch. It never throws: with no clipboard or a refused write, the
+    dialog shows "Couldn't copy. Copy the JSON below." over a read-only textarea holding the text,
+    focused and selected. Changing the ticks clears the textarea.
+  - The text is `bundleText` (`JSON.stringify(value, null, 2)`).
+- **`ImportDialog`** is one screen, 760px wide (`Modal`'s `width`), with one input, an **Import**
+  button in the footer, and the state in `useImportFlow`. There is no file picker: the bundle comes
+  in as pasted JSON only.
+  - **The input.** A `JsonField` shows the text with a line number beside each line. It grows with
+    its text from 8 lines up to 60% of the viewport height, then scrolls; lines don't wrap, so a
+    number always sits on its line, and the gutter scrolls with the text. It ends in
+    `parseBundleText` (`text.ts`); text over 4 MiB is refused before it is sent
+    (`MAX_BUNDLE_BYTES`, the twin of the server's `maxBundleBodyBytes`).
+  - **Validate JSON** (the field's button, disabled while it is blank) is `parseBundleText` alone:
+    instant, no request. The result shows under the field, "Valid JSON." or "Pasted JSON isn't
+    valid: …". The field is never taken away, stays editable, and any edit clears the result.
+    Validate says nothing about whether the JSON is a bundle: that is checked by the server, when
+    Import is pressed.
   - **Import** is disabled until there is something to import and while a request is in flight,
     since a second import writes a second set. It parses the source again, sends
     `/import/check`, and then:
@@ -297,7 +293,7 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
       are `reuse.ts`'s `ReuseChoices`, and `reuseMap` turns them into the request's `reuse` map.
       Editing the text drops the review, so a choice never goes with a bundle it wasn't made for.
   - **Errors.** A 400 or 502 from `/import/check` is shown under the field as "This JSON can't be
-    imported: …" or "This file can't be imported: …"; a mistyped key in the bundle comes back
+    imported: …"; a mistyped key in the bundle comes back
     named (`invalid request body: unknown field "tile_shap"`). A failed write shows "Couldn't
     import: …" and keeps the field and the choices.
   - **After a write.** `useImport` invalidates the two owned lists and settles only once they

@@ -4,7 +4,6 @@ import { exportBundle } from '@/api'
 import { Checkbox } from '@/components/fields'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import type { LibraryCatalog, LibraryCollection } from '@/features/library/useLibrary'
-import { downloadJSON, exportFilename } from './download'
 import { bundleText, copyText } from './text'
 
 /** Focuses a box, selects its text and brings it into view. */
@@ -16,8 +15,8 @@ function reveal(box: HTMLTextAreaElement | null) {
 }
 
 /**
- * Picks catalogs and collections from the library and downloads them as one
- * bundle file or copies them as text. A collection carries every catalog its
+ * Picks catalogs and collections from the library and copies them as one
+ * bundle's JSON. A collection carries every catalog its
  * folders use, so a listed catalog a picked collection references is exported
  * with it whether or not its own box is ticked.
  */
@@ -75,7 +74,7 @@ function ExportForm({
   const [picked, setPicked] = useState<ReadonlySet<string>>(
     () => new Set(preselected ? [preselected] : []),
   )
-  const { request, copied, fallback, clearFallback } = useExporter(profileIndex, onClose)
+  const { request, copied, fallback, clearFallback } = useExporter(profileIndex)
 
   const catalogIDs = catalogs.filter((c) => picked.has(c.id)).map((c) => c.id)
   const collectionIDs = collections.filter((c) => picked.has(c.id)).map((c) => c.id)
@@ -123,11 +122,9 @@ function ExportForm({
       <ExportFooter
         onClose={onClose}
         disabled={empty || request.isPending}
-        running={request.isPending ? request.variables.as : null}
+        running={request.isPending}
         copied={copied}
-        onRun={(as) =>
-          request.mutate({ body: { catalog_ids: catalogIDs, collection_ids: collectionIDs }, as })
-        }
+        onRun={() => request.mutate({ catalog_ids: catalogIDs, collection_ids: collectionIDs })}
       />
     </>
   )
@@ -180,34 +177,33 @@ function PickGroup({
   )
 }
 
-/** What one export run produced. A text run has already tried the clipboard. */
-type ExportOutcome =
-  | { as: 'file'; bundle: unknown }
-  | { as: 'text'; text: string; copied: boolean }
-
-interface ExportRequest {
-  body: { catalog_ids: string[]; collection_ids: string[] }
-  as: 'file' | 'text'
+/** What one export run produced: the text, and whether the clipboard took it. */
+interface ExportOutcome {
+  text: string
+  copied: boolean
 }
 
-/** One export request. A text run hands the clipboard the request's own
- *  promise, so a browser that ties copying to the click keeps the click across
- *  the wait. A failed request rejects either way; a failed copy does not. */
-async function runExport(profileIndex: number, { body, as }: ExportRequest): Promise<ExportOutcome> {
-  const bundle = exportBundle(profileIndex, body)
-  if (as === 'file') return { as, bundle: await bundle }
-  const text = bundle.then(bundleText)
+interface ExportRequest {
+  catalog_ids: string[]
+  collection_ids: string[]
+}
+
+/** One export request. The clipboard is handed the request's own promise, so a
+ *  browser that ties copying to the click keeps the click across the wait. A
+ *  failed request rejects; a failed copy does not. */
+async function runExport(profileIndex: number, body: ExportRequest): Promise<ExportOutcome> {
+  const text = exportBundle(profileIndex, body).then(bundleText)
   const copying = copyText(text)
-  return { as, text: await text, copied: await copying }
+  return { text: await text, copied: await copying }
 }
 
 /** How long Copy JSON reads "Copied" before it reverts. */
 const COPIED_MS = 1600
 
-/** The export request and what follows it: a download closes the dialog, a
- *  copy leaves it open on "Copied", and a copy the browser refused leaves the
- *  text in `fallback` to be copied by hand. */
-function useExporter(profileIndex: number, onClose: () => void) {
+/** The export request and what follows it: a copy leaves the dialog open on
+ *  "Copied", and a copy the browser refused leaves the text in `fallback` to
+ *  be copied by hand. */
+function useExporter(profileIndex: number) {
   const [copied, setCopied] = useState(false)
   const [fallback, setFallback] = useState<string | null>(null)
 
@@ -217,26 +213,19 @@ function useExporter(profileIndex: number, onClose: () => void) {
     return () => window.clearTimeout(timer)
   }, [copied])
 
-  function settle(outcome: ExportOutcome) {
-    if (outcome.as === 'file') {
-      downloadJSON(outcome.bundle, exportFilename(new Date()))
-      onClose()
-      return
-    }
-    setFallback(outcome.copied ? null : outcome.text)
-    setCopied(outcome.copied)
-  }
-
   const request = useMutation({
-    mutationFn: (req: ExportRequest) => runExport(profileIndex, req),
-    onSuccess: settle,
+    mutationFn: (body: ExportRequest) => runExport(profileIndex, body),
+    onSuccess: (outcome) => {
+      setFallback(outcome.copied ? null : outcome.text)
+      setCopied(outcome.copied)
+    },
   })
 
   return { request, copied, fallback, clearFallback: () => setFallback(null) }
 }
 
-/** Cancel, Copy JSON and Download. Download is the one primary; the label of
- *  whichever is running says so, and both wait while it does. */
+/** Cancel and Copy JSON, the one primary; its label says while it runs and
+ *  when it has copied, and it waits while a request is in flight. */
 function ExportFooter({
   onClose,
   disabled,
@@ -246,9 +235,9 @@ function ExportFooter({
 }: {
   onClose: () => void
   disabled: boolean
-  running: 'file' | 'text' | null
+  running: boolean
   copied: boolean
-  onRun: (as: 'file' | 'text') => void
+  onRun: () => void
 }) {
   return (
     <ModalFooter>
@@ -259,13 +248,10 @@ function ExportFooter({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => onRun('text')}
-          className="btn-secondary min-w-[6.5rem]"
+          onClick={onRun}
+          className="btn-primary min-w-[6.5rem]"
         >
-          {running === 'text' ? 'Copying…' : copied ? 'Copied' : 'Copy JSON'}
-        </button>
-        <button type="button" disabled={disabled} onClick={() => onRun('file')} className="btn-primary">
-          {running === 'file' ? 'Exporting…' : 'Download'}
+          {running ? 'Copying…' : copied ? 'Copied' : 'Copy JSON'}
         </button>
         <span role="status" className="sr-only">
           {copied ? 'Copied to clipboard' : ''}

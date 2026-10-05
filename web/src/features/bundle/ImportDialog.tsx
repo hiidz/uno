@@ -5,11 +5,12 @@ import { typeLabel } from '@/features/library/recipe'
 import { pluralCount } from '@/lib/plural'
 import { JsonField } from './JsonField'
 import { choicesForAll, type ReuseChoice, type ReuseChoices } from './reuse'
-import { useImportFlow, type ImportMode, type Review } from './useImportFlow'
+import { PASTED_JSON } from './text'
+import { useImportFlow, type Review } from './useImportFlow'
 
 /**
- * Imports a bundle as new, private catalogs and collections: pick a file or
- * paste its JSON, press Import. Import stops to ask only when the bundle holds
+ * Imports a bundle as new, private catalogs and collections: paste its JSON,
+ * press Import. Import stops to ask only when the bundle holds
  * catalogs with the same recipe as ones you already have, and asks under the
  * field, which stays editable.
  *
@@ -41,7 +42,7 @@ export function ImportDialog({
 }
 
 /** One opening of the dialog, mounted only while it is open so every opening
- *  starts back at the file picker. */
+ *  starts with an empty field. */
 function ImportFlow({
   profileIndex,
   onClose,
@@ -59,27 +60,18 @@ function ImportFlow({
       <ModalBody>
         <div className="flex flex-col gap-4">
           <p className="text-dim m-0 text-[13px] leading-relaxed">
-            Pick an Uno export file or paste its JSON. Everything in it is added to your library
-            as new, private catalogs and collections.
+            Paste the JSON of an Uno export. Everything in it is added to your library as new,
+            private catalogs and collections.
           </p>
-          <Segmented
-            ariaLabel="Where the export comes from"
-            value={flow.mode}
-            onChange={flow.changeMode}
-            options={[
-              { value: 'file', label: 'File' },
-              { value: 'paste', label: 'Paste JSON' },
-            ]}
+          <PasteBox
+            text={flow.pasted}
+            busy={busy}
+            invalid={flow.inputError !== null}
+            onEdit={flow.edit}
+            onValidate={flow.validate}
           />
-          <Input flow={flow} busy={busy} />
           <Outcome flow={flow} />
-          {flow.review && (
-            <ReviewStep
-              label={flow.source?.label ?? ''}
-              review={flow.review}
-              onChoices={flow.setChoices}
-            />
-          )}
+          {flow.review && <ReviewStep review={flow.review} onChoices={flow.setChoices} />}
         </div>
         {flow.importError && (
           <p role="alert" className="callout-danger type-data mt-4">
@@ -94,7 +86,7 @@ function ImportFlow({
         <button
           type="button"
           onClick={flow.runImport}
-          disabled={busy || !flow.source}
+          disabled={busy || !flow.hasText}
           className="btn-primary"
         >
           {importLabel(flow.checking, flow.importing)}
@@ -111,36 +103,15 @@ function importLabel(checking: boolean, importing: boolean) {
 
 type Flow = ReturnType<typeof useImportFlow>
 
-/** The file picker or the paste field, by mode. */
-function Input({ flow, busy }: { flow: Flow; busy: boolean }) {
-  if (flow.mode === 'file') {
-    return <FilePicker name={flow.file?.label ?? null} busy={busy} onFile={(f) => void flow.pickFile(f)} />
-  }
-  return (
-    <PasteBox
-      text={flow.pasted}
-      busy={busy}
-      invalid={flow.inputError !== null}
-      onEdit={flow.edit}
-      onValidate={flow.validate}
-    />
-  )
-}
-
-/** The line under the input: the bundle's own refusal, else the server's,
- *  named for the input it came from; else, after Validate, that it parsed. */
-function outcomeMessage(
-  mode: ImportMode,
-  inputError: string | null,
-  checkError: string | null,
-): string | null {
+/** The line under the input: the bundle's own refusal, else the server's;
+ *  else, after Validate, that it parsed. */
+function outcomeMessage(inputError: string | null, checkError: string | null): string | null {
   if (inputError) return inputError
-  if (!checkError) return null
-  return `This ${mode === 'paste' ? 'JSON' : 'file'} can't be imported: ${checkError}`
+  return checkError && `This JSON can't be imported: ${checkError}`
 }
 
 function Outcome({ flow }: { flow: Flow }) {
-  const error = outcomeMessage(flow.mode, flow.inputError, flow.checkError)
+  const error = outcomeMessage(flow.inputError, flow.checkError)
   if (error) {
     return (
       <p role="alert" className="callout-danger type-data break-words">
@@ -150,40 +121,6 @@ function Outcome({ flow }: { flow: Flow }) {
   }
   if (!flow.valid) return null
   return <p className="text-dim type-data m-0 text-[12.5px]">Valid JSON.</p>
-}
-
-function FilePicker({
-  name,
-  busy,
-  onFile,
-}: {
-  name: string | null
-  busy: boolean
-  onFile: (file: File) => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      {/* The input stays in the accessibility tree, visually hidden inside its
-          label, so the label is what is seen and clicked while the input still
-          takes focus and a file. */}
-      <label className="btn-secondary has-[:focus-visible]:outline-ink w-fit cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2">
-        {name ? 'Choose another file…' : 'Choose a file…'}
-        <input
-          type="file"
-          accept=".json,application/json"
-          disabled={busy}
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            // Cleared so picking the same file again still fires a change.
-            event.target.value = ''
-            if (file) onFile(file)
-          }}
-        />
-      </label>
-      {name && <span className="text-ink min-w-0 text-[13px] break-words">{name}</span>}
-    </div>
-  )
 }
 
 function PasteBox({
@@ -224,11 +161,9 @@ function PasteBox({
 /** What the check found: the bundle's counts, then one row per catalog that
  *  matches one already in the library. */
 function ReviewStep({
-  label,
   review,
   onChoices,
 }: {
-  label: string
   review: Review
   onChoices: (choices: ReuseChoices) => void
 }) {
@@ -238,7 +173,7 @@ function ReviewStep({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-dim m-0 text-[13px] leading-relaxed break-words">
-        <strong className="text-ink">{label}</strong> holds {pluralCount(check.catalogs, 'catalog')},{' '}
+        <strong className="text-ink">{PASTED_JSON}</strong> holds {pluralCount(check.catalogs, 'catalog')},{' '}
         {pluralCount(check.collections, 'collection')} and {pluralCount(check.folders, 'folder')}.
       </p>
 
@@ -282,7 +217,7 @@ function ReviewStep({
 
 /**
  * One matched catalog. The wording follows where the catalog sits in the
- * file: a top-level catalog reused is simply not imported, while one of a
+ * bundle: a top-level catalog reused is simply not imported, while one of a
  * collection's own reused makes that collection reference your library
  * catalog in its place.
  */
