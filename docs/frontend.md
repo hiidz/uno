@@ -506,6 +506,10 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   library says. The server refuses to delete a row Nuvio holds, so a selected row missing from
   the library is a transient case, handled defensively rather than expected. Such rows are marked
   "not in library" and carry the red Deleted sticker: they work, but removing them is one-way.
+- **A row is its name, its kind, To push while one waits, and a detail line.** A catalog's detail
+  is its recipe line. A collection's is its folders (`FolderChips`): up to six small tiles, each
+  its cover image or emoji and its title, then "+N more"; a collection with no folders, or one
+  nothing describes, shows `describeCollection`'s line instead.
 - **List groups in the same two bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
   a separate derivation), under the headings Pinned and Rows: pinned collections, then the home
   rows, catalogs and unpinned collections mixed in one order (`HomeState.rows`, one ordered list of
@@ -983,11 +987,17 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   waits on you, until one action clears it — To publish and Update available (pink), To push
   (yellow); Published, From Community and Unpublished (beside From Community once its publisher
   unpublished the row) are pink outlines.
-  - **Where they show:** the library rail shows the kind and the Community sticker only
-    (`railStickers`) — never To push, which the pending count already covers. An editor's
-    sign, the From Community view's sign and the Home pane's rows, the "Not on home" tray's included, show every flag (`rowStickers`,
-    and `viewStickers` for the view). Below `sm` the sign hides its stickers, so `EditorShell`
-    heads the body with them.
+  - **Where they show:** the library rail shows a catalog's kind and the Community sticker
+    only (`railStickers`) — never To push, which the pending count already covers, and no
+    Collection sticker, which the rail's Collections sign already says. An editor's sign and the
+    From Community view's sign show every flag (`rowStickers`, and `viewStickers` for the view).
+    The Home pane's rows, the "Not on home" tray's included, show the kind and To push alone
+    (`homeStickers`), plus Deleted on a row whose source is gone. Below `sm` the sign hides its
+    stickers, so `EditorShell` heads the body with them.
+  - **The kind wears its region's hue** wherever it shows: Movies and Series tangerine
+    (`kindSticker`, `kindStickers`), Collection green (`COLLECTION_KIND`), on the rail, Home,
+    a folder's catalog rows, Community rows and pages, and the publish dialog. On a sign it is
+    printed in sign ink like every sticker there.
   - **To push comes from the waiting list** (`GET .../push/pending`, `waitingIDs`: the
     `added` and `changed` rows, never `removed`), for catalogs and collections alike.
     `usePushWaiting` reads it for the Workspace, `HomeSelection.waitingForPush` for the Home pane,
@@ -1278,8 +1288,8 @@ that carries Archivo's width axis), not the Google Fonts CDN: the build is `go:e
 fonts only from `'self'` and `data:`.
 
 **Stickers.** Small printed pills state a row's states in words, following DESIGN.md's *Sticker
-Rule*: every pill is `.stk` plus one hue — `.stk-neutral` (the kind: Movies, Series, Collection),
-`.stk-community` (Published, From Community, Unpublished, To publish, Update available, because
+Rule*: every pill is `.stk` plus one hue — `.stk-catalog` (the kind Movies or Series, in
+tangerine), `.stk-collection` (the kind Collection, in green), `.stk-community` (Published, From Community, Unpublished, To publish, Update available, because
 Community is where those rows turn up), `.stk-nuvio` (To push, bound for Nuvio) and `.stk-danger`
 (Deleted) — and `.stk-fill` while it waits on you, until one action clears it (To publish, Update
 available, To push); every other pill is an outline. On a sign an outline pill turns sign ink and

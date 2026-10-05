@@ -12,10 +12,11 @@ import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
 import { describeCollection } from '@/features/library/collection'
 import { recipeLine } from '@/features/library/recipe'
 import type { PreviewCollection } from '@/features/preview/model'
-import { DELETED, kindStickers, rowStickers } from '@/features/sharing/sharingState'
+import { COLLECTION_KIND, DELETED, homeStickers, kindStickers } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { ordinal } from '@/lib/ordinal'
 import { showFirstAction } from './changes'
+import { CollectionDetail, DetailLine } from './FolderChips'
 import { HomePreview } from './HomePreview'
 import { bandItemId } from './preview'
 import type { HomeBandItem, PreviewRow } from './preview'
@@ -263,10 +264,10 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 
 /**
  * One line of the running order: the grip and the position as a yellow
- * sticker at the left, the name over its summary line, then ↑ and ↓ side by
- * side and ⋯ at the right, with the stickers on their own line below `sm`. A
- * catalog or collection row hands in its `RowBody`
- * as `children` and its ⋯ menu as `menu`.
+ * sticker at the left, the name over its summary line or folder tiles, then
+ * ↑ and ↓ side by side and ⋯ at the right, with the stickers on their own
+ * line below `sm`. A catalog or collection row hands in its `RowBody` as
+ * `children` and its ⋯ menu as `menu`.
  */
 function HomeRow({
   id,
@@ -337,19 +338,20 @@ function HomeRow({
   )
 }
 
-/** The row's name, its stickers and its summary line. From `sm` they are the
- *  second grid column: the name with its stickers on one wrapping line, over
- *  the summary. Below it the body dissolves into the row's grid, so the name
- *  keeps the first line beside ↑, ↓ and ⋯, and the stickers and the summary
- *  each take a full-width line under them. */
-function RowBody({ name, stickers, detail }: { name: string; stickers: ReactNode; detail: string }) {
+/** The row's name, its stickers and its detail: the summary line, or a
+ *  collection row's folder tiles. From `sm` they are the second grid column:
+ *  the name with its stickers on one wrapping line, over the detail. Below it
+ *  the body dissolves into the row's grid, so the name keeps the first line
+ *  beside ↑, ↓ and ⋯, and the stickers and the detail each take a full-width
+ *  line under them. */
+function RowBody({ name, stickers, detail }: { name: string; stickers: ReactNode; detail: ReactNode }) {
   return (
     <div className="contents sm:flex sm:min-w-0 sm:flex-col sm:gap-1">
       <span className="contents sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
         <span className="min-w-0 truncate text-[16.5px] font-bold sm:max-w-full">{name}</span>
         <span className="col-[2/-1] flex flex-wrap items-center gap-x-2 gap-y-1 sm:contents">{stickers}</span>
       </span>
-      <span className="text-dim col-[2/-1] truncate text-[13.5px]">{detail}</span>
+      {detail}
     </div>
   )
 }
@@ -365,13 +367,11 @@ function RemoveFromHomeItem({ detached, onSelect }: { detached: boolean; onSelec
   )
 }
 
-/** Every flag a Home row carries beside its kind: its Community sticker,
- *  Unpublished, and To push while a push would change what Nuvio holds
- *  for it (`rowStickers`). A catalog and a collection never share an id. */
+/** The flag a Home row carries beside its kind: To push while a push would
+ *  change what Nuvio holds for it (`homeStickers`). */
 function HomeFlags({ id }: { id: string }) {
   const home = useHomeSelection()
-  const row = home.catalogById.get(id) ?? home.collectionById.get(id)
-  return row ? <SharingStickers stickers={rowStickers(row, home.waitingForPush.has(id))} /> : null
+  return <SharingStickers stickers={homeStickers(home.waitingForPush.has(id))} />
 }
 
 /** A row whose catalog or collection was deleted: it still works on the home
@@ -437,7 +437,7 @@ function CatalogRow({
             {detached && <DetachedTag />}
           </>
         }
-        detail={detail || 'No filters'}
+        detail={<DetailLine text={detail || 'No filters'} />}
       />
     </HomeRow>
   )
@@ -483,12 +483,12 @@ function CollectionRow({
         name={collection.title}
         stickers={
           <>
-            <span className="stk stk-neutral shrink-0">Collection</span>
+            <SharingStickers stickers={[COLLECTION_KIND]} />
             <HomeFlags id={collection.id} />
             {detached && <DetachedTag />}
           </>
         }
-        detail={detail}
+        detail={<CollectionDetail collection={collection} summary={detail} />}
       />
     </HomeRow>
   )

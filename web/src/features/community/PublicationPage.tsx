@@ -5,6 +5,7 @@ import type { GenreLookups } from '@/features/library/useLibrary'
 import { UpdateChanges } from '@/features/sharing/Changes'
 import { CatalogBody, CollectionBody } from '@/features/sharing/PublicationBodies'
 import { stickerClass, UPDATE_AVAILABLE } from '@/features/sharing/sharingState'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { snapshotAsCollection, snapshotCatalog } from '@/features/sharing/snapshot'
 import { itemKind } from './communityQuery'
 import { PageActions, type RowActions } from './CommunityRow'
@@ -96,7 +97,7 @@ function catalogOf(detail: PublicationDetail | undefined): Catalog | undefined {
 export function PageStickers({ item }: { item: CommunityItem }) {
   return (
     <>
-      <span className="stk stk-neutral">{itemKind(item)}</span>
+      <SharingStickers stickers={[itemKind(item)]} />
       {item.update_available && <span className={stickerClass(UPDATE_AVAILABLE.tone)}>{UPDATE_AVAILABLE.label}</span>}
     </>
   )

@@ -3,6 +3,7 @@ import type { CommunityItem } from '@/api'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { stickerClass, UPDATE_AVAILABLE } from '@/features/sharing/sharingState'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { itemKind } from './communityQuery'
 import type { CommunityAction } from './useCommunityMutations'
 
@@ -178,7 +179,7 @@ function RowStickers({ item, showKind }: { item: CommunityItem; showKind: boolea
   if (!showKind && !item.update_available) return null
   return (
     <span className="flex flex-wrap items-center gap-1.5">
-      {showKind && <span className="stk stk-neutral">{itemKind(item)}</span>}
+      {showKind && <SharingStickers stickers={[itemKind(item)]} />}
       {item.update_available && <span className={stickerClass(UPDATE_AVAILABLE.tone)}>{UPDATE_AVAILABLE.label}</span>}
     </span>
   )

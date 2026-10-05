@@ -81,8 +81,8 @@ describe('row words', () => {
   })
 
   it('names a catalog’s kind by its type, and a collection as a collection', () => {
-    expect(itemKind(communityItem())).toBe('Movies')
-    expect(itemKind(communityItem({ kind: 'collection', catalog: null }))).toBe('Collection')
+    expect(itemKind(communityItem())).toEqual({ label: 'Movies', tone: { hue: 'catalog', fill: false } })
+    expect(itemKind(communityItem({ kind: 'collection', catalog: null }))).toEqual({ label: 'Collection', tone: { hue: 'collection', fill: false } })
   })
 
   it('says how many took it and when it last changed', () => {

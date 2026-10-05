@@ -8,8 +8,9 @@ import type { SignStep } from '@/components/PaneSign'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { useEditorForm } from '@/features/builder/useEditorForm'
-import { typeLabel } from '@/features/library/recipe'
 import { useRecipeTiles } from '@/features/preview/useRecipeTiles'
+import { kindSticker } from '@/features/sharing/sharingState'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
 import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
@@ -768,7 +769,7 @@ export function CatalogEditor({
       tone="catalog"
       badges={
         <>
-          <span className="stk stk-neutral">{typeLabel(state.type)}</span>
+          <SharingStickers stickers={[kindSticker(state.type)]} />
           {sharingBadges}
         </>
       }

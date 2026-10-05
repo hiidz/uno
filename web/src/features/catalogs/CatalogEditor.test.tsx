@@ -72,7 +72,7 @@ describe('CatalogEditor', () => {
     expect(onClick).toHaveBeenCalled()
     // The sign shows it from `sm`; below, the body's first line does.
     expect(screen.getAllByText('Published sticker')).toHaveLength(2)
-    for (const kind of screen.getAllByText('Movies', { selector: '.stk' })) expect(kind).toHaveClass('stk-neutral')
+    for (const kind of screen.getAllByText('Movies', { selector: '.stk' })) expect(kind).toHaveClass('stk-catalog')
     fireEvent.change(nameInput(), { target: { value: 'Renamed' } })
     save()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Renamed' }))

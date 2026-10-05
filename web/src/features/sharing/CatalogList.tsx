@@ -1,13 +1,12 @@
-import { NEUTRAL, stickerClass, type SharingSticker } from './sharingState'
+import { stickerClass, type SharingSticker } from './sharingState'
 
 /** One row of a `CatalogList`: a catalog's name over its recipe line, with
- *  an optional sticker, a neutral one unless `tone` says otherwise. */
+ *  an optional sticker. */
 export interface CatalogListItem {
   key: string
   name: string
   line: string
-  sticker?: string
-  tone?: SharingSticker['tone']
+  sticker?: SharingSticker
 }
 
 /** Catalogs by name over their recipe line, the way the rail lists them: the
@@ -30,5 +29,5 @@ export function CatalogList({ items }: { items: CatalogListItem[] }) {
 
 function ItemSticker({ item }: { item: CatalogListItem }) {
   if (!item.sticker) return null
-  return <span className={stickerClass(item.tone ?? NEUTRAL)}>{item.sticker}</span>
+  return <span className={stickerClass(item.sticker.tone)}>{item.sticker.label}</span>
 }

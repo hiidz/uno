@@ -1,4 +1,4 @@
-import type { Catalog, Collection, Folder, PendingChange, PublicationState, SubscriptionState } from '@/api'
+import type { Catalog, CatalogType, Collection, Folder, PendingChange, PublicationState, SubscriptionState } from '@/api'
 import { typeLabel } from '@/features/library/recipe'
 
 /** Where an owner's own row stands with Community: never published (or
@@ -17,12 +17,12 @@ export function isPublished(row: { publication: PublicationState | null }): bool
   return row.publication?.status === 'live'
 }
 
-/** A sticker's look: `hue` names where the fact points (`neutral` the dim
- *  line-hi of a plain fact, `community` pink, `nuvio` Nuvio yellow, `danger`
- *  red), and `fill` says it waits on you until one action clears it; an
- *  outline only states. */
+/** A sticker's look: `hue` names where the fact points (a row's kind its
+ *  region, `catalog` tangerine or `collection` green; `community` pink,
+ *  `nuvio` Nuvio yellow, `danger` red), and `fill` says it waits on you until
+ *  one action clears it; an outline only states. */
 export interface StickerTone {
-  hue: 'neutral' | 'community' | 'nuvio' | 'danger'
+  hue: 'catalog' | 'collection' | 'community' | 'nuvio' | 'danger'
   fill: boolean
 }
 
@@ -45,8 +45,6 @@ export function stickerClass(tone: StickerTone): string {
   return `stk stk-${tone.hue}${tone.fill ? ' stk-fill' : ''}`
 }
 
-/** The tone of a plain fact, like a row's kind. */
-export const NEUTRAL: StickerTone = { hue: 'neutral', fill: false }
 const COMMUNITY: StickerTone = { hue: 'community', fill: false }
 const COMMUNITY_FILL: StickerTone = { hue: 'community', fill: true }
 
@@ -61,10 +59,19 @@ const TO_PUSH: SharingSticker = { label: 'To push', tone: { hue: 'nuvio', fill: 
 /** A home-screen row whose catalog or collection was deleted. */
 export const DELETED: SharingSticker = { label: 'Deleted', tone: { hue: 'danger', fill: false } }
 
-/** A catalog's kind as a neutral sticker (Movies, Series); none while
- *  nothing describes the catalog. */
+const CATALOG_KIND: StickerTone = { hue: 'catalog', fill: false }
+
+/** A collection's kind, outlined in the collections' green. */
+export const COLLECTION_KIND: SharingSticker = { label: 'Collection', tone: { hue: 'collection', fill: false } }
+
+/** A catalog's kind (Movies, Series), outlined in the catalogs' tangerine. */
+export function kindSticker(type: CatalogType): SharingSticker {
+  return { label: typeLabel(type), tone: CATALOG_KIND }
+}
+
+/** A catalog's kind sticker; none while nothing describes the catalog. */
 export function kindStickers(catalog: Pick<Catalog, 'type'> | undefined): SharingSticker[] {
-  return catalog ? [{ label: typeLabel(catalog.type), tone: NEUTRAL }] : []
+  return catalog ? [kindSticker(catalog.type)] : []
 }
 
 type StickerRow = { publication: PublicationState | null; subscription: SubscriptionState | null }
@@ -85,7 +92,7 @@ export function railStickers(row: StickerRow): SharingSticker[] {
   return sticker ? [sticker] : []
 }
 
-/** Every flag a row carries, for an editor's sign and the Home pane: its
+/** Every flag a row carries, for an editor's sign: its
  *  Community sticker, Unpublished once its publisher unpublished a row added
  *  from Community, and To push while `waitingForPush` says Nuvio holds
  *  it differently from how a push would send it now. */
@@ -94,6 +101,13 @@ export function rowStickers(row: StickerRow, waitingForPush: boolean): SharingSt
   if (row.subscription?.unpublished) stickers.push(UNPUBLISHED)
   if (waitingForPush) stickers.push(TO_PUSH)
   return stickers
+}
+
+/** What a Home row carries besides its kind: To push while `waitingForPush`
+ *  says Nuvio holds it differently from how a push would send it now. Where
+ *  it stands with Community is the rail's and the editor's to say. */
+export function homeStickers(waitingForPush: boolean): SharingSticker[] {
+  return waitingForPush ? [TO_PUSH] : []
 }
 
 /** `rowStickers` for the view a row added from Community opens as, whose

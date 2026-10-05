@@ -24,6 +24,8 @@ import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
 import { CatalogTypeField } from '@/features/catalogs/fields'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { COLLECTION_KIND } from '@/features/sharing/sharingState'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { andList } from '@/lib/list'
 import { moveByOne, orderByKeys } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
@@ -526,7 +528,7 @@ export function CollectionEditor({
       tone="collection"
       badges={
         <>
-          <span className="stk stk-neutral">Collection</span>
+          <SharingStickers stickers={[COLLECTION_KIND]} />
           {sharingBadges}
         </>
       }

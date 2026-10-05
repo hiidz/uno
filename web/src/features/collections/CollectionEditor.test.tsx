@@ -114,7 +114,7 @@ describe('CollectionEditor', () => {
   it('heads the open folder with where it sits, and states each catalog’s kind', () => {
     renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
     expect(screen.getByText('Folder 1 of 1')).toBeInTheDocument()
-    expect(screen.getByText('Movies', { selector: '.stk' })).toHaveClass('stk-neutral')
+    expect(screen.getByText('Movies', { selector: '.stk' })).toHaveClass('stk-catalog')
     expect(screen.getByRole('combobox', { name: 'Genre' })).toBeInTheDocument()
   })
 

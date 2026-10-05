@@ -307,12 +307,12 @@
     }
 
     /* Stickers: the small printed pills on a row, stating a state in words.
-       One hue class names where the fact points — `.stk-neutral` a plain fact
-       like the kind, in the shelf's own line; `.stk-community` pink, where
-       Community turns it up; `.stk-nuvio` yellow, bound for Nuvio;
-       `.stk-danger` red. An outline only states; `.stk-fill` fills the pill in
-       its hue while it waits on you, until one action clears it (To publish,
-       To push, Update available). */
+       One hue class names where the fact points — `.stk-catalog` tangerine
+       and `.stk-collection` green, a row's kind in its region's colour;
+       `.stk-community` pink, where Community turns it up; `.stk-nuvio`
+       yellow, bound for Nuvio; `.stk-danger` red. An outline only states;
+       `.stk-fill` fills the pill in its hue while it waits on you, until one
+       action clears it (To publish, To push, Update available). */
     .stk {
         display: inline-flex;
         align-items: center;
@@ -327,9 +327,11 @@
         text-transform: uppercase;
         white-space: nowrap;
     }
-    .stk-neutral {
-        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
-        color: var(--uno-dim);
+    .stk-catalog {
+        --stk-hue: var(--uno-catalog);
+    }
+    .stk-collection {
+        --stk-hue: var(--uno-collection);
     }
     .stk-community {
         --stk-hue: var(--uno-community);
@@ -340,6 +342,8 @@
     .stk-danger {
         --stk-hue: var(--uno-danger);
     }
+    .stk-catalog,
+    .stk-collection,
     .stk-community,
     .stk-nuvio,
     .stk-danger {

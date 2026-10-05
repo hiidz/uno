@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PublicationDetail } from '@/api'
 import { catalog, communityItem } from '@/test/fixtures'
 import { catalogItem } from './listing'
+import { kindSticker } from './sharingState'
 import { asCatalog, snapshotAsCollection, snapshotCatalog, snapshotRecipeLine } from './snapshot'
 
 const genres = { movie: new Map([[27, 'Horror']]), tv: new Map([[10765, 'Sci-Fi & Fantasy']]) }
@@ -98,7 +99,8 @@ describe('listing', () => {
   const scifi = catalog({ id: 's', name: 'Sci-fi', type: 'series', params: '{"with_genres":"10765"}' })
 
   it('lists a catalog by name over its recipe line', () => {
-    expect(catalogItem(horror, genres, 'Movies')).toEqual({ key: 'h', name: 'Horror', line: 'Horror', sticker: 'Movies' })
+    const kind = kindSticker('movie')
+    expect(catalogItem(horror, genres, kind)).toEqual({ key: 'h', name: 'Horror', line: 'Horror', sticker: kind })
     expect(catalogItem(scifi, genres)).toMatchObject({ line: 'Sci-Fi & Fantasy' })
   })
 })

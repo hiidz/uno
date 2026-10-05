@@ -1,5 +1,5 @@
 import type { CommunityItem } from '@/api'
-import { typeLabel } from '@/features/library/recipe'
+import { COLLECTION_KIND, kindSticker, type SharingSticker } from '@/features/sharing/sharingState'
 import { capitalize } from '@/lib/capitalize'
 import { pluralCount } from '@/lib/plural'
 
@@ -64,8 +64,9 @@ function byNewest(a: CommunityItem, b: CommunityItem): number {
 }
 
 /** A row's kind sticker: a catalog's type (Movies, Series), or Collection. */
-export function itemKind(item: CommunityItem): string {
-  return item.catalog ? typeLabel(item.catalog.type) : 'Collection'
+export function itemKind(item: CommunityItem): SharingSticker {
+  if (item.catalog) return kindSticker(item.catalog.type)
+  return COLLECTION_KIND
 }
 
 /** A row's second line: a catalog's recipe, or a collection's size. The kind

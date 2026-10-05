@@ -55,7 +55,7 @@ function flagsOf(name: string): string[] {
 }
 
 describe('HomePane', () => {
-  it('carries every flag on a row: its kind, its Community sticker, then To push', () => {
+  it('carries its kind, then To push, and nothing about Community', () => {
     const edited = catalog({ id: 'c1', name: 'Action', publication: { ...live, changed_since_publish: true } })
     const following = catalog({ id: 'c2', name: 'Noir', type: 'series', subscription: { ...added, update_available: true } })
     const plain = catalog({ id: 'c3', name: 'Quiet' })
@@ -67,8 +67,8 @@ describe('HomePane', () => {
       ],
       waiting: ['c1', 'c2'],
     })
-    expect(flagsOf('Action')).toEqual(['Movies', 'To publish', 'To push'])
-    expect(flagsOf('Noir')).toEqual(['Series', 'Update available', 'To push'])
+    expect(flagsOf('Action')).toEqual(['Movies', 'To push'])
+    expect(flagsOf('Noir')).toEqual(['Series', 'To push'])
     expect(flagsOf('Quiet')).toEqual(['Movies'])
   })
 
@@ -85,7 +85,7 @@ describe('HomePane', () => {
     const day = collection({ id: 'k2', title: 'Day shift', subscription: { ...added, unpublished: true } })
     mount({ catalogs: [], collections: [night, day], waiting: ['k1'] })
     expect(flagsOf('Night shift')).toEqual(['Collection', 'To push'])
-    expect(flagsOf('Day shift')).toEqual(['Collection', 'From Community', 'Unpublished'])
+    expect(flagsOf('Day shift')).toEqual(['Collection'])
   })
 
   it('flags a row that is only on Discover too, beside its kind', () => {
@@ -93,7 +93,7 @@ describe('HomePane', () => {
     mount({ catalogs: [{ catalog: tray, showInHome: false }], waiting: ['c4'] })
     const section = screen.getByRole('heading', { name: 'Not on home' }).closest('section')!
     expect(within(section).getByText('Discover only')).toBeInTheDocument()
-    expect(flagsOf('Discover only')).toEqual(['Movies', 'Published', 'To push'])
+    expect(flagsOf('Discover only')).toEqual(['Movies', 'To push'])
   })
 
   it('heads the groups Pinned and Rows, the rows mixing catalogs and collections', () => {
@@ -118,6 +118,30 @@ describe('HomePane', () => {
     })
     expect(flagsOf('Gone')).toEqual(['Movies', 'Deleted'])
     expect(flagsOf('Hidden gone')).toEqual(['Movies', 'Deleted'])
+  })
+
+  it('shows a collection row’s folders as tiles, the first six and then how many more', () => {
+    const night = collection({
+      id: 'k1',
+      title: 'Night shift',
+      folders: [
+        folder({ id: 'f1', title: 'Slashers', cover_emoji: '🔪' }),
+        folder({ id: 'f2', title: '', cover_image_url: 'https://example.test/cover.png' }),
+      ],
+    })
+    const titles = ['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight']
+    const big = collection({ id: 'k2', title: 'Everything', folders: titles.map((title) => folder({ id: title, title })) })
+    const empty = collection({ id: 'k3', title: 'Empty', folders: [] })
+    mount({ catalogs: [], collections: [night, big, empty] })
+    const rowOf = (name: string) => within(screen.getByText(name).closest('li')!)
+    const tiles = (name: string) =>
+      within(rowOf(name).getByRole('list', { name: 'Folders' }))
+        .getAllByRole('listitem')
+        .map((tile) => tile.textContent)
+    expect(tiles('Night shift')).toEqual(['🔪Slashers', 'Untitled folder'])
+    expect(tiles('Everything')).toEqual(['One', 'Two', 'Three', 'Four', 'Five', 'Six', '+2 more'])
+    expect(rowOf('Empty').queryByRole('list', { name: 'Folders' })).toBeNull()
+    expect(rowOf('Empty').getByText('0 folders')).toBeInTheDocument()
   })
 
   it('says where rows come from while the home screen is empty', () => {

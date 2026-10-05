@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { PendingChange } from '@/api'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
+  COLLECTION_KIND,
   errorText,
+  homeStickers,
   isPublished,
   kindStickers,
   ownSharing,
@@ -168,8 +170,19 @@ describe('errorText and stickerWords', () => {
 })
 
 describe('kindStickers', () => {
-  it('names a catalog’s kind as a neutral sticker, and nothing for an unknown one', () => {
-    expect(words(kindStickers({ type: 'series' }))).toEqual(['Series:stk stk-neutral'])
+  it('names a catalog’s kind in the catalogs’ tangerine, and nothing for an unknown one', () => {
+    expect(words(kindStickers({ type: 'series' }))).toEqual(['Series:stk stk-catalog'])
     expect(kindStickers(undefined)).toEqual([])
+  })
+
+  it('names a collection in the collections’ green', () => {
+    expect(words([COLLECTION_KIND])).toEqual(['Collection:stk stk-collection'])
+  })
+})
+
+describe('homeStickers', () => {
+  it('flags a Home row To push alone, and nothing about Community', () => {
+    expect(words(homeStickers(true))).toEqual(['To push:stk stk-nuvio stk-fill'])
+    expect(homeStickers(false)).toEqual([])
   })
 })

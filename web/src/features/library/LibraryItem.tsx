@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
-import { stickerWords, type SharingSticker } from '@/features/sharing/sharingState'
+import { kindSticker, stickerWords, type SharingSticker } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { prefersReducedMotion } from '@/lib/motion'
-import { typeLabel } from './recipe'
 
 type RowKind = 'movie' | 'series' | 'collection'
 
@@ -13,6 +12,14 @@ const KIND_LABEL: Record<RowKind, string> = {
   movie: 'Movie catalog',
   series: 'Series catalog',
   collection: 'Collection',
+}
+
+/** The kind sticker a row carries: Movies or Series on a catalog; none on a
+ *  collection, since the rail's Collections sign says it. */
+const RAIL_KIND: Record<RowKind, SharingSticker[]> = {
+  movie: [kindSticker('movie')],
+  series: [kindSticker('series')],
+  collection: [],
 }
 
 /**
@@ -99,9 +106,9 @@ export function LibraryItem({
             </span>
           </span>
           {summary && <span className="text-dim truncate text-[13px]">{summary}</span>}
-          <span aria-hidden="true" className="mt-0.5 flex flex-wrap gap-1.5">
-            <span className="stk stk-neutral">{kind === 'collection' ? 'Collection' : typeLabel(kind)}</span>
-            <SharingStickers stickers={stickers} />
+          {/* Hidden while empty: a collection row with no Community sticker. */}
+          <span aria-hidden="true" className="mt-0.5 flex flex-wrap gap-1.5 empty:hidden">
+            <SharingStickers stickers={[...RAIL_KIND[kind], ...stickers]} />
           </span>
         </div>
 

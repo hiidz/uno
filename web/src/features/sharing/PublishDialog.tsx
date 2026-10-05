@@ -1,12 +1,11 @@
 import { useId, type ReactNode } from 'react'
 import type { Catalog } from '@/api'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
-import { typeLabel } from '@/features/library/recipe'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
 import { CatalogList, type CatalogListItem } from './CatalogList'
 import { catalogItem } from './listing'
-import { FROM_COMMUNITY } from './sharingState'
+import { FROM_COMMUNITY, kindSticker } from './sharingState'
 
 /** What a publish publishes: one catalog, or a collection's folders with the
  *  catalogs it holds (`own`) and the library catalogs it uses (`library`). */
@@ -32,7 +31,7 @@ const UPDATE_WORDS = {
 function groupItem(catalog: Catalog, genres: GenreLookups): CatalogListItem {
   const item = catalogItem(catalog, genres)
   if (!catalog.subscription) return item
-  return { ...item, sticker: FROM_COMMUNITY.label, tone: FROM_COMMUNITY.tone }
+  return { ...item, sticker: FROM_COMMUNITY }
 }
 
 function CatalogGroup({ title, catalogs, genres }: { title: string; catalogs: Catalog[]; genres: GenreLookups }) {
@@ -82,7 +81,7 @@ function UnpublishLink({ published, onUnpublish }: UnpublishLinkProps) {
  *  catalogs and then the library catalogs it uses. */
 function PublishContents({ subject, genres }: { subject: PublishSubject; genres: GenreLookups }) {
   if (subject.kind === 'catalog') {
-    return <CatalogList items={[catalogItem(subject.catalog, genres, typeLabel(subject.catalog.type))]} />
+    return <CatalogList items={[catalogItem(subject.catalog, genres, kindSticker(subject.catalog.type))]} />
   }
   return (
     <>
