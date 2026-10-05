@@ -734,7 +734,7 @@ when anything here disagrees with it. The facts Uno's integration leans on:
 - **Profiles are numbered slots, 1–6**, unique per user. `p_profile_id` on every scoped call is
   the integer slot, never a UUID.
 - **Sync strategies differ per resource**, and getting this wrong destroys data. Addons,
-  profiles, and collections — everything Uno pushes — are **full replace**: anything omitted from
+  profiles, collections and the home-order list — everything Uno pushes — are **full replace**: anything omitted from
   the payload is **deleted**. (Nuvio's other resources use incremental mutations, atomic blob
   upserts, or non-destructive merges; Uno touches none of them.)
 - **A profile can use profile 1's addons** (`uses_primary_addons` on `sync_pull_profiles`). Every
@@ -771,6 +771,32 @@ when anything here disagrees with it. The facts Uno's integration leans on:
   collections at all doesn't clear the TV, and the next collection edit made on the TV pushes its
   old copy back, until a push leaves at least one collection. Nothing on the wire changes this.
   NuvioMobile and NuvioDesktop apply an empty blob.
+- **A profile's home screen order is its home-order list**, one record all three apps share:
+  `sync_pull_home_catalog_settings` / `sync_push_home_catalog_settings` with
+  `p_platform: "home_catalog_shared"` (`HomeCatalogSettingsSyncService` in each app). The vendor
+  doc shows an older `"tv"` platform and a `{rows, hidden_catalogs}` shape no app reads. The real
+  `settings_json` is `{items: [...], show_catalog_type, hide_unreleased_content, ...}`, each item
+  `{addon_id, type, catalog_id, enabled, order, custom_title, is_collection, collection_id, key}`;
+  prod also carries `hide_catalog_underline`, which none of the apps read here know. Pull answers
+  200 with `[]` for a profile whose list was never saved; push answers 204 and replaces it whole.
+  - A row names a catalog by the addon's manifest id, the catalog's type and its manifest id;
+    mobile and desktop also key it as `addonId:type:catalogId`, or `collection_<id>`. Both apps
+    reject the whole list over a missing or `null` `addon_id`, `type` or `catalog_id`.
+  - Nuvio TV draws pinned collections first, then listed rows by `order`, then rows the list
+    lacks (catalogs in addon and manifest order, then collections). Mobile and desktop draw by
+    `order` alone, give a row the list lacks their own next number, and lift pinned collections
+    to the top only when their collections change. Ties break differently: TV by arrival,
+    mobile catalogs first.
+  - A row hidden in a Nuvio app is `enabled: false`; it leaves Home but stays in Discover.
+  - The apps read the list only at startup or when a profile is picked, and keep rows for
+    addons and collections that are gone (they show nothing for them).
+  - On a profile whose list was never saved, Uno's push writes only Uno's rows. TV then shows
+    them first; mobile and desktop number the other rows themselves from 0, so those can fall
+    between Uno's rows, which still keep their order. It lasts until anyone reorders in a Nuvio
+    app, which saves every row.
+  - TV's "Follow addons order" (off by default, set on the TV) orders catalogs by manifest and
+    moves a collection between two catalogs of one addon to the end of that addon's catalogs. Uno
+    takes it as off.
 
 These were read at NuvioTV `e374881`, NuvioMobile `7be1b56`, NuvioDesktop `ed77003` and the
 self-host build `39ea2bd` (2026-10-03).
@@ -785,6 +811,8 @@ self-host build `39ea2bd` (2026-10-03).
 | `/rest/v1/rpc/sync_push_addons` | POST | Full-replace the profile's addon list | `Client.PushAddons` |
 | `/rest/v1/rpc/sync_pull_collections` | POST | Read current collections blob | `Client.PullCollections` |
 | `/rest/v1/rpc/sync_push_collections` | POST | Full-replace the collections blob | `Client.PushCollections` |
+| `/rest/v1/rpc/sync_pull_home_catalog_settings` | POST | Read the home-order list | `Client.PullHomeOrder` |
+| `/rest/v1/rpc/sync_push_home_catalog_settings` | POST | Full-replace the home-order list | `Client.PushHomeOrder` |
 | `/rest/v1/rpc/get_avatar_catalog` | POST | Nuvio's built-in profile avatars (no sign-in needed) | `Client.AvatarImages` |
 | `/auth/v1/token?grant_type=password` | POST | Login — **frontend only**, never Uno | — |
 | `/auth/v1/token?grant_type=refresh_token` | POST | Refresh — **frontend only**, never Uno | — |
@@ -824,8 +852,8 @@ written. A collection push leaves off Home keeps its last pin. Response, past au
 profile resolution, is always JSON and deliberately flat:
 `{success, manifest_url, error?, undo_failed?, refused?}` — no partial-progress flags, because the
 ordering below and the undo of what Nuvio already took guarantee an ordinary failure means
-nothing changed at all. `refused` names a refusal of step 2 the SPA has words for:
-`empty_collection`, `shares_addons` or `profile_changed`.
+nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has words for:
+`empty_collection`, `shares_addons`, `profile_changed` or `home_order_unreadable`.
 
 **Ordering is Nuvio-first, local-write-last**, and this is load-bearing in two independent ways:
 
@@ -842,7 +870,11 @@ nothing changed at all. `refused` names a refusal of step 2 the SPA has words fo
      rows, nothing stops a push recreating them, and a new profile in that slot keeps them;
    - that Nuvio profile uses profile 1's addons (`409`, `refused: shares_addons`; *Nuvio
      integration*).
-3. `pushAddons` — read the profile's current addons, merge Uno's entry in (`mergeAddon`), push
+3. `prepareHomeOrder` — pull the profile's home-order list and merge the push's rows into it
+   (detail below), writing nothing. A list push can't read (`errHomeOrderUnreadable`) stops the
+   push here, before any write reaches Nuvio (`502`, `refused: home_order_unreadable`): the list
+   is full-replace, so a row the merge couldn't read would be gone once pushed back.
+4. `pushAddons` — read the profile's current addons, merge Uno's entry in (`mergeAddon`), push
    the **complete** merged list back. Omitting any existing addon would delete it. Entries match
    the way Nuvio's apps compare addon URLs (`addonKey`: trimmed, no trailing slash or final
    `/manifest.json`, case-folded), because Nuvio TV saves Uno's URL without `/manifest.json` and
@@ -853,12 +885,17 @@ nothing changed at all. `refused` names a refusal of step 2 the SPA has words fo
    URL under the same `SITE_BASE_URL` (another token's): every Uno addon has the one addon id,
    which Nuvio apps resolve collection sources by. With no entry, one named `addon.Name` is
    appended.
-4. `pushCollections` — pull, merge, push (detail below).
-5. One local transaction writing both selections and the push record, committing at the very
+5. `pushCollections` — pull, merge, push (detail below).
+6. `pushHomeOrder` — push the list step 3 merged. Its rows name the addon's catalogs and the
+   collections steps 4 and 5 put there.
+7. One local transaction writing both selections and the push record, committing at the very
    end.
 
+`sendPush` runs steps 3–6 as one list of `pushStep`s on a `pushRun`, each returning how to put
+back what it wrote.
+
 Reversing this reopens two problems at once. A write-first design has to hold a SQLite write
-transaction open across up to five sequential Nuvio HTTP calls, each capped at a 10s client
+transaction open across up to seven sequential Nuvio HTTP calls, each capped at a 10s client
 timeout — a concurrent vault write in that window waits out the 5s `busy_timeout` and then fails.
 It also means a failed push can still leave the catalog manifest live, which is the atomicity gap
 this ordering *deletes* rather than documents.
@@ -887,12 +924,51 @@ about (its own native UI, or another client), so the merge must touch only what 
    collection's `vault.CollectionWithFolders.PushJSON`, the vault's push payload, with the
    selection's pin.
 
+**The home-order merge** (`mergeHomeOrder`, `internal/api/homeorder.go`). Nuvio's apps order a
+profile's home screen by its home-order list (*Nuvio integration*). The manifest's catalog order
+and the collections blob's order are only their default, for rows the list doesn't hold. Once
+anyone reorders Home in a Nuvio app, every row is in it, and without this step Uno's order
+would stop reaching Nuvio. The list is full-replace, so the merge touches only Uno's rows:
+
+1. Decode the list's top level and each row as `map[string]json.RawMessage`, never a generic
+   map, for the same reason as the collections blob. Sort the rows by `order`, rows sharing one
+   in the order they came.
+2. Uno's rows are catalogs whose `addon_id` is `vault.AddonID` and collections in the set the
+   collections merge drops (owned, or sent by the last push). Every other row keeps its order.
+3. The push's rows come from the record (`vault.PushRecord.HomeRows`): pinned collections, then
+   catalogs with a home row of their own, then the other collections, each in Home order. A
+   Discover-only catalog, or one only a folder uses, has no row: `showInHome: false` and the
+   required genre (*Addon server*) keep it off Home on every app, list or not.
+4. Pinned collections lead the list. Nuvio TV draws them first anyway, but Nuvio mobile and
+   desktop draw by `order` alone and lift a pinned collection only when their collections
+   change, which can land before the list does.
+5. Uno's other rows go in as **one block**, in the push's order, at the place of the first Uno
+   row in the pulled list that isn't one of the pinned collections (a row Uno no longer has
+   counts: it marks where Uno sat), or at the end when the list holds none. Other rows above that
+   place stay before the block; every other one follows it, a row that sat between Uno's rows
+   included, all in their order. A row Uno no longer has on Home is dropped. The block is a
+   choice for predictability: rows mixed in between Uno's are given up, and in exchange no
+   number of addons or arrangement can scramble Uno's order or another addon's. To keep another
+   addon's rows ahead of Uno's, put them above Uno's first row in a Nuvio app.
+6. An Uno row Nuvio already listed keeps every field it has, a rename (`custom_title`) included,
+   and is switched on (`enabled: true`), since pressing Push means "show this", as with the addon
+   entry. A new one gets all nine fields both apps read (`addon_id`, `type`, `catalog_id`,
+   `enabled`, `order`, `custom_title`, `is_collection`, `collection_id`, `key`), with `""` where
+   one doesn't apply and never `null`: either app throws the whole list away over a missing
+   `addon_id`, `type` or `catalog_id`.
+7. `order` is rewritten 0…n down the list, so no two rows tie (Nuvio TV breaks ties by arrival,
+   mobile by catalogs-before-collections, so a tie can show differently on each).
+8. Top-level fields (`show_catalog_type`, `hide_unreleased_content`, any a newer Nuvio app adds)
+   pass through as they came and are never added: a setting the list lacks is one each device
+   keeps for itself.
+
 **Push stores what it sent: the push record.** After step 1, push builds the profile's push
 record once (`vault.BuildPushRecord`, `internal/vault/pushrecord.go`) from the pending selection:
 each selected collection as the exact bytes `PushJSON` gives, the Home selection, and every catalog
 Nuvio can reach (its own Home row, or a folder of a collection on Home uses it) with name, type,
-provider and params inline, in the manifest's order. Step 4 sends the record's collections, and
-the local write (step 5, `vault.SavePush`) stores the record whole in `push_records`, one row per
+provider and params inline, in the manifest's order. Step 5 sends the record's collections, step
+3 builds the home-order rows from it, and the local write (step 7, `vault.SavePush`) stores the
+record whole in `push_records`, one row per
 profile replaced by each push and stamped with the Nuvio profile id the profile has then
 (`profiles.nuvio_profile_uuid`). Nothing cascades into it from `catalogs` or `collections`. It is
 never rebuilt from the rows at write time, so a Save landing between the build and the write still
@@ -914,19 +990,24 @@ using an edited catalog is listed as changed there. Only push writes the Home co
 Home was in the last push and the record holds it, until a delete takes the row and leaves the
 record holding it: the next push drops it.
 
-**The gaps the ordering can't close, and their mitigation** (`sendPush`, `undoPush`). If the
-collections step fails after the addons push succeeded, Nuvio holds Uno's addon entry as this push
-left it; if the local commit fails *after* both Nuvio pushes succeeded, Nuvio has the new
-collections too but Uno's vault doesn't record them. On either failure the handler re-pushes what
-it pulled before writing (still held in memory) — the collections blob when that push went
-through, then the addon list — restoring Nuvio to its prior state. If a compensating push *also*
-fails — two independent failures back to back — the response sets `undo_failed` and the user
-gets distinct copy. Retry is always safe: every local write is diff-replace and every Nuvio push
-is upsert/full-replace.
+**The gaps the ordering can't close, and their mitigation** (`sendPush`, `undoPush`). If a later
+Nuvio step fails after an earlier one succeeded, Nuvio holds what the earlier ones wrote; if the
+local commit fails *after* every Nuvio push succeeded, Nuvio has all of it but Uno's vault
+doesn't record it. On any such failure the handler re-pushes what it pulled before writing
+(still held in memory), newest first — the home-order list as it came (`{}` when there was
+none, which every Nuvio app reads as no saved order), the collections blob, then the addon list
+— restoring Nuvio to its prior state. If a compensating push *also* fails — two independent
+failures back to back — the response sets `undo_failed` and the user gets distinct copy. Retry
+is always safe: every local write is diff-replace and every Nuvio push is upsert/full-replace.
 
-**Lost update, accepted.** A reorder on the user's TV between pull and push gets clobbered. The
-window is seconds and push is a manual click, so this is accepted — but **the pull must sit
-immediately adjacent to the push, never cached from page load.**
+**Lost updates, accepted.** A change made in Nuvio between push's pull and its push of the same
+resource — a collection edited or Home reordered in a Nuvio app — gets clobbered. The window is
+the push's own few seconds and push is a manual click, so this is accepted — but **every pull
+happens inside the push, never cached from page load.** The home-order pull runs first, a few
+calls ahead of its own push, so that a list push can't read stops it before any write. The other way round is accepted too: a
+Nuvio app running since before a push still holds the old home order, since the apps read the
+list only at startup (*Nuvio integration*), and a reorder, hide or rename made there before it
+restarts uploads that old list over Uno's.
 
 The wire shape push sends is camelCase and is not Uno's own — see the push wire shape section in
 `docs/data-model.md`.

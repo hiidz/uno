@@ -221,3 +221,40 @@ func TestPushRecordRefusals(t *testing.T) {
 		t.Errorf("another profile's build = %+v, %v; want none of the owner's rows", record, err)
 	}
 }
+
+// HomeRows is the record's rows in the order Nuvio shows them: pinned
+// collections apart, then catalogs with a home row of their own, then the
+// other collections, each in Home order. A Discover row and a catalog only a
+// folder uses have none.
+func TestHomeRowsInNuvioOrder(t *testing.T) {
+	home, discover, folderOnly, later := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	pinnedA, pinnedB, unpinned := uuid.New(), uuid.New(), uuid.New()
+	record := PushRecord{
+		Home: PushedHome{
+			Catalogs: []SelectedCatalogInput{
+				{CatalogID: home, ShowInHome: true}, {CatalogID: discover}, {CatalogID: later, ShowInHome: true},
+			},
+			Collections: []SelectedCollectionInput{
+				{CollectionID: pinnedA, PinToTop: true}, {CollectionID: unpinned}, {CollectionID: pinnedB, PinToTop: true},
+			},
+		},
+		Catalogs: []PushedCatalog{
+			{ID: home, Type: "movie", Provider: "tmdb"}, {ID: discover, Type: "movie", Provider: "tmdb"},
+			{ID: later, Type: "series", Provider: "tmdb"}, {ID: folderOnly, Type: "movie", Provider: "tmdb"},
+		},
+	}
+
+	pinned, rows := record.HomeRows()
+	wantPinned := []HomeRow{{CollectionID: pinnedA}, {CollectionID: pinnedB}}
+	wantRows := []HomeRow{
+		{Type: "movie", CatalogID: "tmdb-" + home.String()},
+		{Type: "series", CatalogID: "tmdb-" + later.String()},
+		{CollectionID: unpinned},
+	}
+	if !reflect.DeepEqual(pinned, wantPinned) {
+		t.Errorf("pinned = %+v, want %+v", pinned, wantPinned)
+	}
+	if !reflect.DeepEqual(rows, wantRows) {
+		t.Errorf("rows = %+v, want %+v", rows, wantRows)
+	}
+}

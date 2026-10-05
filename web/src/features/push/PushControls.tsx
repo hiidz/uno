@@ -195,6 +195,7 @@ const HEADLINE: Record<PushOutcomeKind, string> = {
   'empty-collection': 'A collection on Home has no folders — nothing changed.',
   'shares-addons': "This profile uses profile 1's addons in Nuvio — nothing changed.",
   'profile-changed': 'This profile changed in Nuvio — nothing changed.',
+  'home-order-unreadable': "Couldn't read this profile's home order in Nuvio — nothing changed.",
 }
 
 const DETAIL: Record<PushOutcomeKind, string> = {
@@ -209,6 +210,8 @@ const DETAIL: Record<PushOutcomeKind, string> = {
     'Nothing pushed from here would show in Nuvio. Turn sharing off for this profile in Nuvio, then pick it again.',
   'profile-changed':
     'It was deleted or replaced in Nuvio since you opened it. Your edits are still here; pick the profile again to push.',
+  'home-order-unreadable':
+    'Your edits are still here. Reordering Home once in a Nuvio app saves a fresh order; then push again.',
 }
 
 type PushOutcomeKind = NonNullable<Push['outcome']>['kind']

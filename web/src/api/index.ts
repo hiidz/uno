@@ -25,7 +25,7 @@ export type {
 } from './mutations'
 export { checkImport, exportBundle, importBundle } from './bundle'
 export { pushSelection } from './push'
-export type { PushRequest, PushResult } from './push'
+export type { PushRefusal, PushRequest, PushResult } from './push'
 export { invalidateProfileLists, queryKeys } from './keys'
 export {
   fetchOwnedCatalogs,

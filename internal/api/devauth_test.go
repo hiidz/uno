@@ -102,7 +102,17 @@ func TestDevBypassNuvio(t *testing.T) {
 		if pulled, _ := n.PullCollections(ctx, "dev-secret", 1); len(pulled) != 0 {
 			t.Fatalf("profile 1 collections = %s, want none", pulled)
 		}
-		if len(upstream.pushAddonsCalls) != 0 || len(upstream.pushCollectionsCalls) != 0 {
+		homeOrder := json.RawMessage(`{"items":[]}`)
+		if err := n.PushHomeOrder(ctx, "dev-secret", 2, homeOrder); err != nil {
+			t.Fatalf("PushHomeOrder: %v", err)
+		}
+		if pulled, err := n.PullHomeOrder(ctx, "dev-secret", 2); err != nil || string(pulled) != string(homeOrder) {
+			t.Fatalf("profile 2 home order = %s, %v; want %s", pulled, err, homeOrder)
+		}
+		if pulled, _ := n.PullHomeOrder(ctx, "dev-secret", 1); pulled != nil {
+			t.Fatalf("profile 1 home order = %s, want none", pulled)
+		}
+		if len(upstream.pushAddonsCalls) != 0 || len(upstream.pushCollectionsCalls) != 0 || len(upstream.pushHomeOrderCalls) != 0 {
 			t.Fatal("a bypass push reached the real client")
 		}
 	})
@@ -113,6 +123,8 @@ func TestDevBypassNuvio(t *testing.T) {
 			"PushAddons":      func() error { return n.PushAddons(ctx, "dev-secret", 3, nil) },
 			"PullCollections": func() error { _, err := n.PullCollections(ctx, "dev-secret", 3); return err },
 			"PushCollections": func() error { return n.PushCollections(ctx, "dev-secret", 3, nil) },
+			"PullHomeOrder":   func() error { _, err := n.PullHomeOrder(ctx, "dev-secret", 3); return err },
+			"PushHomeOrder":   func() error { return n.PushHomeOrder(ctx, "dev-secret", 3, nil) },
 		}
 		for name, call := range calls {
 			if err := call(); !errors.Is(err, errDevBypassUnknownProfile) {
@@ -128,9 +140,16 @@ func TestDevBypassNuvio(t *testing.T) {
 		if err := n.PushCollections(ctx, "a-real-jwt", 1, nil); err != nil {
 			t.Fatalf("PushCollections: %v", err)
 		}
-		if len(upstream.pushAddonsCalls) != 1 || len(upstream.pushCollectionsCalls) != 1 {
-			t.Fatalf("real client pushes = %d addons, %d collections; want 1 each",
-				len(upstream.pushAddonsCalls), len(upstream.pushCollectionsCalls))
+		upstream.homeOrder = json.RawMessage(`{"items":[]}`)
+		if pulled, err := n.PullHomeOrder(ctx, "a-real-jwt", 1); err != nil || string(pulled) != `{"items":[]}` {
+			t.Fatalf("real-token home order = %s, %v; want the real client's", pulled, err)
+		}
+		if err := n.PushHomeOrder(ctx, "a-real-jwt", 1, nil); err != nil {
+			t.Fatalf("PushHomeOrder: %v", err)
+		}
+		if len(upstream.pushAddonsCalls) != 1 || len(upstream.pushCollectionsCalls) != 1 || len(upstream.pushHomeOrderCalls) != 1 {
+			t.Fatalf("real client pushes = %d addons, %d collections, %d home order; want 1 each",
+				len(upstream.pushAddonsCalls), len(upstream.pushCollectionsCalls), len(upstream.pushHomeOrderCalls))
 		}
 	})
 }

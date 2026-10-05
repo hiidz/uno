@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -72,6 +73,13 @@ var (
 	}}
 	pushCollections = clientCall{"PushCollections", func(c *Client) error {
 		return c.PushCollections(context.Background(), "access-token", 3, nil)
+	}}
+	pullHomeOrder = clientCall{"PullHomeOrder", func(c *Client) error {
+		_, err := c.PullHomeOrder(context.Background(), "access-token", 3)
+		return err
+	}}
+	pushHomeOrder = clientCall{"PushHomeOrder", func(c *Client) error {
+		return c.PushHomeOrder(context.Background(), "access-token", 3, nil)
 	}}
 )
 
@@ -146,6 +154,26 @@ func TestClientSendsNuvioRequests(t *testing.T) {
 			wantReq:  nuvioRequest{method: http.MethodPost, uri: "/rest/v1/rpc/sync_push_collections"},
 			wantBody: `{"p_profile_id":3,"p_collections_json":[]}`,
 		},
+		{
+			name: "PullHomeOrder", status: http.StatusOK,
+			call:     pullHomeOrder.call,
+			wantReq:  nuvioRequest{method: http.MethodPost, uri: "/rest/v1/rpc/sync_pull_home_catalog_settings"},
+			wantBody: `{"p_profile_id":3,"p_platform":"home_catalog_shared"}`,
+		},
+		{
+			name: "PushHomeOrder", status: http.StatusNoContent,
+			call: func(c *Client) error {
+				return c.PushHomeOrder(context.Background(), "access-token", 3, json.RawMessage(`{"items":[{"order":0,"n":12345678901234567890}]}`))
+			},
+			wantReq:  nuvioRequest{method: http.MethodPost, uri: "/rest/v1/rpc/sync_push_home_catalog_settings"},
+			wantBody: `{"p_profile_id":3,"p_platform":"home_catalog_shared","p_settings_json":{"items":[{"order":0,"n":12345678901234567890}]}}`,
+		},
+		{
+			name: "PushHomeOrder nil", status: http.StatusNoContent,
+			call:     pushHomeOrder.call,
+			wantReq:  nuvioRequest{method: http.MethodPost, uri: "/rest/v1/rpc/sync_push_home_catalog_settings"},
+			wantBody: `{"p_profile_id":3,"p_platform":"home_catalog_shared","p_settings_json":{}}`,
+		},
 	}
 
 	for _, tc := range tests {
@@ -186,6 +214,8 @@ func TestClientSuccessStatus(t *testing.T) {
 		{avatarImages, http.StatusOK},
 		{pushAddons, http.StatusNoContent},
 		{pushCollections, http.StatusNoContent},
+		{pullHomeOrder, http.StatusOK},
+		{pushHomeOrder, http.StatusNoContent},
 	}
 	statuses := []int{
 		http.StatusOK, http.StatusNoContent, http.StatusBadRequest,
@@ -215,7 +245,7 @@ func TestClientSuccessStatus(t *testing.T) {
 // pull whose 200 body isn't the JSON it expects, and Nuvio not answering at
 // all. Both wrap ErrNuvioRequestFailed.
 func TestClientUpstreamFailures(t *testing.T) {
-	for _, call := range []clientCall{listProfiles, listAddons, pullCollections} {
+	for _, call := range []clientCall{listProfiles, listAddons, pullCollections, pullHomeOrder} {
 		t.Run(call.name+" malformed body", func(t *testing.T) {
 			c, _ := fakeNuvioServer(t, http.StatusOK, `{"not":"an array"`)
 			if err := call.call(c); !errors.Is(err, ErrNuvioRequestFailed) {
@@ -224,7 +254,7 @@ func TestClientUpstreamFailures(t *testing.T) {
 		})
 	}
 
-	for _, call := range []clientCall{listProfiles, listAddons, pullCollections, pushAddons, pushCollections} {
+	for _, call := range []clientCall{listProfiles, listAddons, pullCollections, pushAddons, pushCollections, pullHomeOrder, pushHomeOrder} {
 		t.Run(call.name+" unreachable", func(t *testing.T) {
 			srv := httptest.NewServer(http.NotFoundHandler())
 			srv.Close()
@@ -303,6 +333,34 @@ func TestPullCollectionsUnwrapsTheBlob(t *testing.T) {
 	}
 	if len(pulled) != 2 || string(pulled[0]) != foreign || string(pulled[1]) != `{"id":"b"}` {
 		t.Fatalf("pulled = %s, want [%s {\"id\":\"b\"}]", pulled, foreign)
+	}
+}
+
+// TestPullHomeOrderUnwrapsTheList covers the RPC's envelope: a profile whose
+// list was never saved has no row, and a null list is none either. A list
+// comes back byte-for-byte as Nuvio sent it, since push sends every row Uno
+// doesn't manage back unchanged, and one sent as a JSON string comes back as
+// the object it holds.
+func TestPullHomeOrderUnwrapsTheList(t *testing.T) {
+	const list = `{"items":[{"order":0, "n":12345678901234567890}],"show_catalog_type":false}`
+	for _, tc := range []struct {
+		name, body, want string
+	}{
+		{"no row", `[]`, ""},
+		{"null", `[{"settings_json":null}]`, ""},
+		{"object", `[{"profile_id":3,"platform":"home_catalog_shared","settings_json":` + list + `}]`, list},
+		{"string", `[{"settings_json":` + strconv.Quote(list) + `}]`, list},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := fakeNuvioServer(t, http.StatusOK, tc.body)
+			pulled, err := c.PullHomeOrder(context.Background(), "access-token", 3)
+			if err != nil {
+				t.Fatalf("PullHomeOrder: %v", err)
+			}
+			if string(pulled) != tc.want {
+				t.Fatalf("pulled = %s, want %s", pulled, tc.want)
+			}
+		})
 	}
 }
 

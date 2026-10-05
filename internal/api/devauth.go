@@ -64,7 +64,7 @@ func (v *devBypassVerifier) Verify(ctx context.Context, token string) (nuvio.Cla
 }
 
 // devBypassNuvio wraps a NuvioClient so requests carrying the dev-bypass
-// token are served from an in-memory fake profile/addon/collection store
+// token are served from an in-memory fake profile/addon/collection/home-order store
 // instead of hitting Nuvio's real API — the bypass token never leaves the
 // process. Any other token passes through to next untouched. Without this,
 // the bypassed identity from devBypassVerifier would still fail every
@@ -78,6 +78,7 @@ type devBypassNuvio struct {
 	mu          sync.Mutex
 	addons      map[string][]nuvio.NuvioAddon
 	collections map[string][]json.RawMessage
+	homeOrders  map[string]json.RawMessage
 }
 
 // NewDevBypassNuvio returns a NuvioClient that serves requests carrying
@@ -94,6 +95,7 @@ func NewDevBypassNuvio(next NuvioClient, bypassToken string) NuvioClient {
 		},
 		addons:      map[string][]nuvio.NuvioAddon{},
 		collections: map[string][]json.RawMessage{},
+		homeOrders:  map[string]json.RawMessage{},
 	}
 }
 
@@ -171,6 +173,33 @@ func (v *devBypassNuvio) PushCollections(ctx context.Context, accessToken string
 		return nil
 	}
 	return v.next.PushCollections(ctx, accessToken, profileID, collections)
+}
+
+func (v *devBypassNuvio) PullHomeOrder(ctx context.Context, accessToken string, profileID int) (json.RawMessage, error) {
+	if isBypassToken(accessToken, v.token) {
+		key, err := v.profileKey(profileID)
+		if err != nil {
+			return nil, err
+		}
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		return slices.Clone(v.homeOrders[key]), nil
+	}
+	return v.next.PullHomeOrder(ctx, accessToken, profileID)
+}
+
+func (v *devBypassNuvio) PushHomeOrder(ctx context.Context, accessToken string, profileID int, settings json.RawMessage) error {
+	if isBypassToken(accessToken, v.token) {
+		key, err := v.profileKey(profileID)
+		if err != nil {
+			return err
+		}
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		v.homeOrders[key] = slices.Clone(settings)
+		return nil
+	}
+	return v.next.PushHomeOrder(ctx, accessToken, profileID, settings)
 }
 
 // AvatarImages answers the bypass account with no built-in avatars: its

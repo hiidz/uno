@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ProfileNotSelectedError, RateLimitedError, queryKeys, type PushResult } from '@/api'
+import { ProfileNotSelectedError, RateLimitedError, queryKeys, type PushRefusal, type PushResult } from '@/api'
 import { toPushPayload, type HomeState } from '@/features/home/pending'
 import { usePush } from './usePush'
 
@@ -136,12 +136,20 @@ describe('usePush', () => {
     ['empty_collection', 'empty-collection'],
     ['shares_addons', 'shares-addons'],
     ['profile_changed', 'profile-changed'],
+    ['home_order_unreadable', 'home-order-unreadable'],
   ] as const)('reports a push the server refused as %s in its own words', async (refused, kind) => {
     api.pushSelection.mockResolvedValue({ success: false, error: 'push failed', refused })
     const { result } = renderPush()
     await act(async () => result.current.push())
     expect(result.current.outcome).toEqual({ kind })
     expect(home.markPushed).not.toHaveBeenCalled()
+  })
+
+  it('reports a refusal it has no words for as an ordinary failure', async () => {
+    api.pushSelection.mockResolvedValue({ success: false, error: 'push failed', refused: 'from_a_newer_server' as PushRefusal })
+    const { result } = renderPush()
+    await act(async () => result.current.push())
+    expect(result.current.outcome).toEqual({ kind: 'failed' })
   })
 
   it('reports no answer as unknown, never as failed', async () => {

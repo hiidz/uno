@@ -60,6 +60,16 @@ type fakeNuvio struct {
 	// consulted — lets a test mutate the vault mid-push to simulate state
 	// changing underneath a push already in flight.
 	onPushCollections func(call int, collections []json.RawMessage)
+
+	// homeOrder is the profile's home-order list as Nuvio holds it before a
+	// push; nil is a profile with none.
+	homeOrder        json.RawMessage
+	pullHomeOrderErr error
+
+	// pushHomeOrderErrs supplies a per-call error override, as
+	// pushCollectionsErrs does.
+	pushHomeOrderErrs  []error
+	pushHomeOrderCalls []json.RawMessage
 }
 
 var _ NuvioClient = (*fakeNuvio)(nil)
@@ -105,6 +115,19 @@ func (f *fakeNuvio) PushCollections(ctx context.Context, accessToken string, pro
 	}
 	if call < len(f.pushCollectionsErrs) {
 		return f.pushCollectionsErrs[call]
+	}
+	return nil
+}
+
+func (f *fakeNuvio) PullHomeOrder(ctx context.Context, accessToken string, profileID int) (json.RawMessage, error) {
+	return f.homeOrder, f.pullHomeOrderErr
+}
+
+func (f *fakeNuvio) PushHomeOrder(ctx context.Context, accessToken string, profileID int, settings json.RawMessage) error {
+	call := len(f.pushHomeOrderCalls)
+	f.pushHomeOrderCalls = append(f.pushHomeOrderCalls, settings)
+	if call < len(f.pushHomeOrderErrs) {
+		return f.pushHomeOrderErrs[call]
 	}
 	return nil
 }
@@ -344,6 +367,11 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			}
 			if len(fake.pushAddonsCalls) != 2 || len(fake.pushAddonsCalls[1]) != 0 {
 				t.Fatalf("PushAddons calls = %+v, want the push, then the pulled (empty) list put back", fake.pushAddonsCalls)
+			}
+			// No list was pulled, so the revert pushes none, which the client
+			// sends as {}: no saved order.
+			if len(fake.pushHomeOrderCalls) != 2 || fake.pushHomeOrderCalls[1] != nil {
+				t.Fatalf("PushHomeOrder calls = %s, want the push, then no list put back", fake.pushHomeOrderCalls)
 			}
 		})
 	}

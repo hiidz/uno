@@ -1,5 +1,6 @@
 // Package nuvio is the client for Nuvio's account API: verifying bearer
-// tokens, and reading/writing a user's profiles, addons, and collections.
+// tokens, and reading/writing a user's profiles, addons, collections and
+// home order.
 package nuvio
 
 import (
@@ -237,6 +238,80 @@ func (c *Client) PullCollections(ctx context.Context, accessToken string, profil
 		return nil, nil
 	}
 	return envelope[0].CollectionsJSON, nil
+}
+
+// homeOrderPlatform is the platform Nuvio TV, mobile and desktop all keep a
+// profile's home-order list under. The vendor doc's "tv" platform is a
+// leftover no Nuvio app reads.
+const homeOrderPlatform = "home_catalog_shared"
+
+// PullHomeOrder reads a profile's home-order list: the settings_json object
+// Nuvio's apps order their home screen rows by, as Nuvio sent it. A profile
+// whose list was never saved has no row, which comes back as nil, and so
+// does a null one. A settings_json sent as a JSON string is the object that
+// string holds.
+func (c *Client) PullHomeOrder(ctx context.Context, accessToken string, profileID int) (json.RawMessage, error) {
+	body := struct {
+		ProfileID int    `json:"p_profile_id"`
+		Platform  string `json:"p_platform"`
+	}{profileID, homeOrderPlatform}
+
+	resp, err := c.doRPC(ctx, accessToken, "sync_pull_home_catalog_settings", body)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+	}
+
+	var envelope []struct {
+		SettingsJSON json.RawMessage `json:"settings_json"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrNuvioRequestFailed, err)
+	}
+	if len(envelope) == 0 {
+		return nil, nil
+	}
+	return settingsObject(envelope[0].SettingsJSON), nil
+}
+
+// settingsObject is raw as an object's bytes: the object a JSON string holds,
+// nil for null, raw itself otherwise.
+func settingsObject(raw json.RawMessage) json.RawMessage {
+	var encoded string
+	if json.Unmarshal(raw, &encoded) == nil {
+		return json.RawMessage(encoded)
+	}
+	return raw
+}
+
+// PushHomeOrder full-replaces a profile's home-order list with settings, a
+// settings_json object; nil pushes {}. Any row or setting omitted from
+// settings is gone from every Nuvio app once it next reads the list, so
+// callers must pass the complete merged object. Success is 204.
+func (c *Client) PushHomeOrder(ctx context.Context, accessToken string, profileID int, settings json.RawMessage) error {
+	if len(settings) == 0 {
+		settings = json.RawMessage(`{}`)
+	}
+	body := struct {
+		ProfileID    int             `json:"p_profile_id"`
+		Platform     string          `json:"p_platform"`
+		SettingsJSON json.RawMessage `json:"p_settings_json"`
+	}{profileID, homeOrderPlatform, settings}
+
+	resp, err := c.doRPC(ctx, accessToken, "sync_push_home_catalog_settings", body)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+	}
+	return nil
 }
 
 // PushCollections full-replaces the profile's collections blob. Any

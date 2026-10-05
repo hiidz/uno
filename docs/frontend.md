@@ -1185,7 +1185,10 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
   `profile-changed` ("This profile changed in Nuvio — nothing changed."): the profile was
   deleted or replaced in Nuvio since it was picked. The builder stays put with every pending edit,
   and the words send the user back to pick the profile again, rather than the builder navigating
-  away and losing them.
+  away and losing them. `refused: home_order_unreadable` is `home-order-unreadable` ("Couldn't
+  read this profile's home order in Nuvio — nothing changed."): push stopped before writing
+  anything to Nuvio, and the detail line says a reorder in a Nuvio app saves a fresh list. A
+  refusal value the builder has no words for reads as the generic failure.
 - **A 429 is an ordinary failure in its own words** (`RateLimitedError`, outcome `rate-limited`):
   Uno's server answers none, but a proxy in front of it could, and one would have turned the
   push away before running it, so nothing changed. Copy: "Too many pushes

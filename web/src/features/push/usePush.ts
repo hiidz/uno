@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ProfileNotSelectedError, RateLimitedError, pushSelection, queryKeys } from '@/api'
-import type { PushResult } from '@/api'
+import type { PushRefusal, PushResult } from '@/api'
 import { toPushPayload } from '@/features/home/pending'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 
@@ -36,6 +36,18 @@ type PushOutcome =
    *  Nuvio slot is empty or holds another Nuvio profile now. Nothing changed;
    *  picking the profile again fixes it. */
   | { kind: 'profile-changed' }
+  /** The server turned the push away before writing to Nuvio: it couldn't
+   *  read Nuvio's home-order list for the profile. Nothing changed. */
+  | { kind: 'home-order-unreadable' }
+
+/** Each refusal the server can answer, as the outcome the builder words it
+ *  with. */
+const REFUSAL_OUTCOME: Record<PushRefusal, PushOutcome['kind']> = {
+  empty_collection: 'empty-collection',
+  shares_addons: 'shares-addons',
+  profile_changed: 'profile-changed',
+  home_order_unreadable: 'home-order-unreadable',
+}
 
 /** What a push that threw is reported as: one the server turned away for
  *  pushing too often is rate-limited, anything else unknown. */
@@ -49,9 +61,7 @@ function thrownOutcome(err: unknown): PushOutcome {
  *  away for one the builder has words for, failed otherwise. */
 export function failedOutcome(result: PushResult): PushOutcome {
   if (result.undo_failed) return { kind: 'undo-failed' }
-  if (result.refused === 'empty_collection') return { kind: 'empty-collection' }
-  if (result.refused === 'shares_addons') return { kind: 'shares-addons' }
-  if (result.refused === 'profile_changed') return { kind: 'profile-changed' }
+  if (result.refused) return { kind: REFUSAL_OUTCOME[result.refused] ?? 'failed' }
   return { kind: 'failed' }
 }
 

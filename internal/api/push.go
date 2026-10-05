@@ -53,6 +53,9 @@ const (
 	// refusedProfileChanged: the profile's Nuvio slot is empty now, or holds
 	// another Nuvio profile.
 	refusedProfileChanged = "profile_changed"
+	// refusedHomeOrderUnreadable: Nuvio's home-order list for the profile
+	// couldn't be read (errHomeOrderUnreadable).
+	refusedHomeOrderUnreadable = "home_order_unreadable"
 )
 
 // push serves POST /api/p/{profileIndex}/push: an explicit, user-triggered
@@ -173,44 +176,129 @@ func (s *Server) liveProfile(ctx context.Context, accessToken string, profile va
 // sendPush pushes record to profile's Nuvio profile and stores it, and
 // answers how that went.
 //
-// Addons before collections: a pushed collection's catalogSources reference
-// this addon's manifest id, so installing the addon first means a client
-// that reads collections right after a push already has something to
-// resolve those references against. If addons push fails, collections is
-// never attempted. A failure after Nuvio took part of the push puts back
-// what it took, each as it was pulled (undoPush).
+// The steps run in order, each only after the one before succeeded:
+//  1. Pull and merge the home-order list, writing nothing: a list push can't
+//     read stops the push before Nuvio is touched.
+//  2. Addons. A pushed collection's catalogSources reference this addon's
+//     manifest id, so installing the addon first means a client that reads
+//     collections right after a push already has something to resolve those
+//     references against.
+//  3. Collections.
+//  4. The home-order list, whose rows name the addon's catalogs and the
+//     collections the steps before put there.
+//
+// A failure after Nuvio took part of the push puts back what it took, each
+// as it was pulled, newest first (undoPush).
 func (s *Server) sendPush(ctx context.Context, accessToken string, profile vault.Profile, record vault.PushRecord) (int, pushResult) {
-	slot := profile.NuvioProfileIndex
-	manifestURL := s.siteBaseURL + addon.ManifestPath(profile.Token)
-
-	pulledAddons, err := s.pushAddons(ctx, accessToken, slot, manifestURL)
-	if err != nil {
-		log.Printf("push: addons push failed: %v", err)
-		return nuvioErrorStatus(err), pushResult{Error: "push failed"}
+	run := &pushRun{
+		s: s, ctx: ctx, accessToken: accessToken, slot: profile.NuvioProfileIndex, profileID: profile.ID,
+		manifestURL: s.siteBaseURL + addon.ManifestPath(profile.Token), record: record,
 	}
-	revertAddons := func() error { return s.nuvio.PushAddons(ctx, accessToken, slot, pulledAddons) }
-
-	pulledCollections, err := s.pushCollections(ctx, accessToken, slot, profile.ID, record.Collections)
-	if err != nil {
-		log.Printf("push: collections push failed, reverting addons: %v", err)
-		return undoPush(nuvioErrorStatus(err), revertAddons)
-	}
-	revertCollections := func() error {
-		return s.nuvio.PushCollections(ctx, accessToken, slot, pulledCollections)
+	var reverts []pushRevert
+	for _, step := range []pushStep{run.prepareHomeOrder, run.pushAddons, run.pushCollections, run.pushHomeOrder} {
+		revert, err := step()
+		if err != nil {
+			return failedPush(err, reverts...)
+		}
+		reverts = slices.Insert(reverts, 0, revert)
 	}
 
 	if err := s.vault.SavePush(ctx, profile.ID, record); err != nil {
 		log.Printf("push: local commit failed after nuvio succeeded, reverting: %v", err)
-		return undoPush(http.StatusInternalServerError, revertCollections, revertAddons)
+		return undoPush(http.StatusInternalServerError, reverts...)
 	}
-	return http.StatusOK, pushResult{Success: true, ManifestURL: manifestURL}
+	return http.StatusOK, pushResult{Success: true, ManifestURL: run.manifestURL}
+}
+
+// pushRevert puts back what one step of a push wrote to Nuvio, as it was
+// pulled.
+type pushRevert func() error
+
+// pushStep is one step of a push: it returns how to put back what it wrote
+// to Nuvio, which a later step's failure runs.
+type pushStep func() (revert pushRevert, err error)
+
+// pushRun is one push as its steps run: what they write, and what the home
+// order step merged before the others wrote anything.
+type pushRun struct {
+	s           *Server
+	ctx         context.Context
+	accessToken string
+	slot        int
+	profileID   uuid.UUID
+	manifestURL string
+	record      vault.PushRecord
+
+	pulledHomeOrder json.RawMessage
+	homeOrder       json.RawMessage
+}
+
+// prepareHomeOrder pulls the profile's home-order list and merges the push's
+// home rows into it (mergeHomeOrder), writing nothing.
+func (r *pushRun) prepareHomeOrder() (pushRevert, error) {
+	pulled, err := r.s.nuvio.PullHomeOrder(r.ctx, r.accessToken, r.slot)
+	if err != nil {
+		return nil, fmt.Errorf("pulling home order: %w", err)
+	}
+	managed, err := r.s.managedCollectionIDs(r.ctx, r.profileID)
+	if err != nil {
+		return nil, err
+	}
+	pinned, rows := r.record.HomeRows()
+	r.homeOrder, err = mergeHomeOrder(pulled, pinned, rows, managed)
+	r.pulledHomeOrder = pulled
+	return nothingToRevert, err
+}
+
+// nothingToRevert is the revert of a step that wrote nothing.
+func nothingToRevert() error { return nil }
+
+// pushAddons is the addons step (Server.pushAddons).
+func (r *pushRun) pushAddons() (pushRevert, error) {
+	pulled, err := r.s.pushAddons(r.ctx, r.accessToken, r.slot, r.manifestURL)
+	if err != nil {
+		return nil, fmt.Errorf("addons push: %w", err)
+	}
+	return func() error { return r.s.nuvio.PushAddons(r.ctx, r.accessToken, r.slot, pulled) }, nil
+}
+
+// pushCollections is the collections step (Server.pushCollections).
+func (r *pushRun) pushCollections() (pushRevert, error) {
+	pulled, err := r.s.pushCollections(r.ctx, r.accessToken, r.slot, r.profileID, r.record.Collections)
+	if err != nil {
+		return nil, fmt.Errorf("collections push: %w", err)
+	}
+	return func() error { return r.s.nuvio.PushCollections(r.ctx, r.accessToken, r.slot, pulled) }, nil
+}
+
+// pushHomeOrder is the home-order step: the list prepareHomeOrder built. Its
+// revert pushes the list as it was pulled, or {} when there was none, which
+// every Nuvio app reads as no saved order.
+func (r *pushRun) pushHomeOrder() (pushRevert, error) {
+	if err := r.s.nuvio.PushHomeOrder(r.ctx, r.accessToken, r.slot, r.homeOrder); err != nil {
+		return nil, fmt.Errorf("home order push: %w", err)
+	}
+	return func() error { return r.s.nuvio.PushHomeOrder(r.ctx, r.accessToken, r.slot, r.pulledHomeOrder) }, nil
+}
+
+// failedPush answers a push whose step failed with err, after running
+// reverts, what the steps before it wrote. A home-order list push couldn't
+// read is a refusal the SPA has words for: it fails the first step, before
+// anything reached Nuvio.
+func failedPush(err error, reverts ...pushRevert) (int, pushResult) {
+	log.Printf("push: %v", err)
+	status, result := undoPush(nuvioErrorStatus(err), reverts...)
+	if errors.Is(err, errHomeOrderUnreadable) {
+		result.Refused = refusedHomeOrderUnreadable
+	}
+	return status, result
 }
 
 // undoPush runs every revert of a failed push and answers it with status. A
 // revert that fails too — two independent failures back to back — leaves
 // Nuvio holding part of the push, which the answer says with a 500 and
 // UndoFailed.
-func undoPush(status int, reverts ...func() error) (int, pushResult) {
+func undoPush(status int, reverts ...pushRevert) (int, pushResult) {
 	undone := true
 	for _, revert := range reverts {
 		if err := revert(); err != nil {

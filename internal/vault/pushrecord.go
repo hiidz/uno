@@ -323,6 +323,46 @@ func (r PushRecord) selectedCatalogs() []SelectedCatalog {
 	return out
 }
 
+// HomeRow is one row a push puts on Nuvio's home screen: a collection by
+// its id, or a catalog by its type and the id the addon's manifest lists it
+// by (ManifestID).
+type HomeRow struct {
+	CollectionID uuid.UUID
+	Type         string
+	CatalogID    string
+}
+
+// HomeRows is r's home-screen rows in the order Nuvio shows them: pinned
+// holds the pinned collections, and rows the catalogs with a home row of
+// their own followed by the other collections, each in Home order. A
+// catalog in Discover only, or one only a folder uses, has no row.
+func (r PushRecord) HomeRows() (pinned, rows []HomeRow) {
+	return r.collectionRows(true), append(r.catalogRows(), r.collectionRows(false)...)
+}
+
+// catalogRows is r's catalogs with a home row of their own, in Home order.
+func (r PushRecord) catalogRows() []HomeRow {
+	var rows []HomeRow
+	for _, sc := range r.selectedCatalogs() {
+		if sc.ShowInHome {
+			rows = append(rows, HomeRow{Type: sc.Type, CatalogID: ManifestID(sc.Catalog)})
+		}
+	}
+	return rows
+}
+
+// collectionRows is r's collections pinned or not, as pinned says, in Home
+// order.
+func (r PushRecord) collectionRows(pinned bool) []HomeRow {
+	var rows []HomeRow
+	for _, c := range r.Home.Collections {
+		if c.PinToTop == pinned {
+			rows = append(rows, HomeRow{CollectionID: c.CollectionID})
+		}
+	}
+	return rows
+}
+
 // markNeedsPush marks each of trees against its owner's push record, read
 // through q, and returns them.
 func markNeedsPush(ctx context.Context, q querier, trees []CollectionWithFolders) ([]CollectionWithFolders, error) {
