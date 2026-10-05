@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Download, Plus, Search, Upload } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import { Icon } from '@/components/Icon'
+import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { railStickers } from '@/features/sharing/sharingState'
 import { ListError, ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
@@ -48,7 +49,7 @@ export function LibrarySection({
   onDeleteCollection: (collection: LibraryCollection) => void
   onImport: () => void
   onExport: () => void
-  /** A short outcome line under the header, such as the result of an import. */
+  /** A short outcome line under the search row, such as the result of an import. */
   notice?: ReactNode
 }) {
   const [search, setSearch] = useState('')
@@ -92,33 +93,28 @@ export function LibrarySection({
 
   return (
     <section className="flex flex-col gap-2.5 p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-      <div className="flex items-center justify-between gap-1">
-        <h2 className="text-ink m-0 flex-1 text-[16px] font-bold">Mine</h2>
-        <button type="button" className="btn-ghost btn-sm" onClick={onImport}>
-          <Icon icon={Download} size={15} />
-          Import
-        </button>
-        <button type="button" className="btn-ghost btn-sm" onClick={onExport}>
-          <Icon icon={Upload} size={15} />
-          Export
-        </button>
+      <div className="flex items-center gap-1">
+        <div className="relative flex-1">
+          <Icon
+            icon={Search}
+            size={16}
+            className="text-dimmer pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2"
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Filter by name or genre"
+            aria-label="Filter your library"
+            className="field h-10 w-full pl-10 text-[14px] pointer-coarse:text-[16px]"
+          />
+        </div>
+        <MoreMenu label="your library">
+          <MoreMenuItem onSelect={onImport}>Import JSON…</MoreMenuItem>
+          <MoreMenuItem onSelect={onExport}>Export JSON…</MoreMenuItem>
+        </MoreMenu>
       </div>
       {notice}
-      <div className="relative">
-        <Icon
-          icon={Search}
-          size={16}
-          className="text-dimmer pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2"
-        />
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Filter by name or genre"
-          aria-label="Filter your library"
-          className="field h-10 w-full pl-10 text-[14px] pointer-coarse:text-[16px]"
-        />
-      </div>
 
       {/* One error and one Retry for the whole library: both lists come from
           the same kind of request, and a single refetch reloads whichever

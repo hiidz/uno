@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog, Collection } from '@/api'
 import { catalog, collection } from '@/test/fixtures'
@@ -60,7 +61,12 @@ vi.mock('@/features/sharing/useWorkspaceSharing', () => ({
   useWorkspaceSharing: () => ({ catalogSharing: () => ({}), collectionSharing: () => ({}), dialogs: null }),
 }))
 vi.mock('@/features/bundle/ExportDialog', () => ({ ExportDialog: () => null }))
-vi.mock('@/features/bundle/ImportDialog', () => ({ ImportDialog: () => null }))
+vi.mock('@/features/bundle/ImportDialog', () => ({
+  ImportDialog: ({ open, onImported }: { open: boolean; onImported: (result: unknown) => void }) =>
+    open ? (
+      <button onClick={() => onImported({ catalogs: [{}, {}], collections: [{}] })}>Finish import</button>
+    ) : null,
+}))
 vi.mock('./NewItemDialog', () => ({ NewItemDialog: () => null }))
 
 vi.mock('@/features/home/HomePane', () => ({
@@ -74,11 +80,15 @@ vi.mock('@/features/home/HomePane', () => ({
 interface RowProps {
   onSelectCatalog: (row: Catalog) => void
   onSelectCollection: (row: Collection) => void
+  onImport: () => void
+  notice: ReactNode
 }
 
 vi.mock('@/features/library/LibrarySection', () => ({
-  LibrarySection: ({ onSelectCatalog, onSelectCollection }: RowProps) => (
+  LibrarySection: ({ onSelectCatalog, onSelectCollection, onImport, notice }: RowProps) => (
     <>
+      <button onClick={onImport}>Import</button>
+      {notice}
       {rows.catalogs.map((row) => (
         <button key={row.id} onClick={() => onSelectCatalog(row)}>
           Open {row.name}
@@ -173,5 +183,33 @@ describe('Workspace below lg', () => {
     fireEvent.click(screen.getByRole('button', { name: /Your home screen/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Library' }))
     expect(layer()).toBeNull()
+  })
+})
+
+describe('Workspace delete confirms', () => {
+  it('asks a bare catalog only the essentials', () => {
+    renderWorkspace()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Noir' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete row' }))
+    expect(screen.getByText('Noir')).toBeInTheDocument()
+    expect(screen.queryByText(/Also removes it from/)).toBeNull()
+    expect(screen.getByText("This can't be undone.")).toBeInTheDocument()
+  })
+
+  it('tells a collection what goes with it', () => {
+    rows.collections = [collection({ id: 'k1', title: 'Night shift', home_position: 0 })]
+    renderWorkspace()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Night shift' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete row' }))
+    expect(screen.getByText('Also removes it from: Nuvio (next push)')).toBeInTheDocument()
+  })
+})
+
+describe('Workspace import', () => {
+  it('names what the rail gained', () => {
+    renderWorkspace()
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Finish import' }))
+    expect(screen.getByText('Imported 2 catalogs and 1 collection')).toBeInTheDocument()
   })
 })

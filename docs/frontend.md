@@ -178,7 +178,7 @@ this is two regions rather than several co-equal panes.
 
 | Region | Holds |
 | --- | --- |
-| **Library** — left rail | Every catalog and collection you own, one labelled "Mine" group. One search box at the top of the rail narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — adding what someone else publishes is the separate Community tab's job, not a second group in this rail. A row added from there is one of your rows, marked From Community |
+| **Library** — left rail | Every catalog and collection you own, no heading above them. One search box at the top of the rail, with a ⋯ menu beside it for Import JSON… and Export JSON…, narrows both the catalog and collection lists at once. Compact rows: name plus a one-line recipe summary. The closed-graph sharing model means this is the whole library — adding what someone else publishes is the separate Community tab's job, not a second group in this rail. A row added from there is one of your rows, marked From Community |
 | **Pane** — right | One thing at a time: your home screen (with a `List \| Preview` switch), or the editor for whichever rail row is selected. The page's centre of gravity |
 | **Push** — header | Global action, beside a persistent unpushed-changes indicator. Not a section — it's the commit for Home, so it lives where Home is always visible, whether or not Home is the pane's current occupant |
 
@@ -243,8 +243,8 @@ to raw ids rather than failing the list, so the rail never blocks on TMDB being 
 
 ### Import and export
 
-**Import** and **Export** are `btn-ghost` buttons in the rail's "Mine" header
-(`LibrarySection`'s `onImport`/`onExport`). `Workspace` owns both dialogs' open state, as it does
+**Import JSON…** and **Export JSON…** are the two items of the ⋯ `MoreMenu` ("More for your
+library") beside the rail's search field (`LibrarySection`'s `onImport`/`onExport`). `Workspace` owns both dialogs' open state, as it does
 the naming dialogs and the confirms. Neither dialog goes through `EditorGuard`: both open over the
 pane without replacing what it holds. Both are `Modal`s, so below `lg` they fill the viewport width
 less its padding. The dialogs live in `web/src/features/bundle/`, and the three calls in
@@ -289,7 +289,7 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
      the counts.
   3. **Import.** The button is disabled while the request is in flight, because a second import
      writes a second set. `useImport` invalidates the two owned lists and settles only once they
-     have refetched. The dialog then closes, and a toast under the "Mine" header names what the
+     have refetched. The dialog then closes, and a toast under the rail's search row names what the
      rail gained, for example "Imported 2 catalogs and 1 collection". It counts only new listed
      catalogs and new collections, which is what the import response lists. An import opens
      nothing and adds nothing to home.
@@ -327,11 +327,14 @@ catalog's type, Duplicate included: it copies the source's type, and offering an
 a step of its own before the create fires. (Adding what someone else publishes is a different action,
 `POST /api/p/{i}/community/{id}/subscribe`, whose UI is the Community tab, below.)
 
-**Delete's confirm copy states the real consequence** (`Workspace.tsx`): "Delete removes it from
-Uno and Community now, and from Nuvio at your next push." (`DELETE_RULE`). Deleting a published
-catalog unpublishes it, so a published row's confirm adds "People who added it keep it."
-(`ADDERS_KEEP`, shown while `isPublished`). Every confirm states the folder-ref cascade within
-this profile.
+**Delete's confirm says only what applies** (`Workspace.tsx`, `DeleteMessage.tsx`). The pure helpers
+in `features/builder/deleteConsequences.ts` decide the lines: "X is deleted permanently.", then
+"Also removes it from: Community · 2 collections · Nuvio (next push)" when anything applies,
+then "People who added it keep it." when the row is published, then "This can't be undone."
+Community appears while the row is published. A catalog's collections are counted from the
+library's collections whose folders reference it. Nuvio appears when the row holds a stored
+`home_position` (for a catalog, also when a collection using it does), because Nuvio keeps what it
+was last pushed until the next push. A bare row gets no "Also removes it from" line.
 
 **Delete is never disabled for a row on Home.** The server allows it any time
 (`docs/architecture.md`, *Deletes are allowed any time*): Nuvio keeps the row until the next
@@ -904,13 +907,9 @@ button.
   scoped catalog this editor knows about would lose its last folder reference on Save — the exact
   condition `UpdateUserCollection`'s GC delete checks server-side, mirrored client-side the
   same way the folder-delete warning already was.
-- **Delete's confirm copy (`Workspace.tsx`) states the real consequence:** a published
-  collection's adds that deleting it unpublishes it and people who added it keep it, and "the
-  catalogs referenced here are kept" is qualified by
-  `scopedCatalogCount`: it names how many of the collection's own scoped catalogs (which have no
-  life outside it) go with it, distinct from any listed catalog it merely references and which
-  survives. Delete is allowed on Home too, and its confirm says when Nuvio loses it (see *Catalog
-  authoring*).
+- **Delete's confirm** follows the rule under *Catalog authoring*. A collection's adds one line
+  when N > 0: "N catalogs made only for this collection go with it." (its own scoped catalogs,
+  which have no life outside it). Listed catalogs it merely references survive and go unmentioned.
 - **The form runs Title, Folders, then one folding Appearance shelf** (`CollectionAppearance.tsx`, a
   `.sec-head` like a folder's): How folders open, the "All" tab, Background image and Focus glow,
   summarised on the closed head ("Tabbed Grids · All tab · glow on", `appearanceSummary`). The
@@ -1099,7 +1098,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 - **Every sharing call refreshes the library and Community** (`invalidateProfileLists`) and
   settles once they have refetched, so a row's stickers and state are current when its toast
   ("Published “X”", "Published your changes to “X”", "Unpublished “X”") shows under the rail's
-  "Mine" header.
+  search row.
 
 ## Community tab
 

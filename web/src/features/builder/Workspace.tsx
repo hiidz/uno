@@ -33,11 +33,12 @@ import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { usePushWaiting } from '@/features/push/usePushWaiting'
 import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
-import { isPublished } from '@/features/sharing/sharingState'
 import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
 import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
 import { useEditorGuard } from './EditorGuard'
+import { DeleteMessage } from './DeleteMessage'
+import { catalogDeleteConsequences, collectionDeleteConsequences } from './deleteConsequences'
 import { NewItemDialog } from './NewItemDialog'
 import { EditorLayer } from './EditorLayer'
 import { useScrollRequests, useStackedLayout, useStackedScroll } from './stacked'
@@ -430,21 +431,11 @@ export function Workspace({
         const { catalog } = confirming
         return {
           title: 'Delete this catalog?',
-          // Deleting a published catalog unpublishes it. Copies other profiles
-          // added stay theirs, marked unpublished; only this row and its folder
-          // refs go.
           body: (
-            <>
-              <strong className="text-ink">{catalog.name}</strong> is deleted permanently. {DELETE_RULE}
-              {isPublished(catalog) && (
-                <>
-                  {' '}
-                  {ADDERS_KEEP}
-                </>
-              )}{' '}
-              Any references to this catalog from a collection will also be removed. This can't
-              be undone.
-            </>
+            <DeleteMessage
+              name={catalog.name}
+              consequences={catalogDeleteConsequences(catalog, library.collections)}
+            />
           ),
           confirmLabel: catalogMutations.remove.isPending ? 'Deleting…' : 'Delete catalog',
           cancelLabel: 'Keep it',
@@ -482,28 +473,13 @@ export function Workspace({
 
       case 'delete-collection': {
         const { collection } = confirming
-        const scoped = scopedCatalogCount(collection)
         return {
           title: 'Delete this collection?',
-          // As with a catalog, a subscriber's copy is untouched by this — but
-          // unlike a catalog, "the catalogs inside it are kept" is only true
-          // for listed ones: a scoped catalog has no life outside the
-          // collection that scopes it and cascades with it.
           body: (
-            <>
-              <strong className="text-ink">{collection.title}</strong> and its{' '}
-              {folderCount(collection)} are deleted permanently. {DELETE_RULE}
-              {isPublished(collection) && (
-                <>
-                  {' '}
-                  {ADDERS_KEEP}
-                </>
-              )}{' '}
-              {scoped > 0
-                ? `${pluralCount(scoped, 'catalog')} made only for this collection ${scoped === 1 ? 'goes' : 'go'} with it. Any other catalog referenced here is kept.`
-                : 'The catalogs referenced here are kept.'}{' '}
-              This can't be undone.
-            </>
+            <DeleteMessage
+              name={collection.title}
+              consequences={collectionDeleteConsequences(collection)}
+            />
           ),
           confirmLabel: collectionMutations.remove.isPending ? 'Deleting…' : 'Delete collection',
           cancelLabel: 'Keep it',
@@ -768,12 +744,6 @@ export function Workspace({
   )
 }
 
-/** What Delete does and when, the versions rule's last sentence. */
-const DELETE_RULE = 'Delete removes it from Uno and Community now, and from Nuvio at your next push.'
-
-/** What deleting a published row leaves those who added it. */
-const ADDERS_KEEP = 'People who added it keep it.'
-
 /** What the discard prompt is about: the row as it was opened, which is the
  *  name the rail still shows — a rename is itself one of the changes the
  *  prompt is asking about. */
@@ -791,18 +761,6 @@ function importedText(result: ImportResult): string {
   if (result.catalogs.length > 0) parts.push(pluralCount(result.catalogs.length, 'catalog'))
   if (result.collections.length > 0) parts.push(pluralCount(result.collections.length, 'collection'))
   return parts.length > 0 ? `Imported ${andList(parts)}` : 'Imported nothing new'
-}
-
-function folderCount(collection: LibraryCollection): string {
-  return pluralCount(collection.folders.length, 'folder')
-}
-
-/** How many of this collection's own catalogs (`Collection.catalogs`, every
- *  catalog its folders reference) are scoped to it specifically — the ones
- *  that cascade with the collection on delete. A listed catalog referenced
- *  here survives deletion. */
-function scopedCatalogCount(collection: LibraryCollection): number {
-  return (collection.catalogs ?? []).filter((c) => c.collection_id === collection.id).length
 }
 
 interface HomeSlotProps {
