@@ -22,6 +22,7 @@ export function NewItemDialog({
   noun,
   label,
   placeholder,
+  initialValue,
   saving,
   serverError,
   extra,
@@ -36,6 +37,8 @@ export function NewItemDialog({
   /** What the one required field is called — "Name", "Title". */
   label: string
   placeholder: string
+  /** What the field holds when the dialog opens — a search that found nothing. */
+  initialValue: string
   saving: boolean
   /** Plain-text body of a server 400. Only the named field can be wrong here
    *  and this form checks it, so it renders as an unexpected-case banner. */
@@ -58,6 +61,7 @@ export function NewItemDialog({
           noun={noun}
           label={label}
           placeholder={placeholder}
+          initialValue={initialValue}
           saving={saving}
           serverError={serverError}
           extra={extra}
@@ -78,13 +82,14 @@ function NewItemForm({
   noun,
   label,
   placeholder,
+  initialValue,
   saving,
   serverError,
   extra,
   onCreate,
   onClose,
 }: Omit<Parameters<typeof NewItemDialog>[0], 'open'>) {
-  const [value, setValue] = useState('')
+  const [value, setValue] = useState(initialValue)
   const [showError, setShowError] = useState(false)
   const inputId = useId()
 

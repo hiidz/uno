@@ -54,7 +54,7 @@ export function CollectionAppearance({ state, onChange }: CollectionAppearancePr
   return (
     <div className="mt-6">
       <button type="button" id="col-appearance-head" className="sec-head" aria-expanded={open} aria-controls="col-appearance-body" onClick={toggle}>
-        <span className="setting-label type-label">Appearance</span>
+        <span className="setting-label type-label">Collection Appearance</span>
         <span className="sec-sum">{appearanceSummary(state)}</span>
         <Icon icon={ChevronDown} size={16} className="ico" />
       </button>

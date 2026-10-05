@@ -9,7 +9,6 @@ function renderShell() {
     <EditorShell
       purpose="Edit catalog"
       tone="catalog"
-      step={undefined}
       title="Mob two"
       onRequestClose={onRequestClose}
       footer={null}

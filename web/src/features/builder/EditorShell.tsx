@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Copy, Trash2, X } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
-import { PaneSign, SIGN_TITLE, SignStepButton, type SignStep } from '@/components/PaneSign'
+import { PaneSign, SIGN_TITLE } from '@/components/PaneSign'
 
 /** A dialog or menu in front of the editor — any `role="dialog"` but the
  *  editor's own layer below `lg` (`EditorLayer`). */
@@ -19,10 +19,6 @@ interface EditorShellProps {
   /** Stickers stating facts about the subject — its kind, where it stands —
    *  beside the title on the sign from `sm` up, and heading the body below. */
   badges?: ReactNode
-  /** The subject's next step with Community — Publish…, Unpublish… — as the
-   *  sign's one button, before the way out; below `sm` it joins the stickers
-   *  heading the body. Absent where there is none to take. */
-  step: SignStep | undefined
   title: string
   /** The × in this header and Escape. */
   onRequestClose: () => void
@@ -58,7 +54,6 @@ export function EditorShell({
   purpose,
   tone,
   badges,
-  step,
   title,
   onRequestClose,
   onDuplicate,
@@ -106,8 +101,6 @@ export function EditorShell({
           {badges && <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{badges}</div>}
         </div>
 
-        <SignStepButton step={step} place="sign" />
-
         {/* The row's actions, below `lg` only. */}
         <div className="flex shrink-0 items-center gap-1 lg:hidden">
           {onDuplicate && (
@@ -151,14 +144,8 @@ export function EditorShell({
           about 700px a form stops being something you read down, and every
           field in it starts looking stretched. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6">
-        {/* The sign hides its stickers and its step below `sm`, so they head
-            the body. */}
-        {badges && (
-          <div className="mb-4 flex flex-wrap items-center gap-1.5 sm:hidden">
-            {badges}
-            <SignStepButton step={step} place="body" />
-          </div>
-        )}
+        {/* The sign hides its stickers below `sm`, so they head the body. */}
+        {badges && <div className="mb-4 flex flex-wrap items-center gap-1.5 sm:hidden">{badges}</div>}
         {children}
       </div>
 

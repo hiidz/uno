@@ -36,7 +36,7 @@ function Harness(props: {
   return (
     <>
       <div data-testid="badges">{own?.sharingBadges}</div>
-      <SignStepButton step={own?.sharingStep} place="sign" />
+      <SignStepButton step={own?.sharingStep} />
       {sharing.dialogs}
     </>
   )

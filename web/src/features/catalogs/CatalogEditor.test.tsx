@@ -65,10 +65,8 @@ describe('CatalogEditor', () => {
       sharingStep: { label: 'Publish…', waiting: null, onClick },
       sharingBadges: <span>Published sticker</span>,
     })
-    // On the sign from `sm`; below, in the sticker row heading the body.
-    const steps = screen.getAllByRole('button', { name: 'Publish…' })
-    expect(steps).toHaveLength(2)
-    fireEvent.click(steps[0])
+    // One button, in the save bar.
+    fireEvent.click(screen.getByRole('button', { name: 'Publish…' }))
     expect(onClick).toHaveBeenCalled()
     // The sign shows it from `sm`; below, the body's first line does.
     expect(screen.getAllByText('Published sticker')).toHaveLength(2)

@@ -53,24 +53,6 @@ export function SignLibraryButton({
   )
 }
 
-/** Where a `SignStepButton` sits: on the sign from `sm` up, or in the sticker
- *  row heading the body below `sm`, where the sign leaves stickers out. */
-type StepPlace = 'sign' | 'body'
-
-const STEP_PLACE: Record<StepPlace, { wrap: string; button: string; toast: string }> = {
-  sign: {
-    wrap: 'hidden sm:block',
-    button:
-      'sign-btn-outline h-[26px] px-[11px] text-[12.5px] pointer-coarse:h-9 pointer-coarse:px-3.5 aria-disabled:cursor-not-allowed aria-disabled:opacity-55 aria-disabled:hover:bg-transparent',
-    toast: 'right-0',
-  },
-  body: {
-    wrap: 'sm:hidden',
-    button: 'btn-secondary btn-sm aria-disabled:cursor-not-allowed aria-disabled:text-dimmer',
-    toast: 'left-0',
-  },
-}
-
 /** The next step a pane's subject waits on, named for what pressing it does. */
 export interface SignStep {
   label: string
@@ -80,17 +62,17 @@ export interface SignStep {
 }
 
 /**
- * A pane's next step as a button on its sign — Publish…, Unpublish… —
- * outlined in sign ink (DESIGN.md's "Controls on a sign"). Greyed, not
- * disabled, while the step is `waiting`: pressing it says why in a one-line
- * toast under the button. Draws nothing without a step.
+ * A subject's next step with Community — Publish…, Unpublish… — as an
+ * outlined pill in the editor's save bar. Greyed, not disabled, while the step
+ * is `waiting`: pressing it says why in a one-line toast above the button.
+ * Draws nothing without a step.
  */
-export function SignStepButton({ step, place }: { step: SignStep | undefined; place: StepPlace }) {
+export function SignStepButton({ step }: { step: SignStep | undefined }) {
   if (!step) return null
-  return <StepButton step={step} place={place} />
+  return <StepButton step={step} />
 }
 
-function StepButton({ step: { label, waiting, onClick }, place }: { step: SignStep; place: StepPlace }) {
+function StepButton({ step: { label, waiting, onClick } }: { step: SignStep }) {
   const [toast, setToast] = useToast()
 
   function press() {
@@ -102,11 +84,16 @@ function StepButton({ step: { label, waiting, onClick }, place }: { step: SignSt
   }
 
   return (
-    <span className={`relative shrink-0 ${STEP_PLACE[place].wrap}`}>
-      <button type="button" aria-disabled={waiting !== null} onClick={press} className={STEP_PLACE[place].button}>
+    <span className="relative shrink-0">
+      <button
+        type="button"
+        aria-disabled={waiting !== null}
+        onClick={press}
+        className="btn-secondary aria-disabled:cursor-not-allowed aria-disabled:text-dimmer"
+      >
         {label}
       </button>
-      <span className={`absolute top-full z-30 mt-2 whitespace-nowrap ${STEP_PLACE[place].toast}`}>
+      <span className="absolute right-0 bottom-full z-30 mb-2 whitespace-nowrap">
         <Toast toast={toast} />
       </span>
     </span>

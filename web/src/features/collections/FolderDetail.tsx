@@ -1,8 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, Plus } from 'lucide-react'
 import type { TileShape } from '@/api'
-import { RowIconButton } from '@/components/dnd'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { CatalogRefPicker } from './CatalogRefPicker'
@@ -30,29 +29,24 @@ function appearanceSummary(folder: FolderFormState): string {
 }
 
 /**
- * The selected folder: a heading naming it and where it sits in the row,
- * then its title, its catalogs, and its appearance settings folded behind one
+ * The selected folder: a heading with where it sits in the row, then its title, its catalogs, and its appearance settings folded behind one
  * summarised row — the catalogs are what a folder is opened for, so they come
  * before the settings that are rarely touched.
  */
 export function FolderDetail({
   folder,
   position,
-  total,
   errors,
   onChange,
-  onMove,
   onRemove,
   ...catalogs
 }: {
   folder: FolderFormState
   position: number
-  total: number
   /** Undefined until the user has tried to save — same rule as the catalog
    *  builder, which withholds errors until submit. */
   errors: FolderErrors | undefined
   onChange: (update: Partial<FolderFormState>) => void
-  onMove: (direction: -1 | 1) => void
   onRemove: () => void
 } & Omit<FolderCatalogsProps, 'folder' | 'errors'>) {
   const idBase = useId()
@@ -63,22 +57,10 @@ export function FolderDetail({
     <section className="fold-detail" aria-label={`Folder: ${folder.title.trim() || 'untitled'}`}>
       <header className="fold-detail-head">
         <h3 className="type-data m-0 min-w-0 flex-1 text-[15px] leading-[24px] font-semibold">
-          Folder {position + 1} of {total}
+          Folder {position + 1}
         </h3>
         <div className="fold-detail-actions">
-          <RowIconButton
-            icon={ChevronLeft}
-            label={`Move ${label} left${position === 0 ? ', already first' : ''}`}
-            disabled={position === 0}
-            onClick={() => onMove(-1)}
-          />
-          <RowIconButton
-            icon={ChevronRight}
-            label={`Move ${label} right${position === total - 1 ? ', already last' : ''}`}
-            disabled={position === total - 1}
-            onClick={() => onMove(1)}
-          />
-          <button type="button" onClick={onRemove} className="btn-danger-text ml-3 h-8 text-[13px]">
+          <button type="button" onClick={onRemove} className="btn-danger-text h-8 text-[13px]">
             Remove
           </button>
         </div>
@@ -109,7 +91,7 @@ export function FolderDetail({
         aria-expanded={appearanceOpen}
         onClick={() => setAppearanceOpen((current) => !current)}
       >
-        <span className="setting-label type-label">Appearance</span>
+        <span className="setting-label type-label">Folder Appearance</span>
         <span className="sec-sum text-dim text-[14px]">{appearanceSummary(folder)}</span>
         <Icon icon={ChevronDown} size={16} className="ico" />
       </button>
@@ -283,9 +265,6 @@ interface FolderCatalogsProps {
    *  only meaningful for a listed catalog, so the row asks with its own id. */
   usedInFolders: (catalogID: string) => number
   onAddRef: (catalogID: string) => void
-  /** "Copy" from the picker: adds a fresh scoped copy as a new ref, rather
-   *  than linking the listed catalog picked. */
-  onCopyRefIntoCollection: (catalogID: string) => void
   onRemoveRef: (refKey: string) => void
   /** `''` clears the ref's genre back to unfiltered. */
   onSetRefGenre: (refKey: string, genre: string) => void
@@ -297,11 +276,12 @@ interface FolderCatalogsProps {
    *  catalog's own row: replaces this ref with a fresh scoped copy in place,
    *  so the folder's order doesn't change. */
   onCopyRef: (refKey: string, catalogID: string) => void
-  onAddNewInCollection: () => void
+  /** `name` pre-fills the naming dialog — the search that found no catalog. */
+  onAddNewInCollection: (name?: string) => void
 }
 
-/** The folder's catalog list: its head with Add/New, the picker, and the
- *  ordered refs. */
+/** The folder's catalog list: its head with New and Add, and the ordered
+ *  refs. */
 function FolderCatalogs({
   folder,
   errors,
@@ -309,7 +289,6 @@ function FolderCatalogs({
   optionByID,
   usedInFolders,
   onAddRef,
-  onCopyRefIntoCollection,
   onRemoveRef,
   onSetRefGenre,
   onAddGenreRef,
@@ -318,7 +297,6 @@ function FolderCatalogs({
   onCopyRef,
   onAddNewInCollection,
 }: FolderCatalogsProps) {
-  const [picking, setPicking] = useState(false)
   // The picker adds an unfiltered ref, so it hides a catalog that already has
   // one here — a second would repeat the (catalog, genre) pair. A catalog
   // whose refs here are all narrowed to a genre stays pickable. Memoised
@@ -337,30 +315,18 @@ function FolderCatalogs({
           Catalogs <span className="text-dimmer tabular-nums">{folder.refs.length}</span>
         </span>
         <div className="setting-value flex flex-wrap items-center justify-end gap-2">
-          {!picking && (
-            <>
-              <button type="button" onClick={onAddNewInCollection} className="btn-ghost btn-sm">
-                New catalog
-              </button>
-              <button type="button" onClick={() => setPicking(true)} className="btn-secondary btn-sm">
-                Add catalogs
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {picking && (
-        <div className="flex flex-col gap-2 pt-3">
+          <button type="button" onClick={() => onAddNewInCollection()} className="btn-secondary btn-sm">
+            <Icon icon={Plus} size={13} />
+            New catalog
+          </button>
           <CatalogRefPicker
             options={options}
             exclude={unfilteredInFolder}
-            onAdd={onAddRef}
-            onCopy={onCopyRefIntoCollection}
-            onClose={() => setPicking(false)}
+            onAdd={(catalogIDs) => catalogIDs.forEach(onAddRef)}
+            onNew={onAddNewInCollection}
           />
         </div>
-      )}
+      </div>
 
       {errors?.catalogIDs && <FieldError>{errors.catalogIDs}</FieldError>}
 

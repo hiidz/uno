@@ -178,7 +178,7 @@ interface CollectionEditorProps {
  * **Every row this editor opens is the profile's own and editable.** A
  * collection added from Community opens as a view instead
  * (`FromCommunityView`). Its next step with Community is `sharingStep`, which
- * the pane builds and the sign carries as its one button.
+ * the pane builds and the save bar carries as its one button.
  *
  * **A staged Move to library has its own Undo.** Once staged, the catalog
  * reads as listed in every folder, which offers no Edit to reopen it, so the
@@ -297,6 +297,7 @@ export function CollectionEditor({
   // library's own "New catalog" — see Workspace's `createBareCatalog`.
   const [namingNewFolderKey, setNamingNewFolderKey] = useState<string | null>(null)
   const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
+  const [newCatalogName, setNewCatalogName] = useState('')
 
   function editRef(catalogID: string) {
     setNestedCatalogID(catalogID)
@@ -361,12 +362,6 @@ export function CollectionEditor({
     return draft.id
   }
 
-  /** "Copy" from the Add-catalogs picker: the staged copy as a new ref. */
-  function copyIntoCollection(folderKey: string, catalogID: string) {
-    const draftID = stageCopy(catalogID)
-    if (draftID) addRef(folderKey, draftID)
-  }
-
   /** "Copy into this collection" on a listed catalog's own row: the staged
    *  copy replaces that ref in place rather than adding a second one, so the
    *  folder's order doesn't change. Only this ref moves to the copy, keeping
@@ -378,8 +373,9 @@ export function CollectionEditor({
     patchRefs(folderKey, (refs) => refs.map((ref) => (ref.key === refKey ? { ...ref, catalogID: draftID } : ref)))
   }
 
-  function startNewInCollection(folderKey: string) {
+  function startNewInCollection(folderKey: string, name = '') {
     setNewCatalogType('movie')
+    setNewCatalogName(name)
     setNamingNewFolderKey(folderKey)
   }
 
@@ -415,6 +411,9 @@ export function CollectionEditor({
   }
 
   function moveFolder(key: string, direction: -1 | 1) {
+    // Pinned, so the folder that moves stays the open one even while the
+    // selection is still the implicit first.
+    setSelectedFolderKey(key)
     patchFolders((folders) =>
       orderByKeys(folders, moveByOne(folders.map((f) => f.key), key, direction), (f) => f.key),
     )
@@ -532,7 +531,6 @@ export function CollectionEditor({
           {sharingBadges}
         </>
       }
-      step={sharingStep}
       title={state.title.trim() || 'Untitled collection'}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
@@ -547,6 +545,7 @@ export function CollectionEditor({
           notes={statusNotes}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
+          step={sharingStep}
           saveLabel="Save"
           saveError={serverError}
         />
@@ -615,6 +614,7 @@ export function CollectionEditor({
                   selectedKey={selectedFolder.key}
                   errorKeys={folderErrorKeys}
                   onSelect={setSelectedFolderKey}
+                  onMove={moveFolder}
                 />
                 <FolderDetail
                   // Remounted per folder so the Appearance row and the
@@ -622,23 +622,20 @@ export function CollectionEditor({
                   key={selectedFolder.key}
                   folder={selectedFolder}
                   position={selectedIndex}
-                  total={state.folders.length}
                   errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
                   options={options}
                   optionByID={mergedOptionByID}
                   usedInFolders={usedInFolders}
                   onChange={(update) => patchFolder(selectedFolder.key, update)}
-                  onMove={(direction) => moveFolder(selectedFolder.key, direction)}
                   onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
                   onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
-                  onCopyRefIntoCollection={(catalogID) => copyIntoCollection(selectedFolder.key, catalogID)}
                   onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
                   onSetRefGenre={(refKey, genre) => setRefGenre(selectedFolder.key, refKey, genre)}
                   onAddGenreRef={(refKey, genre) => addGenreRef(selectedFolder.key, refKey, genre)}
                   onMoveRef={(refKey, direction) => moveRef(selectedFolder.key, refKey, direction)}
                   onEditRef={editRef}
                   onCopyRef={(refKey, catalogID) => copyRefIntoCollection(selectedFolder.key, refKey, catalogID)}
-                  onAddNewInCollection={() => startNewInCollection(selectedFolder.key)}
+                  onAddNewInCollection={(name) => startNewInCollection(selectedFolder.key, name)}
                 />
               </FolderTreeDnd>
             )}
@@ -672,6 +669,7 @@ export function CollectionEditor({
         noun="catalog"
         label="Name"
         placeholder="Trending Sci-Fi"
+        initialValue={newCatalogName}
         // Staged locally, not written to the DB until this collection's own
         // Save (see `createNewInCollection`) — there is nothing async here.
         saving={false}

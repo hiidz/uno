@@ -596,7 +596,7 @@ interface CatalogEditorProps {
  *
  * **Every row this editor opens is the profile's own and editable.** A catalog
  * added from Community opens as a view instead (`FromCommunityView`). Its next
- * step with Community is `sharingStep`, which the pane builds and the sign
+ * step with Community is `sharingStep`, which the pane builds and the save bar
  * carries as its one button.
  *
  * **`type` is always locked.** It is chosen when the catalog is named, and
@@ -773,7 +773,6 @@ export function CatalogEditor({
           {sharingBadges}
         </>
       }
-      step={sharingStep}
       title={catalogTitle(state.name)}
       onRequestClose={onRequestClose}
       onDuplicate={onDuplicate}
@@ -787,6 +786,7 @@ export function CatalogEditor({
           dirty={dirty}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
+          step={sharingStep}
           saveLabel={saveLabel}
           saveError={serverError}
         />

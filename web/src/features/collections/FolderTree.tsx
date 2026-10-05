@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import { DndContext, type Announcements, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { TriangleAlert } from 'lucide-react'
-import { Grip, useDragSensors } from '@/components/dnd'
+import { ChevronLeft, ChevronRight, TriangleAlert } from 'lucide-react'
+import { Grip, RowIconButton, useDragSensors } from '@/components/dnd'
 import { Icon } from '@/components/Icon'
 import { TILE_ASPECT } from '@/features/preview/tiles'
 import { reorder } from '@/lib/order'
@@ -125,6 +125,7 @@ export function FolderTiles({
   selectedKey,
   errorKeys,
   onSelect,
+  onMove,
 }: {
   folders: FolderFormState[]
   selectedKey: string | null
@@ -132,6 +133,7 @@ export function FolderTiles({
    *  folder that isn't open is still visible. */
   errorKeys: ReadonlySet<string>
   onSelect: (key: string) => void
+  onMove: (key: string, direction: -1 | 1) => void
 }) {
   return (
     <ul className="fold-tiles">
@@ -140,9 +142,11 @@ export function FolderTiles({
           key={folder.key}
           folder={folder}
           position={index}
+          total={folders.length}
           selected={folder.key === selectedKey}
           hasError={errorKeys.has(folder.key)}
           onSelect={() => onSelect(folder.key)}
+          onMove={(direction) => onMove(folder.key, direction)}
         />
       ))}
     </ul>
@@ -154,15 +158,19 @@ const TILE_H = 104
 function FolderTileItem({
   folder,
   position,
+  total,
   selected,
   hasError,
   onSelect,
+  onMove,
 }: {
   folder: FolderFormState
   position: number
+  total: number
   selected: boolean
   hasError: boolean
   onSelect: () => void
+  onMove: (direction: -1 | 1) => void
 }) {
   const sortable = useSortable({
     id: folder.key,
@@ -212,6 +220,40 @@ function FolderTileItem({
       <span className="fold-tile-grip">
         <Grip label={`Reorder ${folderLabel(folder, position)}`} sortable={{ attributes, listeners }} />
       </span>
+      {selected && (
+        <FolderMoveArrows label={folderLabel(folder, position)} position={position} total={total} onMove={onMove} />
+      )}
     </li>
+  )
+}
+
+/** ← and → under the selected tile: the same reorder as dragging it, for
+ *  anyone who can't. */
+function FolderMoveArrows({
+  label,
+  position,
+  total,
+  onMove,
+}: {
+  label: string
+  position: number
+  total: number
+  onMove: (direction: -1 | 1) => void
+}) {
+  return (
+    <div className="mt-1 flex items-center justify-center gap-1">
+      <RowIconButton
+        icon={ChevronLeft}
+        label={`Move ${label} left${position === 0 ? ', already first' : ''}`}
+        disabled={position === 0}
+        onClick={() => onMove(-1)}
+      />
+      <RowIconButton
+        icon={ChevronRight}
+        label={`Move ${label} right${position === total - 1 ? ', already last' : ''}`}
+        disabled={position === total - 1}
+        onClick={() => onMove(1)}
+      />
+    </div>
   )
 }

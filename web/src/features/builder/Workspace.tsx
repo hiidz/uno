@@ -687,6 +687,7 @@ export function Workspace({
         noun="catalog"
         label="Name"
         placeholder="Trending Sci-Fi"
+        initialValue=""
         saving={catalogMutations.create.isPending}
         serverError={catalogMutations.create.error?.message ?? null}
         extra={<CatalogTypeField value={newCatalogType} onChange={setNewCatalogType} />}
@@ -706,6 +707,7 @@ export function Workspace({
         noun="collection"
         label="Title"
         placeholder="Saturday night"
+        initialValue=""
         saving={collectionMutations.create.isPending}
         serverError={collectionMutations.create.error?.message ?? null}
         onCreate={createBareCollection}

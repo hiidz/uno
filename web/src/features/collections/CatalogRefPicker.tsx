@@ -1,109 +1,180 @@
 import { useMemo, useState } from 'react'
-import { Copy, Plus } from 'lucide-react'
-import { InfoTip } from '@/components/fields'
+import { ChevronDown, Plus } from 'lucide-react'
+import { Popover } from 'radix-ui'
 import { Icon } from '@/components/Icon'
+import { typeLabel } from '@/features/library/recipe'
+import { pluralCount } from '@/lib/plural'
 import { filterRefOptions, type RefOption } from './refs'
 
 /**
- * Add catalogs to a folder: search, then click as many as you want.
+ * Add catalogs to a folder: a dropdown under the Add catalogs button, a search
+ * field, then a tick for each catalog the folder doesn't hold yet.
  *
- * Inline under the folder it fills rather than a dialog: a dialog would put
- * the folder being edited behind a scrim — the one thing the user needs to
- * see while choosing what goes in it.
+ * The ticks are the dropdown's own state. "Add N catalogs" links them all,
+ * in library order, and closes it; Cancel, Escape or a click outside adds
+ * nothing. Ordering isn't set here: a new ref lands at the end of the folder
+ * and is dragged into place in the list below, where the order is visible.
  *
- * It stays open after each pick and drops each chosen row out of the list, so
- * the remaining options are always exactly what can still be added. Ordering
- * isn't set here: a new ref lands at the end of the folder and is dragged into
- * place in the list above, where the order is visible.
- *
- * Two ways to add a listed catalog, per row: the plus links it (the same
- * catalog everywhere it's used), and a second icon copies it into a fresh,
- * scoped catalog this collection alone references. The third source, "new
- * inside this collection", isn't a pick from this list at all: it's the
- * folder's own New catalog button.
+ * A search that matches nothing offers to name a new catalog after it, which
+ * is the folder's own New catalog button with the query already typed.
  */
 export function CatalogRefPicker({
   options,
   exclude,
   onAdd,
-  onCopy,
-  onClose,
+  onNew,
 }: {
   options: RefOption[]
   /** Ids already in *this* folder — omitted, not disabled. See
    *  `filterRefOptions` for why a repeat has to be unrepresentable. */
   exclude: ReadonlySet<string>
-  onAdd: (catalogID: string) => void
-  onCopy: (catalogID: string) => void
-  onClose: () => void
+  /** The ticked catalogs' ids, in library order. */
+  onAdd: (catalogIDs: string[]) => void
+  /** A new catalog, named `name`, in this folder. */
+  onNew: (name: string) => void
 }) {
-  const [query, setQuery] = useState('')
-
-  const matches = useMemo(
-    () => filterRefOptions(options, query, exclude),
-    [options, query, exclude],
-  )
+  const [open, setOpen] = useState(false)
 
   return (
-    <div className="border-line-hi bg-raised flex flex-col gap-3 border p-3">
-      <div className="flex items-center gap-2">
-        <input
-          type="search"
-          autoFocus
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search catalogs…"
-          aria-label="Search catalogs to add to this folder"
-          className="field w-full min-w-0"
-        />
-        <InfoTip
-          label="Adding catalogs"
-          text="+ links a catalog, so edits to it show up everywhere it's used. The copy button puts a copy in this collection only."
-        />
-        <button type="button" onClick={onClose} className="btn-ghost shrink-0">
-          Done
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button type="button" className="btn-ghost btn-sm">
+          Add catalogs
+          <Icon icon={ChevronDown} size={14} />
         </button>
-      </div>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={6}
+          collisionPadding={12}
+          aria-label="Add catalogs to this folder"
+          className="border-line-hi bg-raised-hi z-40 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-3 rounded-xl border p-3"
+        >
+          <PickerBody
+            options={options}
+            exclude={exclude}
+            onAdd={(ids) => {
+              onAdd(ids)
+              setOpen(false)
+            }}
+            onNew={(name) => {
+              setOpen(false)
+              onNew(name)
+            }}
+            onCancel={() => setOpen(false)}
+          />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+}
+
+/** The search, the ticks and the buttons, holding one opening's choices: it
+ *  is mounted only while the dropdown is open. */
+function PickerBody({
+  options,
+  exclude,
+  onAdd,
+  onNew,
+  onCancel,
+}: {
+  options: RefOption[]
+  exclude: ReadonlySet<string>
+  onAdd: (catalogIDs: string[]) => void
+  onNew: (name: string) => void
+  onCancel: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set())
+
+  const matches = useMemo(() => filterRefOptions(options, query, exclude), [options, query, exclude])
+  const count = ticked.size
+
+  function toggle(id: string) {
+    setTicked((current) => {
+      const next = new Set(current)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <>
+      <input
+        type="search"
+        autoFocus
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search catalogs…"
+        aria-label="Search catalogs to add to this folder"
+        className="field w-full min-w-0"
+      />
 
       {matches.length === 0 ? (
-        <p className="ed-note m-0">
-          {options.length === 0
-            ? 'No catalogs yet. Create one in the Library first.'
-            : query.trim()
-              ? 'No catalogs match this search.'
-              : 'Everything available is already in this folder.'}
-        </p>
+        <EmptyList hasOptions={options.length > 0} query={query.trim()} onNew={onNew} />
       ) : (
-        // Every value visible as its own choice button, DESIGN.md's
-        // "copy-from-library choice list, each a plus icon and a catalog
-        // name" — wrapping, not a scroll region: the search above already
-        // narrows the list to what's worth scanning.
-        <div className="choices" role="group" aria-label="Catalogs to add">
+        <ul className="m-0 flex max-h-64 list-none flex-col gap-0.5 overflow-y-auto p-0">
           {matches.map((option) => (
-            <span key={option.id} className="inline-flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => onAdd(option.id)}
-                title={`Link ${option.name} — ${option.recipe} · ${option.catalog.type}`}
-                className="choice"
+            <li key={option.id}>
+              <label
+                title={`${option.name} — ${option.recipe}`}
+                className="hover:bg-line flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-[14px]"
               >
-                <Icon icon={Plus} size={13} />
-                {option.name}
-                <span className="sr-only">to this folder</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onCopy(option.id)}
-                title={`Copy ${option.name} into this collection, instead of linking it`}
-                aria-label={`Copy ${option.name} into this collection`}
-                className="choice px-1.5"
-              >
-                <Icon icon={Copy} size={12} />
-              </button>
-            </span>
+                <input
+                  type="checkbox"
+                  checked={ticked.has(option.id)}
+                  onChange={() => toggle(option.id)}
+                  className="shrink-0"
+                />
+                <span className="min-w-0 flex-1 truncate">{option.name}</span>
+                <span className="text-dimmer shrink-0 text-[12.5px]">{typeLabel(option.catalog.type)}</span>
+              </label>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-    </div>
+
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={onCancel} className="btn-ghost btn-sm">
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={count === 0}
+          onClick={() => onAdd(options.filter((option) => ticked.has(option.id)).map((option) => option.id))}
+          className="btn-primary btn-sm"
+        >
+          {count === 0 ? 'Add catalogs' : `Add ${pluralCount(count, 'catalog')}`}
+        </button>
+      </div>
+    </>
+  )
+}
+
+function EmptyList({
+  hasOptions,
+  query,
+  onNew,
+}: {
+  hasOptions: boolean
+  query: string
+  onNew: (name: string) => void
+}) {
+  if (query) {
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p className="ed-note m-0">No catalogs match this search.</p>
+        <button type="button" onClick={() => onNew(query)} className="btn-secondary btn-sm">
+          <Icon icon={Plus} size={13} />
+          New catalog “{query}”
+        </button>
+      </div>
+    )
+  }
+  return (
+    <p className="ed-note m-0">
+      {hasOptions ? 'Everything available is already in this folder.' : 'No catalogs yet. Create one with New catalog.'}
+    </p>
   )
 }

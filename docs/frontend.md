@@ -807,10 +807,11 @@ button.
   (holding "Add folder"), `FolderTiles` draws each folder at its own `tile_shape` with its cover,
   name and catalog count — the editor's list and the Preview panel's row are the same picture. One
   folder is always selected (the one picked, else the first), and `FolderDetail` shows it below
-  the strip as one raised panel: a heading reading "Folder 1 of 2" (the name is the title field's,
-  the appearance summary the folded row's),
-  ←/→ and Remove; then its title, then its catalogs (a `.setting.is-head` heading with "New catalog" and
-  "Add catalogs"), then an "Appearance" `.sec-head` that folds away hide-title, tile shape,
+  the strip as one raised panel: a heading reading "Folder 2" (the name is the title field's,
+  the appearance summary the folded row's)
+  and Remove; the selected tile carries ← and → under it (`FolderMoveArrows`, `onMove`), which
+  move the folder one place; then its title, then its catalogs (a `.setting.is-head` heading with
+  "New catalog" and an "Add catalogs" dropdown), then a "Folder Appearance" `.sec-head` that folds away hide-title, tile shape,
   cover, the focus GIF (an on/off above its URL) and the three Modern Home hero URLs (backdrop, video,
   title logo). Preview renders none of the focus or hero fields; they only reach Nuvio through
   push. A setting not every Nuvio app reads carries an `OnlyIn` tag beside its label: "Nuvio TV,
@@ -823,15 +824,18 @@ button.
   the collection's; its fields and folding sections step to `ground` and `raised-hi` so they
   don't vanish into it. A failed Save selects the first folder with errors, and every other
   folder with errors shows a danger triangle on its tile. On touch the tile grip is always
-  visible (there's no hover to reveal it) and the heading's ←/→/Remove spread apart so their
-  44px `.tap` boxes don't overlap.
-- **The catalog-ref picker is inline under the Catalogs head**, not a dialog — a scrim would hide the
-  folder being filled. It stays open across picks and drops each chosen row out of the list, so
-  what remains is always exactly what can still be added.
-- **Three sources for a folder's catalog:** the picker's plus icon **links** a listed catalog — a live pointer,
-  edits reach every folder that references it — and a second icon **copies** the same row into a
-  fresh catalog scoped to this collection alone, which the original can't drift. A third button,
-  beside "Add catalogs", starts a catalog **new inside this collection**: named first (the same
+  visible (there's no hover to reveal it).
+- **The catalog-ref picker is a dropdown under "Add catalogs"** (`CatalogRefPicker.tsx`, a Radix
+  `Popover`), not a dialog — a scrim would hide the folder being filled. It holds a search field,
+  then a checkbox row (name, kind at the right) for each catalog the folder doesn't hold
+  unfiltered, then Cancel and "Add N catalogs". The ticks are the dropdown's own state: Add
+  links every ticked catalog in library order and closes it; Cancel, Escape or an outside click
+  adds nothing. A search that matches nothing offers "New catalog “query”", which opens the
+  naming dialog (`NewItemDialog`'s `initialValue`) with the query as the name.
+- **Three sources for a folder's catalog:** the picker **links** a listed catalog — a live pointer,
+  edits reach every folder that references it — and a linked row's own ⋯ menu **copies** it into a
+  fresh catalog scoped to this collection alone, which the original can't drift. The "New catalog"
+  button, which leads the pair, starts a catalog **new inside this collection**: named first (the same
   two-step the library's own "New catalog" uses), then opened in the nested editor below to fill
   its filters.
   **Copy and new-inside-this-collection are staged locally, not written until Save.** A catalog
@@ -911,9 +915,10 @@ button.
   when N > 0: "N catalogs made only for this collection go with it." (its own scoped catalogs,
   which have no life outside it). Listed catalogs it merely references survive and go unmentioned.
 - **The form runs Title, Folders, then one folding Appearance shelf** (`CollectionAppearance.tsx`, a
-  `.sec-head` like a folder's): How folders open, the "All" tab, Background image and Focus glow,
+  `.sec-head` like a folder's, headed "Collection Appearance" to tell it from the folder's "Folder
+  Appearance"): How folders open, the "All" tab, Background image and Focus glow,
   summarised on the closed head ("Tabbed Grids · All tab · glow on", `appearanceSummary`). The
-  publish button is on the sign (see "Sharing" below).
+  publish button is in the save bar (see "Sharing" below).
   The "All" tab is a `Segmented`, greyed (DESIGN.md's "Greyed" segmented state,
   `Segmented`'s `disabled` prop) rather than hidden while the view mode isn't Tabbed Grids,
   keeping its value for when it switches back. There is no Pin here: it is the Home pane's
@@ -946,15 +951,15 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 `useWorkspaceSharing`.
 
 - **The publish button** is a listed catalog's or a collection's one step with Community, on its
-  editor's sign before × (`SignStepButton` in `components/PaneSign.tsx`, from the editor's
-  `sharingStep`). It names the next step from where the row stands (`sharingStep` over
+  editor's save bar, between the status and Close (`SignStepButton` in `components/PaneSign.tsx`,
+  drawn by `EditorFooter` from the editor's `sharingStep`). It names the next step from where the row stands (`sharingStep` over
   `ownSharing`): Publish… while private, Publish update… once the saved row differs from what was
   published (`changed_since_publish`, which the sign's To publish sticker also says), Publish
   again… after Unpublish, and Unpublish… while live and unchanged. The publishes open the publish
   dialog; Unpublish… asks first ("Community stops listing it. People who added it keep it, and get
   no updates until you publish it again."). Community holds the saved row, so while the form has
   unsaved changes the button is greyed (`aria-disabled`) and pressing it shows "Save first." as a
-  one-line toast under it. Below `sm` it sits in the sticker row heading the body.
+  one-line toast above it.
 - **A collection that uses a catalog added from Community can be published** like any other. A
   row added from Community can't be: it opens as a view with no publish button (below).
 - **The publish dialog** (`PublishDialog.tsx`) lists everything the publication will hold, each
