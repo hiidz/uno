@@ -115,9 +115,9 @@ describe('CollectionEditor', () => {
     expect(screen.getByRole('button', { name: /^Collection Appearance\s*Rows$/ })).toBeInTheDocument()
   })
 
-  it('heads the open folder with where it sits, and states each catalog’s kind', () => {
+  it('heads the open folder with its title, and states each catalog’s kind', () => {
     renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
-    expect(screen.getByText('Folder 1')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Horror' })).toBeInTheDocument()
     expect(screen.getByText('Movies', { selector: '.stk' })).toHaveClass('stk-catalog')
     expect(screen.getByRole('combobox', { name: 'Genre' })).toBeInTheDocument()
   })

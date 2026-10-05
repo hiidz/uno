@@ -815,8 +815,8 @@ button.
   (holding "Add folder"), `FolderTiles` draws each folder at its own `tile_shape` with its cover,
   name and catalog count — the editor's list and the Preview panel's row are the same picture. One
   folder is always selected (the one picked, else the first), and `FolderDetail` shows it below
-  the strip as one raised panel: a heading reading "Folder 2" (the name is the title field's,
-  the appearance summary the folded row's)
+  the strip as one raised panel: a heading reading the folder's title, or "Untitled folder" while it has none (the
+  appearance summary is the folded row's)
   and Remove; the selected tile carries ← and → under it (`FolderMoveArrows`, `onMove`), which
   move the folder one place; then its title, then its catalogs (a `.setting.is-head` heading with
   an "Add catalogs" dropdown, then "New catalog" at its right), then a "Folder Appearance" `.sec-head` that folds away hide-title, tile shape,
