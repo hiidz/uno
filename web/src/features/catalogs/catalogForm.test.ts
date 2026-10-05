@@ -40,14 +40,11 @@ function filledForm(): CatalogFormState {
 describe('scope', () => {
   const scoped = formFromCatalog(catalog({ name: 'Scoped', collection_id: 'col1' }))
 
-  it('is not part of the payload', () => {
+  it('is not part of the payload, nor of what makes an edit', () => {
     expect(scoped.collectionID).toBe('col1')
     expect(toPayload(scoped)).not.toHaveProperty('collection_id')
-  })
-
-  it('still makes a staged Move to library an edit', () => {
-    expect(isSameCatalog(scoped, { ...scoped })).toBe(true)
-    expect(isSameCatalog(scoped, { ...scoped, collectionID: null })).toBe(false)
+    expect(isSameCatalog(scoped, { ...scoped, collectionID: null })).toBe(true)
+    expect(isSameCatalog(scoped, { ...scoped, name: 'Renamed' })).toBe(false)
   })
 })
 

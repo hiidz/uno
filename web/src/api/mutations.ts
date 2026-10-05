@@ -150,7 +150,7 @@ interface FolderPayload {
  * The new name and recipe for a catalog already scoped to this collection,
  * written in the same transaction as the rest of the save; the only way such
  * a catalog is written once it exists. `type` and `provider` must match the
- * stored row. `move_to_library` also makes the catalog listed.
+ * stored row.
  */
 interface ScopedCatalogEdit {
   id: string
@@ -158,7 +158,6 @@ interface ScopedCatalogEdit {
   provider: string
   name: string
   params: string
-  move_to_library: boolean
 }
 
 /**

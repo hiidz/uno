@@ -214,10 +214,9 @@ func applyCatalogEdits(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 	return nil
 }
 
-// applyCatalogEdit writes one ScopedCatalogEdit: the new name and recipe
-// and, for MoveToLibrary, a cleared collection_id, which makes the catalog
-// listed. An edit that changes nothing is skipped, so the row's updated_at
-// stays put.
+// applyCatalogEdit writes one ScopedCatalogEdit: the new name and recipe.
+// An edit that changes nothing is skipped, so the row's updated_at stays
+// put.
 func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
 	stored, err := loadEditedCatalog(ctx, tx, profileID, collectionID, e)
 	if err != nil {
@@ -230,9 +229,7 @@ func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 }
 
 // writeCatalogEdit stores e's recipe, unless it is stored already, and
-// writes e over its catalog; see applyCatalogEdit. A catalog moved to the
-// library loses its sub_key, which only a row inside a subscribed collection
-// carries.
+// writes e over its catalog; see applyCatalogEdit.
 func writeCatalogEdit(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
 	hash, err := ensureRecipe(ctx, tx, e.Type, e.Provider, e.Params, nowStr)
 	if err != nil {
@@ -240,11 +237,9 @@ func writeCatalogEdit(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, e Sc
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
-		SET name = ?, recipe_hash = ?, updated_at = ?,
-		    collection_id = CASE WHEN ?4 THEN NULL ELSE collection_id END,
-		    sub_key = CASE WHEN ?4 THEN NULL ELSE sub_key END
-		WHERE id = ?5 AND owner_id = ?6
-	`, e.Name, hash, nowStr, e.MoveToLibrary, e.ID.String(), profileID.String()); err != nil {
+		SET name = ?, recipe_hash = ?, updated_at = ?
+		WHERE id = ? AND owner_id = ?
+	`, e.Name, hash, nowStr, e.ID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating edited catalog: %w", err)
 	}
 	return nil
@@ -280,9 +275,9 @@ func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 }
 
 // changesNothing reports whether e would leave stored exactly as it is: the
-// same name and the same recipe, and no move to the library.
+// same name and the same recipe.
 func (e ScopedCatalogEdit) changesNothing(stored storedRecipe) bool {
-	return !e.MoveToLibrary && e.Name == stored.name && e.recipeHash() == stored.recipeHash
+	return e.Name == stored.name && e.recipeHash() == stored.recipeHash
 }
 
 // deleteOrphanedScopedCatalogs removes every catalog scoped to collectionID

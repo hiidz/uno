@@ -174,14 +174,12 @@ type CollectionForm struct {
 // name and recipe for catalog ID, which must already be scoped to the
 // collection being saved. Type and Provider must match the stored row — they
 // are carried so the recipe can be validated before the vault reads it.
-// MoveToLibrary also clears the catalog's collection_id, making it listed.
 type ScopedCatalogEdit struct {
-	ID            uuid.UUID `json:"id"`
-	Type          string    `json:"type"`
-	Provider      string    `json:"provider"`
-	Name          string    `json:"name"`
-	Params        string    `json:"params"`
-	MoveToLibrary bool      `json:"move_to_library"`
+	ID       uuid.UUID `json:"id"`
+	Type     string    `json:"type"`
+	Provider string    `json:"provider"`
+	Name     string    `json:"name"`
+	Params   string    `json:"params"`
 }
 
 // recipeHash is the hash of the recipe e writes.

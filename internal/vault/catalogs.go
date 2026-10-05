@@ -245,8 +245,7 @@ func refuseScopeCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, colle
 // (checkCatalogRewrite) and for a subscribed copy (refuseSubscribedCopy).
 //
 // The catalog's scope is not part of an update: input.CollectionID is not
-// read, and a listed catalog stays listed. A scoped catalog is moved to the
-// library by its collection's save (ScopedCatalogEdit.MoveToLibrary).
+// read, and a listed catalog stays listed.
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {

@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { ChevronDown, Plus } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import type { TileShape } from '@/api'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
@@ -9,6 +9,7 @@ import { TILE_SHAPES, folderLabel, type FolderErrors, type FolderFormState } fro
 import { refDragID } from './folderDnd'
 import { RefRow } from './RefRow'
 import type { RefOption } from './refs'
+import type { CopyToLibrary } from './useCopyToLibrary'
 
 const SHAPE_LABEL: Record<TileShape, string> = {
   POSTER: 'poster',
@@ -265,6 +266,13 @@ interface FolderCatalogsProps {
    *  only meaningful for a listed catalog, so the row asks with its own id. */
   usedInFolders: (catalogID: string) => number
   onAddRef: (catalogID: string) => void
+  /** The dropdown's untick: the folder's unfiltered ref to `catalogID` out. */
+  onRemoveCatalog: (catalogID: string) => void
+  /** A folder row's Copy into library. */
+  onCopyToLibrary: CopyToLibrary
+  /** A folder row's Unlink from library: ref `refKey` moved to a catalog of
+   *  its own, made from `catalogID`, which only this collection has. */
+  onUnlinkRef: (refKey: string, catalogID: string) => void
   onRemoveRef: (refKey: string) => void
   /** `''` clears the ref's genre back to unfiltered. */
   onSetRefGenre: (refKey: string, genre: string) => void
@@ -276,8 +284,8 @@ interface FolderCatalogsProps {
   onAddNewInCollection: (name?: string) => void
 }
 
-/** The folder's catalog list: its head with New and Add, and the ordered
- *  refs. */
+/** The folder's catalog list: its head with Add catalogs (which holds New),
+ *  and the ordered refs. */
 function FolderCatalogs({
   folder,
   errors,
@@ -285,6 +293,9 @@ function FolderCatalogs({
   optionByID,
   usedInFolders,
   onAddRef,
+  onRemoveCatalog,
+  onCopyToLibrary,
+  onUnlinkRef,
   onRemoveRef,
   onSetRefGenre,
   onAddGenreRef,
@@ -292,9 +303,9 @@ function FolderCatalogs({
   onEditRef,
   onAddNewInCollection,
 }: FolderCatalogsProps) {
-  // The picker adds an unfiltered ref, so it hides a catalog that already has
-  // one here — a second would repeat the (catalog, genre) pair. A catalog
-  // whose refs here are all narrowed to a genre stays pickable. Memoised
+  // The picker adds and removes unfiltered refs, so it ticks a catalog that
+  // already has one here — a second would repeat the (catalog, genre) pair. A
+  // catalog whose refs here are all narrowed to a genre shows unticked. Memoised
   // because it's the picker's `useMemo` dependency — a fresh Set every render
   // would re-filter the whole catalog list on every keystroke in the folder.
   const unfilteredInFolder = useMemo(
@@ -312,14 +323,11 @@ function FolderCatalogs({
         <div className="setting-value flex flex-wrap items-center justify-end gap-2">
           <CatalogRefPicker
             options={options}
-            exclude={unfilteredInFolder}
-            onAdd={(catalogIDs) => catalogIDs.forEach(onAddRef)}
+            inFolder={unfilteredInFolder}
+            onAdd={onAddRef}
+            onRemove={onRemoveCatalog}
             onNew={onAddNewInCollection}
           />
-          <button type="button" onClick={() => onAddNewInCollection()} className="btn-secondary btn-sm">
-            <Icon icon={Plus} size={13} />
-            New catalog
-          </button>
         </div>
       </div>
 
@@ -353,6 +361,8 @@ function FolderCatalogs({
                 onRemove={() => onRemoveRef(ref.key)}
                 onMove={(direction) => onMoveRef(ref.key, direction)}
                 onEdit={() => onEditRef(ref.catalogID)}
+                onCopyToLibrary={onCopyToLibrary}
+                onUnlink={() => onUnlinkRef(ref.key, ref.catalogID)}
               />
             ))}
           </ul>

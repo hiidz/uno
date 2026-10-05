@@ -39,7 +39,7 @@ function renderDialog() {
   return { onImported }
 }
 
-const field = () => screen.getByRole('textbox', { name: 'Export JSON' })
+const field = () => screen.getByRole('textbox', { name: 'Import JSON' })
 const press = (name: string) => fireEvent.click(screen.getByRole('button', { name }))
 
 function paste(text: string) {
@@ -140,7 +140,7 @@ describe('ImportDialog', () => {
 
     expect(await screen.findByText('Skip, I already have it')).toBeInTheDocument()
     expect(screen.getByText(/Pasted JSON/)).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Export JSON' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Import JSON' })).toBeInTheDocument()
     expect(api.importBundle).not.toHaveBeenCalled()
 
     press('Skip, I already have it')

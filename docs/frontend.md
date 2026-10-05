@@ -478,32 +478,20 @@ Other decisions worth keeping:
   publishing, and a delete unpublishes it). The selection queries refetch with them,
   since their keys sit under the owned lists'; `HomeSelectionContext`'s one-shot hydration keeps
   that from clobbering pending edits.
-- **A collection save that moves a catalog to the library invalidates the catalog list**
-  (`useCollectionMutations`' `update`, when any `catalog_edits` entry has `move_to_library`), so
-  the moved catalog appears in the Library rail. It is the one collection write that adds a
-  listed row; other catalog edits inside a collection change scoped rows the list never holds.
+- **A collection save never invalidates the catalog list** (`useCollectionMutations`): catalog
+  edits inside a collection change scoped rows, which the list never holds.
 - **`useCatalogMutations` also invalidates the collection lists.** Not defensive — required.
   `DELETE FROM catalogs` cascades `folder_catalogs`, so a cached collection tree keeps a phantom
   ref: the overlay lists a folder member that no longer exists, and saving that collection
   `400`s.
-- **A scoped catalog shows a "Scope" setting, and no publish button**
-  (`CatalogFormState.collectionID`): a scoped catalog is published only by publishing its collection, so
-  its nested editor gets no `sharingStep` and reads "Only in this collection" with a "Move to
-  library" button under it, the note "Applies when you save the collection." beside it, that clears
-  `collectionID` — promote, always allowed, and like
-  every edit made in this nested editor it takes effect when the collection is saved (a
-  `catalog_edits` entry with `move_to_library`). Once staged, the catalog reads as listed in every
-  folder, whose rows offer no Edit to reopen it, so `CollectionEditor` states each staged move as a
-  standing note above the folders ("Saving moves … into your library", a neutral `StagedNote`)
-  with its own Undo. Undo puts the catalog back in `localCatalogs` with its `collection_id` and re-reads it
-  through `withCatalogEdit`, so a move that was the only change leaves the form clean and a rename
-  made alongside it survives. A catalog is scoped only inside `CollectionEditor`, where "new inside
-  this collection" makes one; no editor moves a listed catalog
-  into a collection. `collectionID` is form state only: `toPayload` leaves it out, since a
-  catalog's `PUT` never changes its scope, and `isSameCatalog` compares it so a staged Move to
-  library counts as an edit. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
-  promote, so its nested editor leaves the button out and a note says to save the collection
-  first. The nested editor's Save reads Done, since it only stages the edit.
+- **A scoped catalog has no publish button**: it is published only by publishing its
+  collection, so its nested editor gets no `sharingStep`. A catalog is scoped only inside
+  `CollectionEditor`, where New or a folder row's Unlink from library makes one, and its scope
+  never changes: a library copy of it is a new row (its folder row's Copy into library), and
+  nothing moves a listed catalog into a collection.
+  `collectionID` is form state only: `toPayload` leaves it out, since a catalog's `PUT` never
+  changes its scope, and `isSameCatalog` compares the payload alone. The nested editor's Save
+  reads Done, since it only stages the edit.
 
 ## Home pane — List view
 
@@ -819,7 +807,7 @@ button.
   appearance summary is the folded row's)
   and Remove; the selected tile carries ← and → under it (`FolderMoveArrows`, `onMove`), which
   move the folder one place; then its title, then its catalogs (a `.setting.is-head` heading with
-  an "Add catalogs" dropdown, then "New catalog" at its right), then a "Folder Appearance" `.sec-head` that folds away hide-title, tile shape,
+  an "Add catalogs" dropdown, which holds New), then a "Folder Appearance" `.sec-head` that folds away hide-title, tile shape,
   cover, the focus GIF (an on/off above its URL) and the three Modern Home hero URLs (backdrop, video,
   title logo). Preview renders none of the focus or hero fields; they only reach Nuvio through
   push. A setting not every Nuvio app reads carries an `OnlyIn` tag beside its label: "Nuvio TV,
@@ -835,16 +823,26 @@ button.
   visible (there's no hover to reveal it).
 - **The catalog-ref picker is a dropdown under "Add catalogs"** (`CatalogRefPicker.tsx`, a Radix
   `Popover`), not a dialog — a scrim would hide the folder being filled. It holds a search field,
-  then a checkbox row (name, kind at the right) for each catalog the folder doesn't hold
-  unfiltered, then Cancel and "Add N catalogs". The ticks are the dropdown's own state: Add
-  links every ticked catalog in library order and closes it; Cancel, Escape or an outside click
-  adds nothing. A search that matches nothing offers "New catalog “query”", which opens the
-  naming dialog (`NewItemDialog`'s `initialValue`) with the query as the name.
-- **Two sources for a folder's catalog:** the picker **links** a listed catalog — a live pointer,
-  edits reach every folder that references it — and the "New catalog" button, at the pair's
-  right, starts a catalog **new inside this collection**, scoped to it alone so nothing else can
+  a **+ New catalog** row, a rule, then a checkbox row (name, kind at the right) for every
+  library catalog the search matches (`.checkbox`, rows 44px under `pointer: coarse`). A tick is
+  the folder itself, not a pending choice: a row is ticked while the folder holds that catalog
+  unfiltered, ticking one appends an unfiltered ref at once, unticking removes that ref (its
+  genre-narrowed refs stay), and the dropdown stays open for the next. Nothing reaches the server
+  before the collection's Save, so there is no Add, Cancel or toast; Escape or an outside click
+  only closes it. A catalog held here only narrowed to a genre shows unticked. New catalog opens
+  the naming dialog. On touch the popover skips its own focus on the search (`onOpenAutoFocus`,
+  `hasFinePointer` in `lib/pointer.ts`), so a phone opens on the list, not under its keyboard. A
+  search that matches nothing turns the row into "New catalog “query”", which opens the naming
+  dialog (`NewItemDialog`'s `initialValue`) with the query as the name.
+- **Three sources for a folder's catalog:** a tick in the picker **links** a listed catalog — a live pointer,
+  edits reach every folder that references it — and the dropdown's + New starts a catalog
+  **new inside this collection**, scoped to it alone so nothing else can
   drift it: named first (the same two-step the library's own "New catalog" uses), then opened in
-  the nested editor below to fill its filters.
+  the nested editor below to fill its filters. A linked row's ⋯ **Unlink from library** is the
+  third source: the library catalog staged as a draft of its own with the same name, type and
+  recipe (`CollectionEditor`'s `unlinkRef`), and that ref pointed at it in place, genre kept — a
+  catalog only this collection has, written by its Save like a New one. A scoped row offers Copy
+  into library instead; an unavailable one offers neither.
   **New-inside-this-collection is staged locally, not written until Save.** A catalog
   written on click, independent of the collection's own Save, would outlive a discarded edit:
   nothing in the discard path, or anywhere outside `UpdateUserCollection`'s own next Save, cleans
@@ -888,8 +886,13 @@ button.
   library fallback to reach for.
 - **A catalog row shows one inline action — Edit for a scoped catalog, Remove for an unavailable
   one, nothing for a listed one — everything else is behind "⋯"**: "Add another genre" (disabled
-  until the genre options land, or once every one is taken), Move up/down, and "Remove from
-  folder". The grip reorders by pointer,
+  until the genre options land, or once every one is taken), Move up/down, **Copy into library**
+  for a scoped catalog alone, and "Remove from folder". Copy into library (`useCopyToLibrary`,
+  `Workspace`'s `copyToLibrary`) creates a listed catalog at once, through the catalog create
+  mutation, from the catalog as this editor holds it — a staged edit or a draft included — and
+  says "Copied into your library", or why it couldn't, in a `Toast` beside the row's ⋯. It doesn't
+  wait for the collection's Save and changes nothing in the collection. The grip
+  reorders by pointer,
   touch and keyboard (`useDragSensors`' `KeyboardSensor`), so the menu's moves are the fallback,
   and the name keeps the row's width at phone size.
 - **Each catalog row names its catalog with its kind sticker (Movies, Series) after it, and has a
@@ -954,7 +957,8 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 `useWorkspaceSharing`.
 
 - **The publish button** is a listed catalog's or a collection's one step with Community, on its
-  editor's save bar, between the status and Close (`SignStepButton` in `components/PaneSign.tsx`,
+  editor's save bar, between the status and Close
+  (`SignStepButton` in `components/PaneSign.tsx`,
   drawn by `EditorFooter` from the editor's `sharingStep`). It names the next step from where the row stands (`sharingStep` over
   `ownSharing`): Publish… while private, Publish update… once the saved row differs from what was
   published (`changed_since_publish`, which the sign's To publish sticker also says), Publish

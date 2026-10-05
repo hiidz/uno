@@ -31,7 +31,7 @@ const saved = collection({
 })
 
 function renderEditor(props: Partial<ComponentProps<typeof CollectionEditor>> = {}) {
-  const handlers = { onSave: vi.fn(), onRequestClose: vi.fn(), onDirtyChange: vi.fn() }
+  const handlers = { onSave: vi.fn(), onRequestClose: vi.fn(), onDirtyChange: vi.fn(), onCopyToLibrary: vi.fn(() => Promise.resolve()) }
   render(
     <QueryClientProvider client={new QueryClient()}>
       <CollectionEditor
@@ -148,12 +148,12 @@ describe('CollectionEditor', () => {
   })
   it('names a new catalog inside the collection, opens it one level down, and stages it with Done', () => {
     const { onSave } = renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
-    fireEvent.click(screen.getByRole('button', { name: 'New catalog' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add catalogs' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Add catalogs to this folder' })).getByRole('button', { name: 'New catalog' }))
     const naming = screen.getByRole('dialog')
     fireEvent.change(within(naming).getByLabelText('Name'), { target: { value: 'Giallo' } })
     fireEvent.submit(within(naming).getByLabelText('Name').closest('form')!)
     const nested = screen.getByRole('dialog', { name: 'Edit Giallo' })
-    expect(within(nested).getByText('Only in this collection')).toBeInTheDocument()
     fireEvent.click(within(nested).getByRole('button', { name: 'Done' }))
     save()
     expect(onSave).toHaveBeenCalledWith(
@@ -163,55 +163,144 @@ describe('CollectionEditor', () => {
     )
   })
 
+  describe('Copy into library', () => {
+    const scoped = catalog({ id: 's1', name: 'Scoped', params: '{"with_genres":"27"}', collection_id: saved.id })
+    const withScoped = {
+      ...saved,
+      folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 's1', genre: '' }, { catalog_id: 'c1', genre: '' }] })],
+    }
+    const openMenu = (name: string) =>
+      fireEvent.pointerDown(screen.getByRole('button', { name: `More for ${name}` }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+
+    it('writes a library copy of the catalog as staged, at once, and says so beside the row', async () => {
+      const onCopyToLibrary = vi.fn(() => Promise.resolve())
+      const { onSave } = renderEditor({ initial: formFromCollection(withScoped), initialCatalogs: [scoped, ...library], onCopyToLibrary })
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      const nested = screen.getByRole('dialog', { name: 'Edit Scoped' })
+      fireEvent.change(within(nested).getByLabelText('Name'), { target: { value: 'Staged name' } })
+      fireEvent.click(within(nested).getByRole('button', { name: 'Done' }))
+
+      openMenu('Staged name')
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy into library' }))
+      expect(await screen.findByText('Copied into your library')).toBeInTheDocument()
+      expect(onCopyToLibrary).toHaveBeenCalledWith({
+        type: 'movie',
+        name: 'Staged name',
+        provider: 'tmdb',
+        params: expect.stringContaining('"with_genres":"27"'),
+        collection_id: null,
+      })
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('says why a copy failed', async () => {
+      const onCopyToLibrary = vi.fn(() => Promise.reject(new Error('name too long')))
+      renderEditor({ initial: formFromCollection(withScoped), initialCatalogs: [scoped, ...library], onCopyToLibrary })
+      openMenu('Scoped')
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy into library' }))
+      expect(await screen.findByText("Couldn't copy: name too long")).toBeInTheDocument()
+    })
+
+    it('is offered only for a catalog that lives in this collection', async () => {
+      renderEditor({ initial: formFromCollection(withScoped), initialCatalogs: [scoped, ...library] })
+      openMenu('Late Night')
+      expect(await screen.findByRole('menuitem', { name: 'Remove from folder' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Copy into library' })).toBeNull()
+    })
+  })
+
   describe('the Add catalogs dropdown', () => {
     const open = () => fireEvent.click(screen.getByRole('button', { name: 'Add catalogs' }))
     const dropdown = () => screen.getByRole('dialog', { name: 'Add catalogs to this folder' })
     const folderRows = () => screen.getAllByRole('listitem').filter((row) => row.querySelector('select'))
 
-    it('lists only what the folder lacks, with each catalog’s kind, and adds the ticked ones in library order', () => {
+    it('ticks what the folder holds, states each catalog’s kind, and adds a tick at once, in the order ticked', () => {
       const { onSave } = renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
       open()
-      expect(within(dropdown()).queryByLabelText(/Late Night/)).toBeNull()
+      expect(within(dropdown()).getByLabelText(/Late Night/)).toBeChecked()
       expect(within(dropdown()).getByText('Series')).toBeInTheDocument()
-      // Ticked newest-first: the folder still takes them in library order.
+      expect(within(dropdown()).getByRole('searchbox')).not.toHaveFocus()
       fireEvent.click(within(dropdown()).getByLabelText(/Noir/))
+      expect(folderRows()).toHaveLength(2)
       fireEvent.click(within(dropdown()).getByLabelText(/Giallo/))
-      fireEvent.click(within(dropdown()).getByRole('button', { name: 'Add 2 catalogs' }))
-      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(within(dropdown()).getByLabelText(/Giallo/)).toBeChecked()
       expect(folderRows()).toHaveLength(3)
       save()
       expect(onSave).toHaveBeenCalledWith(
         expect.objectContaining({
           folders: [
             expect.objectContaining({
-              catalogs: [{ catalog_id: 'c1' }, { catalog_id: 'c2' }, { catalog_id: 'c3' }],
+              catalogs: [{ catalog_id: 'c1' }, { catalog_id: 'c3' }, { catalog_id: 'c2' }],
             }),
           ],
         }),
       )
     })
 
-    it('adds nothing on Cancel or Escape', async () => {
-      renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
+    it('takes an unticked catalog out of the folder, keeping its genre-narrowed rows', async () => {
+      const narrowed = {
+        ...saved,
+        folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 'c1', genre: '' }, { catalog_id: 'c1', genre: 'Horror' }] })],
+      }
+      const { onSave } = renderEditor({ initial: formFromCollection(narrowed), initialCatalogs: library })
       open()
-      fireEvent.click(within(dropdown()).getByLabelText(/Giallo/))
-      fireEvent.click(within(dropdown()).getByRole('button', { name: 'Cancel' }))
-      expect(screen.queryByRole('dialog')).toBeNull()
-
-      open()
-      expect(within(dropdown()).getByLabelText(/Giallo/)).not.toBeChecked()
+      fireEvent.click(within(dropdown()).getByLabelText(/Late Night/))
+      expect(within(dropdown()).getByLabelText(/Late Night/)).not.toBeChecked()
       fireEvent.keyDown(dropdown(), { key: 'Escape' })
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-      expect(folderRows()).toHaveLength(1)
+      save()
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folders: [expect.objectContaining({ catalogs: [{ catalog_id: 'c1', genre: 'Horror' }] })],
+        }),
+      )
+    })
+
+    it('says so when the library is empty or a search matches nothing', () => {
+      renderEditor({ initial: formFromCollection(saved), initialCatalogs: library, options: [] })
+      open()
+      expect(within(dropdown()).getByText('No catalogs in your library yet.')).toBeInTheDocument()
     })
 
     it('offers a new catalog named for a search that matches nothing', () => {
       renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
       open()
       fireEvent.change(within(dropdown()).getByRole('searchbox'), { target: { value: 'Slasher' } })
+      expect(within(dropdown()).getByText('No catalogs match this search.')).toBeInTheDocument()
       fireEvent.click(within(dropdown()).getByRole('button', { name: 'New catalog “Slasher”' }))
       expect(screen.getByRole('dialog', { name: 'New catalog' })).toBeInTheDocument()
       expect(screen.getByLabelText('Name')).toHaveValue('Slasher')
+    })
+  })
+
+  describe('Unlink from library', () => {
+    const openMenu = (name: string) =>
+      fireEvent.pointerDown(screen.getByRole('button', { name: `More for ${name}` }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+
+    it('moves the row to a catalog only this collection has, in its place, which Save writes', async () => {
+      const twoRefs = {
+        ...saved,
+        folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 'c1', genre: '' }, { catalog_id: 'c2', genre: '' }] })],
+      }
+      const { onSave } = renderEditor({ initial: formFromCollection(twoRefs), initialCatalogs: library })
+      openMenu('Late Night')
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Unlink from library' }))
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+      save()
+      const [payload] = onSave.mock.calls[0] as [{ folders: { catalogs: { catalog_id?: string; new?: { name: string } }[] }[] }]
+      expect(payload.folders[0].catalogs).toEqual([
+        { new: expect.objectContaining({ name: 'Late Night' }) },
+        { catalog_id: 'c2' },
+      ])
+    })
+
+    it('is not offered for a catalog that already lives in this collection', async () => {
+      const scoped = catalog({ id: 's1', name: 'Scoped', collection_id: saved.id })
+      const withScoped = { ...saved, folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 's1', genre: '' }] })] }
+      renderEditor({ initial: formFromCollection(withScoped), initialCatalogs: [scoped] })
+      openMenu('Scoped')
+      expect(await screen.findByRole('menuitem', { name: 'Copy into library' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Unlink from library' })).toBeNull()
     })
   })
 

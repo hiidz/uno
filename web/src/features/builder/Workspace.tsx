@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ComponentProps, RefObject } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
-import type { CatalogType, CollectionPayload, ImportResult } from '@/api'
+import type { CatalogPayload, CatalogType, CollectionPayload, ImportResult } from '@/api'
 import { ArrowDown } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Icon } from '@/components/Icon'
@@ -220,6 +220,13 @@ export function Workspace({
         guard(() => show(catalogTarget(catalog)))
       },
     })
+  }
+
+  /** A folder row's Copy into library: one create, through the same mutation
+   *  as New catalog, so the rail refetches. Nothing opens; the row says it
+   *  landed. */
+  function copyToLibrary(payload: CatalogPayload) {
+    return catalogMutations.create.mutateAsync(payload)
   }
 
   /** The collection half of the same two-step: title it, then fill it. */
@@ -671,6 +678,7 @@ export function Workspace({
                 countryNames={library.countryNames}
                 languages={library.languages}
                 usedInFolders={usedInFolders}
+                onCopyToLibrary={copyToLibrary}
                 {...sharing.collectionSharing(activeCollection)}
               />
             )}

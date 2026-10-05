@@ -15,11 +15,7 @@ import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { NewItemDialog } from '@/features/builder/NewItemDialog'
 import { useEditorForm } from '@/features/builder/useEditorForm'
-import {
-  emptyForm,
-  formFromCatalog,
-  toPayload as toCatalogPayload,
-} from '@/features/catalogs/catalogForm'
+import { emptyForm, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
 import { CatalogTypeField } from '@/features/catalogs/fields'
@@ -51,10 +47,21 @@ import {
   type FolderFormState,
   type FolderRefState,
 } from './collectionForm'
-import { errorRoleLabels, nestedCatalogForm, withFolderUpdate, withGenreRef, withRefGenre, withRefs } from './folderEdits'
+import {
+  catalogsOf,
+  errorRoleLabels,
+  nestedCatalogForm,
+  withFolderUpdate,
+  withGenreRef,
+  withoutUnfilteredRef,
+  withRefCatalog,
+  withRefGenre,
+  withRefs,
+} from './folderEdits'
 import { NestedCatalogEditor } from './NestedCatalogEditor'
 import { StagedNote } from './StagedNote'
 import { buildRefOptions, indexRefOptions, type RefOption } from './refs'
+import type { CopyToLibrary } from './useCopyToLibrary'
 
 /** A catalog staged locally by "new inside this collection" — not written to the DB until this collection's own Save,
  *  which resolves it into an inline `new` spec (`toCollectionPayload`). Kept
@@ -129,6 +136,9 @@ interface CollectionEditorProps {
   sharingStep?: SignStep
   /** Its sharing stickers, on the sign beside the kind. */
   sharingBadges?: ReactNode
+  /** A folder row's Copy into library: written at once, not with this
+   *  collection's Save. */
+  onCopyToLibrary: CopyToLibrary
 }
 
 /**
@@ -151,12 +161,13 @@ interface CollectionEditorProps {
  * component, so the pane owns the discard confirmation and this only says
  * whether there is anything to lose.
  *
- * **Two sources for a folder's catalogs**, per the closed-graph sharing
- * model: **link** one of your listed catalogs
- * (the picker — a live pointer, edits to it reach every folder that
- * references it); **new inside this collection** (a fresh, scoped catalog
- * only this collection references, which nothing else can drift), staged as
- * a draft scoped to this collection and written by its Save.
+ * **Three sources for a folder's catalogs**, per the closed-graph sharing
+ * model: **link** one of your listed catalogs (a tick in the picker — a live
+ * pointer, edits to it reach every folder that references it); give the
+ * folder **its own** of a linked one (the row's Unlink from library) or make
+ * one **new inside this collection** (New catalog) — a
+ * scoped catalog only this collection references, which nothing else can
+ * drift, staged as a draft and written by its Save.
  *
  * **This editor keeps its own catalog registry** (`localCatalogs`), seeded
  * from `initialCatalogs` and grown by every scoped create/edit it makes —
@@ -177,10 +188,6 @@ interface CollectionEditorProps {
  * collection added from Community opens as a view instead
  * (`FromCommunityView`). Its next step with Community is `sharingStep`, which
  * the pane builds and the save bar carries as its one button.
- *
- * **A staged Move to library has its own Undo.** Once staged, the catalog
- * reads as listed in every folder, which offers no Edit to reopen it, so the
- * standing note naming it is the way back short of discarding the whole form.
  */
 export function CollectionEditor({
   initial,
@@ -204,6 +211,7 @@ export function CollectionEditor({
   usedInFolders,
   sharingStep,
   sharingBadges,
+  onCopyToLibrary,
 }: CollectionEditorProps) {
   const baseline = initial
   const { state, setState, dirty, showErrors, submit } = useEditorForm(
@@ -270,12 +278,6 @@ export function CollectionEditor({
   // possibly-never-opened panel note.
   const emptyFolders = useMemo(() => state.folders.filter((f) => f.refs.length === 0), [state.folders])
 
-  // Catalogs the next Save moves out of this collection into the library.
-  const movingToLibrary = Object.entries(state.catalogEdits)
-    .filter(([, edit]) => edit.moveToLibrary)
-    .map(([id]) => localCatalogs.get(id))
-    .filter((catalog) => catalog !== undefined)
-
   const errors = useMemo(
     () => validateCollectionForm(state, mergedAccessibleIDs),
     [state, mergedAccessibleIDs],
@@ -330,19 +332,6 @@ export function CollectionEditor({
       setState((previous) => withCatalogEdit(previous, saved, formState))
     }
     setNestedCatalogID(null)
-  }
-
-  /** Undo on a staged Move to library: the catalog goes back into this
-   *  collection in `localCatalogs`, and its pending edit keeps whatever else
-   *  the nested save changed, or goes once nothing else is left
-   *  (`withCatalogEdit`). */
-  function undoMoveToLibrary(catalogID: string) {
-    const catalog = localCatalogs.get(catalogID)
-    const saved = savedCatalogs.get(catalogID)
-    if (!catalog || !saved) return
-    const restored = { ...catalog, collection_id: saved.collection_id }
-    rememberCatalog(restored)
-    setState((previous) => withCatalogEdit(previous, saved, formFromCatalog(restored)))
   }
 
   function startNewInCollection(folderKey: string, name = '') {
@@ -404,6 +393,24 @@ export function CollectionEditor({
         f.key === folderKey && !hasRef(f, catalogID, '') ? { ...f, refs: [...f.refs, newRef(catalogID)] } : f,
       ),
     )
+  }
+
+  /** The Add catalogs dropdown's untick: the folder's unfiltered ref to
+   *  `catalogID` out, its genre-narrowed ones kept. */
+  function removeCatalog(folderKey: string, catalogID: string) {
+    patchRefs(folderKey, (refs) => withoutUnfilteredRef(refs, catalogID))
+  }
+
+  /** A folder row's Unlink from library: `catalogID` staged as a draft with
+   *  its name, type and recipe — a catalog only this collection has, written
+   *  by its Save, as a New one is — and ref `refKey` pointed at it, keeping
+   *  its place and genre. */
+  function unlinkRef(folderKey: string, refKey: string, catalogID: string) {
+    for (const catalog of catalogsOf([catalogID], mergedOptionByID)) {
+      const draft = draftCatalog({ type: catalog.type, name: catalog.name, params: catalog.params, collectionID })
+      rememberCatalog(draft)
+      patchRefs(folderKey, (refs) => refs.map((ref) => withRefCatalog(ref, refKey, draft.id)))
+    }
   }
 
   /** "Add another genre" on a ref's own row: a second ref to the same catalog,
@@ -486,13 +493,6 @@ export function CollectionEditor({
       : []),
   ]
 
-  // One standing note per catalog the next Save moves into the library.
-  const movingNotes = movingToLibrary.map((catalog) => (
-    <StagedNote key={catalog.id} tone="neutral" onUndo={() => undoMoveToLibrary(catalog.id)}>
-      Saving moves “{catalog.name}” out of this collection and into your library.
-    </StagedNote>
-  ))
-
   return (
     <EditorShell
       purpose="Edit collection"
@@ -559,8 +559,6 @@ export function CollectionEditor({
               </StagedNote>
             )}
 
-            {movingNotes}
-
             {selectedFolder === undefined ? (
               <div className="py-4">
                 <p className="ed-note m-0">No folders yet. Add one, then put catalogs in it.</p>
@@ -601,6 +599,9 @@ export function CollectionEditor({
                   onChange={(update) => patchFolder(selectedFolder.key, update)}
                   onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
                   onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
+                  onRemoveCatalog={(catalogID) => removeCatalog(selectedFolder.key, catalogID)}
+                  onCopyToLibrary={onCopyToLibrary}
+                  onUnlinkRef={(refKey, catalogID) => unlinkRef(selectedFolder.key, refKey, catalogID)}
                   onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
                   onSetRefGenre={(refKey, genre) => setRefGenre(selectedFolder.key, refKey, genre)}
                   onAddGenreRef={(refKey, genre) => addGenreRef(selectedFolder.key, refKey, genre)}

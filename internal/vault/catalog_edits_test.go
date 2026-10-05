@@ -146,32 +146,6 @@ func TestUpdateUserCollectionRefusedCatalogEditWritesNothing(t *testing.T) {
 	}
 }
 
-// Move to library makes the catalog listed, and a listed catalog survives
-// the save's orphan cleanup even when no folder here references it any more.
-func TestUpdateUserCollectionMovesCatalogToLibrary(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	owner := newTestProfile(t, db, "owner")
-	collectionID := newTestCollection(t, db, owner, "My Collection")
-	catalog, saved := scopedCatalogInFolder(t, db, owner, collectionID, "Moving")
-
-	if _, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title:        "My Collection",
-		Folders:      []FolderData{{ID: &saved.Folders[0].ID, Title: "Folder"}},
-		CatalogEdits: []ScopedCatalogEdit{moveToLibraryEdit(catalog)},
-	}); err != nil {
-		t.Fatalf("save with move to library: %v", err)
-	}
-
-	library, err := db.GetUserCatalogs(ctx, owner)
-	if err != nil {
-		t.Fatalf("GetUserCatalogs: %v", err)
-	}
-	if len(library) != 1 || library[0].ID != catalog.ID {
-		t.Fatalf("library = %+v, want the moved catalog %s", library, catalog.ID)
-	}
-}
-
 // An edit that changes nothing is skipped, so the row's updated_at stays put;
 // an edit that changes only the recipe still writes.
 func TestUpdateUserCollectionSkipsNoOpCatalogEdit(t *testing.T) {

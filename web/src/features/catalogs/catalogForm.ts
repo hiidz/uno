@@ -38,10 +38,8 @@ export interface CatalogFormState {
   sourceMode: SourceMode
   params: TMDBParams
   /** The collection this catalog is scoped to; `null` means listed. Never
-   *  sent: a catalog's scope is not part of a `PUT`, and a scoped catalog
-   *  moves to the library through its collection's save (`withCatalogEdit`).
-   *  `isSameCatalog` still compares it, so a staged Move to library counts as
-   *  an edit. */
+   *  sent: a catalog's scope is set when it is created and is not part of a
+   *  `PUT`. */
   collectionID: string | null
 }
 
@@ -348,9 +346,8 @@ export function toPayload(state: CatalogFormState): CatalogPayload {
 }
 
 /**
- * Structural equality over everything that reaches the wire, plus the scope
- * (`collectionID`), so the editor can tell an untouched form from an edited
- * one without diffing by hand.
+ * Structural equality over everything that reaches the wire, so the editor can
+ * tell an untouched form from an edited one without diffing by hand.
  *
  * The dismissal surface is the whole Library rail: selecting another row
  * replaces the editor, and selecting rows is the main thing that rail is for.
@@ -358,11 +355,5 @@ export function toPayload(state: CatalogFormState): CatalogPayload {
  * tree.
  */
 export function isSameCatalog(a: CatalogFormState, b: CatalogFormState): boolean {
-  return comparable(a) === comparable(b)
-}
-
-/** What `isSameCatalog` compares: the payload and the scope, which the
- *  payload leaves out. */
-function comparable(state: CatalogFormState): string {
-  return JSON.stringify([toPayload(state), state.collectionID])
+  return JSON.stringify(toPayload(a)) === JSON.stringify(toPayload(b))
 }

@@ -76,58 +76,6 @@ export function EntityLists({
   )
 }
 
-interface ScopeSettingProps {
-  scoped: boolean
-  canMoveToLibrary: boolean
-  onChange: PatchForm
-}
-
-/**
- * A scoped catalog's place, in its collection's nested editor: only in that
- * collection, with Move to library under it, which takes effect with the
- * collection's Save. Draws nothing for a listed catalog.
- */
-export function ScopeSetting({
-  scoped,
-  canMoveToLibrary,
-  onChange,
-}: ScopeSettingProps) {
-  if (!scoped) return null
-  return (
-    <div className="setting">
-      <span className="setting-label type-label">Scope</span>
-      <div className="setting-value flex flex-col items-start gap-2">
-        <span className="type-data text-[15px]">Only in this collection</span>
-        <MoveToLibrary canMove={canMoveToLibrary} onChange={onChange} />
-      </div>
-    </div>
-  )
-}
-
-interface MoveToLibraryProps {
-  canMove: boolean
-  onChange: PatchForm
-}
-
-/** Move to library, with when it applies beside it; a draft has no row to
- *  move until the collection is saved, so it says that instead. */
-function MoveToLibrary({
-  canMove,
-  onChange,
-}: MoveToLibraryProps) {
-  if (!canMove) {
-    return <span className="ed-note">Save the collection first to move this to your library.</span>
-  }
-  return (
-    <div className="ed-line">
-      <button type="button" className="btn-secondary btn-sm" onClick={() => onChange({ collectionID: null })}>
-        Move to library
-      </button>
-      <span className="ed-note">Applies when you save the collection.</span>
-    </div>
-  )
-}
-
 const SOURCE_MODES: { value: SourceMode; label: string }[] = [
   { value: 'filters', label: 'Filters' },
   { value: 'collection', label: 'TMDB collection' },

@@ -131,7 +131,6 @@ interface CatalogEditState {
   provider: string
   name: string
   params: string
-  moveToLibrary: boolean
 }
 
 export interface CollectionFormState {
@@ -268,7 +267,6 @@ export function withCatalogEdit(
       provider: payload.provider,
       name: payload.name,
       params: payload.params,
-      moveToLibrary: form.collectionID === null,
     }
   }
   return { ...state, catalogEdits }
@@ -433,7 +431,6 @@ export function toCollectionPayload(
       provider: edit.provider,
       name: edit.name,
       params: edit.params,
-      move_to_library: edit.moveToLibrary,
     })),
   }
 }

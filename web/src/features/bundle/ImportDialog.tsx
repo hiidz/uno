@@ -142,7 +142,7 @@ function PasteBox({
         value={text}
         readOnly={busy}
         invalid={invalid}
-        ariaLabel="Export JSON"
+        ariaLabel="Import JSON"
         placeholder={'{ "format": …'}
         onChange={onEdit}
       />

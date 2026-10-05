@@ -46,6 +46,13 @@ export function accessibleIDs(options: RefOption[]): ReadonlySet<string> {
   return new Set(options.map((option) => option.id))
 }
 
+/** Whether `option` is a library catalog, linked here rather than a
+ *  collection's own. An unavailable one is neither. */
+export function isLinked(option: RefOption | undefined): boolean {
+  if (!option) return false
+  return option.catalog.collection_id === null
+}
+
 /** Filters the picker. `exclude` is the catalogs *this* folder already holds
  *  unfiltered: the picker adds an unfiltered ref, and a second one repeats the
  *  (catalog, genre) pair `PRIMARY KEY (folder_id, catalog_id, genre)` forbids.

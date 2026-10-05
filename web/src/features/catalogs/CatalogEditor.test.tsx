@@ -130,10 +130,10 @@ describe('CatalogEditor', () => {
     expect(screen.getByText('Fix TMDB collection first.')).toBeInTheDocument()
   })
 
-  it('states a scoped catalog’s place, and saves as Done in a collection', () => {
+  it('saves a scoped catalog as Done in a collection, with no Scope setting', () => {
     renderEditor({ initial: formFromCatalog(catalog({ name: 'Row', collection_id: 'col1' })), saveLabel: 'Done' })
-    expect(screen.getByText('Only in this collection')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Move to library' })).toBeInTheDocument()
+    expect(screen.queryByText('Scope')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Move to library' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })

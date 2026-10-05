@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Catalog, Collection } from '@/api'
+import type { Collection } from '@/api'
 import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
-import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
   appearanceSummary,
@@ -88,7 +87,6 @@ describe('withCatalogEdit', () => {
         provider: 'tmdb',
         name: 'Renamed',
         params: toCatalogPayload(renamed).params,
-        move_to_library: false,
       },
     ])
   })
@@ -98,45 +96,6 @@ describe('withCatalogEdit', () => {
     const reverted = withCatalogEdit(renamed, saved, formFromCatalog(saved))
     expect(reverted.catalogEdits).toEqual({})
     expect(isSameCollection(baseline, reverted)).toBe(true)
-  })
-
-  it('marks Move to library', () => {
-    const moved = { ...formFromCatalog(saved), collectionID: null }
-    const [edit] = toCollectionPayload(withCatalogEdit(baseline, saved, moved)).catalog_edits
-    expect(edit.move_to_library).toBe(true)
-  })
-})
-
-// The collection editor's Undo on a staged Move to library: the catalog as the
-// editor holds it after the nested save (name and params from that save's
-// payload), put back into the collection, then re-read through the form.
-describe('undoing a staged Move to library', () => {
-  // Keys out of order and a rolling date window, the two ways a stored
-  // recipe differs from what the form writes back.
-  const saved = catalog({
-    name: 'Scoped',
-    params: '{"sort_by": "popularity.desc", "released_within_days": 30, "with_genres": "28"}',
-    collection_id: 'col1',
-  })
-  const baseline = formWith([newRef('c1')])
-
-  function stageAndUndo(nested: CatalogFormState) {
-    const staged = withCatalogEdit(baseline, saved, nested)
-    const payload = toCatalogPayload(nested)
-    const held: Catalog = { ...saved, name: payload.name, params: payload.params, collection_id: null }
-    return withCatalogEdit(staged, saved, formFromCatalog({ ...held, collection_id: saved.collection_id }))
-  }
-
-  it('leaves the form clean when the move was the only change', () => {
-    expect(toCatalogPayload(formFromCatalog(saved)).params).not.toBe(saved.params)
-    const undone = stageAndUndo({ ...formFromCatalog(saved), collectionID: null })
-    expect(undone.catalogEdits).toEqual({})
-    expect(isSameCollection(baseline, undone)).toBe(true)
-  })
-
-  it('keeps a rename made alongside the move', () => {
-    const undone = stageAndUndo({ ...formFromCatalog(saved), name: 'Renamed', collectionID: null })
-    expect(undone.catalogEdits.c1).toMatchObject({ name: 'Renamed', moveToLibrary: false })
   })
 })
 

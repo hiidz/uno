@@ -239,8 +239,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   would surface as a 500, so the Go layer rejects it before that CHECK is ever hit. A scoped
   catalog is never published on its own: it is published with its collection. A catalog's scope is
   not part of `UpdateUserCatalog`: a `collection_id` sent with one is not read, so a listed
-  catalog stays listed. Promoting a scoped catalog back to listed is always allowed, and happens
-  through its collection's save (a `catalog_edits` entry with `move_to_library`, below).
+  catalog stays listed. Nothing changes a catalog's scope once it exists: a scoped catalog
+  reaches the library only as a copy, a new listed row created with its name and recipe.
   `GetUserCatalogs` (the library) returns listed catalogs
   only — a scoped one is reached through its owning collection's own response instead.
 - **A scoped catalog is written only through its collection's save.** `UpdateUserCatalog` and
@@ -250,8 +250,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   inside `UpdateUserCollection`'s transaction, after the collection row and before the folder
   rewrite and its orphan cleanup. Each edit's catalog must be owned by the caller and scoped to
   this same collection, with the stored type and provider. An edit whose name and recipe
-  (`recipe_hash`) both match the row, with `move_to_library` unset, is skipped, so `updated_at`
-  stays put. `move_to_library` also clears `collection_id`. `CreateUserCollection` refuses any edit,
+  (`recipe_hash`) both match the row is skipped, so `updated_at` stays put. An edit never
+  changes `collection_id`. `CreateUserCollection` refuses any edit,
   since a new collection has no scoped catalogs. So an edit made in the collection editor lands
   with the rest of the collection, and a discarded one never wrote anything.
 - **A profile's data graph is closed: references never cross an owner boundary.** A folder may

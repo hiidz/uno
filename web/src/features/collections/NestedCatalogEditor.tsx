@@ -5,7 +5,6 @@ import { DiscardPrompt, EditorGuardProvider, useEditorGuard } from '@/features/b
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
 import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
-import { isDraftCatalogID } from './collectionForm'
 
 /** What the nested editor's Done hands back to the collection's form. */
 type StageCatalog = (state: CatalogFormState) => void
@@ -76,7 +75,6 @@ function NestedCatalogModal({
           onSave={onSave}
           onRequestClose={close}
           onDirtyChange={setDirty}
-          canMoveToLibrary={!isDraftCatalogID(catalog.id)}
           saveLabel="Done"
         />
       </div>

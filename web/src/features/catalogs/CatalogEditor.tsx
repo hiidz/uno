@@ -29,7 +29,7 @@ import {
   serializeIdList,
   type IdJoin,
 } from './params'
-import { EntityLists, NameSetting, ScopeSetting, ShuffleControl, SourceModeSetting } from './CatalogSettings'
+import { EntityLists, NameSetting, ShuffleControl, SourceModeSetting } from './CatalogSettings'
 import { DateWindow } from './DateWindow'
 import { RecipePreview } from './RecipePreview'
 import {
@@ -566,16 +566,12 @@ interface CatalogEditorProps {
   onDuplicate?: () => void
   onDelete?: () => void
   onDirtyChange: (dirty: boolean) => void
-  /** False for a catalog staged inside a collection that isn't a row yet: it
-   *  is created scoped when the collection saves, so there is nothing to move
-   *  until then. */
-  canMoveToLibrary?: boolean
   /** "Done" in a collection's nested editor, whose save only stages the edit
    *  for the collection's own Save. */
   saveLabel?: string
   /** A listed catalog's next step with Community, as the sign's button.
-   *  Absent in a collection's nested editor, where a scoped catalog shows its
-   *  Scope. */
+   *  Absent in a collection's nested editor: a scoped catalog is published
+   *  with its collection. */
   sharingStep?: SignStep
   /** Its sharing stickers, beside the kind on the sign. */
   sharingBadges?: ReactNode
@@ -615,7 +611,6 @@ export function CatalogEditor({
   onDuplicate,
   onDelete,
   onDirtyChange,
-  canMoveToLibrary = true,
   saveLabel = 'Save',
   sharingStep,
   sharingBadges,
@@ -796,12 +791,6 @@ export function CatalogEditor({
         <div className="ed ed-results">
           <div className="ed-form">
             <NameSetting value={state.name} error={errorFor('name')} onChange={patch} />
-
-            <ScopeSetting
-              scoped={state.collectionID !== null}
-              canMoveToLibrary={canMoveToLibrary}
-              onChange={patch}
-            />
 
             <div className="setting is-head">
               <h2 className="setting-label m-0">What the row shows</h2>

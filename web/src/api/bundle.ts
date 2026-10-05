@@ -5,9 +5,9 @@ import type { ImportCheck, ImportResult } from './types'
  * Bundle export and import — the portable, ID-free file format defined by the
  * Go types in `internal/vault/bundle.go`.
  *
- * The bundle itself stays `unknown` here: export hands the response to a
- * download untouched, and import sends a parsed file on unchanged. The format
- * is defined in Go alone, and the server checks every file it is sent.
+ * The bundle itself stays `unknown` here: export hands the response to the
+ * clipboard untouched, and import sends pasted JSON on unchanged. The format
+ * is defined in Go alone, and the server checks every bundle it is sent.
  */
 
 /** `POST .../export` — the selected listed catalogs and collections as a

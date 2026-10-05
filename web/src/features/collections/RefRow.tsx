@@ -5,13 +5,15 @@ import { fetchCatalogGenreOptions, queryKeys, type Catalog } from '@/api'
 import { Grip } from '@/components/dnd'
 import { Select } from '@/components/fields'
 import { MoreMenu, MoreMenuItem, MoreMenuSeparator } from '@/components/MoreMenu'
+import { Toast } from '@/components/Toast'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { kindStickers } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { pluralCount } from '@/lib/plural'
 import type { FolderRefState } from './collectionForm'
 import { refDragID } from './folderDnd'
-import type { RefOption } from './refs'
+import { isLinked, type RefOption } from './refs'
+import { useCopyToLibrary, type CopyToLibrary } from './useCopyToLibrary'
 
 /**
  * One catalog reference. Order is the value here — index becomes
@@ -46,6 +48,8 @@ export function RefRow({
   onRemove,
   onMove,
   onEdit,
+  onCopyToLibrary,
+  onUnlink,
 }: {
   folderKey: string
   refState: FolderRefState
@@ -64,6 +68,9 @@ export function RefRow({
   onRemove: () => void
   onMove: (direction: -1 | 1) => void
   onEdit: () => void
+  onCopyToLibrary: CopyToLibrary
+  /** This ref moved to a catalog of its own, which only this collection has. */
+  onUnlink: () => void
 }) {
   const sortable = useSortable({
     id: refDragID(folderKey, refState.key),
@@ -75,6 +82,7 @@ export function RefRow({
   const taken = new Set([refState.genre, ...siblingGenres])
   const nextGenre = genreOptions.data?.find((g) => !taken.has(g.name))?.name
 
+  const copyToLibrary = useCopyToLibrary(option, onCopyToLibrary)
   const isScoped = option ? option.catalog.collection_id !== null : false
   // The home screen is counted here, not in `usedInFolders`, so a change to
   // the selection re-renders the rows that state it and not the workspace.
@@ -136,12 +144,17 @@ export function RefRow({
               Remove
             </button>
           ) : null}
+          <Toast toast={copyToLibrary.toast} />
           <RefMenu
             label={option?.name ?? 'this catalog'}
             first={position === 0}
             last={position === total - 1}
             onMove={onMove}
             onRemove={onRemove}
+            onCopyToLibrary={copyToLibrary.copy}
+            copyAvailable={copyToLibrary.available}
+            onUnlink={onUnlink}
+            unlinkAvailable={isLinked(option)}
             nextGenre={nextGenre}
             onAddGenre={option ? onAddGenre : undefined}
           />
@@ -242,6 +255,10 @@ function RefMenu({
   last,
   onMove,
   onRemove,
+  onCopyToLibrary,
+  copyAvailable,
+  onUnlink,
+  unlinkAvailable,
   nextGenre,
   onAddGenre,
 }: {
@@ -250,6 +267,15 @@ function RefMenu({
   last: boolean
   onMove: (direction: -1 | 1) => void
   onRemove: () => void
+  /** A library copy of the catalog as this editor holds it, staged edits
+   *  included. */
+  onCopyToLibrary: () => void
+  /** True for a catalog that lives in this collection, the only kind with a
+   *  library copy to make. */
+  copyAvailable: boolean
+  onUnlink: () => void
+  /** True for a library catalog, the only kind there is to unlink. */
+  unlinkAvailable: boolean
   /** The next genre this ref's catalog can be narrowed by. Absent before the
    *  genre options land, and once every one of them is taken by a ref to this
    *  catalog in this folder. */
@@ -276,8 +302,34 @@ function RefMenu({
       <MoreMenuItem disabled={last} onSelect={() => onMove(1)}>
         Move down
       </MoreMenuItem>
+      <CopyIntoLibraryItem available={copyAvailable} onSelect={onCopyToLibrary} />
+      <UnlinkItem available={unlinkAvailable} onSelect={onUnlink} />
       <MoreMenuSeparator />
       <MoreMenuItem onSelect={onRemove}>Remove from folder</MoreMenuItem>
     </MoreMenu>
+  )
+}
+
+/** Copy into library, in its own group, for a catalog that lives in this
+ *  collection; nothing for any other. */
+function CopyIntoLibraryItem({ available, onSelect }: { available: boolean; onSelect: () => void }) {
+  if (!available) return null
+  return (
+    <>
+      <MoreMenuSeparator />
+      <MoreMenuItem onSelect={onSelect}>Copy into library</MoreMenuItem>
+    </>
+  )
+}
+
+/** Unlink from library, in its own group, for a library catalog; nothing for
+ *  any other. */
+function UnlinkItem({ available, onSelect }: { available: boolean; onSelect: () => void }) {
+  if (!available) return null
+  return (
+    <>
+      <MoreMenuSeparator />
+      <MoreMenuItem onSelect={onSelect}>Unlink from library</MoreMenuItem>
+    </>
   )
 }

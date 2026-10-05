@@ -123,12 +123,6 @@ func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
 	}
 }
 
-// moveToLibraryEdit is the catalog edit "Move to library" saves: c's own
-// name and recipe, unchanged, with MoveToLibrary set.
-func moveToLibraryEdit(c Catalog) ScopedCatalogEdit {
-	return ScopedCatalogEdit{ID: c.ID, Type: c.Type, Provider: c.Provider, Name: c.Name, Params: c.Params, MoveToLibrary: true}
-}
-
 // A catalog inside a collection is written only through that collection's
 // save: PUT and DELETE on it are refused as invalid input, not as a missing
 // row, while an id that isn't the caller's at all is still not found.

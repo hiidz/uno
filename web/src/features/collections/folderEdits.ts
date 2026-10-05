@@ -8,6 +8,7 @@ import {
   type FolderFormState,
   type FolderRefState,
 } from './collectionForm'
+import type { RefOption } from './refs'
 
 /** "Add another genre" on folder `folderKey`'s ref `refKey`: a second ref to
  *  the same catalog, under `genre`, directly below it. Any other folder, an
@@ -46,6 +47,22 @@ export function withRefGenre(ref: FolderRefState, refKey: string, genre: string)
   return ref.key === refKey ? { ...ref, genre } : ref
 }
 
+/** Ref `refKey` pointed at `catalogID`, its genre kept; any other ref as it
+ *  is. */
+export function withRefCatalog(ref: FolderRefState, refKey: string, catalogID: string): FolderRefState {
+  return ref.key === refKey ? { ...ref, catalogID } : ref
+}
+
+/** `refs` without the unfiltered ref to `catalogID`; its genre-narrowed refs
+ *  stay. */
+export function withoutUnfilteredRef(refs: FolderRefState[], catalogID: string): FolderRefState[] {
+  const kept: FolderRefState[] = []
+  for (const ref of refs) {
+    if (ref.catalogID !== catalogID || ref.genre !== '') kept.push(ref)
+  }
+  return kept
+}
+
 /** What the save bar names as needing fixing, in form order: "Title", then
  *  each folder's title and catalogs by its place ("folder 2’s title"). */
 export function errorRoleLabels(errors: CollectionErrors, folders: FolderFormState[]): string[] {
@@ -63,4 +80,15 @@ function folderErrorLabels(folderErrors: FolderErrors | undefined, index: number
  *  it has open, if any. */
 export function nestedCatalogForm(catalog: Catalog | undefined): CatalogFormState | undefined {
   return catalog && formFromCatalog(catalog)
+}
+
+/** The catalogs `ids` name in `optionByID`, in the order given; an id it
+ *  doesn't hold is skipped. */
+export function catalogsOf(ids: string[], optionByID: ReadonlyMap<string, RefOption>): Catalog[] {
+  const catalogs: Catalog[] = []
+  for (const id of ids) {
+    const option = optionByID.get(id)
+    if (option) catalogs.push(option.catalog)
+  }
+  return catalogs
 }
