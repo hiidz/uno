@@ -12,9 +12,7 @@ transaction (`sql.TxOptions{ReadOnly: true}`, `ValidateSelectionAccess`) still b
 **Schema version.** `PRAGMA user_version` is the schema version, `schemaVersion` in `db.go`.
 `InitDB` reads it in one transaction. At `0`, an empty file, it creates the schema and sets the
 version in that same transaction; at `schemaVersion` it does nothing; any other version fails the
-start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`. A version 6
-vault moves to 7 through `uno migrate` (`docs/configuration.md`), a one-off deleted once
-prod has run it.
+start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`.
 
 ```mermaid
 erDiagram
