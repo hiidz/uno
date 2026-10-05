@@ -26,18 +26,26 @@ function FolderChips({ folders }: { folders: PreviewFolder[] }) {
   return (
     <ul aria-label="Folders" className="col-[2/-1] m-0 flex list-none flex-wrap items-center gap-1.5 p-0">
       {folders.slice(0, SHOWN).map((folder) => (
-        <li key={folder.id} className="bg-raised flex h-7 max-w-[11rem] items-center gap-1.5 rounded-lg py-0.5 pr-2.5 pl-0.5">
-          <FolderFace folder={folder} />
-          <span className="text-dim truncate text-[12.5px] font-semibold">{folder.title || 'Untitled folder'}</span>
-        </li>
+        <FolderChip key={folder.id} folder={folder} />
       ))}
       {hidden > 0 && <li className="text-dimmer px-1 text-[12.5px]">+{hidden} more</li>}
     </ul>
   )
 }
 
-/** A folder's cover in a 24px square: its image, else its emoji, else the
- *  blank face. */
+/** One folder's tile: its face, then its title. A folder with neither cover
+ *  image nor emoji is its title alone. */
+function FolderChip({ folder }: { folder: PreviewFolder }) {
+  const hasFace = Boolean(folder.coverImageUrl || folder.coverEmoji)
+  return (
+    <li className={`bg-raised flex h-7 max-w-[11rem] items-center gap-1.5 rounded-lg py-0.5 pr-2.5 ${hasFace ? 'pl-0.5' : 'pl-2.5'}`}>
+      {hasFace && <FolderFace folder={folder} />}
+      <span className="text-dim truncate text-[12.5px] font-semibold">{folder.title || 'Untitled folder'}</span>
+    </li>
+  )
+}
+
+/** A folder's cover in a 24px square: its image, else its emoji. */
 function FolderFace({ folder }: { folder: PreviewFolder }) {
   return (
     <span

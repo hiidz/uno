@@ -24,12 +24,12 @@ import {
 import type { RefOption } from './refs'
 
 /** Prefix marking a `FolderRefState.catalogID` as a client-only
- *  draft — staged locally by "copy into this collection"/"new inside this
- *  collection" (`CollectionEditor.tsx`), not yet written to the DB.
+ *  draft — staged locally by "new inside this collection"
+ *  (`CollectionEditor.tsx`), not yet written to the DB.
  *  `toCollectionPayload` resolves one into an inline `new` spec, which is
- *  what makes those actions atomic with this collection's own save: nothing
+ *  what makes that action atomic with this collection's own save: nothing
  *  is written until then, so discarding instead of saving leaves no row
- *  behind. See docs/frontend.md's "Three sources for a folder's catalog". */
+ *  behind. See docs/frontend.md's "Two sources for a folder's catalog". */
 export const DRAFT_ID_PREFIX = 'draft:'
 
 export function isDraftCatalogID(id: string): boolean {

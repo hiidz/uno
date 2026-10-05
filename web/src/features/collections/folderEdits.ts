@@ -31,6 +31,21 @@ export function withRefs(
   return folder.key === folderKey ? { ...folder, refs: update(folder.refs) } : folder
 }
 
+/** Folder `folderKey` with `update` applied; any other folder as it is. */
+export function withFolderUpdate(
+  folder: FolderFormState,
+  folderKey: string,
+  update: Partial<FolderFormState>,
+): FolderFormState {
+  return folder.key === folderKey ? { ...folder, ...update } : folder
+}
+
+/** Ref `refKey` narrowed to `genre` (`''` for unfiltered); any other ref as
+ *  it is. */
+export function withRefGenre(ref: FolderRefState, refKey: string, genre: string): FolderRefState {
+  return ref.key === refKey ? { ...ref, genre } : ref
+}
+
 /** What the save bar names as needing fixing, in form order: "Title", then
  *  each folder's title and catalogs by its place ("folder 2’s title"). */
 export function errorRoleLabels(errors: CollectionErrors, folders: FolderFormState[]): string[] {

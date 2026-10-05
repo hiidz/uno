@@ -140,6 +140,11 @@ describe('HomePane', () => {
         .map((tile) => tile.textContent)
     expect(tiles('Night shift')).toEqual(['🔪Slashers', 'Untitled folder'])
     expect(tiles('Everything')).toEqual(['One', 'Two', 'Three', 'Four', 'Five', 'Six', '+2 more'])
+    // A folder with no cover image or emoji has no face square, just its title.
+    const plain = within(rowOf('Everything').getByRole('list', { name: 'Folders' })).getAllByRole('listitem')[0]
+    expect(plain.querySelector('[aria-hidden="true"]')).toBeNull()
+    const faced = within(rowOf('Night shift').getByRole('list', { name: 'Folders' })).getAllByRole('listitem')
+    expect(faced.map((tile) => tile.querySelector('[aria-hidden="true"]') !== null)).toEqual([true, true])
     expect(rowOf('Empty').queryByRole('list', { name: 'Folders' })).toBeNull()
     expect(rowOf('Empty').getByText('0 folders')).toBeInTheDocument()
   })

@@ -29,9 +29,8 @@ import type { RefOption } from './refs'
  * used here, so editing it in place is unambiguous. A *listed* one is a live
  * pointer the same as it always was — editing it here would silently reach
  * every other folder and the library too — so this row has no inline edit
- * for it at all: it states how many places it's used and offers "Copy into
- * this collection" for whoever wants an independent, editable copy instead.
- * Editing a listed catalog directly is the library rail's job.
+ * for it at all: it states how many places it's used. Editing a listed
+ * catalog directly is the library rail's job.
  */
 export function RefRow({
   folderKey,
@@ -47,7 +46,6 @@ export function RefRow({
   onRemove,
   onMove,
   onEdit,
-  onCopyIntoCollection,
 }: {
   folderKey: string
   refState: FolderRefState
@@ -66,8 +64,6 @@ export function RefRow({
   onRemove: () => void
   onMove: (direction: -1 | 1) => void
   onEdit: () => void
-  /** Offered on a listed catalog's row only; see `RefMenu`. */
-  onCopyIntoCollection: () => void
 }) {
   const sortable = useSortable({
     id: refDragID(folderKey, refState.key),
@@ -148,7 +144,6 @@ export function RefRow({
             onRemove={onRemove}
             nextGenre={nextGenre}
             onAddGenre={option ? onAddGenre : undefined}
-            onCopyIntoCollection={option && !isScoped ? onCopyIntoCollection : undefined}
           />
         </div>
       </div>
@@ -238,8 +233,8 @@ function RefGenrePicker({
 /**
  * Everything on a catalog row besides Edit: Edit is the row's one inline
  * action, and dragging the grip (pointer, touch or keyboard) is the main way
- * to reorder, so "Add another genre", Move up/down, Remove and "Copy into this
- * collection" wait behind "⋯" and the name keeps the row's width at phone size.
+ * to reorder, so "Add another genre", Move up/down and Remove wait behind "⋯"
+ * and the name keeps the row's width at phone size.
  */
 function RefMenu({
   label,
@@ -249,7 +244,6 @@ function RefMenu({
   onRemove,
   nextGenre,
   onAddGenre,
-  onCopyIntoCollection,
 }: {
   label: string
   first: boolean
@@ -262,9 +256,6 @@ function RefMenu({
   nextGenre?: string
   /** Absent for an unavailable catalog, which has no genres to offer. */
   onAddGenre?: (genre: string) => void
-  /** Absent for a scoped or unavailable catalog — nothing else can reference
-   *  it, so there's nothing to copy it away from. */
-  onCopyIntoCollection?: () => void
 }) {
   return (
     <MoreMenu label={label}>
@@ -278,10 +269,7 @@ function RefMenu({
           Add another genre
         </MoreMenuItem>
       )}
-      {onCopyIntoCollection && (
-        <MoreMenuItem onSelect={onCopyIntoCollection}>Copy into this collection</MoreMenuItem>
-      )}
-      {(onAddGenre || onCopyIntoCollection) && <MoreMenuSeparator />}
+      {onAddGenre && <MoreMenuSeparator />}
       <MoreMenuItem disabled={first} onSelect={() => onMove(-1)}>
         Move up
       </MoreMenuItem>

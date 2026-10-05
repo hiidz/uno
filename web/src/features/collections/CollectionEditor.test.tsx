@@ -215,6 +215,22 @@ describe('CollectionEditor', () => {
     })
   })
 
+  it('saves a renamed folder and a catalog widened back to all genres', () => {
+    const narrowed = {
+      ...saved,
+      folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 'c1', genre: 'Horror' }] })],
+    }
+    const { onSave } = renderEditor({ initial: formFromCollection(narrowed), initialCatalogs: library })
+    fireEvent.change(screen.getByLabelText('Title of folder 1'), { target: { value: 'Frights' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Genre' }), { target: { value: '' } })
+    save()
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        folders: [expect.objectContaining({ id: 'f1', title: 'Frights', catalogs: [{ catalog_id: 'c1' }] })],
+      }),
+    )
+  })
+
   it('reorders a folder from the arrows under its tile', () => {
     const two = {
       ...saved,

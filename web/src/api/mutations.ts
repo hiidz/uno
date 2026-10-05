@@ -102,9 +102,9 @@ export function deleteCatalog(profileIndex: number, catalogID: string): Promise<
  * FolderCatalogRef`. Either a reference to an existing catalog, or an inline
  * spec for a new one, created scoped to the enclosing collection in the same
  * transaction as the folder write that references it. This is what makes
- * "copy into this collection"/"new inside this collection" atomic with the
- * collection's own save — see `collectionForm.ts`'s `toCollectionPayload`
- * and `CollectionEditor.tsx`'s draft catalogs.
+ * "new inside this collection" atomic with the collection's own save — see
+ * `collectionForm.ts`'s `toCollectionPayload` and `CollectionEditor.tsx`'s
+ * draft catalogs.
  *
  * `genre` narrows this one reference to a genre by name; omitted means
  * unfiltered.

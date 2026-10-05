@@ -272,10 +272,6 @@ interface FolderCatalogsProps {
   onAddGenreRef: (refKey: string, genre: string) => void
   onMoveRef: (refKey: string, direction: -1 | 1) => void
   onEditRef: (catalogID: string) => void
-  /** "Copy into this collection" offered on an already-linked listed
-   *  catalog's own row: replaces this ref with a fresh scoped copy in place,
-   *  so the folder's order doesn't change. */
-  onCopyRef: (refKey: string, catalogID: string) => void
   /** `name` pre-fills the naming dialog — the search that found no catalog. */
   onAddNewInCollection: (name?: string) => void
 }
@@ -294,7 +290,6 @@ function FolderCatalogs({
   onAddGenreRef,
   onMoveRef,
   onEditRef,
-  onCopyRef,
   onAddNewInCollection,
 }: FolderCatalogsProps) {
   // The picker adds an unfiltered ref, so it hides a catalog that already has
@@ -315,16 +310,16 @@ function FolderCatalogs({
           Catalogs <span className="text-dimmer tabular-nums">{folder.refs.length}</span>
         </span>
         <div className="setting-value flex flex-wrap items-center justify-end gap-2">
-          <button type="button" onClick={() => onAddNewInCollection()} className="btn-secondary btn-sm">
-            <Icon icon={Plus} size={13} />
-            New catalog
-          </button>
           <CatalogRefPicker
             options={options}
             exclude={unfilteredInFolder}
             onAdd={(catalogIDs) => catalogIDs.forEach(onAddRef)}
             onNew={onAddNewInCollection}
           />
+          <button type="button" onClick={() => onAddNewInCollection()} className="btn-secondary btn-sm">
+            <Icon icon={Plus} size={13} />
+            New catalog
+          </button>
         </div>
       </div>
 
@@ -358,7 +353,6 @@ function FolderCatalogs({
                 onRemove={() => onRemoveRef(ref.key)}
                 onMove={(direction) => onMoveRef(ref.key, direction)}
                 onEdit={() => onEditRef(ref.catalogID)}
-                onCopyIntoCollection={() => onCopyRef(ref.key, ref.catalogID)}
               />
             ))}
           </ul>

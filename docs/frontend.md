@@ -489,8 +489,8 @@ Other decisions worth keeping:
   standing note above the folders ("Saving moves … into your library", a neutral `StagedNote`)
   with its own Undo. Undo puts the catalog back in `localCatalogs` with its `collection_id` and re-reads it
   through `withCatalogEdit`, so a move that was the only change leaves the form clean and a rename
-  made alongside it survives. A catalog is scoped only inside `CollectionEditor`, where "copy into
-  this collection" and "new inside this collection" make one; no editor moves a listed catalog
+  made alongside it survives. A catalog is scoped only inside `CollectionEditor`, where "new inside
+  this collection" makes one; no editor moves a listed catalog
   into a collection. `collectionID` is form state only: `toPayload` leaves it out, since a
   catalog's `PUT` never changes its scope, and `isSameCatalog` compares it so a staged Move to
   library counts as an edit. A draft — a catalog staged inside a collection that hasn't been saved yet — has no row to
@@ -511,7 +511,7 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   "not in library" and carry the red Deleted sticker: they work, but removing them is one-way.
 - **A row is its name, its kind, To push while one waits, and a detail line.** A catalog's detail
   is its recipe line. A collection's is its folders (`FolderChips`): up to six small tiles, each
-  its cover image or emoji and its title, then "+N more"; a collection with no folders, or one
+  its cover image or emoji and its title (a folder with neither is its title alone), then "+N more"; a collection with no folders, or one
   nothing describes, shows `describeCollection`'s line instead.
 - **List groups in the same two bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
   a separate derivation), under the headings Pinned and Rows: pinned collections, then the home
@@ -811,7 +811,7 @@ button.
   the appearance summary the folded row's)
   and Remove; the selected tile carries ← and → under it (`FolderMoveArrows`, `onMove`), which
   move the folder one place; then its title, then its catalogs (a `.setting.is-head` heading with
-  "New catalog" and an "Add catalogs" dropdown), then a "Folder Appearance" `.sec-head` that folds away hide-title, tile shape,
+  an "Add catalogs" dropdown, then "New catalog" at its right), then a "Folder Appearance" `.sec-head` that folds away hide-title, tile shape,
   cover, the focus GIF (an on/off above its URL) and the three Modern Home hero URLs (backdrop, video,
   title logo). Preview renders none of the focus or hero fields; they only reach Nuvio through
   push. A setting not every Nuvio app reads carries an `OnlyIn` tag beside its label: "Nuvio TV,
@@ -832,13 +832,12 @@ button.
   links every ticked catalog in library order and closes it; Cancel, Escape or an outside click
   adds nothing. A search that matches nothing offers "New catalog “query”", which opens the
   naming dialog (`NewItemDialog`'s `initialValue`) with the query as the name.
-- **Three sources for a folder's catalog:** the picker **links** a listed catalog — a live pointer,
-  edits reach every folder that references it — and a linked row's own ⋯ menu **copies** it into a
-  fresh catalog scoped to this collection alone, which the original can't drift. The "New catalog"
-  button, which leads the pair, starts a catalog **new inside this collection**: named first (the same
-  two-step the library's own "New catalog" uses), then opened in the nested editor below to fill
-  its filters.
-  **Copy and new-inside-this-collection are staged locally, not written until Save.** A catalog
+- **Two sources for a folder's catalog:** the picker **links** a listed catalog — a live pointer,
+  edits reach every folder that references it — and the "New catalog" button, at the pair's
+  right, starts a catalog **new inside this collection**, scoped to it alone so nothing else can
+  drift it: named first (the same two-step the library's own "New catalog" uses), then opened in
+  the nested editor below to fill its filters.
+  **New-inside-this-collection is staged locally, not written until Save.** A catalog
   written on click, independent of the collection's own Save, would outlive a discarded edit:
   nothing in the discard path, or anywhere outside `UpdateUserCollection`'s own next Save, cleans
   it up. So the click stages a synthetic `Catalog` client-side, keyed by a `draft:` id sentinel
@@ -870,10 +869,7 @@ button.
   would silently reach every other folder and the library too, which reads as a surprise rather
   than a feature. The row instead says how many places it's used (home screen plus every folder
   across every owned collection — the folders from `Workspace`'s `usedInFolders`, the home screen
-  read by the row itself) and offers "Copy into this
-  collection", which replaces just this ref with a fresh scoped copy (itself now staged, per
-  above) in place rather than adding a second reference. Editing a listed catalog directly is the
-  library rail's job. "One level down" is a `Modal` layered over this editor, not a second pane —
+  read by the row itself). Editing a listed catalog directly is the library rail's job. "One level down" is a `Modal` layered over this editor, not a second pane —
   the builder's pane holds one occupant (see Library rail, above), so a second real editor has to
   be a modal rather than a stack. `CollectionEditor` stays mounted underneath it, so this editor's
   own unsaved folder edits survive the round trip; the modal resets `--app-h` to `0` locally so the
@@ -884,8 +880,8 @@ button.
   library fallback to reach for.
 - **A catalog row shows one inline action — Edit for a scoped catalog, Remove for an unavailable
   one, nothing for a listed one — everything else is behind "⋯"**: "Add another genre" (disabled
-  until the genre options land, or once every one is taken), "Copy into this collection" (listed
-  catalogs only), Move up/down, and "Remove from folder". The grip reorders by pointer,
+  until the genre options land, or once every one is taken), Move up/down, and "Remove from
+  folder". The grip reorders by pointer,
   touch and keyboard (`useDragSensors`' `KeyboardSensor`), so the menu's moves are the fallback,
   and the name keeps the row's width at phone size.
 - **Each catalog row names its catalog with its kind sticker (Movies, Series) after it, and has a
@@ -895,8 +891,7 @@ button.
   every choice actually narrows the row. It is keyed on the recipe, so editing a scoped catalog's
   filters in the nested editor refreshes them. A stored genre that the recipe no longer allows is
   kept, labelled "(no longer applies)", with a danger note saying Nuvio shows that row
-  unfiltered. The genre lives on the ref, so removing a ref takes its genre with it, and
-  "Copy into this collection" swaps only that ref's catalog for the copy, keeping its genre.
+  unfiltered. The genre lives on the ref, so removing a ref takes its genre with it.
   The options query lives in `RefRow` (`useGenreOptions`), so the picker and "Add another
   genre" share one list. The Preview panel and Home's folder pages fetch each source's
   tiles with its genre (`queryKeys.catalogPreview` includes it), so they show the filtered row

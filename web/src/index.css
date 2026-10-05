@@ -1576,9 +1576,9 @@
         display: flex;
         flex-wrap: wrap;
         align-items: flex-end;
-        gap: 20px 16px;
+        gap: 40px 16px;
         margin: 0;
-        padding: 20px 0;
+        padding: 20px 0 40px;
         list-style: none;
     }
     .fold-tile {
@@ -1623,6 +1623,17 @@
     }
     .fold-tile.is-selected .fold-tile-name {
         color: var(--uno-ink);
+    }
+    /* The selected tile's ← and → hang under it without adding to its height,
+       so it stays level with its neighbours; the strip's row gap and bottom
+       padding leave them room. */
+    .fold-tile-move {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 50%;
+        display: flex;
+        gap: 4px;
+        transform: translateX(-50%);
     }
     /* The drag grip sits on the tile's corner, shown on hover or focus with
        a pointer and always on touch, where there is no hover to reveal it. */

@@ -1,4 +1,5 @@
 import type { Catalog, Collection } from '@/api'
+import { isPublished } from '@/features/sharing/sharingState'
 import { pluralCount } from '@/lib/plural'
 
 /** What deleting a row takes with it, beyond the row itself. Each field says
@@ -10,10 +11,6 @@ export interface DeleteConsequences {
   addersKeep: boolean
   /** Catalogs made only for a collection, which go with it. */
   scopedCatalogs: number
-}
-
-function published(row: Pick<Catalog | Collection, 'publication'>): boolean {
-  return row.publication?.status === 'live'
 }
 
 function removedFrom(places: string[]): string | null {
@@ -37,22 +34,22 @@ export function catalogDeleteConsequences(
   const onNuvio =
     catalog.home_position !== undefined || using.some((c) => c.home_position !== undefined)
   const places: string[] = []
-  if (published(catalog)) places.push('Community')
+  if (isPublished(catalog)) places.push('Community')
   if (using.length > 0) places.push(pluralCount(using.length, 'collection'))
   if (onNuvio) places.push('Nuvio (next push)')
-  return { removedFrom: removedFrom(places), addersKeep: published(catalog), scopedCatalogs: 0 }
+  return { removedFrom: removedFrom(places), addersKeep: isPublished(catalog), scopedCatalogs: 0 }
 }
 
 /** A collection's consequences: Community when published, Nuvio when it is on
  *  Home as last pushed, and the catalogs scoped to it. */
 export function collectionDeleteConsequences(collection: Collection): DeleteConsequences {
   const places: string[] = []
-  if (published(collection)) places.push('Community')
+  if (isPublished(collection)) places.push('Community')
   if (collection.home_position !== undefined) places.push('Nuvio (next push)')
   const scopedCatalogs = (collection.catalogs ?? []).filter(
     (c) => c.collection_id === collection.id,
   ).length
-  return { removedFrom: removedFrom(places), addersKeep: published(collection), scopedCatalogs }
+  return { removedFrom: removedFrom(places), addersKeep: isPublished(collection), scopedCatalogs }
 }
 
 /** How many of the collection's own catalogs go with it. */

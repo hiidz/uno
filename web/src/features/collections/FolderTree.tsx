@@ -241,7 +241,7 @@ function FolderMoveArrows({
   onMove: (direction: -1 | 1) => void
 }) {
   return (
-    <div className="mt-1 flex items-center justify-center gap-1">
+    <div className="fold-tile-move">
       <RowIconButton
         icon={ChevronLeft}
         label={`Move ${label} left${position === 0 ? ', already first' : ''}`}

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { catalog } from '@/test/fixtures'
 import { newFolder, newRef } from './collectionForm'
-import { errorRoleLabels, nestedCatalogForm, withGenreRef, withRefs } from './folderEdits'
+import { errorRoleLabels, nestedCatalogForm, withFolderUpdate, withGenreRef, withRefGenre, withRefs } from './folderEdits'
 
 // The catalog form's one value import from the API barrel, which would
 // otherwise load the auth session and its `window` listener.
@@ -31,6 +31,16 @@ describe('folder ref edits', () => {
     const update = (refs: ReturnType<typeof newRef>[]) => refs.slice(1)
     expect(withRefs(folder, folder.key, update).refs).toEqual([other])
     expect(withRefs(folder, 'another folder', update)).toBe(folder)
+  })
+
+  it('updates only the named folder', () => {
+    expect(withFolderUpdate(folder, folder.key, { title: 'Frights' }).title).toBe('Frights')
+    expect(withFolderUpdate(folder, 'another folder', { title: 'Frights' })).toBe(folder)
+  })
+
+  it('narrows only the named ref to a genre', () => {
+    expect(withRefGenre(western, western.key, '')).toEqual({ ...western, genre: '' })
+    expect(withRefGenre(other, western.key, 'War')).toBe(other)
   })
 })
 

@@ -51,13 +51,12 @@ import {
   type FolderFormState,
   type FolderRefState,
 } from './collectionForm'
-import { errorRoleLabels, nestedCatalogForm, withGenreRef, withRefs } from './folderEdits'
+import { errorRoleLabels, nestedCatalogForm, withFolderUpdate, withGenreRef, withRefGenre, withRefs } from './folderEdits'
 import { NestedCatalogEditor } from './NestedCatalogEditor'
 import { StagedNote } from './StagedNote'
 import { buildRefOptions, indexRefOptions, type RefOption } from './refs'
 
-/** A catalog staged locally by "copy into this collection"/"new inside this
- *  collection" — not written to the DB until this collection's own Save,
+/** A catalog staged locally by "new inside this collection" — not written to the DB until this collection's own Save,
  *  which resolves it into an inline `new` spec (`toCollectionPayload`). Kept
  *  in the same `localCatalogs` registry as every other catalog this editor
  *  knows about, so nothing downstream of that registry needs to tell a
@@ -152,13 +151,12 @@ interface CollectionEditorProps {
  * component, so the pane owns the discard confirmation and this only says
  * whether there is anything to lose.
  *
- * **Three sources for a folder's catalogs**, per the closed-graph sharing
+ * **Two sources for a folder's catalogs**, per the closed-graph sharing
  * model: **link** one of your listed catalogs
- * (the original picker — a live pointer, edits to it reach every folder that
- * references it); **copy into this collection** (a fresh, scoped catalog only
- * this collection references, which nothing else can drift); **new inside
- * this collection** (the same, named first). The last two are staged as drafts
- * scoped to this collection and written by its Save.
+ * (the picker — a live pointer, edits to it reach every folder that
+ * references it); **new inside this collection** (a fresh, scoped catalog
+ * only this collection references, which nothing else can drift), staged as
+ * a draft scoped to this collection and written by its Save.
  *
  * **This editor keeps its own catalog registry** (`localCatalogs`), seeded
  * from `initialCatalogs` and grown by every scoped create/edit it makes —
@@ -347,32 +345,6 @@ export function CollectionEditor({
     setState((previous) => withCatalogEdit(previous, saved, formFromCatalog(restored)))
   }
 
-  /** A fresh scoped copy of `catalogID`, staged locally with the source's
-   *  exact saved values (never re-derived through the form, so its `params`
-   *  string round-trips byte for byte), and its draft id. Not written to the
-   *  DB until this collection's own Save — see `draftCatalog`'s doc comment.
-   *  The source is looked up in the merged registry: a catalog linked this
-   *  session is a library one this editor's own registry never had reason to
-   *  remember. */
-  function stageCopy(catalogID: string): string | undefined {
-    const source = mergedOptionByID.get(catalogID)?.catalog
-    if (!source) return undefined
-    const draft = draftCatalog({ type: source.type, name: source.name, params: source.params, collectionID })
-    rememberCatalog(draft)
-    return draft.id
-  }
-
-  /** "Copy into this collection" on a listed catalog's own row: the staged
-   *  copy replaces that ref in place rather than adding a second one, so the
-   *  folder's order doesn't change. Only this ref moves to the copy, keeping
-   *  its genre; another ref to the same listed catalog under a different
-   *  genre stays linked. */
-  function copyRefIntoCollection(folderKey: string, refKey: string, catalogID: string) {
-    const draftID = stageCopy(catalogID)
-    if (!draftID) return
-    patchRefs(folderKey, (refs) => refs.map((ref) => (ref.key === refKey ? { ...ref, catalogID: draftID } : ref)))
-  }
-
   function startNewInCollection(folderKey: string, name = '') {
     setNewCatalogType('movie')
     setNewCatalogName(name)
@@ -403,7 +375,7 @@ export function CollectionEditor({
   }
 
   function patchFolder(key: string, update: Partial<FolderFormState>) {
-    patchFolders((folders) => folders.map((f) => (f.key === key ? { ...f, ...update } : f)))
+    patchFolders((folders) => folders.map((f) => withFolderUpdate(f, key, update)))
   }
 
   function reorderFolders(orderedKeys: string[]) {
@@ -449,7 +421,7 @@ export function CollectionEditor({
   }
 
   function setRefGenre(folderKey: string, refKey: string, genre: string) {
-    patchRefs(folderKey, (refs) => refs.map((ref) => (ref.key === refKey ? { ...ref, genre } : ref)))
+    patchRefs(folderKey, (refs) => refs.map((ref) => withRefGenre(ref, refKey, genre)))
   }
 
   function moveRef(folderKey: string, refKey: string, direction: -1 | 1) {
@@ -634,7 +606,6 @@ export function CollectionEditor({
                   onAddGenreRef={(refKey, genre) => addGenreRef(selectedFolder.key, refKey, genre)}
                   onMoveRef={(refKey, direction) => moveRef(selectedFolder.key, refKey, direction)}
                   onEditRef={editRef}
-                  onCopyRef={(refKey, catalogID) => copyRefIntoCollection(selectedFolder.key, refKey, catalogID)}
                   onAddNewInCollection={(name) => startNewInCollection(selectedFolder.key, name)}
                 />
               </FolderTreeDnd>
