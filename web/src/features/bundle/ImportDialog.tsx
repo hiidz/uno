@@ -1,24 +1,19 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { checkImport } from '@/api'
-import type { ImportCheck, ImportMatch, ImportResult } from '@/api'
+import type { ImportMatch, ImportResult } from '@/api'
 import { Segmented, Select } from '@/components/fields'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import { typeLabel } from '@/features/library/recipe'
 import { pluralCount } from '@/lib/plural'
-import { choicesForAll, reuseMap, type ReuseChoice, type ReuseChoices } from './reuse'
-import { MAX_BUNDLE_BYTES, parseBundleText, tooLargeMessage } from './text'
-import { useImport } from './useImport'
-
-/** What the review calls a bundle that came from the paste box. */
-const PASTED = 'Pasted text'
+import { JsonField } from './JsonField'
+import { choicesForAll, type ReuseChoice, type ReuseChoices } from './reuse'
+import { useImportFlow, type ImportMode, type Review } from './useImportFlow'
 
 /**
- * Imports a bundle as new, private catalogs and collections, in three steps:
- * pick a file or paste its text, review the catalogs it shares a recipe with
- * ones you already have, import.
+ * Imports a bundle as new, private catalogs and collections: pick a file or
+ * paste its JSON, press Import. Import stops to ask only when the bundle holds
+ * catalogs with the same recipe as ones you already have, and asks under the
+ * field, which stays editable.
  *
- * Every catalog is imported as a copy unless the review says otherwise.
+ * Every catalog is imported as a copy unless the choices say otherwise.
  * Importing the same bundle twice gives two sets.
  */
 export function ImportDialog({
@@ -34,7 +29,7 @@ export function ImportDialog({
   onImported: (result: ImportResult) => void
 }) {
   return (
-    <Modal open={open} onClose={onClose} labelledBy="import-title" width="560px">
+    <Modal open={open} onClose={onClose} labelledBy="import-title" width="760px">
       <ModalHeader>
         <h2 id="import-title" className="type-display m-0 text-[18px]">
           Import
@@ -43,14 +38,6 @@ export function ImportDialog({
       {open && <ImportFlow profileIndex={profileIndex} onClose={onClose} onImported={onImported} />}
     </Modal>
   )
-}
-
-interface Review {
-  /** Where the bundle came from: the file's name, or "Pasted text". */
-  source: string
-  bundle: unknown
-  check: ImportCheck
-  choices: ReuseChoices
 }
 
 /** One opening of the dialog, mounted only while it is open so every opening
@@ -64,75 +51,39 @@ function ImportFlow({
   onClose: () => void
   onImported: (result: ImportResult) => void
 }) {
-  const [review, setReview] = useState<Review | null>(null)
-  const [inputError, setInputError] = useState<string | null>(null)
-  const checking = useMutation({
-    mutationFn: (bundle: unknown) => checkImport(profileIndex, bundle),
-  })
-  const importing = useImport(profileIndex)
-
-  function clearErrors() {
-    setInputError(null)
-    checking.reset()
-  }
-
-  /** The one path a file and pasted text share: parse, check with the
-   *  server, open the review. */
-  function submit(source: string, text: string) {
-    clearErrors()
-    const parsed = parseBundleText(text, source)
-    if (!parsed.ok) {
-      setInputError(parsed.message)
-      return
-    }
-    const { bundle } = parsed
-    checking.mutate(bundle, {
-      onSuccess: (check) =>
-        setReview({ source, bundle, check, choices: choicesForAll(check.matches, false) }),
-    })
-  }
-
-  async function submitFile(file: File) {
-    if (file.size > MAX_BUNDLE_BYTES) {
-      clearErrors()
-      setInputError(tooLargeMessage(file.name))
-      return
-    }
-    submit(file.name, await file.text())
-  }
-
-  function write() {
-    if (!review) return
-    importing.mutate(
-      { bundle: review.bundle, reuse: reuseMap(review.check.matches, review.choices) },
-      { onSuccess: onImported },
-    )
-  }
+  const flow = useImportFlow(profileIndex, onImported)
+  const busy = flow.checking || flow.importing
 
   return (
     <>
       <ModalBody>
-        {review ? (
-          <ReviewStep
-            review={review}
-            onChoices={(choices) => setReview({ ...review, choices })}
+        <div className="flex flex-col gap-4">
+          <p className="text-dim m-0 text-[13px] leading-relaxed">
+            Pick an Uno export file or paste its JSON. Everything in it is added to your library
+            as new, private catalogs and collections.
+          </p>
+          <Segmented
+            ariaLabel="Where the export comes from"
+            value={flow.mode}
+            onChange={flow.changeMode}
+            options={[
+              { value: 'file', label: 'File' },
+              { value: 'paste', label: 'Paste JSON' },
+            ]}
           />
-        ) : (
-          <PickStep
-            checking={checking.isPending}
-            inputError={inputError}
-            checkError={checking.error?.message ?? null}
-            onClear={clearErrors}
-            onFile={(file) => void submitFile(file)}
-            onText={(text) => submit(PASTED, text)}
-          />
-        )}
-        {importing.error && (
-          <p
-            role="alert"
-            className="callout-danger type-data mt-4"
-          >
-            Couldn't import: {importing.error.message}
+          <Input flow={flow} busy={busy} />
+          <Outcome flow={flow} />
+          {flow.review && (
+            <ReviewStep
+              label={flow.source?.label ?? ''}
+              review={flow.review}
+              onChoices={flow.setChoices}
+            />
+          )}
+        </div>
+        {flow.importError && (
+          <p role="alert" className="callout-danger type-data mt-4">
+            Couldn't import: {flow.importError}
           </p>
         )}
       </ModalBody>
@@ -140,160 +91,144 @@ function ImportFlow({
         <button type="button" onClick={onClose} className="btn-ghost">
           Cancel
         </button>
-        {review && (
-          <button
-            type="button"
-            onClick={write}
-            disabled={importing.isPending}
-            className="btn-primary"
-          >
-            {importing.isPending ? 'Importing…' : 'Import'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={flow.runImport}
+          disabled={busy || !flow.source}
+          className="btn-primary"
+        >
+          {importLabel(flow.checking, flow.importing)}
+        </button>
       </ModalFooter>
     </>
   )
 }
 
-type PickMode = 'file' | 'paste'
-
-/** The line under the input: the bundle's own refusal, else the server's,
- *  named for the input it came from. */
-function pickError(mode: PickMode, inputError: string | null, checkError: string | null) {
-  if (inputError) return inputError
-  if (!checkError) return null
-  return `This ${mode === 'paste' ? 'text' : 'file'} can't be imported: ${checkError}`
+function importLabel(checking: boolean, importing: boolean) {
+  if (checking) return 'Checking…'
+  return importing ? 'Importing…' : 'Import'
 }
 
-function PickStep({
-  checking,
-  inputError,
-  checkError,
-  onClear,
-  onFile,
-  onText,
-}: {
-  checking: boolean
-  inputError: string | null
-  checkError: string | null
-  onClear: () => void
-  onFile: (file: File) => void
-  onText: (text: string) => void
-}) {
-  const [mode, setMode] = useState<PickMode>('file')
-  const [text, setText] = useState('')
-  const error = pickError(mode, inputError, checkError)
+type Flow = ReturnType<typeof useImportFlow>
 
+/** The file picker or the paste field, by mode. */
+function Input({ flow, busy }: { flow: Flow; busy: boolean }) {
+  if (flow.mode === 'file') {
+    return <FilePicker name={flow.file?.label ?? null} busy={busy} onFile={(f) => void flow.pickFile(f)} />
+  }
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-dim m-0 text-[13px] leading-relaxed">
-        Pick an Uno export file or paste its text. Everything in it is added to your library as
-        new, private catalogs and collections.
-      </p>
-      <Segmented
-        ariaLabel="Where the export comes from"
-        value={mode}
-        onChange={(next) => {
-          onClear()
-          setMode(next)
-        }}
-        options={[
-          { value: 'file', label: 'File' },
-          { value: 'paste', label: 'Paste text' },
-        ]}
-      />
-      {mode === 'file' ? (
-        <FilePicker checking={checking} onFile={onFile} />
-      ) : (
-        <PasteBox
-          text={text}
-          checking={checking}
-          invalid={inputError !== null}
-          onEdit={(next) => {
-            onClear()
-            setText(next)
-          }}
-          onCheck={() => onText(text)}
-        />
-      )}
-      {error && (
-        <p
-          role="alert"
-          className="callout-danger type-data break-words"
-        >
-          {error}
-        </p>
-      )}
-    </div>
+    <PasteBox
+      text={flow.pasted}
+      busy={busy}
+      invalid={flow.inputError !== null}
+      onEdit={flow.edit}
+      onValidate={flow.validate}
+    />
   )
 }
 
-function FilePicker({ checking, onFile }: { checking: boolean; onFile: (file: File) => void }) {
+/** The line under the input: the bundle's own refusal, else the server's,
+ *  named for the input it came from; else, after Validate, that it parsed. */
+function outcomeMessage(
+  mode: ImportMode,
+  inputError: string | null,
+  checkError: string | null,
+): string | null {
+  if (inputError) return inputError
+  if (!checkError) return null
+  return `This ${mode === 'paste' ? 'JSON' : 'file'} can't be imported: ${checkError}`
+}
+
+function Outcome({ flow }: { flow: Flow }) {
+  const error = outcomeMessage(flow.mode, flow.inputError, flow.checkError)
+  if (error) {
+    return (
+      <p role="alert" className="callout-danger type-data break-words">
+        {error}
+      </p>
+    )
+  }
+  if (!flow.valid) return null
+  return <p className="text-dim type-data m-0 text-[12.5px]">Valid JSON.</p>
+}
+
+function FilePicker({
+  name,
+  busy,
+  onFile,
+}: {
+  name: string | null
+  busy: boolean
+  onFile: (file: File) => void
+}) {
   return (
-    /* The input stays in the accessibility tree, visually hidden inside its
-       label, so the label is what is seen and clicked while the input still
-       takes focus and a file. */
-    <label className="btn-secondary has-[:focus-visible]:outline-ink w-fit cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2">
-      {checking ? 'Checking…' : 'Choose a file…'}
-      <input
-        type="file"
-        accept=".json,application/json"
-        disabled={checking}
-        className="sr-only"
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          // Cleared so picking the same file again still fires a change.
-          event.target.value = ''
-          if (file) onFile(file)
-        }}
-      />
-    </label>
+    <div className="flex flex-wrap items-center gap-3">
+      {/* The input stays in the accessibility tree, visually hidden inside its
+          label, so the label is what is seen and clicked while the input still
+          takes focus and a file. */}
+      <label className="btn-secondary has-[:focus-visible]:outline-ink w-fit cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2">
+        {name ? 'Choose another file…' : 'Choose a file…'}
+        <input
+          type="file"
+          accept=".json,application/json"
+          disabled={busy}
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            // Cleared so picking the same file again still fires a change.
+            event.target.value = ''
+            if (file) onFile(file)
+          }}
+        />
+      </label>
+      {name && <span className="text-ink min-w-0 text-[13px] break-words">{name}</span>}
+    </div>
   )
 }
 
 function PasteBox({
   text,
-  checking,
+  busy,
   invalid,
   onEdit,
-  onCheck,
+  onValidate,
 }: {
   text: string
-  checking: boolean
+  busy: boolean
   invalid: boolean
   onEdit: (text: string) => void
-  onCheck: () => void
+  onValidate: () => void
 }) {
-
   return (
     <div className="flex flex-col items-start gap-3">
-      <textarea
-        rows={8}
+      <JsonField
         value={text}
-        readOnly={checking}
-        spellCheck={false}
+        readOnly={busy}
+        invalid={invalid}
+        ariaLabel="Export JSON"
         placeholder={'{ "format": …'}
-        aria-label="Export text"
-        aria-invalid={invalid || undefined}
-        onChange={(event) => onEdit(event.target.value)}
-        className="field block h-auto w-full resize-none py-2.5 font-mono text-[13px] leading-snug pointer-coarse:text-[16px]"
+        onChange={onEdit}
       />
       <button
         type="button"
-        onClick={onCheck}
-        disabled={checking || text.trim() === ''}
+        onClick={onValidate}
+        disabled={busy || text.trim() === ''}
         className="btn-secondary"
       >
-        {checking ? 'Checking…' : 'Check text'}
+        Validate JSON
       </button>
     </div>
   )
 }
 
+/** What the check found: the bundle's counts, then one row per catalog that
+ *  matches one already in the library. */
 function ReviewStep({
+  label,
   review,
   onChoices,
 }: {
+  label: string
   review: Review
   onChoices: (choices: ReuseChoices) => void
 }) {
@@ -303,48 +238,44 @@ function ReviewStep({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-dim m-0 text-[13px] leading-relaxed break-words">
-        <strong className="text-ink">{review.source}</strong> holds{' '}
-        {pluralCount(check.catalogs, 'catalog')}, {pluralCount(check.collections, 'collection')}{' '}
-        and {pluralCount(check.folders, 'folder')}.
+        <strong className="text-ink">{label}</strong> holds {pluralCount(check.catalogs, 'catalog')},{' '}
+        {pluralCount(check.collections, 'collection')} and {pluralCount(check.folders, 'folder')}.
       </p>
 
-      {matches.length > 0 && (
-        <>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <p className="text-dim m-0 flex-1 basis-[240px] text-[13px] leading-relaxed">
-              {matches.length === 1
-                ? 'One of these has the same recipe as a catalog you already have.'
-                : `${matches.length} of these have the same recipe as catalogs you already have.`}
-            </p>
-            <div className="flex shrink-0">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => onChoices(choicesForAll(matches, false))}
-              >
-                Copy all
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => onChoices(choicesForAll(matches, true))}
-              >
-                Use existing for all
-              </button>
-            </div>
-          </div>
-          <ul className="m-0 flex list-none flex-col p-0">
-            {matches.map((match) => (
-              <MatchRow
-                key={match.key}
-                match={match}
-                choice={choices[match.key]}
-                onChange={(choice) => onChoices({ ...choices, [match.key]: choice })}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <p className="text-dim m-0 flex-1 basis-[240px] text-[13px] leading-relaxed">
+          {matches.length === 1
+            ? 'One of these has the same recipe as a catalog you already have.'
+            : `${matches.length} of these have the same recipe as catalogs you already have.`}{' '}
+          Choose what Import does with each.
+        </p>
+        <div className="flex shrink-0">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => onChoices(choicesForAll(matches, false))}
+          >
+            Copy all
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => onChoices(choicesForAll(matches, true))}
+          >
+            Use existing for all
+          </button>
+        </div>
+      </div>
+      <ul className="m-0 flex list-none flex-col p-0">
+        {matches.map((match) => (
+          <MatchRow
+            key={match.key}
+            match={match}
+            choice={choices[match.key]}
+            onChange={(choice) => onChoices({ ...choices, [match.key]: choice })}
+          />
+        ))}
+      </ul>
     </div>
   )
 }

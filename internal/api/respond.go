@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -57,14 +58,25 @@ func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64)
 // in another shape, by a tab loaded before the shape changed, would otherwise
 // read as empty and take every Uno collection off Nuvio.
 func decodeStrictJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	return decodeStrictJSONLimit(w, r, v, maxRequestBodyBytes)
+}
+
+// decodeStrictJSONLimit is decodeStrictJSON with decodeJSONLimit's limit. The
+// import routes decode this way, so a mistyped key in a bundle is refused by
+// name rather than dropped.
+func decodeStrictJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	return decoded(w, d, v)
 }
 
+// unknownFieldPrefix starts the error a strict decoder gives for a field v
+// doesn't have: json: unknown field "name".
+const unknownFieldPrefix = "json: unknown field "
+
 // decoded decodes d into v, answering a failure itself: 413 for a body over
-// its limit, else 400.
+// its limit, else 400. A strict decoder's unknown field is named in the 400.
 func decoded(w http.ResponseWriter, d *json.Decoder, v any) bool {
 	if err := d.Decode(v); err != nil {
 		var tooLarge *http.MaxBytesError
@@ -72,10 +84,19 @@ func decoded(w http.ResponseWriter, d *json.Decoder, v any) bool {
 			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 			return false
 		}
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, badBodyMessage(err), http.StatusBadRequest)
 		return false
 	}
 	return true
+}
+
+// badBodyMessage is the 400 text for a body that failed to decode: the
+// fixed refusal, naming the field when a strict decoder met one v lacks.
+func badBodyMessage(err error) string {
+	if field, ok := strings.CutPrefix(err.Error(), unknownFieldPrefix); ok {
+		return "invalid request body: unknown field " + field
+	}
+	return "invalid request body"
 }
 
 // writeVaultError classifies a vault-layer (or vault-flavored, see

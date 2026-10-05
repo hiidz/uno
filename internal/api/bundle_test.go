@@ -200,6 +200,10 @@ func TestBundleRoutesRefuse(t *testing.T) {
 		{"a bundle failing Validate", "import/check", `{"bundle":{"format":"zip","version":1}}`, http.StatusBadRequest, `bundle: format must be "uno"`},
 		{"a bad recipe on check", "import/check", bundleOf(`{"sort_by":"bogus.desc"}`) + `}`, http.StatusBadRequest, "catalog c1: invalid input"},
 		{"a bad recipe on import", "import", bundleOf(`{"sort_by":"bogus.desc"}`) + `}`, http.StatusBadRequest, "catalog c1: invalid input"},
+		{"a mistyped bundle key on check", "import/check", `{"bundle":{"format":"uno","version":1,"catalogs":[],"collection":[]}}`, http.StatusBadRequest, `unknown field "collection"`},
+		{"a mistyped catalog key on check", "import/check", `{"bundle":{"format":"uno","version":1,"catalogs":[{"key":"c1","nam":"N"}],"collections":[]}}`, http.StatusBadRequest, `unknown field "nam"`},
+		{"a mistyped folder key on import", "import", `{"bundle":{"format":"uno","version":1,"catalogs":[],"collections":[{"title":"X","folders":[{"title":"F","tile_shap":"wide"}]}]}}`, http.StatusBadRequest, `unknown field "tile_shap"`},
+		{"a mistyped request key on import", "import", bundleOf(`{}`) + `,"reus":{}}`, http.StatusBadRequest, `unknown field "reus"`},
 		{"a reuse key the bundle lacks", "import", bundleOf(`{}`) + `,"reuse":{"c9":"` + f.a.ID.String() + `"}}`, http.StatusBadRequest, `reuse names catalog key "c9"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

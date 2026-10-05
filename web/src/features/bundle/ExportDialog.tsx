@@ -201,7 +201,7 @@ async function runExport(profileIndex: number, { body, as }: ExportRequest): Pro
   return { as, text: await text, copied: await copying }
 }
 
-/** How long Copy text reads "Copied" before it reverts. */
+/** How long Copy JSON reads "Copied" before it reverts. */
 const COPIED_MS = 1600
 
 /** The export request and what follows it: a download closes the dialog, a
@@ -235,7 +235,7 @@ function useExporter(profileIndex: number, onClose: () => void) {
   return { request, copied, fallback, clearFallback: () => setFallback(null) }
 }
 
-/** Cancel, Copy text and Download. Download is the one primary; the label of
+/** Cancel, Copy JSON and Download. Download is the one primary; the label of
  *  whichever is running says so, and both wait while it does. */
 function ExportFooter({
   onClose,
@@ -262,7 +262,7 @@ function ExportFooter({
           onClick={() => onRun('text')}
           className="btn-secondary min-w-[6.5rem]"
         >
-          {running === 'text' ? 'Copying…' : copied ? 'Copied' : 'Copy text'}
+          {running === 'text' ? 'Copying…' : copied ? 'Copied' : 'Copy JSON'}
         </button>
         <button type="button" disabled={disabled} onClick={() => onRun('file')} className="btn-primary">
           {running === 'file' ? 'Exporting…' : 'Download'}
@@ -285,14 +285,14 @@ function CopyFallback({ text }: { text: string }) {
   return (
     <div className="flex flex-col gap-2">
       <p role="alert" className="callout-danger type-data">
-        Couldn't copy. Copy the text below.
+        Couldn't copy. Copy the JSON below.
       </p>
       <textarea
         ref={ref}
         readOnly
         rows={8}
         value={text}
-        aria-label="Export text"
+        aria-label="Export JSON"
         className="field block h-auto w-full resize-none py-2.5 font-mono text-[13px] leading-snug pointer-coarse:text-[16px]"
       />
     </div>

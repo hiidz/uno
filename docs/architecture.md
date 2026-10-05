@@ -286,8 +286,12 @@ Route-semantics facts the client has to honour:
   recipe is a 400 (a recipe error names the catalog's key), and a TMDB outage a 502. Import runs
   all of that again rather than relying on an earlier check, then every form check before its
   transaction opens; the reuse targets are checked inside it, and any failure writes nothing. The
-  two import routes take a body up to `maxBundleBodyBytes` (4 MiB, `decodeJSONLimit`); every
-  other route keeps the 1 MiB `maxRequestBodyBytes`, and either limit exceeded is a 413.
+  two import routes take a body up to `maxBundleBodyBytes` (4 MiB, `decodeStrictJSONLimit`); every
+  other route keeps the 1 MiB `maxRequestBodyBytes`, and either limit exceeded is a 413. They decode
+  strictly: a key the bundle has no field for, a mistyped `"tile_shap"`, is a 400 that names it
+  (`invalid request body: unknown field "tile_shap"`) rather than being dropped with the field left
+  at its default. `BundleCatalog.UnmarshalJSON` decodes strictly itself, since a custom unmarshaler
+  does not inherit the outer decoder's setting.
 - **Selection lives on the rows themselves, not a join table.** `catalogs.home_sort_order`/
   `show_in_home` and `collections.home_sort_order` are columns on the owning row, the two
   `home_sort_order`s one numbering of a profile's Home, so catalogs and collections mix. The

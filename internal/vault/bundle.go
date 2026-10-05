@@ -78,14 +78,18 @@ type BundleFolder struct {
 	Refs            []BundleRef `json:"refs"`
 }
 
-// UnmarshalJSON decodes c with its params compacted, so they carry none of
+// UnmarshalJSON decodes c refusing a key it has no field for, as the strict
+// decoder around a bundle does for the other types (a custom unmarshaler
+// doesn't inherit that), and with its params compacted, so they carry none of
 // the file's layout. Params that don't compact are kept as they came, for
 // Bundle.Validate to report. An import stores neither form: the API replaces
 // every catalog's params with their canonical form first (api.prepareBundle).
 func (c *BundleCatalog) UnmarshalJSON(data []byte) error {
 	type plain BundleCatalog
 	var p plain
-	if err := json.Unmarshal(data, &p); err != nil {
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&p); err != nil {
 		return err
 	}
 	var compact bytes.Buffer

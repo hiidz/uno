@@ -14,9 +14,12 @@ export function bundleText(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
+/** What a bundle that came from the paste box is called in a message. */
+export const PASTED_JSON = 'Pasted JSON'
+
 /**
  * Parses bundle text. `label` names where it came from ("export.json",
- * "Pasted text") and leads the message of a refusal. Returns the parsed value
+ * `PASTED_JSON`) and leads the message of a refusal. Returns the parsed value
  * on success and the message on failure, told apart by `ok`.
  */
 export function parseBundleText(
@@ -30,8 +33,14 @@ export function parseBundleText(
   try {
     return { ok: true, bundle: JSON.parse(trimmed) }
   } catch (err) {
-    return { ok: false, message: `${label} isn't valid JSON: ${(err as Error).message}` }
+    return { ok: false, message: invalidMessage(label, (err as Error).message) }
   }
+}
+
+/** The refusal for text that isn't JSON. Pasted JSON already says JSON. */
+function invalidMessage(label: string, detail: string): string {
+  const noun = label === PASTED_JSON ? '' : ' JSON'
+  return `${label} isn't valid${noun}: ${detail}`
 }
 
 /** Writes through a `ClipboardItem` that holds the text as a promise, so the

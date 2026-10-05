@@ -59,7 +59,7 @@ describe('ExportDialog', () => {
     const { onClose } = renderDialog()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Quiet' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Shelf' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Copy text' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }))
 
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
     expect(api.exportBundle).toHaveBeenCalledWith(2, {
@@ -72,26 +72,26 @@ describe('ExportDialog', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 
     // The label reverts on its own.
-    expect(await screen.findByRole('button', { name: 'Copy text' }, { timeout: 3000 })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Copy JSON' }, { timeout: 3000 })).toBeEnabled()
   })
 
   it('shows the export text in a read-only box when the copy fails, and stays open', async () => {
     setClipboard({ writeText: vi.fn().mockRejectedValue(new Error('denied')) })
     const { onClose } = renderDialog()
-    fireEvent.click(screen.getByRole('button', { name: 'Copy text' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }))
 
-    const box = await screen.findByRole('textbox', { name: 'Export text' })
+    const box = await screen.findByRole('textbox', { name: 'Export JSON' })
     expect(box).toHaveValue(bundleText(BUNDLE))
     expect(box).toHaveAttribute('readonly')
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't copy. Copy the text below.")
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't copy. Copy the JSON below.")
     expect(screen.queryByRole('button', { name: 'Copied' })).not.toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
   })
 
   it('shows the box when the browser has no clipboard', async () => {
     renderDialog()
-    fireEvent.click(screen.getByRole('button', { name: 'Copy text' }))
-    expect(await screen.findByRole('textbox', { name: 'Export text' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }))
+    expect(await screen.findByRole('textbox', { name: 'Export JSON' })).toBeInTheDocument()
   })
 
   it('downloads the file and closes on Download', async () => {
@@ -107,7 +107,7 @@ describe('ExportDialog', () => {
     setClipboard({ writeText })
     api.exportBundle.mockRejectedValue(new Error('server down'))
     renderDialog()
-    fireEvent.click(screen.getByRole('button', { name: 'Copy text' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't export: server down")
     expect(writeText).not.toHaveBeenCalled()
@@ -115,17 +115,17 @@ describe('ExportDialog', () => {
 
   it('clears the copy-failure box when the ticks change', async () => {
     renderDialog()
-    fireEvent.click(screen.getByRole('button', { name: 'Copy text' }))
-    await screen.findByRole('textbox', { name: 'Export text' })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }))
+    await screen.findByRole('textbox', { name: 'Export JSON' })
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Popular' }))
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Copy text' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeDisabled()
   })
 
   it('disables both buttons while nothing is ticked', () => {
     renderDialog(null)
-    expect(screen.getByRole('button', { name: 'Copy text' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled()
   })
 })

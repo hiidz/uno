@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MAX_BUNDLE_BYTES, bundleText, copyText, parseBundleText } from './text'
+import { MAX_BUNDLE_BYTES, PASTED_JSON, bundleText, copyText, parseBundleText } from './text'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -20,9 +20,9 @@ describe('parseBundleText', () => {
   })
 
   it('names the source in a JSON refusal, empty text included', () => {
-    const bad = parseBundleText('{nope', 'Pasted text')
+    const bad = parseBundleText('{nope', PASTED_JSON)
     expect(bad.ok).toBe(false)
-    if (!bad.ok) expect(bad.message).toMatch(/^Pasted text isn't valid JSON: /)
+    if (!bad.ok) expect(bad.message).toMatch(/^Pasted JSON isn't valid: /)
 
     const empty = parseBundleText('   ', 'export.json')
     expect(empty.ok).toBe(false)
@@ -31,9 +31,9 @@ describe('parseBundleText', () => {
 
   it('refuses text over the size limit before parsing it', () => {
     const big = `"${'a'.repeat(MAX_BUNDLE_BYTES)}"`
-    expect(parseBundleText(big, 'Pasted text')).toEqual({
+    expect(parseBundleText(big, PASTED_JSON)).toEqual({
       ok: false,
-      message: 'Pasted text is over 4 MiB, the most an import can carry.',
+      message: 'Pasted JSON is over 4 MiB, the most an import can carry.',
     })
   })
 })

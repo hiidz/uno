@@ -255,44 +255,56 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
 - **`ExportDialog`** has two checkbox groups, Catalogs and Collections, filled from `useLibrary`'s
   lists, each with **All** and **None**. The row open in the pane starts ticked. A note says
   collections include the catalogs they use, and the server exports those whether or not they are
-  ticked. The footer is Cancel, **Copy text** and **Download** (the one primary); both are
+  ticked. The footer is Cancel, **Copy JSON** and **Download** (the one primary); both are
   disabled while nothing is ticked or a request is in flight. One mutation runs either, with one
   `exportBundle` call.
   - **Download** saves the response as `uno-export-YYYY-MM-DD.json` in local time through an
     object URL (`download.ts`), then closes the dialog.
-  - **Copy text** writes the same text to the clipboard and leaves the dialog open, the button
+  - **Copy JSON** writes the same text to the clipboard and leaves the dialog open, the button
     reading "Copied" for 1.6s. `copyText` (`text.ts`) hands the clipboard the request's own
     promise as a `ClipboardItem` where the browser has one, so Safari keeps the click's gesture
     across the fetch. It never throws: with no clipboard or a refused write, the dialog shows
-    "Couldn't copy. Copy the text below." over a read-only textarea holding the text, focused and
+    "Couldn't copy. Copy the JSON below." over a read-only textarea holding the text, focused and
     selected. Download still works beside it, and changing the ticks clears the textarea.
   - Both outputs are `bundleText` (`JSON.stringify(value, null, 2)`), so the copied text and the
     file are byte-identical.
-- **`ImportDialog`** has three steps.
-  1. **Pick a file or paste text.** A **File | Paste text** control, on File, shows one input at a
-     time. Both end in `parseBundleText` (`text.ts`) and the same check, review and import. A
-     file over 4 MiB is refused before it is read, and pasted text over 4 MiB before it is sent
-     (`MAX_BUNDLE_BYTES`, the twin of the server's `maxBundleBodyBytes`). A `JSON.parse` failure is
-     shown in place, worded "Pasted text isn't valid JSON: …" for the paste box and with the
-     file's name for a file. None of these sends a request, and the paste box keeps its text.
-     Editing the text or switching mode clears the message. In the paste box **Check text**
-     starts the check, and is disabled while the box is blank. A 400 or 502 from `/import/check`
-     is shown in place too, as "This text can't be imported: …" or "This file can't be imported: …".
-  2. **Review.** The dialog names the source, the file's name or "Pasted text", with its counts,
-     then one row per match. Each row is
-     **Import a copy** (the default) or the reuse choice. A top-level catalog reads **Skip, I
-     already have it**. A collection's own catalog reads **Use my existing one**, with a hint that
-     the collection will then share the library catalog. Several existing matches get a `Select`,
-     which starts on the first by name. **Copy all** and **Use existing for all** set every row;
-     the second picks each row's first match. The choices are `reuse.ts`'s `ReuseChoices`, and
-     `reuseMap` turns them into the request's `reuse` map. With no matches, the step shows only
-     the counts.
-  3. **Import.** The button is disabled while the request is in flight, because a second import
-     writes a second set. `useImport` invalidates the two owned lists and settles only once they
-     have refetched. The dialog then closes, and a toast under the rail's search row names what the
-     rail gained, for example "Imported 2 catalogs and 1 collection". It counts only new listed
-     catalogs and new collections, which is what the import response lists. An import opens
-     nothing and adds nothing to home.
+- **`ImportDialog`** is one screen, 760px wide (`Modal`'s `width`), with **File | Paste JSON**
+  above one input, an **Import** button in the footer, and the state in `useImportFlow`.
+  - **The input.** On File, **Choose a file…** reads the file and shows its name; on Paste JSON, a
+    `JsonField` shows the text with a line number beside each line. It grows with its text from 8
+    lines up to 60% of the viewport height, then scrolls; lines don't wrap, so a number always sits
+    on its line, and the gutter scrolls with the text. Both inputs end in `parseBundleText`
+    (`text.ts`). A file over 4 MiB is refused before it is read, and text over 4 MiB before it is
+    sent (`MAX_BUNDLE_BYTES`, the twin of the server's `maxBundleBodyBytes`).
+  - **Validate JSON** (the paste box's button, disabled while the box is blank) is `parseBundleText`
+    alone: instant, no request. Picking a file runs the same parse. The result shows under the
+    field, "Valid JSON." or "Pasted JSON isn't valid: …" (a file's name leads its message instead:
+    "mine.json isn't valid JSON: …"). The field is never taken away, stays editable, and any
+    edit, new file or mode switch clears the result. Validate says nothing about whether the JSON
+    is a bundle: that is checked by the server, when Import is pressed.
+  - **Import** is disabled until there is something to import and while a request is in flight,
+    since a second import writes a second set. It parses the source again, sends
+    `/import/check`, and then:
+    - **No matches:** it writes at once with an empty `reuse` map. One press.
+    - **Matches** (a bundle catalog with the same recipe as one the library already has; names
+      are not compared): the review appears under the field, the field stays, and the next press of
+      Import writes with the choices made. The review names the source with its counts, then
+      one row per match. Each row is **Import a copy** (the default) or the reuse choice. A
+      top-level catalog reads **Skip, I already have it**. A collection's own catalog reads **Use
+      my existing one**, with a hint that the collection will then share the library catalog.
+      Several existing matches get a `Select`, which starts on the first by name. **Copy all** and
+      **Use existing for all** set every row; the second picks each row's first match. The choices
+      are `reuse.ts`'s `ReuseChoices`, and `reuseMap` turns them into the request's `reuse` map.
+      Editing the text drops the review, so a choice never goes with a bundle it wasn't made for.
+  - **Errors.** A 400 or 502 from `/import/check` is shown under the field as "This JSON can't be
+    imported: …" or "This file can't be imported: …"; a mistyped key in the bundle comes back
+    named (`invalid request body: unknown field "tile_shap"`). A failed write shows "Couldn't
+    import: …" and keeps the field and the choices.
+  - **After a write.** `useImport` invalidates the two owned lists and settles only once they
+    have refetched. The dialog then closes, and a toast under the rail's search row names what the
+    rail gained, for example "Imported 2 catalogs and 1 collection". It counts only new listed
+    catalogs and new collections, which is what the import response lists. An import opens
+    nothing and adds nothing to home.
 
 The owned-list keys prefix the selection keys, so an import marks those stale too. An import
 doesn't change them, so the refetch returns what they already held. The Community keys sit beside

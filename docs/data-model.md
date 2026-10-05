@@ -839,7 +839,8 @@ Version 1:
   most 64 bytes, and unique across the whole bundle; `params` a JSON object; a ref names a
   top-level key or one of its own collection's keys, never another collection's; at most 200
   catalogs (top-level and in collections together) and 50 collections. Every problem is listed in
-  one 400. Decoding compacts `params`, and `checkRecipe` puts them in canonical form, so an
+  one 400. Decoding refuses a key a type has no field for, naming it (the import routes decode
+  strictly), and compacts `params`, and `checkRecipe` puts them in canonical form, so an
   imported recipe is stored the way a saved one is.
   Everything else is bounded by the form validators the rows are written through:
   `CatalogForm`'s rules for each new listed catalog, `CollectionForm.Validate` for each
