@@ -33,6 +33,9 @@ export interface Catalog {
   collection_id: string | null
   created_at: string
   updated_at: string
+  /** Its place on Home, numbered with the collections there; absent when it
+   *  isn't on Home. */
+  home_position?: number
   /** This catalog's own publication; `null` when it has never been published.
    *  Only the owner's own reads carry it. */
   publication: PublicationState | null
@@ -96,7 +99,7 @@ export interface Collection {
   title: string
   owner_id: string
   /** Show first, as last pushed: only Push writes it, from Home's pending
-   *  selection (`HomeCollectionEntry.pinToTop`). */
+   *  selection (`HomeEntry.pinToTop`). */
   pin_to_top: boolean
   view_mode: string
   show_all_tab: boolean
@@ -105,6 +108,9 @@ export interface Collection {
   focus_glow_enabled: boolean
   created_at: string
   updated_at: string
+  /** Its place on Home, numbered with the catalogs there; absent when it
+   *  isn't on Home. */
+  home_position?: number
   /** Whether this collection is on Home and what Push would send for it now
    *  differs from what it last sent, so Nuvio holds a stale copy until the
    *  next push. Always `false` off Home. */

@@ -143,9 +143,9 @@ func TestServedCatalog(t *testing.T) {
 	}
 	savePush(t, db, owner,
 		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{
-			{CatalogID: homeRow.ID, ShowInHome: true}, {CatalogID: discover.ID},
+			{CatalogID: homeRow.ID, ShowInHome: true}, {CatalogID: discover.ID, Position: 1},
 		}},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onHome}}})
+		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onHome, Position: 2}}})
 	savePush(t, db, other,
 		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: theirs.ID, ShowInHome: true}}},
 		CollectionSelectionForm{})

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog, Collection } from '@/api'
 import { catalog, collection, folder } from '@/test/fixtures'
-import { buildHomePreview, findFolderPage, toPreviewCollection } from './preview'
+import { bandItemId, buildHomePreview, findFolderPage, homeCollections, toPreviewCollection } from './preview'
+import type { HomeEntry } from './pending'
 
 const catalogById = new Map<string, Catalog>([
   ['a', catalog({ id: 'a', name: 'Alpha' })],
@@ -14,43 +15,38 @@ const collectionById = new Map<string, Collection>([
   ['u1', collection({ id: 'u1', folders: [folder({ id: 'f1' })] })],
 ])
 
-function preview(catalogs: { id: string; showInHome: boolean }[], collections: { id: string; pinToTop: boolean }[]) {
-  return buildHomePreview({ catalogs, collections, catalogById, collectionById })
+function preview(...rows: HomeEntry[]) {
+  return buildHomePreview({ rows, catalogById, collectionById })
 }
 
-const pinned = (id: string) => ({ id, pinToTop: true })
-const unpinned = (id: string) => ({ id, pinToTop: false })
+const pinned = (id: string): HomeEntry => ({ kind: 'collection', id, pinToTop: true })
+const unpinned = (id: string): HomeEntry => ({ kind: 'collection', id, pinToTop: false })
+const shown = (id: string): HomeEntry => ({ kind: 'catalog', id, showInHome: true })
+const discover = (id: string): HomeEntry => ({ kind: 'catalog', id, showInHome: false })
 
 describe('buildHomePreview', () => {
-  it('puts pinned collections above the catalog rows and the rest below, each in selection order', () => {
-    const screen = preview(
-      [
-        { id: 'a', showInHome: true },
-        { id: 'b', showInHome: false },
-      ],
-      [pinned('p2'), unpinned('u1'), pinned('p1')],
-    )
+  it('puts pinned collections above the home rows, catalogs and collections mixed in Home order', () => {
+    const screen = preview(pinned('p2'), unpinned('u1'), shown('a'), discover('b'), pinned('p1'))
     expect(screen.pinnedCollections.map((c) => c.id)).toEqual(['p2', 'p1'])
+    expect(screen.home.map(bandItemId)).toEqual(['u1', 'a'])
     expect(screen.rows.map((r) => r.id)).toEqual(['a'])
-    expect(screen.unpinnedCollections.map((c) => c.id)).toEqual(['u1'])
+    expect(homeCollections(screen).map((c) => c.id)).toEqual(['u1'])
     expect(screen.discoverOnly.map((r) => r.id)).toEqual(['b'])
   })
 
   it('draws the pending Show first, not the one last pushed', () => {
-    const screen = preview([], [unpinned('p1'), pinned('u1')])
+    const screen = preview(unpinned('p1'), pinned('u1'))
     expect(screen.pinnedCollections.map((c) => c.id)).toEqual(['u1'])
-    expect(screen.unpinnedCollections.map((c) => c.id)).toEqual(['p1'])
+    expect(homeCollections(screen).map((c) => c.id)).toEqual(['p1'])
   })
 
   it('is empty only with nothing selected, a Discover-only catalog counting as content', () => {
-    expect(preview([], []).isEmpty).toBe(true)
-    expect(preview([{ id: 'b', showInHome: false }], []).isEmpty).toBe(false)
+    expect(preview().isEmpty).toBe(true)
+    expect(preview(discover('b')).isEmpty).toBe(false)
   })
 
   it('names a row nothing describes as unavailable', () => {
-    expect(preview([{ id: 'gone', showInHome: true }], []).rows).toEqual([
-      { id: 'gone', name: 'Unavailable catalog', type: 'movie', missing: true },
-    ])
+    expect(preview(shown('gone')).rows).toEqual([{ id: 'gone', name: 'Unavailable catalog', type: 'movie', missing: true }])
   })
 })
 
@@ -100,7 +96,7 @@ describe('toPreviewCollection', () => {
 })
 
 describe('findFolderPage', () => {
-  const screen = preview([], [pinned('p1'), unpinned('u1')])
+  const screen = preview(pinned('p1'), unpinned('u1'))
 
   it('finds an open folder by its ids', () => {
     expect(findFolderPage(screen, { collectionId: 'u1', folderId: 'f1' })?.folder.id).toBe('f1')

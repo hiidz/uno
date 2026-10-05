@@ -289,10 +289,12 @@ Route-semantics facts the client has to honour:
   two import routes take a body up to `maxBundleBodyBytes` (4 MiB, `decodeJSONLimit`); every
   other route keeps the 1 MiB `maxRequestBodyBytes`, and either limit exceeded is a 413.
 - **Selection lives on the rows themselves, not a join table.** `catalogs.home_sort_order`/
-  `show_in_home` and `collections.home_sort_order` are columns on the owning row; the selection
-  endpoints are `owner_id = ? AND home_sort_order IS NOT
-  NULL`, ordered by it. The closed graph means a selection can only ever contain rows the caller
-  owns — there is no visibility filter to reason about, and no "selected but since made private"
+  `show_in_home` and `collections.home_sort_order` are columns on the owning row, the two
+  `home_sort_order`s one numbering of a profile's Home, so catalogs and collections mix. The
+  selection endpoints are `owner_id = ? AND home_sort_order IS NOT NULL`, ordered by it, and each
+  row carries it as `home_position`, which the builder merges the two reads by. The closed graph
+  means a selection can only ever contain rows the caller owns — there is no visibility filter to
+  reason about, and no "selected but since made private"
   case to render around.
 
 ### Addon server — public, unauthenticated, CORS-open, cacheable
@@ -839,10 +841,11 @@ self-host build `39ea2bd` (2026-10-03).
 
 ### Push
 
-`POST /api/p/{profileIndex}/push` (`internal/api/push.go`). Body is the full pending selection,
-`{catalogs: CatalogSelectionForm, collections: CollectionSelectionForm}`: catalogs as
-`{catalogs: [{catalog_id, show_in_home}]}` and collections as
-`{collections: [{collection_id, pin_to_top}]}`, each in Home order. The body is decoded strictly
+`POST /api/p/{profileIndex}/push` (`internal/api/push.go`). Body is the full pending Home as one
+ordered list, `{rows: [{catalog_id, show_in_home} | {collection_id, pin_to_top}]}`: a row's place
+in `rows` is its place on Home, which push stores as its `home_sort_order` (`pushRequest.selection`,
+which turns the list into the vault's two forms, each entry with its `Position`). A row naming
+neither a catalog nor a collection, or both, is a 400. The body is decoded strictly
 (`decodeStrictJSON`): a field it doesn't have is a 400 before anything reaches Nuvio. A lenient
 read would take a body in an older shape, from a tab loaded before a deploy, as an empty
 selection, and a full-replace push of that clears every Uno collection. The pin (`pin_to_top`)
@@ -936,7 +939,7 @@ would stop reaching Nuvio. The list is full-replace, so the merge touches only U
 2. Uno's rows are catalogs whose `addon_id` is `vault.AddonID` and collections in the set the
    collections merge drops (owned, or sent by the last push). Every other row keeps its order.
 3. The push's rows come from the record (`vault.PushRecord.HomeRows`): pinned collections, then
-   catalogs with a home row of their own, then the other collections, each in Home order. A
+   catalogs with a home row of their own and the other collections mixed, each by position. A
    Discover-only catalog, or one only a folder uses, has no row: `showInHome: false` and the
    required genre (*Addon server*) keep it off Home on every app, list or not.
 4. Pinned collections lead the list. Nuvio TV draws them first anyway, but Nuvio mobile and

@@ -142,7 +142,7 @@ describe('HomeSelectionProvider', () => {
     await act(() => queryClient.refetchQueries())
 
     await waitFor(() => expect(result.current.catalogs.map((c) => c.id)).toEqual(['b', 'c']))
-    expect(result.current.snapshot().catalogs.map((c) => c.id)).toEqual(['b', 'c'])
+    expect(result.current.snapshot().rows.map((row) => row.id)).toEqual(['b', 'c'])
     expect(result.current.changes.map((c) => c.text)).toEqual([
       'Added “Charlie”, 2nd on your home screen',
       'Removed “Alpha” from home screen',
@@ -169,11 +169,11 @@ describe('HomeSelectionProvider', () => {
     const { result } = await renderLoaded()
     act(() => result.current.addCatalog('c'))
     act(() => result.current.toggleShowInHome('a'))
-    act(() => result.current.reorderCatalogs(['c', 'b']))
+    act(() => result.current.reorderBand('home', ['c', 'b']))
     expect(result.current.catalogs).toEqual([
-      { id: 'c', showInHome: true },
-      { id: 'b', showInHome: true },
-      { id: 'a', showInHome: false },
+      { kind: 'catalog', id: 'c', showInHome: true },
+      { kind: 'catalog', id: 'b', showInHome: true },
+      { kind: 'catalog', id: 'a', showInHome: false },
     ])
   })
 
@@ -188,25 +188,42 @@ describe('HomeSelectionProvider', () => {
     }
     const { result } = await renderLoaded()
     expect(result.current.collections).toEqual([
-      { id: 'x', pinToTop: true },
-      { id: 'y', pinToTop: false },
+      { kind: 'collection', id: 'x', pinToTop: true },
+      { kind: 'collection', id: 'y', pinToTop: false },
     ])
 
     act(() => result.current.togglePinToTop('y'))
     act(() => result.current.addCollection('z'))
     expect(result.current.collections).toEqual([
-      { id: 'x', pinToTop: true },
-      { id: 'y', pinToTop: true },
-      { id: 'z', pinToTop: true },
+      { kind: 'collection', id: 'x', pinToTop: true },
+      { kind: 'collection', id: 'y', pinToTop: true },
+      { kind: 'collection', id: 'z', pinToTop: true },
     ])
     expect(result.current.changes.map((c) => c.text)).toEqual([
       'Added “Zulu”, 3rd on your home screen',
       'Pinned “Yankee”',
     ])
 
-    act(() => result.current.moveCollection('z', -1))
+    act(() => result.current.moveRow('z', -1))
     expect(result.current.collections.map((c) => c.id)).toEqual(['x', 'z', 'y'])
-    act(() => result.current.reorderCollections('pinned', ['y', 'x', 'z']))
+    act(() => result.current.reorderBand('pinned', ['y', 'x', 'z']))
     expect(result.current.collections.map((c) => c.id)).toEqual(['y', 'x', 'z'])
+  })
+
+  it('hydrates Home by each row’s position and mixes catalogs and collections in one order', async () => {
+    api.fetchCatalogSelection.mockResolvedValue([
+      selectedCatalog({ id: 'a', name: 'Alpha', home_position: 1 }),
+      selectedCatalog({ id: 'b', name: 'Bravo', home_position: 3 }),
+    ])
+    api.fetchCollectionSelection.mockResolvedValue([
+      collection({ id: 'x', title: 'X-ray', home_position: 0 }),
+      collection({ id: 'y', title: 'Yankee', home_position: 2 }),
+    ])
+    const { result } = await renderLoaded()
+    expect(result.current.rows.map((row) => row.id)).toEqual(['x', 'a', 'y', 'b'])
+
+    act(() => result.current.moveRow('b', -1))
+    expect(result.current.rows.map((row) => row.id)).toEqual(['x', 'a', 'b', 'y'])
+    expect(result.current.changes.map((c) => c.text)).toEqual(['Moved “Bravo” from 4th to 3rd'])
   })
 })

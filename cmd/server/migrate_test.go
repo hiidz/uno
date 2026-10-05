@@ -3,12 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -18,305 +16,176 @@ import (
 	"github.com/hiidz/uno/internal/vault"
 )
 
-// schemaV5 is the vault's schema at version 5, kept as test data until the
-// migration is deleted.
-//
-//go:embed testdata/schema_v5.sql
-var schemaV5 string
-
-// v5Fixture is a v5 database: a publisher with a catalog row and a
-// collection on Home, a subscriber with copies in step, out of step and of a
-// withdrawn publication, and a profile with nothing.
-type v5Fixture struct {
-	path                                    string
-	publisher, subscriber, idle             uuid.UUID
-	homeRow, inFolder, withdrawnSource      uuid.UUID
-	inStep, outOfStep, ofWithdrawn          uuid.UUID
-	night, folder                           uuid.UUID
-	live, liveToo, withdrawn, collectionPub uuid.UUID
+// v6Fixture is a v6 database: one profile whose Home holds a pinned
+// collection, two catalogs with a Discover-only one between them, and two
+// unpinned collections, numbered as version 6 numbered them — catalogs and
+// collections each from 0 — with a push record in version 6's shape, no
+// positions on its Home.
+type v6Fixture struct {
+	path                    string
+	profile                 uuid.UUID
+	homeA, discover, homeB  vault.Catalog
+	pinned, first, second   uuid.UUID
+	collectionsBeforeRecord []json.RawMessage
 }
 
-// nightPushHash is the hash of what push sends for the fixture's Night
-// collection, as push stored it at v5.
-func (f v5Fixture) nightPushHash(t *testing.T) string {
+func newV6Fixture(t *testing.T) v6Fixture {
 	t.Helper()
-	tree := vault.CollectionWithFolders{
-		Collection: vault.Collection{ID: f.night, Title: "Night", PinToTop: true, ViewMode: "TABBED_GRID", FocusGlowEnabled: true},
-		Folders: []vault.FolderWithCatalogs{{
-			Folder: vault.Folder{ID: f.folder, Title: "F", TileShape: "LANDSCAPE", FocusGIFEnabled: true},
-			Refs:   []vault.FolderRef{{CatalogID: f.inFolder, Genre: "Horror"}, {CatalogID: f.homeRow}},
-		}},
-		Catalogs: []vault.Catalog{{ID: f.inFolder, Type: "movie", Provider: "tmdb"}, {ID: f.homeRow, Type: "movie", Provider: "tmdb"}},
-	}
-	raw, err := tree.PushJSON()
+	ctx := context.Background()
+	f := v6Fixture{path: filepath.Join(t.TempDir(), "vault.db")}
+	db, err := vault.InitDB(f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
-}
+	profile, err := db.ResolveOrCreateProfile(ctx, "user", 1, "nuvio-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.profile = profile.ID
+	for name, c := range map[string]*vault.Catalog{"A": &f.homeA, "Discover": &f.discover, "B": &f.homeB} {
+		if *c, err = db.CreateUserCatalog(ctx, f.profile, vault.CatalogForm{Type: "movie", Name: name, Provider: "tmdb", Params: `{"sort_by":"popularity.desc"}`}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for title, id := range map[string]*uuid.UUID{"Pinned": &f.pinned, "First": &f.first, "Second": &f.second} {
+		c, err := db.CreateUserCollection(ctx, f.profile, vault.CollectionForm{Title: title, Folders: []vault.FolderData{{Title: "F"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		*id = c.ID
+	}
+	catalogs := vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
+		{CatalogID: f.homeA.ID, ShowInHome: true, Position: 0},
+		{CatalogID: f.discover.ID, Position: 1},
+		{CatalogID: f.homeB.ID, ShowInHome: true, Position: 2},
+	}}
+	collections := vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{
+		{CollectionID: f.first, Position: 0},
+		{CollectionID: f.pinned, PinToTop: true, Position: 1},
+		{CollectionID: f.second, Position: 2},
+	}}
+	record, err := db.BuildPushRecord(ctx, f.profile, catalogs, collections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SavePush(ctx, f.profile, record); err != nil {
+		t.Fatal(err)
+	}
+	f.collectionsBeforeRecord = record.Collections
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 
-// newV5Fixture writes the fixture's v5 database, with Night's pushed hash
-// set to pushedHash(f).
-func newV5Fixture(t *testing.T, pushedHash func(v5Fixture) string) v5Fixture {
-	t.Helper()
-	f := v5Fixture{path: filepath.Join(t.TempDir(), "vault.db")}
-	for _, id := range []*uuid.UUID{&f.publisher, &f.subscriber, &f.idle, &f.homeRow, &f.inFolder, &f.withdrawnSource,
-		&f.inStep, &f.outOfStep, &f.ofWithdrawn, &f.night, &f.folder, &f.live, &f.liveToo, &f.withdrawn, &f.collectionPub} {
-		*id = uuid.New()
+	raw := openRaw(t, f.path)
+	var stored string
+	if err := raw.QueryRow(`SELECT record FROM push_records`).Scan(&stored); err != nil {
+		t.Fatal(err)
 	}
-	db := openRaw(t, f.path)
-	exec(t, db, schemaV5+"\nPRAGMA user_version = 5;")
-	const now = "2026-10-01T00:00:00Z"
-	for _, p := range []uuid.UUID{f.publisher, f.subscriber, f.idle} {
-		exec(t, db, `INSERT INTO profiles (id, token, nuvio_user_id, nuvio_profile_index, nuvio_profile_uuid) VALUES (?, ?, ?, 1, ?)`,
-			p.String(), "token-"+p.String(), "user-"+p.String(), "nuvio-"+p.String())
+	v6Record := regexp.MustCompile(`,"position":\d+`).ReplaceAllString(stored, "")
+	if _, err := raw.Exec(`UPDATE push_records SET record = ?`, v6Record); err != nil {
+		t.Fatal(err)
 	}
-	exec(t, db, `INSERT INTO recipes (hash, type, provider, params, created_at) VALUES ('r1', 'movie', 'tmdb', '{}', ?)`, now)
-	catalog := func(id, owner uuid.UUID, name string, home any) {
-		exec(t, db, `INSERT INTO catalogs (id, name, recipe_hash, owner_id, home_sort_order, created_at, updated_at) VALUES (?, ?, 'r1', ?, ?, ?, ?)`,
-			id.String(), name, owner.String(), home, now, now)
+	if _, err := raw.Exec(`PRAGMA user_version = 6`); err != nil {
+		t.Fatal(err)
 	}
-	catalog(f.homeRow, f.publisher, "Home row", 0)
-	catalog(f.inFolder, f.publisher, "In a folder", nil)
-	catalog(f.withdrawnSource, f.publisher, "Withdrawn source", nil)
-	catalog(f.inStep, f.subscriber, "In step", nil)
-	catalog(f.outOfStep, f.subscriber, "Out of step", nil)
-	catalog(f.ofWithdrawn, f.subscriber, "Of a withdrawn one", nil)
-
-	exec(t, db, `INSERT INTO collections (id, title, owner_id, pin_to_top, home_sort_order, created_at, updated_at) VALUES (?, 'Night', ?, 1, 0, ?, ?)`,
-		f.night.String(), f.publisher.String(), now, now)
-	exec(t, db, `INSERT INTO collections (id, title, owner_id, created_at, updated_at) VALUES (?, 'Off home', ?, ?, ?)`,
-		uuid.NewString(), f.publisher.String(), now, now)
-	exec(t, db, `INSERT INTO folders (id, collection_id, title, sort_order) VALUES (?, ?, 'F', 0)`, f.folder.String(), f.night.String())
-	exec(t, db, `INSERT INTO folder_catalogs (folder_id, catalog_id, sort_order, genre) VALUES (?, ?, 0, 'Horror'), (?, ?, 1, '')`,
-		f.folder.String(), f.inFolder.String(), f.folder.String(), f.homeRow.String())
-	exec(t, db, `UPDATE collections SET pushed_hash = ? WHERE id = ?`, pushedHash(f), f.night.String())
-
-	publication := func(id uuid.UUID, kind string, source uuid.UUID, hash, status string) {
-		column := kind + "_id"
-		exec(t, db, `INSERT INTO publications (id, owner_id, kind, `+column+`, title, snapshot, content_hash, catalog_count, folder_count, status, published_at, updated_at)
-			VALUES (?, ?, ?, ?, 'T', '{}', ?, 1, 0, ?, ?, ?)`, id.String(), f.publisher.String(), kind, source.String(), hash, status, now, now)
-	}
-	publication(f.live, "catalog", f.homeRow, "h1", "live")
-	publication(f.liveToo, "catalog", f.inFolder, "h2", "live")
-	publication(f.withdrawn, "catalog", f.withdrawnSource, "h3", "withdrawn")
-	publication(f.collectionPub, "collection", f.night, "h4", "live")
-	subscription := func(pub, copyID uuid.UUID, hash string) {
-		exec(t, db, `INSERT INTO subscriptions (id, owner_id, publication_id, catalog_id, taken_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			uuid.NewString(), f.subscriber.String(), pub.String(), copyID.String(), hash, now)
-	}
-	subscription(f.live, f.inStep, "h1")
-	subscription(f.liveToo, f.outOfStep, "old")
-	subscription(f.withdrawn, f.ofWithdrawn, "h3")
 	return f
 }
 
-// openRaw opens path with no pragmas, closed with the test.
+// openRaw opens the database at path without the vault, closed with the test.
 func openRaw(t *testing.T, path string) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+path)
+	raw, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
+	t.Cleanup(func() { _ = raw.Close() })
+	return raw
 }
 
-func exec(t *testing.T, db *sql.DB, query string, args ...any) {
-	t.Helper()
-	if _, err := db.Exec(query, args...); err != nil {
-		t.Fatalf("%s: %v", query, err)
-	}
-}
-
-func queryInt(t *testing.T, db *sql.DB, query string, args ...any) int {
-	t.Helper()
-	var n int
-	if err := db.QueryRow(query, args...).Scan(&n); err != nil {
-		t.Fatalf("%s: %v", query, err)
-	}
-	return n
-}
-
-// The migration keeps every row, reads every subscription and publication
-// as before, backfills a record for every profile that leaves Night needing
-// no push, leaves a structure matching a fresh v6 database, and its triggers
-// still fire.
-func TestMigrateToV6(t *testing.T) {
+// The migration renumbers Home as one list in the order version 6's bands
+// showed it — the pinned collection, the catalogs with the Discover-only one
+// where it was, then the other collections — gives the push record's Home
+// those positions, keeps the bytes push sent, and stamps version 7, which the
+// vault then opens.
+func TestMigrateToV7(t *testing.T) {
 	ctx := context.Background()
-	f := newV5Fixture(t, func(f v5Fixture) string { return f.nightPushHash(t) })
-	before, err := rowCounts(ctx, openRaw(t, f.path))
-	if err != nil {
-		t.Fatal(err)
-	}
+	f := newV6Fixture(t)
 
 	var out bytes.Buffer
 	if err := runMigrate(ctx, []string{"--db", f.path}, &out); err != nil {
 		t.Fatalf("migrate: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "push_records") || !strings.Contains(out.String(), "3 push records backfilled") {
-		t.Errorf("output = %s, want the counts and the backfill", out.String())
+	if !strings.Contains(out.String(), "migrated to schema version 7") || !strings.Contains(out.String(), "1 push records") {
+		t.Errorf("output = %q, want the version and the record count", out.String())
 	}
 
-	raw := openRaw(t, f.path)
-	after, err := rowCounts(ctx, raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for table, n := range before {
-		if after[table] != n {
-			t.Errorf("%s: %d rows after, want %d", table, after[table], n)
-		}
-	}
-	if after["push_records"] != 3 {
-		t.Errorf("push records = %d, want one per profile", after["push_records"])
-	}
-	got, err := structureOf(ctx, raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := freshStructure(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(got, want) {
-		extra, missing := diffLines(got, want)
-		t.Errorf("structure differs from a fresh v6 database: has %v, lacks %v", extra, missing)
-	}
-
-	checkSharingReadsTheSame(t, f)
-	checkTriggersFire(t, f, raw)
-}
-
-// checkSharingReadsTheSame opens the migrated database through the vault and
-// reads each copy's update and unpublished state, each publication's status,
-// Night's needs_push, and the publisher's backfilled record.
-func checkSharingReadsTheSame(t *testing.T, f v5Fixture) {
-	t.Helper()
-	ctx := context.Background()
 	db, err := vault.InitDB(f.path)
 	if err != nil {
-		t.Fatalf("InitDB on the migrated database: %v", err)
+		t.Fatalf("opening the migrated vault: %v", err)
 	}
-	defer func() { _ = db.Close() }()
-
-	copies, err := db.GetUserCatalogs(ctx, f.subscriber)
+	t.Cleanup(func() { _ = db.Close() })
+	want := map[uuid.UUID]int{f.pinned: 0, f.homeA.ID: 1, f.discover.ID: 2, f.homeB.ID: 3, f.first: 4, f.second: 5}
+	got := map[uuid.UUID]int{}
+	catalogs, err := db.GetCurrentCatalogSelection(ctx, f.profile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantCopies := map[uuid.UUID]vault.SubscriptionState{
-		f.inStep:      {PublicationID: f.live},
-		f.outOfStep:   {PublicationID: f.liveToo, UpdateAvailable: true},
-		f.ofWithdrawn: {PublicationID: f.withdrawn, Unpublished: true},
+	for _, c := range catalogs {
+		got[c.ID] = *c.HomeSortOrder
 	}
-	for _, c := range copies {
-		if c.Subscription == nil || *c.Subscription != wantCopies[c.ID] {
-			t.Errorf("%s: subscription %+v, want %+v", c.Name, c.Subscription, wantCopies[c.ID])
-		}
-	}
-
-	sources, err := db.GetUserCatalogs(ctx, f.publisher)
+	collections, err := db.GetCurrentCollectionSelection(ctx, f.profile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantStatus := map[uuid.UUID]string{f.homeRow: "live", f.inFolder: "live", f.withdrawnSource: "unpublished"}
-	for _, c := range sources {
-		if c.Publication == nil || c.Publication.Status != wantStatus[c.ID] {
-			t.Errorf("%s: publication %+v, want status %q", c.Name, c.Publication, wantStatus[c.ID])
-		}
+	for _, c := range collections {
+		got[c.ID] = *c.HomeSortOrder
+	}
+	if !mapsEqual(got, want) {
+		t.Errorf("positions = %v, want %v", got, want)
 	}
 
-	home, err := db.GetCurrentCollectionSelection(ctx, f.publisher)
-	if err != nil || len(home) != 1 || home[0].NeedsPush || !home[0].PinToTop {
-		t.Errorf("Home = %+v, %v; want Night, pinned, needing no push", home, err)
-	}
-	record, err := db.BuildPushRecord(ctx, f.publisher,
-		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: f.homeRow, ShowInHome: true}}},
-		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: f.night, PinToTop: true}}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	var stored string
-	if err := openRaw(t, f.path).QueryRow(`SELECT record FROM push_records WHERE profile_id = ?`, f.publisher.String()).Scan(&stored); err != nil {
+	if err := openRaw(t, f.path).QueryRow(`SELECT record FROM push_records`).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
-	if built, _ := json.Marshal(record); string(built) != stored {
-		t.Errorf("backfilled record = %s\nwant what a push of the stored Home builds: %s", stored, built)
+	var record vault.PushRecord
+	if err := json.Unmarshal([]byte(stored), &record); err != nil {
+		t.Fatal(err)
+	}
+	recordPositions := map[uuid.UUID]int{}
+	for _, c := range record.Home.Catalogs {
+		recordPositions[c.CatalogID] = c.Position
+	}
+	for _, c := range record.Home.Collections {
+		recordPositions[c.CollectionID] = c.Position
+	}
+	if !mapsEqual(recordPositions, want) {
+		t.Errorf("push record positions = %v, want %v", recordPositions, want)
+	}
+	if len(record.Collections) != len(f.collectionsBeforeRecord) {
+		t.Fatalf("push record collections = %d, want %d", len(record.Collections), len(f.collectionsBeforeRecord))
+	}
+	for i := range record.Collections {
+		if !bytes.Equal(record.Collections[i], f.collectionsBeforeRecord[i]) {
+			t.Errorf("pushed collection %d = %s, want the bytes push sent: %s", i, record.Collections[i], f.collectionsBeforeRecord[i])
+		}
 	}
 }
 
-// checkTriggersFire checks the count triggers and the unpublish trigger on
-// the migrated database, and that the old status is refused.
-func checkTriggersFire(t *testing.T, f v5Fixture, db *sql.DB) {
-	t.Helper()
-	count := func() int {
-		return queryInt(t, db, `SELECT subscriber_count FROM publications WHERE id = ?`, f.live.String())
+func mapsEqual(a, b map[uuid.UUID]int) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	exec(t, db, `INSERT INTO catalogs (id, name, recipe_hash, owner_id, created_at, updated_at) VALUES ('idle-copy', 'C', 'r1', ?, 'now', 'now')`, f.idle.String())
-	exec(t, db, `INSERT INTO subscriptions (id, subscriber_id, publication_id, catalog_id, subscribed_hash, created_at) VALUES ('s', ?, ?, 'idle-copy', 'h1', 'now')`,
-		f.idle.String(), f.live.String())
-	if n := count(); n != 2 {
-		t.Errorf("subscriber count after a subscribe = %d, want 2", n)
+	for k, v := range a {
+		if w, ok := b[k]; !ok || w != v {
+			return false
+		}
 	}
-	exec(t, db, `DELETE FROM subscriptions WHERE id = 's'`)
-	if n := count(); n != 1 {
-		t.Errorf("subscriber count after an unsubscribe = %d, want 1", n)
-	}
-	exec(t, db, `UPDATE publications SET catalog_id = NULL WHERE id = ?`, f.liveToo.String())
-	if status := queryString(t, db, `SELECT status FROM publications WHERE id = ?`, f.liveToo.String()); status != "unpublished" {
-		t.Errorf("status after its source went = %q, want unpublished", status)
-	}
-	if _, err := db.Exec(`UPDATE publications SET status = 'withdrawn' WHERE id = ?`, f.live.String()); err == nil {
-		t.Error("status 'withdrawn' was accepted; want the CHECK to refuse it")
-	}
+	return true
 }
 
-func queryString(t *testing.T, db *sql.DB, query string, args ...any) string {
-	t.Helper()
-	var s string
-	if err := db.QueryRow(query, args...).Scan(&s); err != nil {
-		t.Fatalf("%s: %v", query, err)
-	}
-	return s
-}
-
-// While a collection on Home needs a push by v5's rule, the migration
-// refuses, names it, and leaves the database at v5 as it was.
-func TestMigrateRefusesWhileACollectionNeedsAPush(t *testing.T) {
-	ctx := context.Background()
-	f := newV5Fixture(t, func(v5Fixture) string { return "stale" })
-	var out bytes.Buffer
-	err := migrateToV6(ctx, f.path, &out)
-	if err == nil || !strings.Contains(err.Error(), "need a push") || !strings.Contains(err.Error(), `"Night"`) {
-		t.Fatalf("migrate = %v, want a refusal naming Night", err)
-	}
-	db := openRaw(t, f.path)
-	if v := queryInt(t, db, `PRAGMA user_version`); v != 5 {
-		t.Errorf("user_version = %d, want 5", v)
-	}
-	if n := queryInt(t, db, `SELECT count(*) FROM sqlite_master WHERE name IN ('push_records', 'publications_v6')`); n != 0 {
-		t.Errorf("v6 tables left behind: %d", n)
-	}
-	if n := queryInt(t, db, `SELECT count(*) FROM publications WHERE status = 'withdrawn' AND owner_id = ?`, f.publisher.String()); n != 1 {
-		t.Errorf("v5 publications after the refusal: %d withdrawn, want 1", n)
-	}
-}
-
-// A broken reference stops the migration before anything commits.
-func TestMigrateRefusesABrokenReference(t *testing.T) {
-	f := newV5Fixture(t, func(f v5Fixture) string { return f.nightPushHash(t) })
-	exec(t, openRaw(t, f.path), `INSERT INTO folder_catalogs (folder_id, catalog_id, sort_order) VALUES ('no-folder', 'no-catalog', 0)`)
-	err := migrateToV6(context.Background(), f.path, &bytes.Buffer{})
-	if err == nil || !strings.Contains(err.Error(), "foreign_key_check") {
-		t.Fatalf("migrate = %v, want the foreign key refusal", err)
-	}
-	if v := queryInt(t, openRaw(t, f.path), `PRAGMA user_version`); v != 5 {
-		t.Errorf("user_version = %d, want 5", v)
-	}
-}
-
-// The command needs --db naming an existing v5 database.
+// The command needs --db naming an existing v6 database; a fresh v7 one is
+// refused and left at version 7.
 func TestMigrateRefusals(t *testing.T) {
 	ctx := context.Background()
 	fresh := filepath.Join(t.TempDir(), "fresh.db")
@@ -329,11 +198,15 @@ func TestMigrateRefusals(t *testing.T) {
 		"no --db":      {},
 		"missing file": {"--db", filepath.Join(t.TempDir(), "none.db")},
 		"unknown flag": {"--nope"},
-		"version 6":    {"--db", fresh},
+		"version 7":    {"--db", fresh},
 	} {
 		if err := runCommand(ctx, append([]string{"migrate"}, args...), &bytes.Buffer{}); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
+	}
+	var version int
+	if err := openRaw(t, fresh).QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 7 {
+		t.Errorf("version after a refused migrate = %d (%v), want 7", version, err)
 	}
 }
 

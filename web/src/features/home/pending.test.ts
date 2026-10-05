@@ -1,50 +1,73 @@
 import { describe, expect, it } from 'vitest'
+import { collection, selectedCatalog } from '@/test/fixtures'
 import {
-  moveCollectionInBand,
+  bandOf,
+  catalogEntries,
+  collectionEntries,
+  existingRowIDs,
+  hydrateHome,
+  moveInBand,
   moveWithinBand,
-  reorderCollectionBand,
+  reorderBand,
   reorderWithinBand,
   toPushPayload,
+  toggleShowInHome,
   togglePinToTop,
-  existingRowIDs,
+  withRow,
   withoutDeleted,
+  withoutRow,
   type HomeCatalogEntry,
   type HomeCollectionEntry,
+  type HomeEntry,
 } from './pending'
 
-const shown = (id: string): HomeCatalogEntry => ({ id, showInHome: true })
-const discover = (id: string): HomeCatalogEntry => ({ id, showInHome: false })
-const first = (id: string): HomeCollectionEntry => ({ id, pinToTop: true })
-const after = (id: string): HomeCollectionEntry => ({ id, pinToTop: false })
-const isShown = (entry: HomeCatalogEntry) => entry.showInHome
+const shown = (id: string): HomeCatalogEntry => ({ kind: 'catalog', id, showInHome: true })
+const discover = (id: string): HomeCatalogEntry => ({ kind: 'catalog', id, showInHome: false })
+const first = (id: string): HomeCollectionEntry => ({ kind: 'collection', id, pinToTop: true })
+const after = (id: string): HomeCollectionEntry => ({ kind: 'collection', id, pinToTop: false })
+const isShown = (entry: HomeEntry) => entry.kind === 'catalog' && entry.showInHome
 const ids = (entries: { id: string }[]) => entries.map((entry) => entry.id)
 
 describe('toPushPayload', () => {
-  it('sends every row in selection order, a catalog with its home flag and a collection with its Show first', () => {
-    expect(
-      toPushPayload({ catalogs: [shown('b'), discover('a'), shown('c')], collections: [after('y'), first('x')] }),
-    ).toEqual({
-      catalogs: {
-        catalogs: [
-          { catalog_id: 'b', show_in_home: true },
-          { catalog_id: 'a', show_in_home: false },
-          { catalog_id: 'c', show_in_home: true },
-        ],
-      },
-      collections: {
-        collections: [
-          { collection_id: 'y', pin_to_top: false },
-          { collection_id: 'x', pin_to_top: true },
-        ],
-      },
+  it('sends every row in Home order, a catalog with its home flag and a collection with its Show first', () => {
+    expect(toPushPayload({ rows: [shown('b'), after('y'), discover('a'), first('x'), shown('c')] })).toEqual({
+      rows: [
+        { catalog_id: 'b', show_in_home: true },
+        { collection_id: 'y', pin_to_top: false },
+        { catalog_id: 'a', show_in_home: false },
+        { collection_id: 'x', pin_to_top: true },
+        { catalog_id: 'c', show_in_home: true },
+      ],
     })
   })
 
-  it('sends empty lists for an empty selection, never omitting them', () => {
-    expect(toPushPayload({ catalogs: [], collections: [] })).toEqual({
-      catalogs: { catalogs: [] },
-      collections: { collections: [] },
-    })
+  it('sends an empty list for an empty Home, never omitting it', () => {
+    expect(toPushPayload({ rows: [] })).toEqual({ rows: [] })
+  })
+})
+
+describe('hydrateHome', () => {
+  it('merges the two selection reads by home_position', () => {
+    const home = hydrateHome(
+      [
+        selectedCatalog({ id: 'a', home_position: 2, show_in_home: true }),
+        selectedCatalog({ id: 'd', home_position: 4, show_in_home: false }),
+      ],
+      [collection({ id: 'x', home_position: 0, pin_to_top: true }), collection({ id: 'y', home_position: 3 })],
+    )
+    expect(home.rows).toEqual([first('x'), shown('a'), after('y'), discover('d')])
+  })
+})
+
+describe('bands and kinds', () => {
+  it('puts a pinned collection first, a home row or unpinned collection in home, and a Discover catalog apart', () => {
+    expect([first('p'), after('u'), shown('s'), discover('d')].map(bandOf)).toEqual(['pinned', 'home', 'home', 'discover'])
+  })
+
+  it('reads the catalogs and the collections out of one Home, each in order', () => {
+    const state = { rows: [after('y'), shown('a'), first('x'), discover('b')] }
+    expect(ids(catalogEntries(state))).toEqual(['a', 'b'])
+    expect(ids(collectionEntries(state))).toEqual(['y', 'x'])
   })
 })
 
@@ -74,24 +97,49 @@ describe('moveWithinBand', () => {
   })
 })
 
-describe('the collection bands', () => {
-  const entries = [first('p1'), after('u1'), first('p2'), after('u2')]
+describe('the bands', () => {
+  const rows = [first('p1'), shown('a'), after('u1'), first('p2'), discover('d'), after('u2')]
 
-  it('reorders the pinned band or the other, leaving the other band as it was', () => {
-    expect(ids(reorderCollectionBand(entries, 'pinned', ['p2', 'p1']))).toEqual(['p2', 'p1', 'u1', 'u2'])
-    expect(ids(reorderCollectionBand(entries, 'unpinned', ['u2', 'u1']))).toEqual(['u2', 'u1', 'p1', 'p2'])
+  it('reorders the home rows, catalogs and collections mixed, leaving the pinned ones as they were', () => {
+    const reordered = reorderBand(rows, 'home', ['u2', 'a', 'u1'])
+    expect(ids(reordered.filter((r) => bandOf(r) === 'home'))).toEqual(['u2', 'a', 'u1'])
+    expect(ids(reordered.filter((r) => bandOf(r) === 'pinned'))).toEqual(['p1', 'p2'])
   })
 
-  it('moves a collection within its own band only', () => {
-    expect(ids(moveCollectionInBand(entries, 'p2', -1))).toEqual(['p2', 'p1', 'u1', 'u2'])
-    expect(ids(moveCollectionInBand(entries, 'u1', 1))).toEqual(['u2', 'u1', 'p1', 'p2'])
-    expect(moveCollectionInBand(entries, 'p1', -1)).toBe(entries)
-    expect(moveCollectionInBand(entries, 'zz', 1)).toBe(entries)
+  it('reorders the pinned collections, leaving the home rows as they were', () => {
+    const reordered = reorderBand(rows, 'pinned', ['p2', 'p1'])
+    expect(ids(reordered.filter((r) => bandOf(r) === 'pinned'))).toEqual(['p2', 'p1'])
+    expect(ids(reordered.filter((r) => bandOf(r) === 'home'))).toEqual(['a', 'u1', 'u2'])
   })
 
-  it('flips one collection’s Show first and keeps its place in the selection', () => {
-    expect(togglePinToTop(entries, 'u1')).toEqual([first('p1'), first('u1'), first('p2'), after('u2')])
-    expect(togglePinToTop(entries, 'p2')).toEqual([first('p1'), after('u1'), after('p2'), after('u2')])
+  it('moves a row within its own band only, across kinds', () => {
+    const moved = moveInBand(rows, 'u1', -1)
+    expect(ids(moved.filter((r) => bandOf(r) === 'home'))).toEqual(['u1', 'a', 'u2'])
+    expect(moveInBand(rows, 'p1', -1)).toBe(rows)
+    expect(moveInBand(rows, 'zz', 1)).toBe(rows)
+  })
+
+  it('flips one collection’s Show first and keeps its place in Home order', () => {
+    expect(togglePinToTop(rows, 'u1')).toEqual([first('p1'), shown('a'), first('u1'), first('p2'), discover('d'), after('u2')])
+    expect(togglePinToTop(rows, 'a')).toEqual(rows)
+  })
+
+  it('flips one catalog between a home row and Discover only', () => {
+    expect(toggleShowInHome(rows, 'a')[1]).toEqual(discover('a'))
+    expect(toggleShowInHome(rows, 'd')[4]).toEqual(shown('d'))
+    expect(toggleShowInHome(rows, 'u1')[2]).toEqual(after('u1'))
+  })
+})
+
+describe('withRow and withoutRow', () => {
+  it('adds a row at the end of Home once', () => {
+    const rows = [shown('a')]
+    expect(withRow(rows, after('x'))).toEqual([shown('a'), after('x')])
+    expect(withRow(rows, shown('a'))).toBe(rows)
+  })
+
+  it('takes a row off by its id', () => {
+    expect(withoutRow([shown('a'), after('x')], 'a')).toEqual([after('x')])
   })
 })
 
@@ -106,16 +154,7 @@ describe('existingRowIDs', () => {
 })
 
 describe('withoutDeleted', () => {
-  const state = {
-    catalogs: [
-      { id: 'a', showInHome: true },
-      { id: 'b', showInHome: false },
-    ],
-    collections: [
-      { id: 'x', pinToTop: false },
-      { id: 'y', pinToTop: true },
-    ],
-  }
+  const state = { rows: [shown('a'), after('x'), discover('b'), first('y')] }
 
   it('is the state itself while every row exists, before anything can be judged, or for none', () => {
     expect(withoutDeleted(state, new Set(['a', 'b', 'x', 'y']))).toBe(state)
@@ -124,9 +163,12 @@ describe('withoutDeleted', () => {
   })
 
   it('drops the rows that are gone, keeping the order of the rest', () => {
-    expect(withoutDeleted(state, new Set(['b', 'y']))).toEqual({
-      catalogs: [{ id: 'b', showInHome: false }],
-      collections: [{ id: 'y', pinToTop: true }],
-    })
+    expect(withoutDeleted(state, new Set(['b', 'y']))).toEqual({ rows: [discover('b'), first('y')] })
+  })
+})
+
+describe('hydrateHome without positions', () => {
+  it('keeps the reads in their order when a row carries no position', () => {
+    expect(hydrateHome([selectedCatalog({ id: 'a' })], [collection({ id: 'x' })]).rows.map((r) => r.id)).toEqual(['a', 'x'])
   })
 })

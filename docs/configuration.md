@@ -171,22 +171,21 @@ A schema change edits `schema.sql` and bumps `schemaVersion`.
 
 **Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 
-**`uno migrate --db <path>`** moves a version 5 vault to version 6, the sharing rename and the
-push record. It is a one-off, deleted once prod has run it (`cmd/server/migrate.go`). It refuses
-any version but 5, and runs in one transaction on one connection with foreign keys off: it renames
-the sharing columns and status, replaces the sharing triggers, refuses while any collection on
-Home needs a push, backfills each profile's push record from the Home its last push stored, drops
-`collections.pushed_hash`, and checks the structure against a fresh v6 database. Any refusal or
-failure leaves the file as it was. It prints every table's row count before and after.
+**`uno migrate --db <path>`** moves a version 6 vault to version 7, where a profile's Home
+catalogs and collections share one numbering so they can mix. It is a one-off, deleted once prod
+has run it (`cmd/server/migrate.go`). It refuses any version but 6, and runs in one transaction on
+one connection: it renumbers every profile's Home as one list in the order version 6 showed it
+(pinned collections, catalogs, then the other collections), gives each push record's Home entries
+those positions, stamps version 7, and checks the structure against a fresh v7 database. Any
+refusal or failure leaves the file as it was. It prints every table's row count before and after.
 
 On the deployed volume, with the image distroless and `ENTRYPOINT ["/app/uno"]`:
 
-1. Push every profile from the builder, so nothing on Home needs a push.
-2. `docker compose stop uno`, then back up `/data` (`docker compose cp uno:/data ./uno-data-backup`).
-3. Build or deploy the new image.
-4. `docker compose run --rm uno migrate --db /data/vault.db`.
-5. `docker compose up -d`.
+1. `docker compose stop uno`, then back up `/data` (`docker compose cp uno:/data ./uno-data-backup`).
+2. Build or deploy the new image.
+3. `docker compose run --rm uno migrate --db /data/vault.db`.
+4. `docker compose up -d`.
 
-The new binary refuses a version 5 vault until it is migrated.
+The new binary refuses a version 6 vault until it is migrated.
 
 **The deployed `uno-data` volume** holds real data, so never `docker compose down -v` it.

@@ -197,7 +197,7 @@ func TestPinToTopIsWrittenOnlyByPush(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pushSelection(t, db, owner, SelectedCollectionInput{CollectionID: a.ID, PinToTop: true}, SelectedCollectionInput{CollectionID: b.ID})
+	pushSelection(t, db, owner, SelectedCollectionInput{CollectionID: a.ID, PinToTop: true}, SelectedCollectionInput{CollectionID: b.ID, Position: 1})
 	if !mustOwnCollection(t, db, owner, a.ID).PinToTop || mustOwnCollection(t, db, owner, b.ID).PinToTop {
 		t.Fatal("after the first push, want A pinned and B not")
 	}

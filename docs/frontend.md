@@ -506,12 +506,12 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   library says. The server refuses to delete a row Nuvio holds, so a selected row missing from
   the library is a transient case, handled defensively rather than expected. Such rows are marked
   "not in library" and carry the red Deleted sticker: they work, but removing them is one-way.
-- **List groups in the same three bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
-  a separate derivation), under the headings Pinned, Catalogs and Collections: pinned collections,
-  then home-shown catalogs, then unpinned collections,
-  numbered with one ordinal straight through all three — a row's number is its place in Nuvio. A
-  reorder (drag, keyboard, or a row's own ↑/↓) only ever moves a row within its own band;
-  `HomeSelectionContext`'s `reorderCollections`/`reorderCatalogs`/`moveCollection`/`moveCatalog`
+- **List groups in the same two bands Preview draws** (`preview.ts`'s `buildHomePreview`, not
+  a separate derivation), under the headings Pinned and Rows: pinned collections, then the home
+  rows, catalogs and unpinned collections mixed in one order (`HomeState.rows`, one ordered list of
+  `HomeEntry`, hydrated by each selection row's `home_position`), numbered with one ordinal straight
+  through both — a row's number is its place in Nuvio. A reorder (drag, keyboard, or a row's own
+  ↑/↓) only ever moves a row within its own band; `HomeSelectionContext`'s `reorderBand`/`moveRow`
   reconstruct the *complete* underlying list on every edit (`pending.ts`'s `reorderWithinBand` /
   `moveWithinBand`) rather than replacing just the touched band, so the untouched band can't
   silently relocate to the array's tail and register as a phantom pending change.
@@ -522,13 +522,12 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
   ("Move to Discover" / the tray's "Move to home"), not a dedicated toggle control.
 - **Pin (`pin_to_top`) is a pending edit here, like Home or Discover**, and nowhere else:
   a collection row's ⋯ menu offers "Pin" / "Unpin" (`showFirstAction`), which
-  flips the entry's `pinToTop` in `HomeState.collections` (`{id, pinToTop}`, as `catalogs` holds
-  `{id, showInHome}`) and moves the row to the other collection band at its place in the
-  selection order. The baseline takes each collection's stored pin, the one it was last pushed
+  flips the entry's `pinToTop` in `HomeState.rows` and moves the row to the other band at its
+  place in Home order. The baseline takes each collection's stored pin, the one it was last pushed
   with; a collection added to the home screen starts from its stored pin too. Push sends the pins
   in its selection and is the only thing that writes them — the collection editor has no Pin.
-  The band-aware edits (`reorderCollectionBand`, `moveCollectionInBand`,
-  `togglePinToTop` in `pending.ts`) read each row's pin from the state they edit.
+  The band-aware edits (`reorderBand`, `moveInBand`, `togglePinToTop` in `pending.ts`) read each
+  row's band from the state they edit.
 - **The pending count is the list of changes' length, not a separate tally.** `changes.ts`'s
   `computeHomeChanges` diffs `baseline` against `current` into named, per-row sentences ("Moved
   “X” from 5th to 3rd"), using a longest-increasing-subsequence pass per band so a drag reports
@@ -595,15 +594,14 @@ A pure render of state List already holds — no endpoint and no fetch for *layo
 come from `POST /api/catalogs/preview`. The derivation lives in
 `web/src/features/home/preview.ts`, kept pure and separate from `HomePreview.tsx`.
 
-**The model being previewed.** *Home* is **one page** in three bands:
+**The model being previewed.** *Home* is **one page** in two bands:
 
 ```
 pinned collection rows      Pin (the pending pin) hoists above everything
-catalog rows                tiles = content
-unpinned collection rows    tiles = folders
+home rows                   catalogs (tiles = content) and collections (tiles = folders), mixed
 ```
 
-The bands follow the pending pins in `HomeState.collections`, not the pins last pushed, so a
+The bands follow the pending pins in `HomeState.rows`, not the pins last pushed, so a
 pin flipped in the List view moves the row in Preview at once.
 
 A collection is **one row whose tiles are its folders**, drawn from folder metadata

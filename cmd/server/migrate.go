@@ -1,16 +1,15 @@
-// The v5→v6 migration, `uno migrate --db <path>`: run once against a vault at
-// schema version 5, then deleted. In one transaction it renames the sharing
-// columns and status, replaces the sharing triggers, refuses while any
-// collection on Home needs a push, backfills each profile's push record, drops
-// collections.pushed_hash, and checks the result against a fresh v6 database.
+// The v6→v7 migration, `uno migrate --db <path>`: run once against a vault at
+// schema version 6, then deleted. Version 7 numbers a profile's Home catalogs
+// and collections in one list, where version 6 numbered each apart and showed
+// them in bands. In one transaction it renumbers every profile's Home in the
+// order its bands showed it, gives each push record's Home those positions,
+// and checks the result against a fresh v7 database.
 
 package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -19,78 +18,32 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
-
-	"github.com/google/uuid"
 
 	"github.com/hiidz/uno/internal/vault"
 )
 
-// renameToV6 is the migration's structural half, run first: the four
-// triggers that touch publications dropped, publications rebuilt (SQLite
-// can't alter a CHECK) with publisher_id and 'unpublished', the subscription
-// columns renamed, three triggers recreated, and push_records created.
-const renameToV6 = `
-DROP TRIGGER publications_withdraw_on_source_delete;
-DROP TRIGGER publications_withdraw_on_scope;
-DROP TRIGGER subscriptions_count_on_insert;
-DROP TRIGGER subscriptions_count_on_delete;
-
-CREATE TABLE publications_v6 (
-    id               TEXT    PRIMARY KEY,         -- UUID, kept across republishes
-    publisher_id     TEXT    NOT NULL REFERENCES profiles(id),
-    kind             TEXT    NOT NULL CHECK (kind IN ('catalog', 'collection')),
-    catalog_id       TEXT    REFERENCES catalogs(id) ON DELETE SET NULL,    -- the source; NULL once deleted
-    collection_id    TEXT    REFERENCES collections(id) ON DELETE SET NULL, -- the source; NULL once deleted
-    title            TEXT    NOT NULL,
-    snapshot         TEXT    NOT NULL,            -- JSON, format uno-publication
-    content_hash     TEXT    NOT NULL,            -- sha256 hex of snapshot
-    catalog_count    INTEGER NOT NULL,
-    folder_count     INTEGER NOT NULL,
-    subscriber_count INTEGER NOT NULL DEFAULT 0,
-    status           TEXT    NOT NULL CHECK (status IN ('live', 'unpublished')),
-    published_at     TEXT    NOT NULL,            -- RFC3339 UTC, when first published
-    updated_at       TEXT    NOT NULL,            -- RFC3339 UTC
-    CHECK (kind = 'catalog' OR catalog_id IS NULL),
-    CHECK (kind = 'collection' OR collection_id IS NULL)
+// homePositions is every on-Home catalog and collection with its v7
+// position: per profile, in the order version 6's bands showed them —
+// pinned collections, catalogs (Discover only among them), then the other
+// collections — each band in its home_sort_order.
+const homePositions = `
+CREATE TEMP TABLE home_positions AS
+SELECT kind, id, row_number() OVER (PARTITION BY owner_id ORDER BY band, pos) - 1 AS position FROM (
+    SELECT 'collection' AS kind, id, owner_id, 0 AS band, home_sort_order AS pos
+    FROM collections WHERE home_sort_order IS NOT NULL AND pin_to_top = 1
+    UNION ALL
+    SELECT 'catalog', id, owner_id, 1, home_sort_order FROM catalogs WHERE home_sort_order IS NOT NULL
+    UNION ALL
+    SELECT 'collection', id, owner_id, 2, home_sort_order
+    FROM collections WHERE home_sort_order IS NOT NULL AND pin_to_top = 0
 );
-INSERT INTO publications_v6 (id, publisher_id, kind, catalog_id, collection_id, title, snapshot, content_hash,
-                             catalog_count, folder_count, subscriber_count, status, published_at, updated_at)
-SELECT id, owner_id, kind, catalog_id, collection_id, title, snapshot, content_hash,
-       catalog_count, folder_count, subscriber_count,
-       CASE status WHEN 'withdrawn' THEN 'unpublished' ELSE status END, published_at, updated_at
-FROM publications;
-DROP TABLE publications;
-ALTER TABLE publications_v6 RENAME TO publications;
-CREATE UNIQUE INDEX publications_by_catalog ON publications (catalog_id) WHERE catalog_id IS NOT NULL;
-CREATE UNIQUE INDEX publications_by_collection ON publications (collection_id) WHERE collection_id IS NOT NULL;
-
-ALTER TABLE subscriptions RENAME COLUMN owner_id TO subscriber_id;
-ALTER TABLE subscriptions RENAME COLUMN taken_hash TO subscribed_hash;
-
-CREATE TRIGGER publications_unpublish_on_source_delete AFTER UPDATE OF catalog_id, collection_id ON publications
-WHEN NEW.catalog_id IS NULL AND NEW.collection_id IS NULL AND NEW.status = 'live'
-BEGIN
-    UPDATE publications SET status = 'unpublished', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-    WHERE id = NEW.id;
-END;
-
-CREATE TRIGGER subscriptions_count_on_insert AFTER INSERT ON subscriptions
-BEGIN
-    UPDATE publications SET subscriber_count = subscriber_count + 1 WHERE id = NEW.publication_id;
-END;
-
-CREATE TRIGGER subscriptions_count_on_delete AFTER DELETE ON subscriptions
-BEGIN
-    UPDATE publications SET subscriber_count = subscriber_count - 1 WHERE id = OLD.publication_id;
-END;
-
-CREATE TABLE push_records (
-    profile_id         TEXT PRIMARY KEY REFERENCES profiles(id),
-    nuvio_profile_uuid TEXT NOT NULL, -- the Nuvio profile it was pushed to: profiles.nuvio_profile_uuid then
-    record             TEXT NOT NULL, -- JSON, vault.PushRecord
-    pushed_at          TEXT NOT NULL  -- RFC3339 UTC
-);
+UPDATE catalogs SET home_sort_order =
+    (SELECT position FROM home_positions WHERE kind = 'catalog' AND home_positions.id = catalogs.id)
+WHERE home_sort_order IS NOT NULL;
+UPDATE collections SET home_sort_order =
+    (SELECT position FROM home_positions WHERE kind = 'collection' AND home_positions.id = collections.id)
+WHERE home_sort_order IS NOT NULL;
+DROP TABLE home_positions;
 `
 
 // runMigrate is the migrate subcommand: it parses args and migrates the
@@ -98,7 +51,7 @@ CREATE TABLE push_records (
 func runMigrate(ctx context.Context, args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	flags.SetOutput(out)
-	path := flags.String("db", "", "path to the vault.db to migrate from schema version 5 to 6")
+	path := flags.String("db", "", "path to the vault.db to migrate from schema version 6 to 7")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -108,12 +61,12 @@ func runMigrate(ctx context.Context, args []string, out io.Writer) error {
 	if _, err := os.Stat(*path); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	return migrateToV6(ctx, *path, out)
+	return migrateToV7(ctx, *path, out)
 }
 
-// migrateToV6 migrates the v5 database at path to v6 in one transaction on
-// one connection with foreign keys off, printing row counts before and after.
-func migrateToV6(ctx context.Context, path string, out io.Writer) error {
+// migrateToV7 migrates the v6 database at path to v7 in one transaction on
+// one connection, printing row counts before and after.
+func migrateToV7(ctx context.Context, path string, out io.Writer) error {
 	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", path, err)
@@ -124,13 +77,14 @@ func migrateToV6(ctx context.Context, path string, out io.Writer) error {
 		return fmt.Errorf("opening %s: %w", path, err)
 	}
 	defer func() { _ = conn.Close() }()
+	return migrateConn(ctx, conn, out)
+}
 
-	if err := requireVersion(ctx, conn, 5); err != nil {
+// migrateConn migrates the database conn holds, which must be at version 6,
+// printing row counts before and after to out.
+func migrateConn(ctx context.Context, conn *sql.Conn, out io.Writer) error {
+	if err := requireVersion(ctx, conn, 6); err != nil {
 		return err
-	}
-	// Outside the transaction: inside one, SQLite ignores it.
-	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
-		return fmt.Errorf("turning foreign keys off: %w", err)
 	}
 	before, err := rowCounts(ctx, conn)
 	if err != nil {
@@ -140,12 +94,18 @@ func migrateToV6(ctx context.Context, path string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	return reportMigration(ctx, conn, out, before, records)
+}
+
+// reportMigration writes each table's row count before and after, then the
+// outcome, to out.
+func reportMigration(ctx context.Context, conn *sql.Conn, out io.Writer, before map[string]int, records int) error {
 	after, err := rowCounts(ctx, conn)
 	if err != nil {
 		return err
 	}
 	printCounts(out, before, after)
-	_, err = fmt.Fprintf(out, "migrated to schema version 6: %d push records backfilled; structure matches a fresh v6 database\n", records)
+	_, err = fmt.Fprintf(out, "migrated to schema version 7: Home renumbered as one list; %d push records given positions; structure matches a fresh v7 database\n", records)
 	return err
 }
 
@@ -163,7 +123,7 @@ func requireVersion(ctx context.Context, q queryRower, want int) error {
 
 // migrateInTx runs the whole migration in one transaction on conn and
 // commits only when every step and check passes. Returns how many push
-// records it wrote.
+// records it rewrote.
 func migrateInTx(ctx context.Context, conn *sql.Conn) (int, error) {
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
@@ -171,14 +131,8 @@ func migrateInTx(ctx context.Context, conn *sql.Conn) (int, error) {
 	}
 	defer func() { _ = tx.Rollback() }() // no-op once Commit succeeds
 
-	if _, err := tx.ExecContext(ctx, renameToV6); err != nil {
-		return 0, fmt.Errorf("renaming to v6: %w", err)
-	}
-	records, err := backfillPushRecords(ctx, tx)
+	records, err := migrateTx(ctx, tx)
 	if err != nil {
-		return 0, err
-	}
-	if err := finishV6(ctx, tx); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -187,19 +141,96 @@ func migrateInTx(ctx context.Context, conn *sql.Conn) (int, error) {
 	return records, nil
 }
 
-// finishV6 drops collections.pushed_hash, checks foreign keys, stamps
-// version 6 and checks the structure against a fresh v6 database, through tx.
-func finishV6(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, `ALTER TABLE collections DROP COLUMN pushed_hash`); err != nil {
-		return fmt.Errorf("dropping collections.pushed_hash: %w", err)
+// migrateTx renumbers every Home, positions every push record, stamps
+// version 7 and checks the structure against a fresh v7 database, through
+// tx. Returns how many push records it rewrote.
+func migrateTx(ctx context.Context, tx *sql.Tx) (int, error) {
+	if _, err := tx.ExecContext(ctx, homePositions+`PRAGMA user_version = 7;`); err != nil {
+		return 0, fmt.Errorf("renumbering Home: %w", err)
 	}
-	if err := requireNoForeignKeyProblems(ctx, tx); err != nil {
+	records, err := positionPushRecords(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+	return records, requireFreshStructure(ctx, tx)
+}
+
+// positionPushRecords gives every push record's Home entries positions in
+// the order version 6's bands showed them (positionHome), through tx, leaving
+// the rest of each record as it was. Returns how many records it rewrote.
+func positionPushRecords(ctx context.Context, tx *sql.Tx) (int, error) {
+	profiles, err := queryStrings(ctx, tx, `SELECT profile_id FROM push_records ORDER BY profile_id`)
+	if err != nil {
+		return 0, err
+	}
+	for _, id := range profiles {
+		if err := positionPushRecord(ctx, tx, id); err != nil {
+			return 0, err
+		}
+	}
+	return len(profiles), nil
+}
+
+// positionPushRecord rewrites profileID's push record with positions on its
+// Home entries, through tx.
+func positionPushRecord(ctx context.Context, tx *sql.Tx, profileID string) error {
+	record, err := readPushRecord(ctx, tx, profileID)
+	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `PRAGMA user_version = 6`); err != nil {
-		return fmt.Errorf("stamping version 6: %w", err)
+	positionHome(&record.Home)
+	return writePushRecord(ctx, tx, profileID, record)
+}
+
+// readPushRecord is profileID's push record, read through tx.
+func readPushRecord(ctx context.Context, tx *sql.Tx, profileID string) (vault.PushRecord, error) {
+	var raw string
+	if err := tx.QueryRowContext(ctx, `SELECT record FROM push_records WHERE profile_id = ?`, profileID).Scan(&raw); err != nil {
+		return vault.PushRecord{}, fmt.Errorf("reading push record of %s: %w", profileID, err)
 	}
-	return requireFreshStructure(ctx, tx)
+	var record vault.PushRecord
+	if err := json.Unmarshal([]byte(raw), &record); err != nil {
+		return vault.PushRecord{}, fmt.Errorf("decoding push record of %s: %w", profileID, err)
+	}
+	return record, nil
+}
+
+// writePushRecord replaces profileID's push record with record through tx,
+// leaving its stamp and time as they were.
+func writePushRecord(ctx context.Context, tx *sql.Tx, profileID string, record vault.PushRecord) error {
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("encoding push record of %s: %w", profileID, err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE push_records SET record = ? WHERE profile_id = ?`, string(encoded), profileID); err != nil {
+		return fmt.Errorf("writing push record of %s: %w", profileID, err)
+	}
+	return nil
+}
+
+// positionHome numbers home's entries in the order version 6's bands showed
+// them: pinned collections, catalogs, then the other collections, each band
+// in the order it lists them.
+func positionHome(home *vault.PushedHome) {
+	next := numberCollections(home, true, 0)
+	for i := range home.Catalogs {
+		home.Catalogs[i].Position = next
+		next++
+	}
+	numberCollections(home, false, next)
+}
+
+// numberCollections numbers home's collections pinned or not, as pinned says,
+// in the order it lists them, from next, and returns the number after the
+// last.
+func numberCollections(home *vault.PushedHome, pinned bool, next int) int {
+	for i := range home.Collections {
+		if home.Collections[i].PinToTop == pinned {
+			home.Collections[i].Position = next
+			next++
+		}
+	}
+	return next
 }
 
 // queryRower is what *sql.Conn, *sql.Tx and *sql.DB share for a one-row read.
@@ -212,100 +243,8 @@ type querier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-// pushedCollection is a pushed collection's id and title, read from the
-// bytes push sends.
-type pushedCollection struct {
-	ID    uuid.UUID `json:"id"`
-	Title string    `json:"title"`
-}
-
-// backfillPushRecords writes each profile's push record, built from the Home
-// its last push stored (vault.StoredPushRecord), through tx. It first refuses,
-// writing nothing, while any collection on Home needs a push by v5's rule: the
-// hash of what push would send for it now differs from collections.pushed_hash.
-// Returns how many records it wrote.
-func backfillPushRecords(ctx context.Context, tx *sql.Tx) (int, error) {
-	profiles, err := queryStrings(ctx, tx, `SELECT id FROM profiles ORDER BY id`)
-	if err != nil {
-		return 0, err
-	}
-	pushedHashes, err := pushedHashesOnHome(ctx, tx)
-	if err != nil {
-		return 0, err
-	}
-	records := make([]vault.PushRecord, len(profiles))
-	var waiting []string
-	for i, id := range profiles {
-		if records[i], err = vault.StoredPushRecord(ctx, tx, uuid.MustParse(id)); err != nil {
-			return 0, err
-		}
-		if waiting, err = appendWaiting(waiting, records[i], pushedHashes); err != nil {
-			return 0, err
-		}
-	}
-	if len(waiting) > 0 {
-		return 0, fmt.Errorf("refusing to migrate: %d collections on Home need a push (%s); push every profile, then migrate",
-			len(waiting), strings.Join(waiting, ", "))
-	}
-	for i, id := range profiles {
-		if err := vault.WritePushRecord(ctx, tx, uuid.MustParse(id), records[i]); err != nil {
-			return 0, err
-		}
-	}
-	return len(profiles), nil
-}
-
-// pushedHashesOnHome is collections.pushed_hash of every collection on Home,
-// by id, "" where push never stored one.
-func pushedHashesOnHome(ctx context.Context, q querier) (map[uuid.UUID]string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, coalesce(pushed_hash, '') FROM collections WHERE home_sort_order IS NOT NULL`)
-	if err != nil {
-		return nil, fmt.Errorf("reading pushed hashes: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	hashes := map[uuid.UUID]string{}
-	for rows.Next() {
-		var id, hash string
-		if err := rows.Scan(&id, &hash); err != nil {
-			return nil, fmt.Errorf("reading pushed hashes: %w", err)
-		}
-		hashes[uuid.MustParse(id)] = hash
-	}
-	return hashes, rows.Err()
-}
-
-// appendWaiting is waiting with each collection record holds whose bytes
-// don't hash to its pushed hash appended, as `"Title" (id)`.
-func appendWaiting(waiting []string, record vault.PushRecord, pushedHashes map[uuid.UUID]string) ([]string, error) {
-	for _, raw := range record.Collections {
-		var c pushedCollection
-		if err := json.Unmarshal(raw, &c); err != nil {
-			return nil, fmt.Errorf("decoding a pushed collection: %w", err)
-		}
-		sum := sha256.Sum256(raw)
-		if hex.EncodeToString(sum[:]) != pushedHashes[c.ID] {
-			waiting = append(waiting, fmt.Sprintf("%q (%s)", c.Title, c.ID))
-		}
-	}
-	return waiting, nil
-}
-
-// requireNoForeignKeyProblems refuses when PRAGMA foreign_key_check reports
-// any row.
-func requireNoForeignKeyProblems(ctx context.Context, q querier) error {
-	rows, err := q.QueryContext(ctx, `PRAGMA foreign_key_check`)
-	if err != nil {
-		return fmt.Errorf("checking foreign keys: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	if rows.Next() {
-		return errors.New("refusing to migrate: PRAGMA foreign_key_check reports a broken reference")
-	}
-	return rows.Err()
-}
-
 // requireFreshStructure refuses unless the structure tx sees matches a fresh
-// v6 database's, made by vault.InitDB in a temporary directory.
+// v7 database's, made by vault.InitDB in a temporary directory.
 func requireFreshStructure(ctx context.Context, tx *sql.Tx) error {
 	want, err := freshStructure(ctx)
 	if err != nil {
@@ -316,12 +255,12 @@ func requireFreshStructure(ctx context.Context, tx *sql.Tx) error {
 		return err
 	}
 	if extra, missing := diffLines(got, want); len(extra)+len(missing) > 0 {
-		return fmt.Errorf("refusing to migrate: the structure differs from a fresh v6 database: has %v, lacks %v", extra, missing)
+		return fmt.Errorf("refusing to migrate: the structure differs from a fresh v7 database: has %v, lacks %v", extra, missing)
 	}
 	return nil
 }
 
-// freshStructure is the structure of a fresh v6 database.
+// freshStructure is the structure of a fresh v7 database.
 func freshStructure(ctx context.Context) ([]string, error) {
 	dir, err := os.MkdirTemp("", "uno-migrate-")
 	if err != nil {

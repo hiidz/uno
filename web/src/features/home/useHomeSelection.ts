@@ -19,14 +19,11 @@ export function useHomeEdits(): HomeEdits {
   return value
 }
 
-/** The pending home screen in Nuvio's own three bands — what both the List
- *  and the Preview view draw, so they can't disagree about the order. */
+/** The pending home screen in Nuvio's own two bands — what both the List and
+ *  the Preview view draw, so they can't disagree about the order. */
 export function useHomePreview(): HomeScreenPreview {
-  const { catalogs, collections, catalogById, collectionById } = useHomeSelection()
-  return useMemo(
-    () => buildHomePreview({ catalogs, collections, catalogById, collectionById }),
-    [catalogs, collections, catalogById, collectionById],
-  )
+  const { rows, catalogById, collectionById } = useHomeSelection()
+  return useMemo(() => buildHomePreview({ rows, catalogById, collectionById }), [rows, catalogById, collectionById])
 }
 
 export type { HomeEdits, HomeSelection }

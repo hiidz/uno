@@ -57,9 +57,8 @@ func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, catalogs
 }
 
 // StoredPushRecord is what a push of profileID's Home as push last stored it
-// (the Home columns) puts in Nuvio now, read through q: the v5→v6
-// migration's backfill, and what the waiting-for-push list compares the held
-// record with.
+// (the Home columns) puts in Nuvio now, read through q: what the
+// waiting-for-push list compares the held record with.
 func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (PushRecord, error) {
 	listed, err := selectLeanCatalogs(ctx, q, "c.owner_id = ? AND c.home_sort_order IS NOT NULL", profileID.String())
 	if err != nil {
@@ -68,7 +67,7 @@ func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (Push
 	slices.SortFunc(listed, compareByHomeSortOrder)
 	var catalogs CatalogSelectionForm
 	for _, c := range listed {
-		catalogs.Catalogs = append(catalogs.Catalogs, SelectedCatalogInput{CatalogID: c.ID, ShowInHome: c.ShowInHome})
+		catalogs.Catalogs = append(catalogs.Catalogs, SelectedCatalogInput{CatalogID: c.ID, ShowInHome: c.ShowInHome, Position: *c.HomeSortOrder})
 	}
 
 	onHome, err := selectLeanCollections(ctx, q, "col.owner_id = ? AND col.home_sort_order IS NOT NULL", profileID.String())
@@ -78,7 +77,7 @@ func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (Push
 	slices.SortFunc(onHome, compareCollectionsByHomeSortOrder)
 	var collections CollectionSelectionForm
 	for _, c := range onHome {
-		collections.Collections = append(collections.Collections, SelectedCollectionInput{CollectionID: c.ID, PinToTop: c.PinToTop})
+		collections.Collections = append(collections.Collections, SelectedCollectionInput{CollectionID: c.ID, PinToTop: c.PinToTop, Position: *c.HomeSortOrder})
 	}
 	return buildPushRecord(ctx, q, profileID, catalogs, collections)
 }
@@ -330,34 +329,53 @@ type HomeRow struct {
 	CollectionID uuid.UUID
 	Type         string
 	CatalogID    string
+	// position is the row's place on Home, which HomeRows orders by.
+	position int
 }
 
 // HomeRows is r's home-screen rows in the order Nuvio shows them: pinned
 // holds the pinned collections, and rows the catalogs with a home row of
-// their own followed by the other collections, each in Home order. A
-// catalog in Discover only, or one only a folder uses, has no row.
+// their own and the other collections together, each list in Position
+// order. A catalog in Discover only, or one only a folder uses, has no row.
 func (r PushRecord) HomeRows() (pinned, rows []HomeRow) {
-	return r.collectionRows(true), append(r.catalogRows(), r.collectionRows(false)...)
+	pinned = r.collectionRows(true)
+	rows = append(r.catalogRows(), r.collectionRows(false)...)
+	slices.SortStableFunc(pinned, byPosition)
+	slices.SortStableFunc(rows, byPosition)
+	return pinned, rows
 }
 
-// catalogRows is r's catalogs with a home row of their own, in Home order.
+// byPosition orders two home rows by their place on Home.
+func byPosition(a, b HomeRow) int { return a.position - b.position }
+
+// catalogRows is r's catalogs with a home row of their own.
 func (r PushRecord) catalogRows() []HomeRow {
+	pushed := r.pushedCatalogs()
 	var rows []HomeRow
-	for _, sc := range r.selectedCatalogs() {
-		if sc.ShowInHome {
-			rows = append(rows, HomeRow{Type: sc.Type, CatalogID: ManifestID(sc.Catalog)})
+	for _, c := range r.Home.Catalogs {
+		if c.ShowInHome {
+			pc := pushed[c.CatalogID]
+			rows = append(rows, HomeRow{Type: pc.Type, CatalogID: ManifestID(Catalog{ID: pc.ID, Provider: pc.Provider}), position: c.Position})
 		}
 	}
 	return rows
 }
 
-// collectionRows is r's collections pinned or not, as pinned says, in Home
-// order.
+// pushedCatalogs is r's catalogs by id.
+func (r PushRecord) pushedCatalogs() map[uuid.UUID]PushedCatalog {
+	pushed := make(map[uuid.UUID]PushedCatalog, len(r.Catalogs))
+	for _, c := range r.Catalogs {
+		pushed[c.ID] = c
+	}
+	return pushed
+}
+
+// collectionRows is r's collections pinned or not, as pinned says.
 func (r PushRecord) collectionRows(pinned bool) []HomeRow {
 	var rows []HomeRow
 	for _, c := range r.Home.Collections {
 		if c.PinToTop == pinned {
-			rows = append(rows, HomeRow{CollectionID: c.CollectionID})
+			rows = append(rows, HomeRow{CollectionID: c.CollectionID, position: c.Position})
 		}
 	}
 	return rows

@@ -6,12 +6,12 @@ import { Icon } from '@/components/Icon'
 import { consumeEntry, leftEntry, pushEntry } from '@/lib/historyEntry'
 import { plural } from '@/lib/plural'
 import { folderRecipes } from '@/features/preview/model'
-import { noTiles } from '@/features/preview/tiles'
+import { noTiles, type CatalogTiles } from '@/features/preview/tiles'
 import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
 import { useHomePreview, useHomeSelection } from './useHomeSelection'
 import { useCatalogTiles } from './useCatalogTiles'
-import { findFolderPage } from './preview'
-import type { FolderPageTarget, HomeScreenPreview, PreviewRow } from './preview'
+import { bandItemId, findFolderPage } from './preview'
+import type { FolderPageTarget, HomeBandItem, HomeScreenPreview, PreviewRow } from './preview'
 import { FOLDER_LAYOUT_LABEL, PreviewCatalogRow, PreviewCollectionRow, PreviewFolderPage } from './previewScreen'
 
 /**
@@ -197,10 +197,7 @@ function HomeScreenView({
   onOpenFolder: (target: FolderPageTarget) => void
   pendingCount: number
 }) {
-  const nothingOnHome =
-    preview.rows.length === 0 &&
-    preview.pinnedCollections.length === 0 &&
-    preview.unpinnedCollections.length === 0
+  const nothingOnHome = preview.home.length === 0 && preview.pinnedCollections.length === 0
 
   // Every row's tiles fetched together when Preview opens: a row is one TMDB
   // page and that page is the whole row, so there is never a second call to
@@ -231,11 +228,8 @@ function HomeScreenView({
             {preview.pinnedCollections.map((collection) => (
               <PreviewCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
             ))}
-            {preview.rows.map((row) => (
-              <PreviewCatalogRow key={row.id} row={row} tiles={tiles.get(row.id) ?? noTiles()} />
-            ))}
-            {preview.unpinnedCollections.map((collection) => (
-              <PreviewCollectionRow key={collection.id} collection={collection} onOpenFolder={onOpenFolder} />
+            {preview.home.map((item) => (
+              <PreviewHomeRow key={bandItemId(item)} item={item} tiles={tiles} onOpenFolder={onOpenFolder} />
             ))}
           </div>
         </>
@@ -244,6 +238,23 @@ function HomeScreenView({
       {preview.discoverOnly.length > 0 && <DiscoverOnly rows={preview.discoverOnly} />}
     </div>
   )
+}
+
+/** One of the home rows in the preview: a catalog's tiles, or a collection's
+ *  folder tiles. */
+function PreviewHomeRow({
+  item,
+  tiles,
+  onOpenFolder,
+}: {
+  item: HomeBandItem
+  tiles: ReadonlyMap<string, CatalogTiles>
+  onOpenFolder: (target: FolderPageTarget) => void
+}) {
+  if (item.kind === 'catalog') {
+    return <PreviewCatalogRow row={item.row} tiles={tiles.get(item.row.id) ?? noTiles()} />
+  }
+  return <PreviewCollectionRow collection={item.collection} onOpenFolder={onOpenFolder} />
 }
 
 /**

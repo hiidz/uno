@@ -56,7 +56,7 @@ CREATE TABLE "collections" (
     show_all_tab       INTEGER NOT NULL DEFAULT 0,
     backdrop_image_url TEXT    NOT NULL DEFAULT '',
     focus_glow_enabled INTEGER NOT NULL DEFAULT 1,
-    home_sort_order    INTEGER,                    -- NULL = not on the TV
+    home_sort_order    INTEGER,                    -- place on Home, numbered with catalogs.home_sort_order; NULL = not on Home
     created_at         TEXT    NOT NULL,           -- RFC3339 UTC
     updated_at         TEXT    NOT NULL            -- RFC3339 UTC
 );
@@ -69,7 +69,7 @@ CREATE TABLE "catalogs" (
     recipe_hash     TEXT    NOT NULL REFERENCES recipes(hash),
     owner_id        TEXT    NOT NULL REFERENCES profiles(id),
     collection_id   TEXT    REFERENCES collections(id) ON DELETE CASCADE, -- NULL = listed
-    home_sort_order INTEGER,                     -- NULL = not on the TV
+    home_sort_order INTEGER,                     -- place on Home, numbered with collections.home_sort_order; NULL = not on Home
     show_in_home    INTEGER NOT NULL DEFAULT 1,  -- whether the home row appears when on the TV
     sub_key         TEXT,                        -- in a subscribed collection: its key in the snapshot
     created_at      TEXT    NOT NULL,            -- RFC3339 UTC

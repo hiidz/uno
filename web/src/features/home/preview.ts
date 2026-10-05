@@ -5,8 +5,8 @@
  * Pure: everything here derives from state the pane already holds, so flipping
  * List → Preview needs no endpoint and no fetch.
  *
- * *Home* is one page, three bands: collections pinned to the top, then the
- * catalog rows, then the remaining collections. The collection/folder structure
+ * *Home* is one page, two bands: collections pinned to the top, then the home
+ * rows, catalogs and collections mixed in the order the user put them. The collection/folder structure
  * itself lives in `features/preview/model.ts`, shared with the collection
  * builder so the two previews can't disagree about what a layout will do; this
  * module only assembles home out of it.
@@ -20,7 +20,8 @@ import {
   type PreviewFolder,
   type PreviewSource,
 } from '@/features/preview/model'
-import type { HomeCatalogEntry, HomeCollectionEntry } from './pending'
+import { bandOf } from './pending'
+import type { HomeBand, HomeCatalogEntry, HomeEntry } from './pending'
 
 export interface PreviewRow {
   id: string
@@ -32,14 +33,20 @@ export interface PreviewRow {
   missing: boolean
 }
 
+/** One home row: a catalog's, or a collection's. */
+export type HomeBandItem =
+  | { kind: 'catalog'; row: PreviewRow }
+  | { kind: 'collection'; collection: PreviewCollection }
+
 /** Named for the screen, not the component — `HomePreview.tsx` renders this. */
 export interface HomeScreenPreview {
   /** Band 1: collections with `pin_to_top`, above everything else on home. */
   pinnedCollections: PreviewCollection[]
-  /** Band 2: rows down the home screen — selected catalogs with `show_in_home`. */
+  /** Band 2: the home rows down the screen — catalogs with `show_in_home` and
+   *  the other collections, mixed, in Home order. */
+  home: HomeBandItem[]
+  /** The catalogs among `home`, in order: the rows whose tiles Preview fetches. */
   rows: PreviewRow[]
-  /** Band 3: the remaining collection rows, in selection order. */
-  unpinnedCollections: PreviewCollection[]
   /** Selected, but `show_in_home: false` — Discover only, no home row. Not a
    *  band: it renders as a labelled group beneath the screen. */
   discoverOnly: PreviewRow[]
@@ -140,46 +147,52 @@ function toRow(entry: HomeCatalogEntry, catalog: Catalog | undefined): PreviewRo
  * Builds the whole preview in one pass.
  *
  * Ordering rule for home: Show first (`pin_to_top`) lifts a collection row
- * above the catalog rows entirely — Nuvio's own field description is "pin to
- * top of home screen", so it outranks the catalogs-then-collections default
- * rather than merely sorting within the collections. The pin is the pending
- * one each entry carries, not the one last pushed. Selection order is
- * preserved inside each band, so pinning moves a row between bands without
- * discarding the order the user just dragged.
+ * above every other row — Nuvio's own field description is "pin to top of
+ * home screen". The pin is the pending one each entry carries, not the one
+ * last pushed. Home order is preserved inside each band, so pinning moves a
+ * row between bands without discarding the order the user just dragged.
  */
 export function buildHomePreview({
-  catalogs,
-  collections,
+  rows,
   catalogById,
   collectionById,
 }: {
-  catalogs: HomeCatalogEntry[]
-  collections: HomeCollectionEntry[]
+  rows: HomeEntry[]
   catalogById: ReadonlyMap<string, Catalog>
   collectionById: ReadonlyMap<string, Collection>
 }): HomeScreenPreview {
-  const previewCollections = collections.map((entry) => ({
-    ...toPreviewCollection(entry.id, collectionById.get(entry.id), catalogById),
-    pinned: entry.pinToTop,
-  }))
-
-  const rows: PreviewRow[] = []
-  const discoverOnly: PreviewRow[] = []
-  for (const entry of catalogs) {
-    const row = toRow(entry, catalogById.get(entry.id))
-    ;(entry.showInHome ? rows : discoverOnly).push(row)
+  // Discover-only catalogs still count as content: `isEmpty` is "nothing
+  // selected at all", the first-run state the colour bars are for — not "no
+  // rows on home", which `HomeScreen` reports separately.
+  const preview: HomeScreenPreview = { pinnedCollections: [], home: [], rows: [], discoverOnly: [], isEmpty: rows.length === 0 }
+  for (const entry of rows) {
+    placeInPreview(preview, bandOf(entry), toBandItem(entry, catalogById, collectionById))
   }
+  return preview
+}
 
-  return {
-    pinnedCollections: previewCollections.filter((c) => c.pinned),
-    rows,
-    unpinnedCollections: previewCollections.filter((c) => !c.pinned),
-    discoverOnly,
-    // Discover-only catalogs still count as content: this is "nothing selected
-    // at all", the first-run state the colour bars are for — not "no rows on
-    // home", which `HomeScreen` reports separately.
-    isEmpty: catalogs.length === 0 && collections.length === 0,
+/** Puts `item` in `preview` by its band: a home row, a pinned collection, or
+ *  a Discover-only catalog. */
+function placeInPreview(preview: HomeScreenPreview, band: HomeBand, item: HomeBandItem): void {
+  if (band === 'home') {
+    preview.home.push(item)
+    if (item.kind === 'catalog') preview.rows.push(item.row)
+  } else if (item.kind === 'collection') {
+    preview.pinnedCollections.push(item.collection)
+  } else {
+    preview.discoverOnly.push(item.row)
   }
+}
+
+/** One Home entry as the preview draws it. */
+function toBandItem(
+  entry: HomeEntry,
+  catalogById: ReadonlyMap<string, Catalog>,
+  collectionById: ReadonlyMap<string, Collection>,
+): HomeBandItem {
+  if (entry.kind === 'catalog') return { kind: 'catalog', row: toRow(entry, catalogById.get(entry.id)) }
+  const collection = toPreviewCollection(entry.id, collectionById.get(entry.id), catalogById)
+  return { kind: 'collection', collection: { ...collection, pinned: entry.pinToTop } }
 }
 
 /**
@@ -193,7 +206,7 @@ export function findFolderPage(
   preview: HomeScreenPreview,
   target: FolderPageTarget,
 ): { collection: PreviewCollection; folder: PreviewFolder } | null {
-  const collection = [...preview.pinnedCollections, ...preview.unpinnedCollections].find(
+  const collection = [...preview.pinnedCollections, ...homeCollections(preview)].find(
     (c) => c.id === target.collectionId,
   )
   if (!collection) return null
@@ -202,4 +215,17 @@ export function findFolderPage(
   if (!folder) return null
 
   return { collection, folder }
+}
+
+/** The collections among `preview`'s home rows, in order. */
+export function homeCollections(preview: HomeScreenPreview): PreviewCollection[] {
+  return preview.home.flatMap(function collectionOf(item) {
+    return item.kind === 'collection' ? [item.collection] : []
+  })
+}
+
+/** A home row's id: its catalog's or its collection's. */
+export function bandItemId(item: HomeBandItem): string {
+  if (item.kind === 'catalog') return item.row.id
+  return item.collection.id
 }

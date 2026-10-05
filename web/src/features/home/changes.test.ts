@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Catalog, Collection, PendingChange } from '@/api'
 import { catalog, collection } from '@/test/fixtures'
 import { computeHomeChanges, showFirstAction } from './changes'
-import type { HomeCatalogEntry, HomeCollectionEntry, HomeState } from './pending'
+import type { HomeCatalogEntry, HomeCollectionEntry, HomeEntry, HomeState } from './pending'
 
 const catalogById = new Map<string, Catalog>(
   [
@@ -19,22 +19,25 @@ const collectionById = new Map<string, Collection>([
   ['y', collection({ id: 'y', title: 'Yankee' })],
 ])
 
-const shown = (...ids: string[]): HomeCatalogEntry[] => ids.map((id) => ({ id, showInHome: true }))
-const discover = (...ids: string[]): HomeCatalogEntry[] => ids.map((id) => ({ id, showInHome: false }))
+const shown = (...ids: string[]): HomeCatalogEntry[] => ids.map((id) => ({ kind: 'catalog', id, showInHome: true }))
+const discover = (...ids: string[]): HomeCatalogEntry[] => ids.map((id) => ({ kind: 'catalog', id, showInHome: false }))
 
-/** A selection; each collection by id takes the pin it was last pushed with,
- *  unless it comes as an entry with its own. */
+/** A Home of catalogs, then collections; each collection by id takes the pin
+ *  it was last pushed with, unless it comes as an entry with its own. */
 function home(catalogs: HomeCatalogEntry[], collections: (string | HomeCollectionEntry)[] = []): HomeState {
-  return {
-    catalogs,
-    collections: collections.map((c) =>
-      typeof c === 'string' ? { id: c, pinToTop: collectionById.get(c)?.pin_to_top ?? false } : c,
-    ),
-  }
+  return { rows: [...catalogs, ...collections.map(asCollection)] }
 }
 
-const first = (id: string): HomeCollectionEntry => ({ id, pinToTop: true })
-const notFirst = (id: string): HomeCollectionEntry => ({ id, pinToTop: false })
+function asCollection(c: string | HomeCollectionEntry): HomeCollectionEntry {
+  if (typeof c !== 'string') return c
+  return { kind: 'collection', id: c, pinToTop: collectionById.get(c)?.pin_to_top ?? false }
+}
+
+/** A Home of exactly these rows, in this order. */
+const mixed = (...rows: HomeEntry[]): HomeState => ({ rows })
+
+const first = (id: string): HomeCollectionEntry => ({ kind: 'collection', id, pinToTop: true })
+const notFirst = (id: string): HomeCollectionEntry => ({ kind: 'collection', id, pinToTop: false })
 
 function changes(baseline: HomeState, current: HomeState, waiting: PendingChange[] = []): string[] {
   return computeHomeChanges({
@@ -72,6 +75,12 @@ describe('computeHomeChanges', () => {
     expect(changes(home(shown('a', 'b'), ['x', 'y']), home(shown('a', 'b'), ['y', 'x']))).toEqual([
       'Moved “Yankee” from 4th to 3rd',
     ])
+  })
+
+  it('numbers and moves catalogs and collections in one mixed order', () => {
+    const [a, b] = shown('a', 'b')
+    expect(changes(mixed(a, b, notFirst('x')), mixed(a, notFirst('x'), b))).toEqual(['Moved “X-ray” from 3rd to 2nd'])
+    expect(changes(mixed(a), mixed(notFirst('x'), a))).toEqual(['Added “X-ray”, 1st on your home screen'])
   })
 
   it('reports a row that moves up only because another left as no move', () => {

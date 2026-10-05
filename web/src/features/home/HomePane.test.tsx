@@ -35,8 +35,10 @@ function mount(options: {
     isLoading: false,
     error: null,
     retry: () => {},
-    catalogs: options.catalogs.map((c) => ({ id: c.catalog.id, showInHome: c.showInHome })),
-    collections: collections.map((c) => ({ id: c.id, pinToTop: options.pinned?.includes(c.id) ?? false })),
+    rows: [
+      ...options.catalogs.map((c) => ({ kind: 'catalog' as const, id: c.catalog.id, showInHome: c.showInHome })),
+      ...collections.map((c) => ({ kind: 'collection' as const, id: c.id, pinToTop: options.pinned?.includes(c.id) ?? false })),
+    ],
     catalogById: new Map(options.catalogs.map((c) => [c.catalog.id, c.catalog])),
     collectionById: new Map(collections.map((c) => [c.id, c])),
     waitingForPush: new Set(options.waiting),
@@ -94,13 +96,14 @@ describe('HomePane', () => {
     expect(flagsOf('Discover only')).toEqual(['Movies', 'Published', 'To push'])
   })
 
-  it('heads the collection groups Pinned and Collections', () => {
+  it('heads the groups Pinned and Rows, the rows mixing catalogs and collections', () => {
     const pinned = collection({ id: 'k1', title: 'Up top' })
     const rest = collection({ id: 'k2', title: 'Down below' })
-    mount({ catalogs: [], collections: [pinned, rest], pinned: ['k1'] })
+    mount({ catalogs: [{ catalog: catalog({ id: 'c1', name: 'Action' }), showInHome: true }], collections: [pinned, rest], pinned: ['k1'] })
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
-    expect(headings).toEqual(['Pinned', 'Catalogs', 'Collections'])
-    expect(screen.getByRole('button', { name: 'Move Down below up, already first of the collections' })).toBeDisabled()
+    expect(headings).toEqual(['Pinned', 'Rows'])
+    expect(screen.getByRole('button', { name: 'Move Action up, already first of the rows' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Move Down below down, already last of the rows' })).toBeDisabled()
   })
 
   it('flags a row whose catalog was deleted, on the list and in the tray', () => {

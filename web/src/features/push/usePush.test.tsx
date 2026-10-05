@@ -32,8 +32,10 @@ const home = vi.hoisted(() => ({
 vi.mock('@/features/home/useHomeSelection', () => ({ useHomeSelection: () => home }))
 
 const PUSHED: HomeState = {
-  catalogs: [{ id: 'c1', showInHome: true }],
-  collections: [{ id: 'col1', pinToTop: true }],
+  rows: [
+    { kind: 'catalog', id: 'c1', showInHome: true },
+    { kind: 'collection', id: 'col1', pinToTop: true },
+  ],
 }
 
 function deferred<T>() {
@@ -85,7 +87,7 @@ describe('usePush', () => {
     expect(result.current.pushing).toBe(true)
 
     // An edit made while the push is in flight.
-    home.state = { ...PUSHED, collections: [] }
+    home.state = { rows: PUSHED.rows.slice(0, 1) }
 
     await act(async () => answer.resolve({ success: true, manifest_url: 'https://uno/manifest.json' }))
     expect(home.markPushed).toHaveBeenCalledWith(PUSHED)

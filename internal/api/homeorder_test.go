@@ -442,14 +442,11 @@ func newPushHomeOrderFixture(t *testing.T, fake *fakeNuvio) pushHomeOrderFixture
 	}
 	f.pinnedColl = createPushableCollection(t, ctx, db, profile.ID, "Pinned")
 	f.unpinnedColl = createPushableCollection(t, ctx, db, profile.ID, "Unpinned")
-	f.body = pushRequest{
-		Catalogs: vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
+	f.body = pushOf(vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
 			{CatalogID: f.onHome.ID, ShowInHome: true}, {CatalogID: f.discover.ID, ShowInHome: false},
-		}},
-		Collections: vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{
+		}}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{
 			{CollectionID: f.unpinnedColl.ID}, {CollectionID: f.pinnedColl.ID, PinToTop: true},
-		}},
-	}
+		}})
 	fake.profiles = liveAs(profile)
 	f.s = &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 	return f
@@ -580,5 +577,77 @@ func TestPush_RevertRestoresPulledHomeOrder(t *testing.T) {
 	}
 	if len(fake.pushHomeOrderCalls) != 2 || !bytes.Equal(fake.pushHomeOrderCalls[1], pulled) {
 		t.Fatalf("PushHomeOrder calls = %s, want the push, then %s put back as pulled", fake.pushHomeOrderCalls, pulled)
+	}
+}
+
+// A push body is one ordered list of rows: catalogs and collections mix, each
+// row's place is the position the vault stores and the selection reads hand
+// back, and the home-order list gets Uno's rows in that order, pinned first.
+func TestPush_MixesCatalogsAndCollections(t *testing.T) {
+	fake := &fakeNuvio{}
+	f := newPushHomeOrderFixture(t, fake)
+	f.body = pushRequest{Rows: []pushRow{
+		{CollectionID: &f.unpinnedColl.ID},
+		{CatalogID: &f.onHome.ID, ShowInHome: true},
+		{CollectionID: &f.pinnedColl.ID, PinToTop: true},
+		{CatalogID: &f.discover.ID},
+	}}
+
+	if w, result := f.push(t); w.Code != http.StatusOK || !result.Success {
+		t.Fatalf("status = %d, result = %+v; want a successful push", w.Code, result)
+	}
+	_, items := decodeHomeList(t, fake.pushHomeOrderCalls[0])
+	want := []string{
+		keyOf(vault.HomeRow{CollectionID: f.pinnedColl.ID}),
+		keyOf(vault.HomeRow{CollectionID: f.unpinnedColl.ID}),
+		keyOf(vault.HomeRow{Type: "movie", CatalogID: vault.ManifestID(f.onHome)}),
+	}
+	if got := rowKeys(t, items); !reflect.DeepEqual(got, want) {
+		t.Fatalf("pushed rows = %v\nwant          %v", got, want)
+	}
+
+	catalogs, err := f.db.GetCurrentCatalogSelection(t.Context(), f.profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collections, err := f.db.GetCurrentCollectionSelection(t.Context(), f.profile.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	positions := map[uuid.UUID]int{}
+	for _, c := range catalogs {
+		positions[c.ID] = *c.HomeSortOrder
+	}
+	for _, c := range collections {
+		positions[c.ID] = *c.HomeSortOrder
+	}
+	wantPositions := map[uuid.UUID]int{f.unpinnedColl.ID: 0, f.onHome.ID: 1, f.pinnedColl.ID: 2, f.discover.ID: 3}
+	if !reflect.DeepEqual(positions, wantPositions) {
+		t.Errorf("stored positions = %v, want %v", positions, wantPositions)
+	}
+	raw, err := json.Marshal(collections[0])
+	if err != nil || !strings.Contains(string(raw), `"home_position":0`) {
+		t.Errorf("a selection read = %s (%v), want its home_position on the wire", raw, err)
+	}
+}
+
+// A row naming neither a catalog nor a collection, or both, is a 400 before
+// anything reaches Nuvio.
+func TestPush_RefusesARowThatIsNotOneThing(t *testing.T) {
+	for name, row := range map[string]pushRow{
+		"neither": {ShowInHome: true},
+		"both":    {CatalogID: new(uuid.New()), CollectionID: new(uuid.New())},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fake := &fakeNuvio{}
+			f := newPushHomeOrderFixture(t, fake)
+			f.body = pushRequest{Rows: []pushRow{row}}
+			if w, _ := f.push(t); w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", w.Code)
+			}
+			if len(fake.pushAddonsCalls)+len(fake.pushCollectionsCalls)+len(fake.pushHomeOrderCalls) != 0 {
+				t.Fatal("Nuvio was written to despite the bad row")
+			}
+		})
 	}
 }

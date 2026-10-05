@@ -9,14 +9,18 @@ import { computeHomeChanges, countUnsaved } from './changes'
 import type { HomeChange } from './changes'
 import {
   EMPTY_HOME,
-  moveCollectionInBand,
-  moveWithinBand,
-  reorderCollectionBand,
-  reorderWithinBand,
-  togglePinToTop,
+  catalogEntries,
+  collectionEntries,
   existingRowIDs,
+  hydrateHome,
+  moveInBand,
+  reorderBand,
+  toggleShowInHome,
+  togglePinToTop,
+  withRow,
+  withoutRow,
 } from './pending'
-import type { HomeCatalogEntry, HomeCollectionEntry, HomeState } from './pending'
+import type { HomeCatalogEntry, HomeCollectionEntry, HomeEntry, HomeRowsEdit, HomeState } from './pending'
 import { usePrunedHome } from './usePrunedHome'
 
 export interface HomeSelection extends HomeEdits {
@@ -32,6 +36,9 @@ export interface HomeSelection extends HomeEdits {
   /** Re-runs whatever failed. */
   retry: () => void
 
+  /** Every row on Home, in Home order. */
+  rows: HomeEntry[]
+  /** The catalogs and the collections among `rows`, each in Home order. */
   catalogs: HomeCatalogEntry[]
   collections: HomeCollectionEntry[]
 
@@ -93,23 +100,17 @@ export interface HomeEdits {
   addCatalog: (id: string) => void
   removeCatalog: (id: string) => void
   toggleShowInHome: (id: string) => void
-  /** Reorders the shown (home-row) catalogs only — Discover-only catalogs
-   *  keep their existing relative order, off to one side. */
-  reorderCatalogs: (orderedShownIds: string[]) => void
-  /** Moves a catalog one step within its own band: shown, or Discover-only. */
-  moveCatalog: (id: string, direction: -1 | 1) => void
+  /** Reorders one band — the pinned collections, or the home rows, catalogs
+   *  and collections mixed — leaving every other row as it was. */
+  reorderBand: (band: 'pinned' | 'home', orderedIds: string[]) => void
+  /** Moves a row one step within its own band. */
+  moveRow: (id: string, direction: -1 | 1) => void
   /** Adds a collection, starting from the Show first it was last pushed with. */
   addCollection: (id: string) => void
   removeCollection: (id: string) => void
   /** Flips a collection's Show first — a pending edit, like Home or Discover
    *  for a catalog, that only Push writes. */
   togglePinToTop: (id: string) => void
-  /** Reorders one collection band — pinned or not — leaving the other
-   *  untouched. A row moves only within its own band, matching the running
-   *  order's three groups. */
-  reorderCollections: (band: 'pinned' | 'unpinned', orderedBandIds: string[]) => void
-  /** Moves a collection one step within its own band (pinned or not). */
-  moveCollection: (id: string, direction: -1 | 1) => void
 }
 
 export const HomeSelectionContext = createContext<HomeSelection | null>(null)
@@ -152,38 +153,20 @@ export function HomeSelectionProvider({
   const collectionSelectionData = collectionSelection.data
 
   if (current === null && selectionLoaded) {
-    const hydrated: HomeState = {
-      catalogs: (catalogSelectionData ?? []).map((c) => ({
-        id: c.id,
-        showInHome: c.show_in_home,
-      })),
-      collections: (collectionSelectionData ?? []).map((c) => ({ id: c.id, pinToTop: c.pin_to_top })),
-    }
+    const hydrated = hydrateHome(catalogSelectionData, collectionSelectionData)
     setBaseline(hydrated)
     setCurrent(hydrated)
   }
 
-  const collectionById = useMemo(() => {
-    const map = new Map<string, Collection>()
-    for (const c of collectionSelectionData ?? []) map.set(c.id, c)
-    for (const c of library.collections) map.set(c.id, c)
-    return map
-  }, [collectionSelectionData, library.collections])
+  const collectionById = useMemo(
+    () => collectionsById(collectionSelectionData, library.collections),
+    [collectionSelectionData, library.collections],
+  )
 
-  const catalogById = useMemo(() => {
-    // Library first — it's the canonical row — then anything only the
-    // selection knows about, so a detached selection still renders. Last,
-    // every catalog a known collection's own folders reference: those are
-    // always scoped (never listed, so never in `library.catalogs`) —
-    // `Collection.catalogs` is the only place they're carried.
-    const map = new Map<string, Catalog>()
-    for (const c of catalogSelectionData ?? []) map.set(c.id, c)
-    for (const c of library.catalogs) map.set(c.id, c)
-    for (const collection of collectionById.values()) {
-      for (const c of collection.catalogs ?? []) map.set(c.id, c)
-    }
-    return map
-  }, [catalogSelectionData, library.catalogs, collectionById])
+  const catalogById = useMemo(
+    () => catalogsById(catalogSelectionData, library.catalogs, collectionById.values()),
+    [catalogSelectionData, library.catalogs, collectionById],
+  )
 
   const libraryLoaded = !library.isLoading && !library.failed.catalogs && !library.failed.collections
 
@@ -211,7 +194,9 @@ export function HomeSelectionProvider({
   // The Show first a collection was last pushed with, which one added to the
   // home screen starts from.
   const storedPin = useCallback(
-    (id: string) => collectionById.get(id)?.pin_to_top === true,
+    function storedPin(id: string) {
+      return collectionById.get(id)?.pin_to_top === true
+    },
     [collectionById],
   )
 
@@ -224,7 +209,9 @@ export function HomeSelectionProvider({
   const unsavedCount = countUnsaved(changes)
 
   const edit = useCallback((update: (previous: HomeState) => HomeState) => {
-    setCurrent((previous) => (previous === null ? previous : update(previous)))
+    setCurrent(function edited(previous) {
+      return previous === null ? previous : update(previous)
+    })
   }, [])
 
   // Data derived from the library and the selection responses — changes only
@@ -263,65 +250,26 @@ export function HomeSelectionProvider({
   // Every one of these only closes over `edit` — stable for the life of the
   // provider — and, for `addCollection`, `storedPin`, so this whole cluster
   // needs recomputing only when the collections change, not on every render
-  // that changes `state`. The band-aware edits read each row's pin from the
+  // that changes `state`. The band-aware edits read each row's band from the
   // state they edit.
   const editFns = useMemo<HomeEdits>(
     function homeEdits() {
+      function editRows(update: HomeRowsEdit) {
+        edit((previous) => ({ rows: update(previous.rows) }))
+      }
       return {
-        addCatalog: (id: string) =>
-          edit((previous) =>
-            previous.catalogs.some((c) => c.id === id)
-              ? previous
-              : // New rows default to showing on home: adding a catalog you
-                // can't see would be a confusing default.
-                { ...previous, catalogs: [...previous.catalogs, { id, showInHome: true }] },
-          ),
-        removeCatalog: (id: string) =>
-          edit((previous) => ({
-            ...previous,
-            catalogs: previous.catalogs.filter((c) => c.id !== id),
-          })),
-        toggleShowInHome: (id: string) =>
-          edit((previous) => ({
-            ...previous,
-            catalogs: previous.catalogs.map((c) =>
-              c.id === id ? { ...c, showInHome: !c.showInHome } : c,
-            ),
-          })),
-        reorderCatalogs: (orderedShownIds: string[]) =>
-          edit((previous) => ({
-            ...previous,
-            catalogs: reorderWithinBand(previous.catalogs, (c) => c.showInHome, orderedShownIds),
-          })),
-        moveCatalog: (id: string, direction: -1 | 1) =>
-          edit((previous) => ({
-            ...previous,
-            catalogs: moveWithinBand(previous.catalogs, (c) => c.showInHome, id, direction),
-          })),
-
+        // New rows default to showing on home: adding a catalog you can't see
+        // would be a confusing default.
+        addCatalog: (id: string) => editRows((rows) => withRow(rows, { kind: 'catalog', id, showInHome: true })),
+        removeCatalog: (id: string) => editRows((rows) => withoutRow(rows, id)),
+        toggleShowInHome: (id: string) => editRows((rows) => toggleShowInHome(rows, id)),
+        reorderBand: (band: 'pinned' | 'home', orderedIds: string[]) =>
+          editRows((rows) => reorderBand(rows, band, orderedIds)),
+        moveRow: (id: string, direction: -1 | 1) => editRows((rows) => moveInBand(rows, id, direction)),
         addCollection: (id: string) =>
-          edit((previous) =>
-            previous.collections.some((c) => c.id === id)
-              ? previous
-              : { ...previous, collections: [...previous.collections, { id, pinToTop: storedPin(id) }] },
-          ),
-        removeCollection: (id: string) =>
-          edit((previous) => ({
-            ...previous,
-            collections: previous.collections.filter((c) => c.id !== id),
-          })),
-        togglePinToTop: (id: string) =>
-          edit((previous) => ({ ...previous, collections: togglePinToTop(previous.collections, id) })),
-        reorderCollections: (band: 'pinned' | 'unpinned', orderedBandIds: string[]) =>
-          edit((previous) => ({
-            ...previous,
-            collections: reorderCollectionBand(previous.collections, band, orderedBandIds),
-          })),
-        moveCollection: (id: string, direction: -1 | 1) =>
-          edit((previous) => ({
-            ...previous,
-            collections: moveCollectionInBand(previous.collections, id, direction),
-          })),
+          editRows((rows) => withRow(rows, { kind: 'collection', id, pinToTop: storedPin(id) })),
+        removeCollection: (id: string) => editRows((rows) => withoutRow(rows, id)),
+        togglePinToTop: (id: string) => editRows((rows) => togglePinToTop(rows, id)),
       }
     },
     [edit, storedPin],
@@ -348,15 +296,16 @@ export function HomeSelectionProvider({
             : null,
         retry,
 
-        catalogs: state.catalogs,
-        collections: state.collections,
+        rows: state.rows,
+        catalogs: catalogEntries(state),
+        collections: collectionEntries(state),
         ...readData,
 
         snapshot: () => state,
         markPushed: (pushed) => setBaseline(pushed),
 
-        hasCatalog: (id) => state.catalogs.some((c) => c.id === id),
-        hasCollection: (id) => state.collections.some((c) => c.id === id),
+        hasCatalog: (id) => catalogEntries(state).some((c) => c.id === id),
+        hasCollection: (id) => collectionEntries(state).some((c) => c.id === id),
 
         ...editFns,
       }
@@ -380,4 +329,40 @@ export function HomeSelectionProvider({
       <HomeSelectionContext.Provider value={value}>{children}</HomeSelectionContext.Provider>
     </HomeEditsContext.Provider>
   )
+}
+
+/** Every collection the Home pane might draw, by id: the selection's, then
+ *  the library's over them. */
+function collectionsById(
+  selection: readonly Collection[] | undefined,
+  library: readonly Collection[],
+): Map<string, Collection> {
+  return byId([...(selection ?? []), ...library])
+}
+
+/**
+ * Every catalog the Home pane might draw, by id. Library over the selection —
+ * the library's is the canonical row, and anything only the selection knows
+ * about still renders detached — then every catalog a known collection's own
+ * folders reference: those are always scoped (never listed, so never in the
+ * library), and `Collection.catalogs` is the only place they're carried.
+ */
+function catalogsById(
+  selection: readonly Catalog[] | undefined,
+  library: readonly Catalog[],
+  collections: Iterable<Collection>,
+): Map<string, Catalog> {
+  return byId([...(selection ?? []), ...library, ...folderCatalogs(collections)])
+}
+
+/** Every catalog the folders of `collections` reference, in order. */
+function folderCatalogs(collections: Iterable<Collection>): Catalog[] {
+  const catalogs: Catalog[] = []
+  for (const collection of collections) catalogs.push(...(collection.catalogs ?? []))
+  return catalogs
+}
+
+/** `rows` by id, a later row over an earlier one with the same id. */
+function byId<T extends { id: string }>(rows: readonly T[]): Map<string, T> {
+  return new Map(rows.map((row) => [row.id, row]))
 }

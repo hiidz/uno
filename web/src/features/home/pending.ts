@@ -8,44 +8,97 @@
  * user their work isn't saved yet.
  */
 
-import type { PushRequest } from '@/api'
+import type { Collection, PushRequest, SelectedCatalog } from '@/api'
 import { moveByOne, orderByKeys } from '@/lib/order'
 
-export interface HomeCatalogEntry {
-  id: string
-  /** Mirrors `catalogs.show_in_home`. */
-  showInHome: boolean
-}
+/** One row on Home: a catalog, or a collection. A catalog and a collection
+ *  never share an id. */
+export type HomeEntry =
+  | {
+      kind: 'catalog'
+      id: string
+      /** Mirrors `catalogs.show_in_home`: a home row, or Discover only. */
+      showInHome: boolean
+    }
+  | {
+      kind: 'collection'
+      id: string
+      /** Mirrors `collections.pin_to_top`: Show first, which lifts the
+       *  collection above every other row. Only push writes it, from here. */
+      pinToTop: boolean
+    }
 
-export interface HomeCollectionEntry {
-  id: string
-  /** Mirrors `collections.pin_to_top`: Show first, which lifts the collection
-   *  above every catalog row. Only push writes it, from here. */
-  pinToTop: boolean
-}
+export type HomeCatalogEntry = Extract<HomeEntry, { kind: 'catalog' }>
+export type HomeCollectionEntry = Extract<HomeEntry, { kind: 'collection' }>
+
+/** An edit to Home's rows: the rows as they are to the rows as they become. */
+export type HomeRowsEdit = (rows: HomeEntry[]) => HomeEntry[]
 
 export interface HomeState {
-  /** Ordered. Array position *is* `sort_order` at write time. */
-  catalogs: HomeCatalogEntry[]
-  /** Ordered, same rule. */
-  collections: HomeCollectionEntry[]
+  /** Ordered: a row's place here is its place on Home, which Push sends. */
+  rows: HomeEntry[]
 }
 
-export const EMPTY_HOME: HomeState = { catalogs: [], collections: [] }
+export const EMPTY_HOME: HomeState = { rows: [] }
 
 /**
- * The wire shape Push sends. Array position *is* `sort_order` on both sides,
- * which is why this is a straight positional map and never sorts.
+ * Where a row sits on Nuvio's home screen: `pinned`, the collections shown
+ * first; `home`, the catalogs with a home row and the other collections,
+ * mixed in one order; or `discover`, a catalog with no home row.
+ */
+export type HomeBand = 'pinned' | 'home' | 'discover'
+
+export function bandOf(entry: HomeEntry): HomeBand {
+  if (entry.kind === 'collection' && entry.pinToTop) return 'pinned'
+  if (entry.kind === 'collection' || entry.showInHome) return 'home'
+  return 'discover'
+}
+
+/** The catalogs in `state`, in Home order. */
+export function catalogEntries(state: HomeState): HomeCatalogEntry[] {
+  return state.rows.filter((entry): entry is HomeCatalogEntry => entry.kind === 'catalog')
+}
+
+/** The collections in `state`, in Home order. */
+export function collectionEntries(state: HomeState): HomeCollectionEntry[] {
+  return state.rows.filter((entry): entry is HomeCollectionEntry => entry.kind === 'collection')
+}
+
+/** The two selection reads as one Home, by each row's `home_position`. */
+export function hydrateHome(
+  catalogs: readonly SelectedCatalog[] = [],
+  collections: readonly Collection[] = [],
+): HomeState {
+  const placed = [...catalogs.map(placedCatalog), ...collections.map(placedCollection)]
+  placed.sort((a, b) => a.position - b.position)
+  return { rows: placed.map((p) => p.entry) }
+}
+
+/** A Home row with its place, which `hydrateHome` sorts by. */
+interface PlacedEntry {
+  position: number
+  entry: HomeEntry
+}
+
+function placedCatalog(c: SelectedCatalog): PlacedEntry {
+  return { position: c.home_position ?? 0, entry: { kind: 'catalog', id: c.id, showInHome: c.show_in_home } }
+}
+
+function placedCollection(c: Collection): PlacedEntry {
+  return { position: c.home_position ?? 0, entry: { kind: 'collection', id: c.id, pinToTop: c.pin_to_top } }
+}
+
+/**
+ * The wire shape Push sends. A row's place in `rows` *is* its position on
+ * Home, which is why this is a straight positional map and never sorts.
  */
 export function toPushPayload(state: HomeState): PushRequest {
-  return {
-    catalogs: {
-      catalogs: state.catalogs.map((c) => ({ catalog_id: c.id, show_in_home: c.showInHome })),
-    },
-    collections: {
-      collections: state.collections.map((c) => ({ collection_id: c.id, pin_to_top: c.pinToTop })),
-    },
-  }
+  return { rows: state.rows.map(toPushRow) }
+}
+
+function toPushRow(entry: HomeEntry): PushRequest['rows'][number] {
+  if (entry.kind === 'catalog') return { catalog_id: entry.id, show_in_home: entry.showInHome }
+  return { collection_id: entry.id, pin_to_top: entry.pinToTop }
 }
 
 /**
@@ -53,9 +106,8 @@ export function toPushPayload(state: HomeState): PushRequest {
  * `orderedBandIds`, leaving the rest in their existing relative order and
  * unaffected. The reordered band is always placed first in the result — the
  * one canonical order every band-aware edit here agrees on. Where the band
- * lands in this flat array is otherwise meaningless: `computeHomeChanges`'s
- * Nuvio's order is built by filtering on the same predicate, never by position
- * here.
+ * lands in this flat array is otherwise meaningless: Nuvio's order is built by
+ * filtering on the same predicate, never by position here.
  */
 export function reorderWithinBand<T extends { id: string }>(
   entries: T[],
@@ -81,31 +133,48 @@ export function moveWithinBand<T extends { id: string }>(
   return moved === bandIds ? entries : reorderWithinBand(entries, inBand, moved)
 }
 
-/** Reorders one collection band — shown first (`pinned`) or not — to
- *  `orderedBandIds`, leaving the other band's rows as they were. */
-export function reorderCollectionBand(
-  collections: HomeCollectionEntry[],
-  band: 'pinned' | 'unpinned',
-  orderedBandIds: string[],
-): HomeCollectionEntry[] {
-  const pinned = band === 'pinned'
-  return reorderWithinBand(collections, (c) => c.pinToTop === pinned, orderedBandIds)
+/** `rows` with `entry` added at the end of Home, or `rows` itself when the row
+ *  is on Home already. */
+export function withRow(rows: HomeEntry[], entry: HomeEntry): HomeEntry[] {
+  return rows.some((row) => row.id === entry.id) ? rows : [...rows, entry]
 }
 
-/** Moves collection `id` one step within its own band, shown first or not. */
-export function moveCollectionInBand(
-  collections: HomeCollectionEntry[],
-  id: string,
-  direction: -1 | 1,
-): HomeCollectionEntry[] {
-  const pinned = collections.some((c) => c.id === id && c.pinToTop)
-  return moveWithinBand(collections, (c) => c.pinToTop === pinned, id, direction)
+/** `rows` without row `id`. */
+export function withoutRow(rows: HomeEntry[], id: string): HomeEntry[] {
+  return rows.filter((row) => row.id !== id)
+}
+
+/** Reorders one band — pinned or home — to `orderedBandIds`, leaving every
+ *  other row as it was. */
+export function reorderBand(rows: HomeEntry[], band: HomeBand, orderedBandIds: string[]): HomeEntry[] {
+  return reorderWithinBand(rows, (entry) => bandOf(entry) === band, orderedBandIds)
+}
+
+/** Moves row `id` one step within its own band. */
+export function moveInBand(rows: HomeEntry[], id: string, direction: -1 | 1): HomeEntry[] {
+  const row = rows.find((entry) => entry.id === id)
+  if (!row) return rows
+  const band = bandOf(row)
+  return moveWithinBand(rows, (entry) => bandOf(entry) === band, id, direction)
 }
 
 /** Flips collection `id`'s Show first, which moves it to the other band at
- *  its place in the selection order. */
-export function togglePinToTop(collections: HomeCollectionEntry[], id: string): HomeCollectionEntry[] {
-  return collections.map((c) => (c.id === id ? { ...c, pinToTop: !c.pinToTop } : c))
+ *  its place in Home order. */
+export function togglePinToTop(rows: HomeEntry[], id: string): HomeEntry[] {
+  return rows.map((entry) => flipped(entry, id, 'collection'))
+}
+
+/** Flips catalog `id` between a home row and Discover only. */
+export function toggleShowInHome(rows: HomeEntry[], id: string): HomeEntry[] {
+  return rows.map((entry) => flipped(entry, id, 'catalog'))
+}
+
+/** `entry` with its flag flipped when it is the `kind` row `id`: a
+ *  collection's Show first, a catalog's home row. */
+function flipped(entry: HomeEntry, id: string, kind: HomeEntry['kind']): HomeEntry {
+  if (entry.id !== id || entry.kind !== kind) return entry
+  if (entry.kind === 'collection') return { ...entry, pinToTop: !entry.pinToTop }
+  return { ...entry, showInHome: !entry.showInHome }
 }
 
 /**
@@ -120,7 +189,9 @@ export function existingRowIDs(
   ...selections: (readonly { id: string }[] | undefined)[]
 ): ReadonlySet<string> | null {
   if (!selectionLoaded || !libraryLoaded) return null
-  return new Set([...libraryIDs, ...selections.flatMap((rows) => (rows ?? []).map((row) => row.id))])
+  return new Set([...libraryIDs, ...selections.flatMap(function ids(rows) {
+    return (rows ?? []).map((row) => row.id)
+  })])
 }
 
 /**
@@ -131,8 +202,7 @@ export function existingRowIDs(
  */
 export function withoutDeleted<T extends HomeState | null>(state: T, existing: ReadonlySet<string> | null): T {
   if (state === null || existing === null) return state
-  const catalogs = state.catalogs.filter((c) => existing.has(c.id))
-  const collections = state.collections.filter((c) => existing.has(c.id))
-  if (catalogs.length === state.catalogs.length && collections.length === state.collections.length) return state
-  return { catalogs, collections } as T
+  const rows = state.rows.filter((entry) => existing.has(entry.id))
+  if (rows.length === state.rows.length) return state
+  return { rows } as T
 }

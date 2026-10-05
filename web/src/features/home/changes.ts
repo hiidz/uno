@@ -5,12 +5,14 @@
  * `HomeSelectionContext` is this list's length, not a separate tally.
  *
  * Positions in the sentences ("3rd", "5th") are the row's place in Nuvio's
- * own order — the same three-band order `preview.ts` draws — so a line here
- * reads exactly like the running-order row it describes.
+ * own order — the pinned collections, then the home rows, as `preview.ts`
+ * draws them — so a line here reads exactly like the running-order row it
+ * describes.
  */
 
 import type { Catalog, Collection, PendingChange } from '@/api'
 import { ordinal } from '@/lib/ordinal'
+import { bandOf, catalogEntries, collectionEntries } from './pending'
 import type { HomeState } from './pending'
 
 interface RowKey {
@@ -22,30 +24,25 @@ function keyOf(row: RowKey): string {
   return `${row.kind}:${row.id}`
 }
 
-/** Nuvio's own order: pinned collections, then home-shown catalogs, then the
- *  remaining collections. Discover-only catalogs never appear here — they are
+/** Nuvio's own order: pinned collections, then the home rows, catalogs and
+ *  collections mixed. Discover-only catalogs never appear here — they are
  *  precisely the rows with no place in this order. Each state carries its own
  *  pins, so the baseline's order is the one Nuvio has now. */
 function orderedRows(state: HomeState): RowKey[] {
-  const pinned = state.collections.filter((c) => c.pinToTop)
-  const unpinned = state.collections.filter((c) => !c.pinToTop)
-  const shown = state.catalogs.filter((c) => c.showInHome)
-  return [
-    ...pinned.map((c): RowKey => ({ kind: 'collection', id: c.id })),
-    ...shown.map((c): RowKey => ({ kind: 'catalog', id: c.id })),
-    ...unpinned.map((c): RowKey => ({ kind: 'collection', id: c.id })),
-  ]
+  const pinned = state.rows.filter((entry) => bandOf(entry) === 'pinned')
+  const home = state.rows.filter((entry) => bandOf(entry) === 'home')
+  return [...pinned, ...home].map((entry): RowKey => ({ kind: entry.kind, id: entry.id }))
 }
 
 /** Whether a collection is shown first in `state`, by id. */
 function pinsOf(state: HomeState): (id: string) => boolean {
-  const pinned = new Set(state.collections.filter((c) => c.pinToTop).map((c) => c.id))
+  const pinned = new Set(collectionEntries(state).filter((c) => c.pinToTop).map((c) => c.id))
   return (id) => pinned.has(id)
 }
 
-function groupOf(row: RowKey, isPinned: (id: string) => boolean): 'first' | 'catalogs' | 'after' {
-  if (row.kind === 'catalog') return 'catalogs'
-  return isPinned(row.id) ? 'first' : 'after'
+function groupOf(row: RowKey, isPinned: (id: string) => boolean): 'first' | 'home' {
+  if (row.kind === 'collection' && isPinned(row.id)) return 'first'
+  return 'home'
 }
 
 /**
@@ -125,15 +122,16 @@ function pinFlips(
   current: HomeState,
   quoted: (row: RowKey) => string,
 ): { list: HomeChange[]; keys: Set<string> } {
-  const wasPinned = new Map(baseline.collections.map((c) => [c.id, c.pinToTop]))
-  const flipped = current.collections
-    .filter((c) => wasPinned.has(c.id) && wasPinned.get(c.id) !== c.pinToTop)
+  const wasPinned = new Map(collectionEntries(baseline).map((c) => [c.id, c.pinToTop]))
+  const flipped = collectionEntries(current)
+    .filter(function pinChanged(c) {
+      return wasPinned.has(c.id) && wasPinned.get(c.id) !== c.pinToTop
+    })
     .map((c) => ({ row: { kind: 'collection', id: c.id } as RowKey, pinToTop: c.pinToTop }))
   return {
-    list: flipped.map(({ row, pinToTop }) => ({
-      key: `pin:${keyOf(row)}`,
-      text: pinToTop ? `Pinned ${quoted(row)}` : `Unpinned ${quoted(row)}`,
-    })),
+    list: flipped.map(function pinLine({ row, pinToTop }) {
+      return { key: `pin:${keyOf(row)}`, text: pinToTop ? `Pinned ${quoted(row)}` : `Unpinned ${quoted(row)}` }
+    }),
     keys: new Set(flipped.map(({ row }) => keyOf(row))),
   }
 }
@@ -152,13 +150,15 @@ function groupMoves(
 ): HomeChange[] {
   const curKeys = cur.map(keyOf)
   const wasKeys = was.map(keyOf)
-  const kept = cur.filter((row) => wasKeys.includes(keyOf(row)) && !skip.has(keyOf(row)))
+  const kept = cur.filter(function inBoth(row) {
+    return wasKeys.includes(keyOf(row)) && !skip.has(keyOf(row))
+  })
   const list: HomeChange[] = []
-  for (const group of ['first', 'catalogs', 'after'] as const) {
+  for (const group of ['first', 'home'] as const) {
     const common = kept.filter((row) => groupOf(row, isPinned) === group)
     const oldPositions = common.map((row) => wasKeys.indexOf(keyOf(row)))
     const keep = lisKeep(oldPositions)
-    common.forEach((row, i) => {
+    common.forEach(function moveLine(row, i) {
       if (keep.has(i)) return
       const key = keyOf(row)
       const from = wasKeys.indexOf(key) + 1
@@ -170,7 +170,9 @@ function groupMoves(
 }
 
 function holds(state: HomeState, row: RowKey): boolean {
-  return (row.kind === 'catalog' ? state.catalogs : state.collections).some((entry) => entry.id === row.id)
+  return state.rows.some(function isRow(entry) {
+    return entry.kind === row.kind && entry.id === row.id
+  })
 }
 
 /**
@@ -243,8 +245,10 @@ export function computeHomeChanges({
   const curKeys = cur.map(keyOf)
   const wasKeys = was.map(keyOf)
 
-  const baseDiscover = new Set(baseline.catalogs.filter((c) => !c.showInHome).map((c) => c.id))
-  const curDiscover = new Set(current.catalogs.filter((c) => !c.showInHome).map((c) => c.id))
+  const baseCatalogs = catalogEntries(baseline)
+  const curCatalogs = catalogEntries(current)
+  const baseDiscover = new Set(baseCatalogs.filter((c) => !c.showInHome).map((c) => c.id))
+  const curDiscover = new Set(curCatalogs.filter((c) => !c.showInHome).map((c) => c.id))
 
   const list: HomeChange[] = []
 
@@ -271,11 +275,11 @@ export function computeHomeChanges({
   const flips = pinFlips(baseline, current, quoted)
   list.push(...flips.list, ...groupMoves(cur, was, pinsOf(current), flips.keys, quoted))
 
-  current.catalogs
+  curCatalogs
     .filter((c) => !c.showInHome && !baseDiscover.has(c.id))
     .forEach((c) => {
       const row: RowKey = { kind: 'catalog', id: c.id }
-      const wasShown = baseline.catalogs.some((b) => b.id === c.id && b.showInHome)
+      const wasShown = baseCatalogs.some((b) => b.id === c.id && b.showInHome)
       list.push({
         key: `discover:${c.id}`,
         text: wasShown ? `Moved ${quoted(row)} to Discover` : `Added ${quoted(row)} to Discover`,
@@ -283,7 +287,7 @@ export function computeHomeChanges({
     })
 
   baseDiscover.forEach((id) => {
-    const isShownNow = current.catalogs.some((c) => c.id === id && c.showInHome)
+    const isShownNow = curCatalogs.some((c) => c.id === id && c.showInHome)
     if (!curDiscover.has(id) && !isShownNow) {
       list.push({ key: `discover-remove:${id}`, text: `Removed ${quoted({ kind: 'catalog', id })} from home screen` })
     }

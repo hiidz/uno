@@ -3,14 +3,19 @@ import { ApiError, sendJSON } from './http'
 /**
  * Push — the one call that persists the home screen and syncs it to Nuvio.
  *
- * The body carries the whole pending selection, so this app never calls the two
- * standalone `PUT .../selection` endpoints. The nested shapes match Go's
- * `vault.CatalogSelectionForm` / `vault.CollectionSelectionForm` exactly.
+ * The body carries the whole pending Home as one ordered list of rows, each a
+ * catalog or a collection, matching Go's `pushRequest`: a row's place in the
+ * list is its place on Home.
  */
 export interface PushRequest {
-  catalogs: { catalogs: Array<{ catalog_id: string; show_in_home: boolean }> }
-  collections: { collections: Array<{ collection_id: string; pin_to_top: boolean }> }
+  rows: PushRow[]
 }
+
+/** One row of the pending Home: a catalog with whether it gets a home row, or
+ *  a collection with whether Nuvio shows it first. */
+export type PushRow =
+  | { catalog_id: string; show_in_home: boolean }
+  | { collection_id: string; pin_to_top: boolean }
 
 /**
  * The server answers in JSON whatever happens (past auth), so this one shape

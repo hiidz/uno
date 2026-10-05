@@ -12,8 +12,8 @@ transaction (`sql.TxOptions{ReadOnly: true}`, `ValidateSelectionAccess`) still b
 **Schema version.** `PRAGMA user_version` is the schema version, `schemaVersion` in `db.go`.
 `InitDB` reads it in one transaction. At `0`, an empty file, it creates the schema and sets the
 version in that same transaction; at `schemaVersion` it does nothing; any other version fails the
-start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`. A version 5
-vault moves to 6 through `uno migrate` (`docs/configuration.md`), a one-off deleted once
+start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`. A version 6
+vault moves to 7 through `uno migrate` (`docs/configuration.md`), a one-off deleted once
 prod has run it.
 
 ```mermaid
@@ -79,7 +79,7 @@ erDiagram
     string recipe_hash FK "its recipe: type, provider and params"
     uuid owner_id FK
     uuid collection_id FK "nullable — NULL means listed"
-    int home_sort_order "nullable — NULL means not on the TV"
+    int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
     bool show_in_home
     string sub_key "nullable — in a subscribed collection, its snapshot key"
     string created_at
@@ -94,7 +94,7 @@ erDiagram
     bool show_all_tab
     string backdrop_image_url
     bool focus_glow_enabled "defaults to 1, matching Nuvio"
-    int home_sort_order "nullable — NULL means not on the TV"
+    int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
     string created_at
     string updated_at
   }
@@ -205,12 +205,14 @@ One row per profile: what its last push put in Nuvio, as one JSON document
 
 - **What it holds.** `collections`: each pushed collection as the exact bytes push sent
   (`PushJSON`), in Home order. `home`: the Home selection the push carried,
-  `{catalogs: [{catalog_id, show_in_home}], collections: [{collection_id, pin_to_top}]}`.
+  `{catalogs: [{catalog_id, show_in_home, position}], collections: [{collection_id, pin_to_top,
+  position}]}`, `position` each row's place on Home in one numbering across both lists.
   `catalogs`: every catalog Nuvio can reach, `{id, name, type, provider, params}` with params
   inline: those with their own Home row in Home order, then those only the collections' folders
   use, in collection, folder and ref order, once each, the order `GetPublishedCatalogs` lists.
 - **One builder.** `BuildPushRecord` builds it from a pending selection, reading only the
-  caller's own rows; `StoredPushRecord` builds it from the Home columns, for the v5→v6 backfill.
+  caller's own rows; `StoredPushRecord` builds it from the Home columns, which the list of what
+  waits for a push compares the held record with.
 - **Written only by push**, in `SavePush`'s transaction with the Home columns, after Nuvio
   accepted the push, replaced whole and stamped with `profiles.nuvio_profile_uuid` as it is then.
   Nothing cascades into it from `catalogs` or `collections`, and it never points into `recipes`,
@@ -313,7 +315,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
     into `catalogs.home_sort_order`/`show_in_home` and `collections.home_sort_order`
     (`saveCatalogSelectionTx`/`saveCollectionSelectionTx`, `internal/vault`). Every owned row's
-    `home_sort_order` is cleared first, then each incoming id is set in turn with its array index;
+    `home_sort_order` is cleared first, then each incoming entry's is set to its `position`, one
+    numbering across catalogs and collections (a row's place in push's ordered body);
     an id that isn't owned (or, for a catalog, isn't listed — `AND collection_id IS NULL`) affects
     0 rows and is `ErrInvalidInput` naming the id. There is no separate join table and no separate
     access-check query — the `UPDATE`'s own `WHERE` clause is the validation.

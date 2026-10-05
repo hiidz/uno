@@ -410,9 +410,9 @@ func (db *DB) GetCurrentCollectionSelection(ctx context.Context, profileID uuid.
 }
 
 // saveCollectionSelectionTx resets this profile's collection selection to
-// exactly input, in order, and writes each included collection's pin_to_top
-// from its entry. Every owned collection's home_sort_order is cleared first,
-// then each incoming entry is set in turn; a collection left out keeps its
+// exactly input, and writes each included collection's pin_to_top from its
+// entry. Every owned collection's home_sort_order is cleared first, then each
+// incoming entry's is set to its Position; a collection left out keeps its
 // pin_to_top, which a later push putting it back on Home starts from. A
 // 0-rows-affected update (an id that isn't owned) is ErrInvalidInput naming
 // the id, the same pattern as saveCatalogSelectionTx.
@@ -427,13 +427,13 @@ func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.U
 		return fmt.Errorf("clearing collection home selection: %w", err)
 	}
 
-	for i, entry := range input.Collections {
+	for _, entry := range input.Collections {
 		id := entry.CollectionID
 		result, err := tx.ExecContext(ctx, `
 			UPDATE collections
 			SET home_sort_order = ?, pin_to_top = ?
 			WHERE id = ? AND owner_id = ?
-		`, i, entry.PinToTop, id.String(), profileID.String())
+		`, entry.Position, entry.PinToTop, id.String(), profileID.String())
 		if err != nil {
 			return fmt.Errorf("saving collection selection: %w", err)
 		}

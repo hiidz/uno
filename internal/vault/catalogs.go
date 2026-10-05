@@ -409,9 +409,9 @@ func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUI
 }
 
 // saveCatalogSelectionTx resets this profile's catalog selection to exactly
-// input, in order: every owned catalog's home_sort_order is cleared, then
-// each incoming id is set in turn. A 0-rows-affected update (an id that
-// isn't owned, or is scoped rather than listed) is ErrInvalidInput naming
+// input: every owned catalog's home_sort_order is cleared, then each
+// incoming entry's is set to its Position. A 0-rows-affected update (an id
+// that isn't owned, or is scoped rather than listed) is ErrInvalidInput naming
 // the id — this is the access check, not a separate query, since the same
 // WHERE clause both selects and validates.
 //
@@ -425,12 +425,12 @@ func saveCatalogSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID
 		return fmt.Errorf("clearing catalog home selection: %w", err)
 	}
 
-	for i, sc := range input.Catalogs {
+	for _, sc := range input.Catalogs {
 		result, err := tx.ExecContext(ctx, `
 			UPDATE catalogs
 			SET home_sort_order = ?, show_in_home = ?
 			WHERE id = ? AND owner_id = ? AND collection_id IS NULL
-		`, i, sc.ShowInHome, sc.CatalogID.String(), profileID.String())
+		`, sc.Position, sc.ShowInHome, sc.CatalogID.String(), profileID.String())
 		if err != nil {
 			return fmt.Errorf("saving catalog selection: %w", err)
 		}

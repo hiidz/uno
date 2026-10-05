@@ -33,11 +33,11 @@ type Catalog struct {
 	CollectionID *uuid.UUID `json:"collection_id"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
-	// HomeSortOrder is this catalog's position in its owner's home-screen
-	// selection; nil means it isn't on the TV. Never on the wire — the
-	// selection endpoints (GetCurrentCatalogSelection) return catalogs
-	// already ordered by it.
-	HomeSortOrder *int `json:"-"`
+	// HomeSortOrder is this catalog's position on its owner's home screen,
+	// one numbering shared with the collections there; nil means it isn't on
+	// Home. On the wire as home_position, which the builder merges the two
+	// selection reads by.
+	HomeSortOrder *int `json:"home_position,omitempty"`
 	// ShowInHome is only meaningful while HomeSortOrder is non-nil; it drives
 	// the manifest's per-catalog genre extra (see buildManifest). Never on
 	// the wire directly — SelectedCatalog carries its own copy for that.
@@ -92,11 +92,10 @@ type Collection struct {
 	FocusGlowEnabled bool      `json:"focus_glow_enabled"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
-	// HomeSortOrder is this collection's position in its owner's home-screen
-	// selection; nil means it isn't on the TV. Never on the wire — the
-	// selection endpoint (GetCurrentCollectionSelection) returns collections
-	// already ordered by it.
-	HomeSortOrder *int `json:"-"`
+	// HomeSortOrder is this collection's position on its owner's home
+	// screen, one numbering shared with the catalogs there; nil means it isn't
+	// on Home. On the wire as home_position.
+	HomeSortOrder *int `json:"home_position,omitempty"`
 	// Publication is this collection's own publication, and Subscription the
 	// publication it is a subscribed copy of; each is nil when there is none.
 	Publication  *PublicationState  `json:"publication"`
@@ -264,31 +263,42 @@ type NewScopedCatalog struct {
 	SubKey string `json:"-"`
 }
 
-// SelectedCatalogInput is one entry in a CatalogSelectionForm.
+// SelectedCatalogInput is one catalog on a profile's Home: whether it gets a
+// home row or is in Discover only, and its Position, its place on Home in
+// one numbering shared with the collections (catalogs.home_sort_order).
 type SelectedCatalogInput struct {
 	CatalogID  uuid.UUID `json:"catalog_id"`
 	ShowInHome bool      `json:"show_in_home"`
+	Position   int       `json:"position"`
 }
 
-// CatalogSelectionForm is the request body for setting a profile's active
-// catalog selection.
+// CatalogSelectionForm is a profile's Home catalogs, in Position order.
 type CatalogSelectionForm struct {
-	Catalogs []SelectedCatalogInput `json:"catalogs"` // ordered — index gives catalogs.home_sort_order
+	Catalogs []SelectedCatalogInput `json:"catalogs"`
 }
 
-// SelectedCollectionInput is one entry in a CollectionSelectionForm: the
-// collection, and whether Nuvio shows it first on the home screen. Push is
-// the only writer of a collection's pin_to_top, and this is where it comes
-// from.
+// SelectedCollectionInput is one collection on a profile's Home: whether
+// Nuvio shows it first, and its Position, its place on Home in one numbering
+// shared with the catalogs (collections.home_sort_order). Push is the only
+// writer of a collection's pin_to_top, and this is where it comes from.
 type SelectedCollectionInput struct {
 	CollectionID uuid.UUID `json:"collection_id"`
 	PinToTop     bool      `json:"pin_to_top"`
+	Position     int       `json:"position"`
 }
 
-// CollectionSelectionForm is the request body for setting a profile's
-// active collection selection.
+// CollectionSelectionForm is a profile's Home collections, in Position order.
 type CollectionSelectionForm struct {
-	Collections []SelectedCollectionInput `json:"collections"` // ordered — index gives collections.home_sort_order
+	Collections []SelectedCollectionInput `json:"collections"`
+}
+
+// CatalogIDs is the id of every catalog in f, in order.
+func (f CatalogSelectionForm) CatalogIDs() []uuid.UUID {
+	ids := make([]uuid.UUID, len(f.Catalogs))
+	for i, c := range f.Catalogs {
+		ids[i] = c.CatalogID
+	}
+	return ids
 }
 
 // CollectionIDs is the id of every collection in f, in order.

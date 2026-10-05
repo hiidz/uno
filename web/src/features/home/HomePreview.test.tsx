@@ -36,8 +36,10 @@ beforeEach(() => {
     error: null,
     retry: () => {},
     pendingCount: 0,
-    catalogs: [{ id: noir.id, showInHome: false }],
-    collections: [{ id: night.id, pinToTop: false }],
+    rows: [
+      { kind: 'catalog', id: noir.id, showInHome: false },
+      { kind: 'collection', id: night.id, pinToTop: false },
+    ],
     catalogById: new Map([[noir.id, noir]]),
     collectionById: new Map([[night.id, night]]),
     waitingForPush: new Set(),

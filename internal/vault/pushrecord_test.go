@@ -66,10 +66,10 @@ func newPushRecordFixture(t *testing.T) pushRecordFixture {
 	return pushRecordFixture{
 		db: db, owner: owner,
 		catalogs: CatalogSelectionForm{Catalogs: []SelectedCatalogInput{
-			{CatalogID: homeRow.ID, ShowInHome: true}, {CatalogID: discover.ID},
+			{CatalogID: homeRow.ID, ShowInHome: true, Position: 1}, {CatalogID: discover.ID, Position: 2},
 		}},
 		collections: CollectionSelectionForm{Collections: []SelectedCollectionInput{
-			{CollectionID: second, PinToTop: true}, {CollectionID: first},
+			{CollectionID: second, PinToTop: true, Position: 0}, {CollectionID: first, Position: 3},
 		}},
 		homeRow: homeRow.ID, offHomeID: offHomeOnly.ID,
 	}
@@ -223,19 +223,23 @@ func TestPushRecordRefusals(t *testing.T) {
 }
 
 // HomeRows is the record's rows in the order Nuvio shows them: pinned
-// collections apart, then catalogs with a home row of their own, then the
-// other collections, each in Home order. A Discover row and a catalog only a
-// folder uses have none.
+// collections apart, then catalogs with a home row of their own and the other
+// collections mixed, each list by Position. A Discover row and a catalog only
+// a folder uses have none.
 func TestHomeRowsInNuvioOrder(t *testing.T) {
 	home, discover, folderOnly, later := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	pinnedA, pinnedB, unpinned := uuid.New(), uuid.New(), uuid.New()
 	record := PushRecord{
 		Home: PushedHome{
 			Catalogs: []SelectedCatalogInput{
-				{CatalogID: home, ShowInHome: true}, {CatalogID: discover}, {CatalogID: later, ShowInHome: true},
+				{CatalogID: home, ShowInHome: true, Position: 0},
+				{CatalogID: discover, Position: 1},
+				{CatalogID: later, ShowInHome: true, Position: 3},
 			},
 			Collections: []SelectedCollectionInput{
-				{CollectionID: pinnedA, PinToTop: true}, {CollectionID: unpinned}, {CollectionID: pinnedB, PinToTop: true},
+				{CollectionID: pinnedA, PinToTop: true, Position: 5},
+				{CollectionID: unpinned, Position: 2},
+				{CollectionID: pinnedB, PinToTop: true, Position: 4},
 			},
 		},
 		Catalogs: []PushedCatalog{
@@ -245,16 +249,23 @@ func TestHomeRowsInNuvioOrder(t *testing.T) {
 	}
 
 	pinned, rows := record.HomeRows()
-	wantPinned := []HomeRow{{CollectionID: pinnedA}, {CollectionID: pinnedB}}
+	want := func(rows []HomeRow) []string {
+		var keys []string
+		for _, r := range rows {
+			keys = append(keys, r.CollectionID.String()+r.Type+r.CatalogID)
+		}
+		return keys
+	}
+	wantPinned := []HomeRow{{CollectionID: pinnedB}, {CollectionID: pinnedA}}
 	wantRows := []HomeRow{
 		{Type: "movie", CatalogID: "tmdb-" + home.String()},
-		{Type: "series", CatalogID: "tmdb-" + later.String()},
 		{CollectionID: unpinned},
+		{Type: "series", CatalogID: "tmdb-" + later.String()},
 	}
-	if !reflect.DeepEqual(pinned, wantPinned) {
-		t.Errorf("pinned = %+v, want %+v", pinned, wantPinned)
+	if got := want(pinned); !reflect.DeepEqual(got, want(wantPinned)) {
+		t.Errorf("pinned = %v, want %v", got, want(wantPinned))
 	}
-	if !reflect.DeepEqual(rows, wantRows) {
-		t.Errorf("rows = %+v, want %+v", rows, wantRows)
+	if got := want(rows); !reflect.DeepEqual(got, want(wantRows)) {
+		t.Errorf("rows = %v, want %v", got, want(wantRows))
 	}
 }

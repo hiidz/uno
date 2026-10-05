@@ -17,7 +17,8 @@ import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { ordinal } from '@/lib/ordinal'
 import { showFirstAction } from './changes'
 import { HomePreview } from './HomePreview'
-import type { PreviewRow } from './preview'
+import { bandItemId } from './preview'
+import type { HomeBandItem, PreviewRow } from './preview'
 import { SortableList } from './SortableList'
 import { useHomeEdits, useHomePreview, useHomeSelection } from './useHomeSelection'
 
@@ -139,12 +140,12 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
 }
 
 /**
- * The running order, in Nuvio's own three groups: pinned collections, then
- * catalog rows, then the remaining collections. Positions count straight
- * through all three, so a row's number is its place in Nuvio — the same rule
- * `preview.ts` draws and `changes.ts` speaks in. A row moves only within its
- * own group: reordering hands `HomeSelectionContext` only that group's ids,
- * which reconstructs the full list itself (see `reorderWithinBand`).
+ * The running order, in Nuvio's own two groups: pinned collections, then the
+ * home rows, catalogs and collections mixed. Positions count straight through
+ * both, so a row's number is its place in Nuvio — the same rule `preview.ts`
+ * draws and `changes.ts` speaks in. A row moves only within its own group:
+ * reordering hands `HomeSelectionContext` only that group's ids, which
+ * reconstructs the full list itself (see `reorderWithinBand`).
  */
 function HomeList() {
   const home = useHomeSelection()
@@ -159,13 +160,8 @@ function HomeList() {
   }
 
   // Nuvio's own order, for continuous numbering — see the module comment.
-  const order = [
-    ...preview.pinnedCollections.map((c) => `collection:${c.id}`),
-    ...preview.rows.map((r) => `catalog:${r.id}`),
-    ...preview.unpinnedCollections.map((c) => `collection:${c.id}`),
-  ]
-  const positionOf = (kind: 'collection' | 'catalog', id: string) =>
-    order.indexOf(`${kind}:${id}`) + 1
+  const order = [...preview.pinnedCollections.map((c) => c.id), ...preview.home.map(bandItemId)]
+  const positionOf = (id: string) => order.indexOf(id) + 1
 
   return (
     <div className="flex flex-col gap-8">
@@ -173,18 +169,18 @@ function HomeList() {
         <Group label="Pinned">
           <SortableList
             ids={preview.pinnedCollections.map((c) => c.id)}
-            onReorder={(ids) => home.reorderCollections('pinned', ids)}
+            onReorder={(ids) => home.reorderBand('pinned', ids)}
           >
             <ol className="flex flex-col">
               {preview.pinnedCollections.map((collection, i, group) => (
                 <CollectionRow
                   key={collection.id}
                   collection={collection}
-                  position={positionOf('collection', collection.id)}
+                  position={positionOf(collection.id)}
                   first={i === 0}
                   last={i === group.length - 1}
                   groupWord="the pinned collections"
-                  onMove={(direction) => home.moveCollection(collection.id, direction)}
+                  onMove={(direction) => home.moveRow(collection.id, direction)}
                 />
               ))}
             </ol>
@@ -192,21 +188,20 @@ function HomeList() {
         </Group>
       )}
 
-      <Group label="Catalogs">
-        {preview.rows.length === 0 ? (
-          <EmptyBlock>No catalogs on your home screen.</EmptyBlock>
+      <Group label="Rows">
+        {preview.home.length === 0 ? (
+          <EmptyBlock>No rows on your home screen.</EmptyBlock>
         ) : (
-          <SortableList ids={preview.rows.map((r) => r.id)} onReorder={home.reorderCatalogs}>
+          <SortableList ids={preview.home.map(bandItemId)} onReorder={(ids) => home.reorderBand('home', ids)}>
             <ol className="flex flex-col">
-              {preview.rows.map((row, i, group) => (
-                <CatalogRow
-                  key={row.id}
-                  row={row}
-                  position={positionOf('catalog', row.id)}
+              {preview.home.map((item, i, group) => (
+                <HomeBandRow
+                  key={bandItemId(item)}
+                  item={item}
+                  position={positionOf(bandItemId(item))}
                   first={i === 0}
                   last={i === group.length - 1}
-                  groupWord="the catalogs"
-                  onMove={(direction) => home.moveCatalog(row.id, direction)}
+                  onMove={(direction) => home.moveRow(bandItemId(item), direction)}
                 />
               ))}
             </ol>
@@ -214,31 +209,40 @@ function HomeList() {
         )}
       </Group>
 
-      {preview.unpinnedCollections.length > 0 && (
-        <Group label="Collections">
-          <SortableList
-            ids={preview.unpinnedCollections.map((c) => c.id)}
-            onReorder={(ids) => home.reorderCollections('unpinned', ids)}
-          >
-            <ol className="flex flex-col">
-              {preview.unpinnedCollections.map((collection, i, group) => (
-                <CollectionRow
-                  key={collection.id}
-                  collection={collection}
-                  position={positionOf('collection', collection.id)}
-                  first={i === 0}
-                  last={i === group.length - 1}
-                  groupWord="the collections"
-                  onMove={(direction) => home.moveCollection(collection.id, direction)}
-                />
-              ))}
-            </ol>
-          </SortableList>
-        </Group>
-      )}
-
       {preview.discoverOnly.length > 0 && <DiscoverTray rows={preview.discoverOnly} />}
     </div>
+  )
+}
+
+/** One of the home rows: a catalog's row or a collection's, numbered and
+ *  moved within the home rows. */
+function HomeBandRow({
+  item,
+  position,
+  first,
+  last,
+  onMove,
+}: {
+  item: HomeBandItem
+  position: number
+  first: boolean
+  last: boolean
+  onMove: (direction: -1 | 1) => void
+}) {
+  if (item.kind === 'catalog') {
+    return (
+      <CatalogRow row={item.row} position={position} first={first} last={last} groupWord="the rows" onMove={onMove} />
+    )
+  }
+  return (
+    <CollectionRow
+      collection={item.collection}
+      position={position}
+      first={first}
+      last={last}
+      groupWord="the rows"
+      onMove={onMove}
+    />
   )
 }
 

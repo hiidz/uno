@@ -333,9 +333,7 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
 			reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
-			req := newPushRequest(t, reqCtx, pushRequest{
-				Collections: vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}},
-			})
+			req := newPushRequest(t, reqCtx, pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}}))
 			w := httptest.NewRecorder()
 
 			s.push(w, req)
@@ -563,9 +561,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: []json.RawMessage{staleSelected, foreign, staleDeselected}}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{
-		Collections: vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: selected.ID}}},
-	}))
+	s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: selected.ID}}})))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
@@ -607,10 +603,12 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 }
 
 // A push body with a field the request doesn't have is a 400, before
-// anything reaches Nuvio or the vault. The case that matters is a tab loaded
-// before the selection gained its pins: it still sends collection_ids, which
-// a lenient read would take as an empty selection, clearing every Uno
-// collection from Nuvio and every collection from Home.
+// anything reaches Nuvio or the vault. The cases that matter are tabs loaded
+// before a deploy changed the body: one sending collection_ids, from before
+// the selection gained its pins, and one sending catalogs and collections
+// apart, from before Home took one ordered list of rows. A lenient read would
+// take either as an empty selection, clearing every Uno collection from Nuvio
+// and every collection from Home.
 func TestPush_RefusesABodyInAnotherShape(t *testing.T) {
 	db := newTestVaultDB(t)
 	profile, err := db.ResolveOrCreateProfile(t.Context(), "user-shape", 1, "nuvio-uuid-shape")
@@ -621,20 +619,22 @@ func TestPush_RefusesABodyInAnotherShape(t *testing.T) {
 	onHome := createPushableCollection(t, ctx, db, profile.ID, "On Home")
 	s := &Server{vault: db, nuvio: &fakeNuvio{profiles: liveAs(profile)}, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, ctx, pushRequest{Collections: vault.CollectionSelectionForm{
-		Collections: []vault.SelectedCollectionInput{{CollectionID: onHome.ID}},
-	}}))
+	s.push(w, newPushRequest(t, ctx, pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: onHome.ID}}})))
 	if w.Code != http.StatusOK {
 		t.Fatalf("first push = %d (%s), want 200", w.Code, w.Body.String())
 	}
 
 	fake := &fakeNuvio{}
 	s.nuvio = fake
-	old := `{"catalogs":{"catalogs":[]},"collections":{"collection_ids":["` + onHome.ID.String() + `"]}}`
-	w = httptest.NewRecorder()
-	s.push(w, httptest.NewRequest(http.MethodPost, "/api/p/1/push", bytes.NewReader([]byte(old))).WithContext(ctx))
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status = %d (%s), want 400", w.Code, w.Body.String())
+	for _, old := range []string{
+		`{"catalogs":{"catalogs":[]},"collections":{"collection_ids":["` + onHome.ID.String() + `"]}}`,
+		`{"catalogs":{"catalogs":[]},"collections":{"collections":[{"collection_id":"` + onHome.ID.String() + `","pin_to_top":false}]}}`,
+	} {
+		w = httptest.NewRecorder()
+		s.push(w, httptest.NewRequest(http.MethodPost, "/api/p/1/push", bytes.NewReader([]byte(old))).WithContext(ctx))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d (%s), want 400", old, w.Code, w.Body.String())
+		}
 	}
 	if len(fake.pushAddonsCalls) != 0 || len(fake.pushCollectionsCalls) != 0 {
 		t.Errorf("Nuvio calls = %d addons, %d collections; want none", len(fake.pushAddonsCalls), len(fake.pushCollectionsCalls))
@@ -662,9 +662,7 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 		fake := &fakeNuvio{profiles: liveAs(profile)}
 		s.nuvio = fake
 		w := httptest.NewRecorder()
-		s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{
-			Collections: vault.CollectionSelectionForm{Collections: entries},
-		}))
+		s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: entries})))
 		if w.Code != http.StatusOK || len(fake.pushCollectionsCalls) != 1 {
 			t.Fatalf("status = %d, PushCollections calls = %d; want 200 and 1 (body %q)", w.Code, len(fake.pushCollectionsCalls), w.Body.String())
 		}
@@ -732,7 +730,7 @@ func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
 
 	first := vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: gone.ID}}}
-	s.push(httptest.NewRecorder(), newPushRequest(t, reqCtx, pushRequest{Collections: first}))
+	s.push(httptest.NewRecorder(), newPushRequest(t, reqCtx, pushOf(vault.CatalogSelectionForm{}, first)))
 	if got := fake.pushCollectionsCalls[0]; len(got) != 2 {
 		t.Fatalf("first push sent %d collections, want the foreign one and Gone", len(got))
 	}
@@ -772,7 +770,7 @@ func TestPush_TurnsAwayWhatItCannotRun(t *testing.T) {
 		{"no profile", withNuvioToken(ctx, "token"), pushRequest{}, http.StatusUnauthorized},
 		{"no Nuvio token", withProfileID(ctx, profile.ID), pushRequest{}, http.StatusUnauthorized},
 		{"unknown profile", withNuvioToken(withProfileID(ctx, uuid.New()), "token"), pushRequest{}, http.StatusInternalServerError},
-		{"a catalog it doesn't own", withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{Catalogs: foreign}, http.StatusBadRequest},
+		{"a catalog it doesn't own", withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushOf(foreign, vault.CollectionSelectionForm{}), http.StatusBadRequest},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -811,7 +809,7 @@ func TestPush_RefusesBeforeNuvio(t *testing.T) {
 		for _, id := range ids {
 			form.Collections = append(form.Collections, vault.SelectedCollectionInput{CollectionID: id})
 		}
-		return pushRequest{Collections: form}
+		return pushOf(vault.CatalogSelectionForm{}, form)
 	}
 	sharing := liveAs(profile)
 	sharing[0].UsesPrimaryAddons = true
@@ -847,4 +845,19 @@ func TestPush_RefusesBeforeNuvio(t *testing.T) {
 			}
 		})
 	}
+}
+
+// pushOf is a push body putting catalogs, then collections, on Home, each in
+// the order given.
+func pushOf(catalogs vault.CatalogSelectionForm, collections vault.CollectionSelectionForm) pushRequest {
+	var body pushRequest
+	for _, c := range catalogs.Catalogs {
+		id := c.CatalogID
+		body.Rows = append(body.Rows, pushRow{CatalogID: &id, ShowInHome: c.ShowInHome})
+	}
+	for _, c := range collections.Collections {
+		id := c.CollectionID
+		body.Rows = append(body.Rows, pushRow{CollectionID: &id, PinToTop: c.PinToTop})
+	}
+	return body
 }
