@@ -11,16 +11,17 @@ import (
 
 // Community lists every live publication of someone else's, newest first:
 // the caller's own and unpublished ones are never listed. A catalog row
-// carries its recipe and a collection row none, and every row names the
-// catalogs it holds.
+// carries its recipe and a collection row none, every row names the catalogs
+// it holds, and a collection row lists its folder titles in order.
 func TestListCommunity(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, viewer := newTestProfile(t, db, "owner"), newTestProfile(t, db, "viewer")
 	movie := publishCatalog(t, db, owner, "Movie", `{"sort_by":"popularity.desc"}`)
-	publishCollection(t, db, owner, CollectionForm{Title: "Movie Night", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{
-		newScoped("k1", "Ghost Stories", `{"with_genres":"27"}`), newScoped("k2", "Slashers", `{"with_genres":"53"}`),
-	}}}})
+	publishCollection(t, db, owner, CollectionForm{Title: "Movie Night", Folders: []FolderData{
+		{Title: "Ghosts", Catalogs: []FolderCatalogRef{newScoped("k1", "Ghost Stories", `{"with_genres":"27"}`)}},
+		{Title: "Slashers", Catalogs: []FolderCatalogRef{newScoped("k2", "Slashers", `{"with_genres":"53"}`)}},
+	}})
 	unpublished := publishCatalog(t, db, owner, "Unpublished", `{"sort_by":"revenue.desc"}`)
 	if _, err := db.UnpublishCatalog(ctx, owner, unpublished.ID); err != nil {
 		t.Fatal(err)
@@ -38,11 +39,15 @@ func TestListCommunity(t *testing.T) {
 		}
 	}
 	assertStrings(t, "the collection's catalog names", items[0].CatalogNames, []string{"Ghost Stories", "Slashers"})
-	if items[0].FolderCount != 1 || items[0].CatalogCount != 2 {
-		t.Errorf("collection row = %d folders, %d catalogs; want 1 and 2", items[0].FolderCount, items[0].CatalogCount)
+	assertStrings(t, "the collection's folder titles", items[0].FolderTitles, []string{"Ghosts", "Slashers"})
+	if items[0].FolderCount != 2 || items[0].CatalogCount != 2 {
+		t.Errorf("collection row = %d folders, %d catalogs; want 2 and 2", items[0].FolderCount, items[0].CatalogCount)
 	}
 	if c := items[1]; string(c.Catalog.Params) != `{"sort_by":"popularity.desc"}` || !slices.Equal(c.CatalogNames, []string{"Movie"}) {
 		t.Errorf("catalog row = recipe %s, names %q", c.Catalog.Params, c.CatalogNames)
+	}
+	if c := items[1]; c.FolderTitles == nil || len(c.FolderTitles) != 0 {
+		t.Errorf("catalog row folder titles = %#v, want an empty, non-nil list", c.FolderTitles)
 	}
 }
 

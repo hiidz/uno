@@ -12,8 +12,12 @@ import { pluralCount } from '@/lib/plural'
  */
 export function describeCollection(collection: Collection | undefined): string {
   if (!collection) return 'no longer available'
-  const folders = collection.folders ?? []
-  const count = pluralCount(folders.length, 'folder')
-  if (folders.length === 0) return count
-  return `${count} · ${folders.map((f) => f.title).join(', ')}`
+  return describeFolders((collection.folders ?? []).map((f) => f.title))
+}
+
+/** "N folders" or "N folders · Title, Title, …" for folders titled `titles`, in order. */
+export function describeFolders(titles: string[] | null): string {
+  const names = titles ?? []
+  const count = pluralCount(names.length, 'folder')
+  return names.length === 0 ? count : `${count} · ${names.join(', ')}`
 }

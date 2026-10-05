@@ -18,6 +18,7 @@ const night = communityItem({
   title: 'Horror Nights',
   catalog: null,
   catalog_names: ['Slasher classics'],
+  folder_titles: ['Slashers'],
   folder_count: 1,
   catalog_count: 1,
   subscriber_count: 4,
@@ -94,7 +95,7 @@ describe('CommunityView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
     expect(screen.getByText('Horror Nights')).toBeInTheDocument()
-    expect(screen.getByText('1 folder · 1 catalog')).toBeInTheDocument()
+    expect(screen.getByText('1 folder · Slashers')).toBeInTheDocument()
     expect(screen.getByText(/Added by 4/)).toBeInTheDocument()
     expect(screen.getByText('Update available')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Update…' })).toBeEnabled()

@@ -1119,9 +1119,11 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   row (`after:absolute after:inset-0`) and the actions above it (`z-10`) keeping the default cursor
   (DESIGN.md's Navigates Rule). Its content is the name with a kind sticker (Movies or Series; the
   Collections list leaves Collection off) and, while an update waits for this profile's added row,
-  an Update available sticker; a summary (a catalog's recipe line, a collection's folders and
-  catalogs — `itemSummary`); and "Added by N · updated 2 days ago" or "Published 3 days ago"
-  (`itemMeta`). Below `sm` it stacks (name with a two-line clamp, stickers, summary, meta, actions on
+  an Update available sticker; a summary (a catalog's recipe line, a collection's folders worded
+  as the Library rail and Home word them, "3 folders · Action, Drama, Comedy", from the row's
+  `folder_titles` through `describeFolders` — `itemSummary`); and "Added by 3 · Published 3 weeks
+  ago · Updated 2 days ago" (`itemMeta`), without Added by while nobody has added it and without
+  Updated while it was never updated. Below `sm` it stacks (name with a two-line clamp, stickers, summary, meta, actions on
   their own line) and a touch screen adds a chevron to the name line. Its main button is Add (the
   `subscribe` action), a disabled ✓ Added while the profile has added it, or Update… while an
   update waits, which opens the publication's page; Duplicate, a copy that is the profile's own

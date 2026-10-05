@@ -1,7 +1,6 @@
 import type { CommunityItem } from '@/api'
 import { COLLECTION_KIND, kindSticker, type SharingSticker } from '@/features/sharing/sharingState'
-import { capitalize } from '@/lib/capitalize'
-import { pluralCount } from '@/lib/plural'
+import { describeFolders } from '@/features/library/collection'
 
 /** What Community shows: the search words, which kind, and the order. */
 export interface CommunityFilters {
@@ -69,20 +68,27 @@ export function itemKind(item: CommunityItem): SharingSticker {
   return COLLECTION_KIND
 }
 
-/** A row's second line: a catalog's recipe, or a collection's size. The kind
- *  sticker says a catalog's type. `recipe` is the catalog's recipe line, when
- *  it has one. */
+/** A row's second line: a catalog's recipe, or a collection's folders worded as
+ *  the Library rail and Home word them. The kind sticker says a catalog's
+ *  type. `recipe` is the catalog's recipe line, when it has one. */
 export function itemSummary(item: CommunityItem, recipe: string): string {
   if (item.kind === 'catalog') return recipe || 'No filters'
-  return [pluralCount(item.folder_count, 'folder'), pluralCount(item.catalog_count, 'catalog')].join(' · ')
+  return describeFolders(item.folder_titles)
 }
 
-/** A row's third line: how many have added it, then when it was published or
- *  last updated — "Added by 3 · updated 2 days ago". */
+/** A row's third line: how many have added it, when it was published, and
+ *  when it was last updated, if it was — "Added by 3 · Published 3 weeks ago ·
+ *  Updated 2 days ago". */
 export function itemMeta(item: CommunityItem, now: Date): string {
-  const updated = item.updated_at !== item.published_at
-  const when = `${updated ? 'updated' : 'published'} ${relativeDay(updated ? item.updated_at : item.published_at, now)}`
-  return item.subscriber_count > 0 ? `Added by ${item.subscriber_count} · ${when}` : capitalize(when)
+  return [addedBy(item), `Published ${relativeDay(item.published_at, now)}`, updatedAgo(item, now)].filter(Boolean).join(' · ')
+}
+
+function addedBy(item: CommunityItem): string {
+  return item.subscriber_count > 0 ? `Added by ${item.subscriber_count}` : ''
+}
+
+function updatedAgo(item: CommunityItem, now: Date): string {
+  return item.updated_at !== item.published_at ? `Updated ${relativeDay(item.updated_at, now)}` : ''
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000

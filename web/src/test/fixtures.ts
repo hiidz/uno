@@ -81,6 +81,7 @@ export function communityItem(overrides: Partial<CommunityItem> = {}): Community
     subscribed: false,
     update_available: false,
     catalog_names: ['Popular'],
+    folder_titles: [],
     catalog: { key: 'k1', name: 'Popular', type: 'movie', provider: 'tmdb', params: {} },
     ...overrides,
   }

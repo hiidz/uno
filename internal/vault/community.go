@@ -17,7 +17,8 @@ import (
 // CommunityItem is one publication as Community lists it: what it is, how
 // big, how many subscribe, when it was published and last updated, whether
 // the caller subscribes and has an update waiting, the names of the catalogs
-// it holds, and for a catalog its recipe. Its publisher is never on the wire.
+// it holds, a collection's folder titles in order, and for a catalog its
+// recipe. Its publisher is never on the wire.
 type CommunityItem struct {
 	ID              uuid.UUID      `json:"id"`
 	Kind            string         `json:"kind"`
@@ -30,6 +31,7 @@ type CommunityItem struct {
 	Subscribed      bool           `json:"subscribed"`
 	UpdateAvailable bool           `json:"update_available"`
 	CatalogNames    []string       `json:"catalog_names"`
+	FolderTitles    []string       `json:"folder_titles"`
 	Catalog         *BundleCatalog `json:"catalog"`
 }
 
@@ -113,7 +115,21 @@ func (item CommunityItem) withSnapshot(raw string) (CommunityItem, Snapshot, err
 		return CommunityItem{}, Snapshot{}, err
 	}
 	item.CatalogNames, item.Catalog = s.listed(item.Kind)
+	item.FolderTitles = s.folderTitles()
 	return item, s, nil
+}
+
+// folderTitles is the titles of s's collection's folders in order: empty for
+// a catalog's snapshot, never nil.
+func (s Snapshot) folderTitles() []string {
+	titles := []string{}
+	if s.Collection == nil {
+		return titles
+	}
+	for _, f := range s.Collection.Folders {
+		titles = append(titles, f.Title)
+	}
+	return titles
 }
 
 // listed is what a Community row shows of s, a publication of kind: the

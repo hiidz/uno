@@ -38,6 +38,7 @@ describe('visibleItems', () => {
     title: 'Movie Night',
     catalog: null,
     catalog_names: ['Ghost Stories', 'Slashers'],
+    folder_titles: ['Ghosts', 'Slashers'],
   })
   const items = [zebra, night, apple]
   const ids = (list: ReturnType<typeof visibleItems>) => list.map((item) => item.id)
@@ -72,12 +73,15 @@ describe('visibleItems', () => {
 })
 
 describe('row words', () => {
-  it('summarizes a catalog by its recipe, and a collection by size', () => {
+  it('summarizes a catalog by its recipe, and a collection by its folders as Home words them', () => {
     expect(itemSummary(communityItem(), 'Most popular · Horror')).toBe('Most popular · Horror')
     expect(itemSummary(communityItem(), '')).toBe('No filters')
-    expect(
-      itemSummary(communityItem({ kind: 'collection', catalog: null, folder_count: 1, catalog_count: 3 }), ''),
-    ).toBe('1 folder · 3 catalogs')
+    const collection = (folder_titles: string[] | null) =>
+      itemSummary(communityItem({ kind: 'collection', catalog: null, folder_titles }), '')
+    expect(collection(['Action', 'Drama', 'Comedy'])).toBe('3 folders · Action, Drama, Comedy')
+    expect(collection(['Action'])).toBe('1 folder · Action')
+    expect(collection([])).toBe('0 folders')
+    expect(collection(null)).toBe('0 folders')
   })
 
   it('names a catalog’s kind by its type, and a collection as a collection', () => {
@@ -85,17 +89,14 @@ describe('row words', () => {
     expect(itemKind(communityItem({ kind: 'collection', catalog: null }))).toEqual({ label: 'Collection', tone: { hue: 'collection', fill: false } })
   })
 
-  it('says how many took it and when it last changed', () => {
+  it('says how many took it, when it was published and when it last changed', () => {
     const now = new Date(2026, 8, 29, 12)
-    expect(itemMeta(communityItem({ published_at: '2026-09-27T10:00:00Z', updated_at: '2026-09-27T10:00:00Z' }), now)).toBe(
-      'Published 2 days ago',
-    )
-    expect(
-      itemMeta(
-        communityItem({ subscriber_count: 3, published_at: '2026-09-01T10:00:00Z', updated_at: '2026-09-28T10:00:00Z' }),
-        now,
-      ),
-    ).toBe('Added by 3 · updated yesterday')
+    const meta = (subscriber_count: number, updated_at: string) =>
+      itemMeta(communityItem({ subscriber_count, published_at: '2026-09-08T10:00:00Z', updated_at }), now)
+    expect(meta(0, '2026-09-08T10:00:00Z')).toBe('Published 3 weeks ago')
+    expect(meta(0, '2026-09-27T10:00:00Z')).toBe('Published 3 weeks ago · Updated 2 days ago')
+    expect(meta(3, '2026-09-08T10:00:00Z')).toBe('Added by 3 · Published 3 weeks ago')
+    expect(meta(3, '2026-09-27T10:00:00Z')).toBe('Added by 3 · Published 3 weeks ago · Updated 2 days ago')
   })
 
   it('counts days, weeks, months and years', () => {

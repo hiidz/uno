@@ -204,7 +204,8 @@ export interface Snapshot {
 
 /** One row of `GET /api/p/{i}/community`: a publication someone else
  *  publishes, never naming its publisher. `catalog_names` names every catalog it
- *  holds, for search. `catalog` is a catalog publication's one catalog, so
+ *  holds, for search. `folder_titles` lists a collection's folders in order, empty for a
+ *  catalog. `catalog` is a catalog publication's one catalog, so
  *  its row can be summarized without a detail call; `null` for a
  *  collection. */
 export interface CommunityItem {
@@ -219,6 +220,7 @@ export interface CommunityItem {
   subscribed: boolean
   update_available: boolean
   catalog_names: string[] | null
+  folder_titles: string[] | null
   catalog: SnapshotCatalog | null
 }
 
