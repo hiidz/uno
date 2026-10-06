@@ -27,12 +27,19 @@ export function checkImport(profileIndex: number, bundle: unknown): Promise<Impo
 
 /** `POST .../import` — writes the bundle as new, private rows. `reuse` maps a
  *  bundle catalog key to the id of one of this profile's listed catalogs,
- *  which that key's folder refs then point at instead of a copy. The server
- *  checks the bundle again rather than trusting an earlier check. */
+ *  which that key's folder refs then point at instead of a copy.
+ *  `skipCollections` are positions of the bundle's collections to leave out,
+ *  each with its own catalogs. The server checks the bundle again rather than
+ *  trusting an earlier check. */
 export function importBundle(
   profileIndex: number,
   bundle: unknown,
   reuse: Record<string, string>,
+  skipCollections: number[],
 ): Promise<ImportResult> {
-  return sendJSON<ImportResult>('POST', `/api/p/${profileIndex}/import`, { bundle, reuse })
+  return sendJSON<ImportResult>('POST', `/api/p/${profileIndex}/import`, {
+    bundle,
+    reuse,
+    skip_collections: skipCollections,
+  })
 }

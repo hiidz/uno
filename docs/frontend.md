@@ -270,32 +270,65 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
   in as pasted JSON only.
   - **The input.** A `JsonField` shows the text with a line number beside each line. It grows with
     its text from 8 lines up to 60% of the viewport height, then scrolls; lines don't wrap, so a
-    number always sits on its line, and the gutter scrolls with the text. It ends in
-    `parseBundleText` (`text.ts`); text over 4 MiB is refused before it is sent
-    (`MAX_BUNDLE_BYTES`, the twin of the server's `maxBundleBodyBytes`).
+    number always sits on its line, and the gutter scrolls with the text. The gutter holds every
+    number. At a 4 MiB paste a keystroke takes over a second, almost all of it in the browser's
+    own textarea; the gutter's share is a few tenths of a second of the paste itself. It ends
+    in `parseBundleText` (`text.ts`); text over 4 MiB is refused before it is sent
+    (`MAX_BUNDLE_BYTES`, the twin of the server's `maxBundleBodyBytes`). A paste whose length
+    alone is past the limit (`surelyOversize`) never enters the field: it keeps what it held and
+    shows the same refusal (`OVERSIZE`). Text under that length but over 4 MiB in bytes is
+    caught by `parseBundleText` on the next press.
   - **Validate JSON** (the field's button, disabled while it is blank) is `parseBundleText` alone:
-    instant, no request. The result shows under the field, "Valid JSON." or "Pasted JSON isn't
-    valid: …". The field is never taken away, stays editable, and any edit clears the result.
-    Validate says nothing about whether the JSON is a bundle: that is checked by the server, when
-    Import is pressed.
+    instant, no request. The result shows under the field, "Valid JSON." or "This isn't valid
+    JSON." over the parser's own words. The field stays editable, and any edit clears the
+    result. Validate says nothing about whether the JSON is a bundle: that is checked by the
+    server, when Import is pressed.
   - **Import** is disabled until there is something to import and while a request is in flight,
-    since a second import writes a second set. It parses the source again, sends
-    `/import/check`, and then:
-    - **No matches:** it writes at once with an empty `reuse` map. One press.
-    - **Matches** (a bundle catalog with the same recipe as one the library already has; names
-      are not compared): the review appears under the field, the field stays, and the next press of
-      Import writes with the choices made. The review names the source with its counts, then
-      one row per match. Each row is **Import a copy** (the default) or the reuse choice. A
+    since a second import writes a second set. It parses the source again and sends
+    `/import/check`; nothing is written until the next press, so every import is two presses and
+    what a bundle holds is always seen before it lands.
+  - **The review** (`ImportReview.tsx`) takes the field's place, so nothing it asks is below the
+    fold, and focus moves to its summary. "This JSON holds 3 catalogs, 1 collection and 2
+    folders." sits beside **Edit JSON**, which brings the field back with its text and focus and
+    drops the review; under it, when something matches, the question, which says "filters", the
+    word the rest of the UI uses for a recipe. A match is a bundle collection with the title of
+    one the library already has, trimmed and in any case, or a bundle catalog with the same
+    recipe as one; catalog names are not compared.
+    - **Everything the bundle holds** is listed from the check, as the Library lists
+      it: under "Catalogs · N", each top-level catalog's name, its filters line (`recipeLine`,
+      genre names from the Library's lookups, which `Workspace` passes in) and its Movies or
+      Series sticker; under "Collections · N", each collection's title, its folders
+      (`describeFolders`) and the Collection sticker. The dialog never reads the bundle's own
+      format for these.
+    - **The footer button** names what its press adds with the choices as they stand,
+      `importTally` (`reuse.ts`): every catalog still in the import (`liveCatalogs`: the top-level
+      ones and those of each collection not skipped) less the reused ones, and every collection
+      not skipped ("Import 2 catalogs and 1
+      collection"). With nothing left to add it reads **Nothing to import** and is disabled.
+    - **A matched collection's row** carries **Import it** (the default) or **Skip, I already
+      have it**. Skipping one leaves it out with its own catalogs, says so under the row, and
+      drops those catalogs' choices (`liveMatches`); the request's `skip_collections` carries the
+      skipped positions (`withSkip`). Import all and Use mine for all never touch a collection,
+      and show only while a catalog choice does.
+    - **A matched catalog's row** carries its choice; a collection's own matched catalogs are
+      listed under the collection, and its unmatched ones only through its folders. Each choice is
+      **Import it** (the default) or the reuse choice; nothing here says "copy", the word
+      Duplicate keeps. A
       top-level catalog reads **Skip, I already have it**. A collection's own catalog reads **Use
       my existing one**, with a hint that the collection will then share the library catalog.
-      Several existing matches get a `Select`, which starts on the first by name. **Copy all** and
-      **Use existing for all** set every row; the second picks each row's first match. The choices
+      Several existing matches get a `Select`, which starts on the first by name. **Import all**
+      and **Use mine for all** set every row; the second picks each row's first match. The choices
       are `reuse.ts`'s `ReuseChoices`, and `reuseMap` turns them into the request's `reuse` map.
       Editing the text drops the review, so a choice never goes with a bundle it wasn't made for.
-  - **Errors.** A 400 or 502 from `/import/check` is shown under the field as "This JSON can't be
-    imported: …"; a mistyped key in the bundle comes back
-    named (`invalid request body: unknown field "tile_shap"`). A failed write shows "Couldn't
-    import: …" and keeps the field and the choices.
+  - **Errors.** Each is a plain headline with the technical text in dimmer beneath
+    (`problem.ts`'s `ImportProblem`). A failed `/import/check` reads by status (`checkProblem`):
+    a 400 "This JSON isn't a bundle Uno can import.", a 502 "TMDB couldn't be reached to check
+    the filters. Try again in a moment.", anything else "Couldn't check this JSON. Try again.",
+    each over the server's own words, so a mistyped key still comes back named
+    (`invalid request body: unknown field "tile_shap"`). A failed write reads "Couldn't import.
+    Nothing was added." (`writeProblem`), true because the import is one transaction, and keeps
+    the review and its choices. Every error line takes focus when it appears, which scrolls it
+    into view and has it read out.
   - **After a write.** `useImport` invalidates the two owned lists and settles only once they
     have refetched. The dialog then closes, and a toast under the rail's search row names what the
     rail gained, for example "Imported 2 catalogs and 1 collection". It counts only new listed

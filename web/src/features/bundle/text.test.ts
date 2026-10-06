@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MAX_BUNDLE_BYTES, bundleText, copyText, parseBundleText } from './text'
+import { MAX_BUNDLE_BYTES, bundleText, copyText, parseBundleText, surelyOversize } from './text'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -14,16 +14,26 @@ describe('bundleText', () => {
   })
 })
 
+describe('surelyOversize', () => {
+  it('refuses only text whose length alone is past the limit', () => {
+    expect(surelyOversize('a'.repeat(MAX_BUNDLE_BYTES))).toBe(false)
+    expect(surelyOversize('a'.repeat(MAX_BUNDLE_BYTES + 1))).toBe(true)
+  })
+})
+
 describe('parseBundleText', () => {
   it('accepts surrounding whitespace', () => {
     expect(parseBundleText('\n  {"a": 1}  \n')).toEqual({ ok: true, bundle: { a: 1 } })
   })
 
-  it('refuses text that is not JSON, empty text included', () => {
+  it('refuses text that is not JSON, empty text included, with the parser’s words as the detail', () => {
     for (const text of ['{nope', '   ']) {
       const bad = parseBundleText(text)
       expect(bad.ok).toBe(false)
-      if (!bad.ok) expect(bad.message).toMatch(/^Pasted JSON isn't valid: /)
+      if (!bad.ok) {
+        expect(bad.problem.headline).toBe("This isn't valid JSON.")
+        expect(bad.problem.detail).not.toBe('')
+      }
     }
   })
 
@@ -31,7 +41,7 @@ describe('parseBundleText', () => {
     const big = `"${'a'.repeat(MAX_BUNDLE_BYTES)}"`
     expect(parseBundleText(big)).toEqual({
       ok: false,
-      message: 'Pasted JSON is over 4 MiB, the most an import can carry.',
+      problem: { headline: 'This JSON is over 4 MiB, the most an import can carry.', detail: '' },
     })
   })
 })

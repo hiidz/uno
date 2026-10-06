@@ -9,7 +9,9 @@ const TEXT = 'font-mono text-[13px] leading-snug pointer-coarse:text-[16px]'
 /**
  * A multi-line field for JSON with a line number beside each line. It grows
  * with its text up to `MAX_HEIGHT`, then scrolls. Lines never wrap, so a
- * number always sits on its line, and the gutter scrolls with the text.
+ * number always sits on its line, and the gutter scrolls with the text. It
+ * takes focus when it mounts: wherever it appears, the next keystroke is
+ * meant for it.
  */
 export function JsonField({
   value,
@@ -45,6 +47,7 @@ export function JsonField({
         {numbers}
       </div>
       <textarea
+        autoFocus
         value={value}
         readOnly={readOnly}
         spellCheck={false}

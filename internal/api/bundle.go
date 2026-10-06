@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/hiidz/uno/internal/httpx"
+	"github.com/hiidz/uno/internal/jsonwire"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -18,9 +20,9 @@ import (
 // whole library's worth of catalogs and collections rather than one save.
 // An exported library is typically tens of kilobytes; this leaves generous
 // room past that without letting a client make the server buffer for free.
-// Its twin is MAX_BUNDLE_BYTES in web/src/features/bundle/ImportDialog.tsx,
-// the largest file the import dialog reads; change one and you must change
-// the other.
+// Its twin is MAX_BUNDLE_BYTES in web/src/features/bundle/text.ts, the
+// largest text the import dialog sends; change one and you must change the
+// other.
 const maxBundleBodyBytes = 4 << 20 // 4 MiB
 
 // prepareBundle runs the file-level checks on b, then checks every catalog
@@ -83,31 +85,40 @@ type importCheckRequest struct {
 	Bundle vault.Bundle `json:"bundle"`
 }
 
-// importCheck is the answer to POST .../import/check: how many catalogs
-// (top-level and in collections), collections and folders the bundle holds,
-// and every catalog in it that matches one of the caller's listed catalogs.
+// importCheck is the answer to POST .../import/check: what the bundle holds,
+// in bundle order, for the import dialog to list before anything is written —
+// its top-level catalogs, and each collection with its folders' titles and its
+// own catalogs — each marked with what it matches in the caller's library. The
+// dialog reads this rather than the bundle, whose format only the Go types
+// define.
 type importCheck struct {
-	Catalogs    int           `json:"catalogs"`
-	Collections int           `json:"collections"`
-	Folders     int           `json:"folders"`
-	Matches     []importMatch `json:"matches"`
+	Catalogs    []checkCatalog    `json:"catalogs"`
+	Collections []checkCollection `json:"collections"`
 }
 
-// importMatch is one bundle catalog whose recipe equals that of one or more
-// of the caller's listed catalogs, which are the rows the import may reuse
-// for it. Scope is "listed" for a top-level catalog, with an empty
-// Collection, or "scoped" for one of a collection's own, with Collection
-// that collection's title.
-type importMatch struct {
-	Key        string            `json:"key"`
-	Name       string            `json:"name"`
-	Type       string            `json:"type"`
-	Scope      string            `json:"scope"`
-	Collection string            `json:"collection"`
-	Existing   []existingCatalog `json:"existing"`
+// checkCatalog is one bundle catalog as the dialog lists it, with its params
+// in canonical form, the form a stored catalog's params take. Existing is
+// every one of the caller's listed catalogs with the same recipe, the rows
+// the import may reuse for it; it is empty when none has.
+type checkCatalog struct {
+	Key      string            `json:"key"`
+	Name     string            `json:"name"`
+	Type     string            `json:"type"`
+	Params   string            `json:"params"`
+	Existing []existingCatalog `json:"existing"`
 }
 
-// existingCatalog is one of the caller's listed catalogs an importMatch
+// checkCollection is one bundle collection as the dialog lists it. Matched
+// is whether its title, trimmed and in any case, is the title of one of the
+// caller's own collections.
+type checkCollection struct {
+	Title    string         `json:"title"`
+	Folders  []string       `json:"folders"`
+	Matched  bool           `json:"matched"`
+	Catalogs []checkCatalog `json:"catalogs"`
+}
+
+// existingCatalog is one of the caller's listed catalogs a checkCatalog
 // may reuse.
 type existingCatalog struct {
 	ID   uuid.UUID `json:"id"`
@@ -125,44 +136,86 @@ func (s *Server) checkImport(w http.ResponseWriter, r *http.Request) {
 		writeVaultError(w, "checkImport", err, nil, "", "failed to check import")
 		return
 	}
-	own, err := s.vault.GetUserCatalogs(r.Context(), profileID)
+	check, err := s.importCheckFor(r.Context(), profileID, req.Bundle)
 	if err != nil {
 		writeVaultError(w, "checkImport", err, nil, "", "failed to check import")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, importCheckOf(req.Bundle, own))
+	httpx.WriteJSON(w, http.StatusOK, check)
+}
+
+// importCheckFor is importCheckOf of b against profileID's own catalogs and
+// collections.
+func (s *Server) importCheckFor(ctx context.Context, profileID uuid.UUID, b vault.Bundle) (importCheck, error) {
+	own, err := s.vault.GetUserCatalogs(ctx, profileID)
+	if err != nil {
+		return importCheck{}, err
+	}
+	ownCollections, err := s.vault.GetUserCollections(ctx, profileID)
+	if err != nil {
+		return importCheck{}, err
+	}
+	return importCheckOf(b, own, ownCollections), nil
 }
 
 // importCheckOf is the import check of b against own, the caller's listed
-// catalogs. b's params are in canonical form (prepareBundle). Matches
-// follow bundle order, and each match's existing catalogs are sorted by
-// name, then id.
-func importCheckOf(b vault.Bundle, own []vault.Catalog) importCheck {
+// catalogs, and ownCollections, the caller's collections. b's params are in
+// canonical form (prepareBundle). Each catalog's existing catalogs are sorted
+// by name, then id.
+func importCheckOf(b vault.Bundle, own []vault.Catalog, ownCollections []vault.CollectionWithFolders) importCheck {
 	byRecipe := existingByRecipe(own)
+	titles := titleSet(ownCollections)
 	check := importCheck{
-		Catalogs:    len(b.Catalogs),
-		Collections: len(b.Collections),
-		Matches:     appendMatches([]importMatch{}, b.Catalogs, "listed", "", byRecipe),
+		Catalogs:    checkCatalogs(b.Catalogs, byRecipe),
+		Collections: make([]checkCollection, len(b.Collections)),
 	}
-	for _, bc := range b.Collections {
-		check.Catalogs += len(bc.Catalogs)
-		check.Folders += len(bc.Folders)
-		check.Matches = appendMatches(check.Matches, bc.Catalogs, "scoped", bc.Title, byRecipe)
+	for i, bc := range b.Collections {
+		check.Collections[i] = checkCollection{
+			Title:    strings.TrimSpace(bc.Title),
+			Folders:  folderTitles(bc.Folders),
+			Matched:  titles[titleKey(bc.Title)],
+			Catalogs: checkCatalogs(bc.Catalogs, byRecipe),
+		}
 	}
 	return check
 }
 
-// appendMatches appends an importMatch for each of catalogs that has an
-// existing catalog.
-func appendMatches(matches []importMatch, catalogs []vault.BundleCatalog, scope, collection string, byRecipe map[string][]existingCatalog) []importMatch {
-	for _, c := range catalogs {
-		if existing := byRecipe[vault.RecipeHash(c.Type, c.Provider, string(c.Params))]; len(existing) > 0 {
-			matches = append(matches, importMatch{
-				Key: c.Key, Name: c.Name, Type: c.Type, Scope: scope, Collection: collection, Existing: existing,
-			})
+// checkCatalogs is each of catalogs as the import dialog lists it, with the
+// existing catalogs of the same recipe from byRecipe.
+func checkCatalogs(catalogs []vault.BundleCatalog, byRecipe map[string][]existingCatalog) []checkCatalog {
+	out := make([]checkCatalog, len(catalogs))
+	for i, c := range catalogs {
+		existing := byRecipe[vault.RecipeHash(c.Type, c.Provider, string(c.Params))]
+		out[i] = checkCatalog{
+			Key: c.Key, Name: strings.TrimSpace(c.Name), Type: c.Type, Params: string(c.Params),
+			Existing: jsonwire.OrEmpty(existing),
 		}
 	}
-	return matches
+	return out
+}
+
+// folderTitles is the title of each of folders, trimmed, in order.
+func folderTitles(folders []vault.BundleFolder) []string {
+	titles := make([]string, len(folders))
+	for i, f := range folders {
+		titles[i] = strings.TrimSpace(f.Title)
+	}
+	return titles
+}
+
+// titleSet is the title of each of collections, as titleKey compares it.
+func titleSet(collections []vault.CollectionWithFolders) map[string]bool {
+	titles := make(map[string]bool, len(collections))
+	for _, c := range collections {
+		titles[titleKey(c.Title)] = true
+	}
+	return titles
+}
+
+// titleKey is the form two collection titles are compared in: trimmed, in
+// lower case.
+func titleKey(title string) string {
+	return strings.ToLower(strings.TrimSpace(title))
 }
 
 // existingByRecipe groups own by recipe hash, each group sorted by
@@ -180,12 +233,14 @@ func existingByRecipe(own []vault.Catalog) map[string][]existingCatalog {
 	return groups
 }
 
-// importRequest is the body of POST .../import: the bundle, and the bundle
+// importRequest is the body of POST .../import: the bundle, the bundle
 // catalog keys to point at one of the caller's listed catalogs instead of
-// importing (see vault.DB.ImportBundle).
+// importing (see vault.DB.ImportBundle), and the positions of the bundle's
+// collections to leave out, each with its own catalogs.
 type importRequest struct {
-	Bundle vault.Bundle         `json:"bundle"`
-	Reuse  map[string]uuid.UUID `json:"reuse"`
+	Bundle          vault.Bundle         `json:"bundle"`
+	Reuse           map[string]uuid.UUID `json:"reuse"`
+	SkipCollections []int                `json:"skip_collections"`
 }
 
 // importResult is the answer to POST .../import: the new listed catalogs
@@ -204,14 +259,58 @@ func (s *Server) importBundle(w http.ResponseWriter, r *http.Request) {
 	if !decodeStrictJSONLimit(w, r, &req, maxBundleBodyBytes) {
 		return
 	}
-	if err := s.prepareBundle(r.Context(), &req.Bundle); err != nil {
+	b, err := s.importedBundle(r.Context(), req)
+	if err != nil {
 		writeVaultError(w, "importBundle", err, nil, "", "failed to import")
 		return
 	}
-	catalogs, collections, err := s.vault.ImportBundle(r.Context(), profileID, req.Bundle, req.Reuse)
+	catalogs, collections, err := s.vault.ImportBundle(r.Context(), profileID, b, req.Reuse)
 	if err != nil {
 		writeVaultError(w, "importBundle", err, nil, "", "failed to import")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, importResult{Catalogs: catalogs, Collections: collections})
+}
+
+// importedBundle is the bundle req writes: its skipped collections left out,
+// then the rest prepared by prepareBundle.
+func (s *Server) importedBundle(ctx context.Context, req importRequest) (vault.Bundle, error) {
+	b, err := withoutCollections(req.Bundle, req.SkipCollections)
+	if err != nil {
+		return vault.Bundle{}, err
+	}
+	if err := s.prepareBundle(ctx, &b); err != nil {
+		return vault.Bundle{}, err
+	}
+	return b, nil
+}
+
+// withoutCollections is b less the collections at the positions skip names,
+// each leaving with its own catalogs. A position b doesn't have is
+// ErrInvalidInput.
+func withoutCollections(b vault.Bundle, skip []int) (vault.Bundle, error) {
+	drop, err := skipSet(skip, len(b.Collections))
+	if err != nil {
+		return vault.Bundle{}, err
+	}
+	kept := make([]vault.BundleCollection, 0, len(b.Collections))
+	for i, bc := range b.Collections {
+		if !drop[i] {
+			kept = append(kept, bc)
+		}
+	}
+	b.Collections = kept
+	return b, nil
+}
+
+// skipSet is skip as a set of positions, each one of n collections.
+func skipSet(skip []int, n int) (map[int]bool, error) {
+	drop := make(map[int]bool, len(skip))
+	for _, i := range skip {
+		if i < 0 || i >= n {
+			return nil, fmt.Errorf("%w: skip_collections names collection %d, which isn't one of the bundle's %d", vault.ErrInvalidInput, i, n)
+		}
+		drop[i] = true
+	}
+	return drop, nil
 }

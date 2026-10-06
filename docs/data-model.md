@@ -849,7 +849,10 @@ Version 1:
 **Import creates copies** (`ImportBundle`):
 
 - Every row id is minted by Uno; the file only ever supplies keys. Importing one file twice gives
-  two independent sets.
+  two independent sets, unless the second leaves out what the first wrote: the import check
+  matches collections by title and catalogs by recipe, and the import route can skip a bundle
+  collection with its own catalogs (`skip_collections`, `docs/architecture.md`) before the vault
+  sees the bundle.
 - Imported rows are unpublished and off Home, subscribed to nothing, and in no push record. Titles are kept as they are, with no "(copy)" suffix.
 - **Optional reuse.** `reuse` maps a bundle catalog key, top-level or a collection's own, to one
   of the importer's own *listed* catalogs; its refs then point at that row and no new row is

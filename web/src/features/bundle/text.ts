@@ -1,31 +1,45 @@
+import type { ImportProblem } from './problem'
+
 /** The largest bundle the import dialog takes, as pasted text. The
  *  twin of `maxBundleBodyBytes` in `internal/api/bundle.go`, the most either
  *  import route accepts; change one and you must change the other. */
 export const MAX_BUNDLE_BYTES = 4 << 20 // 4 MiB
+
+/** The refusal of text over `MAX_BUNDLE_BYTES`. */
+export const OVERSIZE: ImportProblem = {
+  headline: 'This JSON is over 4 MiB, the most an import can carry.',
+  detail: '',
+}
+
+/** Text whose length alone puts it over `MAX_BUNDLE_BYTES`: every UTF-16
+ *  unit is at least a byte, so this never refuses text within the limit. The
+ *  exact byte count, which `parseBundleText` takes, is too slow to run on
+ *  every keystroke. */
+export function surelyOversize(text: string): boolean {
+  return text.length > MAX_BUNDLE_BYTES
+}
 
 /** A bundle as text, pretty-printed. */
 export function bundleText(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
-/** What a bundle is called in a message. */
-export const PASTED_JSON = 'Pasted JSON'
-
 /**
- * Parses bundle text. Returns the parsed value on success and the message of a
- * refusal on failure, told apart by `ok`.
+ * Parses bundle text. Returns the parsed value on success and the refusal on
+ * failure, told apart by `ok`; a parse error's own message is the refusal's
+ * detail.
  */
 export function parseBundleText(
   text: string,
-): { ok: true; bundle: unknown } | { ok: false; message: string } {
+): { ok: true; bundle: unknown } | { ok: false; problem: ImportProblem } {
   const trimmed = text.trim()
   if (new Blob([trimmed]).size > MAX_BUNDLE_BYTES) {
-    return { ok: false, message: `${PASTED_JSON} is over 4 MiB, the most an import can carry.` }
+    return { ok: false, problem: OVERSIZE }
   }
   try {
     return { ok: true, bundle: JSON.parse(trimmed) }
   } catch (err) {
-    return { ok: false, message: `${PASTED_JSON} isn't valid: ${(err as Error).message}` }
+    return { ok: false, problem: { headline: "This isn't valid JSON.", detail: (err as Error).message } }
   }
 }
 

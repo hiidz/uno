@@ -15,8 +15,8 @@ export function useImport(profileIndex: number) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ bundle, reuse }: { bundle: unknown; reuse: Record<string, string> }) =>
-      importBundle(profileIndex, bundle, reuse),
+    mutationFn: ({ bundle, reuse, skip }: { bundle: unknown; reuse: Record<string, string>; skip: number[] }) =>
+      importBundle(profileIndex, bundle, reuse, skip),
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) }),

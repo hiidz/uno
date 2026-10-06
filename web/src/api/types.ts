@@ -260,27 +260,35 @@ export interface CommunityCopy {
   collection?: Collection
 }
 
-/** `POST /api/p/{i}/import/check` — what a bundle holds, and every catalog in
- *  it whose recipe matches one of this profile's listed catalogs. `catalogs`
- *  counts top-level and collection catalogs together. */
+/** `POST /api/p/{i}/import/check` — what a bundle holds, in bundle order, for
+ *  the import dialog to list: its top-level catalogs, and each collection with
+ *  its folders' titles and its own catalogs, each marked with what it matches
+ *  in this profile's library. A collection's position here is the one an
+ *  import's `skip_collections` names. */
 export interface ImportCheck {
-  catalogs: number
-  collections: number
-  folders: number
-  matches: ImportMatch[]
+  catalogs: ImportCatalog[]
+  collections: ImportCollection[]
 }
 
-/** One bundle catalog the import may point at an existing catalog instead of
- *  copying. `scope` is `listed` for a top-level catalog, with `collection`
- *  empty, and `scoped` for one of a collection's own, with `collection` that
- *  collection's title. `existing` is sorted by name and never empty. */
-export interface ImportMatch {
+/** One bundle catalog as the dialog lists it, `params` in the canonical form
+ *  a stored catalog's take. `existing` is every listed catalog of this
+ *  profile's with the same recipe, sorted by name, which the import may point
+ *  the catalog at instead of copying it; empty when none matches. */
+export interface ImportCatalog {
   key: string
   name: string
   type: CatalogType
-  scope: 'listed' | 'scoped'
-  collection: string
+  params: string
   existing: Array<{ id: string; name: string }>
+}
+
+/** One bundle collection as the dialog lists it. `matched` is whether its
+ *  title, trimmed and in any case, is one of this profile's collections'. */
+export interface ImportCollection {
+  title: string
+  folders: string[]
+  matched: boolean
+  catalogs: ImportCatalog[]
 }
 
 /** `POST /api/p/{i}/import` — the new listed catalogs and the new

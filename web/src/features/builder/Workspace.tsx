@@ -739,6 +739,7 @@ export function Workspace({
       <ImportDialog
         open={transfer === 'import'}
         profileIndex={profileIndex}
+        genres={library.genres}
         onClose={() => setTransfer(null)}
         onImported={(result) => {
           setTransfer(null)

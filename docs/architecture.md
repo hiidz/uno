@@ -269,17 +269,22 @@ Route-semantics facts the client has to honour:
   - `POST /api/p/{i}/export`, body `{catalog_ids, collection_ids}`, answers 200 with the bundle
     (`ExportBundle`). Every id must be one of the caller's own listed catalogs or own collections,
     and the selection can't be empty; otherwise 400 naming the id.
-  - `POST /api/p/{i}/import/check`, body `{bundle}`, answers 200 with
-    `{catalogs, collections, folders, matches}`. The first three are counts: `catalogs` covers
-    top-level and collection catalogs together. Each match is
-    `{key, name, type, scope, collection, existing: [{id, name}]}`, one for every bundle catalog
-    whose recipe (`recipe_hash`) equals one of the caller's listed catalogs. `scope` is `"listed"`
-    (top-level, `collection` empty) or `"scoped"` (a collection's own, `collection` its title).
-    `existing` is sorted by name, then id, and `matches` is `[]` when nothing matches.
-  - `POST /api/p/{i}/import`, body `{bundle, reuse}`, answers 201 with `{catalogs, collections}`
-    (`ImportBundle`): the new listed catalogs and the new collections, in bundle order. `reuse`
-    maps a bundle catalog key to one of the caller's listed catalogs, which that key's refs then
-    point at; a reused catalog gets no new row and is not in `catalogs`.
+  - `POST /api/p/{i}/import/check`, body `{bundle}`, answers 200 with `{catalogs, collections}`
+    (`importCheckOf`): what the bundle holds, in bundle order, for the import dialog to list, so
+    the SPA never reads the bundle's format. `catalogs` are the top-level ones, each
+    `{key, name, type, params, existing: [{id, name}]}` with params canonical; `existing` is every
+    one of the caller's listed catalogs whose recipe (`recipe_hash`) equals it, sorted by name,
+    then id, and `[]` when none does. `collections` are each
+    `{title, folders, matched, catalogs}`: its folders' titles, whether its title, trimmed and in
+    any case, is one of the caller's collections', and its own catalogs in the same shape. A
+    collection's position in the list is the one `skip_collections` names.
+  - `POST /api/p/{i}/import`, body `{bundle, reuse, skip_collections}`, answers 201 with
+    `{catalogs, collections}` (`ImportBundle`): the new listed catalogs and the new collections, in
+    bundle order. `reuse` maps a bundle catalog key to one of the caller's listed catalogs, which
+    that key's refs then point at; a reused catalog gets no new row and is not in `catalogs`.
+    `skip_collections` lists bundle positions to leave out, each with its own catalogs
+    (`withoutCollections`, before `prepareBundle`), so a `reuse` key inside a skipped collection is
+    refused like any key the bundle lacks; a position the bundle doesn't have is a 400.
 
   Both import routes run `prepareBundle` first: `Bundle.Validate`, then `checkRecipe` on every
   catalog, which replaces its params with the canonical form its row stores. So a bad file or

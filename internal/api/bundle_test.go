@@ -61,15 +61,21 @@ func newBundleRouteFixture(t *testing.T) bundleRouteFixture {
 	return f
 }
 
-// recipeHashOf is the hash of the recipe a TMDB movie catalog with params is
-// stored under.
-func recipeHashOf(t *testing.T, params string) string {
+// canonicalOf is params in the canonical form a TMDB movie catalog stores.
+func canonicalOf(t *testing.T, params string) string {
 	t.Helper()
 	canonical, err := provider.CanonicalParams("movie", "tmdb", params)
 	if err != nil {
 		t.Fatalf("CanonicalParams: %v", err)
 	}
-	return vault.RecipeHash("movie", "tmdb", canonical)
+	return canonical
+}
+
+// recipeHashOf is the hash of the recipe a TMDB movie catalog with params is
+// stored under.
+func recipeHashOf(t *testing.T, params string) string {
+	t.Helper()
+	return vault.RecipeHash("movie", "tmdb", canonicalOf(t, params))
 }
 
 // post sends body to path as the authenticated caller.
@@ -132,11 +138,15 @@ func TestBundleRoutes(t *testing.T) {
 
 	var check importCheck
 	f.postOK(t, "import/check", bundleBody+`}`, http.StatusOK, &check)
-	wantCheck := importCheck{Catalogs: 3, Collections: 1, Folders: 1, Matches: []importMatch{
-		{Key: "c1", Name: "A", Type: "movie", Scope: "listed", Existing: []existingCatalog{{f.a.ID, "A"}, {f.aAgain.ID, "A again"}}},
-		{Key: "c3", Name: "B", Type: "movie", Scope: "listed", Existing: []existingCatalog{{f.b.ID, "B"}}},
-		{Key: "c2", Name: "S", Type: "movie", Scope: "scoped", Collection: "X", Existing: []existingCatalog{{f.sCopy.ID, "S copy"}}},
-	}}
+	wantCheck := importCheck{
+		Catalogs: []checkCatalog{
+			{Key: "c1", Name: "A", Type: "movie", Params: canonicalOf(t, f.popular), Existing: []existingCatalog{{f.a.ID, "A"}, {f.aAgain.ID, "A again"}}},
+			{Key: "c3", Name: "B", Type: "movie", Params: canonicalOf(t, f.rated), Existing: []existingCatalog{{f.b.ID, "B"}}},
+		},
+		Collections: []checkCollection{{Title: "X", Folders: []string{"F"}, Matched: true, Catalogs: []checkCatalog{
+			{Key: "c2", Name: "S", Type: "movie", Params: canonicalOf(t, f.rich), Existing: []existingCatalog{{f.sCopy.ID, "S copy"}}},
+		}}},
+	}
 	if got, _ := json.Marshal(check); string(got) != string(mustJSON(t, wantCheck)) {
 		t.Fatalf("check = %s\nwant    %s", got, mustJSON(t, wantCheck))
 	}
@@ -162,6 +172,35 @@ func TestBundleRoutes(t *testing.T) {
 	if got := reused.Collections[0].Folders[0].Refs[1].CatalogID; got != f.b.ID {
 		t.Errorf("X's ref to B = %s, want the reused row %s", got, f.b.ID)
 	}
+
+	before, err := f.db.GetUserCollections(t.Context(), f.a.OwnerID)
+	if err != nil {
+		t.Fatalf("GetUserCollections: %v", err)
+	}
+	var skipped importResult
+	f.postOK(t, "import", bundleBody+`,"skip_collections":[0]}`, http.StatusCreated, &skipped)
+	if len(skipped.Catalogs) != 2 || len(skipped.Collections) != 0 {
+		t.Fatalf("skipping X imported %d catalogs and %d collections, want A and B alone", len(skipped.Catalogs), len(skipped.Collections))
+	}
+	after, err := f.db.GetUserCollections(t.Context(), f.a.OwnerID)
+	if err != nil || len(after) != len(before) {
+		t.Fatalf("skipping X left %d collections (%v), want %d", len(after), err, len(before))
+	}
+}
+
+// A bundle collection matches one of the caller's by title, trimmed and in
+// any case; any other title matches nothing.
+func TestImportCheckMatchesCollectionsByTitle(t *testing.T) {
+	own := []vault.CollectionWithFolders{{Collection: vault.Collection{Title: "Halloween"}}}
+	b := vault.Bundle{Collections: []vault.BundleCollection{{Title: "Cosy nights"}, {Title: "  HALLOWEEN "}}}
+	check := importCheckOf(b, nil, own)
+	got := []bool{check.Collections[0].Matched, check.Collections[1].Matched}
+	if !slices.Equal(got, []bool{false, true}) {
+		t.Fatalf("matched = %v, want [false true]", got)
+	}
+	if check.Collections[1].Title != "HALLOWEEN" {
+		t.Errorf("title = %q, want it trimmed", check.Collections[1].Title)
+	}
 }
 
 func mustJSON(t *testing.T, v any) []byte {
@@ -173,12 +212,12 @@ func mustJSON(t *testing.T, v any) []byte {
 	return b
 }
 
-// A check that matches nothing answers matches as [].
+// A catalog that matches nothing answers existing as [].
 func TestImportCheckWithoutMatches(t *testing.T) {
 	f := newBundleRouteFixture(t)
 	w := f.post(t, "import/check", `{"bundle":{"format":"uno","version":1,"catalogs":[
 		{"key":"c1","name":"New","type":"series","provider":"tmdb","params":{"sort_by":"popularity.desc"}}],"collections":[]}}`)
-	requireAnswer(t, w, http.StatusOK, `"matches":[]`)
+	requireAnswer(t, w, http.StatusOK, `"existing":[]}],"collections":[]`)
 }
 
 // Every way a bundle route refuses a request, each before anything is
@@ -205,6 +244,8 @@ func TestBundleRoutesRefuse(t *testing.T) {
 		{"a mistyped folder key on import", "import", `{"bundle":{"format":"uno","version":1,"catalogs":[],"collections":[{"title":"X","folders":[{"title":"F","tile_shap":"wide"}]}]}}`, http.StatusBadRequest, `unknown field "tile_shap"`},
 		{"a mistyped request key on import", "import", bundleOf(`{}`) + `,"reus":{}}`, http.StatusBadRequest, `unknown field "reus"`},
 		{"a reuse key the bundle lacks", "import", bundleOf(`{}`) + `,"reuse":{"c9":"` + f.a.ID.String() + `"}}`, http.StatusBadRequest, `reuse names catalog key "c9"`},
+		{"a skip the bundle lacks", "import", bundleOf(`{}`) + `,"skip_collections":[0]}`, http.StatusBadRequest, "skip_collections names collection 0"},
+		{"a reuse key in a skipped collection", "import", `{"bundle":{"format":"uno","version":1,"catalogs":[],"collections":[{"title":"X","catalogs":[{"key":"s1","name":"S","type":"movie","provider":"tmdb","params":{}}],"folders":[]}]},"reuse":{"s1":"` + f.a.ID.String() + `"},"skip_collections":[0]}`, http.StatusBadRequest, `reuse names catalog key "s1"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requireAnswer(t, f.post(t, tc.path, tc.body), tc.status, tc.fragment)
