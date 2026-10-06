@@ -1,6 +1,6 @@
 import {
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -15,8 +15,11 @@ import { GripIcon, Icon } from './Icon'
  * pane's two lists (`SortableList`) and the collection builder's folder tree
  * (`FolderTreeDnd`).
  *
- *  - Pointer, with a small activation distance so a click on a control inside
- *    a row still registers as a click rather than starting a drag.
+ *  - Mouse, with a small activation distance so a click on a control inside
+ *    a row still registers as a click rather than starting a drag. Mouse, not
+ *    Pointer: `pointerdown` fires before `touchstart`, so a pointer sensor
+ *    claims every touch first, and the browser cancels its pointer stream as
+ *    soon as the finger starts a pan — the drag dies on Android.
  *  - Touch, on a hold rather than a distance: 4px of movement is the start of
  *    a scroll on a finger, not the start of a drag, and a grip inside a
  *    scrolling page has to let a swipe through — which is why the grips drop
@@ -26,7 +29,7 @@ import { GripIcon, Icon } from './Icon'
  */
 export function useDragSensors() {
   return useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )

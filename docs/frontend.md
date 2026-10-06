@@ -14,7 +14,7 @@ is gitignored except for the committed `.gitkeep`, which keeps the embed target 
 | --- | --- |
 | Router | React Router. Four routes total: `/login`, `/` (redirects to `/profiles`), `/profiles`, `/configure` |
 | Server state | TanStack Query, keys scoped by profile under `['p', i, …]` so switching slots invalidates cleanly with no manual cache wipe |
-| Drag-and-drop | dnd-kit — `PointerSensor` (covers touch and mouse) + `KeyboardSensor`, so every reorderable list is operable with no pointer at all |
+| Drag-and-drop | dnd-kit — `MouseSensor` + `TouchSensor` (hold to drag) + `KeyboardSensor`, so every reorderable list is operable with no pointer at all |
 | Components | Hand-written, on Radix UI primitives wherever a control needs real accessible behaviour: `Dialog` under `Modal` and `ConfirmDialog`, `Popover`, `Slider`, `DropdownMenu`, and `Tabs` on the preview's folder page. The rest — `Toast`, `ListState`, `fields.tsx`, `GlyphButton` — is plain local markup. Styling is Tailwind v4 against Uno's own `--uno-*` tokens in `web/src/index.css`; a small base set (`--background`, `--foreground`, `--border`, `--ring`, `--sidebar`) is aliased onto the Uno palette |
 | Types | **Hand-written per endpoint, no codegen.** For a one-person team on both ends, drift surfaces immediately in the browser rather than silently in production. If drift pain ever shows up, a lightweight generator reading the Go structs (`tygo`-style) is the first upgrade to reach for, not a full OpenAPI pipeline |
 
