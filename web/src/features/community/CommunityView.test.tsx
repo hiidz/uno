@@ -394,7 +394,7 @@ describe('CommunityView', () => {
   })
 
   it('sends an unselected profile back to the picker', async () => {
-    renderView({ 'GET /api/p/1/community': () => failWith(404, 'profile not selected') })
+    renderView({ 'GET /api/p/1/community': () => failWith(404, 'profile not found') })
     expect(await screen.findByText('Pick a profile')).toBeInTheDocument()
   })
 })

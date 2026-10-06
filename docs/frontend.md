@@ -1234,10 +1234,10 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   (`isStale`), and the lists refresh before the toast: a 409 from Add is "Already added", a 404
   is "Its publisher unpublished it." Any other failure is "Couldn't add it: …" (or update,
   duplicate).
-- **A 404 inside Community is not "profile not selected".** `http.ts` turns every 404 under
-  `/api/p/{i}/` into `ProfileNotSelectedError`, and the list still sends the user back to the
-  picker on one; but a publication's page answers 404 once its publisher unpublishes it, so it
-  reads that as unpublished and stays put.
+- **A 404 inside Community is not "profile not selected".** `http.ts` raises
+  `ProfileNotSelectedError` only for the profile check's own 404, and the list sends the user back
+  to the picker on one; a publication's page answers its own 404 once its publisher unpublishes
+  it, an ordinary `ApiError`, so it reads that as unpublished and stays put.
 - **The tab switch is a `Segmented` in `Builder.tsx`'s header**, not a route — `/configure` stays
   one URL. Above `lg` it sits inline in the header row; below `lg` it drops to its own row
   underneath, because the header row's height is measured to fit exactly what it holds at phone
@@ -1318,8 +1318,9 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 ## Cross-cutting client rules
 
 - `401` from any call → refresh + retry, then bounce to login.
-- `404` from any `/api/p/{i}/...` route → profile not selected → send back to the picker
-  (`ProfileNotSelectedError`, `web/src/api/http.ts`).
+- `404` `profile not found` from any `/api/p/{i}/...` route, `requireProfile`'s → profile not
+  selected → send back to the picker (`ProfileNotSelectedError`, `web/src/api/http.ts`). A
+  route's own 404 (a catalog or a publication not found) is an ordinary `ApiError`.
 - `429` from any call → `RateLimitedError` (`web/src/api/http.ts`), worded from `Retry-After`. Uno's
   own server answers none, so only something in front of it can:
   "Too many requests. Try again in 10 seconds.", or "in a moment" without a usable header. Nothing

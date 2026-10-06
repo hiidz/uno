@@ -72,12 +72,20 @@ describe('failed responses', () => {
     await expect(getJSON('/api/p/0/push')).rejects.toMatchObject({ status: 502, body: { success: false } })
   })
 
-  it('reads a 404 under a profile as the profile never having been selected', async () => {
-    answer(new Response('profile not selected', { status: 404 }))
+  it('reads the profile check\'s 404 as the profile never having been selected', async () => {
+    answer(new Response('profile not found\n', { status: 404 }))
     const err = await rejection(getJSON('/api/p/3/catalogs'))
     expect(err).toBeInstanceOf(ProfileNotSelectedError)
     expect(err).toBeInstanceOf(ApiError)
     expect(err).toMatchObject({ status: 404 })
+  })
+
+  it('reads a route\'s own 404 under a profile as an ordinary failure', async () => {
+    answer(new Response('catalog not found\n', { status: 404 }))
+    const err = await rejection(sendJSON('PUT', '/api/p/1/catalogs/c1', {}))
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err).not.toBeInstanceOf(ProfileNotSelectedError)
+    expect(err).toMatchObject({ status: 404, message: 'catalog not found' })
   })
 
   it('reads a 404 outside a profile as an ordinary failure', async () => {

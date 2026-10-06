@@ -1515,7 +1515,10 @@ components:
           schema:
             type: string
     ProfileNotFound:
-      description: The caller has no Uno profile in this slot.
+      description: >-
+        The caller has no Uno profile in this slot. The body is exactly
+        `profile not found`, which the builder tells apart from a route's own
+        404 by.
       content:
         text/plain:
           schema:

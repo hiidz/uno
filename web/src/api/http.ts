@@ -27,10 +27,11 @@ export class ApiError extends Error {
 }
 
 /**
- * A `404` from any `/api/p/{i}/...` route means the profile slot was never
- * selected — `requireProfile` 404s before the handler runs. That's a routing
- * problem, not a missing resource, so it's typed separately: callers send the
- * user back to the picker instead of rendering an error.
+ * The `404` `requireProfile` answers before an `/api/p/{i}/...` handler runs,
+ * when the profile slot was never selected. That's a routing problem, not a
+ * missing resource, so it's typed separately: callers send the user back to the
+ * picker instead of rendering an error. A route's own 404 (a catalog or a
+ * publication not found) stays an ordinary `ApiError`.
  */
 export class ProfileNotSelectedError extends ApiError {
   constructor(message: string) {
@@ -71,14 +72,18 @@ function parseJSONOrUndefined(text: string): unknown {
   }
 }
 
-/** The error a failed answer from `path` is thrown as. */
-async function failure(path: string, res: Response): Promise<ApiError> {
+/** The text of `requireProfile`'s 404 (`internal/api/auth.go`), which tells it
+ *  from a route's own. */
+const PROFILE_NOT_FOUND = 'profile not found'
+
+/** The error a failed answer is thrown as. */
+async function failure(res: Response): Promise<ApiError> {
   if (res.status === 429) return new RateLimitedError(res.headers.get('Retry-After'))
   // The Go handlers write errors with `http.Error`, so the body is plain
   // text and more specific than anything the status alone gives.
   const body = (await res.text().catch(() => '')).trim()
   const message = body || `Request failed (${res.status})`
-  if (res.status === 404 && path.startsWith('/api/p/')) {
+  if (res.status === 404 && body === PROFILE_NOT_FOUND) {
     return new ProfileNotSelectedError(message)
   }
   return new ApiError(res.status, message, parseJSONOrUndefined(body))
@@ -86,7 +91,7 @@ async function failure(path: string, res: Response): Promise<ApiError> {
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {
   const res = await apiFetch(path, init)
-  if (!res.ok) throw await failure(path, res)
+  if (!res.ok) throw await failure(res)
   if (res.status === 204) return null
   return await res.json()
 }

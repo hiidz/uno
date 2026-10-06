@@ -99,6 +99,8 @@ func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 		profile, err := s.vault.GetProfileBySlot(r.Context(), sub, index)
 		if err != nil {
 			if errors.Is(err, vault.ErrProfileNotFound) {
+				// The builder tells this 404 from a route's own by its text
+				// (web/src/api/http.ts).
 				http.Error(w, "profile not found", http.StatusNotFound)
 				return
 			}
