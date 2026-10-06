@@ -79,7 +79,14 @@ describe('usePush', () => {
   it('sends the selection as it was when pressed, and acknowledges only that', async () => {
     const answer = deferred<PushResult>()
     api.pushSelection.mockReturnValue(answer.promise)
-    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const cached = [
+      queryKeys.ownedCatalogs(4),
+      queryKeys.ownedCollections(4),
+      queryKeys.catalogSelection(4),
+      queryKeys.collectionSelection(4),
+      queryKeys.pendingPush(4),
+    ]
+    for (const queryKey of cached) queryClient.setQueryData(queryKey, [])
     const { result } = renderPush()
 
     act(() => result.current.push())
@@ -93,12 +100,8 @@ describe('usePush', () => {
     expect(home.markPushed).toHaveBeenCalledWith(PUSHED)
     expect(result.current.pushing).toBe(false)
     expect(result.current.outcome).toEqual({ kind: 'success', manifestURL: 'https://uno/manifest.json' })
-    for (const queryKey of [
-      queryKeys.catalogSelection(4),
-      queryKeys.collectionSelection(4),
-      queryKeys.ownedCollections(4),
-    ]) {
-      expect(invalidate).toHaveBeenCalledWith({ queryKey })
+    for (const queryKey of cached) {
+      expect(queryClient.getQueryState(queryKey)?.isInvalidated).toBe(true)
     }
   })
 

@@ -106,21 +106,17 @@ export function usePush(profileIndex: number): Push {
         const result = await pushSelection(profileIndex, toPushPayload(sent))
         if (result.success) {
           home.markPushed(sent)
-          // The cached selection responses are now stale — the server holds
-          // what we just pushed. `staleTime` is 30s, so without this a profile
-          // switch and return inside that window would re-hydrate the baseline
-          // from pre-push data and the pushed changes would look undone. The
-          // provider's hydration is guarded by `current !== null`, so the
-          // refetch updates the lookup maps without touching pending edits.
-          void queryClient.invalidateQueries({ queryKey: queryKeys.catalogSelection(profileIndex) })
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.collectionSelection(profileIndex),
-          })
-          // `needs_push` lives on the owned-collection row too, and
-          // `HomeSelectionContext`'s `collectionById` map lets the owned list
-          // win over the selection response on id collision (it's built
-          // second) — so without this, a collection that's both owned and
-          // currently selected keeps showing its pre-push `needs_push`.
+          // Push rewrote every owned row's place on Home, so both owned lists
+          // are stale, and each key is the prefix of its selection's key. The
+          // owned rows' `home_position` and `pin_to_top` feed
+          // the delete dialog and `HomeSelectionContext`'s lookup maps, where
+          // the owned row wins over the selection's. `staleTime` is 30s, so
+          // without this a profile switch and return inside that window would
+          // re-hydrate the baseline from pre-push data and the pushed changes
+          // would look undone. The provider's hydration is guarded by
+          // `current !== null`, so the refetch updates the lookup maps without
+          // touching pending edits.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) })
           void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
           // What waited for this push is in Nuvio now.
           void queryClient.invalidateQueries({ queryKey: queryKeys.pendingPush(profileIndex) })

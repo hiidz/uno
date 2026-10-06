@@ -1305,15 +1305,17 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **`markPushed` takes the pushed state, not `current`.** The user can keep editing while a push
   is in flight; advancing the baseline to "whatever is current now" would silently swallow those
   edits and report them as already live.
-- **Selection queries are invalidated on success.** With `staleTime: 30_000`, a successful push
-  otherwise leaves them holding pre-push data, so switching profile and returning inside that
-  window re-hydrates the baseline from stale data and makes the pushed changes look undone.
-- **The owned-collections and pending-push queries are invalidated on success too.**
-  `needs_push` lives on the `Collection` row from *both* `queryKeys.ownedCollections` and
-  `queryKeys.collectionSelection`, and `HomeSelectionContext`'s `collectionById` map is built by
-  writing the selection response first and the owned list second — so on an id present in both
-  (the ordinary case), the owned list's copy always wins. Invalidating only the selection query
-  would leave `collectionById` holding the owned list's pre-push `needs_push`. The list of what
+- **Both owned lists are invalidated on success, and with them both selections.** Each
+  selection key sits under its owned list's key (`['p', i, 'catalogs', 'selection']` under
+  `['p', i, 'catalogs']`), and `invalidateQueries` matches by prefix, so the owned key reaches
+  both; the selection key alone never reaches the owned list. Push rewrites every owned row's
+  `home_position` and a collection's `pin_to_top`. The delete dialog reads them from the owned
+  rows, and `HomeSelectionContext`'s lookup maps are built by writing the selection response
+  first and the owned list second, so on an id present in both (the ordinary case) the owned
+  list's copy wins. With `staleTime: 30_000`, a stale selection would also make switching
+  profile and returning inside that window re-hydrate the baseline from pre-push data, and the
+  pushed changes would look undone.
+- **The pending-push query is invalidated on success too.** The list of what
   waits for a push (`queryKeys.pendingPush`, `GET .../push/pending`) is read from the server, so
   without invalidating it the "changed since it was last pushed" lines would never clear after a
   successful push, and every push would look as if it had failed to update anything. The writes
