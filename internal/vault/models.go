@@ -146,16 +146,13 @@ type FolderCatalog struct {
 // CatalogForm is the create/update request body for a Catalog. Params reach
 // the vault in canonical form: the API checks a client's recipe and replaces
 // its params with provider.CanonicalParams before writing it, and the vault
-// stores them as they come.
+// stores them as they come. A catalog it creates is listed; nothing changes
+// a catalog's scope.
 type CatalogForm struct {
 	Type     string `json:"type"`
 	Name     string `json:"name"`
 	Provider string `json:"provider"`
 	Params   string `json:"params"`
-	// CollectionID scopes a new catalog to one collection; nil (or absent on
-	// the wire) means listed. Only CreateUserCatalog reads it: an update
-	// never changes a catalog's scope.
-	CollectionID *uuid.UUID `json:"collection_id"`
 }
 
 // CollectionForm is the create/update request body for a Collection,

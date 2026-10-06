@@ -60,15 +60,14 @@ export function duplicatePublication(profileIndex: number, publicationID: string
  *
  * `params` is a JSON-encoded *string*, not a nested object.
  *
- * `collection_id` scopes a new catalog to one collection; omitted or `null`
- * means listed. Only a create reads it: an update leaves the scope as it is.
+ * A create always makes a listed catalog: one inside a collection is made only
+ * by that collection's save, as a folder's `new` entry.
  */
 export interface CatalogPayload {
   type: CatalogType
   name: string
   provider: string
   params: string
-  collection_id?: string | null
 }
 
 export const CATALOG_PROVIDER = 'tmdb'

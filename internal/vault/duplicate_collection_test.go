@@ -29,12 +29,7 @@ func TestDuplicateCollection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create source collection: %v", err)
 	}
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &source.ID
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
-	}
+	scoped := createScopedCatalog(t, db, owner, source.ID, listedCatalogForm("Scoped"))
 
 	source, err = db.UpdateUserCollection(ctx, owner, source.ID, CollectionForm{
 		Title: "Source",

@@ -2,8 +2,10 @@ package vault
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -30,33 +32,26 @@ func listedCatalogForm(name string) CatalogForm {
 	return CatalogForm{Type: "movie", Name: name, Provider: "tmdb", Params: "{}"}
 }
 
-// A catalog created with collection_id set must belong to a collection the
-// caller owns.
-func TestCreateScopedCatalogRequiresOwnedCollection(t *testing.T) {
+// createScopedCatalog writes form as profileID's catalog scoped to
+// collectionID: the row a New entry in that collection's save writes, without
+// the save.
+func createScopedCatalog(t *testing.T, db *DB, profileID, collectionID uuid.UUID, form CatalogForm) Catalog {
+	t.Helper()
 	ctx := context.Background()
-	db := newTestDB(t)
-
-	owner := newTestProfile(t, db, "owner")
-	other := newTestProfile(t, db, "other")
-	collectionID := newTestCollection(t, db, owner, "My Collection")
-
-	// Scoping to a collection you don't own is rejected.
-	form := listedCatalogForm("Scoped")
-	form.CollectionID = &collectionID
-	if _, err := db.CreateUserCatalog(ctx, other, form); !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("create scoped to another owner's collection: got %v, want ErrInvalidInput", err)
-	}
-
-	// Scoping to your own collection, not public, succeeds.
-	form = listedCatalogForm("Scoped")
-	form.CollectionID = &collectionID
-	c, err := db.CreateUserCatalog(ctx, owner, form)
+	now := time.Now().UTC()
+	var created Catalog
+	err := db.inTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		created, err = insertCatalog(ctx, tx, Catalog{
+			ID: uuid.New(), Type: form.Type, Name: form.Name, Provider: form.Provider, Params: form.Params,
+			OwnerID: profileID, CollectionID: &collectionID, CreatedAt: now, UpdatedAt: now,
+		})
+		return err
+	})
 	if err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
+		t.Fatalf("creating catalog %q scoped to %s: %v", form.Name, collectionID, err)
 	}
-	if c.CollectionID == nil || *c.CollectionID != collectionID {
-		t.Fatalf("created catalog's collection_id = %v, want %s", c.CollectionID, collectionID)
-	}
+	return created
 }
 
 // GetUserCatalogs (the library) must not surface catalogs scoped to a
@@ -73,11 +68,7 @@ func TestGetUserCatalogsExcludesScoped(t *testing.T) {
 		t.Fatalf("create listed catalog: %v", err)
 	}
 
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &collectionID
-	if _, err := db.CreateUserCatalog(ctx, owner, scopedForm); err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
-	}
+	createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
 	got, err := db.GetUserCatalogs(ctx, owner)
 	if err != nil {
@@ -85,41 +76,6 @@ func TestGetUserCatalogsExcludesScoped(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ID != listed.ID {
 		t.Fatalf("GetUserCatalogs = %+v, want exactly the listed catalog %s", got, listed.ID)
-	}
-}
-
-// A collection_id sent with an update of a listed catalog changes nothing: the
-// catalog stays listed and published, and a subscribed copy the id names
-// keeps its subscription.
-func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-
-	owner := newTestProfile(t, db, "owner")
-	subscriber := newTestProfile(t, db, "subscriber")
-	source := newTestCollection(t, db, owner, "Source")
-	copied := subscribeCollection(t, db, owner, subscriber, source)
-	if copied.Subscription == nil {
-		t.Fatal("the subscribed collection has no subscription")
-	}
-
-	catalog := publishCatalog(t, db, subscriber, "Listed", `{"sort_by":"vote_average.desc"}`)
-
-	form := listedCatalogForm("Renamed")
-	form.Params = catalog.Params
-	form.CollectionID = &copied.ID
-	updated, err := db.UpdateUserCatalog(ctx, subscriber, catalog.ID, form)
-	if err != nil {
-		t.Fatalf("update with a collection_id: %v", err)
-	}
-	if updated.Name != "Renamed" || updated.CollectionID != nil {
-		t.Fatalf("updated catalog = name %q, collection_id %v, want %q and listed", updated.Name, updated.CollectionID, "Renamed")
-	}
-	if reloaded := reloadCatalog(t, db, catalog.ID); reloaded.Publication == nil {
-		t.Errorf("publication after the update = %+v, want one", reloaded.Publication)
-	}
-	if after := mustOwnCollection(t, db, subscriber, copied.ID); after.Subscription == nil {
-		t.Error("the collection named in collection_id lost its subscription")
 	}
 }
 
@@ -132,14 +88,9 @@ func TestUpdateAndDeleteUserCatalogRefuseScoped(t *testing.T) {
 
 	owner := newTestProfile(t, db, "owner")
 	collectionID := newTestCollection(t, db, owner, "My Collection")
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &collectionID
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
-	}
+	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
-	if _, err := db.UpdateUserCatalog(ctx, owner, scoped.ID, scopedForm); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.UpdateUserCatalog(ctx, owner, scoped.ID, listedCatalogForm("Scoped")); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("PUT on a scoped catalog = %v, want ErrInvalidInput", err)
 	}
 	if err := db.DeleteUserCatalog(ctx, owner, scoped.ID); !errors.Is(err, ErrInvalidInput) {
@@ -196,12 +147,7 @@ func TestDeleteCollectionCascadesScopedCatalogs(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 	collectionID := newTestCollection(t, db, owner, "My Collection")
 
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &collectionID
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
-	}
+	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
 	if err := db.DeleteUserCollection(ctx, owner, collectionID); err != nil {
 		t.Fatalf("deleting collection: %v", err)

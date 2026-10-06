@@ -310,6 +310,9 @@ paths:
       tags: [catalogs]
       operationId: createUserCatalog
       summary: Create a catalog
+      description: |
+        Creates a listed catalog. A catalog scoped to a collection is created
+        only by that collection's save, as a folder's `new` entry.
       requestBody:
         required: true
         content:
@@ -342,8 +345,8 @@ paths:
       summary: Save a catalog
       description: |
         Rewrites a listed catalog. A catalog scoped to a collection is saved
-        through its collection's `catalog_edits` instead. `collection_id` is
-        ignored: an update never changes a catalog's scope.
+        through its collection's `catalog_edits` instead. An update never
+        changes a catalog's scope.
       requestBody:
         required: true
         content:
@@ -1758,10 +1761,6 @@ components:
         name: { type: string }
         provider: { $ref: "#/components/schemas/Provider" }
         params: { $ref: "#/components/schemas/RecipeParamsString" }
-        collection_id:
-          type: [string, "null"]
-          format: uuid
-          description: Create only; scopes the new catalog to this collection. Null or absent is listed.
 
     ViewMode:
       type: string

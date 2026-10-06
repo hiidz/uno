@@ -212,8 +212,8 @@ func TestSavingASubscribedCatalogIsRefused(t *testing.T) {
 }
 
 // Every content write to a subscribed collection is refused with
-// ErrInvalidInput and changes nothing: a save, a save editing its catalog,
-// and a catalog created in it. The copy keeps its subscription,
+// ErrInvalidInput and changes nothing: a save, and a save editing its
+// catalog. The copy keeps its subscription,
 // its folder and catalog ids and their keys. A delete of a copy is allowed.
 func TestWritingASubscribedCollectionIsRefused(t *testing.T) {
 	ctx := context.Background()
@@ -230,11 +230,6 @@ func TestWritingASubscribedCollectionIsRefused(t *testing.T) {
 			s := catalogNamed(t, copied, "S")
 			form.CatalogEdits = []ScopedCatalogEdit{{ID: s.ID, Type: s.Type, Provider: s.Provider, Name: "Renamed S", Params: s.Params}}
 			return second(db.UpdateUserCollection(ctx, subscriber, copied.ID, form))
-		},
-		"a catalog created in it": func(copied CollectionWithFolders) error {
-			into := listedCatalogForm("Into the copy")
-			into.CollectionID = &copied.ID
-			return second(db.CreateUserCatalog(ctx, subscriber, into))
 		},
 	}
 	for name, write := range writes {

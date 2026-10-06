@@ -42,14 +42,9 @@ func TestUpdateUserCollectionRejectsFolderRefToCatalogScopedElsewhere(t *testing
 	collectionA := newTestCollection(t, db, owner, "A")
 	collectionB := newTestCollection(t, db, owner, "B")
 
-	scopedForm := listedCatalogForm("Scoped to A")
-	scopedForm.CollectionID = &collectionA
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatalf("create catalog scoped to A: %v", err)
-	}
+	scoped := createScopedCatalog(t, db, owner, collectionA, listedCatalogForm("Scoped to A"))
 
-	_, err = db.UpdateUserCollection(ctx, owner, collectionB, CollectionForm{
+	_, err := db.UpdateUserCollection(ctx, owner, collectionB, CollectionForm{
 		Title:   "B",
 		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(scoped.ID)}},
 	})
@@ -68,14 +63,9 @@ func TestCreateUserCollectionRejectsFolderRefToScopedCatalog(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 	otherCollection := newTestCollection(t, db, owner, "Other")
 
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &otherCollection
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
-	}
+	scoped := createScopedCatalog(t, db, owner, otherCollection, listedCatalogForm("Scoped"))
 
-	_, err = db.CreateUserCollection(ctx, owner, CollectionForm{
+	_, err := db.CreateUserCollection(ctx, owner, CollectionForm{
 		Title:   "New",
 		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(scoped.ID)}},
 	})
@@ -94,12 +84,7 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 	collectionID := newTestCollection(t, db, owner, "My Collection")
 
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &collectionID
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
-	}
+	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
 	// Referenced by two folders in the same collection.
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
@@ -269,12 +254,7 @@ func TestUpdateUserCollectionResponseIncludesScopedCatalogs(t *testing.T) {
 		t.Fatalf("create listed catalog: %v", err)
 	}
 
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &collectionID
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatalf("create scoped catalog: %v", err)
-	}
+	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
 		Title:   "My Collection",

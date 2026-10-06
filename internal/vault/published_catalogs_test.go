@@ -127,12 +127,7 @@ func TestServedCatalog(t *testing.T) {
 	}
 
 	onHome, offHome := newTestCollection(t, db, owner, "On home"), newTestCollection(t, db, owner, "Off home")
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &onHome
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatal(err)
-	}
+	scoped := createScopedCatalog(t, db, owner, onHome, listedCatalogForm("Scoped"))
 	for id, refs := range map[uuid.UUID][]uuid.UUID{onHome: {inFolder.ID, scoped.ID}, offHome: {offHomeOnly.ID}} {
 		if _, err := db.UpdateUserCollection(ctx, owner, id, CollectionForm{
 			Title: "C", Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(refs...)}},

@@ -187,38 +187,28 @@ func leanCatalogsByIDs(ctx context.Context, q querier, ids []uuid.UUID) ([]Catal
 	return selectLeanCatalogs(ctx, q, "c.id IN (SELECT value FROM json_each(?))", idsJSON(ids))
 }
 
-// CreateUserCatalog validates input and inserts a new catalog owned by
-// profileID. If input.CollectionID is set, the catalog is scoped to that
-// collection, which must be profileID's own and not a subscribed copy
-// (ErrInvalidInput).
+// CreateUserCatalog validates input and inserts it as a new listed catalog
+// owned by profileID. A catalog scoped to a collection is made only by that
+// collection's save, from a folder's New entry (resolveFolderCatalogRef).
 func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input CatalogForm) (Catalog, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
 	}
-	if input.CollectionID != nil {
-		if err := requireOwnedCollection(ctx, db.conn, profileID, *input.CollectionID); err != nil {
-			return Catalog{}, err
-		}
-	}
 
 	now := time.Now().UTC()
 	var created Catalog
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
-		if err := refuseScopeCopy(ctx, tx, profileID, input.CollectionID); err != nil {
-			return err
-		}
 		var err error
 		created, err = insertCatalog(ctx, tx, Catalog{
-			ID:           uuid.New(),
-			Type:         input.Type,
-			Name:         input.Name,
-			Provider:     input.Provider,
-			Params:       input.Params,
-			OwnerID:      profileID,
-			CollectionID: input.CollectionID,
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			ID:        uuid.New(),
+			Type:      input.Type,
+			Name:      input.Name,
+			Provider:  input.Provider,
+			Params:    input.Params,
+			OwnerID:   profileID,
+			CreatedAt: now,
+			UpdatedAt: now,
 		})
 		return err
 	})
@@ -228,23 +218,11 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	return created, nil
 }
 
-// refuseScopeCopy refuses a catalog written into collectionID, when there is
-// one, if that collection is a subscribed copy of profileID's.
-func refuseScopeCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionID *uuid.UUID) error {
-	if collectionID == nil {
-		return nil
-	}
-	return refuseSubscribedCopy(ctx, tx, profileID, kindCollection, *collectionID)
-}
-
 // UpdateUserCatalog validates input and updates the listed catalog
 // identified by catalogID, provided it's owned by profileID. Returns
 // ErrCatalogNotFound if no such row exists (including one owned by another
 // profile), and ErrInvalidInput for a catalog inside a collection
 // (checkCatalogRewrite) and for a subscribed copy (refuseSubscribedCopy).
-//
-// The catalog's scope is not part of an update: input.CollectionID is not
-// read, and a listed catalog stays listed.
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {

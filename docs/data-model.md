@@ -231,19 +231,17 @@ One row per profile: what its last push put in Nuvio, as one JSON document
 - **A catalog has a scope: listed or scoped to one collection.** `catalogs.collection_id` is
   `NULL` for a listed catalog (in the library, usable on home and in any of the owner's folders)
   or a collection id for one scoped to exactly that collection (hidden from the library, usable
-  only in that collection's folders, deleted with it). A scoped catalog is made only by
-  `CreateUserCatalog` with `collection_id` set, which enforces that the target collection is owned
-  by the same profile (`requireOwnedCollection`; a subscribed copy is refused, see
-  *Publications and subscriptions*), or inline in a collection's save. A scoped catalog is never
-  on the home screen — the
-  schema's own `CHECK (collection_id IS NULL OR home_sort_order IS NULL)` exists as a backstop and
-  would surface as a 500, so the Go layer rejects it before that CHECK is ever hit. A scoped
-  catalog is never published on its own: it is published with its collection. A catalog's scope is
-  not part of `UpdateUserCatalog`: a `collection_id` sent with one is not read, so a listed
-  catalog stays listed. Nothing changes a catalog's scope once it exists: a scoped catalog
-  reaches the library only as a copy, a new listed row created with its name and recipe.
-  `GetUserCatalogs` (the library) returns listed catalogs
-  only — a scoped one is reached through its owning collection's own response instead.
+  only in that collection's folders, deleted with it). A scoped catalog is made only with a
+  folder that uses it, by `resolveFolderCatalogRef`: a collection save's `New` entry, and the
+  same entries a subscribe, a Duplicate or an import writes. `CreateUserCatalog` always makes a
+  listed one. A scoped catalog is never on the home screen — the schema's own
+  `CHECK (collection_id IS NULL OR home_sort_order IS NULL)` exists as a backstop and would
+  surface as a 500, so the Go layer rejects it before that CHECK is ever hit. A scoped catalog is
+  never published on its own: it is published with its collection. A catalog's scope is not part
+  of `UpdateUserCatalog`, so a listed catalog stays listed. Nothing changes a catalog's scope once
+  it exists: a scoped catalog reaches the library only as a copy, a new listed row created with
+  its name and recipe. `GetUserCatalogs` (the library) returns listed catalogs only — a scoped
+  one is reached through its owning collection's own response instead.
 - **A scoped catalog is written only through its collection's save.** `UpdateUserCatalog` and
   `DeleteUserCatalog` refuse a row whose `collection_id` is set (`ErrInvalidInput`, a 400).
   `CollectionForm.CatalogEdits` (`vault.ScopedCatalogEdit`) carries the new name and recipe for
@@ -583,10 +581,10 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   `(subscriber_id, publication_id)`, so a second subscribe is `ErrConflict`, and deleting the copy
   deletes its subscription by cascade. `subscriber_count` is kept by the
   `subscriptions_count_*` triggers.
-- **Only Update writes a subscribed copy.** A catalog save, a collection save, and a catalog
-  created in it are `ErrInvalidInput` (`refuseSubscribedCopy`, run in the write's transaction
-  ahead of the write, over the caller's own subscriptions): the copy keeps its subscription, its
-  `sub_key`s and its ids. Update shares the collection update core without the refusal. A
+- **Only Update writes a subscribed copy.** A catalog save and a collection save, which is where
+  a catalog inside it would be created, are `ErrInvalidInput` (`refuseSubscribedCopy`, run in the
+  write's transaction ahead of the write, over the caller's own subscriptions): the copy keeps
+  its subscription, its `sub_key`s and its ids. Update shares the collection update core without the refusal. A
   publish of a subscribed copy is `ErrInvalidInput` too: only its publisher changes or
   publishes it. Its home order, show-in-home and pin change through push, like any
   row's, and it can be deleted, which removes its subscription by cascade.

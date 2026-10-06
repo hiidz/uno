@@ -25,20 +25,20 @@ func newPendingFixture(t *testing.T) pendingFixture {
 	ctx := context.Background()
 	f := pendingFixture{db: newTestDB(t), homeParams: `{"sort_by":"popularity.desc"}`, changed: `{"sort_by":"vote_average.desc"}`}
 	f.owner = newTestProfile(t, f.db, "owner")
-	create := func(name, params string, scope *uuid.UUID) Catalog {
+	create := func(name, params string) Catalog {
 		t.Helper()
 		form := listedCatalogForm(name)
-		form.Params, form.CollectionID = params, scope
+		form.Params = params
 		c, err := f.db.CreateUserCatalog(ctx, f.owner, form)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return c
 	}
-	f.home = create("On Home", f.homeParams, nil)
-	f.listed = create("In a folder", "{}", nil)
+	f.home = create("On Home", f.homeParams)
+	f.listed = create("In a folder", "{}")
 	f.collection = newTestCollection(t, f.db, f.owner, "Pushed")
-	f.scoped = create("Scoped", "{}", &f.collection)
+	f.scoped = createScopedCatalog(t, f.db, f.owner, f.collection, listedCatalogForm("Scoped"))
 	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.collection, CollectionForm{
 		Title:   "Pushed",
 		Folders: []FolderData{{Title: "F", Catalogs: CatalogRefs(f.listed.ID, f.scoped.ID)}},

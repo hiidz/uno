@@ -103,12 +103,7 @@ func TestPublishRefusals(t *testing.T) {
 	owner, other := newTestProfile(t, db, "owner"), newTestProfile(t, db, "other")
 
 	collectionID := newTestCollection(t, db, owner, "C")
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &collectionID
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatal(err)
-	}
+	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 	if _, err := db.PublishCatalog(ctx, owner, scoped.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("publish a scoped catalog = %v, want ErrInvalidInput", err)
 	}

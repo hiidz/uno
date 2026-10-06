@@ -14,12 +14,7 @@ import (
 func scopedCatalogInFolder(t *testing.T, db *DB, owner, collectionID uuid.UUID, name string) (Catalog, CollectionWithFolders) {
 	t.Helper()
 	ctx := context.Background()
-	form := listedCatalogForm(name)
-	form.CollectionID = &collectionID
-	catalog, err := db.CreateUserCatalog(ctx, owner, form)
-	if err != nil {
-		t.Fatalf("create scoped catalog %q: %v", name, err)
-	}
+	catalog := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm(name))
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
 		Title:   "My Collection",
 		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(catalog.ID)}},

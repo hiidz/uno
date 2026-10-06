@@ -44,12 +44,7 @@ func newPushRecordFixture(t *testing.T) pushRecordFixture {
 	offHomeOnly := create("Off-home only", "{}")
 
 	first, second := newTestCollection(t, db, owner, "First"), newTestCollection(t, db, owner, "Second")
-	scopedForm := listedCatalogForm("Scoped")
-	scopedForm.CollectionID = &second
-	scoped, err := db.CreateUserCatalog(ctx, owner, scopedForm)
-	if err != nil {
-		t.Fatal(err)
-	}
+	scoped := createScopedCatalog(t, db, owner, second, listedCatalogForm("Scoped"))
 	offHome := newTestCollection(t, db, owner, "Off home")
 	for id, folders := range map[uuid.UUID][]FolderData{
 		first: {

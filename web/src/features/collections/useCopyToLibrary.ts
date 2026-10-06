@@ -35,5 +35,5 @@ function scopedCatalog(option: RefOption | undefined): Catalog | undefined {
 }
 
 function libraryPayload(catalog: Catalog): CatalogPayload {
-  return { type: catalog.type, name: catalog.name, provider: catalog.provider, params: catalog.params, collection_id: null }
+  return { type: catalog.type, name: catalog.name, provider: catalog.provider, params: catalog.params }
 }

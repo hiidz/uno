@@ -233,10 +233,9 @@ Route-semantics facts the client has to honour:
     update would change: the row as saved against what it last published, in the same item list.
     `[]` for a row not published; a subscribed copy and a catalog inside a collection are 400s,
     as for a publish. They read the vault only: nothing here compares with the push record.
-  - A content write to a subscribed copy — `PUT` of the catalog or the collection, a catalog
-    created in it — is a 400 (`refuseSubscribedCopy`, run in the write's transaction ahead of
-    the write, over the caller's own subscriptions, so another profile's copy still answers
-    404). `POST .../community/{id}/update` is the only writer of a copy. A subscription ends when
+  - A content write to a subscribed copy — `PUT` of the catalog or the collection — is a 400
+    (`refuseSubscribedCopy`, run in the write's transaction ahead of the write, over the
+    caller's own subscriptions, so another profile's copy still answers 404). `POST .../community/{id}/update` is the only writer of a copy. A subscription ends when
     the copy is deleted, or when its publisher unpublishes, which leaves the copy the caller's own.
     Placement is not content: Home order, Home
     or Discover and the pin (`pin_to_top`) all travel in push's selection (*Push* below), for
@@ -250,14 +249,14 @@ Route-semantics facts the client has to honour:
   copy in the new one, so a catalog referenced by two folders collapses into one new scoped copy
   referenced twice. The copy is unpublished and subscribed to nothing, even when its source is a
   subscribed copy. 404s via `ErrCollectionNotFound` if the source isn't owned by the caller.
-- **A catalog inside a collection is written only through that collection's save.**
-  `PUT` and `DELETE /api/p/{i}/catalogs/{id}` answer `400` for a catalog whose `collection_id` is
+- **A catalog inside a collection is written only through that collection's save.** It is
+  created there, as a folder's inline `new` entry; `POST /api/p/{i}/catalogs` always creates a
+  listed catalog. `PUT` and `DELETE /api/p/{i}/catalogs/{id}` answer `400` for a catalog whose `collection_id` is
   set. Its edits travel in the collection's own `PUT` body as `catalog_edits`
   (`vault.ScopedCatalogEdit`), whose recipes `validateInlineCatalogs` checks alongside the
   folders' inline `new` specs, so a bad recipe is a `400` (or a `502` when TMDB can't judge it)
   on the collection save. It goes away by dropping its last folder ref and saving the collection.
-  `PUT` of a *listed* catalog leaves its scope alone: a `collection_id` in the body is accepted
-  and not read, so the catalog stays listed.
+  `PUT` of a *listed* catalog leaves its scope alone, so the catalog stays listed.
 - **Deletes are allowed any time.** `DELETE /api/p/{i}/catalogs/{id}` and
   `.../collections/{id}` remove the row from Uno and Community at once (a published row is
   unpublished, and its subscribers keep their copies as their own) whether or not it is on Home; Nuvio keeps what the last push put there, served

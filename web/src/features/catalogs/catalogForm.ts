@@ -143,7 +143,6 @@ export function duplicatePayload(catalog: Catalog): CatalogPayload {
     name: `${catalog.name} (copy)`,
     provider: CATALOG_PROVIDER,
     params: catalog.params,
-    collection_id: null,
   }
 }
 

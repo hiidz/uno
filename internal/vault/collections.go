@@ -280,9 +280,8 @@ func (e ScopedCatalogEdit) changesNothing(stored storedRecipe) bool {
 }
 
 // deleteOrphanedScopedCatalogs removes every catalog scoped to collectionID
-// that no folder of it references any more. Runs in the same transaction as
-// the folder rewrite — this is what catches a scoped catalog created via
-// POST .../catalogs and never referenced (editor abandoned before Save).
+// that no folder of it references any more: one whose last reference this
+// save removed. Runs in the same transaction as the folder rewrite.
 func deleteOrphanedScopedCatalogs(ctx context.Context, tx *sql.Tx, collectionID uuid.UUID) error {
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM catalogs

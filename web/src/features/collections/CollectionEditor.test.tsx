@@ -189,7 +189,6 @@ describe('CollectionEditor', () => {
         name: 'Staged name',
         provider: 'tmdb',
         params: expect.stringContaining('"with_genres":"27"'),
-        collection_id: null,
       })
       expect(onSave).not.toHaveBeenCalled()
     })

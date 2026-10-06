@@ -3,7 +3,6 @@ package vault
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -11,25 +10,9 @@ import (
 
 // queryRower is the common subset of *sql.DB and *sql.Tx the single-row
 // lookups below need, so callers can run them either inside a transaction or
-// straight against the pool (CreateUserCatalog).
+// straight against the pool.
 type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
-// requireOwnedCollection returns ErrInvalidInput unless collectionID is
-// owned by profileID.
-func requireOwnedCollection(ctx context.Context, q queryRower, profileID, collectionID uuid.UUID) error {
-	var exists int
-	err := q.QueryRowContext(ctx, `
-		SELECT 1 FROM collections WHERE id = ? AND owner_id = ?
-	`, collectionID.String(), profileID.String()).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: collection %s is not owned by this profile", ErrInvalidInput, collectionID)
-	}
-	if err != nil {
-		return fmt.Errorf("checking collection ownership: %w", err)
-	}
-	return nil
 }
 
 // ownedIDsQuery describes one closed-graph ownership check for
