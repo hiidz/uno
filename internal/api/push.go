@@ -229,7 +229,7 @@ type pushRevert func() error
 type pushStep func() (revert pushRevert, err error)
 
 // pushRun is one push as its steps run: what they write, and what the home
-// order step merged before the others wrote anything.
+// order step read and merged before the others wrote anything.
 type pushRun struct {
 	s           *Server
 	ctx         context.Context
@@ -239,23 +239,27 @@ type pushRun struct {
 	manifestURL string
 	record      vault.PushRecord
 
+	// managed is the collections push owns in Nuvio (managedCollectionIDs),
+	// read once for both the home-order and the collections merge.
+	managed         map[string]bool
 	pulledHomeOrder json.RawMessage
 	homeOrder       json.RawMessage
 }
 
-// prepareHomeOrder pulls the profile's home-order list and merges the push's
-// home rows into it (mergeHomeOrder), writing nothing.
+// prepareHomeOrder pulls the profile's home-order list, reads the collections
+// push manages, and merges the push's home rows into the list (mergeHomeOrder),
+// writing nothing.
 func (r *pushRun) prepareHomeOrder() (pushRevert, error) {
 	pulled, err := r.s.nuvio.PullHomeOrder(r.ctx, r.accessToken, r.slot)
 	if err != nil {
 		return nil, fmt.Errorf("pulling home order: %w", err)
 	}
-	managed, err := r.s.managedCollectionIDs(r.ctx, r.profileID)
+	r.managed, err = r.s.managedCollectionIDs(r.ctx, r.profileID)
 	if err != nil {
 		return nil, err
 	}
 	pinned, rows := r.record.HomeRows()
-	r.homeOrder, err = mergeHomeOrder(pulled, pinned, rows, managed)
+	r.homeOrder, err = mergeHomeOrder(pulled, pinned, rows, r.managed)
 	r.pulledHomeOrder = pulled
 	return nothingToRevert, err
 }
@@ -274,7 +278,7 @@ func (r *pushRun) pushAddons() (pushRevert, error) {
 
 // pushCollections is the collections step (Server.pushCollections).
 func (r *pushRun) pushCollections() (pushRevert, error) {
-	pulled, err := r.s.pushCollections(r.ctx, r.accessToken, r.slot, r.profileID, r.record.Collections)
+	pulled, err := r.s.pushCollections(r.ctx, r.accessToken, r.slot, r.managed, r.record.Collections)
 	if err != nil {
 		return nil, fmt.Errorf("collections push: %w", err)
 	}
@@ -422,10 +426,9 @@ type pulledCollection struct {
 //  1. Pull the current blob as raw JSON per element — never decoded into a
 //     generic map, which would round-trip numbers through float64 and
 //     silently corrupt any collection Uno doesn't own.
-//  2. Drop every pulled entry that is owned by this profile or was sent by
-//     this profile's last push (the push record). With the closed graph,
-//     everything selected is owned, so the owned set alone covers what the
-//     old selection-union was for. The record covers a collection deleted
+//  2. Drop every pulled entry in managed: owned by this profile, or sent by
+//     its last push (managedCollectionIDs). Everything on Home is owned, so
+//     the owned set covers it; the push record covers a collection deleted
 //     since the last push, whatever it held. A collection is never dropped
 //     for what its folders hold: Nuvio's own collection editors build
 //     sources from Uno's catalogs too.
@@ -434,16 +437,12 @@ type pulledCollection struct {
 //     says, as the exact bytes the record keeps.
 //
 // Returns the pulled blob on success, which a failed push puts back.
-func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, profileID uuid.UUID, fresh []json.RawMessage) ([]json.RawMessage, error) {
+func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, managed map[string]bool, fresh []json.RawMessage) ([]json.RawMessage, error) {
 	pulled, err := s.nuvio.PullCollections(ctx, accessToken, nuvioProfileIndex)
 	if err != nil {
 		return nil, err
 	}
 
-	managed, err := s.managedCollectionIDs(ctx, profileID)
-	if err != nil {
-		return nil, err
-	}
 	foreign, err := dropManaged(pulled, managed)
 	if err != nil {
 		return nil, err

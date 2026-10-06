@@ -935,9 +935,10 @@ about (its own native UI, or another client), so the merge must touch only what 
    map. Round-tripping through `map[string]any` converts JSON numbers to `float64` and would
    silently corrupt any collection Uno doesn't own.
 2. Drop every pulled entry that is **owned by this profile** or **sent by this profile's last
-   push** (the push record's collections, `vault.PushedCollectionIDs`), by id alone. With the
-   closed graph, everything selected is owned, so the owned set alone covers a deselected
-   collection. The record covers a collection deleted since the last push, whatever it held. A
+   push** (the push record's collections, `vault.PushedCollectionIDs`), by id alone. The set
+   (`managedCollectionIDs`) is read once per push, by `prepareHomeOrder`, and the home-order
+   merge uses the same one. With the closed graph, everything selected is owned, so the owned
+   set alone covers a deselected collection. The record covers a collection deleted since the last push, whatever it held. A
    collection is never dropped for what its folders hold: Nuvio's own collection editors build
    folders from every installed addon's catalogs, Uno's included (*Addon server*), so a
    collection made in a Nuvio app entirely from Uno catalogs is the user's. A collection Uno
