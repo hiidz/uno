@@ -333,19 +333,16 @@ func (s *Server) listPendingPush(w http.ResponseWriter, r *http.Request) {
 	listByProfile(w, r, "listPendingPush", "failed to load pending push", s.vault.PendingPush)
 }
 
-// pushRecord checks that every id body names is one profileID may push, then
-// builds what the push puts in Nuvio, once: its collections are the bytes
-// sent, and the whole record is what the local write stores. The check is
-// load-bearing, not a fail-fast nicety: with the write moved to the end, it is
-// the only check standing between the request body and a third-party API
-// call.
+// pushRecord builds what a push of body puts in Nuvio, once: its collections
+// are the bytes sent, and the whole record is what the local write stores. The
+// build refuses an id profileID may not put on Home (vault.ErrInvalidInput),
+// which is load-bearing, not a fail-fast nicety: with the write moved to the
+// end, it is the only check standing between the request body and a
+// third-party API call.
 func (s *Server) pushRecord(ctx context.Context, profileID uuid.UUID, body pushRequest) (vault.PushRecord, error) {
 	catalogs, collections, err := body.selection()
 	if err != nil {
 		return vault.PushRecord{}, err
-	}
-	if err := s.vault.ValidateSelectionAccess(ctx, profileID, catalogs.CatalogIDs(), collections.CollectionIDs()); err != nil {
-		return vault.PushRecord{}, fmt.Errorf("validation failed: %w", err)
 	}
 	return s.vault.BuildPushRecord(ctx, profileID, catalogs, collections)
 }

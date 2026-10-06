@@ -105,32 +105,6 @@ func validateFolderRefs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, co
 	return requireOwnedIDs(ctx, tx, profileID, ids, q)
 }
 
-// validateCatalogAccess confirms every catalog ID is owned by profileID and
-// listed — the rule for a home selection. A scoped catalog is never
-// home-selectable (the schema's own CHECK forbids collection_id and
-// home_sort_order both being set), so this pre-check has to reject one
-// before it ever reaches SavePush's write, not just before a
-// third-party API call: without it, a scoped id would pass validation, push
-// successfully to Nuvio, and only then hit 0 rows affected on the local
-// write's `AND collection_id IS NULL`, forcing a compensating revert after
-// Nuvio already succeeded. Must run inside the caller's transaction.
-func validateCatalogAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, catalogIDs []uuid.UUID) error {
-	return requireOwnedIDs(ctx, tx, profileID, catalogIDs, ownedIDsQuery{
-		table:      "catalogs",
-		label:      "catalog",
-		extraWhere: " AND collection_id IS NULL",
-		rejection:  "is not accessible to this profile",
-	})
-}
-
-func validateCollectionAccess(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionIDs []uuid.UUID) error {
-	return requireOwnedIDs(ctx, tx, profileID, collectionIDs, ownedIDsQuery{
-		table:     "collections",
-		label:     "collection",
-		rejection: "is not accessible to this profile",
-	})
-}
-
 // errSubscribedCopy is the ErrInvalidInput for writing or publishing a
 // subscribed copy of kind: only its publisher changes or publishes it.
 func errSubscribedCopy(kind string) error {

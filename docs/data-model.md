@@ -7,7 +7,7 @@ on, and creates the schema in it when it is empty.
 Every write transaction begins `IMMEDIATE` (`_txlock=immediate`), taking the write lock up front
 and waiting out `busy_timeout` for it: a deferred one that reads before it writes, as most writes
 do, would fail at once with `SQLITE_BUSY` once another write committed. A read-only
-transaction (`sql.TxOptions{ReadOnly: true}`, `ValidateSelectionAccess`) still begins deferred.
+transaction (`sql.TxOptions{ReadOnly: true}`, `PendingPush`) still begins deferred.
 
 **Schema version.** `PRAGMA user_version` is the schema version, `schemaVersion` in `db.go`.
 `InitDB` reads it in one transaction. At `0`, an empty file, it creates the schema and sets the
@@ -317,8 +317,9 @@ One row per profile: what its last push put in Nuvio, as one JSON document
     `home_sort_order` is cleared first, then each incoming entry's is set to its `position`, one
     numbering across catalogs and collections (a row's place in push's ordered body);
     an id that isn't owned (or, for a catalog, isn't listed — `AND collection_id IS NULL`) affects
-    0 rows and is `ErrInvalidInput` naming the id. There is no separate join table and no separate
-    access-check query — the `UPDATE`'s own `WHERE` clause is the validation.
+    0 rows and is `ErrInvalidInput` naming the id. There is no separate join table. Push refuses
+    such an id before contacting Nuvio, in the reads `BuildPushRecord` makes anyway
+    (`inSelectionOrder`), so the `UPDATE`'s own `WHERE` only backs that up.
 - **`catalogs.show_in_home` drives the manifest's per-catalog genre extra, but the manifest
   reads it through `vault.GetPublishedCatalogs`, not the raw column.** `GetPublishedCatalogs` is
   the union of every owned catalog with `home_sort_order`

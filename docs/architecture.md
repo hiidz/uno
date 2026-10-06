@@ -879,9 +879,10 @@ nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has wor
 
 **Ordering is Nuvio-first, local-write-last**, and this is load-bearing in two independent ways:
 
-1. Validate access to every id in the body. *Load-bearing, not a fail-fast nicety* — with the
-   write moved to the end, this is the only check standing between the request body and a
-   third-party API call.
+1. Build the push record (`vault.BuildPushRecord`), which refuses (`400`) any id in the body the
+   profile may not put on Home: not its own, or a catalog scoped to a collection. *Load-bearing,
+   not a fail-fast nicety* — with the write moved to the end, this is the only check standing
+   between the request body and a third-party API call.
 2. `refusePush` — turn the push away before any write reaches Nuvio when:
    - a collection it sends has no folders (`400`, `refused: empty_collection`): Nuvio's phone and
      desktop apps leave one off Home, and Nuvio TV has no guard against one;

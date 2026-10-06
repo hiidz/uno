@@ -49,8 +49,10 @@ type PushedCatalog struct {
 }
 
 // BuildPushRecord is what a push of catalogs and collections, profileID's
-// pending Home selection, puts in Nuvio now. Push calls it after
-// ValidateSelectionAccess and before contacting Nuvio.
+// pending Home selection, puts in Nuvio now. Push calls it before contacting
+// Nuvio, so an id the selection may not hold — not profileID's own, or a
+// catalog that isn't listed — is refused here (inSelectionOrder), not by the
+// local write after Nuvio took the push.
 func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm) (PushRecord, error) {
 	return buildPushRecord(ctx, db.conn, profileID, catalogs, collections)
 }
@@ -113,7 +115,7 @@ func buildPushRecord(ctx context.Context, q querier, profileID uuid.UUID, catalo
 
 // selectedTrees is profileID's collections selection names, each with its
 // tree, in selection order and with the pin its entry carries, read through
-// q.
+// q. One that isn't profileID's own is ErrInvalidInput.
 func selectedTrees(ctx context.Context, q querier, profileID uuid.UUID, selection CollectionSelectionForm) ([]CollectionWithFolders, error) {
 	ids := selection.CollectionIDs()
 	if len(ids) == 0 {
@@ -127,51 +129,54 @@ func selectedTrees(ctx context.Context, q querier, profileID uuid.UUID, selectio
 	if err != nil {
 		return nil, err
 	}
-	return applySelection(trees, selection), nil
+	return applySelection(trees, selection)
 }
 
-// applySelection sorts trees to match selection's order and gives each the
-// pin its selection entry carries: the pin a push sends is the pending one,
-// which only the write after Nuvio accepted the push stores.
-func applySelection(trees []CollectionWithFolders, selection CollectionSelectionForm) []CollectionWithFolders {
-	byID := make(map[uuid.UUID]CollectionWithFolders, len(trees))
-	for _, t := range trees {
-		byID[t.ID] = t
+// applySelection is trees in selection's order, each with the pin its
+// selection entry carries: the pin a push sends is the pending one, which only
+// the write after Nuvio accepted the push stores. An entry trees lacks is
+// ErrInvalidInput (inSelectionOrder).
+func applySelection(trees []CollectionWithFolders, selection CollectionSelectionForm) ([]CollectionWithFolders, error) {
+	ordered, err := inSelectionOrder("collection", selection.CollectionIDs(), trees, treeID)
+	if err != nil {
+		return nil, err
 	}
-	ordered := make([]CollectionWithFolders, 0, len(selection.Collections))
-	for _, entry := range selection.Collections {
-		if t, ok := byID[entry.CollectionID]; ok {
-			t.PinToTop = entry.PinToTop
-			ordered = append(ordered, t)
-		}
+	for i, entry := range selection.Collections {
+		ordered[i].PinToTop = entry.PinToTop
 	}
-	return ordered
+	return ordered, nil
 }
 
 // selectedCatalogs is profileID's listed catalogs selection names, in
-// selection order, read through q.
+// selection order, read through q. One that isn't profileID's own, or is
+// scoped to a collection, is ErrInvalidInput.
 func selectedCatalogs(ctx context.Context, q querier, profileID uuid.UUID, selection CatalogSelectionForm) ([]Catalog, error) {
-	if len(selection.Catalogs) == 0 {
+	ids := selection.CatalogIDs()
+	if len(ids) == 0 {
 		return nil, nil
-	}
-	ids := make([]uuid.UUID, len(selection.Catalogs))
-	for i, c := range selection.Catalogs {
-		ids[i] = c.CatalogID
 	}
 	rows, err := selectLeanCatalogs(ctx, q, "c.id IN (SELECT value FROM json_each(?)) AND c.owner_id = ? AND c.collection_id IS NULL",
 		idsJSON(ids), profileID.String())
 	if err != nil {
 		return nil, err
 	}
-	byID := make(map[uuid.UUID]Catalog, len(rows))
-	for _, c := range rows {
-		byID[c.ID] = c
-	}
-	ordered := make([]Catalog, 0, len(ids))
-	for _, id := range ids {
-		if c, ok := byID[id]; ok {
-			ordered = append(ordered, c)
+	return inSelectionOrder("catalog", ids, rows, catalogID)
+}
+
+// inSelectionOrder is read, the rows a build read for ids, in the order of
+// ids, a repeated id repeating its row. An id read lacks is one the Home
+// selection may not hold, and is ErrInvalidInput naming it: refused here,
+// before push contacts Nuvio, rather than by SavePush's write once Nuvio has
+// taken the push.
+func inSelectionOrder[T any](label string, ids []uuid.UUID, read []T, idOf func(T) uuid.UUID) ([]T, error) {
+	index := indexByID(read, idOf)
+	ordered := make([]T, len(ids))
+	for i, id := range ids {
+		j, ok := index[id]
+		if !ok {
+			return nil, fmt.Errorf("%w: %s %s is not accessible to this profile", ErrInvalidInput, label, id)
 		}
+		ordered[i] = read[j]
 	}
 	return ordered, nil
 }

@@ -17,11 +17,11 @@ import (
 // (in two folders), a scoped one, and a home row a folder also uses; plus a
 // catalog only an off-Home collection uses.
 type pushRecordFixture struct {
-	db                 *DB
-	owner              uuid.UUID
-	catalogs           CatalogSelectionForm
-	collections        CollectionSelectionForm
-	homeRow, offHomeID uuid.UUID
+	db                           *DB
+	owner                        uuid.UUID
+	catalogs                     CatalogSelectionForm
+	collections                  CollectionSelectionForm
+	homeRow, offHomeID, scopedID uuid.UUID
 }
 
 func newPushRecordFixture(t *testing.T) pushRecordFixture {
@@ -72,7 +72,7 @@ func newPushRecordFixture(t *testing.T) pushRecordFixture {
 		collections: CollectionSelectionForm{Collections: []SelectedCollectionInput{
 			{CollectionID: second, PinToTop: true, Position: 0}, {CollectionID: first, Position: 3},
 		}},
-		homeRow: homeRow.ID, offHomeID: offHomeOnly.ID,
+		homeRow: homeRow.ID, offHomeID: offHomeOnly.ID, scopedID: scoped.ID,
 	}
 }
 
@@ -212,8 +212,9 @@ func TestStoredPushRecordRebuildsTheLastPush(t *testing.T) {
 	}
 }
 
-// A record for a profile that doesn't exist is refused, and a build reads
-// only the caller's own rows.
+// A record for a profile that doesn't exist is refused, and so is a build
+// naming a row the Home selection may not hold: another profile's, one that
+// doesn't exist, or a catalog scoped to a collection.
 func TestPushRecordRefusals(t *testing.T) {
 	ctx := context.Background()
 	f := newPushRecordFixture(t)
@@ -221,9 +222,22 @@ func TestPushRecordRefusals(t *testing.T) {
 		t.Errorf("SavePush for an unknown profile = %v, want ErrInvalidInput", err)
 	}
 	other := newTestProfile(t, f.db, "other")
-	record, err := f.db.BuildPushRecord(ctx, other, f.catalogs, f.collections)
-	if err != nil || len(record.Collections) != 0 || len(record.Catalogs) != 0 {
-		t.Errorf("another profile's build = %+v, %v; want none of the owner's rows", record, err)
+	for _, tc := range []struct {
+		name        string
+		profileID   uuid.UUID
+		catalogs    CatalogSelectionForm
+		collections CollectionSelectionForm
+	}{
+		{"another profile's catalogs", other, f.catalogs, CollectionSelectionForm{}},
+		{"another profile's collections", other, CatalogSelectionForm{}, f.collections},
+		{"a collection that doesn't exist", f.owner, f.catalogs,
+			CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: uuid.New()}}}},
+		{"a scoped catalog", f.owner,
+			CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: f.scopedID, ShowInHome: true}}}, f.collections},
+	} {
+		if _, err := f.db.BuildPushRecord(ctx, tc.profileID, tc.catalogs, tc.collections); !errors.Is(err, ErrInvalidInput) {
+			t.Errorf("%s: build = %v, want ErrInvalidInput", tc.name, err)
+		}
 	}
 }
 
