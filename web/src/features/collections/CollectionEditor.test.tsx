@@ -2,7 +2,8 @@
 import type { ComponentProps } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { apiFetch } from '@/api/client'
 import { catalog, collection, folder } from '@/test/fixtures'
 import { CollectionEditor } from './CollectionEditor'
 import { emptyCollectionForm, formFromCollection } from './collectionForm'
@@ -119,7 +120,7 @@ describe('CollectionEditor', () => {
     renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
     expect(screen.getByRole('heading', { name: 'Horror' })).toBeInTheDocument()
     expect(screen.getByText('Movies', { selector: '.stk' })).toHaveClass('stk-catalog')
-    expect(screen.getByRole('combobox', { name: 'Genre' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Split by genre' })).toBeInTheDocument()
   })
 
   it('asks before the nested editor drops its unsaved edits, and stages them with Done', () => {
@@ -212,7 +213,7 @@ describe('CollectionEditor', () => {
   describe('the Add catalogs dropdown', () => {
     const open = () => fireEvent.click(screen.getByRole('button', { name: 'Add catalogs' }))
     const dropdown = () => screen.getByRole('dialog', { name: 'Add catalogs to this folder' })
-    const folderRows = () => screen.getAllByRole('listitem').filter((row) => row.querySelector('select'))
+    const folderRows = () => screen.getAllByRole('listitem').filter((row) => row.classList.contains('run-row'))
 
     it('ticks what the folder holds, states each catalog’s kind, and adds a tick at once, in the order ticked', () => {
       const { onSave } = renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
@@ -237,13 +238,20 @@ describe('CollectionEditor', () => {
       )
     })
 
-    it('takes an unticked catalog out of the folder, keeping its genre-narrowed rows', async () => {
+    it('ticks a catalog held under any genre, and takes every genre of it out on untick', async () => {
       const narrowed = {
         ...saved,
-        folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 'c1', genre: '' }, { catalog_id: 'c1', genre: 'Horror' }] })],
+        folders: [
+          folder({
+            id: 'f1',
+            title: 'Horror',
+            refs: [{ catalog_id: 'c2', genre: 'Giallo' }, { catalog_id: 'c1', genre: 'Horror' }, { catalog_id: 'c1', genre: 'War' }],
+          }),
+        ],
       }
       const { onSave } = renderEditor({ initial: formFromCollection(narrowed), initialCatalogs: library })
       open()
+      expect(within(dropdown()).getByLabelText(/Giallo/)).toBeChecked()
       fireEvent.click(within(dropdown()).getByLabelText(/Late Night/))
       expect(within(dropdown()).getByLabelText(/Late Night/)).not.toBeChecked()
       fireEvent.keyDown(dropdown(), { key: 'Escape' })
@@ -251,7 +259,7 @@ describe('CollectionEditor', () => {
       save()
       expect(onSave).toHaveBeenCalledWith(
         expect.objectContaining({
-          folders: [expect.objectContaining({ catalogs: [{ catalog_id: 'c1', genre: 'Horror' }] })],
+          folders: [expect.objectContaining({ catalogs: [{ catalog_id: 'c2', genre: 'Giallo' }] })],
         }),
       )
     })
@@ -304,20 +312,67 @@ describe('CollectionEditor', () => {
     })
   })
 
-  it('saves a renamed folder and a catalog widened back to all genres', () => {
+  it('saves a renamed folder and a catalog widened back to no genre filter', () => {
     const narrowed = {
       ...saved,
       folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 'c1', genre: 'Horror' }] })],
     }
     const { onSave } = renderEditor({ initial: formFromCollection(narrowed), initialCatalogs: library })
     fireEvent.change(screen.getByLabelText('Title of folder 1'), { target: { value: 'Frights' } })
-    fireEvent.change(screen.getByRole('combobox', { name: 'Genre' }), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Genres of Late Night' }))
+    const genres = screen.getByRole('dialog', { name: 'Late Night by genre' })
+    expect(within(genres).getByLabelText('Horror')).toBeDisabled()
+    fireEvent.click(within(genres).getByLabelText('No genre filter'))
+    fireEvent.click(within(genres).getByLabelText('Horror'))
     save()
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
         folders: [expect.objectContaining({ id: 'f1', title: 'Frights', catalogs: [{ catalog_id: 'c1' }] })],
       }),
     )
+  })
+
+  describe('splitting a catalog by genre', () => {
+    beforeEach(() => {
+      vi.mocked(apiFetch).mockImplementation((path) => {
+        if (path !== '/api/catalogs/genre-options') return new Promise(() => {})
+        const genres = [{ id: 27, name: 'Horror' }, { id: 35, name: 'Comedy' }]
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(genres) } as Response)
+      })
+    })
+    afterEach(() => {
+      vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}))
+    })
+
+    it('makes one row per ticked genre in a collection drawn as rows, with the dropdown open throughout', async () => {
+      const { onSave } = renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
+      fireEvent.click(screen.getByRole('button', { name: 'Split by genre' }))
+      const genres = () => screen.getByRole('dialog', { name: 'Late Night by genre' })
+      fireEvent.click(await within(genres()).findByLabelText('Horror'))
+      fireEvent.click(within(genres()).getByLabelText('Comedy'))
+      expect(within(genres()).getByLabelText('No genre filter')).toBeChecked()
+      expect(screen.getByText('3 rows')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Remove the Comedy row' }))
+      expect(screen.getByText('2 rows')).toBeInTheDocument()
+      save()
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folders: [expect.objectContaining({ catalogs: [{ catalog_id: 'c1' }, { catalog_id: 'c1', genre: 'Horror' }] })],
+        }),
+      )
+    })
+
+    it('says tab for a tabbed collection, and flags a genre the recipe no longer allows', async () => {
+      const split = {
+        ...saved,
+        view_mode: 'TABBED_GRID',
+        folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 'c1', genre: 'Horror' }, { catalog_id: 'c1', genre: 'Western' }] })],
+      }
+      renderEditor({ initial: formFromCollection(split), initialCatalogs: library })
+      expect(screen.getByText('2 tabs')).toBeInTheDocument()
+      expect(await screen.findByText(/no longer allow Western, so Nuvio shows that tab unfiltered/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Remove the Western tab' })).toBeInTheDocument()
+    })
   })
 
   it('reorders a folder from the arrows under its tile', () => {

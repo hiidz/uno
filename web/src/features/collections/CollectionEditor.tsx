@@ -33,11 +33,10 @@ import {
   DRAFT_ID_PREFIX,
   countErrors,
   folderLabel,
+  folderUnit,
   isDraftCatalogID,
-  hasRef,
   isSameCollection,
   newFolder,
-  newRef,
   previewFromForm,
   removedFolders,
   toCollectionPayload,
@@ -51,11 +50,16 @@ import {
   catalogsOf,
   errorRoleLabels,
   nestedCatalogForm,
+  catalogOrder,
+  dragItemName,
+  withCatalogAdded,
+  withCatalogMoved,
+  withCatalogOrder,
   withFolderUpdate,
-  withGenreRef,
-  withoutUnfilteredRef,
-  withRefCatalog,
-  withRefGenre,
+  withGenreAdded,
+  withGenreOrder,
+  withoutCatalog,
+  withoutRef,
   withRefs,
 } from './folderEdits'
 import { NestedCatalogEditor } from './NestedCatalogEditor'
@@ -314,7 +318,7 @@ export function CollectionEditor({
 
   /** Applies the nested editor's save locally and writes nothing: the
    *  catalog (only ever a scoped one — a listed ref has no quiet Edit here,
-   *  see `RefRow.tsx`) is replaced in `localCatalogs` so every folder
+   *  see `CatalogRow.tsx`) is replaced in `localCatalogs` so every folder
    *  shows the change. A draft needs nothing more, since this collection's
    *  own Save resolves it into an inline `new` spec (`toCollectionPayload`);
    *  a real row also gets a pending edit in the form (`withCatalogEdit`),
@@ -384,43 +388,37 @@ export function CollectionEditor({
     )
   }
 
-  function reorderRefs(folderKey: string, orderedKeys: string[]) {
-    patchRefs(folderKey, (refs) => orderByKeys(refs, orderedKeys, (ref) => ref.key))
+  function reorderCatalogs(folderKey: string, catalogIDs: string[]) {
+    patchRefs(folderKey, (refs) => withCatalogOrder(refs, catalogIDs))
   }
 
-  /** Adds an unfiltered ref to `catalogID`. Guarded as well as filtered out of
-   *  the picker: a second unfiltered ref to one catalog repeats the
-   *  (catalog, genre) pair `folder_catalogs`' primary key forbids. */
+  /** Adds an unfiltered ref to `catalogID`, unless the folder already holds
+   *  that catalog under any genre — the picker shows it ticked then. */
   function addRef(folderKey: string, catalogID: string) {
-    patchFolders((folders) =>
-      folders.map((f) =>
-        f.key === folderKey && !hasRef(f, catalogID, '') ? { ...f, refs: [...f.refs, newRef(catalogID)] } : f,
-      ),
-    )
+    patchRefs(folderKey, (refs) => withCatalogAdded(refs, catalogID))
   }
 
-  /** The Add catalogs dropdown's untick: the folder's unfiltered ref to
-   *  `catalogID` out, its genre-narrowed ones kept. */
+  /** The Add catalogs dropdown's untick and a row's Remove from folder:
+   *  every ref to `catalogID` out. */
   function removeCatalog(folderKey: string, catalogID: string) {
-    patchRefs(folderKey, (refs) => withoutUnfilteredRef(refs, catalogID))
+    patchRefs(folderKey, (refs) => withoutCatalog(refs, catalogID))
   }
 
   /** A folder row's Unlink from library: `catalogID` staged as a draft with
    *  its name, type and recipe — a catalog only this collection has, written
-   *  by its Save, as a New one is — and ref `refKey` pointed at it, keeping
-   *  its place and genre. */
-  function unlinkRef(folderKey: string, refKey: string, catalogID: string) {
+   *  by its Save, as a New one is — and every ref to it pointed at the draft,
+   *  each keeping its place and genre. */
+  function unlinkCatalog(folderKey: string, catalogID: string) {
     for (const catalog of catalogsOf([catalogID], mergedOptionByID)) {
       const draft = draftCatalog({ type: catalog.type, name: catalog.name, params: catalog.params, collectionID })
       rememberCatalog(draft)
-      patchRefs(folderKey, (refs) => refs.map((ref) => withRefCatalog(ref, refKey, draft.id)))
+      patchRefs(folderKey, (refs) => withCatalogMoved(refs, catalogID, draft.id))
     }
   }
 
-  /** "Add another genre" on a ref's own row: a second ref to the same catalog,
-   *  under `genre`, directly below it. */
-  function addGenreRef(folderKey: string, refKey: string, genre: string) {
-    patchFolders((folders) => folders.map((f) => withGenreRef(f, folderKey, refKey, genre)))
+  /** A genre ticked under a catalog's line: one more tab of it. */
+  function addGenre(folderKey: string, catalogID: string, genre: string) {
+    patchRefs(folderKey, (refs) => withGenreAdded(refs, catalogID, genre))
   }
 
   function patchRefs(folderKey: string, update: (refs: FolderRefState[]) => FolderRefState[]) {
@@ -428,17 +426,15 @@ export function CollectionEditor({
   }
 
   function removeRef(folderKey: string, refKey: string) {
-    patchRefs(folderKey, (refs) => refs.filter((ref) => ref.key !== refKey))
+    patchRefs(folderKey, (refs) => withoutRef(refs, refKey))
   }
 
-  function setRefGenre(folderKey: string, refKey: string, genre: string) {
-    patchRefs(folderKey, (refs) => refs.map((ref) => withRefGenre(ref, refKey, genre)))
+  function reorderGenres(folderKey: string, catalogID: string, refKeys: string[]) {
+    patchRefs(folderKey, (refs) => withGenreOrder(refs, catalogID, refKeys))
   }
 
-  function moveRef(folderKey: string, refKey: string, direction: -1 | 1) {
-    patchRefs(folderKey, (refs) =>
-      orderByKeys(refs, moveByOne(refs.map((ref) => ref.key), refKey, direction), (ref) => ref.key),
-    )
+  function moveCatalog(folderKey: string, catalogID: string, direction: -1 | 1) {
+    patchRefs(folderKey, (refs) => withCatalogOrder(refs, moveByOne(catalogOrder(refs), catalogID, direction)))
   }
 
   /** A new, untitled folder at the end, selected so its panel opens. */
@@ -576,13 +572,8 @@ export function CollectionEditor({
                   const folder = state.folders[index]
                   return folder ? folderLabel(folder, index) : 'this folder'
                 }}
-                refName={(refKey) => {
-                  const ref = state.folders.flatMap((f) => f.refs).find((r) => r.key === refKey)
-                  const name = (ref && mergedOptionByID.get(ref.catalogID)?.name) ?? 'this catalog'
-                  return ref?.genre ? `${name}, ${ref.genre}` : name
-                }}
+                itemName={(id) => dragItemName(state.folders, mergedOptionByID, id)}
                 onReorderFolders={reorderFolders}
-                onReorderRefs={reorderRefs}
               >
                 <FolderTiles
                   folders={state.folders}
@@ -600,17 +591,19 @@ export function CollectionEditor({
                   errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
                   options={options}
                   optionByID={mergedOptionByID}
+                  unit={folderUnit(state.viewMode)}
                   usedInFolders={usedInFolders}
                   onChange={(update) => patchFolder(selectedFolder.key, update)}
                   onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
                   onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
                   onRemoveCatalog={(catalogID) => removeCatalog(selectedFolder.key, catalogID)}
                   onCopyToLibrary={onCopyToLibrary}
-                  onUnlinkRef={(refKey, catalogID) => unlinkRef(selectedFolder.key, refKey, catalogID)}
+                  onUnlinkCatalog={(catalogID) => unlinkCatalog(selectedFolder.key, catalogID)}
+                  onReorderCatalogs={(catalogIDs) => reorderCatalogs(selectedFolder.key, catalogIDs)}
+                  onMoveCatalog={(catalogID, direction) => moveCatalog(selectedFolder.key, catalogID, direction)}
+                  onAddGenre={(catalogID, genre) => addGenre(selectedFolder.key, catalogID, genre)}
                   onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
-                  onSetRefGenre={(refKey, genre) => setRefGenre(selectedFolder.key, refKey, genre)}
-                  onAddGenreRef={(refKey, genre) => addGenreRef(selectedFolder.key, refKey, genre)}
-                  onMoveRef={(refKey, direction) => moveRef(selectedFolder.key, refKey, direction)}
+                  onReorderGenres={(catalogID, refKeys) => reorderGenres(selectedFolder.key, catalogID, refKeys)}
                   onEditRef={editRef}
                   onAddNewInCollection={(name) => startNewInCollection(selectedFolder.key, name)}
                 />
@@ -624,7 +617,7 @@ export function CollectionEditor({
         </div>
       </div>
 
-      {/* Only ever a scoped catalog, real or draft — `RefRow` has no quiet
+      {/* Only ever a scoped catalog, real or draft — `CatalogRow` has no quiet
           Edit for a listed one — and every scoped catalog this editor knows
           about is already in `localCatalogs` (seeded from `initialCatalogs`,
           grown by copy/new-in-collection), so there is no library fallback. */}

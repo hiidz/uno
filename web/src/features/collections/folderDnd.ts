@@ -1,14 +1,18 @@
 import { closestCenter, type CollisionDetection } from '@dnd-kit/core'
+import { reorder } from '@/lib/order'
 
 /**
  * How the collection editor's one `DndContext` tells its lists apart. Folder
- * tiles reorder among themselves, and each folder's catalog refs among
- * themselves. Nesting a second `DndContext` inside the first does not isolate
- * them — the outer context still sees the inner drags — so every sortable
+ * tiles reorder among themselves, each folder's catalogs among themselves,
+ * and each catalog's genres among themselves. Nesting a second `DndContext`
+ * inside the first does not isolate them — the outer context still sees the
+ * inner drags — so every sortable
  * declares which list it belongs to via dnd-kit's `data`, and
  * `FolderTreeDnd`'s `onDragEnd` reorders only when the dragged item and the one
  * it was dropped on agree. A ref dragged out of its folder is a no-op rather
- * than a mis-drop.
+ * than a mis-drop. A folder's catalogs and a catalog's genres carry their own
+ * `reorder` in that data (`ReorderableData`), so `onDragEnd` hands the new
+ * order straight back to the list it came from.
  */
 
 export const FOLDERS = '__folders__'
@@ -42,9 +46,35 @@ export const withinContainer: CollisionDetection = (args) => {
   })
 }
 
-/** A ref's drag id, from its form `key` rather than its catalog id: one
- *  catalog can be two refs in a folder, under two genres. Prefixed with the
- *  folder key so `onDragEnd` can recover which list it belongs to. */
-export function refDragID(folderKey: string, refKey: string): string {
-  return `${folderKey}::${refKey}`
+/** An item's drag id: its `id` in list `container`, prefixed with the
+ *  container so ids stay unique across the one `DndContext` and `onDragEnd`
+ *  can strip the prefix again. A folder's catalogs sort by catalog id (each
+ *  catalog is one line), and one catalog's genres by ref `key`, because one
+ *  catalog can be several refs in a folder. */
+export function dragID(container: string, id: string): string {
+  return `${container}::${id}`
+}
+
+/** The list one catalog's genres sort in: its own, inside the folder's. */
+export function genreContainer(folderKey: string, catalogID: string): string {
+  return `${folderKey}/${catalogID}`
+}
+
+/** What a sortable in a folder's lists carries besides its container: the
+ *  list's ids in order, and where the reordered ids go. */
+export interface ReorderableData extends SortableData {
+  ids: string[]
+  reorder(orderedIDs: string[]): void
+}
+
+/** A drop of `activeID` over `overID` in `data`'s list, handed to its
+ *  `reorder`. */
+export function reorderDropped(data: ReorderableData, activeID: string, overID: string): void {
+  const prefix = data.container.length + 2
+  const ordered = reorder(
+    data.ids.map((id) => dragID(data.container, id)),
+    activeID,
+    overID,
+  )
+  data.reorder(ordered.map((id) => id.slice(prefix)))
 }

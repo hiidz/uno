@@ -5,9 +5,17 @@ import type { TileShape } from '@/api'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { CatalogRefPicker } from './CatalogRefPicker'
-import { TILE_SHAPES, folderLabel, type FolderErrors, type FolderFormState } from './collectionForm'
-import { refDragID } from './folderDnd'
-import { RefRow } from './RefRow'
+import { CatalogRow } from './CatalogRow'
+import {
+  TILE_SHAPES,
+  folderLabel,
+  refGroups,
+  type FolderErrors,
+  type FolderFormState,
+  type FolderUnit,
+} from './collectionForm'
+import { dragID } from './folderDnd'
+import { catalogOrder } from './folderEdits'
 import type { RefOption } from './refs'
 import type { CopyToLibrary } from './useCopyToLibrary'
 
@@ -262,107 +270,91 @@ interface FolderCatalogsProps {
    *  never appear in `options` (only listed ones are linkable), but they do
    *  need to render once referenced. */
   optionByID: ReadonlyMap<string, RefOption>
+  /** What one folder entry is in Nuvio, by the collection's view mode. */
+  unit: FolderUnit
   /** How many folders across every owned collection reference a catalog —
    *  only meaningful for a listed catalog, so the row asks with its own id. */
-  usedInFolders: (catalogID: string) => number
-  onAddRef: (catalogID: string) => void
-  /** The dropdown's untick: the folder's unfiltered ref to `catalogID` out. */
-  onRemoveCatalog: (catalogID: string) => void
+  usedInFolders(catalogID: string): number
+  /** An unfiltered ref to `catalogID`, at the end of the folder. */
+  onAddRef(catalogID: string): void
+  /** Every ref to `catalogID` out: the dropdown's untick and a row's
+   *  Remove from folder. */
+  onRemoveCatalog(catalogID: string): void
   /** A folder row's Copy into library. */
   onCopyToLibrary: CopyToLibrary
-  /** A folder row's Unlink from library: ref `refKey` moved to a catalog of
-   *  its own, made from `catalogID`, which only this collection has. */
-  onUnlinkRef: (refKey: string, catalogID: string) => void
-  onRemoveRef: (refKey: string) => void
-  /** `''` clears the ref's genre back to unfiltered. */
-  onSetRefGenre: (refKey: string, genre: string) => void
-  /** "Add another genre": a second ref to this ref's catalog, under `genre`. */
-  onAddGenreRef: (refKey: string, genre: string) => void
-  onMoveRef: (refKey: string, direction: -1 | 1) => void
-  onEditRef: (catalogID: string) => void
+  /** A folder row's Unlink from library: every ref to `catalogID` moved to a
+   *  catalog of its own, made from it, which only this collection has. */
+  onUnlinkCatalog(catalogID: string): void
+  onReorderCatalogs(catalogIDs: string[]): void
+  onMoveCatalog(catalogID: string, direction: -1 | 1): void
+  /** A genre ticked or a chip's removal under a catalog's line. */
+  onAddGenre(catalogID: string, genre: string): void
+  onRemoveRef(refKey: string): void
+  onReorderGenres(catalogID: string, refKeys: string[]): void
+  onEditRef(catalogID: string): void
   /** `name` pre-fills the naming dialog — the search that found no catalog. */
-  onAddNewInCollection: (name?: string) => void
+  onAddNewInCollection(name?: string): void
 }
 
 /** The folder's catalog list: its head with Add catalogs (which holds New),
- *  and the ordered refs. */
-function FolderCatalogs({
-  folder,
-  errors,
-  options,
-  optionByID,
-  usedInFolders,
-  onAddRef,
-  onRemoveCatalog,
-  onCopyToLibrary,
-  onUnlinkRef,
-  onRemoveRef,
-  onSetRefGenre,
-  onAddGenreRef,
-  onMoveRef,
-  onEditRef,
-  onAddNewInCollection,
-}: FolderCatalogsProps) {
-  // The picker adds and removes unfiltered refs, so it ticks a catalog that
-  // already has one here — a second would repeat the (catalog, genre) pair. A
-  // catalog whose refs here are all narrowed to a genre shows unticked. Memoised
-  // because it's the picker's `useMemo` dependency — a fresh Set every render
-  // would re-filter the whole catalog list on every keystroke in the folder.
-  const unfilteredInFolder = useMemo(
-    () => new Set(folder.refs.filter((ref) => ref.genre === '').map((ref) => ref.catalogID)),
-    [folder.refs],
-  )
-  const refKeys = useMemo(() => folder.refs.map((ref) => ref.key), [folder.refs])
+ *  and one line per catalog, its genres under it. */
+function FolderCatalogs({ folder, errors, options, optionByID, unit, ...actions }: FolderCatalogsProps) {
+  // A catalog is ticked in the picker when the folder holds it under any
+  // genre. Memoised because it's the picker's `useMemo` dependency — a fresh
+  // Set every render would re-filter the whole catalog list on every
+  // keystroke in the folder.
+  const inFolder = useMemo(() => new Set(catalogOrder(folder.refs)), [folder.refs])
+  const groups = useMemo(() => refGroups(folder.refs), [folder.refs])
+  const catalogIDs = useMemo(() => catalogOrder(folder.refs), [folder.refs])
 
   return (
     <>
       <div className="setting is-head">
         <span className="setting-label type-label">
-          Catalogs <span className="text-dimmer tabular-nums">{folder.refs.length}</span>
+          Catalogs <span className="text-dimmer tabular-nums">{groups.length}</span>
         </span>
         <div className="setting-value flex flex-wrap items-center justify-end gap-2">
           <CatalogRefPicker
             options={options}
-            inFolder={unfilteredInFolder}
-            onAdd={onAddRef}
-            onRemove={onRemoveCatalog}
-            onNew={onAddNewInCollection}
+            inFolder={inFolder}
+            onAdd={actions.onAddRef}
+            onRemove={actions.onRemoveCatalog}
+            onNew={actions.onAddNewInCollection}
           />
         </div>
       </div>
 
       {errors?.catalogIDs && <FieldError>{errors.catalogIDs}</FieldError>}
 
-      {folder.refs.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="py-3">
           <p className="ed-note m-0">Empty folder — add a catalog.</p>
         </div>
       ) : (
         <SortableContext
-          items={refKeys.map((key) => refDragID(folder.key, key))}
+          items={catalogIDs.map((id) => dragID(folder.key, id))}
           strategy={verticalListSortingStrategy}
         >
           <ul className="m-0 flex list-none flex-col p-0">
-            {folder.refs.map((ref, index) => (
-              <RefRow
-                key={ref.key}
+            {groups.map((group, index) => (
+              <CatalogRow
+                key={group.catalogID}
                 folderKey={folder.key}
-                refState={ref}
-                refKeys={refKeys}
-                siblingGenres={folder.refs
-                  .filter((other) => other.key !== ref.key && other.catalogID === ref.catalogID)
-                  .map((other) => other.genre)}
+                group={group}
+                catalogIDs={catalogIDs}
                 position={index}
-                total={folder.refs.length}
-                option={optionByID.get(ref.catalogID)}
-                usedInFolders={usedInFolders}
-                onGenreChange={(genre) => onSetRefGenre(ref.key, genre)}
-                onAddGenre={(genre) => onAddGenreRef(ref.key, genre)}
-                onRemove={() => onRemoveRef(ref.key)}
-                onMove={(direction) => onMoveRef(ref.key, direction)}
-                onEdit={() => onEditRef(ref.catalogID)}
-                onCopyToLibrary={onCopyToLibrary}
-                onUnlink={() => onUnlinkRef(ref.key, ref.catalogID)}
+                option={optionByID.get(group.catalogID)}
+                unit={unit}
+                usedInFolders={actions.usedInFolders}
+                onReorder={actions.onReorderCatalogs}
+                onAddGenre={(genre) => actions.onAddGenre(group.catalogID, genre)}
+                onRemoveRef={actions.onRemoveRef}
+                onReorderGenres={(refKeys) => actions.onReorderGenres(group.catalogID, refKeys)}
+                onMove={(direction) => actions.onMoveCatalog(group.catalogID, direction)}
+                onRemove={() => actions.onRemoveCatalog(group.catalogID)}
+                onEdit={() => actions.onEditRef(group.catalogID)}
+                onCopyToLibrary={actions.onCopyToLibrary}
+                onUnlink={() => actions.onUnlinkCatalog(group.catalogID)}
               />
             ))}
           </ul>

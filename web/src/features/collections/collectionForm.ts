@@ -163,10 +163,10 @@ export function newRef(catalogID: string, genre = ''): FolderRefState {
   return { key: `r${refKeySeq}`, catalogID, genre }
 }
 
-/** True when `folder` already holds `catalogID` under `genre` — the pair the
+/** True when `refs` already hold `catalogID` under `genre` — the pair the
  *  primary key forbids repeating. */
-export function hasRef(folder: FolderFormState, catalogID: string, genre: string): boolean {
-  return folder.refs.some((ref) => ref.catalogID === catalogID && ref.genre === genre)
+export function hasRef(refs: FolderRefState[], catalogID: string, genre: string): boolean {
+  return refs.some((ref) => ref.catalogID === catalogID && ref.genre === genre)
 }
 
 /** The two focus flags start on: Nuvio reads an absent flag as on, and the
@@ -238,7 +238,7 @@ export function formFromCollection(collection: Collection): CollectionFormState 
     showAllTab: collection.show_all_tab,
     backdropImageURL: collection.backdrop_image_url,
     focusGlowEnabled: collection.focus_glow_enabled,
-    folders: (collection.folders ?? []).map(folderFromWire),
+    folders: (collection.folders ?? []).map(groupedFolderFromWire),
     catalogEdits: {},
   }
 }
@@ -330,8 +330,8 @@ export function validateCollectionForm(
     )
     // The same catalog under the same genre twice breaks
     // `PRIMARY KEY (folder_id, catalog_id, genre)`; `CollectionForm.Validate`
-    // rejects it as a 400. The picker and "Add another genre" never produce
-    // one, but switching a ref's genre to one its twin already has does.
+    // rejects it as a 400. The picker and a catalog's genre dropdown never
+    // produce one, so this backstops the server's check.
     const repeated = folder.refs.filter((ref, i) =>
       folder.refs.some((other, j) => j < i && other.catalogID === ref.catalogID && other.genre === ref.genre),
     )
@@ -506,4 +506,54 @@ export function previewFromForm(
     // The form is the description, so there is always something to draw.
     missing: false,
   }
+}
+
+/** What one folder entry is in Nuvio, by the collection's view mode: a tab in
+ *  a tabbed folder page (`FOLLOW_LAYOUT` is drawn as tabs too), a row in a
+ *  `ROWS` one. */
+export type FolderUnit = 'tab' | 'row'
+
+export function folderUnit(viewMode: ViewMode): FolderUnit {
+  if (viewMode === 'ROWS') return 'row'
+  return 'tab'
+}
+
+/** One catalog's refs in a folder, in their order: the folder editor's line
+ *  for that catalog, one Nuvio tab or row per ref. */
+export interface RefGroup {
+  catalogID: string
+  refs: FolderRefState[]
+}
+
+/** `refs` gathered per catalog, each catalog where it first appears. */
+export function refGroups(refs: FolderRefState[]): RefGroup[] {
+  const groups = new Map<string, RefGroup>()
+  for (const ref of refs) {
+    const group = groups.get(ref.catalogID)
+    if (group) group.refs.push(ref)
+    else groups.set(ref.catalogID, { catalogID: ref.catalogID, refs: [ref] })
+  }
+  return [...groups.values()]
+}
+
+/** `groups` back to one ordered ref list. */
+export function flatRefs(groups: RefGroup[]): FolderRefState[] {
+  const refs: FolderRefState[] = []
+  for (const group of groups) refs.push(...group.refs)
+  return refs
+}
+
+/** `refs` with each catalog's refs side by side, where that catalog first
+ *  appears. A folder loads this way, and every edit keeps it so, because the
+ *  editor draws a catalog once with its genres under it. */
+export function groupedByCatalog(refs: FolderRefState[]): FolderRefState[] {
+  return flatRefs(refGroups(refs))
+}
+
+/** A saved folder as the editor holds it: each catalog's refs side by side,
+ *  where that catalog first appears, so a folder saved interleaved is drawn
+ *  as one line per catalog and stored grouped by the next Save. */
+function groupedFolderFromWire(folder: Folder): FolderFormState {
+  const form = folderFromWire(folder)
+  return { ...form, refs: groupedByCatalog(form.refs) }
 }

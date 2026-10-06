@@ -20,9 +20,9 @@ const NOTHING: ReadonlySet<string> = new Set()
  * linked: a folder row's own menu is where it becomes one only this
  * collection has (Unlink from library).
  *
- * The ticks track the folder's *unfiltered* refs only, the kind this adds: a
- * catalog that is here only narrowed to a genre shows unticked, and ticking
- * it adds the unfiltered row beside those.
+ * A tick is the catalog, under any genre: a catalog split by genre shows
+ * ticked, and unticking it takes every genre of it out. Ticking adds it
+ * unsplit, one unfiltered ref; its genres are its folder row's to change.
  *
  * New catalog names a new catalog for this folder; when the search matches
  * nothing, it carries the query as the name.
@@ -35,11 +35,11 @@ export function CatalogRefPicker({
   onNew,
 }: {
   options: RefOption[]
-  /** Ids this folder already holds unfiltered: the ticked ones. */
+  /** Ids this folder already holds, under any genre: the ticked ones. */
   inFolder: ReadonlySet<string>
   /** An unfiltered ref to `catalogID`, at the end of the folder. */
   onAdd(catalogID: string): void
-  /** The folder's unfiltered ref to `catalogID` taken out. */
+  /** Every ref to `catalogID` taken out of the folder. */
   onRemove(catalogID: string): void
   /** A new catalog, named `name`, in this folder. */
   onNew(name: string): void

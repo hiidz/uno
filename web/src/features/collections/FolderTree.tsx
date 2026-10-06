@@ -10,7 +10,7 @@ import { TILE_ASPECT } from '@/features/preview/tiles'
 import { reorder } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
 import { folderLabel, type FolderFormState } from './collectionForm'
-import { FOLDERS, containerOf, refDragID, withinContainer, type SortableData } from './folderDnd'
+import { FOLDERS, containerOf, reorderDropped, withinContainer, type ReorderableData, type SortableData } from './folderDnd'
 
 /**
  * The folder tree's drag behaviour and the folder tile strip — DESIGN.md's
@@ -29,13 +29,13 @@ import { FOLDERS, containerOf, refDragID, withinContainer, type SortableData } f
  */
 function buildAnnouncements(
   folderName: (folderKey: string) => string,
-  refName: (refKey: string) => string,
+  itemName: (id: string) => string,
 ): Announcements {
   function describe(id: string | number): string {
     const raw = String(id)
     const separator = raw.indexOf('::')
     if (separator === -1) return `folder “${folderName(raw)}”`
-    return `catalog “${refName(raw.slice(separator + 2))}”`
+    return `catalog “${itemName(raw.slice(separator + 2))}”`
   }
   return {
     onDragStart: ({ active }) => `Picked up ${describe(active.id)}.`,
@@ -54,25 +54,24 @@ function buildAnnouncements(
 export function FolderTreeDnd({
   folderKeys,
   folderName,
-  refName,
+  itemName,
   onReorderFolders,
-  onReorderRefs,
   children,
 }: {
   folderKeys: string[]
   /** Looks up a folder's display name from its `key` — used only to word the
    *  drag-and-drop live-region announcements. */
   folderName: (folderKey: string) => string
-  /** Looks up a catalog ref's display name from its `key` — same. */
-  refName: (refKey: string) => string
+  /** Looks up a folder catalog's display name from its catalog id, or one
+   *  of its genres' from the ref `key` — same. */
+  itemName: (id: string) => string
   onReorderFolders: (orderedKeys: string[]) => void
-  onReorderRefs: (folderKey: string, orderedRefKeys: string[]) => void
   children: ReactNode
 }) {
   const sensors = useDragSensors()
   const announcements = useMemo(
-    () => buildAnnouncements(folderName, refName),
-    [folderName, refName],
+    () => buildAnnouncements(folderName, itemName),
+    [folderName, itemName],
   )
 
   function handleDragEnd(event: DragEndEvent) {
@@ -91,14 +90,7 @@ export function FolderTreeDnd({
       return
     }
 
-    const ids = (active.data.current as (SortableData & { ids: string[] }) | undefined)?.ids
-    if (!ids) return
-    const ordered = reorder(
-      ids.map((id) => refDragID(container, id)),
-      activeID,
-      overID,
-    ).map((dragID) => dragID.slice(container.length + 2))
-    onReorderRefs(container, ordered)
+    reorderDropped(active.data.current as ReorderableData, activeID, overID)
   }
 
   return (

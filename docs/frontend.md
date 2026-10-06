@@ -792,13 +792,15 @@ button.
 - **A catalog can be in one folder more than once, never twice under the same genre.** The
   (catalog, genre) pair is `folder_catalogs`' primary key. Form refs are
   `FolderRefState {key, catalogID, genre}`, and every per-ref action, drag id and React key uses
-  the session-local `key`, because neither the catalog id nor the pair stays put while the genre
-  is being edited. The picker adds an unfiltered ref, so it omits a catalog that already has one
-  here (`addRef` guards too). A row's ⋯ "Add another genre" inserts a second ref to the same
-  catalog directly below it, under the first genre option not already taken. The row's genre
-  select leaves out genres its siblings on the same catalog already use. The validator's
-  "same catalog with the same genre twice" backstops all of that, mirroring
-  `CollectionForm.Validate`.
+  the session-local `key`, because the catalog id is shared by every genre of one catalog and
+  changes on Unlink. **A catalog's refs always sit side by side.** `folderFromWire` gathers them
+  where the catalog first appears (`groupedByCatalog`), so a folder saved interleaved is stored
+  grouped by the next Save, and every edit keeps them so (`folderEdits.ts`: `withCatalogOrder`,
+  `withGenreOrder`, `withGenreAdded` after the catalog's last). The editor draws one line per
+  catalog (`refGroups`) and each ref as a genre chip under it. The picker adds an unfiltered ref
+  only to a catalog the folder doesn't hold (`addRef` guards too), the genre dropdown adds only a
+  genre not already ticked, and the validator's "same catalog with the same genre twice"
+  backstops both, mirroring `CollectionForm.Validate`.
 - **Removing a folder is a standing warning, not a confirm.** Omitting a folder from the payload
   deletes it server-side and cascades its refs — but nothing commits until Save, so
   `removedFolders(initial, current)` names exactly which folders the next save would destroy,
@@ -859,10 +861,10 @@ button.
   a **+ New catalog** row, a rule, then a checkbox row (name, kind at the right) for every
   library catalog the search matches (`.checkbox`, rows 44px under `pointer: coarse`). A tick is
   the folder itself, not a pending choice: a row is ticked while the folder holds that catalog
-  unfiltered, ticking one appends an unfiltered ref at once, unticking removes that ref (its
-  genre-narrowed refs stay), and the dropdown stays open for the next. Nothing reaches the server
+  under any genre, ticking one appends an unfiltered ref at once, unticking removes every ref to
+  it, and the dropdown stays open for the next. Nothing reaches the server
   before the collection's Save, so there is no Add, Cancel or toast; Escape or an outside click
-  only closes it. A catalog held here only narrowed to a genre shows unticked. New catalog opens
+  only closes it. New catalog opens
   the naming dialog. On touch the popover skips its own focus on the search (`onOpenAutoFocus`,
   `hasFinePointer` in `lib/pointer.ts`), so a phone opens on the list, not under its keyboard. A
   search that matches nothing turns the row into "New catalog “query”", which opens the naming
@@ -918,9 +920,10 @@ button.
   (real or draft) this editor can open here is already in it by construction, so there is no
   library fallback to reach for.
 - **A catalog row shows one inline action — Edit for a scoped catalog, Remove for an unavailable
-  one, nothing for a listed one — everything else is behind "⋯"**: "Add another genre" (disabled
-  until the genre options land, or once every one is taken), Move up/down, **Copy into library**
-  for a scoped catalog alone, and "Remove from folder". Copy into library (`useCopyToLibrary`,
+  one, nothing for a listed one — everything else is behind "⋯"**: Move up/down, **Copy into
+  library** for a scoped catalog alone, **Unlink from library** for a listed one, and "Remove from
+  folder". Each acts on the whole catalog, every genre of it: Unlink points every ref to the one
+  draft it stages. Copy into library (`useCopyToLibrary`,
   `Workspace`'s `copyToLibrary`) creates a listed catalog at once, through the catalog create
   mutation, from the catalog as this editor holds it — a staged edit or a draft included — and
   says "Copied into your library", or why it couldn't, in a `Toast` beside the row's ⋯. It doesn't
@@ -928,16 +931,24 @@ button.
   reorders by pointer,
   touch and keyboard (`useDragSensors`' `KeyboardSensor`), so the menu's moves are the fallback,
   and the name keeps the row's width at phone size.
-- **Each catalog row names its catalog with its kind sticker (Movies, Series) after it, and has a
-  genre select under its recipe line** (`RefGenrePicker`, labelled Genre), narrowing that
-  one reference: "All genres", or "Only Western" and so on. Its options come from
-  `POST /api/catalogs/genre-options` for the catalog's own recipe, not the whole TMDB list, so
-  every choice actually narrows the row. It is keyed on the recipe, so editing a scoped catalog's
-  filters in the nested editor refreshes them. A stored genre that the recipe no longer allows is
-  kept, labelled "(no longer applies)", with a danger note saying Nuvio shows that row
-  unfiltered. The genre lives on the ref, so removing a ref takes its genre with it.
-  The options query lives in `RefRow` (`useGenreOptions`), so the picker and "Add another
-  genre" share one list. The Preview panel and Home's folder pages fetch each source's
+- **Each catalog row names its catalog with its kind sticker (Movies, Series) after it, then
+  splits it by genre under its recipe line** (`GenreSplit.tsx`). One catalog makes one Nuvio tab
+  per ref, each filtered by its genre, with no second catalog — what other addons do with a copy
+  per genre. Unsplit (one ref, no genre filter) the row shows only a "Split by genre" link. Split,
+  it shows "N tabs" after the name, a "Split by genre · one tab per genre" line, a chip per ref in
+  tab order ("No genre filter" for the unfiltered one), draggable by pointer, touch and keyboard
+  in their own sortable list (`genreContainer`), each with × to remove it, then a dashed "Genre"
+  chip. The link and "Genre" open one dropdown (a Radix `Popover`) of ticks: "No genre filter",
+  then the recipe's genre options. A tick is a ref, added after the catalog's last or removed at
+  once; the last tick is disabled, since a catalog leaves the folder whole (⋯ or the picker). The
+  dropdown's open state lives in `GenreSplit`, so the first tick, which turns the link into
+  chips, leaves it open. The word is the collection's view mode (`folderUnit`): "row" for
+  `ROWS`, "tab" otherwise — not "All", which a tabbed folder's `show_all_tab` already means.
+  Options come from `POST /api/catalogs/genre-options` for the catalog's own recipe, not the
+  whole TMDB list, so every tick actually narrows the tab; the query is keyed on the recipe, so
+  editing a scoped catalog's filters in the nested editor refreshes them. A stored genre that the
+  recipe no longer allows is kept, its chip and tick in danger red ("no longer applies"), with a
+  note saying Nuvio shows that tab unfiltered. The Preview panel and Home's folder pages fetch each source's
   tiles with its genre (`queryKeys.catalogPreview` includes it), so they show the filtered row
   Nuvio will.
 - **A folder page names each source the way Nuvio does**, as a tab and as a row title alike:
