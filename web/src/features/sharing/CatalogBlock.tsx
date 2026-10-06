@@ -5,14 +5,27 @@ import { Icon } from '@/components/Icon'
 import { foldedLine, openFacts, recipeFacts, type FoldedLine, type RecipeFact } from '@/features/library/recipe'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { useRecipeNames } from '@/features/library/useRecipeNames'
+import { factKey } from './changeWords'
+import { MarkLine } from './MarkViews'
+import {
+  markFocus,
+  markID,
+  markWords,
+  NAMES_PENDING,
+  OpenTile,
+  GoneTiles,
+  SetTile,
+  startsOpen,
+  TILE,
+  useMarkedChanges,
+} from './MarkedTiles'
+import type { BlockMark, FactChange } from './updateMarks'
 
 /** The genre lookup for a catalog's own kind: movie and tv ids differ. */
 function lookupFor(catalog: Catalog, genres: GenreLookups) {
   return catalog.type === 'movie' ? genres.movie : genres.tv
 }
 
-/** What a list shows in a tile's value until its names have answered. */
-const NAMES_PENDING = '…'
 
 /** The facts that list things — genres and named entities — and so run long:
  *  each takes a row of its own. */
@@ -59,7 +72,6 @@ function useFacts(
   return narrowedTo ? [...facts, { label: 'Narrowed to', value: narrowedTo }] : facts
 }
 
-const TILE = 'flex min-w-0 flex-col gap-1 rounded-[10px] px-3 py-2.5'
 
 /** One tile's classes: flat on the ground, or in a folder card a ground well,
  *  and for a list a row of its own. */
@@ -73,28 +85,27 @@ function tileClass(label: string, inFolder: boolean): string {
  *  row each. Open on its own they sit flat on the ground; a folded block's,
  *  inside a folder card, step down to ground wells. After them come the
  *  filters the recipe leaves `open`, outlined and unfilled, in dimmer type. */
-function FactTiles({ facts, open, inFolder }: { facts: RecipeFact[]; open: RecipeFact[]; inFolder: boolean }) {
+function FactTiles({ facts, open, inFolder, changes }: FactTilesProps) {
   return (
     <dl className="m-0 grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
       {facts.map((fact) => (
-        <div key={fact.label} className={tileClass(fact.label, inFolder)}>
-          <dt className="text-dim text-[12px] font-semibold">{fact.label}</dt>
-          <FactValue value={fact.value} />
-        </div>
+        <SetTile key={fact.label} fact={fact} className={tileClass(fact.label, inFolder)} change={changes.get(factKey(fact.label))} />
       ))}
       {open.map((fact) => (
-        <div key={fact.label} className={`${TILE} shadow-[inset_0_0_0_1px_var(--uno-line)]`}>
-          <dt className="text-dimmer text-[12px] font-semibold">{fact.label}</dt>
-          <dd className="text-dimmer m-0 text-[15px] font-semibold">{fact.value}</dd>
-        </div>
+        <OpenTile key={fact.label} fact={fact} change={changes.get(factKey(fact.label))} />
       ))}
+      <GoneTiles changes={changes} shown={[...facts, ...open]} />
     </dl>
   )
 }
 
-function FactValue({ value }: { value: string }) {
-  const tone = value === NAMES_PENDING ? 'text-dimmer' : ''
-  return <dd className={`m-0 text-[15px] font-bold [overflow-wrap:anywhere] tabular-nums ${tone}`}>{value}</dd>
+interface FactTilesProps {
+  facts: RecipeFact[]
+  open: RecipeFact[]
+  inFolder: boolean
+  /** The filters an update changes, by `factKey`: their tiles are edged in
+   *  the accent with what each was under its value. */
+  changes: ReadonlyMap<string, FactChange>
 }
 
 /**
@@ -111,23 +122,22 @@ function FactValue({ value }: { value: string }) {
  * catalog's name and its recipe line under it, and the header opens it in
  * place to the same tiles; a folded block loads no names.
  */
-export function CatalogBlock({
-  catalog,
-  genres,
-  narrowedTo = '',
-  foldable = false,
-}: {
+export function CatalogBlock({ catalog, genres, narrowedTo = '', foldable = false, mark }: CatalogBlockProps) {
+  return foldable ? (
+    <FoldedBlock catalog={catalog} genres={genres} narrowedTo={narrowedTo} mark={mark} />
+  ) : (
+    <OpenBlock catalog={catalog} genres={genres} mark={mark} />
+  )
+}
+
+interface CatalogBlockProps {
   catalog: Catalog
   genres: GenreLookups
   /** The genre a folder narrows this catalog to, when it does. */
   narrowedTo?: string
   foldable?: boolean
-}) {
-  return foldable ? (
-    <FoldedBlock catalog={catalog} genres={genres} narrowedTo={narrowedTo} />
-  ) : (
-    <OpenBlock catalog={catalog} genres={genres} />
-  )
+  /** What an update waiting on a publication's page does to this catalog. */
+  mark?: BlockMark
 }
 
 /** `facts` with the one-value facts ahead of the lists, so the short tiles
@@ -137,18 +147,25 @@ function shortFactsFirst(facts: RecipeFact[]): RecipeFact[] {
   return [...facts.filter((fact) => !isListFact(fact.label)), ...facts.filter((fact) => isListFact(fact.label))]
 }
 
-function OpenBlock({ catalog, genres }: { catalog: Catalog; genres: GenreLookups }) {
-  const facts = useFacts(catalog, genres, '', { foldable: false, open: true })
-  return <FactTiles facts={shortFactsFirst(facts)} open={openFacts(catalog, facts)} inFolder={false} />
+function OpenBlock({ catalog, genres, mark }: { catalog: Catalog; genres: GenreLookups; mark: BlockMark | undefined }) {
+  const display = { foldable: false, open: true }
+  const facts = useFacts(catalog, genres, '', display)
+  const changes = useMarkedChanges(catalog, mark, genres, display)
+  return (
+    <div id={markID(mark)} tabIndex={markFocus(mark)} className="outline-none">
+      <FactTiles facts={shortFactsFirst(facts)} open={openFacts(catalog, facts)} inFolder={false} changes={changes} />
+    </div>
+  )
 }
 
-function FoldedBlock({ catalog, genres, narrowedTo }: { catalog: Catalog; genres: GenreLookups; narrowedTo: string }) {
-  const [open, setOpen] = useState(false)
+function FoldedBlock({ catalog, genres, narrowedTo, mark }: FoldedBlockProps) {
+  const [open, setOpen] = useState(startsOpen(mark))
   const panelID = useId()
   const facts = useFacts(catalog, genres, narrowedTo, { foldable: true, open })
+  const changes = useMarkedChanges(catalog, mark, genres, { foldable: true, open })
   const toggle = () => setOpen(!open)
   return (
-    <div className="border-line border-t py-2 first:border-t-0">
+    <div id={markID(mark)} tabIndex={markFocus(mark)} className="border-line border-t py-2 outline-none first:border-t-0">
       <FoldHeader
         name={catalog.name}
         line={foldedLine(catalog, lookupFor(catalog, genres))}
@@ -157,8 +174,11 @@ function FoldedBlock({ catalog, genres, narrowedTo }: { catalog: Catalog; genres
         panelID={panelID}
         onToggle={toggle}
       />
+      <div className="pl-[26px]">
+        <MarkLine words={markWords(mark)} />
+      </div>
       <div id={panelID} hidden={!open} className="pt-2 pl-[26px]">
-        {open && <FactTiles facts={shortFactsFirst(facts)} open={openFacts(catalog, facts)} inFolder />}
+        {open && <FactTiles facts={shortFactsFirst(facts)} open={openFacts(catalog, facts)} inFolder changes={changes} />}
       </div>
     </div>
   )
@@ -206,4 +226,11 @@ function FoldedSummary({ line, narrowedTo }: { line: FoldedLine; narrowedTo: str
       {line.more > 0 && <span className="type-data text-dimmer shrink-0">+{line.more}</span>}
     </span>
   )
+}
+
+interface FoldedBlockProps {
+  catalog: Catalog
+  genres: GenreLookups
+  narrowedTo: string
+  mark: BlockMark | undefined
 }

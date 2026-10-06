@@ -106,3 +106,48 @@ describe('CatalogBlock names', () => {
     expect(await screen.findByText('Studio Ghibli or Pixar')).toBeInTheDocument()
   })
 })
+
+describe('CatalogBlock marks', () => {
+  const now = catalog({
+    id: 'm',
+    name: 'Marked',
+    params: JSON.stringify({ with_genres: '28|12', vote_average_gte: 7, sort_by: 'vote_average.desc' }),
+  })
+  const recipe = {
+    op: 'changed' as const,
+    kind: 'catalog' as const,
+    aspect: 'recipe' as const,
+    key: 'm',
+    catalog: { key: 'm', name: 'Marked', type: 'movie' as const, provider: 'tmdb', params: { with_genres: '28|12', vote_average_gte: 7, sort_by: 'vote_average.desc' } },
+    was_catalog: { key: 'm', name: 'Marked', type: 'movie' as const, provider: 'tmdb', params: { with_genres: '28', vote_average_gte: 6, without_keywords: '849' } },
+  }
+  const lookup = { movie: new Map([[28, 'Action'], [12, 'Adventure']]), tv: new Map<number, string>() }
+  const routes = { 'GET /api/keywords/849': { id: 849, name: 'gore' } }
+
+  it('edges each tile an update changes in the accent, with what it was under the value', async () => {
+    renderBlock(routes, { catalog: now, genres: lookup, mark: { words: '', recipe, id: 'update-catalog-m', startOpen: true } })
+    const rating = screen.getByText('Rating', { selector: 'dt' }).parentElement!
+    expect(rating.className).toContain('var(--accent)')
+    expect(rating).toHaveTextContent('was 6.0 or more')
+    expect(screen.getByText('Genres', { selector: 'dt' }).parentElement).toHaveTextContent('added Adventure')
+    expect(screen.getByText('Order', { selector: 'dt' }).parentElement).toHaveTextContent('was Most popular')
+    expect(screen.getByText('Type', { selector: 'dt' }).parentElement!.className).not.toContain('var(--accent)')
+    expect(await screen.findByText('was gore')).toBeInTheDocument()
+    expect(document.getElementById('update-catalog-m')).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('opens a folded block on its marked tiles, with the mark’s words under its name', () => {
+    renderBlock(routes, { catalog: now, genres: lookup, foldable: true, mark: { words: 'filters changed', recipe, id: 'update-catalog-m', startOpen: true } })
+    expect(screen.getByRole('button', { name: /Marked/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('filters changed')).toBeInTheDocument()
+    expect(screen.getByText('Rating', { selector: 'dt' }).parentElement).toHaveTextContent('was 6.0 or more')
+  })
+
+  it('says a mark in words alone where the block holds no changed recipe', () => {
+    renderBlock(routes, { catalog: now, genres: lookup, foldable: true, mark: { words: 'added', recipe: null, id: undefined, startOpen: false } })
+    expect(screen.getByRole('button', { name: /Marked/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText('added')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Marked/ }))
+    expect(screen.getByText('Rating', { selector: 'dt' }).parentElement!.className).not.toContain('var(--accent)')
+  })
+})

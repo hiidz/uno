@@ -597,7 +597,10 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   nothing to conflict with.
 - **What changed** (`snapshot_diff.go`, `snapshot_changes.go`) is one comparison, `diffSnapshots`,
   of two snapshots by snapshot key, returning `SnapshotChange` items (`op` removed, added or
-  changed, a `kind` of collection, folder or catalog, and what changed in `aspect`). It serves
+  changed, a `kind` of collection, folder or catalog, and what changed in `aspect`). Each item
+  carries `key`, the snapshot key of the folder or catalog it is about, and a catalog added to or
+  removed from a folder carries that folder's in `folder_key`, so a reader places it on the folder
+  or catalog it names even when two share a name; a collection's own items carry neither. It serves
   two reads, fetched only when shown, and compares nothing with the push record:
   - `UpdateChanges`: what Update would change in a subscribed copy. The copy as a snapshot under
     its own `sub_key`s (`copyTreeSnapshot`, `copySnapshot`) against the publication's current

@@ -1126,19 +1126,27 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 - **The In this update shelf** (`UpdateChanges` on the Community page, `ChangesBlock` with `shelf`):
   a `raised-hi` card with 16px corners, a step above the folder cards under it, the heading in
   sign lettering in the region's accent and a dim "7 changes" (`changeCount`) at its ends. Its
-  list (`UpdateList`, `groupByFolder` in `updateWords.ts`) reads by folder rather than by kind of
-  change: each folder the update touches under the name the new version gives it, in the new
-  version's folder order (the snapshot's folders, which `PublicationPage` passes in; the
-  collection's own changes first, folders the update drops last), with what happens to the folder
-  dim at its right — `renamed · was 80s`, `new folder · 4 catalogs`, `folder removed · 1 catalog`,
-  `new art`, `new catalog order` — and, ruled off under it, each catalog that changes with
-  `removed`, `added`, `changed` or `renamed · was …` dim at its line's end. A changed catalog
-  with no folder of its own in the comparison sits under the folder the new version holds it in;
-  one published alone sits under no folder. A changed recipe lists each filter whose value differs
-  (`recipeChanges`), the new value bold and the old dim after "was", both recipes read as
-  `recipeFacts` plus `openFacts` so a filter that comes or goes reads against "Any" or "Most
-  popular", and lists named through `useRecipeNames` as the tiles are. No quote marks and no
-  arrows. The first six lines show, then "and N more" (`takeRows`). The
+  content is one line (`UpdateSummary` in `MarkViews.tsx`, over `updateSummary(updateMarks(list),
+  kind)` in `updateMarks.ts`): what the update does, counted — "1 new folder · 2 folders renamed
+  · 1 folder removed · 1 catalog changed · folder order changed", a catalog publication's "renamed,
+  was … · filters changed" — each part with a target a button underlined in the accent that
+  scrolls to its mark and focuses it (smoothly, unless reduced motion is asked for).
+  `updateMarks` places each change by the `key` and `folder_key` the server gives it on what the
+  new version shows; `useUpdateMarks` (`Changes.tsx`) reads the shelf's own query, and
+  `PublicationPage` hands the marks to `CollectionBody`/`CatalogBody` and draws a renamed
+  publication's old name under the meta line (`RenamedFrom`, id `update-renamed`). A folder card
+  (id `update-folder-<key>`) says under its name what the update does to it
+  (`folderMarkWords`), lists at its foot the catalogs it loses (`RemovedCatalogs`), and the
+  folders it removes follow the cards (`RemovedFolders`, id `update-removed`). A catalog block
+  takes a `BlockMark` (`folderEntryMark`, `pageBlockMark`): its words under its line; where the
+  new version first uses a changed catalog (`firstUses`), its id (`update-catalog-<key>`) and,
+  for a changed recipe, an open start and marked tiles; elsewhere "filters changed, see above".
+  The tiles (`MarkedTiles.tsx`: `SetTile`, `OpenTile`, `GoneTiles`) read `useMarkedChanges`:
+  `recipeChanges` over both recipes as `recipeFacts` plus `openFacts`, named through
+  `useRecipeNames` as the tiles are, so a filter that comes or goes reads against "Any". A list
+  fact carries its items, join and region (`FactList`), and `factChangeNote` says a list's change
+  as what it gained and lost, its join and its region, and anything else as "was …". No quote
+  marks and no arrows. The
   queries (`useChanges`) are fetched when shown and never kept (`gcTime: 0`, under
   `['p', i, 'changes', …]`, which no write waits on); a list that is loading or can't load says so
   quietly and never gets in the way of the button, and an empty list shows nothing.

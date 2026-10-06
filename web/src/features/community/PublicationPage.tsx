@@ -1,11 +1,13 @@
 import { useMemo, type ReactNode } from 'react'
-import type { Catalog, Collection, CommunityItem, PublicationDetail, SnapshotFolder } from '@/api'
+import type { Catalog, Collection, CommunityItem, PublicationDetail } from '@/api'
 import { ListState } from '@/components/ListState'
 import type { GenreLookups } from '@/features/library/useLibrary'
-import { UpdateChanges } from '@/features/sharing/Changes'
+import { UpdateChanges, useUpdateMarks } from '@/features/sharing/Changes'
+import { RenamedFrom } from '@/features/sharing/MarkViews'
 import { CatalogBody, CollectionBody } from '@/features/sharing/PublicationBodies'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { snapshotAsCollection, snapshotCatalog } from '@/features/sharing/snapshot'
+import { renamedFrom, type UpdateMarks } from '@/features/sharing/updateMarks'
 import { itemKind } from './communityQuery'
 import { PageActions, type RowActions } from './CommunityRow'
 import { MetaParts } from './MetaParts'
@@ -38,6 +40,7 @@ export function PublicationPage({
   actions: RowActions
 }) {
   const detail = usePublication(profileIndex, item.id)
+  const marks = useUpdateMarks(profileIndex, item)
   const lead = (
     <>
       <div className="flex flex-wrap items-center gap-1.5 sm:hidden">
@@ -46,8 +49,9 @@ export function PublicationPage({
       <p className="type-data text-dim m-0 text-[13px]">
         <MetaParts parts={meta} />
       </p>
+      <RenamedFrom name={renamedName(marks, item.kind)} />
       <PageActions item={item} actions={actions} />
-      <UpdateChanges profileIndex={profileIndex} item={item} folders={foldersOf(detail.data)} genres={genres} />
+      <UpdateChanges profileIndex={profileIndex} item={item} genres={genres} />
       <ListState
         isLoading={detail.isPending}
         error={detail.error as Error | null}
@@ -59,7 +63,12 @@ export function PublicationPage({
       </ListState>
     </>
   )
-  return <PublicationBody kind={item.kind} detail={detail.data} genres={genres} lead={lead} />
+  return <PublicationBody kind={item.kind} detail={detail.data} genres={genres} lead={lead} marks={marks} />
+}
+
+/** What the update renames the publication from; '' while none waits. */
+function renamedName(marks: UpdateMarks | null, kind: CommunityItem['kind']): string {
+  return marks ? renamedFrom(marks, kind) : ''
 }
 
 /** What a publication holds: a collection's folders beside its Preview panel,
@@ -70,20 +79,17 @@ function PublicationBody({
   detail,
   genres,
   lead,
+  marks,
 }: {
   kind: CommunityItem['kind']
   detail: PublicationDetail | undefined
   genres: GenreLookups
   lead: ReactNode
+  marks: UpdateMarks | null
 }) {
   const collection = useMemo(() => collectionOf(detail), [detail])
-  if (kind === 'collection') return <CollectionBody collection={collection} genres={genres} lead={lead} />
-  return <CatalogBody catalog={catalogOf(detail)} genres={genres} lead={lead} />
-}
-
-/** The new version's folders, which order the In this update shelf. */
-function foldersOf(detail: PublicationDetail | undefined): SnapshotFolder[] {
-  return detail?.snapshot.collection?.folders ?? []
+  if (kind === 'collection') return <CollectionBody collection={collection} genres={genres} lead={lead} marks={marks} />
+  return <CatalogBody catalog={catalogOf(detail)} genres={genres} lead={lead} marks={marks} />
 }
 
 function collectionOf(detail: PublicationDetail | undefined): Collection | undefined {

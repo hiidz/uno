@@ -1,29 +1,25 @@
-import type { CommunityItem, SnapshotFolder, SubscriptionState } from '@/api'
+import { useMemo } from 'react'
+import type { CommunityItem, SnapshotChange, SubscriptionState } from '@/api'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
 import { changeCount } from './changeWords'
 import { ChangesBlock } from './ChangeList'
 import { updateWaits } from './sharingState'
-import { UpdateList } from './UpdateList'
+import { UpdateSummary } from './MarkViews'
+import { updateMarks, updateSummary, type UpdateMarks } from './updateMarks'
 import { useChangesSincePublish, useUpdateChanges } from './useChanges'
 
+/** A Community row as the update shelf and its marks read it. */
+type UpdateItem = Pick<CommunityItem, 'id' | 'kind' | 'subscribed' | 'update_available'>
+
 /**
- * The full list of what an Update would change, as a shelf on the Community
- * page of a row this profile added, first in the lead above what the page
- * shows of the new version: by folder, in the order of the new version's
- * `folders` (`UpdateList`). Only while an update waits; nothing otherwise.
+ * What an Update would change, as a shelf on the Community page of a row this
+ * profile added, first in the lead above what the page shows of the new
+ * version: one line, counted ("1 new folder · 2 folders renamed · …"), each
+ * part a link to where the page marks it (`useUpdateMarks`). Only while an
+ * update waits; nothing otherwise.
  */
-export function UpdateChanges({
-  profileIndex,
-  item,
-  folders,
-  genres,
-}: {
-  profileIndex: number
-  item: Pick<CommunityItem, 'id' | 'subscribed' | 'update_available'>
-  folders: readonly SnapshotFolder[]
-  genres: GenreLookups
-}) {
+export function UpdateChanges({ profileIndex, item, genres }: { profileIndex: number; item: UpdateItem; genres: GenreLookups }) {
   const waiting = item.subscribed && item.update_available
   const changes = useUpdateChanges(profileIndex, item.id, waiting)
   if (!waiting) return null
@@ -33,9 +29,22 @@ export function UpdateChanges({
       title="In this update"
       changes={changes}
       genres={genres}
-      renderList={(list) => <UpdateList changes={list} folders={folders} genres={genres} />}
+      renderList={(list) => <UpdateSummary items={updateSummary(updateMarks(list), item.kind)} />}
     />
   )
+}
+
+/** Where an update's changes fall on the new version a page shows, from the
+ *  shelf's own call; null while no update waits or its changes are loading. */
+export function useUpdateMarks(profileIndex: number, item: UpdateItem): UpdateMarks | null {
+  const waiting = item.subscribed && item.update_available
+  const changes = useUpdateChanges(profileIndex, item.id, waiting)
+  return useMemo(() => marksOf(waiting, changes.data), [waiting, changes.data])
+}
+
+function marksOf(waiting: boolean, changes: SnapshotChange[] | undefined): UpdateMarks | null {
+  if (!waiting || !changes) return null
+  return updateMarks(changes)
 }
 
 /** The publication a subscription follows; none for a row that follows nothing. */

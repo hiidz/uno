@@ -51,6 +51,11 @@ const (
 //   - A collection's or a folder's name changed carries its Was. The
 //     folders' order and a collection's settings are one item each, and a
 //     folder's art or the order of its catalogs one item per folder, named.
+//
+// Key is the snapshot key of the folder or catalog an item is about, and
+// FolderKey the key of the folder a catalog is added to or removed from, so
+// a reader can place an item on the folder or catalog it names even when two
+// share a name. A collection's own items have neither.
 type SnapshotChange struct {
 	Op         string         `json:"op"`
 	Kind       string         `json:"kind"`
@@ -59,6 +64,8 @@ type SnapshotChange struct {
 	Was        string         `json:"was,omitempty"`
 	Folder     string         `json:"folder,omitempty"`
 	Genre      string         `json:"genre,omitempty"`
+	Key        string         `json:"key,omitempty"`
+	FolderKey  string         `json:"folder_key,omitempty"`
 	Catalog    *BundleCatalog `json:"catalog,omitempty"`
 	WasCatalog *BundleCatalog `json:"was_catalog,omitempty"`
 }
@@ -132,7 +139,7 @@ func (h holding) folder(f SnapshotFolder) []SnapshotChange {
 	if other, kept := h.otherFolders[f.Key]; kept {
 		return h.refs(f, refsBeyond(f.Refs, other.Refs))
 	}
-	whole := SnapshotChange{Op: h.op, Kind: changeFolder, Name: f.Title}
+	whole := SnapshotChange{Op: h.op, Kind: changeFolder, Key: f.Key, Name: f.Title}
 	return append([]SnapshotChange{whole}, h.refs(f, h.gone(f.Refs))...)
 }
 
@@ -156,7 +163,10 @@ func (h holding) refs(f SnapshotFolder, refs []BundleRef) []SnapshotChange {
 		if !h.reportable(ref.Catalog) {
 			continue
 		}
-		out = append(out, SnapshotChange{Op: h.op, Kind: changeCatalog, Name: h.catalogs[ref.Catalog].Name, Folder: f.Title, Genre: ref.Genre})
+		out = append(out, SnapshotChange{
+			Op: h.op, Kind: changeCatalog, Key: ref.Catalog, Name: h.catalogs[ref.Catalog].Name,
+			FolderKey: f.Key, Folder: f.Title, Genre: ref.Genre,
+		})
 	}
 	return out
 }
@@ -177,7 +187,7 @@ func (h holding) strays(a Snapshot) []SnapshotChange {
 	var out []SnapshotChange
 	for _, c := range a.Catalogs {
 		if _, has := h.otherHas[c.Key]; !has && !h.reported[c.Key] {
-			out = append(out, SnapshotChange{Op: h.op, Kind: changeCatalog, Name: c.Name})
+			out = append(out, SnapshotChange{Op: h.op, Kind: changeCatalog, Key: c.Key, Name: c.Name})
 		}
 	}
 	return out
@@ -259,13 +269,13 @@ func folderEdits(from, to Snapshot) []SnapshotChange {
 func folderEdit(old, f SnapshotFolder) []SnapshotChange {
 	var out []SnapshotChange
 	if old.Title != f.Title {
-		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectName, Name: f.Title, Was: old.Title})
+		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectName, Key: f.Key, Name: f.Title, Was: old.Title})
 	}
 	if folderArt(old.BundleFolder) != folderArt(f.BundleFolder) {
-		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectArt, Name: f.Title})
+		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectArt, Key: f.Key, Name: f.Title})
 	}
 	if reordered(old.Refs, f.Refs) {
-		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectCatalogOrder, Name: f.Title})
+		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectCatalogOrder, Key: f.Key, Name: f.Title})
 	}
 	return out
 }
@@ -313,7 +323,7 @@ func catalogEdit(old, c BundleCatalog) (SnapshotChange, bool) {
 	if old.Key == "" || (!recipe && old.Name == c.Name) {
 		return SnapshotChange{}, false
 	}
-	change := SnapshotChange{Op: changeChanged, Kind: changeCatalog, Aspect: aspectName, Name: c.Name, Was: earlierName(old, c)}
+	change := SnapshotChange{Op: changeChanged, Kind: changeCatalog, Aspect: aspectName, Key: c.Key, Name: c.Name, Was: earlierName(old, c)}
 	if recipe {
 		change.Aspect, change.Catalog, change.WasCatalog = aspectRecipe, &c, &old
 	}

@@ -70,7 +70,7 @@ describe('recipeFacts', () => {
     }
     expect(recipeFacts(catalog('movie', params), lookup)).toEqual([
       { label: 'Type', value: 'Movies' },
-      { label: 'Genres', value: 'Crime and Thriller' },
+      { label: 'Genres', value: 'Crime and Thriller', list: { items: ['Crime', 'Thriller'], join: 'and', region: '' } },
       { label: 'Released', value: '1940–1959' },
       { label: 'Rating', value: '7.0 or more' },
       { label: 'Votes', value: '200 or more' },
@@ -80,8 +80,8 @@ describe('recipeFacts', () => {
 
   it('joins genres with "or" when the list is pipe-joined, and names the ones left out', () => {
     const facts = recipeFacts(catalog('movie', { with_genres: '80|53', without_genres: '53' }), lookup)
-    expect(facts).toContainEqual({ label: 'Genres', value: 'Crime or Thriller' })
-    expect(facts).toContainEqual({ label: 'Without genres', value: 'Thriller' })
+    expect(facts).toContainEqual({ label: 'Genres', value: 'Crime or Thriller', list: { items: ['Crime', 'Thriller'], join: 'or', region: '' } })
+    expect(facts).toContainEqual({ label: 'Without genres', value: 'Thriller', list: { items: ['Thriller'], join: 'and', region: '' } })
   })
 
   it('words a series window as Aired, and a rolling or upcoming window as it reads', () => {
@@ -154,12 +154,15 @@ describe('recipeFacts', () => {
       provider: new Map([[8, 'Netflix'], [337, 'Disney Plus']]),
     }
     const series = recipeFacts(catalog('series', params), lookup, names)
-    expect(series).toContainEqual({ label: 'Production companies', value: 'Studio Ghibli or Pixar' })
-    expect(series).toContainEqual({ label: 'Left-out production company', value: 'Troma' })
-    expect(series).toContainEqual({ label: 'Keywords', value: 'slasher and zombie' })
-    expect(series).toContainEqual({ label: 'Left-out keyword', value: 'gore' })
-    expect(series).toContainEqual({ label: 'Network', value: 'Netflix' })
-    expect(series).toContainEqual({ label: 'Streaming services', value: expect.stringMatching(/^Netflix or Disney Plus in / ) })
+    const companies = { items: ['Studio Ghibli', 'Pixar'], join: 'or', region: '' }
+    expect(series).toContainEqual({ label: 'Production companies', value: 'Studio Ghibli or Pixar', list: companies })
+    expect(series).toContainEqual({ label: 'Left-out production company', value: 'Troma', list: { items: ['Troma'], join: 'and', region: '' } })
+    expect(series).toContainEqual({ label: 'Keywords', value: 'slasher and zombie', list: { items: ['slasher', 'zombie'], join: 'and', region: '' } })
+    expect(series).toContainEqual({ label: 'Left-out keyword', value: 'gore', list: { items: ['gore'], join: 'and', region: '' } })
+    expect(series).toContainEqual({ label: 'Network', value: 'Netflix', list: { items: ['Netflix'], join: 'and', region: '' } })
+    const streaming = series.find((fact) => fact.label === 'Streaming services')
+    expect(streaming?.value).toMatch(/^Netflix or Disney Plus in /)
+    expect(streaming?.list).toEqual({ items: ['Netflix', 'Disney Plus'], join: 'or', region: expect.any(String) })
   })
 
   it('counts a list until all its names are known, and leaves a movie recipe’s networks out', () => {

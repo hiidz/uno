@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SnapshotChange, SnapshotFolder, SubscriptionState } from '@/api'
+import type { SnapshotChange, SubscriptionState } from '@/api'
 import { failWith, fakeApi, type FakeRoute } from '@/test/fakeApi'
 import { communityItem } from '@/test/fixtures'
 import { SinceLastPublished, UpdateChanges, UpdateCount } from './Changes'
@@ -13,9 +13,9 @@ vi.mock('@/api/client', () => ({ apiFetch: (input: RequestInfo | URL, init?: Req
 const genres = { movie: new Map<number, string>(), tv: new Map<number, string>() }
 
 const changes: SnapshotChange[] = [
-  { op: 'removed', kind: 'folder', name: '80s' },
-  { op: 'added', kind: 'catalog', name: 'Heat', folder: 'Classics' },
-  { op: 'added', kind: 'catalog', name: 'Ronin', folder: 'Classics' },
+  { op: 'removed', kind: 'folder', key: 'f80', name: '80s' },
+  { op: 'added', kind: 'catalog', key: 'heat', name: 'Heat', folder_key: 'fc', folder: 'Classics' },
+  { op: 'added', kind: 'catalog', key: 'ronin', name: 'Ronin', folder_key: 'fc', folder: 'Classics' },
 ]
 
 function renderWith(routes: Record<string, FakeRoute>, ui: React.ReactElement) {
@@ -30,49 +30,49 @@ beforeEach(() => {
 })
 
 describe('UpdateChanges', () => {
-  const waiting = communityItem({ id: 'pub', subscribed: true, update_available: true })
+  const waiting = communityItem({ id: 'pub', kind: 'collection', catalog: null, subscribed: true, update_available: true })
 
-  it('lists what the update changes, fetched while an update waits', async () => {
+  it('says what the update does in one counted line, fetched while an update waits', async () => {
     const calls = renderWith(
       { 'GET /api/p/1/community/pub/changes': changes },
-      <UpdateChanges profileIndex={1} item={waiting} folders={[]} genres={genres} />,
+      <UpdateChanges profileIndex={1} item={waiting} genres={genres} />,
     )
     expect(screen.getByRole('heading', { name: 'In this update' })).toBeInTheDocument()
-    expect(await screen.findByText('folder removed')).toBeInTheDocument()
-    expect(screen.getByText('Classics')).toBeInTheDocument()
-    expect(screen.getByText('Ronin')).toBeInTheDocument()
-    expect(screen.getAllByText('added')).toHaveLength(2)
+    expect(await screen.findByRole('button', { name: '1 folder removed' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2 catalogs added' })).toBeInTheDocument()
     expect(screen.getByText('3 changes')).toBeInTheDocument()
     expect(calls).toEqual(['GET /api/p/1/community/pub/changes'])
+  })
+
+  it('jumps from a part of the line to where the page marks it', async () => {
+    renderWith({ 'GET /api/p/1/community/pub/changes': changes }, <UpdateChanges profileIndex={1} item={waiting} genres={genres} />)
+    const card = document.createElement('div')
+    card.id = 'update-folder-fc'
+    card.tabIndex = -1
+    card.scrollIntoView = vi.fn()
+    document.body.append(card)
+    fireEvent.click(await screen.findByRole('button', { name: '2 catalogs added' }))
+    expect(card.scrollIntoView).toHaveBeenCalled()
+    expect(document.activeElement).toBe(card)
+    card.remove()
   })
 
   it('fetches nothing and shows nothing for a row that is in step, or not added', () => {
     const calls = renderWith(
       { 'GET /api/p/1/community/pub/changes': changes },
       <>
-        <UpdateChanges profileIndex={1} item={{ ...waiting, update_available: false }} folders={[]} genres={genres} />
-        <UpdateChanges profileIndex={1} item={{ ...waiting, subscribed: false }} folders={[]} genres={genres} />
+        <UpdateChanges profileIndex={1} item={{ ...waiting, update_available: false }} genres={genres} />
+        <UpdateChanges profileIndex={1} item={{ ...waiting, subscribed: false }} genres={genres} />
       </>,
     )
     expect(screen.queryByRole('heading')).toBeNull()
     expect(calls).toEqual([])
   })
 
-  it('orders its folders as the new version does', async () => {
-    const folders = [{ title: 'Classics', refs: [] }, { title: '80s', refs: [] }] as unknown as SnapshotFolder[]
-    renderWith(
-      { 'GET /api/p/1/community/pub/changes': changes },
-      <UpdateChanges profileIndex={1} item={waiting} folders={folders} genres={genres} />,
-    )
-    await screen.findByText('Classics')
-    const headings = [...document.querySelectorAll('.font-bold')].map((el) => el.textContent)
-    expect(headings).toEqual(['Classics', '80s'])
-  })
-
   it('says so when the list can’t load, and stays on the page', async () => {
     renderWith(
       { 'GET /api/p/1/community/pub/changes': () => failWith(404, 'not in Community any more') },
-      <UpdateChanges profileIndex={1} item={waiting} folders={[]} genres={genres} />,
+      <UpdateChanges profileIndex={1} item={waiting} genres={genres} />,
     )
     expect(await screen.findByText('Couldn’t load what changed.')).toBeInTheDocument()
   })

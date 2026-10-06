@@ -341,10 +341,11 @@ describe('CommunityView', () => {
     expect(screen.getByRole('heading', { name: 'Horror Nights' })).toBeInTheDocument()
   })
 
-  it('shelves what the update changes first in the lead, above the new version, only while one waits', async () => {
+  it('shelves what the update changes first in the lead, and marks it on the new version, only while one waits', async () => {
     const changes = [
-      { op: 'removed', kind: 'folder', name: 'Old folder' },
-      { op: 'added', kind: 'catalog', name: 'Slasher classics', folder: 'Slashers' },
+      { op: 'removed', kind: 'folder', key: 'old', name: 'Old folder' },
+      { op: 'added', kind: 'catalog', key: 'k1', name: 'Slasher classics', folder_key: 'f1', folder: 'Slashers' },
+      { op: 'changed', kind: 'folder', aspect: 'name', key: 'f1', name: 'Slashers', was: 'Stabby' },
     ]
     const routes = {
       'GET /api/p/1/community': [night, a24],
@@ -354,12 +355,16 @@ describe('CommunityView', () => {
     const calls = renderView(routes, { id: 'night', kind: 'collection' })
     const heading = await screen.findByRole('heading', { name: 'In this update' })
     const shelf = screen.getByRole('region', { name: 'In this update' })
-    expect(await within(shelf).findByText('Old folder')).toBeInTheDocument()
-    expect(within(shelf).getByText('folder removed')).toBeInTheDocument()
-    expect(within(shelf).getByText('Slasher classics')).toBeInTheDocument()
-    expect(within(shelf).getByText('added')).toBeInTheDocument()
-    const slashers = (await screen.findAllByText('Slashers'))[0]
-    expect(heading.compareDocumentPosition(slashers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(await within(shelf).findByRole('button', { name: '1 folder renamed' })).toBeInTheDocument()
+    expect(within(shelf).getByRole('button', { name: '1 folder removed' })).toBeInTheDocument()
+    expect(within(shelf).getByRole('button', { name: '1 catalog added' })).toBeInTheDocument()
+    const card = await waitFor(() => document.getElementById('update-folder-f1')!)
+    expect(within(card).getByText('renamed · was Stabby')).toBeInTheDocument()
+    expect(within(card).getByText('added')).toBeInTheDocument()
+    expect(heading.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const removed = document.getElementById('update-removed')!
+    expect(within(removed).getByText('Old folder')).toBeInTheDocument()
+    expect(within(removed).getByText('folder removed')).toBeInTheDocument()
     expect(calls).toContain('GET /api/p/1/community/night/changes')
   })
 

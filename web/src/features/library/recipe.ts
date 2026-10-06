@@ -287,6 +287,17 @@ export function catalogListing(
 export interface RecipeFact {
   label: string
   value: string
+  /** A list's own items, once each is named, so a change to it can be read
+   *  item by item; none for a single value or a list still counted. */
+  list?: FactList
+}
+
+/** A list fact's items, how the stored list joins them, and the region a
+ *  streaming list is read in ('' for none). */
+export interface FactList {
+  items: string[]
+  join: 'and' | 'or'
+  region: string
 }
 
 /** One fact, or several or none, a recipe sets. */
@@ -338,13 +349,6 @@ function namesOrCount(raw: string | undefined, known: NameMap | undefined): stri
   return (join === 'or' ? orList : andList)(names)
 }
 
-/** A fact naming an id list: `noun` in the form the list's size takes, its
- *  names (or count) and `suffix` after them. */
-function idsFact(noun: Noun, raw: string | undefined, known: NameMap | undefined, suffix = ''): RecipeFact[] {
-  const value = namesOrCount(raw, known)
-  return fact(countIDs(raw) === 1 ? noun[0] : noun[1], value && value + suffix)
-}
-
 /** A fact for `label` when `value` says something, else none. */
 function fact(label: string, value: string | null | undefined): RecipeFact[] {
   return value ? [{ label, value }] : []
@@ -365,8 +369,8 @@ function certificationFact({ p }: FactSource): RecipeFact[] {
 }
 
 function streamingFact({ p, names }: FactSource): RecipeFact[] {
-  const where = p.watch_region ? ` in ${countryLabel(p.watch_region)}` : ''
-  return idsFact(STREAMING_SERVICE, p.with_watch_providers, names.provider, where)
+  const region = p.watch_region ? countryLabel(p.watch_region) : ''
+  return namedIdsFact(STREAMING_SERVICE, p.with_watch_providers, names.provider, region)
 }
 
 function runtimeFact({ p }: FactSource): RecipeFact[] {
@@ -388,8 +392,8 @@ function shuffledFact({ p }: FactSource): RecipeFact[] {
 /** Every fact a recipe sets, in the order a spec tile grid reads them. */
 const FACTS: FactBuilder[] = [
   ({ type }) => fact('Type', typeLabel(type)),
-  ({ p, lookup }) => fact('Genres', genreNames(p.with_genres, lookup)),
-  ({ p, lookup }) => fact('Without genres', genreNames(p.without_genres, lookup)),
+  ({ p, lookup }) => genreFact('Genres', p.with_genres, lookup),
+  ({ p, lookup }) => genreFact('Without genres', p.without_genres, lookup),
   releaseFact,
   ({ p }) => fact('Rating', range(p.vote_average_gte, p.vote_average_lte, (n) => n.toFixed(1))),
   ({ p }) => fact('Votes', range(p.vote_count_gte, p.vote_count_lte, (n) => n.toLocaleString())),
@@ -398,11 +402,11 @@ const FACTS: FactBuilder[] = [
   certificationFact,
   streamingFact,
   // Named, once the lookups have answered; `describeParams` counts them.
-  ({ p, names }) => idsFact(COMPANY, p.with_companies, names.company),
-  ({ p, names }) => idsFact(LEFT_OUT_COMPANY, p.without_companies, names.company),
-  ({ p, names }) => idsFact(KEYWORD, p.with_keywords, names.keyword),
-  ({ p, names }) => idsFact(LEFT_OUT_KEYWORD, p.without_keywords, names.keyword),
-  ({ type, p, names }) => idsFact(NETWORK, type === 'series' ? p.with_networks : undefined, names.network),
+  ({ p, names }) => namedIdsFact(COMPANY, p.with_companies, names.company, ''),
+  ({ p, names }) => namedIdsFact(LEFT_OUT_COMPANY, p.without_companies, names.company, ''),
+  ({ p, names }) => namedIdsFact(KEYWORD, p.with_keywords, names.keyword, ''),
+  ({ p, names }) => namedIdsFact(LEFT_OUT_KEYWORD, p.without_keywords, names.keyword, ''),
+  ({ type, p, names }) => namedIdsFact(NETWORK, type === 'series' ? p.with_networks : undefined, names.network, ''),
   sortFact,
   shuffledFact,
 ]
@@ -512,5 +516,40 @@ export function foldedLine(catalog: Pick<Catalog, 'type' | 'params'>, lookup: Ge
 function genreCount(raw: string | undefined, names: string): string {
   const count = countIDs(raw)
   if (count > NAMED_GENRES) return `${count} genres`
+  return names
+}
+
+/** A genre list's fact: its names joined the way the list is, and the names
+ *  one by one. An id the lookup can't name stands in for its name. */
+function genreFact(label: string, raw: string | undefined, lookup: GenreLookup): RecipeFact[] {
+  const value = genreNames(raw, lookup)
+  if (!value) return []
+  const { ids, join } = parseIdList(raw)
+  const items: string[] = []
+  for (const id of ids) items.push(lookup.get(id) ?? String(id))
+  return [{ label, value, list: { items, join, region: '' } }]
+}
+
+/** A fact naming an id list: `noun` in the form the list's size takes, its
+ *  names (or count) and the `region` it is read in after them; its items
+ *  once every id is named. */
+function namedIdsFact(noun: Noun, raw: string | undefined, known: NameMap | undefined, region: string): RecipeFact[] {
+  const value = namesOrCount(raw, known)
+  if (!value) return []
+  const label = countIDs(raw) === 1 ? noun[0] : noun[1]
+  const full = region ? `${value} in ${region}` : value
+  const items = knownNames(raw, known)
+  if (!items) return [{ label, value: full }]
+  return [{ label, value: full, list: { items, join: parseIdList(raw).join, region } }]
+}
+
+/** An id list's names in order, or null while any id has none. */
+function knownNames(raw: string | undefined, known: NameMap | undefined): string[] | null {
+  const names: string[] = []
+  for (const id of parseIdList(raw).ids) {
+    const name = known?.get(id)
+    if (name === undefined) return null
+    names.push(name)
+  }
   return names
 }

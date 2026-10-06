@@ -246,14 +246,19 @@ export interface PublicationDetail extends CommunityItem {
  * (`folder` names the folder a catalog goes into or leaves, `genre` the genre
  * it is narrowed to there); a changed one names what changed in `aspect`, with
  * `was` its earlier name when renamed, and a catalog whose recipe changed
- * carries it as it is now in `catalog` and as it was in `was_catalog`.
+ * carries it as it is now in `catalog` and as it was in `was_catalog`. `key`
+ * is the snapshot key of the folder or catalog an item is about, and
+ * `folder_key` that of the folder a catalog goes into or leaves; a
+ * collection's own items have neither.
  */
 export interface SnapshotChange {
   op: 'removed' | 'added' | 'changed'
   kind: 'collection' | 'folder' | 'catalog'
   aspect?: 'name' | 'recipe' | 'settings' | 'art' | 'order' | 'catalog_order'
+  key?: string
   name?: string
   was?: string
+  folder_key?: string
   folder?: string
   genre?: string
   catalog?: SnapshotCatalog
