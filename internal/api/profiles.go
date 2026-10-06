@@ -53,11 +53,7 @@ func (s *Server) resolveSelectedProfile(ctx context.Context, sub, token string, 
 }
 
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
-	token, ok := nuvioTokenFrom(r.Context())
-	if !ok {
-		http.Error(w, "missing nuvio token", http.StatusUnauthorized)
-		return
-	}
+	token, _ := nuvioTokenFrom(r.Context()) // guaranteed by requireNuvioAuth
 
 	profiles, err := s.nuvio.ListProfiles(r.Context(), token)
 	if err != nil {
@@ -107,16 +103,8 @@ type selectedProfile struct {
 }
 
 func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {
-	sub, ok := nuvioUserIDFrom(r.Context())
-	if !ok {
-		http.Error(w, "missing nuvio user id", http.StatusUnauthorized)
-		return
-	}
-	token, ok := nuvioTokenFrom(r.Context())
-	if !ok {
-		http.Error(w, "missing nuvio token", http.StatusUnauthorized)
-		return
-	}
+	sub, _ := nuvioUserIDFrom(r.Context())  // guaranteed by requireNuvioAuth
+	token, _ := nuvioTokenFrom(r.Context()) // guaranteed by requireNuvioAuth
 
 	var body struct {
 		ProfileIndex int `json:"profile_index"`

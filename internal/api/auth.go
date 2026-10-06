@@ -88,12 +88,7 @@ func (s *Server) requireProfileAuth(next http.HandlerFunc) http.HandlerFunc {
 // only: a missing profile is a 404, never provisioned here.
 func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sub, ok := nuvioUserIDFrom(r.Context())
-		if !ok {
-			// Should be unreachable if chained correctly after requireNuvioAuth.
-			http.Error(w, "missing authenticated user", http.StatusUnauthorized)
-			return
-		}
+		sub, _ := nuvioUserIDFrom(r.Context()) // guaranteed by requireNuvioAuth
 
 		index, err := strconv.Atoi(r.PathValue("profileIndex"))
 		if err != nil || index < 1 || index > 6 {

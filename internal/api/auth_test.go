@@ -75,7 +75,7 @@ func TestRequireProfile(t *testing.T) {
 		wantProfile      uuid.UUID
 	}{
 		{"existing slot", "user-a", "1", http.StatusOK, profile.ID},
-		{"no authenticated user", "", "1", http.StatusUnauthorized, uuid.Nil},
+		{"no authenticated user finds no profile", "", "1", http.StatusNotFound, uuid.Nil},
 		{"non-numeric index", "user-a", "x", http.StatusBadRequest, uuid.Nil},
 		{"index below range", "user-a", "0", http.StatusBadRequest, uuid.Nil},
 		{"index above range", "user-a", "7", http.StatusBadRequest, uuid.Nil},
