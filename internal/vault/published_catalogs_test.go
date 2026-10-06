@@ -94,11 +94,11 @@ func TestGetPublishedCatalogs(t *testing.T) {
 // profileToken is profileID's addon token.
 func profileToken(t *testing.T, db *DB, profileID uuid.UUID) string {
 	t.Helper()
-	p, err := db.GetProfileByID(context.Background(), profileID)
-	if err != nil {
+	var token string
+	if err := db.conn.QueryRow(`SELECT token FROM profiles WHERE id = ?`, profileID.String()).Scan(&token); err != nil {
 		t.Fatal(err)
 	}
-	return p.Token
+	return token
 }
 
 // ServedCatalog finds a profile's catalog only while it is on the TV, as

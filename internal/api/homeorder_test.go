@@ -443,10 +443,10 @@ func newPushHomeOrderFixture(t *testing.T, fake *fakeNuvio) pushHomeOrderFixture
 	f.pinnedColl = createPushableCollection(t, ctx, db, profile.ID, "Pinned")
 	f.unpinnedColl = createPushableCollection(t, ctx, db, profile.ID, "Unpinned")
 	f.body = pushOf(vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
-			{CatalogID: f.onHome.ID, ShowInHome: true}, {CatalogID: f.discover.ID, ShowInHome: false},
-		}}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{
-			{CollectionID: f.unpinnedColl.ID}, {CollectionID: f.pinnedColl.ID, PinToTop: true},
-		}})
+		{CatalogID: f.onHome.ID, ShowInHome: true}, {CatalogID: f.discover.ID, ShowInHome: false},
+	}}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{
+		{CollectionID: f.unpinnedColl.ID}, {CollectionID: f.pinnedColl.ID, PinToTop: true},
+	}})
 	fake.profiles = liveAs(profile)
 	f.s = &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 	return f
@@ -454,7 +454,7 @@ func newPushHomeOrderFixture(t *testing.T, fake *fakeNuvio) pushHomeOrderFixture
 
 func (f pushHomeOrderFixture) push(t *testing.T) (*httptest.ResponseRecorder, pushResult) {
 	t.Helper()
-	reqCtx := withNuvioToken(withProfileID(t.Context(), f.profile.ID), "token")
+	reqCtx := withNuvioToken(withProfile(t.Context(), f.profile), "token")
 	w := httptest.NewRecorder()
 	f.s.push(w, newPushRequest(t, reqCtx, f.body))
 	return w, decodePushResult(t, w)

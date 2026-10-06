@@ -101,30 +101,15 @@ const (
 func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	profileID, ok := profileIDFrom(ctx)
-	if !ok {
-		http.Error(w, "missing profile", http.StatusUnauthorized)
-		return
-	}
-	accessToken, ok := nuvioTokenFrom(ctx)
-	if !ok {
-		http.Error(w, "missing nuvio token", http.StatusUnauthorized)
-		return
-	}
-
-	profile, err := s.vault.GetProfileByID(ctx, profileID)
-	if err != nil {
-		log.Printf("push: %v", err)
-		http.Error(w, "failed to resolve profile", http.StatusInternalServerError)
-		return
-	}
+	profile, _ := profileFrom(ctx)        // guaranteed by requireProfile
+	accessToken, _ := nuvioTokenFrom(ctx) // guaranteed by requireNuvioAuth
 
 	var body pushRequest
 	if !decodeStrictJSON(w, r, &body) {
 		return
 	}
 
-	record, err := s.pushRecord(ctx, profileID, body)
+	record, err := s.pushRecord(ctx, profile.ID, body)
 	if err != nil {
 		log.Printf("push: %v", err)
 		status := http.StatusInternalServerError

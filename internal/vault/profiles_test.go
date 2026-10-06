@@ -48,20 +48,20 @@ func TestCrossAccountIsolationAtSameSlot(t *testing.T) {
 	}
 
 	// GetProfileBySlot must return each account's own row, not the other's.
-	idA, err := db.GetProfileBySlot(ctx, accountA, slot)
+	gotA, err := db.GetProfileBySlot(ctx, accountA, slot)
 	if err != nil {
 		t.Fatalf("GetProfileBySlot(A): %v", err)
 	}
-	if idA != profA.ID {
-		t.Fatalf("GetProfileBySlot(A) = %s, want %s", idA, profA.ID)
+	if gotA.ID != profA.ID {
+		t.Fatalf("GetProfileBySlot(A) = %s, want %s", gotA.ID, profA.ID)
 	}
 
-	idB, err := db.GetProfileBySlot(ctx, accountB, slot)
+	gotB, err := db.GetProfileBySlot(ctx, accountB, slot)
 	if err != nil {
 		t.Fatalf("GetProfileBySlot(B): %v", err)
 	}
-	if idB != profB.ID {
-		t.Fatalf("GetProfileBySlot(B) = %s, want %s", idB, profB.ID)
+	if gotB.ID != profB.ID {
+		t.Fatalf("GetProfileBySlot(B) = %s, want %s", gotB.ID, profB.ID)
 	}
 
 	// Re-resolving with account A's ID must never hand back account B's row
@@ -74,15 +74,15 @@ func TestCrossAccountIsolationAtSameSlot(t *testing.T) {
 		t.Fatalf("re-resolving account A returned a different profile: got %s, want %s", reResolvedA.ID, profA.ID)
 	}
 
-	fetchedB, err := db.GetProfileByID(ctx, profB.ID)
+	fetchedB, err := db.GetProfileBySlot(ctx, accountB, slot)
 	if err != nil {
-		t.Fatalf("GetProfileByID(B): %v", err)
+		t.Fatalf("GetProfileBySlot(B): %v", err)
 	}
 	if fetchedB.NuvioProfileUUID != "nuvio-profile-uuid-b" {
 		t.Fatalf("account B's profile UUID was perturbed by account A's activity: got %q", fetchedB.NuvioProfileUUID)
 	}
 	if fetchedB.NuvioUserID != accountB {
-		t.Fatalf("GetProfileByID(B) returned a profile owned by %q, want %q", fetchedB.NuvioUserID, accountB)
+		t.Fatalf("GetProfileBySlot(B) returned a profile owned by %q, want %q", fetchedB.NuvioUserID, accountB)
 	}
 
 	// A's bearer token must resolve only to A's profile, never B's.
@@ -138,9 +138,9 @@ func TestResolveOrCreateProfileFollowsNuvioProfileDrift(t *testing.T) {
 	if drifted.NuvioProfileUUID != "nuvio-profile-uuid-new" {
 		t.Fatalf("returned NuvioProfileUUID = %q, want the new one", drifted.NuvioProfileUUID)
 	}
-	stored, err := db.GetProfileByID(ctx, first.ID)
+	stored, err := db.GetProfileBySlot(ctx, "nuvio-user", 2)
 	if err != nil {
-		t.Fatalf("GetProfileByID: %v", err)
+		t.Fatalf("GetProfileBySlot: %v", err)
 	}
 	if stored.NuvioProfileUUID != "nuvio-profile-uuid-new" {
 		t.Fatalf("stored NuvioProfileUUID = %q, want the new one", stored.NuvioProfileUUID)

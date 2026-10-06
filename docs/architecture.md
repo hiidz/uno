@@ -175,7 +175,8 @@ The policy is read from the environment, so it holds across instances.
 pair as `requireProfileAuth` — and reads `sub` from context, reads
 `{profileIndex}` from the path, validates it's an integer 1–6 (`400` otherwise, before touching
 the DB), calls `vault.GetProfileBySlot`, maps `ErrProfileNotFound` → `404`, then stashes the
-resolved profile ID. It is a **lookup-only** resolver — no create, no drift-overwrite. A client
+resolved profile (`withProfile`; handlers read its id through `profileIDFrom`, and push the whole
+row through `profileFrom`). It is a **lookup-only** resolver — no create, no drift-overwrite. A client
 hitting a CRUD route before ever calling `POST /api/profiles/select` gets a clean `404`, not a
 silent auto-provision.
 

@@ -56,39 +56,8 @@ func (db *DB) createProfile(ctx context.Context, nuvioUserID string, profileInde
 // GetProfileBySlot resolves a profile by (nuvioUserID, profileIndex) only —
 // no create, no drift handling. Used by the bearer-auth CRUD path, where a
 // missing profile is a 404, not something to provision on the fly.
-func (db *DB) GetProfileBySlot(ctx context.Context, nuvioUserID string, profileIndex int) (uuid.UUID, error) {
-	p, err := db.findProfileBySlot(ctx, nuvioUserID, profileIndex)
-	if err != nil {
-		return uuid.UUID{}, err
-	}
-	return p.ID, nil
-}
-
-// GetProfileByID looks up a profile by its primary key — used at push time,
-// where the caller already has profileID from requireProfile but also needs
-// Token and NuvioProfileIndex, which that middleware doesn't stash.
-func (db *DB) GetProfileByID(ctx context.Context, id uuid.UUID) (Profile, error) {
-	var p Profile
-	var idStr string
-
-	err := db.conn.QueryRowContext(ctx,
-		`SELECT id, token, nuvio_user_id, nuvio_profile_index, nuvio_profile_uuid
-		 FROM profiles
-		 WHERE id = ?`,
-		id.String(),
-	).Scan(&idStr, &p.Token, &p.NuvioUserID, &p.NuvioProfileIndex, &p.NuvioProfileUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Profile{}, ErrProfileNotFound
-		}
-		return Profile{}, fmt.Errorf("finding profile: %w", err)
-	}
-
-	p.ID, err = parseUUID(idStr, "profile id")
-	if err != nil {
-		return Profile{}, err
-	}
-	return p, nil
+func (db *DB) GetProfileBySlot(ctx context.Context, nuvioUserID string, profileIndex int) (Profile, error) {
+	return db.findProfileBySlot(ctx, nuvioUserID, profileIndex)
 }
 
 // ResolveProfileID looks up a profile by token, wrapping sql.ErrNoRows as ErrProfileNotFound.

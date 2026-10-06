@@ -209,7 +209,7 @@ func TestPush_NuvioUnreachable(t *testing.T) {
 	fake := &fakeNuvio{profiles: liveAs(profile), listAddonsErr: fmt.Errorf("%w: dial tcp: connection refused", nuvio.ErrNuvioRequestFailed)}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
-	reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
+	reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
 	req := newPushRequest(t, reqCtx, pushRequest{})
 	w := httptest.NewRecorder()
 
@@ -272,7 +272,7 @@ func TestPush_OnePushRejected(t *testing.T) {
 			tc.fake.profiles = liveAs(profile)
 			s := &Server{vault: db, nuvio: tc.fake, siteBaseURL: "http://example.com"}
 
-			reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
+			reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
 			req := newPushRequest(t, reqCtx, pushRequest{})
 			w := httptest.NewRecorder()
 
@@ -351,7 +351,7 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			}
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
-			reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
+			reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
 			req := newPushRequest(t, reqCtx, pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}}))
 			w := httptest.NewRecorder()
 
@@ -430,7 +430,7 @@ func TestPush_KeepsCollectionsMadeInNuvioFromUnoCatalogs(t *testing.T) {
 			fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: pulled}
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
-			reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
+			reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
 			req := newPushRequest(t, reqCtx, pushRequest{})
 			w := httptest.NewRecorder()
 
@@ -522,7 +522,7 @@ func TestPush_MergesUnoIntoExistingAddons(t *testing.T) {
 			fake := &fakeNuvio{profiles: liveAs(profile), addons: tc.existing(manifestURL)}
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 			w := httptest.NewRecorder()
-			s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushRequest{}))
+			s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushRequest{}))
 
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
@@ -580,7 +580,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: []json.RawMessage{staleSelected, foreign, staleDeselected}}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: selected.ID}}})))
+	s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: selected.ID}}})))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
@@ -630,7 +630,7 @@ func TestPush_RefusesABodyInAnotherShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating profile: %v", err)
 	}
-	ctx := withNuvioToken(withProfileID(t.Context(), profile.ID), "token")
+	ctx := withNuvioToken(withProfile(t.Context(), profile), "token")
 	onHome := createPushableCollection(t, ctx, db, profile.ID, "On Home")
 	s := &Server{vault: db, nuvio: &fakeNuvio{profiles: liveAs(profile)}, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
@@ -677,7 +677,7 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 		fake := &fakeNuvio{profiles: liveAs(profile)}
 		s.nuvio = fake
 		w := httptest.NewRecorder()
-		s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: entries})))
+		s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushOf(vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{Collections: entries})))
 		if w.Code != http.StatusOK || len(fake.pushCollectionsCalls) != 1 {
 			t.Fatalf("status = %d, PushCollections calls = %d; want 200 and 1 (body %q)", w.Code, len(fake.pushCollectionsCalls), w.Body.String())
 		}
@@ -736,7 +736,7 @@ func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	foreign := json.RawMessage(`{"id":"` + uuid.NewString() + `","folders":[]}`)
 	fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: []json.RawMessage{foreign}}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
-	reqCtx := withNuvioToken(withProfileID(ctx, profile.ID), "token")
+	reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
 
 	first := vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: gone.ID}}}
 	s.push(httptest.NewRecorder(), newPushRequest(t, reqCtx, pushOf(vault.CatalogSelectionForm{}, first)))
@@ -758,10 +758,9 @@ func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	}
 }
 
-// A push the server can't run is turned away before Nuvio is contacted: no
-// profile or no Nuvio token on the request is a 401, a profile that doesn't
-// exist a 500, and a selection naming a catalog the profile doesn't own a 400.
-func TestPush_TurnsAwayWhatItCannotRun(t *testing.T) {
+// A selection naming a catalog the profile doesn't own is a 400, before Nuvio
+// is contacted.
+func TestPush_TurnsAwayACatalogItDoesNotOwn(t *testing.T) {
 	db := newTestVaultDB(t)
 	ctx := context.Background()
 	profile, err := db.ResolveOrCreateProfile(ctx, "user-turned-away", 1, "nuvio-uuid-turned-away")
@@ -770,30 +769,15 @@ func TestPush_TurnsAwayWhatItCannotRun(t *testing.T) {
 	}
 	foreign := vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: uuid.New(), ShowInHome: true}}}
 
-	tests := []struct {
-		name string
-		ctx  context.Context
-		body pushRequest
-		want int
-	}{
-		{"no profile", withNuvioToken(ctx, "token"), pushRequest{}, http.StatusUnauthorized},
-		{"no Nuvio token", withProfileID(ctx, profile.ID), pushRequest{}, http.StatusUnauthorized},
-		{"unknown profile", withNuvioToken(withProfileID(ctx, uuid.New()), "token"), pushRequest{}, http.StatusInternalServerError},
-		{"a catalog it doesn't own", withNuvioToken(withProfileID(ctx, profile.ID), "token"), pushOf(foreign, vault.CollectionSelectionForm{}), http.StatusBadRequest},
+	fake := &fakeNuvio{}
+	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
+	w := httptest.NewRecorder()
+	s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushOf(foreign, vault.CollectionSelectionForm{})))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (%s)", w.Code, w.Body.String())
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			fake := &fakeNuvio{}
-			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
-			w := httptest.NewRecorder()
-			s.push(w, newPushRequest(t, tc.ctx, tc.body))
-			if w.Code != tc.want {
-				t.Errorf("status = %d, want %d (%s)", w.Code, tc.want, w.Body.String())
-			}
-			if len(fake.pushAddonsCalls) != 0 || len(fake.pushCollectionsCalls) != 0 {
-				t.Error("Nuvio was contacted")
-			}
-		})
+	if len(fake.pushAddonsCalls) != 0 || len(fake.pushCollectionsCalls) != 0 {
+		t.Error("Nuvio was contacted")
 	}
 }
 
@@ -842,7 +826,7 @@ func TestPush_RefusesBeforeNuvio(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &Server{vault: db, nuvio: tc.fake, siteBaseURL: "http://example.com"}
 			w := httptest.NewRecorder()
-			s.push(w, newPushRequest(t, withNuvioToken(withProfileID(ctx, profile.ID), "token"), tc.body))
+			s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), tc.body))
 			if w.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (%s)", w.Code, tc.wantStatus, w.Body.String())
 			}

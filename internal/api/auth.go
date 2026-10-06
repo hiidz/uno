@@ -37,15 +37,21 @@ func nuvioTokenFrom(ctx context.Context) (string, bool) {
 	return token, ok
 }
 
-const profileIDKey contextKey = "profileID"
+const profileKey contextKey = "profile"
 
-func withProfileID(ctx context.Context, id uuid.UUID) context.Context {
-	return context.WithValue(ctx, profileIDKey, id)
+func withProfile(ctx context.Context, p vault.Profile) context.Context {
+	return context.WithValue(ctx, profileKey, p)
 }
 
+func profileFrom(ctx context.Context) (vault.Profile, bool) {
+	p, ok := ctx.Value(profileKey).(vault.Profile)
+	return p, ok
+}
+
+// profileIDFrom is the id of the profile requireProfile resolved.
 func profileIDFrom(ctx context.Context) (uuid.UUID, bool) {
-	id, ok := ctx.Value(profileIDKey).(uuid.UUID)
-	return id, ok
+	p, ok := profileFrom(ctx)
+	return p.ID, ok
 }
 
 // requireNuvioAuth verifies the request's bearer token against Nuvio's
@@ -77,8 +83,8 @@ func (s *Server) requireProfileAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // requireProfile resolves {profileIndex} in the URL, combined with the sub
-// already stashed by requireNuvioAuth, into a profile ID — then attaches it
-// to the request context. Must be chained after requireNuvioAuth. Lookup
+// already stashed by requireNuvioAuth, into the vault profile — then attaches
+// it to the request context. Must be chained after requireNuvioAuth. Lookup
 // only: a missing profile is a 404, never provisioned here.
 func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +101,7 @@ func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		profileID, err := s.vault.GetProfileBySlot(r.Context(), sub, index)
+		profile, err := s.vault.GetProfileBySlot(r.Context(), sub, index)
 		if err != nil {
 			if errors.Is(err, vault.ErrProfileNotFound) {
 				http.Error(w, "profile not found", http.StatusNotFound)
@@ -106,7 +112,7 @@ func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ctx := withProfileID(r.Context(), profileID)
+		ctx := withProfile(r.Context(), profile)
 		next(w, r.WithContext(ctx))
 	}
 }

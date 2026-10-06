@@ -391,7 +391,6 @@ func compareCollectionsByHomeSortOrder(a, b Collection) int {
 	}
 }
 
-
 // saveCollectionSelectionTx resets this profile's collection selection to
 // exactly input, and writes each included collection's pin_to_top from its
 // entry. Every owned collection's home_sort_order is cleared first, then each
