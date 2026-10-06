@@ -8,6 +8,7 @@ go.sum  text eol=lf
 # The committed docs are edited alongside the Go changes they describe, so they
 # get the same treatment — otherwise every docs diff carries a line-ending warning.
 *.md    text eol=lf
+*.yaml  text eol=lf
 
 # internal/vault/schema.sql is embedded, and SQLite stores its statements as written: LF.
 *.sql   text eol=lf

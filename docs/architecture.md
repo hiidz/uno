@@ -138,6 +138,12 @@ Route registration is in `internal/api/server.go`. Everything not matching a reg
 falls through to the embedded SPA (`static.Gzip(static.Handler(distFS))`); Go's `ServeMux`
 matches the most specific registered pattern first.
 
+`docs/api/openapi.yaml` (OpenAPI 3.1) describes every registered route: request and response
+bodies, status codes, and the auth each takes. `TestOpenAPISpecMatchesRoutes`
+(`internal/api/openapi_test.go`) fails when a route is registered that the spec doesn't describe,
+or the spec describes one no route serves. It checks paths and methods only, so a change to a
+body or a status code updates the spec by hand.
+
 `requireNuvioAuth` (`internal/api/auth.go`) runs `authenticate` (`internal/api/access.go`): it
 reads `Authorization: Bearer`, calls `s.verifier.Verify`, maps `ErrInvalidToken` → `401` and
 `ErrJWKSUnavailable` → `502` (`verifyRefusal`), then checks the verified claims against the access

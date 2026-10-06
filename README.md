@@ -69,4 +69,5 @@ npm test         # vitest
 | [`docs/data-model.md`](docs/data-model.md) | The SQLite schema, TMDB recipe params, and the Nuvio push wire shape |
 | [`docs/frontend.md`](docs/frontend.md) | The builder UI's structure, conventions, and visual direction |
 | [`DESIGN.md`](DESIGN.md) | The builder's design system: tokens, components, and the rules behind them |
+| [`docs/api/openapi.yaml`](docs/api/openapi.yaml) | OpenAPI 3.1 description of the builder API and the public addon routes |
 | [`docs/api/nuvio-v1.3.md`](docs/api/nuvio-v1.3.md) | Nuvio's own public API documentation, vendored verbatim |
