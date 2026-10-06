@@ -13,7 +13,6 @@ export function catalog(overrides: Partial<Catalog> = {}): Catalog {
     name: 'Popular',
     provider: 'tmdb',
     params: '{}',
-    owner_id: '',
     collection_id: null,
     created_at: '',
     updated_at: '',
@@ -28,9 +27,7 @@ export function catalog(overrides: Partial<Catalog> = {}): Catalog {
 export function folder(overrides: Partial<Folder> = {}): Folder {
   return {
     id: 'f1',
-    collection_id: 'col1',
     title: 'Folder',
-    sort_order: 0,
     tile_shape: 'POSTER',
     hide_title: false,
     cover_emoji: '',
@@ -49,7 +46,6 @@ export function collection(overrides: Partial<Collection> = {}): Collection {
   return {
     id: 'col1',
     title: 'Collection',
-    owner_id: '',
     pin_to_top: false,
     view_mode: 'ROWS',
     show_all_tab: false,

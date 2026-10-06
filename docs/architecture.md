@@ -570,11 +570,11 @@ touched — the client's index is never trusted directly), then calls
 `nuvio` because it composes both `nuvio` and `vault`, and `api` is the only package depending on
 both — moving it would force `nuvio` to import `vault` and break its leaf status.
 
-The response is the whole `vault.Profile` plus `manifest_url`
+The response is `{manifest_url}` alone
 (`SITE_BASE_URL + addon.ManifestPath(token)`), built server-side so it is correct in dev and prod
 alike and never depends on `window.location.origin`. Handing it over at selection time rather than
-waiting on a first push means the builder can show the addon URL immediately. This puts
-`profiles.token` in browser memory on `/configure` — see the capability-URL note above.
+waiting on a first push means the builder can show the addon URL immediately. The URL carries
+`profiles.token`, which this puts in browser memory on `/configure` — see the capability-URL note above.
 
 ### `POST /api/catalogs/preview`
 

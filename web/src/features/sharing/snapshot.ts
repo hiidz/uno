@@ -12,7 +12,6 @@ export function asCatalog(catalog: SnapshotCatalog): Catalog {
     name: catalog.name,
     provider: catalog.provider,
     params: JSON.stringify(catalog.params),
-    owner_id: '',
     collection_id: null,
     created_at: '',
     updated_at: '',
@@ -44,7 +43,6 @@ export function snapshotAsCollection(detail: PublicationDetail): Collection | nu
   return {
     id: detail.id,
     title: snapshot.title,
-    owner_id: '',
     pin_to_top: false,
     view_mode: snapshot.view_mode,
     show_all_tab: snapshot.show_all_tab,
@@ -55,17 +53,15 @@ export function snapshotAsCollection(detail: PublicationDetail): Collection | nu
     publication: null,
     subscription: null,
     publisher_unpublished: false,
-    folders: (snapshot.folders ?? []).map((folder, index) => asFolder(detail.id, folder, index)),
+    folders: (snapshot.folders ?? []).map((folder) => asFolder(folder)),
     catalogs: (detail.snapshot.catalogs ?? []).map(asCatalog),
   }
 }
 
-function asFolder(collectionID: string, folder: SnapshotFolder, index: number): NonNullable<Collection['folders']>[number] {
+function asFolder(folder: SnapshotFolder): NonNullable<Collection['folders']>[number] {
   return {
     id: folder.key,
-    collection_id: collectionID,
     title: folder.title,
-    sort_order: index,
     tile_shape: folder.tile_shape,
     hide_title: folder.hide_title,
     cover_emoji: folder.cover_emoji,

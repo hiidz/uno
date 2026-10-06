@@ -151,6 +151,45 @@ func newRouteFixture(t *testing.T) routeFixture {
 	return f
 }
 
+// The owned lists carry none of the row columns the builder never reads: a
+// row's owner, which is always the caller, and a folder's collection and
+// place, which its collection and its order already give.
+func TestOwnedListsLeaveOutUnreadColumns(t *testing.T) {
+	f := newRouteFixture(t)
+	keysOf := func(t *testing.T, raw json.RawMessage) map[string]json.RawMessage {
+		t.Helper()
+		var keys map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &keys); err != nil {
+			t.Fatal(err)
+		}
+		return keys
+	}
+	var catalogs, collections []json.RawMessage
+	for path, rows := range map[string]*[]json.RawMessage{"/api/p/1/catalogs": &catalogs, "/api/p/1/collections": &collections} {
+		w := serve(t, f.s, http.MethodGet, path, "", false)
+		if err := json.Unmarshal(w.Body.Bytes(), rows); err != nil || len(*rows) != 1 {
+			t.Fatalf("GET %s = %s (%v), want one row", path, w.Body.String(), err)
+		}
+	}
+	collection := keysOf(t, collections[0])
+	var folders []json.RawMessage
+	if err := json.Unmarshal(collection["folders"], &folders); err != nil || len(folders) != 1 {
+		t.Fatalf("folders = %s (%v), want one", collection["folders"], err)
+	}
+	for name, row := range map[string]map[string]json.RawMessage{
+		"catalog": keysOf(t, catalogs[0]), "collection": collection, "folder": keysOf(t, folders[0]),
+	} {
+		for _, key := range []string{"owner_id", "sort_order"} {
+			if _, ok := row[key]; ok {
+				t.Errorf("%s carries %q", name, key)
+			}
+		}
+	}
+	if _, ok := keysOf(t, folders[0])["collection_id"]; ok {
+		t.Error(`folder carries "collection_id"`)
+	}
+}
+
 // noTMDB fails the test on any TMDB request: every recipe these routes are
 // sent is judged without one.
 func noTMDB(t *testing.T) {
@@ -365,7 +404,7 @@ func TestProfileRoutes(t *testing.T) {
 		{fake: &fakeNuvio{listProfilesErr: nuvioDown}, routeStep: routeStep{name: "list with Nuvio down", method: http.MethodGet, path: "/api/profiles", wantStatus: http.StatusBadGateway, wantBody: "nuvio unavailable"}},
 		{fake: &fakeNuvio{listProfilesErr: errors.New("boom")}, routeStep: routeStep{name: "list failing otherwise", method: http.MethodGet, path: "/api/profiles", wantStatus: http.StatusInternalServerError, wantBody: "failed to list profiles"}},
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "list unauthenticated", method: http.MethodGet, path: "/api/profiles", noAuth: true, wantStatus: http.StatusUnauthorized}},
-		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":2}`, wantStatus: http.StatusOK, wantBody: `"manifest_url":"http://example.com/u/`}, wantSlot: 2},
+		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":2}`, wantStatus: http.StatusOK, wantBody: `{"manifest_url":"http://example.com/u/`}, wantSlot: 2},
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select an index the account doesn't have", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":5}`, wantStatus: http.StatusBadRequest, wantBody: "profile index not found"}},
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select another account's profile", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":3}`, wantStatus: http.StatusBadRequest, wantBody: "profile index not found"}},
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select with a malformed body", method: http.MethodPost, path: "/api/profiles/select", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"}},

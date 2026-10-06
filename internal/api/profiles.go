@@ -101,6 +101,11 @@ func (s *Server) avatarImages(ctx context.Context, token string, profiles []nuvi
 	return images
 }
 
+// selectedProfile is POST /api/profiles/select's answer.
+type selectedProfile struct {
+	ManifestURL string `json:"manifest_url"`
+}
+
 func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {
 	sub, ok := nuvioUserIDFrom(r.Context())
 	if !ok {
@@ -132,9 +137,7 @@ func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {
 
 	// manifest_url is computable at selection time — it's just the site's
 	// base URL plus this profile's token — so it's returned here rather
-	// than waiting on a first push.
-	httpx.WriteJSON(w, http.StatusOK, struct {
-		vault.Profile
-		ManifestURL string `json:"manifest_url"`
-	}{profile, s.siteBaseURL + addon.ManifestPath(profile.Token)})
+	// than waiting on a first push. It is all the builder is told of the
+	// profile.
+	httpx.WriteJSON(w, http.StatusOK, selectedProfile{ManifestURL: s.siteBaseURL + addon.ManifestPath(profile.Token)})
 }

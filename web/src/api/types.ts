@@ -27,7 +27,6 @@ export interface Catalog {
   /** JSON-encoded TMDBParams. Parse with `parseParams`, never `JSON.parse` at
    *  the call site — a malformed value must not take the list down. */
   params: string
-  owner_id: string
   /** Scopes the catalog to one collection (hidden from the library, usable
    *  only in that collection's folders); `null` means listed. */
   collection_id: string | null
@@ -70,9 +69,7 @@ export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
 
 export interface Folder {
   id: string
-  collection_id: string
   title: string
-  sort_order: number
   tile_shape: TileShape | ''
   hide_title: boolean
   cover_emoji: string
@@ -100,7 +97,6 @@ export interface FolderRef {
 export interface Collection {
   id: string
   title: string
-  owner_id: string
   /** Show first, as last pushed: only Push writes it, from Home's pending
    *  selection (`HomeEntry.pinToTop`). */
   pin_to_top: boolean
@@ -469,17 +465,11 @@ export interface NuvioProfile {
 }
 
 /**
- * `POST /api/profiles/select`'s response — `vault.Profile` embedded (Uno's
- * own resolved-or-created row for this profile) plus `manifest_url`, which
+ * `POST /api/profiles/select`'s response: the profile's `manifest_url`, which
  * the handler computes at selection time from `SITE_BASE_URL` (never sent to
  * the client directly) so the builder can show the addon URL before any push.
  */
 export interface SelectedProfile {
-  id: string
-  token: string
-  nuvio_user_id: string
-  nuvio_profile_index: number
-  nuvio_profile_uuid: string
   manifest_url: string
 }
 

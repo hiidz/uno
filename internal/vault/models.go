@@ -9,13 +9,14 @@ import (
 // DB Table Models-------------------------
 
 // Profile is a Uno profile row: one per Nuvio (user, profile index) pair,
-// identified externally by Token.
+// identified externally by Token. Never on the wire: the builder is told only
+// its manifest URL.
 type Profile struct {
-	ID                uuid.UUID `json:"id"`
-	Token             string    `json:"token"`
-	NuvioUserID       string    `json:"nuvio_user_id"`
-	NuvioProfileIndex int       `json:"nuvio_profile_index"`
-	NuvioProfileUUID  string    `json:"nuvio_profile_uuid"`
+	ID                uuid.UUID
+	Token             string
+	NuvioUserID       string
+	NuvioProfileIndex int
+	NuvioProfileUUID  string
 }
 
 // Catalog is a stored addon catalog: a named request recipe (Provider,
@@ -27,7 +28,8 @@ type Catalog struct {
 	Name     string    `json:"name"`
 	Provider string    `json:"provider"`
 	Params   string    `json:"params"`
-	OwnerID  uuid.UUID `json:"owner_id"`
+	// OwnerID is never on the wire: the builder reads only its own rows.
+	OwnerID uuid.UUID `json:"-"`
 	// CollectionID scopes this catalog to one collection (hidden from the
 	// library, usable only in that collection's folders); nil means listed.
 	CollectionID *uuid.UUID `json:"collection_id"`
@@ -82,7 +84,7 @@ type SubscriptionState struct {
 type Collection struct {
 	ID               uuid.UUID `json:"id"`
 	Title            string    `json:"title"`
-	OwnerID          uuid.UUID `json:"owner_id"`
+	OwnerID          uuid.UUID `json:"-"` // never on the wire, as on Catalog
 	PinToTop         bool      `json:"pin_to_top"`
 	ViewMode         string    `json:"view_mode"`
 	ShowAllTab       bool      `json:"show_all_tab"`
@@ -105,12 +107,13 @@ type Collection struct {
 	PublisherUnpublished bool `json:"publisher_unpublished"`
 }
 
-// Folder is one tile row within a Collection.
+// Folder is one tile row within a Collection. Its CollectionID and SortOrder
+// are never on the wire: a folder travels inside its collection, in order.
 type Folder struct {
 	ID            uuid.UUID `json:"id"`
-	CollectionID  uuid.UUID `json:"collection_id"`
+	CollectionID  uuid.UUID `json:"-"`
 	Title         string    `json:"title"`
-	SortOrder     int       `json:"sort_order"`
+	SortOrder     int       `json:"-"`
 	TileShape     string    `json:"tile_shape"`
 	HideTitle     bool      `json:"hide_title"`
 	CoverEmoji    string    `json:"cover_emoji"`

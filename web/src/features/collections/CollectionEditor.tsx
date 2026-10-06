@@ -138,7 +138,6 @@ function draftCatalog(seed: {
     name: seed.name,
     provider: CATALOG_PROVIDER,
     params: seed.params,
-    owner_id: '',
     collection_id: seed.collectionID,
     created_at: '',
     updated_at: '',

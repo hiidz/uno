@@ -1699,14 +1699,9 @@ components:
 
     SelectedProfile:
       type: object
-      required: [id, token, nuvio_user_id, nuvio_profile_index, nuvio_profile_uuid, manifest_url]
+      required: [manifest_url]
       properties:
-        id: { type: string, format: uuid }
-        token: { type: string, description: The addon token in the manifest URL. }
-        nuvio_user_id: { type: string }
-        nuvio_profile_index: { type: integer }
-        nuvio_profile_uuid: { type: string }
-        manifest_url: { type: string, format: uri }
+        manifest_url: { type: string, format: uri, description: The profile's addon manifest URL. }
 
     PublicationState:
       type: object
@@ -1725,14 +1720,13 @@ components:
 
     Catalog:
       type: object
-      required: [id, type, name, provider, params, owner_id, collection_id, created_at, updated_at, show_in_home, publication, subscription, publisher_unpublished]
+      required: [id, type, name, provider, params, collection_id, created_at, updated_at, show_in_home, publication, subscription, publisher_unpublished]
       properties:
         id: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/CatalogType" }
         name: { type: string }
         provider: { $ref: "#/components/schemas/Provider" }
         params: { $ref: "#/components/schemas/RecipeParamsString" }
-        owner_id: { type: string, format: uuid }
         collection_id:
           type: [string, "null"]
           format: uuid
@@ -1797,11 +1791,9 @@ components:
       allOf:
         - $ref: "#/components/schemas/FolderArt"
         - type: object
-          required: [id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url, focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url, refs]
+          required: [id, title, tile_shape, hide_title, cover_emoji, cover_image_url, focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url, refs]
           properties:
             id: { type: string, format: uuid }
-            collection_id: { type: string, format: uuid }
-            sort_order: { type: integer }
             refs:
               type: array
               description: The folder's catalogs, in order.
@@ -1818,11 +1810,10 @@ components:
 
     Collection:
       type: object
-      required: [id, title, owner_id, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, created_at, updated_at, publication, subscription, publisher_unpublished, folders, catalogs]
+      required: [id, title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, created_at, updated_at, publication, subscription, publisher_unpublished, folders, catalogs]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
-        owner_id: { type: string, format: uuid }
         pin_to_top: { type: boolean, description: Nuvio shows it first; written only by push. }
         view_mode: { $ref: "#/components/schemas/ViewMode" }
         show_all_tab: { type: boolean }

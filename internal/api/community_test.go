@@ -143,7 +143,7 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "the released catalog says its publisher unpublished it", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"subscription":null,"publisher_unpublished":true`},
 		{name: "update the released catalog", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
 		{name: "save the released catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusOK, wantBody: `"name":"Mine now"`},
-		{name: "the saved catalog is no longer marked", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"Mine now","provider":"tmdb","params":"{}","owner_id":"` + x.f.caller.ID.String()},
+		{name: "the saved catalog is no longer marked", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"Mine now","provider":"tmdb","params":"{}","collection_id":null`},
 	})
 	if strings.Contains(serve(t, x.f.s, http.MethodGet, "/api/p/1/catalogs", "", false).Body.String(), `"publisher_unpublished":true`) {
 		t.Error("a catalog is still marked unpublished after its save")

@@ -74,8 +74,8 @@ describe('snapshotAsCollection', () => {
       title: 'Night',
       view_mode: 'ROWS',
       folders: [
-        { id: 'f1', collection_id: 'pub', sort_order: 0, cover_emoji: '🔪', refs: [{ catalog_id: 'c1', genre: 'Horror' }] },
-        { id: 'f2', sort_order: 1, refs: [] },
+        { id: 'f1', cover_emoji: '🔪', refs: [{ catalog_id: 'c1', genre: 'Horror' }] },
+        { id: 'f2', refs: [] },
       ],
       catalogs: [{ id: 'c1', name: 'Scares' }],
     })
