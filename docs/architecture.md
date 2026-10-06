@@ -693,8 +693,8 @@ same way wherever it is judged. `validateCatalogParams` wraps a rejected recipe 
 `defaultMsg`, which would blame Uno for a TMDB outage). `clientErrors`, a `clientFailure` table
 read by `clientFailureOf`, maps the errors the caller can act on: a key problem → `422` in fixed
 words (`keyFailures`, *TMDB keys*), then the vault errors, each answered with its own message:
-`ErrInvalidInput` → `400`, `ErrConflict` → `409` (a delete's refusal among them, whose message
-carries no `conflict:` prefix). Preview and genre-options classify what TMDB
+`ErrInvalidInput` → `400`, `ErrConflict` → `409` (a publish whose source changed while it was
+being checked, and a second subscribe). Preview and genre-options classify what TMDB
 answers after validation the same way (`previewErrors`). The `403` of the access policy comes from
 the middleware, before any handler (*Access*). `writeNuvioError`
 delegates to `nuvioErrorStatus` so push's JSON responses and the plain-text ones classify Nuvio

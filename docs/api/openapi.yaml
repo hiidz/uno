@@ -330,7 +330,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
@@ -364,7 +363,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
@@ -380,7 +378,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}/publish:
     parameters:
@@ -428,7 +425,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}/changes-since-publish:
     parameters:
@@ -495,7 +491,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
@@ -529,7 +524,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
@@ -537,6 +531,7 @@ paths:
       tags: [collections]
       operationId: deleteUserCollection
       summary: Delete a collection
+      description: Allowed on a collection on Home; Nuvio keeps it until the next push.
       responses:
         "204":
           description: Deleted.
@@ -544,12 +539,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409":
-          description: The collection is on Home; take it off Home and push first.
-          content:
-            text/plain:
-              schema:
-                type: string
 
   /api/p/{profileIndex}/collections/{collectionID}/duplicate:
     parameters:
@@ -571,7 +560,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/p/{profileIndex}/collections/{collectionID}/publish:
     parameters:
@@ -622,7 +610,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/p/{profileIndex}/collections/{collectionID}/changes-since-publish:
     parameters:
@@ -766,7 +753,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/PublicationGone" }
-        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/p/{profileIndex}/community/{publicationID}/duplicate:
     parameters:
@@ -788,7 +774,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/PublicationGone" }
-        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/p/{profileIndex}/export:
     parameters:
@@ -922,7 +907,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
