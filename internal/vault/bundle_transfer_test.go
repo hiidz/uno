@@ -295,7 +295,7 @@ func TestImportBundleWritesNewRows(t *testing.T) {
 		t.Fatalf("imported %d collections, want 1", len(collections))
 	}
 	halloween := collections[0]
-	if halloween.Title != "Halloween" || halloween.Publication != nil || halloween.NeedsPush ||
+	if halloween.Title != "Halloween" || halloween.Publication != nil ||
 		halloween.HomeSortOrder != nil || halloween.Subscription != nil || halloween.PinToTop || halloween.BackdropImageURL == "" {
 		t.Errorf("collection = %+v, want the file's fields on an unpublished, unsubscribed row off Home", halloween.Collection)
 	}

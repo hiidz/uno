@@ -591,14 +591,14 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	if len(sel) != 1 {
 		t.Fatalf("saved selection = %v, want the one selected collection", sel)
 	}
-	if sel[0].NeedsPush {
-		t.Errorf("needs_push right after the push = true, want false: push stores the record of what it sent")
+	if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 0 {
+		t.Errorf("pending right after the push = %+v, %v; want nothing: push stores the record of what it sent", pending, err)
 	}
 	if _, err := db.UpdateUserCollection(ctx, profile.ID, selected.ID, vault.CollectionForm{Title: "Renamed"}); err != nil {
 		t.Fatal(err)
 	}
-	if sel, err = db.GetCurrentCollectionSelection(ctx, profile.ID); err != nil || !sel[0].NeedsPush {
-		t.Errorf("needs_push after a rename = %v (%v), want true", sel, err)
+	if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 1 || pending[0].ID != selected.ID || pending[0].Change != vault.PendingChanged {
+		t.Errorf("pending after a rename = %+v, %v; want the collection changed", pending, err)
 	}
 }
 
@@ -684,18 +684,12 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 		}
 		return all[0].PinToTop
 	}
-	// What push recorded carries the selection's pin; what a read builds
+	// What push recorded carries the selection's pin; what Uno would push now
 	// carries the stored one. Once push has stored it, the two agree.
 	pushedClean := func(when string) {
 		t.Helper()
-		sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, c := range sel {
-			if c.NeedsPush {
-				t.Errorf("%s: %q needs a push, want none right after pushing its pin", when, c.Title)
-			}
+		if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 0 {
+			t.Errorf("%s: pending = %+v, %v; want nothing waiting right after pushing its pin", when, pending, err)
 		}
 	}
 

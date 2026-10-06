@@ -82,7 +82,7 @@ func TestSubscribeCollection(t *testing.T) {
 	pubID := source.Publication.ID
 
 	c := *subscribe(t, db, subscriber, pubID).Collection
-	if c.Title != "Weekend" || c.HomeSortOrder != nil || c.NeedsPush || c.Publication != nil || c.Subscription == nil || c.Subscription.PublicationID != pubID {
+	if c.Title != "Weekend" || c.HomeSortOrder != nil || c.Publication != nil || c.Subscription == nil || c.Subscription.PublicationID != pubID {
 		t.Errorf("copy = %+v, want Weekend off Home, subscribed to %s", c.Collection, pubID)
 	}
 	if len(c.Catalogs) != 2 {
@@ -346,8 +346,8 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 	pubID := source.Publication.ID
 	before := *subscribe(t, db, subscriber, pubID).Collection
 	pushSelection(t, db, subscriber, SelectedCollectionInput{CollectionID: before.ID, PinToTop: true})
-	if pinned := mustOwnCollection(t, db, subscriber, before.ID); pinned.NeedsPush {
-		t.Fatal("the copy right after its push: want no push needed")
+	if waitsForPush(t, db, subscriber, before.ID) {
+		t.Fatal("the copy right after its push: want nothing waiting")
 	}
 
 	listedForm := listedCatalogForm("Listed")
@@ -399,9 +399,9 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 	if catalogNamed(t, after, "S3").SubKey != key(catalogNamed(t, republished, "S3").ID) || len(after.Catalogs) != 3 {
 		t.Errorf("catalogs after = %+v, want S2 gone and S3 under its key", after.Catalogs)
 	}
-	if !after.NeedsPush || !after.PinToTop || after.Subscription.UpdateAvailable {
-		t.Errorf("after: needs push %v, pinned %v, subscription %+v; want a push needed, the pin kept, in step",
-			after.NeedsPush, after.PinToTop, after.Subscription)
+	if waiting := waitsForPush(t, db, subscriber, after.ID); !waiting || !after.PinToTop || after.Subscription.UpdateAvailable {
+		t.Errorf("after: waiting for a push %v, pinned %v, subscription %+v; want it waiting, the pin kept, in step",
+			waiting, after.PinToTop, after.Subscription)
 	}
 }
 

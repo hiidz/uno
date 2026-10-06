@@ -1868,7 +1868,7 @@ components:
 
     Collection:
       type: object
-      required: [id, title, owner_id, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, created_at, updated_at, publication, subscription, publisher_unpublished, folders, catalogs, needs_push]
+      required: [id, title, owner_id, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, created_at, updated_at, publication, subscription, publisher_unpublished, folders, catalogs]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
@@ -1901,9 +1901,6 @@ components:
           description: The catalogs scoped to this collection.
           items:
             $ref: "#/components/schemas/Catalog"
-        needs_push:
-          type: boolean
-          description: On Home, and what push would send for it differs from what it last sent.
 
     CollectionForm:
       type: object

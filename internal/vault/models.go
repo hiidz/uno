@@ -345,10 +345,6 @@ type CollectionWithFolders struct {
 	Collection
 	Folders  []FolderWithCatalogs `json:"folders"`
 	Catalogs []Catalog            `json:"catalogs"`
-	// NeedsPush is whether this collection is on Home and what push would
-	// send for it now differs from what push last sent: Nuvio holds a stale
-	// copy until the next push. Always false off Home.
-	NeedsPush bool `json:"needs_push"`
 }
 
 // SelectedCatalog is a Catalog as it appears in a profile's active

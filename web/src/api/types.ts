@@ -111,10 +111,6 @@ export interface Collection {
   /** Its place on Home, numbered with the catalogs there; absent when it
    *  isn't on Home. */
   home_position?: number
-  /** Whether this collection is on Home and what Push would send for it now
-   *  differs from what it last sent, so Nuvio holds a stale copy until the
-   *  next push. Always `false` off Home. */
-  needs_push: boolean
   /** As on `Catalog`. A subscribed collection's catalogs are all scoped to
    *  it, so they carry no subscription of their own. */
   publication: PublicationState | null

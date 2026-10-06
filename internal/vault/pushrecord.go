@@ -7,7 +7,6 @@
 package vault
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -379,68 +378,4 @@ func (r PushRecord) collectionRows(pinned bool) []HomeRow {
 		}
 	}
 	return rows
-}
-
-// markNeedsPush marks each of trees against its owner's push record, read
-// through q, and returns them.
-func markNeedsPush(ctx context.Context, q querier, trees []CollectionWithFolders) ([]CollectionWithFolders, error) {
-	pushed, err := pushedCollections(ctx, q, trees)
-	if err != nil {
-		return nil, err
-	}
-	for i := range trees {
-		trees[i].markNeedsPush(pushed[trees[i].ID])
-	}
-	return trees, nil
-}
-
-// pushedCollections is every collection the push records of trees' owners
-// hold, by id, as the bytes push sent for it, read through q. Only an owner
-// with a tree on Home is read: off Home, nothing needs a push.
-func pushedCollections(ctx context.Context, q querier, trees []CollectionWithFolders) (map[uuid.UUID][]byte, error) {
-	var owners []uuid.UUID
-	for _, c := range trees {
-		if c.HomeSortOrder != nil {
-			owners = append(owners, c.OwnerID)
-		}
-	}
-	pushed := make(map[uuid.UUID][]byte)
-	if len(owners) == 0 {
-		return pushed, nil
-	}
-	records, err := queryStrings(ctx, q, "push record",
-		`SELECT pr.record FROM `+currentRecords+` WHERE pr.profile_id IN (SELECT value FROM json_each(?))`, idsJSON(dedupeUUIDs(owners)))
-	if err != nil {
-		return nil, err
-	}
-	for _, raw := range records {
-		var record struct {
-			Collections []json.RawMessage `json:"collections"`
-		}
-		if err := json.Unmarshal([]byte(raw), &record); err != nil {
-			return nil, fmt.Errorf("decoding push record: %w", err)
-		}
-		for _, sent := range record.Collections {
-			var head struct {
-				ID uuid.UUID `json:"id"`
-			}
-			if err := json.Unmarshal(sent, &head); err != nil {
-				return nil, fmt.Errorf("decoding pushed collection: %w", err)
-			}
-			pushed[head.ID] = sent
-		}
-	}
-	return pushed, nil
-}
-
-// markNeedsPush sets tree's NeedsPush when tree is on Home and what push
-// would send for it now differs from pushed, what its owner's last push sent
-// for it (nil when that push sent nothing for it, which needs a push too). Off
-// Home, nothing does.
-func (tree *CollectionWithFolders) markNeedsPush(pushed []byte) {
-	if tree.HomeSortOrder == nil {
-		return
-	}
-	raw, err := tree.PushJSON()
-	tree.NeedsPush = err != nil || !bytes.Equal(raw, pushed)
 }

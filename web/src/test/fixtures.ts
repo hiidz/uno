@@ -60,7 +60,6 @@ export function collection(overrides: Partial<Collection> = {}): Collection {
     focus_glow_enabled: true,
     created_at: '',
     updated_at: '',
-    needs_push: false,
     publication: null,
     subscription: null,
     publisher_unpublished: false,

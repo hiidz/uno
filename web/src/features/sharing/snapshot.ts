@@ -51,7 +51,6 @@ export function snapshotAsCollection(detail: PublicationDetail): Collection | nu
     focus_glow_enabled: snapshot.focus_glow_enabled,
     created_at: detail.published_at,
     updated_at: detail.updated_at,
-    needs_push: false,
     publication: null,
     subscription: null,
     publisher_unpublished: false,

@@ -993,21 +993,19 @@ record whole in `push_records`, one row per
 profile replaced by each push and stamped with the Nuvio profile id the profile has then
 (`profiles.nuvio_profile_uuid`). Nothing cascades into it from `catalogs` or `collections`. It is
 never rebuilt from the rows at write time, so a Save landing between the build and the write still
-reads as needing a push.
+waits for a push.
 
 **The record is what Nuvio holds, and everything about Nuvio reads it.** The addon serves from it
 (*Addon server*). A record counts only while its stamp is the profile's Nuvio profile id now
 (`currentRecords`): when the slot is reused by a new Nuvio profile, the record describes one that
 is gone, so Nuvio holds nothing, the Home layout and the library are kept, every row on Home
-waits for a push, and the next push stores a fresh record. A collection's reads carry `needs_push`
-when it is on Home and what push would send for it now differs from the bytes its owner's current
-record holds for it, or the record holds none (`markNeedsPush`, read through the same querier as
-the tree). That is the collection's own payload: a folder's catalogs, genre or images, a title, a
-setting. A rename and back changes nothing Nuvio holds and flags nothing. A catalog's name and
-recipe are not in a pushed collection, which names a catalog only by id and type, so an edit to
-one is no `needs_push` of its own; it shows in the list of what waits for a push
-(`PendingPush`, *HTTP surface*), which compares the record's catalogs too, and a collection
-using an edited catalog is listed as changed there. Only push writes the Home columns, so a row on
+waits for a push, and the next push stores a fresh record. The list of what waits for a push
+(`PendingPush`, *HTTP surface*) holds a collection on Home when what push would send for it now
+differs from the bytes its owner's current record holds for it, or the record holds none. That is
+the collection's own payload: a folder's catalogs, genre or images, a title, a setting. A rename
+and back changes nothing Nuvio holds and lists nothing. A catalog's name and recipe are not in a
+pushed collection, which names a catalog only by id and type, but the list compares the record's
+catalogs too, so an edited catalog is listed, and a collection using it is listed as changed. Only push writes the Home columns, so a row on
 Home was in the last push and the record holds it, until a delete takes the row and leaves the
 record holding it: the next push drops it.
 

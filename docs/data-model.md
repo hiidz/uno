@@ -218,8 +218,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   so deleting a row never loses what Nuvio holds.
 - **Read by** the addon and by the builder's reads. `GetPublishedCatalogs` and `ServedCatalog`
   serve the manifest and each catalog from its `catalogs` and `home`, so Nuvio is served only
-  what the last push put there; every collection read compares `collections` for `needs_push`
-  (*Key rules*); `PendingPush` compares all of it with what a push would send now; and push's
+  what the last push put there; `PendingPush` compares all of it with what a push would send now
+  (*Key rules*); and push's
   merge drops the collections it lists. All of them read only a **current** record: one whose
   stamp equals `profiles.nuvio_profile_uuid` now. A record stamped with another id was pushed to
   a Nuvio profile the slot no longer has, so it counts as none: Nuvio holds nothing, the addon
@@ -345,21 +345,21 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   the exact push JSON (`PushJSON`, *Push wire shape*) that push built and sent *before* the local
   write. A new collection (a create, subscribe, duplicate, Duplicate or import) is off Home, and no
   record holds it.
-  - **`needs_push`** is on every collection read: `true` when the collection is on Home and what
-    push would send for it now, with its stored `pin_to_top`, differs from the bytes the record
-    holds for it, or the record holds none. Off Home it is always `false`. Only push writes the
-    Home columns, so a collection on Home was in the last push and the record holds it. The Home
-    pane lists it as "changed since it was last pushed" (`web/src/features/home/changes.ts`).
-  - So `needs_push` flags exactly the edits that change a pushed collection — a folder's
-    catalogs, genre or images, a title, a setting — and nothing else: a rename and back, or a
-    save that changes nothing, leaves it unflagged. A catalog's name and recipe are not in the
-    pushed collection (a source names its catalog by id and type), so editing one doesn't set it.
-    The addon serves a catalog from the record, so such an edit, like a delete, reaches Nuvio
-    at the next push, and `GET /api/p/{i}/push/pending` (`PendingPush`) lists it: a catalog on
-    Home as changed, and a collection whose folders use it as changed too.
+  - **`GET /api/p/{i}/push/pending`** (`PendingPush`) lists a collection on Home as changed when
+    what push would send for it now, with its stored `pin_to_top`, differs from the bytes the
+    record holds for it, and as added when the record holds none. Off Home, it waits for nothing.
+    Only push writes the Home columns, so a collection on Home was in the last push and the
+    record holds it. The Home pane lists it as "changed since it was last pushed"
+    (`web/src/features/home/changes.ts`).
+  - So a collection's own edits — a folder's catalogs, genre or images, a title, a setting —
+    list it, and a rename and back, or a save that changes nothing, does not. A catalog's name and
+    recipe are not in the pushed collection (a source names its catalog by id and type), but the
+    record holds every catalog Nuvio can reach, so `PendingPush` lists an edited catalog on Home
+    as changed, and a collection whose folders use it as changed too. The addon serves a catalog
+    from the record, so such an edit, like a delete, reaches Nuvio at the next push.
   - A Save landing between push's build and its local write leaves the row sending something
-    other than what the record holds, so it still reads as needing a push.
-  - If the push JSON ever gains a field, every collection reads as needing a push once, which is
+    other than what the record holds, so it still waits for a push.
+  - If the push JSON ever gains a field, every collection on Home waits for a push once, which is
     right: Nuvio lacks the field.
 - **No cascade on `owner_id`** (`catalogs`/`collections`). Irrelevant until
   profile deletion exists; revisit then.
@@ -605,7 +605,7 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     provider, is a catalog edit of it; any other is a new scoped catalog under its key, and a
     catalog no folder references any more is removed;
   - the copy's pin and Home placement stay; on Home, an update that changes what push sends for
-    it leaves it `needs_push`, so Home shows the update as a change to push.
+    it leaves it waiting for a push (`PendingPush`), so Home shows the update as a change to push.
 
   A copy Update reaches is still as it was written, since nothing else writes one: there is
   nothing to conflict with.
@@ -898,7 +898,7 @@ selection entry for the collection (`applySelection`, `internal/vault/pushrecord
 the stored row, which push then brings up to it.
 
 **Push keeps what it sends.** `PushJSON` is the payload's exact bytes, which push both sends and
-stores in the push record, and which a collection read builds again to decide `needs_push` (*Key
+stores in the push record, and which `PendingPush` builds again to compare with it (*Key
 rules*). The two can only agree if they marshal the same way, so there is one builder, in the
 vault.
 

@@ -1,7 +1,7 @@
 // The push payload: one of Uno's own collections in the camelCase shape
 // Nuvio's collections blob holds, which push sends and the push record keeps
-// (pushrecord.go). A collection needs a push when what push would send for it
-// now differs from what its owner's last push sent.
+// (pushrecord.go). A collection waits for a push when what push would send for
+// it now differs from what its owner's last push sent (PendingPush).
 
 package vault
 

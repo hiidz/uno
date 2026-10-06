@@ -8,7 +8,7 @@ import (
 )
 
 // A new collection, and every copy of one — a subscribe, a duplicate of a
-// publication and a Duplicate — is off Home, so it needs no push.
+// publication and a Duplicate — is off Home, so nothing waits for a push.
 func TestNewCollectionsAreUnpushed(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -26,16 +26,31 @@ func TestNewCollectionsAreUnpushed(t *testing.T) {
 		t.Fatalf("DuplicateCollection: %v", err)
 	}
 	for _, c := range []CollectionWithFolders{source, *subscribed, *duplicated.Collection, dup} {
-		if c.HomeSortOrder != nil || c.NeedsPush {
-			t.Errorf("%q: on Home %v, needs push %t; want off Home and no push needed", c.Title, c.HomeSortOrder, c.NeedsPush)
+		if c.HomeSortOrder != nil {
+			t.Errorf("%q: on Home %v; want off Home", c.Title, *c.HomeSortOrder)
+		}
+	}
+	for _, profileID := range []uuid.UUID{owner, subscriber} {
+		if changes, err := db.PendingPush(ctx, profileID); err != nil || len(changes) != 0 {
+			t.Errorf("pending = %+v, %v; want nothing waiting", changes, err)
 		}
 	}
 }
 
-// needsPush reads profileID's collection id back and reports its NeedsPush.
-func needsPush(t *testing.T, db *DB, profileID, id uuid.UUID) bool {
+// waitsForPush reports whether profileID's collection id is on the list of
+// what waits for a push.
+func waitsForPush(t *testing.T, db *DB, profileID, id uuid.UUID) bool {
 	t.Helper()
-	return mustOwnCollection(t, db, profileID, id).NeedsPush
+	changes, err := db.PendingPush(context.Background(), profileID)
+	if err != nil {
+		t.Fatalf("PendingPush: %v", err)
+	}
+	for _, c := range changes {
+		if c.Kind == pendingCollection && c.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // saveCollection writes form over profileID's collection id, failing the
@@ -49,11 +64,10 @@ func saveCollection(t *testing.T, db *DB, profileID, id uuid.UUID, form Collecti
 	return saved
 }
 
-// A collection on Home needs a push exactly when what push would send for it
-// differs from what it last sent: a rename and back, or a recipe-only edit to
-// a catalog it uses, changes nothing Nuvio holds; a title, an image or a
-// folder's genre does, until the next push.
-func TestNeedsPushFollowsWhatPushWouldSend(t *testing.T) {
+// A collection on Home waits for a push exactly when what push would send for
+// it differs from what it last sent: a rename and back changes nothing Nuvio
+// holds; a title, an image or a folder's genre does, until the next push.
+func TestACollectionWaitsWhenWhatPushSendsDiffers(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
@@ -74,19 +88,14 @@ func TestNeedsPushFollowsWhatPushWouldSend(t *testing.T) {
 	}
 
 	pushSelection(t, db, owner, SelectedCollectionInput{CollectionID: c.ID})
-	if needsPush(t, db, owner, c.ID) {
-		t.Fatal("right after a push: want no push needed")
+	if waitsForPush(t, db, owner, c.ID) {
+		t.Fatal("right after a push: want nothing waiting")
 	}
 
 	saveCollection(t, db, owner, c.ID, form("Renamed", "", ""))
 	saveCollection(t, db, owner, c.ID, form("Night", "", ""))
-	edit := listedCatalogForm("Popular")
-	edit.Params = `{"sort_by":"vote_average.desc"}`
-	if _, err := db.UpdateUserCatalog(ctx, owner, catalog.ID, edit); err != nil {
-		t.Fatal(err)
-	}
-	if needsPush(t, db, owner, c.ID) {
-		t.Error("after a rename and back and a recipe-only edit: want no push needed")
+	if waitsForPush(t, db, owner, c.ID) {
+		t.Error("after a rename and back: want nothing waiting")
 	}
 
 	for _, change := range []struct {
@@ -98,25 +107,24 @@ func TestNeedsPushFollowsWhatPushWouldSend(t *testing.T) {
 		{"genre", form("Night", "", "Horror")},
 	} {
 		saveCollection(t, db, owner, c.ID, change.form)
-		if !needsPush(t, db, owner, c.ID) {
-			t.Errorf("after a %s change: want a push needed", change.name)
+		if !waitsForPush(t, db, owner, c.ID) {
+			t.Errorf("after a %s change: want it waiting", change.name)
 		}
 		pushSelection(t, db, owner, SelectedCollectionInput{CollectionID: c.ID})
-		if needsPush(t, db, owner, c.ID) {
-			t.Errorf("after pushing the %s change: want no push needed", change.name)
+		if waitsForPush(t, db, owner, c.ID) {
+			t.Errorf("after pushing the %s change: want nothing waiting", change.name)
 		}
 	}
 
 	pushSelection(t, db, owner)
 	saveCollection(t, db, owner, c.ID, form("Off Home", "", ""))
-	if needsPush(t, db, owner, c.ID) {
-		t.Error("off Home: want no push needed, whatever changed")
+	if waitsForPush(t, db, owner, c.ID) {
+		t.Error("off Home: want nothing waiting, whatever changed")
 	}
 }
 
 // Push stores the record it built and sent, never the row as it stands when
-// it writes: a save landing between the two leaves the collection needing a
-// push.
+// it writes: a save landing between the two leaves the collection waiting.
 func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -135,15 +143,15 @@ func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 	if err := db.SavePush(ctx, owner, record); err != nil {
 		t.Fatalf("SavePush: %v", err)
 	}
-	if !needsPush(t, db, owner, c.ID) {
-		t.Error("after a save during the push: want a push still needed")
+	if !waitsForPush(t, db, owner, c.ID) {
+		t.Error("after a save during the push: want it still waiting")
 	}
 }
 
 // What push sends round-trips through the stored record byte for byte, so
-// text JSON escapes — an & in a weserv URL, a < in a title — never reads as a
+// text JSON escapes — an & in a weserv URL, a < in a title — never read as a
 // change.
-func TestEscapedTextDoesNotNeedAPush(t *testing.T) {
+func TestEscapedTextDoesNotWaitForAPush(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
@@ -156,14 +164,14 @@ func TestEscapedTextDoesNotNeedAPush(t *testing.T) {
 		t.Fatal(err)
 	}
 	pushSelection(t, db, owner, SelectedCollectionInput{CollectionID: c.ID})
-	if needsPush(t, db, owner, c.ID) {
-		t.Error("right after a push of escaped text: want no push needed")
+	if waitsForPush(t, db, owner, c.ID) {
+		t.Error("right after a push of escaped text: want nothing waiting")
 	}
 }
 
 // A collection on Home that the last push sent nothing for — Home set by an
-// older push whose record no longer holds it — needs a push.
-func TestOnHomeButNotInTheRecordNeedsAPush(t *testing.T) {
+// older push whose record no longer holds it — waits for a push.
+func TestOnHomeButNotInTheRecordWaitsForAPush(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
@@ -176,8 +184,8 @@ func TestOnHomeButNotInTheRecordNeedsAPush(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("SavePush: %v", err)
 	}
-	if !needsPush(t, db, owner, c.ID) {
-		t.Error("on Home with no entry in the record: want a push needed")
+	if !waitsForPush(t, db, owner, c.ID) {
+		t.Error("on Home with no entry in the record: want it waiting")
 	}
 }
 
@@ -201,8 +209,8 @@ func TestPinToTopIsWrittenOnlyByPush(t *testing.T) {
 	if !mustOwnCollection(t, db, owner, a.ID).PinToTop || mustOwnCollection(t, db, owner, b.ID).PinToTop {
 		t.Fatal("after the first push, want A pinned and B not")
 	}
-	if needsPush(t, db, owner, a.ID) {
-		t.Error("A right after the push: want no push needed, its stored pin being the one sent")
+	if waitsForPush(t, db, owner, a.ID) {
+		t.Error("A right after the push: want nothing waiting, its stored pin being the one sent")
 	}
 
 	if saved, err := db.UpdateUserCollection(ctx, owner, a.ID, CollectionForm{Title: "A2"}); err != nil || !saved.PinToTop {

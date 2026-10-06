@@ -259,9 +259,6 @@ func TestAReusedSlotHoldsNothing(t *testing.T) {
 	wantPending(t, f.pending(t),
 		PendingChange{pendingCatalog, f.home.ID, "On Home", PendingAdded},
 		PendingChange{pendingCollection, f.collection, "Pushed", PendingAdded})
-	if tree := mustOwnCollection(t, f.db, f.owner, f.collection); !tree.NeedsPush {
-		t.Error("a collection on Home in a reused slot: want needs_push")
-	}
 	if cats, err := f.db.GetUserCatalogs(ctx, f.owner); err != nil || len(cats) != 2 {
 		t.Errorf("library = %d catalogs (%v), want it kept", len(cats), err)
 	}
