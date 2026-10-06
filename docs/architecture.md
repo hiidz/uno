@@ -871,8 +871,8 @@ selection, and a full-replace push of that clears every Uno collection. The pin 
 is part of the selection, not of a collection save: push builds each collection it sends with
 its entry's pin and stores that pin in its local write, which is the only place `pin_to_top` is
 written. A collection push leaves off Home keeps its last pin. Response, past auth and
-profile resolution, is always JSON and deliberately flat:
-`{success, manifest_url, error?, undo_failed?, refused?}` — no partial-progress flags, because the
+profile resolution and once the body has decoded, is JSON and deliberately flat:
+`{success, undo_failed?, refused?}` — no partial-progress flags, because the
 ordering below and the undo of what Nuvio already took guarantee an ordinary failure means
 nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has words for:
 `empty_collection`, `shares_addons`, `profile_changed` or `home_order_unreadable`.

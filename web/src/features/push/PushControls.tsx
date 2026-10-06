@@ -44,6 +44,14 @@ export function PushButton({ push, ready, pushing, className = '' }: Push & { cl
   )
 }
 
+/** What the push banner shows: the last push's outcome, and the profile's
+ *  addon URL, which a success names. */
+interface PushBannerProps {
+  outcome: Push['outcome']
+  dismiss(): void
+  manifestURL: string | undefined
+}
+
 /**
  * The result of the last push. A strip under the header rather than a toast:
  * some outcomes need to stay readable until the user acts on them, and one
@@ -58,11 +66,11 @@ export function PushButton({ push, ready, pushing, className = '' }: Push & { cl
  * No staged progress while in flight — it's one call, and invented stages
  * ("Saving…", "Installing addon…") would claim knowledge the client lacks.
  */
-export function PushBanner({ outcome, dismiss }: Push) {
+export function PushBanner({ outcome, dismiss, manifestURL }: PushBannerProps) {
   if (!outcome) return null
 
   if (outcome.kind === 'success') {
-    return <SuccessBanner manifestURL={outcome.manifestURL} dismiss={dismiss} />
+    return <SuccessBanner manifestURL={manifestURL} dismiss={dismiss} />
   }
   return <ProblemBanner kind={outcome.kind} dismiss={dismiss} />
 }

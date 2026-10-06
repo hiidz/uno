@@ -2173,9 +2173,9 @@ components:
       type: object
       required: [success]
       properties:
-        success: { type: boolean }
-        manifest_url: { type: string, format: uri, description: On success. }
-        error: { type: string, description: 'On failure, always "push failed".' }
+        success:
+          type: boolean
+          description: True only on a 200. The marker that tells this body from any other; an ordinary failure carries nothing else.
         undo_failed:
           type: boolean
           description: What Nuvio took couldn't be put back; Nuvio holds part of the push.

@@ -20,11 +20,8 @@ beforeEach(() => {
 
 describe('pushSelection', () => {
   it('posts the whole selection to the profile push route', async () => {
-    fetchMock.mockResolvedValueOnce(Response.json({ success: true, manifest_url: 'https://uno/u/x/manifest.json' }))
-    await expect(pushSelection(2, body)).resolves.toEqual({
-      success: true,
-      manifest_url: 'https://uno/u/x/manifest.json',
-    })
+    fetchMock.mockResolvedValueOnce(Response.json({ success: true }))
+    await expect(pushSelection(2, body)).resolves.toEqual({ success: true })
     expect(fetchMock).toHaveBeenCalledWith('/api/p/2/push', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify(body),
@@ -32,8 +29,8 @@ describe('pushSelection', () => {
   })
 
   it('returns a structured failure rather than throwing it', async () => {
-    fetchMock.mockResolvedValueOnce(Response.json({ success: false, error: 'nuvio refused' }, { status: 502 }))
-    await expect(pushSelection(0, body)).resolves.toEqual({ success: false, error: 'nuvio refused' })
+    fetchMock.mockResolvedValueOnce(Response.json({ success: false }, { status: 502 }))
+    await expect(pushSelection(0, body)).resolves.toEqual({ success: false })
   })
 
   it('returns a failed undo as a result', async () => {

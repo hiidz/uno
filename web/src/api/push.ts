@@ -18,8 +18,9 @@ export type PushRow =
   | { collection_id: string; pin_to_top: boolean }
 
 /**
- * The server answers in JSON whatever happens (past auth), so this one shape
- * covers success and failure alike.
+ * The server answers in this one shape, success and failure alike, once the
+ * request is past auth and its body has decoded. `success` is the marker
+ * `isPushResult` tells it from any other body by.
  *
  * No per-stage flags: the handler attempts Nuvio *before* writing anything
  * locally, and puts back what Nuvio already took when a later step fails, so an
@@ -31,8 +32,6 @@ export type PushRow =
  */
 export interface PushResult {
   success: boolean
-  manifest_url?: string
-  error?: string
   undo_failed?: boolean
   refused?: PushRefusal
 }

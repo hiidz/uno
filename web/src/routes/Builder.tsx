@@ -244,7 +244,7 @@ function BuilderHeader({
           onHide={() => setChangesOpen(false)}
         />
         <PushBlockNote block={block} />
-        <PushBanner {...push} />
+        <PushBanner outcome={push.outcome} dismiss={push.dismiss} manifestURL={profile.manifestURL} />
         {/* The account's TMDB key is unusable, on a server where each account
             brings one; it is fixed on the picker, reached as switching profile
             is. */}

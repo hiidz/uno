@@ -57,19 +57,18 @@ func (body pushRequest) selection() (vault.CatalogSelectionForm, vault.Collectio
 	return catalogs, collections, nil
 }
 
-// pushResult is the always-JSON response, past auth/profile resolution.
-// Flat by design — success or failure, not partial-progress flags — since
+// pushResult is push's JSON answer once its body has decoded: Success, the
+// marker the SPA tells it from any other body by, true only on a 200. Flat by
+// design — success or failure, not partial-progress flags — since
 // push's ordering (validate → Nuvio → local write) and its undo of what Nuvio
 // already took guarantee an ordinary failure means nothing changed.
 // UndoFailed marks the one case that guarantee doesn't cover: an undo that
 // failed too (undoPush). Refused names why push turned the selection away
 // before contacting Nuvio, when the SPA has words of its own for it.
 type pushResult struct {
-	Success     bool   `json:"success"`
-	ManifestURL string `json:"manifest_url,omitempty"`
-	Error       string `json:"error,omitempty"`
-	UndoFailed  bool   `json:"undo_failed,omitempty"`
-	Refused     string `json:"refused,omitempty"`
+	Success    bool   `json:"success"`
+	UndoFailed bool   `json:"undo_failed,omitempty"`
+	Refused    string `json:"refused,omitempty"`
 }
 
 // The pushResult.Refused values.
@@ -116,7 +115,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, vault.ErrInvalidInput) {
 			status = http.StatusBadRequest
 		}
-		httpx.WriteJSON(w, status, pushResult{Error: "push failed"})
+		httpx.WriteJSON(w, status, pushResult{})
 		return
 	}
 
@@ -139,18 +138,18 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 //     own addon list, so the push would land where nothing shows it.
 func (s *Server) refusePush(ctx context.Context, w http.ResponseWriter, accessToken string, profile vault.Profile, record vault.PushRecord) bool {
 	if hasEmptyCollection(record) {
-		httpx.WriteJSON(w, http.StatusBadRequest, pushResult{Error: "push failed", Refused: refusedEmptyCollection})
+		httpx.WriteJSON(w, http.StatusBadRequest, pushResult{Refused: refusedEmptyCollection})
 		return true
 	}
 	live, found, err := s.liveProfile(ctx, accessToken, profile)
 	switch {
 	case err != nil:
 		log.Printf("push: reading the live profile: %v", err)
-		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{Error: "push failed"})
+		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{})
 	case !found:
-		httpx.WriteJSON(w, http.StatusConflict, pushResult{Error: "push failed", Refused: refusedProfileChanged})
+		httpx.WriteJSON(w, http.StatusConflict, pushResult{Refused: refusedProfileChanged})
 	case live.UsesPrimaryAddons:
-		httpx.WriteJSON(w, http.StatusConflict, pushResult{Error: "push failed", Refused: refusedSharesAddons})
+		httpx.WriteJSON(w, http.StatusConflict, pushResult{Refused: refusedSharesAddons})
 	default:
 		return false
 	}
@@ -221,7 +220,7 @@ func (s *Server) sendPush(ctx context.Context, accessToken string, profile vault
 		log.Printf("push: local commit failed after nuvio succeeded, reverting: %v", err)
 		return undoPush(http.StatusInternalServerError, reverts...)
 	}
-	return http.StatusOK, pushResult{Success: true, ManifestURL: run.manifestURL}
+	return http.StatusOK, pushResult{Success: true}
 }
 
 // pushRevert puts back what one step of a push wrote to Nuvio, as it was
@@ -321,9 +320,9 @@ func undoPush(status int, reverts ...pushRevert) (int, pushResult) {
 		}
 	}
 	if !undone {
-		return http.StatusInternalServerError, pushResult{Error: "push failed", UndoFailed: true}
+		return http.StatusInternalServerError, pushResult{UndoFailed: true}
 	}
-	return status, pushResult{Error: "push failed"}
+	return status, pushResult{}
 }
 
 // listPendingPush serves GET /api/p/{profileIndex}/push/pending: what a push of

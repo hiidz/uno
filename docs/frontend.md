@@ -1311,8 +1311,9 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
   from the text it already reads on every non-2xx. Without it, push's structured failure arrives
   as an `ApiError` whose `message` is the raw JSON blob — unusable, and worse, renderable
   straight into an error UI. No other call site reads `.body`; it exists for this one endpoint.
-- The manifest URL comes from `POST /api/profiles/select`, so it's shown as a header copy button
-  from profile selection onward rather than waiting on a first push.
+- The manifest URL comes from `POST /api/profiles/select` only, so it's shown as a header copy button
+  from profile selection onward rather than waiting on a first push, and `PushBanner`'s success names
+  the same URL, passed down by `Builder`. Push's answer doesn't carry it.
 
 ## Cross-cutting client rules
 

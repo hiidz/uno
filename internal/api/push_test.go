@@ -218,8 +218,8 @@ func TestPush_NuvioUnreachable(t *testing.T) {
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadGateway)
 	}
-	if result := decodePushResult(t, w); result.Success {
-		t.Fatalf("Success = true, want false")
+	if body := strings.TrimSpace(w.Body.String()); body != `{"success":false}` {
+		t.Fatalf(`body = %s, want {"success":false}: the marker alone, an ordinary failure having nothing more to say`, body)
 	}
 	if len(fake.pushAddonsCalls) != 0 {
 		t.Fatalf("PushAddons was called despite ListAddons failing")
@@ -527,8 +527,8 @@ func TestPush_MergesUnoIntoExistingAddons(t *testing.T) {
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
 			}
-			if result := decodePushResult(t, w); result.ManifestURL != manifestURL {
-				t.Fatalf("manifest_url = %q, want %q", result.ManifestURL, manifestURL)
+			if body := strings.TrimSpace(w.Body.String()); body != `{"success":true}` {
+				t.Fatalf("body = %s, want {\"success\":true}", body)
 			}
 			if len(fake.pushAddonsCalls) != 1 {
 				t.Fatalf("PushAddons calls = %d, want 1", len(fake.pushAddonsCalls))

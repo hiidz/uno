@@ -94,10 +94,10 @@ describe('usePush', () => {
     // An edit made while the push is in flight.
     home.state = { rows: PUSHED.rows.slice(0, 1) }
 
-    await act(async () => answer.resolve({ success: true, manifest_url: 'https://uno/manifest.json' }))
+    await act(async () => answer.resolve({ success: true }))
     expect(home.markPushed).toHaveBeenCalledWith(PUSHED)
     expect(result.current.pushing).toBe(false)
-    expect(result.current.outcome).toEqual({ kind: 'success', manifestURL: 'https://uno/manifest.json' })
+    expect(result.current.outcome).toEqual({ kind: 'success' })
     for (const queryKey of cached) {
       expect(queryClient.getQueryState(queryKey)?.isInvalidated).toBe(true)
     }
@@ -121,7 +121,7 @@ describe('usePush', () => {
   })
 
   it('reports a refused push as failed, acknowledging nothing', async () => {
-    api.pushSelection.mockResolvedValue({ success: false, error: 'nuvio refused' })
+    api.pushSelection.mockResolvedValue({ success: false })
     const { result } = renderPush()
     await act(async () => result.current.push())
     expect(result.current.outcome).toEqual({ kind: 'failed' })
@@ -141,7 +141,7 @@ describe('usePush', () => {
     ['profile_changed', 'profile-changed'],
     ['home_order_unreadable', 'home-order-unreadable'],
   ] as const)('reports a push the server refused as %s in its own words', async (refused, kind) => {
-    api.pushSelection.mockResolvedValue({ success: false, error: 'push failed', refused })
+    api.pushSelection.mockResolvedValue({ success: false, refused })
     const { result } = renderPush()
     await act(async () => result.current.push())
     expect(result.current.outcome).toEqual({ kind })
@@ -149,7 +149,7 @@ describe('usePush', () => {
   })
 
   it('reports a refusal it has no words for as an ordinary failure', async () => {
-    api.pushSelection.mockResolvedValue({ success: false, error: 'push failed', refused: 'from_a_newer_server' as PushRefusal })
+    api.pushSelection.mockResolvedValue({ success: false, refused: 'from_a_newer_server' as PushRefusal })
     const { result } = renderPush()
     await act(async () => result.current.push())
     expect(result.current.outcome).toEqual({ kind: 'failed' })

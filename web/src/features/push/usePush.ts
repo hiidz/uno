@@ -12,7 +12,7 @@ import { useHomeSelection } from '@/features/home/useHomeSelection'
  * changed" rather than a per-stage report.
  */
 type PushOutcome =
-  | { kind: 'success'; manifestURL?: string }
+  | { kind: 'success' }
   /** Anything ordinary: rejected input, Nuvio unreachable, either push
    *  refused. Nothing was written, so retrying costs nothing. */
   | { kind: 'failed' }
@@ -120,7 +120,7 @@ export function usePush(profileIndex: number): Push {
           void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
           // What waited for this push is in Nuvio now.
           void queryClient.invalidateQueries({ queryKey: queryKeys.pendingPush(profileIndex) })
-          setOutcome({ kind: 'success', manifestURL: result.manifest_url })
+          setOutcome({ kind: 'success' })
         } else {
           setOutcome(failedOutcome(result))
         }
