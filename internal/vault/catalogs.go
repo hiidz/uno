@@ -21,7 +21,7 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 // scanCatalog reads first.
 const baseCatalogColumns = `c.id, r.type, c.name, r.provider, r.params, c.owner_id,
 	c.collection_id, c.home_sort_order, c.show_in_home, c.recipe_hash, c.sub_key,
-	c.created_at, c.updated_at`
+	c.unpublished_at IS NOT NULL, c.created_at, c.updated_at`
 
 // catalogColumns are the columns scanCatalog reads, in its order, from
 // catalogRows: the base columns, then the sharing state.
@@ -35,13 +35,13 @@ const leanCatalogColumns = baseCatalogColumns + `, ` + noSharingColumns
 // sharingColumns are a row's sharing columns, which sharingScan reads: the
 // row's own publication (p) and, when it is a subscribed copy, the
 // publication its subscription (s) names (sp), with whether that one has
-// an update and whether it is unpublished.
-const sharingColumns = `p.id, p.status, p.content_hash,
-	s.publication_id, sp.status = 'live' AND s.subscribed_hash <> sp.content_hash, sp.status = 'unpublished'`
+// an update.
+const sharingColumns = `p.id, p.content_hash,
+	s.publication_id, s.subscribed_hash <> sp.content_hash`
 
 // noSharingColumns stand in for sharingColumns in a read that doesn't join
 // the sharing tables.
-const noSharingColumns = `NULL, NULL, NULL, NULL, NULL, NULL`
+const noSharingColumns = `NULL, NULL, NULL, NULL`
 
 // catalogsWithRecipes is every catalog joined to its recipe, which holds its
 // type, provider and params.
@@ -276,7 +276,9 @@ func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.
 }
 
 // writeCatalog stores input's recipe, unless it is stored already, and
-// writes input's name and recipe over catalogID; see UpdateUserCatalog.
+// writes input's name and recipe over catalogID; see UpdateUserCatalog. A
+// save is the subscriber having seen a catalog its publisher unpublished,
+// so it clears that mark.
 func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	hash, err := ensureRecipe(ctx, tx, input.Type, input.Provider, input.Params, nowStr)
@@ -284,7 +286,7 @@ func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUI
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE catalogs SET name = ?, recipe_hash = ?, updated_at = ?
+		UPDATE catalogs SET name = ?, recipe_hash = ?, unpublished_at = NULL, updated_at = ?
 		WHERE id = ? AND owner_id = ?
 	`, input.Name, hash, nowStr, catalogID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating catalog: %w", err)
@@ -342,9 +344,10 @@ func checkCatalogRewrite(stored storedCatalog, input CatalogForm) error {
 // (deleteOrphanedScopedCatalogs). It is allowed at any time, Home or not:
 // Nuvio keeps what the last push put there, served from the push record,
 // until the next push drops it. Deleting a subscribed copy removes its
-// subscription, and deleting a published catalog unpublishes its publication,
-// both by cascade. Every collection whose folders used the catalog loses it
-// from those folders by cascade too.
+// subscription, and deleting a published catalog unpublishes it, both by
+// cascade; its subscribers keep their copies as their own
+// (publications_release_subscribers). Every collection whose folders used the
+// catalog loses it from those folders by cascade too.
 func (db *DB) DeleteUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID) error {
 	var deleted bool
 	err := db.inTx(ctx, func(tx *sql.Tx) (err error) {

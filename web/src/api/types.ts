@@ -36,12 +36,15 @@ export interface Catalog {
   /** Its place on Home, numbered with the collections there; absent when it
    *  isn't on Home. */
   home_position?: number
-  /** This catalog's own publication; `null` when it has never been published.
-   *  Only the owner's own reads carry it. */
+  /** This catalog's own publication; `null` while it isn't published. Only
+   *  the owner's own reads carry it. */
   publication: PublicationState | null
   /** The publication this listed catalog is a subscribed copy of; `null`
    *  for the owner's own catalog, and always `null` inside a collection. */
   subscription: SubscriptionState | null
+  /** Its publisher unpublished what it was added from, which made it this
+   *  profile's own; cleared by its next save. */
+  publisher_unpublished: boolean
 }
 
 /** What a publisher's row shows of its publication. `changed_since_publish`
@@ -50,17 +53,14 @@ export interface Catalog {
  *  an update. */
 export interface PublicationState {
   id: string
-  status: 'live' | 'unpublished'
   changed_since_publish: boolean
 }
 
 /** What a subscribed copy shows of the publication it was subscribed from.
- *  Only an Update changes the copy; a save of it is refused. `unpublished`
- *  means its publisher unpublished it, which ends its updates. */
+ *  Only an Update changes the copy; a save of it is refused. */
 export interface SubscriptionState {
   publication_id: string
   update_available: boolean
-  unpublished: boolean
 }
 
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
@@ -119,6 +119,8 @@ export interface Collection {
    *  it, so they carry no subscription of their own. */
   publication: PublicationState | null
   subscription: SubscriptionState | null
+  /** As on `Catalog`. */
+  publisher_unpublished: boolean
   folders: Folder[] | null
   /** Every catalog this collection's folders reference, listed or scoped —
    *  so the editor never needs the library to render a folder. */
@@ -232,10 +234,8 @@ export interface CommunityFolder {
   cover_image_url: string
 }
 
-/** `GET /api/p/{i}/community/{id}`: one publication with its snapshot. A
- *  unpublished one is visible only to a profile that subscribes to it. */
+/** `GET /api/p/{i}/community/{id}`: one publication with its snapshot. */
 export interface PublicationDetail extends CommunityItem {
-  unpublished: boolean
   snapshot: Snapshot
 }
 

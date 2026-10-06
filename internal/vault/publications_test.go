@@ -18,8 +18,8 @@ func TestPublishAndRepublishCatalog(t *testing.T) {
 	owner, other := newTestProfile(t, db, "owner"), newTestProfile(t, db, "other")
 
 	c := publishCatalog(t, db, owner, "Popular", `{"sort_by":"popularity.desc"}`)
-	if p := c.Publication; p == nil || p.Status != statusLive || p.ChangedSincePublish {
-		t.Fatalf("published catalog's publication = %+v, want a live one unchanged since", p)
+	if p := c.Publication; p == nil || p.ChangedSincePublish {
+		t.Fatalf("published catalog's publication = %+v, want one unchanged since", p)
 	}
 	first, err := db.GetPublication(ctx, other, c.Publication.ID)
 	if err != nil {
@@ -153,11 +153,11 @@ func TestPublishRefusals(t *testing.T) {
 	}
 }
 
-// Unpublishing takes a publication out of Community. Its subscribers keep
-// their copies, marked unpublished with no update to take, and still see its
-// last snapshot; nobody else can find it. Publishing again revives the same
-// publication.
-func TestUnpublishAndRevive(t *testing.T) {
+// Unpublishing deletes a publication. Its subscribers keep their copies as
+// their own: no subscription, marked unpublished until their next save, and
+// editable. Nobody can find the publication any more, and publishing the
+// row again is a new publication nobody subscribes to.
+func TestUnpublishReleasesSubscribers(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber, stranger := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber"), newTestProfile(t, db, "stranger")
@@ -169,69 +169,93 @@ func TestUnpublishAndRevive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnpublishCatalog: %v", err)
 	}
-	if unpublished.Publication.Status != "unpublished" {
-		t.Errorf("unpublished catalog's publication = %+v", unpublished.Publication)
+	if unpublished.Publication != nil {
+		t.Errorf("unpublished catalog's publication = %+v, want none", unpublished.Publication)
 	}
 	if items := listCommunity(t, db, stranger); len(items) != 0 {
-		t.Errorf("Community after a unpublish = %+v, want nothing", items)
+		t.Errorf("Community after an unpublish = %+v, want nothing", items)
 	}
-	if got := reloadCatalog(t, db, copied.Catalog.ID).Subscription; got == nil || !got.Unpublished || got.UpdateAvailable {
-		t.Errorf("subscriber's copy subscription = %+v, want unpublished with no update", got)
-	}
-	if detail, err := db.GetPublication(ctx, subscriber, c.Publication.ID); err != nil || !detail.Unpublished {
-		t.Errorf("subscriber's GetPublication = %+v, %v; want the unpublished publication", detail.CommunityItem, err)
+	released := reloadCatalog(t, db, copied.Catalog.ID)
+	if released.Subscription != nil || !released.PublisherUnpublished {
+		t.Errorf("subscriber's copy = subscription %+v, publisher unpublished %v; want no subscription, marked", released.Subscription, released.PublisherUnpublished)
 	}
 	for name, err := range map[string]error{
-		"a stranger's GetPublication": second(db.GetPublication(ctx, stranger, c.Publication.ID)),
-		"a stranger's Subscribe":      second(db.Subscribe(ctx, stranger, c.Publication.ID)),
-		"the subscriber's Update":     second(db.UpdateSubscription(ctx, subscriber, c.Publication.ID)),
+		"the subscriber's GetPublication": second(db.GetPublication(ctx, subscriber, c.Publication.ID)),
+		"a stranger's Subscribe":          second(db.Subscribe(ctx, stranger, c.Publication.ID)),
+		"the subscriber's Update":         second(db.UpdateSubscription(ctx, subscriber, c.Publication.ID)),
 	} {
 		if !errors.Is(err, ErrPublicationNotFound) {
-			t.Errorf("%s of a unpublished publication = %v, want ErrPublicationNotFound", name, err)
+			t.Errorf("%s of an unpublished publication = %v, want ErrPublicationNotFound", name, err)
 		}
 	}
 	if _, err := db.UnpublishCatalog(ctx, stranger, c.ID); !errors.Is(err, ErrCatalogNotFound) {
 		t.Errorf("unpublish someone else's catalog = %v, want ErrCatalogNotFound", err)
 	}
 
-	revived, err := db.PublishCatalog(ctx, owner, c.ID, allowAnyCatalogParams)
+	form := listedCatalogForm("Mine now")
+	form.Params = released.Params
+	saved, err := db.UpdateUserCatalog(ctx, subscriber, released.ID, form)
+	if err != nil {
+		t.Fatalf("save of the released copy: %v", err)
+	}
+	if saved.Name != "Mine now" || saved.PublisherUnpublished {
+		t.Errorf("released copy after a save = name %q, publisher unpublished %v; want renamed, unmarked", saved.Name, saved.PublisherUnpublished)
+	}
+
+	again, err := db.PublishCatalog(ctx, owner, c.ID, allowAnyCatalogParams)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if revived.Publication.ID != c.Publication.ID || revived.Publication.Status != statusLive {
-		t.Errorf("revived publication = %+v, want %s live again", revived.Publication, c.Publication.ID)
+	if again.Publication.ID == c.Publication.ID {
+		t.Errorf("publishing again kept publication %s, want a new one", c.Publication.ID)
 	}
-	if got := reloadCatalog(t, db, copied.Catalog.ID).Subscription; got.Unpublished {
-		t.Errorf("subscription after the revival = %+v, want it live", got)
+	if got := subscriberCount(t, db, stranger, again.Publication.ID); got != 0 {
+		t.Errorf("the new publication's subscribers = %d, want 0", got)
+	}
+	if got := reloadCatalog(t, db, copied.Catalog.ID); got.Subscription != nil {
+		t.Errorf("released copy after publishing again = %+v, want it still its subscriber's own", got.Subscription)
 	}
 }
 
-// Unpublishing a collection's publication marks its subscribers' copies
-// unpublished, and another profile can't unpublish it.
+// Unpublishing a collection releases its subscribers' copies the same way,
+// with no snapshot keys left on their folders and catalogs, and another
+// profile can't unpublish it.
 func TestUnpublishCollection(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared"})
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 	copied := subscribe(t, db, subscriber, source.Publication.ID).Collection
 
-	unpublished, err := db.UnpublishCollection(ctx, owner, source.ID)
-	if err != nil || unpublished.Publication.Status != "unpublished" {
-		t.Fatalf("UnpublishCollection = %+v, %v; want its publication unpublished", unpublished.Publication, err)
-	}
-	if s := mustOwnCollection(t, db, subscriber, copied.ID).Subscription; s == nil || !s.Unpublished {
-		t.Errorf("subscriber's copy subscription = %+v, want unpublished", s)
-	}
 	if _, err := db.UnpublishCollection(ctx, subscriber, source.ID); !errors.Is(err, ErrCollectionNotFound) {
 		t.Errorf("unpublish someone else's collection = %v, want ErrCollectionNotFound", err)
+	}
+	unpublished, err := db.UnpublishCollection(ctx, owner, source.ID)
+	if err != nil || unpublished.Publication != nil {
+		t.Fatalf("UnpublishCollection = %+v, %v; want no publication", unpublished.Publication, err)
+	}
+	released := mustOwnCollection(t, db, subscriber, copied.ID)
+	if released.Subscription != nil || !released.PublisherUnpublished {
+		t.Errorf("subscriber's copy = subscription %+v, publisher unpublished %v; want no subscription, marked", released.Subscription, released.PublisherUnpublished)
+	}
+	if f, c := released.Folders[0], released.Catalogs[0]; f.SubKey != "" || c.SubKey != "" {
+		t.Errorf("released copy's keys = folder %q, catalog %q; want none", f.SubKey, c.SubKey)
+	}
+
+	saved, err := db.UpdateUserCollection(ctx, subscriber, copied.ID, saveFormOf(released))
+	if err != nil {
+		t.Fatalf("save of the released copy: %v", err)
+	}
+	if saved.PublisherUnpublished {
+		t.Error("released copy is still marked after a save")
 	}
 }
 
 // second is the error of a two-value call.
 func second[T any](_ T, err error) error { return err }
 
-// Deleting a published source unpublishes its publication. The subscriber's
-// copy survives, marked unpublished.
+// Deleting a published source unpublishes it. The subscriber's copies
+// survive as their own, marked unpublished.
 func TestDeletingASourceUnpublishes(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -251,12 +275,17 @@ func TestDeletingASourceUnpublishes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i, sub := range []*SubscriptionState{
-		reloadCatalog(t, db, copies[0].Catalog.ID).Subscription,
-		mustOwnCollection(t, db, subscriber, copies[1].Collection.ID).Subscription,
-	} {
-		if sub == nil || !sub.Unpublished {
-			t.Errorf("copy %d subscription = %+v, want unpublished", i, sub)
+	catalogCopy := reloadCatalog(t, db, copies[0].Catalog.ID)
+	collectionCopy := mustOwnCollection(t, db, subscriber, copies[1].Collection.ID)
+	if catalogCopy.Subscription != nil || !catalogCopy.PublisherUnpublished {
+		t.Errorf("catalog copy = subscription %+v, publisher unpublished %v; want no subscription, marked", catalogCopy.Subscription, catalogCopy.PublisherUnpublished)
+	}
+	if collectionCopy.Subscription != nil || !collectionCopy.PublisherUnpublished {
+		t.Errorf("collection copy = subscription %+v, publisher unpublished %v; want no subscription, marked", collectionCopy.Subscription, collectionCopy.PublisherUnpublished)
+	}
+	for _, id := range []uuid.UUID{deleted.Publication.ID, collection.Publication.ID} {
+		if _, err := db.GetPublication(ctx, subscriber, id); !errors.Is(err, ErrPublicationNotFound) {
+			t.Errorf("GetPublication of a deleted source's publication = %v, want ErrPublicationNotFound", err)
 		}
 	}
 }

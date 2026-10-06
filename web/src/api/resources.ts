@@ -47,8 +47,7 @@ export function fetchCommunity(profileIndex: number): Promise<CommunityItem[]> {
   return getList<CommunityItem>(`/api/p/${profileIndex}/community`)
 }
 
-/** One publication with its snapshot. 404s for an unpublished one this profile
- *  doesn't subscribe to. */
+/** One publication with its snapshot. 404s once it is unpublished. */
 export function fetchPublication(profileIndex: number, publicationID: string): Promise<PublicationDetail> {
   return getJSON<PublicationDetail>(`/api/p/${profileIndex}/community/${publicationID}`)
 }

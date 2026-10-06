@@ -18,8 +18,8 @@ var (
 	ErrCatalogNotFound    = errors.New("catalog not found")
 	ErrCollectionNotFound = errors.New("collection not found")
 	// ErrPublicationNotFound is a publication the caller can't see: none by
-	// that id, one unpublished, their own for a subscribe or duplicate, or, for an
-	// Update, one they don't subscribe to.
+	// that id, which is also one unpublished, their own for a subscribe or
+	// duplicate, or, for an Update, one they don't subscribe to.
 	ErrPublicationNotFound = errors.New("publication not found")
 	ErrInvalidInput        = errors.New("invalid input")
 	// ErrConflict is a request the caller's own current state rules out: a

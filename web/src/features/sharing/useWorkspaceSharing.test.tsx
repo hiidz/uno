@@ -13,10 +13,10 @@ const api = vi.hoisted(() => ({ current: null as null | ((input: RequestInfo | U
 vi.mock('@/api/client', () => ({ apiFetch: (input: RequestInfo | URL, init?: RequestInit) => api.current!(input, init) }))
 
 const genres = { movie: new Map([[27, 'Horror']]), tv: new Map() }
-const subscription: SubscriptionState = { publication_id: 'pub', update_available: true, unpublished: false }
+const subscription: SubscriptionState = { publication_id: 'pub', update_available: true }
 
 /** Renders what the workspace renders from the hook for an own row: its
- *  sign button and stickers, and the dialogs. */
+ *  sign button, stickers and notice, and the dialogs. */
 function Harness(props: {
   catalog?: Catalog
   collection?: Collection
@@ -36,6 +36,7 @@ function Harness(props: {
   return (
     <>
       <div data-testid="badges">{own?.sharingBadges}</div>
+      <div data-testid="notice">{own?.sharingNotice}</div>
       <SignStepButton step={own?.sharingStep} />
       {sharing.dialogs}
     </>
@@ -68,7 +69,7 @@ describe('useWorkspaceSharing', () => {
   })
 
   it('flags To push beside the Community sticker while a push would change the row', () => {
-    const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
+    const live = { id: 'p', changed_since_publish: false }
     const row = catalog({ id: 'c1', name: 'Horror', publication: live })
     renderHarness({ catalog: row, waiting: ['c1'] }, {})
     expect(within(screen.getByTestId('badges')).getAllByText(/./).map((s) => s.textContent)).toEqual([
@@ -99,7 +100,7 @@ describe('useWorkspaceSharing', () => {
   })
 
   it('lists what changed since the last publish in the dialog of a changed row, and only there', async () => {
-    const changed = { id: 'p', status: 'live' as const, changed_since_publish: true }
+    const changed = { id: 'p', changed_since_publish: true }
     const { calls } = renderHarness(
       { collection: collection({ id: 'col1', title: 'Night', publication: changed }) },
       {
@@ -123,7 +124,7 @@ describe('useWorkspaceSharing', () => {
   })
 
   it('publishes a changed catalog’s update, and shows a refusal in place', async () => {
-    const changed = { id: 'p', status: 'live' as const, changed_since_publish: true }
+    const changed = { id: 'p', changed_since_publish: true }
     const { onToast } = renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: changed }) },
       { 'POST /api/p/1/catalogs/c1/publish': () => failWith(502, 'TMDB is unreachable') },
@@ -138,7 +139,7 @@ describe('useWorkspaceSharing', () => {
   })
 
   it('reports a published update', async () => {
-    const changed = { id: 'p', status: 'live' as const, changed_since_publish: true }
+    const changed = { id: 'p', changed_since_publish: true }
     const { onToast } = renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: changed }) },
       { 'POST /api/p/1/catalogs/c1/publish': catalog({ id: 'c1' }) },
@@ -149,7 +150,7 @@ describe('useWorkspaceSharing', () => {
   })
 
   it('unpublishes once asked', async () => {
-    const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
+    const live = { id: 'p', changed_since_publish: false }
     const { onToast, calls } = renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: live }) },
       { 'POST /api/p/1/catalogs/c1/unpublish': catalog({ id: 'c1' }) },
@@ -162,7 +163,7 @@ describe('useWorkspaceSharing', () => {
   })
 
   it('keeps a failed stop in the question', async () => {
-    const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
+    const live = { id: 'p', changed_since_publish: false }
     const { onToast } = renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: live }) },
       { 'POST /api/p/1/catalogs/c1/unpublish': () => failWith(500, 'database locked') },
@@ -207,14 +208,22 @@ describe('useWorkspaceSharing', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('names the step Publish again… after Unpublish', () => {
-    const unpublished = { id: 'p', status: 'unpublished' as const, changed_since_publish: false }
-    renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror', publication: unpublished }) }, {})
-    expect(screen.getByRole('button', { name: 'Publish again…' })).toBeInTheDocument()
+  it('leads a row its publisher unpublished with the line that says it is yours now', () => {
+    renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror', publisher_unpublished: true }) }, {})
+    expect(screen.getByTestId('notice')).toHaveTextContent('Its publisher unpublished this. It’s yours to edit now.')
+    expect(within(screen.getByTestId('badges')).getByText('Unpublished')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Publish…' })).toBeInTheDocument()
+  })
+
+  it('drops the line once the row is published again', () => {
+    const live = { id: 'p', changed_since_publish: false }
+    renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror', publisher_unpublished: true, publication: live }) }, {})
+    expect(screen.getByTestId('notice')).toBeEmptyDOMElement()
+    expect(within(screen.getByTestId('badges')).queryByText('Unpublished')).toBeNull()
   })
 
   it('turns the publish dialog of a changed row into the Unpublish question', async () => {
-    const changed = { id: 'p', status: 'live' as const, changed_since_publish: true }
+    const changed = { id: 'p', changed_since_publish: true }
     renderHarness(
       { catalog: catalog({ id: 'c1', name: 'Horror', publication: changed }) },
       { 'GET /api/p/1/catalogs/c1/changes-since-publish': [] },

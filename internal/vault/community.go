@@ -44,28 +44,26 @@ type CommunityFolder struct {
 	CoverImageURL string `json:"cover_image_url"`
 }
 
-// PublicationDetail is one publication with its snapshot, and whether it
-// has been unpublished, which only a subscriber sees.
+// PublicationDetail is one publication with its snapshot.
 type PublicationDetail struct {
 	CommunityItem
-	Unpublished bool     `json:"unpublished"`
-	Snapshot    Snapshot `json:"snapshot"`
+	Snapshot Snapshot `json:"snapshot"`
 }
 
 // communityItemColumns are the columns scanCommunityItem reads, from
 // publications as p and the caller's subscriptions as s.
 const communityItemColumns = `p.id, p.kind, p.title, p.catalog_count, p.folder_count, p.subscriber_count,
 	p.published_at, p.updated_at, p.snapshot,
-	s.id IS NOT NULL, coalesce(p.status = 'live' AND s.subscribed_hash <> p.content_hash, 0)`
+	s.id IS NOT NULL, coalesce(s.subscribed_hash <> p.content_hash, 0)`
 
-// ListCommunity is every live publication that isn't profileID's, newest
-// first. Two publications of the same content are both listed.
+// ListCommunity is every publication that isn't profileID's, newest first.
+// Two publications of the same content are both listed.
 func (db *DB) ListCommunity(ctx context.Context, profileID uuid.UUID) ([]CommunityItem, error) {
 	rows, err := db.conn.QueryContext(ctx, `
 		SELECT `+communityItemColumns+`
 		FROM publications p
 		LEFT JOIN subscriptions s ON s.publication_id = p.id AND s.subscriber_id = :me
-		WHERE p.status = 'live' AND p.publisher_id <> :me
+		WHERE p.publisher_id <> :me
 		ORDER BY p.published_at DESC, p.id DESC
 	`, sql.Named("me", profileID.String()))
 	if err != nil {
@@ -96,14 +94,13 @@ func scanCommunityItems(rows *sql.Rows) ([]CommunityItem, error) {
 	return items, nil
 }
 
-// scanCommunityItem reads communityItemColumns, then extraDests, and returns
-// the item with the snapshot it was read from.
-func scanCommunityItem(row rowScanner, extraDests ...any) (CommunityItem, Snapshot, error) {
+// scanCommunityItem reads communityItemColumns and returns the item with the
+// snapshot it was read from.
+func scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error) {
 	var item CommunityItem
 	var id, publishedAt, updatedAt, raw string
-	if err := row.Scan(append([]any{&id, &item.Kind, &item.Title, &item.CatalogCount, &item.FolderCount,
-		&item.SubscriberCount, &publishedAt, &updatedAt, &raw, &item.Subscribed, &item.UpdateAvailable},
-		extraDests...)...); err != nil {
+	if err := row.Scan(&id, &item.Kind, &item.Title, &item.CatalogCount, &item.FolderCount,
+		&item.SubscriberCount, &publishedAt, &updatedAt, &raw, &item.Subscribed, &item.UpdateAvailable); err != nil {
 		return CommunityItem{}, Snapshot{}, err
 	}
 	var p rowParser
@@ -157,24 +154,21 @@ func (s Snapshot) listed(kind string) ([]string, *BundleCatalog) {
 	return names, &s.Catalogs[0]
 }
 
-// GetPublication is publicationID with its snapshot, for profileID: a live
-// publication, or an unpublished one profileID subscribes to, whose last
-// snapshot it still shows. ErrPublicationNotFound otherwise.
+// GetPublication is publicationID with its snapshot, for profileID, or
+// ErrPublicationNotFound when there is no such publication.
 func (db *DB) GetPublication(ctx context.Context, profileID, publicationID uuid.UUID) (PublicationDetail, error) {
-	var detail PublicationDetail
 	row := db.conn.QueryRowContext(ctx, `
-		SELECT `+communityItemColumns+`, p.status = 'unpublished'
+		SELECT `+communityItemColumns+`
 		FROM publications p
 		LEFT JOIN subscriptions s ON s.publication_id = p.id AND s.subscriber_id = :me
-		WHERE p.id = :id AND (p.status = 'live' OR s.id IS NOT NULL)
+		WHERE p.id = :id
 	`, sql.Named("me", profileID.String()), sql.Named("id", publicationID.String()))
-	item, snapshot, err := scanCommunityItem(row, &detail.Unpublished)
+	item, snapshot, err := scanCommunityItem(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PublicationDetail{}, ErrPublicationNotFound
 	}
 	if err != nil {
 		return PublicationDetail{}, fmt.Errorf("loading publication: %w", err)
 	}
-	detail.CommunityItem, detail.Snapshot = item, snapshot
-	return detail, nil
+	return PublicationDetail{CommunityItem: item, Snapshot: snapshot}, nil
 }

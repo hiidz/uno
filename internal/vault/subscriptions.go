@@ -29,14 +29,14 @@ type CommunityCopy struct {
 // storedPublication is a publications row as a subscribe, a duplicate or an
 // Update reads it.
 type storedPublication struct {
-	id, publisherID                uuid.UUID
-	kind, status, contentHash, raw string
-	snapshot                       Snapshot
+	id, publisherID        uuid.UUID
+	kind, contentHash, raw string
+	snapshot               Snapshot
 }
 
 // publicationColumns are the columns scanPublication reads, from
 // publications as p.
-const publicationColumns = `p.id, p.publisher_id, p.kind, p.status, p.content_hash, p.snapshot`
+const publicationColumns = `p.id, p.publisher_id, p.kind, p.content_hash, p.snapshot`
 
 // scanPublication reads publicationColumns from row, after dests for any
 // columns the caller's query lists ahead of them. A missing row is
@@ -44,7 +44,7 @@ const publicationColumns = `p.id, p.publisher_id, p.kind, p.status, p.content_ha
 func scanPublication(row *sql.Row, dests ...any) (storedPublication, error) {
 	var pub storedPublication
 	var id, publisherID string
-	err := row.Scan(append(dests, &id, &publisherID, &pub.kind, &pub.status, &pub.contentHash, &pub.raw)...)
+	err := row.Scan(append(dests, &id, &publisherID, &pub.kind, &pub.contentHash, &pub.raw)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storedPublication{}, ErrPublicationNotFound
 	}
@@ -62,12 +62,11 @@ func scanPublication(row *sql.Row, dests ...any) (storedPublication, error) {
 }
 
 // copyablePublication reads publicationID for a subscribe or a duplicate by
-// profileID: it must be live and someone else's (ErrPublicationNotFound
-// otherwise).
+// profileID: it must be someone else's (ErrPublicationNotFound otherwise).
 func (db *DB) copyablePublication(ctx context.Context, profileID, publicationID uuid.UUID) (storedPublication, error) {
 	return scanPublication(db.conn.QueryRowContext(ctx, `
 		SELECT `+publicationColumns+` FROM publications p
-		WHERE p.id = ? AND p.status = 'live' AND p.publisher_id <> ?
+		WHERE p.id = ? AND p.publisher_id <> ?
 	`, publicationID.String(), profileID.String()))
 }
 
@@ -77,8 +76,8 @@ func (db *DB) copyablePublication(ctx context.Context, profileID, publicationID 
 // copy is unpublished, off Home and never pushed. Only the form validators
 // run: the snapshot's recipes were checked against TMDB when it was
 // published, so a subscribe makes no TMDB call.
-// Returns ErrPublicationNotFound unless the publication is live and someone
-// else's, and ErrConflict when profileID already subscribes to it.
+// Returns ErrPublicationNotFound unless the publication exists and is
+// someone else's, and ErrConflict when profileID already subscribes to it.
 func (db *DB) Subscribe(ctx context.Context, profileID, publicationID uuid.UUID) (CommunityCopy, error) {
 	return db.copyPublication(ctx, profileID, publicationID, true)
 }
@@ -137,7 +136,7 @@ func catalogFromSnapshot(profileID uuid.UUID, s Snapshot) Catalog {
 
 // insertSubscription subscribes copyID, profileID's copy of pub, to it, in
 // step with pub's current snapshot, checking in the same statement that pub
-// is still live. A second subscription to one publication is ErrConflict,
+// still exists. A second subscription to one publication is ErrConflict,
 // and one to a publication unpublished since it was read is
 // ErrPublicationNotFound (requireInserted).
 func insertSubscription(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pub storedPublication, copyID uuid.UUID) error {
@@ -145,7 +144,7 @@ func insertSubscription(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pu
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO subscriptions (id, subscriber_id, publication_id, catalog_id, collection_id, subscribed_hash, created_at)
 		SELECT ?, ?, ?, ?, ?, ?, ?
-		WHERE EXISTS (SELECT 1 FROM publications WHERE id = ? AND status = 'live')
+		WHERE EXISTS (SELECT 1 FROM publications WHERE id = ?)
 	`, uuid.New().String(), profileID.String(), pub.id.String(), catalogID, collectionID, pub.contentHash,
 		time.Now().UTC().Format(time.RFC3339), pub.id.String())
 	if isUniqueConstraintErr(err) {
@@ -190,15 +189,14 @@ type subscription struct {
 }
 
 // loadSubscription reads profileID's subscription to publicationID through
-// q. The publication must be live: an unpublished one has nothing more to
-// update to. ErrPublicationNotFound otherwise.
+// q, or ErrPublicationNotFound when there is none.
 func loadSubscription(ctx context.Context, q queryRower, profileID, publicationID uuid.UUID) (subscription, error) {
 	var sub subscription
 	var id, copyID string
 	pub, err := scanPublication(q.QueryRowContext(ctx, `
 		SELECT s.id, coalesce(s.catalog_id, s.collection_id), s.subscribed_hash, `+publicationColumns+`
 		FROM subscriptions s JOIN publications p ON p.id = s.publication_id
-		WHERE s.subscriber_id = ? AND s.publication_id = ? AND p.status = 'live'
+		WHERE s.subscriber_id = ? AND s.publication_id = ?
 	`, profileID.String(), publicationID.String()), &id, &copyID, &sub.subscribedHash)
 	if err != nil {
 		return subscription{}, err
@@ -221,8 +219,7 @@ func loadSubscription(ctx context.Context, q queryRower, profileID, publicationI
 // on Home as needing a push. A copy whose content already equals the snapshot is only
 // marked in step; any other is written through the validators a save runs,
 // and ErrInvalidInput when they refuse the snapshot. Returns the copy, or
-// ErrPublicationNotFound unless profileID subscribes to the publication and
-// it is live.
+// ErrPublicationNotFound unless profileID subscribes to the publication.
 func (db *DB) UpdateSubscription(ctx context.Context, profileID, publicationID uuid.UUID) (CommunityCopy, error) {
 	var sub subscription
 	err := db.inTx(ctx, func(tx *sql.Tx) error {

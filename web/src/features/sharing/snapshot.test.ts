@@ -8,7 +8,7 @@ import { asCatalog, snapshotAsCollection, snapshotCatalog, snapshotRecipeLine } 
 const genres = { movie: new Map([[27, 'Horror']]), tv: new Map([[10765, 'Sci-Fi & Fantasy']]) }
 
 function detail(snapshot: PublicationDetail['snapshot']): PublicationDetail {
-  return { ...communityItem({ id: 'pub', kind: 'collection', catalog: null }), unpublished: false, snapshot }
+  return { ...communityItem({ id: 'pub', kind: 'collection', catalog: null }), snapshot }
 }
 
 describe('asCatalog', () => {

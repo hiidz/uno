@@ -115,8 +115,8 @@ func TestUpdateUserCatalogIgnoresCollectionID(t *testing.T) {
 	if updated.Name != "Renamed" || updated.CollectionID != nil {
 		t.Fatalf("updated catalog = name %q, collection_id %v, want %q and listed", updated.Name, updated.CollectionID, "Renamed")
 	}
-	if reloaded := reloadCatalog(t, db, catalog.ID); reloaded.Publication == nil || reloaded.Publication.Status != "live" {
-		t.Errorf("publication after the update = %+v, want live", reloaded.Publication)
+	if reloaded := reloadCatalog(t, db, catalog.ID); reloaded.Publication == nil {
+		t.Errorf("publication after the update = %+v, want one", reloaded.Publication)
 	}
 	if after := mustOwnCollection(t, db, subscriber, copied.ID); after.Subscription == nil {
 		t.Error("the collection named in collection_id lost its subscription")

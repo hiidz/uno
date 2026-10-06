@@ -171,4 +171,32 @@ A schema change edits `schema.sql` and bumps `schemaVersion`.
 
 **Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 
+**`uno migrate --db <path>`** moves a version 7 vault to version 8, where unpublishing is one-way.
+It is a one-off, deleted once prod has run it (`cmd/server/migrate.go`). It refuses any version
+but 7, and runs in one transaction on one connection with foreign keys off:
+- every publication version 7 kept as unpublished has its subscribers released, as version 8's
+  `publications_release_subscribers` releases them: each subscribed row is marked
+  `unpublished_at`, and a collection copy's snapshot keys are cleared. Those subscriptions and
+  publications are then deleted;
+- `catalogs` and `collections` gain `unpublished_at`;
+- `publications` and `subscriptions` are rebuilt as `schema.sql` declares them, with every
+  `subscriber_count` counted afresh, along with their indexes and triggers;
+- it stamps version 8, checks the foreign keys, and checks the structure against a fresh v8
+  database, with the stored SQL of each rebuilt table and trigger compared exactly.
+
+Any refusal or failure leaves the file as it was. It prints every table's row count before and
+after, and how many publications it deleted and copies it released.
+
+On the deployed volume, with the image distroless and `ENTRYPOINT ["/app/uno"]`:
+
+1. `docker compose stop uno`, then back up `/data` (`docker compose cp uno:/data ./uno-data-backup`).
+2. `docker tag uno uno:pre-v8`, so the v7 image survives the build.
+3. Build or deploy the new image.
+4. `docker compose run --rm uno migrate --db /data/vault.db`.
+5. `docker compose up -d`.
+
+The new binary refuses a version 7 vault until it is migrated. If the migration refuses, the vault
+is still at version 7: `docker tag uno:pre-v8 uno && docker compose up -d --no-build` runs the old
+image again.
+
 **The deployed `uno-data` volume** holds real data, so never `docker compose down -v` it.

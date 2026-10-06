@@ -994,10 +994,11 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   (`SignStepButton` in `components/PaneSign.tsx`,
   drawn by `EditorFooter` from the editor's `sharingStep`). It names the next step from where the row stands (`sharingStep` over
   `ownSharing`): Publish… while private, Publish update… once the saved row differs from what was
-  published (`changed_since_publish`, which the sign's To publish sticker also says), Publish
-  again… after Unpublish, and Unpublish… while live and unchanged. The publishes open the publish
-  dialog; Unpublish… asks first ("Community stops listing it. People who added it keep it, and get
-  no updates until you publish it again."). Community holds the saved row, so while the form has
+  published (`changed_since_publish`, which the sign's To publish sticker also says), and
+  Unpublish… while live and unchanged; after Unpublish the row is private again and says
+  Publish…. The publishes open the publish dialog; Unpublish… asks first ("Community stops
+  listing it. People who added it keep it as their own and won’t get your updates, even if you
+  publish it again."), since unpublishing is one-way. Community holds the saved row, so while the form has
   unsaved changes the button is greyed (`aria-disabled`) and pressing it shows "Save first." as a
   one-line toast above it.
 - **A collection that uses a catalog added from Community can be published** like any other. A
@@ -1011,7 +1012,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   its line: what every follower will be offered (`SinceLastPublished`, from
   `GET .../changes-since-publish`, fetched as the dialog opens). It is also what explains a
   collection flagged To publish because a library catalog it uses was edited. Publishing a row
-  never published, or again after Unpublish, shows no list, and neither does the editor. A catalog added from Community carries the From Community sticker
+  not published, never or not since Unpublish, shows no list, and neither does the editor. A catalog added from Community carries the From Community sticker
   (`FROM_COMMUNITY`, the one `sharingState.ts` draws it from), so it reads as someone else's catalog being
   published as it stands. Its heading is "Publish “X”?" (or "Publish your changes to “X”?"), its
   button Publish (or Publish update), and its line "Anyone on Uno can find it in Community and add
@@ -1026,11 +1027,17 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   publisher of a row added from Community published a newer version). Only the incoming one says
   "update". A row carries **one Community sticker**, changing with its state: an own row reads
   Published, then To publish; a row added from Community reads From Community, then Update
-  available. A sticker's `tone` is `{hue, fill}` (DESIGN.md's *Sticker Rule*), drawn by
+  available; and a row whose publisher unpublished it, now the profile's own, reads
+  **Unpublished** until it is saved or this profile publishes it (`publisherUnpublished`). A
+  sticker's `tone` is `{hue, fill}` (DESIGN.md's *Sticker Rule*), drawn by
   `stickerClass` as `.stk` with one hue class and `.stk-fill`: a pill is filled only while it
   waits on you, until one action clears it — To publish and Update available (pink), To push
-  (yellow); Published, From Community and Unpublished (beside From Community once its publisher
-  unpublished the row) are pink outlines.
+  (yellow); Published, From Community and Unpublished are pink outlines.
+- **A row its publisher unpublished opens in its editor**, like any own row, since it no longer
+  has a subscription. While it reads Unpublished, the form leads with one dim line, "Its
+  publisher unpublished this. It’s yours to edit now." (`UnpublishedNotice`, passed to
+  `CatalogEditor` and `CollectionEditor` as `sharingNotice` by `useWorkspaceSharing`). Its next
+  save clears the mark (`publisher_unpublished`), so the line and the sticker go with it.
   - **Where they show:** the library rail shows a catalog's kind and the Community sticker
     only (`railStickers`) — never To push, which the pending count already covers, and no
     Collection sticker, which the rail's Collections sign already says. An editor's sign and the
@@ -1055,8 +1062,8 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   closing never asks. Its place on the home screen, its pin included, is the Home pane's, as
   for any row.
   - **Frame:** `EditorShell`, as for any row: the region's sign (tangerine catalog, green
-    collection) with the From Community sticker (and Unpublished once its publisher
-    unpublished it, To push while a push would change what Nuvio holds for it), ×, Escape,
+    collection) with the From Community sticker (and To push while a push would change what
+    Nuvio holds for it), ×, Escape,
     and below `lg` Duplicate and Delete on the sign and the editor layer. The sign says From
     Community in place of Update available, since the Update… button says it. Below `sm` the sign
     hides stickers, so `EditorShell` heads the body with them.
@@ -1066,7 +1073,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     the publication's page (below), with a
     dim **"7 changes"** beside it (`UpdateCount`, `changeCount`: the lines the page's shelf
     shows, from the same call). The count shows nothing while that loads, if it fails or if it is
-    empty. An unpublished row has nothing to update.
+    empty.
   - **The catalog block** (`CatalogBlock.tsx`, shared by both views and the Community
     publication page): open, the recipe as spec tiles — flat `raised` tiles on the ground in an
     auto-fill grid (140px minimum), the one-value facts first so they share rows, then the list facts

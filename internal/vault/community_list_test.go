@@ -97,8 +97,7 @@ func TestListCommunitySubscriptionFlags(t *testing.T) {
 	}
 }
 
-// A detail reads a live publication, or a unpublished one the caller
-// subscribes to; a publication by an id nobody published is not found.
+// A detail reads a publication; one by an id nobody published is not found.
 func TestGetPublication(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -108,7 +107,7 @@ func TestGetPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Title != "Halloween" || detail.Unpublished || detail.Catalog != nil || detail.Snapshot.Collection.Folders[0].Title != "F" || detail.Snapshot.Catalogs[0].Name != "Ghosts" {
+	if detail.Title != "Halloween" || detail.Catalog != nil || detail.Snapshot.Collection.Folders[0].Title != "F" || detail.Snapshot.Catalogs[0].Name != "Ghosts" {
 		t.Errorf("detail = %+v", detail)
 	}
 	if _, err := db.GetPublication(ctx, viewer, uuid.New()); !errors.Is(err, ErrPublicationNotFound) {

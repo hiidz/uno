@@ -1,20 +1,25 @@
-import type { Catalog, CatalogType, Collection, Folder, PendingChange, PublicationState, SubscriptionState } from '@/api'
+import type { Catalog, CatalogType, Collection, Folder, PendingChange, PublicationState } from '@/api'
 import { typeLabel } from '@/features/library/recipe'
 
-/** Where an owner's own row stands with Community: never published (or
- *  published and then unpublished), published as it is, or published with
- *  edits made since. */
-export type OwnSharing = 'private' | 'live' | 'changed' | 'unpublished'
+/** Where an owner's own row stands with Community: not published (never, or
+ *  unpublished since), published as it is, or published with edits made
+ *  since. */
+export type OwnSharing = 'private' | 'live' | 'changed'
 
 export function ownSharing(publication: PublicationState | null): OwnSharing {
   if (publication === null) return 'private'
-  if (publication.status === 'unpublished') return 'unpublished'
   return publication.changed_since_publish ? 'changed' : 'live'
 }
 
-/** Whether an own row's publication is live: Community lists it now. */
+/** Whether an own row is published: Community lists it now. */
 export function isPublished(row: { publication: PublicationState | null }): boolean {
-  return row.publication?.status === 'live'
+  return row.publication !== null
+}
+
+/** Whether a row is one its publisher unpublished, made this profile's own
+ *  and not saved since, and not published again by this profile either. */
+export function publisherUnpublished(row: Pick<Catalog, 'publication' | 'publisher_unpublished'>): boolean {
+  return row.publisher_unpublished && row.publication === null
 }
 
 /** A sticker's look: `hue` names where the fact points (a row's kind its
@@ -54,6 +59,7 @@ const TO_PUBLISH: SharingSticker = { label: 'To publish', tone: COMMUNITY_FILL }
 export const FROM_COMMUNITY: SharingSticker = { label: 'From Community', tone: COMMUNITY }
 /** The only sticker that says "update": a publisher's newer version waits. */
 export const UPDATE_AVAILABLE: SharingSticker = { label: 'Update available', tone: COMMUNITY_FILL }
+/** A row its publisher unpublished, now this profile's own. */
 const UNPUBLISHED: SharingSticker = { label: 'Unpublished', tone: COMMUNITY }
 const TO_PUSH: SharingSticker = { label: 'To push', tone: { hue: 'nuvio', fill: true } }
 /** A home-screen row whose catalog or collection was deleted. */
@@ -74,16 +80,22 @@ export function kindStickers(catalog: Pick<Catalog, 'type'> | undefined): Sharin
   return catalog ? [kindSticker(catalog.type)] : []
 }
 
-type StickerRow = { publication: PublicationState | null; subscription: SubscriptionState | null }
+type StickerRow = Pick<Catalog, 'publication' | 'subscription' | 'publisher_unpublished'>
 
 /** The one Community sticker a row carries, changing with its state: an own
  *  row reads Published, then To publish once edited since; a row added
- *  from Community reads From Community, then Update available. */
+ *  from Community reads From Community, then Update available, and
+ *  Unpublished once its publisher unpublished it, until it is saved. */
 function communitySticker(row: StickerRow): SharingSticker | null {
   if (row.subscription) return row.subscription.update_available ? UPDATE_AVAILABLE : FROM_COMMUNITY
   const state = ownSharing(row.publication)
   if (state === 'live') return PUBLISHED
-  return state === 'changed' ? TO_PUBLISH : null
+  return state === 'changed' ? TO_PUBLISH : unpublishedSticker(row)
+}
+
+/** Unpublished on a row its publisher unpublished; none otherwise. */
+function unpublishedSticker(row: StickerRow): SharingSticker | null {
+  return publisherUnpublished(row) ? UNPUBLISHED : null
 }
 
 /** What the library rail shows besides the kind: the row's Community sticker. */
@@ -92,13 +104,11 @@ export function railStickers(row: StickerRow): SharingSticker[] {
   return sticker ? [sticker] : []
 }
 
-/** Every flag a row carries, for an editor's sign: its
- *  Community sticker, Unpublished once its publisher unpublished a row added
- *  from Community, and To push while `waitingForPush` says Nuvio holds
- *  it differently from how a push would send it now. */
+/** Every flag a row carries, for an editor's sign: its Community sticker,
+ *  and To push while `waitingForPush` says Nuvio holds it differently from
+ *  how a push would send it now. */
 export function rowStickers(row: StickerRow, waitingForPush: boolean): SharingSticker[] {
   const stickers = railStickers(row)
-  if (row.subscription?.unpublished) stickers.push(UNPUBLISHED)
   if (waitingForPush) stickers.push(TO_PUSH)
   return stickers
 }
@@ -165,7 +175,6 @@ function folderCatalogIDs(folder: Pick<Folder, 'refs'>): string[] {
 const STEP_LABEL: Record<OwnSharing, string> = {
   private: 'Publish…',
   changed: 'Publish update…',
-  unpublished: 'Publish again…',
   live: 'Unpublish…',
 }
 

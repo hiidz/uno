@@ -30,7 +30,6 @@ const zombies = communityItem({ id: 'zombies', title: 'Zombies', catalog_names: 
 
 const nightDetail: PublicationDetail = {
   ...night,
-  unpublished: false,
   snapshot: {
     format: 'uno-publication',
     version: 1,
@@ -209,7 +208,7 @@ describe('CommunityView', () => {
   it('shows a catalog publication’s recipe on its page', async () => {
     renderView({
       'GET /api/p/1/community': [a24],
-      'GET /api/p/1/community/a24': { ...a24, unpublished: false, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
+      'GET /api/p/1/community/a24': { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
     expect(await screen.findByText('One page of results')).toBeInTheDocument()
@@ -286,7 +285,7 @@ describe('CommunityView', () => {
   it('leads the page with its meta, then Add in the Community accent beside Duplicate', async () => {
     const calls = renderView({
       'GET /api/p/1/community': [{ ...a24, subscriber_count: 1 }],
-      'GET /api/p/1/community/a24': { ...a24, unpublished: false, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
+      'GET /api/p/1/community/a24': { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
       'POST /api/p/1/community/a24/duplicate': { kind: 'catalog' },
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
@@ -312,7 +311,7 @@ describe('CommunityView', () => {
   it('draws nothing for a publication whose snapshot holds no catalog', async () => {
     renderView({
       'GET /api/p/1/community': [a24],
-      'GET /api/p/1/community/a24': { ...a24, unpublished: false, snapshot: { format: 'uno-publication', version: 1, catalogs: null } },
+      'GET /api/p/1/community/a24': { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: null } },
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
     await screen.findByRole('button', { name: 'Back to Community' })

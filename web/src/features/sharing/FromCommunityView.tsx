@@ -80,7 +80,7 @@ function ViewFrame({
   tone: 'catalog' | 'collection'
   purpose: string
   title: string
-  row: Pick<Catalog, 'publication' | 'subscription'>
+  row: Pick<Catalog, 'publication' | 'subscription' | 'publisher_unpublished'>
   children: (lead: ReactNode) => ReactNode
 } & FromCommunityActions) {
   const updating = updateWaits(row)

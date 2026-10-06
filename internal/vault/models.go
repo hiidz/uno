@@ -54,14 +54,16 @@ type Catalog struct {
 	// when there is none.
 	Publication  *PublicationState  `json:"publication"`
 	Subscription *SubscriptionState `json:"subscription"`
+	// PublisherUnpublished is set on a listed catalog that was a subscribed
+	// copy until its publisher unpublished it, until it is next saved.
+	PublisherUnpublished bool `json:"publisher_unpublished"`
 }
 
-// PublicationState is what a publisher's row shows of its publication: its
-// id, whether it is live or unpublished, and whether the row has changed
-// since it was last published, which is a hint to the publisher only.
+// PublicationState is what a publisher's row shows of its live publication:
+// its id, and whether the row has changed since it was last published, which
+// is a hint to the publisher only.
 type PublicationState struct {
 	ID                  uuid.UUID `json:"id"`
-	Status              string    `json:"status"`
 	ChangedSincePublish bool      `json:"changed_since_publish"`
 	// contentHash is the publication's content hash, which the row's own
 	// snapshot is compared with.
@@ -69,12 +71,10 @@ type PublicationState struct {
 }
 
 // SubscriptionState is what a subscribed copy shows of the publication it
-// was subscribed from: its id, whether a newer snapshot is published, and
-// whether the publication has been unpublished, which ends its updates.
+// was subscribed from: its id, and whether a newer snapshot is published.
 type SubscriptionState struct {
 	PublicationID   uuid.UUID `json:"publication_id"`
 	UpdateAvailable bool      `json:"update_available"`
-	Unpublished     bool      `json:"unpublished"`
 }
 
 // Collection is a Nuvio home-screen collection: a titled group of Folders,
@@ -100,6 +100,9 @@ type Collection struct {
 	// publication it is a subscribed copy of; each is nil when there is none.
 	Publication  *PublicationState  `json:"publication"`
 	Subscription *SubscriptionState `json:"subscription"`
+	// PublisherUnpublished is set on a collection that was a subscribed copy
+	// until its publisher unpublished it, until it is next saved.
+	PublisherUnpublished bool `json:"publisher_unpublished"`
 }
 
 // Folder is one tile row within a Collection.

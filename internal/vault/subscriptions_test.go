@@ -58,7 +58,7 @@ func TestSubscribeCatalog(t *testing.T) {
 	if c.Name != "Popular" || c.RecipeHash != source.RecipeHash || c.SubKey != "" {
 		t.Errorf("copy name %q, recipe %s, sub_key %q; want the source's name and recipe, no sub_key", c.Name, c.RecipeHash, c.SubKey)
 	}
-	if s := c.Subscription; s == nil || s.PublicationID != source.Publication.ID || s.UpdateAvailable || s.Unpublished {
+	if s := c.Subscription; s == nil || s.PublicationID != source.Publication.ID || s.UpdateAvailable {
 		t.Errorf("subscription = %+v, want one to %s, in step", s, source.Publication.ID)
 	}
 }
@@ -137,7 +137,7 @@ func TestSubscribeRefusals(t *testing.T) {
 
 // A publication unpublished after a subscribe read it, and before the
 // subscribe wrote, is not subscribed to: the subscription insert checks the
-// publication is live, and the copy rolls back with it.
+// publication still exists, and the copy rolls back with it.
 func TestSubscribeRaceWithUnpublish(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -159,14 +159,10 @@ func TestSubscribeRaceWithUnpublish(t *testing.T) {
 		return insertSubscription(ctx, tx, subscriber, pub, copyID)
 	})
 	if !errors.Is(err, ErrPublicationNotFound) {
-		t.Fatalf("subscribe after a unpublish = %v, want ErrPublicationNotFound", err)
+		t.Fatalf("subscribe after an unpublish = %v, want ErrPublicationNotFound", err)
 	}
 	if catalogs, _ := db.GetUserCatalogs(ctx, subscriber); len(catalogs) != 0 {
 		t.Errorf("subscriber holds %d catalogs after the refused subscribe, want 0", len(catalogs))
-	}
-	var count int
-	if err := db.conn.QueryRowContext(ctx, "SELECT subscriber_count FROM publications WHERE id = ?", pub.id.String()).Scan(&count); err != nil || count != 0 {
-		t.Errorf("subscriber_count = %d (%v), want 0", count, err)
 	}
 }
 

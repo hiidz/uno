@@ -10,11 +10,12 @@ import (
 	"github.com/hiidz/uno/internal/vault"
 )
 
-// sharingFixture is another profile's published catalog and collection, and
-// the caller's own catalog and collection, all with recipes that TMDB never
-// needs to check.
+// sharingFixture is another profile's (publisher's) published catalog and
+// collection, and the caller's own catalog and collection, all with recipes
+// that TMDB never needs to check.
 type sharingFixture struct {
 	f                                      routeFixture
+	publisher                              uuid.UUID
 	theirCatalog, theirCollection          uuid.UUID
 	ownCatalog, ownCollection              uuid.UUID
 	theirCatalogSource, theirCollectionSrc uuid.UUID
@@ -48,7 +49,7 @@ func newSharingFixture(t *testing.T) sharingFixture {
 		t.Fatal(err)
 	}
 	return sharingFixture{
-		f: f, theirCatalog: catalog.Publication.ID, theirCollection: collection.Publication.ID,
+		f: f, publisher: owner.ID, theirCatalog: catalog.Publication.ID, theirCollection: collection.Publication.ID,
 		ownCatalog: f.mine.ID, ownCollection: f.mineColl.ID,
 		theirCatalogSource: catalog.ID, theirCollectionSrc: collection.ID,
 	}
@@ -107,20 +108,21 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "save the subscribed catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "create a catalog in the subscribed collection", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"Into it","provider":"tmdb","params":"{}","collection_id":"` + collectionCopy.String() + `"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "the subscribed collection is unchanged", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: `"subscription":{"publication_id":"` + x.theirCollection.String()},
-		{name: "publish a collection with a subscribed catalog", method: http.MethodPost, path: "/api/p/1/collections/" + withSubscribed.ID.String() + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
-		{name: "changes since publish of an unpublished catalog", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
+		{name: "publish a collection with a subscribed catalog", method: http.MethodPost, path: "/api/p/1/collections/" + withSubscribed.ID.String() + "/publish", wantStatus: http.StatusOK, wantBody: `"publication":{"id":"`},
+		{name: "changes since publish of a catalog never published", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
 		{name: "changes since publish of a subscribed catalog", method: http.MethodGet, path: catalogPath + "/changes-since-publish", wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "changes since publish of a subscribed collection", method: http.MethodGet, path: copyPath + "/changes-since-publish", wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "changes since publish of another profile's catalog", method: http.MethodGet, path: "/api/p/1/catalogs/" + x.theirCatalogSource.String() + "/changes-since-publish", wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
 		{name: "changes since publish of another profile's collection", method: http.MethodGet, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/changes-since-publish", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
-		{name: "publish my catalog", method: http.MethodPost, path: ownCatalog + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live","changed_since_publish":false`},
+		{name: "publish my catalog", method: http.MethodPost, path: ownCatalog + "/publish", wantStatus: http.StatusOK, wantBody: `"changed_since_publish":false`},
 		{name: "changes since publish of my catalog", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
-		{name: "unpublish my catalog", method: http.MethodPost, path: ownCatalog + "/unpublish", wantStatus: http.StatusOK, wantBody: `"status":"unpublished"`},
-		{name: "publish my collection", method: http.MethodPost, path: ownCollection + "/publish", wantStatus: http.StatusOK, wantBody: `"status":"live"`},
-		{name: "changes since publish of my collection", method: http.MethodGet, path: ownCollection + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
 		{name: "change my catalog", method: http.MethodPut, path: ownCatalog, body: `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusOK},
 		{name: "changes since publish after a rename", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `"op":"changed","kind":"catalog","aspect":"recipe","name":"Renamed","was":"Mine"`},
-		{name: "unpublish my collection", method: http.MethodPost, path: ownCollection + "/unpublish", wantStatus: http.StatusOK, wantBody: `"status":"unpublished"`},
+		{name: "unpublish my catalog", method: http.MethodPost, path: ownCatalog + "/unpublish", wantStatus: http.StatusOK, wantBody: `"publication":null`},
+		{name: "changes since publish of an unpublished catalog", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
+		{name: "publish my collection", method: http.MethodPost, path: ownCollection + "/publish", wantStatus: http.StatusOK, wantBody: `"changed_since_publish":false`},
+		{name: "changes since publish of my collection", method: http.MethodGet, path: ownCollection + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
+		{name: "unpublish my collection", method: http.MethodPost, path: ownCollection + "/unpublish", wantStatus: http.StatusOK, wantBody: `"publication":null`},
 		{name: "publish another profile's catalog", method: http.MethodPost, path: "/api/p/1/catalogs/" + x.theirCatalogSource.String() + "/publish", wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
 		{name: "unpublish another profile's collection", method: http.MethodPost, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/unpublish", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
 		{name: "publish with a path id that isn't a uuid", method: http.MethodPost, path: "/api/p/1/catalogs/nope/publish", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
@@ -132,6 +134,19 @@ func TestSharingRoutes(t *testing.T) {
 		if body := serve(t, x.f.s, http.MethodPost, path, "", false).Body.String(); strings.Contains(body, `"subscription"`) {
 			t.Errorf("POST %s answered a row: %q", path, body)
 		}
+	}
+
+	if _, err := x.f.db.UnpublishCatalog(t.Context(), x.publisher, x.theirCatalogSource); err != nil {
+		t.Fatal(err)
+	}
+	runSteps(t, x.f.s, []routeStep{
+		{name: "the released catalog says its publisher unpublished it", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"subscription":null,"publisher_unpublished":true`},
+		{name: "update the released catalog", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
+		{name: "save the released catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusOK, wantBody: `"name":"Mine now"`},
+		{name: "the saved catalog is no longer marked", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"Mine now","provider":"tmdb","params":"{}","owner_id":"` + x.f.caller.ID.String()},
+	})
+	if strings.Contains(serve(t, x.f.s, http.MethodGet, "/api/p/1/catalogs", "", false).Body.String(), `"publisher_unpublished":true`) {
+		t.Error("a catalog is still marked unpublished after its save")
 	}
 }
 

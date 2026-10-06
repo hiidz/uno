@@ -129,7 +129,7 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	dests := append([]any{
 		&idStr, &c.Type, &c.Name, &c.Provider, &c.Params, &ownerIDStr,
 		&collectionIDStr, &homeSortOrder, &showInHome, &c.RecipeHash, &subKey,
-		&createdAtStr, &updatedAtStr,
+		&c.PublisherUnpublished, &createdAtStr, &updatedAtStr,
 	}, sharing.dests()...)
 	if err := rows.Scan(append(dests, extraDests...)...); err != nil {
 		return Catalog{}, fmt.Errorf("scanning catalog row: %w", err)
@@ -153,18 +153,18 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 }
 
 // sharingScan is a row's sharing columns as scanned (sharingColumns): its
-// own publication's id, status and content hash, and the publication its
-// subscription names, with whether an update is available and whether that
-// publication is unpublished. A row without one scans NULLs for it.
+// own publication's id and content hash, and the publication its
+// subscription names, with whether an update is available. A row without
+// one scans NULLs for it.
 type sharingScan struct {
-	publicationID, status, contentHash sql.NullString
-	subscribedTo                       sql.NullString
-	updateAvailable, unpublished       sql.NullBool
+	publicationID, contentHash sql.NullString
+	subscribedTo               sql.NullString
+	updateAvailable            sql.NullBool
 }
 
 // dests are the destinations for s's columns, in sharingColumns' order.
 func (s *sharingScan) dests() []any {
-	return []any{&s.publicationID, &s.status, &s.contentHash, &s.subscribedTo, &s.updateAvailable, &s.unpublished}
+	return []any{&s.publicationID, &s.contentHash, &s.subscribedTo, &s.updateAvailable}
 }
 
 // states is the row's publication and subscription, each nil when the row
@@ -172,11 +172,11 @@ func (s *sharingScan) dests() []any {
 func (s sharingScan) states(p *rowParser) (*PublicationState, *SubscriptionState) {
 	var publication *PublicationState
 	if id := p.nullableUUID(s.publicationID, "publication id"); id != nil {
-		publication = &PublicationState{ID: *id, Status: s.status.String, contentHash: s.contentHash.String}
+		publication = &PublicationState{ID: *id, contentHash: s.contentHash.String}
 	}
 	var subscription *SubscriptionState
 	if id := p.nullableUUID(s.subscribedTo, "subscription's publication id"); id != nil {
-		subscription = &SubscriptionState{PublicationID: *id, UpdateAvailable: s.updateAvailable.Bool, Unpublished: s.unpublished.Bool}
+		subscription = &SubscriptionState{PublicationID: *id, UpdateAvailable: s.updateAvailable.Bool}
 	}
 	return publication, subscription
 }
@@ -230,7 +230,7 @@ func scanCollection(rows *sql.Rows) (Collection, error) {
 
 	if err := rows.Scan(append([]any{&idStr, &c.Title, &ownerIDStr,
 		&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
-		&homeSortOrder, &createdAtStr, &updatedAtStr}, sharing.dests()...)...); err != nil {
+		&homeSortOrder, &c.PublisherUnpublished, &createdAtStr, &updatedAtStr}, sharing.dests()...)...); err != nil {
 		return Collection{}, fmt.Errorf("scanning collection row: %w", err)
 	}
 

@@ -58,8 +58,7 @@ CREATE TABLE "collections" (
     focus_glow_enabled INTEGER NOT NULL DEFAULT 1,
     home_sort_order    INTEGER,                    -- place on Home, numbered with catalogs.home_sort_order; NULL = not on Home
     created_at         TEXT    NOT NULL,           -- RFC3339 UTC
-    updated_at         TEXT    NOT NULL,           -- RFC3339 UTC
-    unpublished_at     TEXT                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once saved
+    updated_at         TEXT    NOT NULL            -- RFC3339 UTC
 );
 
 CREATE INDEX collections_by_owner ON collections (owner_id);
@@ -75,7 +74,6 @@ CREATE TABLE "catalogs" (
     sub_key         TEXT,                        -- in a subscribed collection: its key in the snapshot
     created_at      TEXT    NOT NULL,            -- RFC3339 UTC
     updated_at      TEXT    NOT NULL,            -- RFC3339 UTC
-    unpublished_at  TEXT,                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once saved
     CHECK (collection_id IS NULL OR home_sort_order IS NULL)
 );
 
@@ -99,20 +97,20 @@ BEGIN
 END;
 
 CREATE TABLE publications (
-    id               TEXT    PRIMARY KEY,         -- UUID, kept when an update is published
+    id               TEXT    PRIMARY KEY,         -- UUID, kept across republishes
     publisher_id     TEXT    NOT NULL REFERENCES profiles(id),
     kind             TEXT    NOT NULL CHECK (kind IN ('catalog', 'collection')),
-    catalog_id       TEXT    REFERENCES catalogs(id) ON DELETE CASCADE,    -- the source, for a catalog
-    collection_id    TEXT    REFERENCES collections(id) ON DELETE CASCADE, -- the source, for a collection
+    catalog_id       TEXT    REFERENCES catalogs(id) ON DELETE SET NULL,    -- the source; NULL once deleted
+    collection_id    TEXT    REFERENCES collections(id) ON DELETE SET NULL, -- the source; NULL once deleted
     title            TEXT    NOT NULL,
     snapshot         TEXT    NOT NULL,            -- JSON, format uno-publication
     content_hash     TEXT    NOT NULL,            -- sha256 hex of snapshot
     catalog_count    INTEGER NOT NULL,
     folder_count     INTEGER NOT NULL,
     subscriber_count INTEGER NOT NULL DEFAULT 0,
+    status           TEXT    NOT NULL CHECK (status IN ('live', 'unpublished')),
     published_at     TEXT    NOT NULL,            -- RFC3339 UTC, when first published
     updated_at       TEXT    NOT NULL,            -- RFC3339 UTC
-    CHECK ((catalog_id IS NULL) <> (collection_id IS NULL)),
     CHECK (kind = 'catalog' OR catalog_id IS NULL),
     CHECK (kind = 'collection' OR collection_id IS NULL)
 );
@@ -124,7 +122,7 @@ CREATE UNIQUE INDEX publications_by_collection ON publications (collection_id) W
 CREATE TABLE subscriptions (
     id             TEXT PRIMARY KEY,
     subscriber_id  TEXT NOT NULL REFERENCES profiles(id),
-    publication_id TEXT NOT NULL REFERENCES publications(id) ON DELETE CASCADE,
+    publication_id TEXT NOT NULL REFERENCES publications(id),
     catalog_id     TEXT REFERENCES catalogs(id) ON DELETE CASCADE,    -- the copy, for a catalog
     collection_id  TEXT REFERENCES collections(id) ON DELETE CASCADE, -- the copy, for a collection
     subscribed_hash TEXT NOT NULL,               -- the content hash the copy was last written from
@@ -137,20 +135,11 @@ CREATE UNIQUE INDEX subscriptions_by_catalog ON subscriptions (catalog_id) WHERE
 
 CREATE UNIQUE INDEX subscriptions_by_collection ON subscriptions (collection_id) WHERE collection_id IS NOT NULL;
 
--- Ending a publication, by unpublishing it or by deleting its source, releases
--- its subscribers ahead of the cascade that deletes their subscriptions: each
--- subscribed row becomes its subscriber's own, marked unpublished, with no
--- snapshot keys left in it.
-CREATE TRIGGER publications_release_subscribers BEFORE DELETE ON publications
+CREATE TRIGGER publications_unpublish_on_source_delete AFTER UPDATE OF catalog_id, collection_id ON publications
+WHEN NEW.catalog_id IS NULL AND NEW.collection_id IS NULL AND NEW.status = 'live'
 BEGIN
-    UPDATE catalogs SET unpublished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-    WHERE id IN (SELECT catalog_id FROM subscriptions WHERE publication_id = OLD.id);
-    UPDATE collections SET unpublished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-    WHERE id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
-    UPDATE catalogs SET sub_key = NULL
-    WHERE collection_id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
-    UPDATE folders SET sub_key = NULL
-    WHERE collection_id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
+    UPDATE publications SET status = 'unpublished', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    WHERE id = NEW.id;
 END;
 
 CREATE TRIGGER subscriptions_count_on_insert AFTER INSERT ON subscriptions

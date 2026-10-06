@@ -32,25 +32,24 @@ erDiagram
   PROFILES ||--o| PUSH_RECORDS : "last pushed"
 
   PUBLICATIONS {
-    uuid id PK "kept across republishes"
+    uuid id PK "kept when an update is published"
     uuid publisher_id FK
     string kind "catalog | collection"
-    uuid catalog_id FK "nullable — the source; NULL once deleted"
-    uuid collection_id FK "nullable — the source; NULL once deleted"
+    uuid catalog_id FK "the source, for a catalog; deleting it deletes the publication"
+    uuid collection_id FK "the source, for a collection; deleting it deletes the publication"
     string title
     json snapshot "format uno-publication, version 1"
     string content_hash "sha256 hex of snapshot"
     int catalog_count
     int folder_count
     int subscriber_count
-    string status "live | unpublished"
     string published_at
     string updated_at
   }
   SUBSCRIPTIONS {
     uuid id PK
     uuid subscriber_id FK
-    uuid publication_id FK
+    uuid publication_id FK "deleting the publication deletes it"
     uuid catalog_id FK "nullable — the copy, for a catalog"
     uuid collection_id FK "nullable — the copy, for a collection"
     string subscribed_hash "the content hash the copy was last written from"
@@ -80,6 +79,7 @@ erDiagram
     int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
     bool show_in_home
     string sub_key "nullable — in a subscribed collection, its snapshot key"
+    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once saved"
     string created_at
     string updated_at
   }
@@ -93,6 +93,7 @@ erDiagram
     string backdrop_image_url
     bool focus_glow_enabled "defaults to 1, matching Nuvio"
     int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
+    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once saved"
     string created_at
     string updated_at
   }
@@ -307,7 +308,7 @@ One row per profile: what its last push put in Nuvio, as one JSON document
     list of what waits for a push, which names it as removed. A collection whose folders used a
     deleted listed catalog loses it from those folders by cascade, so one on Home shows as
     changed. Deleting a published row unpublishes it, and every copy another profile holds
-    survives, marked unpublished (*Publications and subscriptions*, below). Deleting a subscribed
+    survives as that profile's own (*Publications and subscriptions*, below). Deleting a subscribed
     copy removes its subscription. The next push drops the deleted collection from Nuvio's
     blob by the ids the last push sent (`PushedCollectionIDs`).
   - **Unselect**: reachable only through push, which folds the whole pending selection straight
@@ -513,7 +514,7 @@ asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes
 
 **A row is put in Community by publishing it, and followed by subscribing to it.** Publishing
 freezes the row's content as a snapshot; the publisher's later edits stay private until they
-publish again. Another profile subscribes to a publication and gets a copy of the snapshot as its own
+publish an update. Another profile subscribes to a publication and gets a copy of the snapshot as its own
 rows, which Update brings up to a newer snapshot. `internal/vault/publications.go`,
 `subscriptions.go`, `community.go` and `snapshot.go`.
 
@@ -543,24 +544,37 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   of its own and nothing linking it to the original publication. When the owner Updates that
   catalog, the collection reads as changed since publishing, and the owner publishes it again
   when they choose.
-  - **Republishing** rewrites the same publication row: its id and `published_at` are kept, and
-    an unpublished publication is live again.
-  - **The owner's row** carries `publication {id, status, changed_since_publish}`. The flag is
+  - **Publishing an update** rewrites the same publication row: its id and `published_at` are
+    kept. Publishing a row again after Unpublish inserts a new publication, with a new id and
+    keys and no subscribers.
+  - **The owner's row** carries `publication {id, changed_since_publish}`, `null` while it isn't
+    published. The flag is
     set when the row as it stands no longer snapshots to the stored content hash; it is a hint
     to the owner only. Only the owner's own reads carry sharing state (`selectCatalogs`,
     `selectCollections`), the catalogs of their collection trees included: the addon's
     `GetPublishedCatalogs`, push's `BuildPushRecord`, `GetCatalogsByIDs` and
     `GetCollectionsByIDs`, the trees' catalogs too, read without the joins or the hash
     (`selectLeanCatalogs`, `selectLeanCollections`), and carry `null`.
-- **Unpublish.** `UnpublishCatalog`/`UnpublishCollection` unpublish a live publication. So does
-  deleting its source (the source column is `ON DELETE SET NULL`, and the
-  `publications_unpublish_on_source_delete` trigger sets `status`). An unpublished publication
-  leaves Community; its subscribers keep their copies, marked unpublished, and can still read its
-  last snapshot, but Update answers not found. Nothing else unpublishes: no write scopes a
-  listed catalog.
+- **Unpublish** is one-way: a publication is live exactly while its row exists.
+  `UnpublishCatalog`/`UnpublishCollection` delete the publication, and deleting its source deletes
+  it by cascade (`ON DELETE CASCADE` on both source columns). Nothing else unpublishes: no write
+  scopes a listed catalog.
+  - **Its subscribers are released.** The `publications_release_subscribers` trigger runs before
+    the publication's row goes, whichever way it goes, and before the cascade deletes its
+    subscriptions (`subscriptions.publication_id` is `ON DELETE CASCADE`): it stamps
+    `unpublished_at` on every subscribed catalog and collection, and clears the `sub_key`s of a
+    collection copy's folders and scoped catalogs. Each copy keeps its ids, its Home placement
+    and its pin, and with no subscription left it is an ordinary own row: saves reach it, and it
+    can be published.
+  - **The mark** is the row's `publisher_unpublished` (`unpublished_at IS NOT NULL`, read with the
+    row's own columns). A catalog save (`writeCatalog`) and a collection save
+    (`updateCollectionRow`) clear it, since a save is the subscriber having seen the row as theirs;
+    push, Update, Duplicate and import never set it.
+  - The publication's snapshot goes with it: `GetPublication`, a subscribe and an Update of it
+    answer `ErrPublicationNotFound`.
 - **No collapse.** Two publications of the same content, a recipe two profiles both publish or
   an identical collection, are both listed.
-- **Subscribe** (`Subscribe`) writes a live publication of someone else's as the caller's own
+- **Subscribe** (`Subscribe`) writes a publication of someone else's as the caller's own
   rows: a catalog as a listed catalog, a collection as a collection with every catalog scoped to
   it, each catalog and folder carrying its snapshot key in `sub_key`. The copy is unpublished,
   off Home and never pushed. Only the form validators run: the recipes were checked
@@ -575,9 +589,9 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   publish of a subscribed copy is `ErrInvalidInput` too: only its publisher changes or
   publishes it. Its home order, show-in-home and pin change through push, like any
   row's, and it can be deleted, which removes its subscription by cascade.
-  - **The copy's row** carries `subscription {publication_id, update_available, unpublished}`.
-    `update_available` is true while the publication is live and the subscription's
-    `subscribed_hash` differs from its content hash.
+  - **The copy's row** carries `subscription {publication_id, update_available}`.
+    `update_available` is true while the subscription's `subscribed_hash` differs from its
+    publication's content hash.
 - **Update** (`UpdateSubscription`) brings a copy up to the current snapshot, in one
   transaction. A copy whose content already equals the snapshot is only marked in step, with no
   check, since nothing is written. Otherwise the snapshot is written through the validators a
@@ -604,12 +618,12 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   two reads, fetched only when shown, and compares nothing with the push record:
   - `UpdateChanges`: what Update would change in a subscribed copy. The copy as a snapshot under
     its own `sub_key`s (`copyTreeSnapshot`, `copySnapshot`) against the publication's current
-    one. `ErrPublicationNotFound` unless the caller subscribes and the publication is live.
-  - `CatalogChangesSincePublish`/`CollectionChangesSincePublish`: what publishing an own row
-    again would change. The row as it stands, snapshotted under its publication's keys, against the
-    stored snapshot: a library catalog a collection uses is in it, so editing one alone shows. A row
-    never published is an empty list, a row that can't be published a 400 (`publishableCatalog`,
-    `publishableCollection`), and an unpublished row is compared like a live one.
+    one. `ErrPublicationNotFound` unless the caller subscribes to the publication.
+  - `CatalogChangesSincePublish`/`CollectionChangesSincePublish`: what publishing an update to an
+    own row would change. The row as it stands, snapshotted under its publication's keys, against
+    the stored snapshot: a library catalog a collection uses is in it, so editing one alone shows. A
+    row not published is an empty list, and a row that can't be published a 400
+    (`publishableCatalog`, `publishableCollection`).
 
   The items come in the order removals, additions, changes, each in folder order:
   - a folder gone from the other side is one item, then each catalog it holds that the other side
@@ -630,14 +644,14 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   items into words (`docs/frontend.md`, *Sharing*).
 - **Duplicate** (`DuplicatePublication`) is a subscribe without the subscription: an editable copy with
   no `sub_key`s, and any number of them beside a subscription.
-- **Community** (`ListCommunity`) is every live publication not the caller's own, newest first,
+- **Community** (`ListCommunity`) is every publication not the caller's own, newest first,
   in one call; the SPA searches, filters and sorts it. A row is light: counts, dates,
   `subscribed` and `update_available` from a join with the caller's subscriptions, the names of
   the catalogs it holds (`catalog_names`, read from the snapshot, for search), a collection's
   folders in order as their tiles show them (`folders`: each folder's `title`, `tile_shape`,
   `cover_emoji` and `cover_image_url`, from the same snapshot; `[]` for a catalog), and for a
   catalog its recipe. It never carries a publisher. `GetPublication` returns one publication with its
-  snapshot: a live one, or an unpublished one the caller subscribes to.
+  snapshot.
 
 ## Recipe params (TMDB)
 

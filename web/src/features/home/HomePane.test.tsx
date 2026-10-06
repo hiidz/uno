@@ -19,8 +19,8 @@ vi.mock('./useHomeSelection', async () => {
 })
 vi.mock('./useCatalogTiles', () => ({ useCatalogTiles: () => new Map() }))
 
-const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
-const added: SubscriptionState = { publication_id: 'pub', update_available: false, unpublished: false }
+const live = { id: 'p', changed_since_publish: false }
+const added: SubscriptionState = { publication_id: 'pub', update_available: false }
 
 function mount(options: {
   catalogs: { catalog: Catalog; showInHome: boolean }[]
@@ -82,7 +82,7 @@ describe('HomePane', () => {
         folder({ id: 'f3', title: 'Plain', cover_emoji: '' }),
       ],
     })
-    const day = collection({ id: 'k2', title: 'Day shift', subscription: { ...added, unpublished: true } })
+    const day = collection({ id: 'k2', title: 'Day shift', publisher_unpublished: true })
     mount({ catalogs: [], collections: [night, day], waiting: ['k1'] })
     expect(flagsOf('Night shift')).toEqual(['Collection', 'To push'])
     expect(flagsOf('Day shift')).toEqual(['Collection'])

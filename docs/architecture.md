@@ -110,8 +110,8 @@ two layers differ.
 |---|---|---|
 | The feature as a whole | sharing (`features/sharing`, `serveSharingCall`): a name, never a verb or status | never says "share" |
 | Browse tab | Community | Community |
-| Put it out | publish, publication, publisher | Publish…, Publish update…, Publish again…, "Published" |
-| Take it back | unpublish, status `unpublished` | Unpublish, "Unpublished" |
+| Put it out | publish, publication, publisher | Publish…, Publish update…, "Published" |
+| Take it back, for good | unpublish; a subscriber's row then carries `publisher_unpublished` | Unpublish; that row reads "Unpublished" until it is saved |
 | Read-only copy that gets updates | subscribe, subscription, subscriber, subscribed copy | **Add**, ✓ Added, "Added by N", the **From Community** sticker |
 | Copy that's yours to edit | duplicate (`DuplicatePublication`, `DuplicateCollection`) | Duplicate |
 | Get the update | update | Update |
@@ -185,19 +185,19 @@ Route-semantics facts the client has to honour:
   subscriptions*. The handlers are in `internal/api/community.go`, and every one but the list
   runs through `serveSharingCall`: the id comes from the path, and a vault error goes through
   `writeVaultError`, whose 404 for these routes is `vault.ErrPublicationNotFound`.
-  - `GET /api/p/{i}/community` (`ListCommunity`) answers every live publication not the
+  - `GET /api/p/{i}/community` (`ListCommunity`) answers every publication not the
     caller's own, newest first, in one array: the SPA searches, filters and sorts it. A row
     carries its counts, dates, `subscribed` and `update_available` for the caller, the names of
     its catalogs, and for a catalog its recipe, but never its publisher.
-  - `GET .../community/{id}` (`GetPublication`) is the row with its `snapshot` and `unpublished`:
-    a live publication, or an unpublished one the caller subscribes to. It is also how the SPA
-    previews an update: the page shows the new version before Update applies it.
+  - `GET .../community/{id}` (`GetPublication`) is the row with its `snapshot`; 404 once it is
+    unpublished. It is also how the SPA previews an update: the page shows the new version
+    before Update applies it.
   - `GET .../community/{id}/changes` (`UpdateChanges`) is what Update would change in the caller's
     added row: its copy against the publication's current snapshot, as a list of `SnapshotChange`
     items in the order removals, additions, changes. `[]` for a row in step; 404 unless the caller
-    subscribes and the publication is live.
+    subscribes to the publication.
   - `POST .../community/{id}/subscribe` (`Subscribe`, 201) and `.../duplicate` (`DuplicatePublication`,
-    201) copy a live publication of someone else's into the caller's own rows, as
+    201) copy a publication of someone else's into the caller's own rows, as
     `{kind, catalog | collection}`. A second subscribe is a 409. `.../update`
     (`UpdateSubscription`, 200) brings the caller's subscribed copy up to the current snapshot.
     None of the three reaches TMDB: they run the form validators over a snapshot whose recipes
@@ -209,25 +209,28 @@ Route-semantics facts the client has to honour:
     collection copy on Home.
 - **Publishing an owned row is a call on the row.**
   - `POST /api/p/{i}/catalogs/{id}/publish` and `.../collections/{id}/publish`
-    (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish or
-    republish it. They run every recipe the snapshot publishes through `validateCatalogParams`, so
+    (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish it or
+    publish its update. They run every recipe the snapshot publishes through `validateCatalogParams`, so
     a recipe TMDB refuses is a 400 and TMDB being unreachable a 502. A catalog inside a
     collection and a subscribed copy are 400s, and a source edited while it was being checked a
     409. A collection that references a catalog the caller subscribes to publishes, with that
     catalog frozen as it stands. Two publications of the same content are both listed in
     Community.
-  - `.../unpublish` (`UnpublishCatalog`/`UnpublishCollection`) unpublishes its live publication,
-    if any.
+  - `.../unpublish` (`UnpublishCatalog`/`UnpublishCollection`, 200 with the row, its
+    `publication` now `null`) deletes its publication, if any. It is one-way: every subscriber's
+    copy becomes that subscriber's own row, `publisher_unpublished` until its next save, and
+    publishing the row again is a new publication with no subscribers.
   - `GET .../catalogs/{id}/changes-since-publish` and `.../collections/{id}/changes-since-publish`
-    (`CatalogChangesSincePublish`/`CollectionChangesSincePublish`) answer what publishing the row
-    again would change: the row as saved against what it last published, in the same item list.
-    `[]` for a row never published; a subscribed copy and a catalog inside a collection are 400s,
+    (`CatalogChangesSincePublish`/`CollectionChangesSincePublish`) answer what publishing an
+    update would change: the row as saved against what it last published, in the same item list.
+    `[]` for a row not published; a subscribed copy and a catalog inside a collection are 400s,
     as for a publish. They read the vault only: nothing here compares with the push record.
   - A content write to a subscribed copy — `PUT` of the catalog or the collection, a catalog
     created in it — is a 400 (`refuseSubscribedCopy`, run in the write's transaction ahead of
     the write, over the caller's own subscriptions, so another profile's copy still answers
-    404). `POST .../community/{id}/update` is the only writer of a copy; there is no route that
-    ends a subscription short of deleting the copy. Placement is not content: Home order, Home
+    404). `POST .../community/{id}/update` is the only writer of a copy. A subscription ends when
+    the copy is deleted, or when its publisher unpublishes, which leaves the copy the caller's own.
+    Placement is not content: Home order, Home
     or Discover and the pin (`pin_to_top`) all travel in push's selection (*Push* below), for
     a copy as for any row.
   - Another profile's row answers 404 on all of them, like one that doesn't exist.
@@ -249,7 +252,7 @@ Route-semantics facts the client has to honour:
   and not read, so the catalog stays listed.
 - **Deletes are allowed any time.** `DELETE /api/p/{i}/catalogs/{id}` and
   `.../collections/{id}` remove the row from Uno and Community at once (a published row is
-  unpublished) whether or not it is on Home; Nuvio keeps what the last push put there, served
+  unpublished, and its subscribers keep their copies as their own) whether or not it is on Home; Nuvio keeps what the last push put there, served
   from the push record, until the next push drops it (*Addon server*, *Push*). A delete changes
   nothing else about Nuvio: a collection whose folders used the catalog loses it by cascade, so
   that collection shows as changed. The delete confirm says so: "Delete removes it from Uno and

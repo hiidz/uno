@@ -18,6 +18,7 @@ export function asCatalog(catalog: SnapshotCatalog): Catalog {
     updated_at: '',
     publication: null,
     subscription: null,
+    publisher_unpublished: false,
   }
 }
 
@@ -53,6 +54,7 @@ export function snapshotAsCollection(detail: PublicationDetail): Collection | nu
     needs_push: false,
     publication: null,
     subscription: null,
+    publisher_unpublished: false,
     folders: (snapshot.folders ?? []).map((folder, index) => asFolder(detail.id, folder, index)),
     catalogs: (detail.snapshot.catalogs ?? []).map(asCatalog),
   }

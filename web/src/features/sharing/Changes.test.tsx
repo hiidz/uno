@@ -79,7 +79,7 @@ describe('UpdateChanges', () => {
 })
 
 describe('UpdateCount', () => {
-  const following: SubscriptionState = { publication_id: 'pub', update_available: true, unpublished: false }
+  const following: SubscriptionState = { publication_id: 'pub', update_available: true }
 
   it('counts the list’s lines while an update waits', async () => {
     renderWith({ 'GET /api/p/1/community/pub/changes': changes }, <UpdateCount profileIndex={1} subscription={following} />)

@@ -2,15 +2,16 @@ import { sendJSON } from './http'
 import type { Catalog, CatalogType, Collection, CommunityCopy, TileShape, TMDBKeyStatus } from './types'
 
 /** Publishes a listed catalog as it is saved now, or publishes its update —
- *  `POST .../catalogs/{id}/publish`. Republishing keeps the publication's id,
- *  and so does publishing an unpublished one again. 400s for a subscribed
- *  copy, and 502s when TMDB can't be reached to check the recipe. */
+ *  `POST .../catalogs/{id}/publish`. An update keeps the publication's id;
+ *  publishing again after Unpublish is a new publication. 400s for a
+ *  subscribed copy, and 502s when TMDB can't be reached to check the recipe. */
 export function publishCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/publish`)
 }
 
-/** Unpublishes a catalog — `POST .../catalogs/{id}/unpublish`. Copies other
- *  profiles subscribed to stay theirs, marked unpublished. */
+/** Unpublishes a catalog — `POST .../catalogs/{id}/unpublish`. Its
+ *  publication is gone for good: copies other profiles subscribed to become
+ *  their own, marked `publisher_unpublished`. */
 export function unpublishCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/unpublish`)
 }
@@ -33,7 +34,8 @@ export function subscribe(profileIndex: number, publicationID: string): Promise<
 
 /** Rewrites this profile's copy of a publication from its current snapshot,
  *  keeping every id — `POST .../community/{id}/update`. 404s once the
- *  publication is unpublished or the copy is gone. */
+ *  publication is unpublished, which makes the copy this profile's own, or
+ *  the copy is gone. */
 export function updateSubscription(profileIndex: number, publicationID: string): Promise<CommunityCopy> {
   return sendJSON<CommunityCopy>('POST', `/api/p/${profileIndex}/community/${publicationID}/update`)
 }
@@ -92,7 +94,7 @@ export function updateCatalog(
 
 /** Hard delete of an owned catalog, cascading to the folder refs that point
  *  at it. A published catalog is unpublished; copies other profiles added
- *  stay theirs, marked unpublished. */
+ *  become their own, marked `publisher_unpublished`. */
 export function deleteCatalog(profileIndex: number, catalogID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/catalogs/${catalogID}`)
 }

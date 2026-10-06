@@ -29,7 +29,7 @@ const collectionRows = `collections col
 // collectionColumns are a collection's own columns, the ones scanCollection
 // reads before the sharing state.
 const collectionColumns = `col.id, col.title, col.owner_id, col.pin_to_top, col.view_mode, col.show_all_tab, col.backdrop_image_url,
-	col.focus_glow_enabled, col.home_sort_order, col.created_at, col.updated_at`
+	col.focus_glow_enabled, col.home_sort_order, col.unpublished_at IS NOT NULL, col.created_at, col.updated_at`
 
 // selectCollections runs a SELECT over collectionRows through q with the
 // given WHERE clause and args, parsing the result rows, each with its
@@ -169,13 +169,14 @@ func createCollectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, fo
 }
 
 // updateCollectionRow writes the collection's own columns. pin_to_top is not
-// one of them: only push writes it. Returns ErrCollectionNotFound if the row
-// is no longer there.
+// one of them: only push writes it. A save is the subscriber having seen a
+// collection its publisher unpublished, so it clears that mark. Returns
+// ErrCollectionNotFound if the row is no longer there.
 func updateCollectionRow(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, input CollectionForm, nowStr string) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE collections
 		SET title = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, focus_glow_enabled = ?,
-		    updated_at = ?
+		    unpublished_at = NULL, updated_at = ?
 		WHERE id = ? AND owner_id = ?
 	`, input.Title, input.ViewMode, input.ShowAllTab, input.BackdropImageURL, input.FocusGlowEnabled, nowStr,
 		collectionID.String(), profileID.String())
@@ -347,7 +348,9 @@ func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 // DeleteUserCollection deletes the collection identified by collectionID,
 // provided it's owned by profileID (ErrCollectionNotFound otherwise). It is
 // allowed at any time, Home or not: Nuvio keeps what the last push put there,
-// served from the push record, until the next push drops it.
+// served from the push record, until the next push drops it. Deleting a
+// published collection unpublishes it by cascade; its subscribers keep their
+// copies as their own (publications_release_subscribers).
 func (db *DB) DeleteUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
 		return deleteOwnedCollection(ctx, tx, profileID, collectionID)

@@ -63,32 +63,6 @@ import { StagedNote } from './StagedNote'
 import { buildRefOptions, indexRefOptions, type RefOption } from './refs'
 import type { CopyToLibrary } from './useCopyToLibrary'
 
-/** A catalog staged locally by "new inside this collection" — not written to the DB until this collection's own Save,
- *  which resolves it into an inline `new` spec (`toCollectionPayload`). Kept
- *  in the same `localCatalogs` registry as every other catalog this editor
- *  knows about, so nothing downstream of that registry needs to tell a
- *  draft apart from a real row to render it. */
-function draftCatalog(seed: {
-  type: CatalogType
-  name: string
-  params: string
-  collectionID: string
-}): Catalog {
-  return {
-    id: `${DRAFT_ID_PREFIX}${crypto.randomUUID()}`,
-    type: seed.type,
-    name: seed.name,
-    provider: CATALOG_PROVIDER,
-    params: seed.params,
-    owner_id: '',
-    collection_id: seed.collectionID,
-    created_at: '',
-    updated_at: '',
-    publication: null,
-    subscription: null,
-  }
-}
-
 interface CollectionEditorProps {
   /** The form as the row stands. A new identity re-seeds the editor (see
    *  `useEditorForm`), so callers hand over a stable object. */
@@ -136,9 +110,38 @@ interface CollectionEditorProps {
   sharingStep?: SignStep
   /** Its sharing stickers, on the sign beside the kind. */
   sharingBadges?: ReactNode
+  /** The line the form leads with once its publisher unpublished it. */
+  sharingNotice?: ReactNode
   /** A folder row's Copy into library: written at once, not with this
    *  collection's Save. */
   onCopyToLibrary: CopyToLibrary
+}
+
+/** A catalog staged locally by "new inside this collection" — not written to the DB until this collection's own Save,
+ *  which resolves it into an inline `new` spec (`toCollectionPayload`). Kept
+ *  in the same `localCatalogs` registry as every other catalog this editor
+ *  knows about, so nothing downstream of that registry needs to tell a
+ *  draft apart from a real row to render it. */
+function draftCatalog(seed: {
+  type: CatalogType
+  name: string
+  params: string
+  collectionID: string
+}): Catalog {
+  return {
+    id: `${DRAFT_ID_PREFIX}${crypto.randomUUID()}`,
+    type: seed.type,
+    name: seed.name,
+    provider: CATALOG_PROVIDER,
+    params: seed.params,
+    owner_id: '',
+    collection_id: seed.collectionID,
+    created_at: '',
+    updated_at: '',
+    publication: null,
+    subscription: null,
+    publisher_unpublished: false,
+  }
 }
 
 /**
@@ -211,6 +214,7 @@ export function CollectionEditor({
   usedInFolders,
   sharingStep,
   sharingBadges,
+  sharingNotice,
   onCopyToLibrary,
 }: CollectionEditorProps) {
   const baseline = initial
@@ -526,6 +530,7 @@ export function CollectionEditor({
       <div className="ed-container">
         <div className="ed ed-preview">
           <div className="ed-form">
+            {sharingNotice}
             <div className="setting">
               <label htmlFor="col-title" className="setting-label type-label">
                 Title

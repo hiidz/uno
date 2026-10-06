@@ -19,6 +19,7 @@ export function catalog(overrides: Partial<Catalog> = {}): Catalog {
     updated_at: '',
     publication: null,
     subscription: null,
+    publisher_unpublished: false,
     ...overrides,
   }
 }
@@ -62,6 +63,7 @@ export function collection(overrides: Partial<Collection> = {}): Collection {
     needs_push: false,
     publication: null,
     subscription: null,
+    publisher_unpublished: false,
     folders: [],
     catalogs: [],
     ...overrides,

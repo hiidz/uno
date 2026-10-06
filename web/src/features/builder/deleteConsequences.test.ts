@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { catalog, collection, folder } from '@/test/fixtures'
 import { catalogDeleteConsequences, collectionDeleteConsequences } from './deleteConsequences'
 
-const live = { id: 'p1', status: 'live' as const, changed_since_publish: false }
-const unpublished = { ...live, status: 'unpublished' as const }
+const live = { id: 'p1', changed_since_publish: false }
 
 const using = (id: string, home?: number) =>
   collection({
@@ -26,7 +25,7 @@ describe('catalogDeleteConsequences', () => {
       removedFrom: 'Also removes it from: Community',
       addersKeep: true,
     })
-    expect(catalogDeleteConsequences(catalog({ publication: unpublished }), [])).toMatchObject({
+    expect(catalogDeleteConsequences(catalog({ publication: null }), [])).toMatchObject({
       removedFrom: null,
       addersKeep: false,
     })

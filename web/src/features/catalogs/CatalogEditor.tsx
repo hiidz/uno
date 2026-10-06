@@ -575,6 +575,8 @@ interface CatalogEditorProps {
   sharingStep?: SignStep
   /** Its sharing stickers, beside the kind on the sign. */
   sharingBadges?: ReactNode
+  /** The line the form leads with once its publisher unpublished it. */
+  sharingNotice?: ReactNode
 }
 
 /**
@@ -614,6 +616,7 @@ export function CatalogEditor({
   saveLabel = 'Save',
   sharingStep,
   sharingBadges,
+  sharingNotice,
 }: CatalogEditorProps) {
   const baseline = initial
   const { state, setState, dirty, showErrors, revealErrors, submit } = useEditorForm(
@@ -790,6 +793,7 @@ export function CatalogEditor({
       <div className="ed-container">
         <div className="ed ed-results">
           <div className="ed-form">
+            {sharingNotice}
             <NameSetting value={state.name} error={errorFor('name')} onChange={patch} />
 
             <div className="setting is-head">

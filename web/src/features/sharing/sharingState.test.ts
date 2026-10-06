@@ -9,6 +9,7 @@ import {
   kindStickers,
   ownSharing,
   publishGroups,
+  publisherUnpublished,
   railStickers,
   rowStickers,
   sharingStep,
@@ -19,45 +20,52 @@ import {
   type SharingSticker,
 } from './sharingState'
 
-const live = { id: 'p', status: 'live' as const, changed_since_publish: false }
-const subscription = { publication_id: 'p', update_available: false, unpublished: false }
+const live = { id: 'p', changed_since_publish: false }
+const subscription = { publication_id: 'p', update_available: false }
 
 describe('ownSharing', () => {
   it('reads each publication state', () => {
     expect(ownSharing(null)).toBe('private')
     expect(ownSharing(live)).toBe('live')
     expect(ownSharing({ ...live, changed_since_publish: true })).toBe('changed')
-    expect(ownSharing({ ...live, status: 'unpublished', changed_since_publish: true })).toBe('unpublished')
   })
 
-  it('counts only a live publication as published', () => {
+  it('counts a row with a publication as published', () => {
     expect(isPublished(catalog({ publication: live }))).toBe(true)
-    expect(isPublished(catalog({ publication: { ...live, status: 'unpublished' } }))).toBe(false)
     expect(isPublished(catalog())).toBe(false)
+  })
+})
+
+describe('publisherUnpublished', () => {
+  it('holds while the row is marked and not published by this profile', () => {
+    expect(publisherUnpublished(catalog({ publisher_unpublished: true }))).toBe(true)
+    expect(publisherUnpublished(catalog({ publisher_unpublished: true, publication: live }))).toBe(false)
+    expect(publisherUnpublished(catalog())).toBe(false)
   })
 })
 
 type StickerRow = Parameters<typeof rowStickers>[0]
 const words = (stickers: SharingSticker[]) => stickers.map((s) => `${s.label}:${stickerClass(s.tone)}`)
 
-const updating: StickerRow = { publication: null, subscription: { ...subscription, update_available: true } }
-const unpublishedByPublisher: StickerRow = { publication: null, subscription: { ...subscription, unpublished: true } }
-const changed: StickerRow = { publication: { ...live, changed_since_publish: true }, subscription: null }
+const plain: StickerRow = { publication: null, subscription: null, publisher_unpublished: false }
+const updating: StickerRow = { ...plain, subscription: { ...subscription, update_available: true } }
+const unpublishedByPublisher: StickerRow = { ...plain, publisher_unpublished: true }
+const changed: StickerRow = { ...plain, publication: { ...live, changed_since_publish: true } }
 
 describe('railStickers', () => {
   const rail = (row: StickerRow) => words(railStickers(row))
 
   it('carries one Community sticker, changing with the row’s state', () => {
-    expect(rail({ publication: null, subscription: null })).toEqual([])
-    expect(rail({ publication: live, subscription: null })).toEqual(['Published:stk stk-community'])
+    expect(rail(plain)).toEqual([])
+    expect(rail({ ...plain, publication: live })).toEqual(['Published:stk stk-community'])
     expect(rail(changed)).toEqual(['To publish:stk stk-community stk-fill'])
-    expect(rail({ publication: { ...live, status: 'unpublished' }, subscription: null })).toEqual([])
-    expect(rail({ publication: null, subscription })).toEqual(['From Community:stk stk-community'])
+    expect(rail({ ...plain, subscription })).toEqual(['From Community:stk stk-community'])
     expect(rail(updating)).toEqual(['Update available:stk stk-community stk-fill'])
+    expect(rail(unpublishedByPublisher)).toEqual(['Unpublished:stk stk-community'])
   })
 
-  it('leaves the publisher’s unpublishing to the editor and the Home pane', () => {
-    expect(rail(unpublishedByPublisher)).toEqual(['From Community:stk stk-community'])
+  it('says Published, not Unpublished, once this profile publishes the row', () => {
+    expect(rail({ ...unpublishedByPublisher, publication: live })).toEqual(['Published:stk stk-community'])
   })
 })
 
@@ -65,23 +73,15 @@ describe('rowStickers', () => {
   const all = (row: StickerRow, waiting = false) => words(rowStickers(row, waiting))
 
   it('adds To push to the Community sticker while a push would change Nuvio', () => {
-    expect(all({ publication: null, subscription: null })).toEqual([])
-    expect(all({ publication: null, subscription: null }, true)).toEqual(['To push:stk stk-nuvio stk-fill'])
+    expect(all(plain)).toEqual([])
+    expect(all(plain, true)).toEqual(['To push:stk stk-nuvio stk-fill'])
     expect(all(changed, true)).toEqual(['To publish:stk stk-community stk-fill', 'To push:stk stk-nuvio stk-fill'])
     expect(all(updating, true)).toEqual(['Update available:stk stk-community stk-fill', 'To push:stk stk-nuvio stk-fill'])
-  })
-
-  it('says a publisher unpublished a row added from Community', () => {
-    expect(all(unpublishedByPublisher)).toEqual(['From Community:stk stk-community', 'Unpublished:stk stk-community'])
-    expect(all(unpublishedByPublisher, true)).toEqual([
-      'From Community:stk stk-community',
-      'Unpublished:stk stk-community',
-      'To push:stk stk-nuvio stk-fill',
-    ])
+    expect(all(unpublishedByPublisher, true)).toEqual(['Unpublished:stk stk-community', 'To push:stk stk-nuvio stk-fill'])
   })
 
   it('never says "update" except for an incoming one', () => {
-    const labels = [changed, updating, unpublishedByPublisher, { publication: live, subscription: null }]
+    const labels = [changed, updating, unpublishedByPublisher, { ...plain, publication: live }]
       .flatMap((row) => rowStickers(row, true))
       .filter((s) => /update/i.test(s.label))
     expect(words(labels)).toEqual(['Update available:stk stk-community stk-fill'])
@@ -92,7 +92,7 @@ describe('viewStickers', () => {
   it('says From Community where Update available would be, since Update… says it', () => {
     expect(words(viewStickers(updating, false))).toEqual(['From Community:stk stk-community'])
     expect(words(viewStickers(updating, true))).toEqual(['From Community:stk stk-community', 'To push:stk stk-nuvio stk-fill'])
-    expect(words(viewStickers({ publication: null, subscription }, false))).toEqual(['From Community:stk stk-community'])
+    expect(words(viewStickers({ ...plain, subscription }, false))).toEqual(['From Community:stk stk-community'])
   })
 })
 
@@ -146,7 +146,6 @@ describe('sharingStep', () => {
   it('names the next step for each state', () => {
     expect(sharingStep('private', false).label).toBe('Publish…')
     expect(sharingStep('changed', false).label).toBe('Publish update…')
-    expect(sharingStep('unpublished', false).label).toBe('Publish again…')
     expect(sharingStep('live', false).label).toBe('Unpublish…')
   })
 

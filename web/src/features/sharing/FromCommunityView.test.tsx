@@ -22,7 +22,7 @@ const genres = {
   ]),
   tv: new Map<number, string>(),
 }
-const following: SubscriptionState = { publication_id: 'pub', update_available: false, unpublished: false }
+const following: SubscriptionState = { publication_id: 'pub', update_available: false }
 
 const noir = catalog({
   id: 'n1',
@@ -140,13 +140,6 @@ describe('CatalogFromCommunity', () => {
     expect(fake.calls.some((call) => call.endsWith('/changes'))).toBe(false)
   })
 
-  it('has nothing to update once its publisher unpublished it', () => {
-    renderCatalog({ catalog: { ...noir, subscription: { ...following, unpublished: true } } })
-    expect(screen.queryByRole('button', { name: 'Update…' })).toBeNull()
-    expect(screen.getAllByText('Unpublished').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Duplicate to edit' })).toHaveClass('btn-primary')
-  })
-
   it('closes from the footer and with Escape, without asking', () => {
     const { onClose } = renderCatalog()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
@@ -247,11 +240,5 @@ describe('CollectionFromCommunity', () => {
     const cards = document.querySelectorAll<HTMLElement>('.fold-detail')
     expect(cards[0]).toHaveTextContent('2 catalogs')
     expect(cards[1]).toHaveTextContent('1 catalog')
-  })
-
-  it('has nothing to update once its publisher unpublished it', () => {
-    renderCollection({ collection: { ...nightCollection, subscription: { ...following, unpublished: true } } })
-    expect(screen.queryByRole('button', { name: 'Update…' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Duplicate to edit' })).toHaveClass('btn-primary')
   })
 })
