@@ -30,8 +30,6 @@ export interface Catalog {
   /** Scopes the catalog to one collection (hidden from the library, usable
    *  only in that collection's folders); `null` means listed. */
   collection_id: string | null
-  created_at: string
-  updated_at: string
   /** Its place on Home, numbered with the collections there; absent when it
    *  isn't on Home. */
   home_position?: number
@@ -105,8 +103,6 @@ export interface Collection {
   backdrop_image_url: string
   /** Nuvio's focus glow on this collection's home-screen folder cards. */
   focus_glow_enabled: boolean
-  created_at: string
-  updated_at: string
   /** Its place on Home, numbered with the catalogs there; absent when it
    *  isn't on Home. */
   home_position?: number
@@ -196,8 +192,6 @@ export interface CommunityItem {
   id: string
   kind: 'catalog' | 'collection'
   title: string
-  catalog_count: number
-  folder_count: number
   subscriber_count: number
   published_at: string
   updated_at: string

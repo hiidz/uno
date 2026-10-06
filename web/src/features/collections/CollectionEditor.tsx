@@ -139,8 +139,6 @@ function draftCatalog(seed: {
     provider: CATALOG_PROVIDER,
     params: seed.params,
     collection_id: seed.collectionID,
-    created_at: '',
-    updated_at: '',
     show_in_home: false,
     publication: null,
     subscription: null,

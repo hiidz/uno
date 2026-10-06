@@ -15,7 +15,7 @@ import (
 )
 
 // CommunityItem is one publication as Community lists it: what it is, how
-// big, how many subscribe, when it was published and last updated, whether
+// many subscribe, when it was published and last updated, whether
 // the caller subscribes and has an update waiting, the names of the catalogs
 // it holds, a collection's folders in order as their tiles show them, and for
 // a catalog its recipe. Its publisher is never on the wire.
@@ -23,8 +23,6 @@ type CommunityItem struct {
 	ID              uuid.UUID         `json:"id"`
 	Kind            string            `json:"kind"`
 	Title           string            `json:"title"`
-	CatalogCount    int               `json:"catalog_count"`
-	FolderCount     int               `json:"folder_count"`
 	SubscriberCount int               `json:"subscriber_count"`
 	PublishedAt     time.Time         `json:"published_at"`
 	UpdatedAt       time.Time         `json:"updated_at"`
@@ -52,7 +50,7 @@ type PublicationDetail struct {
 
 // communityItemColumns are the columns scanCommunityItem reads, from
 // publications as p and the caller's subscriptions as s.
-const communityItemColumns = `p.id, p.kind, p.title, p.catalog_count, p.folder_count, p.subscriber_count,
+const communityItemColumns = `p.id, p.kind, p.title, p.subscriber_count,
 	p.published_at, p.updated_at, p.snapshot,
 	s.id IS NOT NULL, coalesce(s.subscribed_hash <> p.content_hash, 0)`
 
@@ -99,8 +97,8 @@ func scanCommunityItems(rows *sql.Rows) ([]CommunityItem, error) {
 func scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error) {
 	var item CommunityItem
 	var id, publishedAt, updatedAt, raw string
-	if err := row.Scan(&id, &item.Kind, &item.Title, &item.CatalogCount, &item.FolderCount,
-		&item.SubscriberCount, &publishedAt, &updatedAt, &raw, &item.Subscribed, &item.UpdateAvailable); err != nil {
+	if err := row.Scan(&id, &item.Kind, &item.Title, &item.SubscriberCount,
+		&publishedAt, &updatedAt, &raw, &item.Subscribed, &item.UpdateAvailable); err != nil {
 		return CommunityItem{}, Snapshot{}, err
 	}
 	var p rowParser

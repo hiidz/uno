@@ -1723,7 +1723,7 @@ components:
 
     Catalog:
       type: object
-      required: [id, type, name, provider, params, collection_id, created_at, updated_at, show_in_home, publication, subscription, publisher_unpublished]
+      required: [id, type, name, provider, params, collection_id, show_in_home, publication, subscription, publisher_unpublished]
       properties:
         id: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/CatalogType" }
@@ -1734,8 +1734,6 @@ components:
           type: [string, "null"]
           format: uuid
           description: The collection this catalog is scoped to; null for a listed catalog.
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
         home_position:
           type: integer
           description: Its place on Home, one numbering shared with collections; absent when not on Home.
@@ -1809,7 +1807,7 @@ components:
 
     Collection:
       type: object
-      required: [id, title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, created_at, updated_at, publication, subscription, publisher_unpublished, folders, catalogs]
+      required: [id, title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, publication, subscription, publisher_unpublished, folders, catalogs]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
@@ -1818,8 +1816,6 @@ components:
         show_all_tab: { type: boolean }
         backdrop_image_url: { type: string }
         focus_glow_enabled: { type: boolean }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
         home_position:
           type: integer
           description: Its place on Home, one numbering shared with catalogs; absent when not on Home.
@@ -2035,15 +2031,13 @@ components:
     CommunityItem:
       type: object
       description: One publication as Community lists it. Its publisher is never on the wire.
-      required: [id, kind, title, catalog_count, folder_count, subscriber_count, published_at, updated_at, subscribed, update_available, catalog_names, folders, catalog]
+      required: [id, kind, title, subscriber_count, published_at, updated_at, subscribed, update_available, catalog_names, folders, catalog]
       properties:
         id: { type: string, format: uuid }
         kind:
           type: string
           enum: [catalog, collection]
         title: { type: string }
-        catalog_count: { type: integer }
-        folder_count: { type: integer }
         subscriber_count: { type: integer }
         published_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }

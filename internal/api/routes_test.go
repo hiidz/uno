@@ -152,8 +152,9 @@ func newRouteFixture(t *testing.T) routeFixture {
 }
 
 // The owned lists carry none of the row columns the builder never reads: a
-// row's owner, which is always the caller, and a folder's collection and
-// place, which its collection and its order already give.
+// row's owner, which is always the caller, its created and updated times, and
+// a folder's collection and place, which its collection and its order already
+// give.
 func TestOwnedListsLeaveOutUnreadColumns(t *testing.T) {
 	f := newRouteFixture(t)
 	keysOf := func(t *testing.T, raw json.RawMessage) map[string]json.RawMessage {
@@ -179,7 +180,7 @@ func TestOwnedListsLeaveOutUnreadColumns(t *testing.T) {
 	for name, row := range map[string]map[string]json.RawMessage{
 		"catalog": keysOf(t, catalogs[0]), "collection": collection, "folder": keysOf(t, folders[0]),
 	} {
-		for _, key := range []string{"owner_id", "sort_order"} {
+		for _, key := range []string{"owner_id", "sort_order", "created_at", "updated_at"} {
 			if _, ok := row[key]; ok {
 				t.Errorf("%s carries %q", name, key)
 			}

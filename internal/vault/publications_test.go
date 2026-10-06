@@ -29,7 +29,7 @@ func TestPublishAndRepublishCatalog(t *testing.T) {
 	if got := first.Snapshot.Catalogs[0]; got.Key != want.Key || !sameCatalog(got, want) || first.Snapshot.Collection != nil {
 		t.Errorf("snapshot = %+v, want just %+v", first.Snapshot, want)
 	}
-	if first.Kind != kindCatalog || first.Title != "Popular" || first.CatalogCount != 1 || first.FolderCount != 0 {
+	if first.Kind != kindCatalog || first.Title != "Popular" || len(first.CatalogNames) != 1 || len(first.Folders) != 0 {
 		t.Errorf("publication = %+v", first.CommunityItem)
 	}
 
@@ -85,7 +85,7 @@ func TestPublishCollectionSharesEveryReferencedCatalog(t *testing.T) {
 		stableKey(c.Publication.ID, private.ID) + "=Private Picks",
 		stableKey(c.Publication.ID, c.Catalogs[1].ID) + "=Ghosts",
 	})
-	if detail.CatalogCount != 2 || detail.FolderCount != 2 || detail.Snapshot.Collection.Folders[1].Key != stableKey(c.Publication.ID, c.Folders[1].ID) {
+	if len(detail.CatalogNames) != 2 || len(detail.Folders) != 2 || detail.Snapshot.Collection.Folders[1].Key != stableKey(c.Publication.ID, c.Folders[1].ID) {
 		t.Errorf("publication = %+v, folders %+v", detail.CommunityItem, detail.Snapshot.Collection.Folders)
 	}
 	if c.Publication.ChangedSincePublish {

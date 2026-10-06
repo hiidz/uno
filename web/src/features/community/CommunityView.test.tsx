@@ -19,8 +19,6 @@ const night = communityItem({
   catalog: null,
   catalog_names: ['Slasher classics'],
   folders: [communityFolder('Slashers')],
-  folder_count: 1,
-  catalog_count: 1,
   subscriber_count: 4,
   subscribed: true,
   update_available: true,

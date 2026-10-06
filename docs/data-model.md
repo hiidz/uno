@@ -403,8 +403,9 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   poster tile (see "Push wire shape" below), which a Uno push never produces.
 - **`catalogs.created_at`/`updated_at` and `collections.created_at`/`updated_at` are `TEXT`
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
-  `time.Time` in `internal/vault/scan.go`; `encoding/json` serialises the Go field as RFC3339 on
-  the wire. Every insert sets both to the same instant; every update rewrites only `updated_at`.
+  `time.Time` in `internal/vault/scan.go`. Neither is on the builder API's wire: the builder reads
+  no row's dates. Every insert sets both to the same instant; every update rewrites only
+  `updated_at`.
 - **Nuvio appearance fields.** `collections.focus_glow_enabled` (the TV's focus glow on the
   collection's home-screen folder cards), `folders.focus_gif_url`/`focus_gif_enabled` (an
   animated GIF played over a folder tile while it's focused), and

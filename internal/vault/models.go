@@ -33,8 +33,10 @@ type Catalog struct {
 	// CollectionID scopes this catalog to one collection (hidden from the
 	// library, usable only in that collection's folders); nil means listed.
 	CollectionID *uuid.UUID `json:"collection_id"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	// CreatedAt and UpdatedAt are never on the wire: the builder reads
+	// neither.
+	CreatedAt time.Time `json:"-"`
+	UpdatedAt time.Time `json:"-"`
 	// HomeSortOrder is this catalog's position on its owner's home screen,
 	// one numbering shared with the collections there; nil means it isn't on
 	// Home. On the wire as home_position, which the builder places its Home
@@ -92,8 +94,8 @@ type Collection struct {
 	// FocusGlowEnabled turns on Nuvio's TV focus glow on this collection's
 	// home-screen folder cards.
 	FocusGlowEnabled bool      `json:"focus_glow_enabled"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	CreatedAt        time.Time `json:"-"` // never on the wire, as on Catalog
+	UpdatedAt        time.Time `json:"-"`
 	// HomeSortOrder is this collection's position on its owner's home
 	// screen, one numbering shared with the catalogs there; nil means it isn't
 	// on Home. On the wire as home_position.

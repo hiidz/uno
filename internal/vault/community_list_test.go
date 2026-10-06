@@ -49,8 +49,8 @@ func TestListCommunity(t *testing.T) {
 	if !slices.Equal(items[0].Folders, wantFolders) {
 		t.Errorf("the collection's folders = %+v, want %+v", items[0].Folders, wantFolders)
 	}
-	if items[0].FolderCount != 2 || items[0].CatalogCount != 2 {
-		t.Errorf("collection row = %d folders, %d catalogs; want 2 and 2", items[0].FolderCount, items[0].CatalogCount)
+	if len(items[0].CatalogNames) != 2 {
+		t.Errorf("collection row names %q, want 2 catalogs", items[0].CatalogNames)
 	}
 	if c := items[1]; string(c.Catalog.Params) != `{"sort_by":"popularity.desc"}` || !slices.Equal(c.CatalogNames, []string{"Movie"}) {
 		t.Errorf("catalog row = recipe %s, names %q", c.Catalog.Params, c.CatalogNames)
