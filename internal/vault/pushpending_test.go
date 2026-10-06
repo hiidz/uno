@@ -16,8 +16,7 @@ type pendingFixture struct {
 	home, listed        Catalog
 	scoped              Catalog
 	collection          uuid.UUID
-	catalogs            CatalogSelectionForm
-	collections         CollectionSelectionForm
+	selection           PushedHome
 	homeParams, changed string
 }
 
@@ -46,15 +45,17 @@ func newPendingFixture(t *testing.T) pendingFixture {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	f.catalogs = CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: f.home.ID, ShowInHome: true}}}
-	f.collections = CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: f.collection}}}
-	savePush(t, f.db, f.owner, f.catalogs, f.collections)
+	f.selection = PushedHome{
+		Catalogs:    []SelectedCatalogInput{{CatalogID: f.home.ID, ShowInHome: true}},
+		Collections: []SelectedCollectionInput{{CollectionID: f.collection}},
+	}
+	savePush(t, f.db, f.owner, f.selection)
 	return f
 }
 
 func (f pendingFixture) push(t *testing.T) {
 	t.Helper()
-	savePush(t, f.db, f.owner, f.catalogs, f.collections)
+	savePush(t, f.db, f.owner, f.selection)
 }
 
 // rename saves catalog c as name with params, listed.
@@ -170,7 +171,7 @@ func TestAddonReadsHoldUntilThePush(t *testing.T) {
 	publisher := newTestProfile(t, f.db, "publisher")
 	source := publishCatalog(t, f.db, publisher, "From Community", `{"sort_by":"popularity.desc"}`)
 	added := subscribe(t, f.db, f.owner, source.Publication.ID).Catalog
-	f.catalogs.Catalogs = append(f.catalogs.Catalogs, SelectedCatalogInput{CatalogID: added.ID, ShowInHome: true})
+	f.selection.Catalogs = append(f.selection.Catalogs, SelectedCatalogInput{CatalogID: added.ID, ShowInHome: true})
 	f.push(t)
 
 	f.rename(t, f.home, "Edited", f.changed)
@@ -210,7 +211,7 @@ func TestAddonReadsHoldUntilThePush(t *testing.T) {
 		}
 	}
 
-	f.catalogs.Catalogs = f.catalogs.Catalogs[:2]
+	f.selection.Catalogs = f.selection.Catalogs[:2]
 	f.push(t)
 	served, err := f.db.ServedCatalog(ctx, token, f.home.ID, "movie", "tmdb")
 	if err != nil || served.Params != f.changed {
@@ -302,7 +303,7 @@ func TestPushedCollectionIDsIncludeAnEmptyCollection(t *testing.T) {
 	ctx := context.Background()
 	f := newPendingFixture(t)
 	empty := newTestCollection(t, f.db, f.owner, "Empty")
-	f.collections.Collections = append(f.collections.Collections, SelectedCollectionInput{CollectionID: empty})
+	f.selection.Collections = append(f.selection.Collections, SelectedCollectionInput{CollectionID: empty})
 	f.push(t)
 	if err := f.db.DeleteUserCollection(ctx, f.owner, empty); err != nil {
 		t.Fatal(err)

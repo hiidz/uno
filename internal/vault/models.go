@@ -276,11 +276,6 @@ type SelectedCatalogInput struct {
 	Position   int       `json:"position"`
 }
 
-// CatalogSelectionForm is a profile's Home catalogs, in Position order.
-type CatalogSelectionForm struct {
-	Catalogs []SelectedCatalogInput `json:"catalogs"`
-}
-
 // SelectedCollectionInput is one collection on a profile's Home: whether
 // Nuvio shows it first, and its Position, its place on Home in one numbering
 // shared with the catalogs (collections.home_sort_order). Push is the only
@@ -289,29 +284,6 @@ type SelectedCollectionInput struct {
 	CollectionID uuid.UUID `json:"collection_id"`
 	PinToTop     bool      `json:"pin_to_top"`
 	Position     int       `json:"position"`
-}
-
-// CollectionSelectionForm is a profile's Home collections, in Position order.
-type CollectionSelectionForm struct {
-	Collections []SelectedCollectionInput `json:"collections"`
-}
-
-// CatalogIDs is the id of every catalog in f, in order.
-func (f CatalogSelectionForm) CatalogIDs() []uuid.UUID {
-	ids := make([]uuid.UUID, len(f.Catalogs))
-	for i, c := range f.Catalogs {
-		ids[i] = c.CatalogID
-	}
-	return ids
-}
-
-// CollectionIDs is the id of every collection in f, in order.
-func (f CollectionSelectionForm) CollectionIDs() []uuid.UUID {
-	ids := make([]uuid.UUID, len(f.Collections))
-	for i, c := range f.Collections {
-		ids[i] = c.CollectionID
-	}
-	return ids
 }
 
 // HTTP Outbound Model-------------------------
@@ -348,11 +320,4 @@ type CollectionWithFolders struct {
 	Collection
 	Folders  []FolderWithCatalogs `json:"folders"`
 	Catalogs []Catalog            `json:"catalogs"`
-}
-
-// SelectedCatalog is a Catalog as a push record holds it for the addon's
-// manifest, carrying the record's show-in-home flag.
-type SelectedCatalog struct {
-	Catalog
-	ShowInHome bool `json:"show_in_home"`
 }

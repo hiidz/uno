@@ -57,15 +57,14 @@ func TestGetPublishedCatalogs(t *testing.T) {
 	// offTVCollection stays off; folderOnly and offTV are never selected
 	// directly.
 	savePush(t, db, owner,
-		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: onHome.ID, ShowInHome: true}}},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onTVCollection}}})
+		PushedHome{Catalogs: []SelectedCatalogInput{{CatalogID: onHome.ID, ShowInHome: true}}, Collections: []SelectedCollectionInput{{CollectionID: onTVCollection}}})
 
 	published, err := db.GetPublishedCatalogs(ctx, owner)
 	if err != nil {
 		t.Fatalf("GetPublishedCatalogs: %v", err)
 	}
 
-	byID := make(map[uuid.UUID]SelectedCatalog, len(published))
+	byID := make(map[uuid.UUID]Catalog, len(published))
 	for _, sc := range published {
 		byID[sc.ID] = sc
 	}
@@ -142,13 +141,11 @@ func TestServedCatalog(t *testing.T) {
 		}
 	}
 	savePush(t, db, owner,
-		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{
+		PushedHome{Catalogs: []SelectedCatalogInput{
 			{CatalogID: homeRow.ID, ShowInHome: true}, {CatalogID: discover.ID, Position: 1},
-		}},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: onHome, Position: 2}}})
+		}, Collections: []SelectedCollectionInput{{CollectionID: onHome, Position: 2}}})
 	savePush(t, db, other,
-		CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: theirs.ID, ShowInHome: true}}},
-		CollectionSelectionForm{})
+		PushedHome{Catalogs: []SelectedCatalogInput{{CatalogID: theirs.ID, ShowInHome: true}}})
 
 	for _, tc := range []struct {
 		name                  string
@@ -177,5 +174,21 @@ func TestServedCatalog(t *testing.T) {
 		if !tc.found && !errors.Is(err, ErrCatalogNotFound) {
 			t.Errorf("%s: %+v, %v; want ErrCatalogNotFound", tc.name, served, err)
 		}
+	}
+}
+
+// A push record that doesn't decode is an error, not ErrCatalogNotFound: the
+// addon answers it as its own failure rather than as a catalog the profile
+// doesn't have.
+func TestServedCatalogUndecodableRecord(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	savePush(t, db, owner, PushedHome{})
+	if _, err := db.conn.Exec(`UPDATE push_records SET record = 'not json' WHERE profile_id = ?`, owner.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ServedCatalog(ctx, profileToken(t, db, owner), uuid.New(), "movie", "tmdb"); err == nil || errors.Is(err, ErrCatalogNotFound) {
+		t.Errorf("ServedCatalog over an undecodable record = %v, want a decoding error", err)
 	}
 }

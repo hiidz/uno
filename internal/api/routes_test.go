@@ -306,8 +306,7 @@ func TestCollectionRoutes(t *testing.T) {
 func TestDeleteRoutesAllowWhatNuvioHolds(t *testing.T) {
 	f := newRouteFixture(t)
 	record, err := f.db.BuildPushRecord(t.Context(), f.caller.ID,
-		vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: f.mine.ID, ShowInHome: true}}},
-		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: f.mineColl.ID}}})
+		vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{{CatalogID: f.mine.ID, ShowInHome: true}}, Collections: []vault.SelectedCollectionInput{{CollectionID: f.mineColl.ID}}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,17 +17,17 @@ import (
 
 // GetPublishedCatalogs returns the catalogs profileID's last push put in Nuvio,
 // as the addon's manifest lists them: the ones with a Home row of their own
-// (Home or Discover as pushed), then the ones only a folder of a pushed
-// collection uses, all off Home. It is empty for a profile Nuvio holds nothing
+// (Home or Discover as pushed, in ShowInHome), then the ones only a folder of
+// a pushed collection uses, all off Home. It is empty for a profile Nuvio holds nothing
 // for: one that never pushed, or whose Nuvio profile slot was reused since
 // (heldRecord). The manifest route reads it on every request.
-func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
+func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]Catalog, error) {
 	record, ok, err := heldRecord(ctx, db.conn, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("loading published catalogs: %w", err)
 	}
 	if !ok {
-		return []SelectedCatalog{}, nil
+		return []Catalog{}, nil
 	}
 	return record.selectedCatalogs(), nil
 }

@@ -863,9 +863,9 @@ self-host build `39ea2bd` (2026-10-03).
 `POST /api/p/{profileIndex}/push` (`internal/api/push.go`). Body is the full pending Home as one
 ordered list, `{rows: [{catalog_id, show_in_home} | {collection_id, pin_to_top}]}`: a row's place
 in `rows` is its place on Home, which push stores as its `home_sort_order` (`pushRequest.selection`,
-which turns the list into the vault's two forms, each entry with its `Position`). A row naming
-neither a catalog nor a collection, or both, is a 400. The body is decoded strictly
-(`decodeStrictJSON`): a field it doesn't have is a 400 before anything reaches Nuvio. A lenient
+which turns the list into the vault's Home selection, `vault.PushedHome`, each entry with its
+`Position`). A row naming neither a catalog nor a collection, or both, is a 400. The body is
+decoded strictly (`decodeStrictJSON`): a field it doesn't have is a 400 before anything reaches Nuvio. A lenient
 read would take a body in an older shape, from a tab loaded before a deploy, as an empty
 selection, and a full-replace push of that clears every Uno collection. The pin (`pin_to_top`)
 is part of the selection, not of a collection save: push builds each collection it sends with

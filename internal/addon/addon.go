@@ -166,7 +166,7 @@ func ManifestID(c vault.Catalog) string {
 // buildManifest builds Stremio's manifest catalog list. Every catalog
 // declares "skip" (pagination) as an extra and an explicit showInHome, plus
 // a "genre" extra over genreNames(catalog) — see genreExtra.
-func buildManifest(selection []vault.SelectedCatalog, genreNames func(vault.SelectedCatalog) []string) manifest {
+func buildManifest(selection []vault.Catalog, genreNames func(vault.Catalog) []string) manifest {
 	catalogs := make([]manifestCatalog, len(selection))
 	for i, sc := range selection {
 		extra := []manifestExtra{{Name: "skip"}}
@@ -175,7 +175,7 @@ func buildManifest(selection []vault.SelectedCatalog, genreNames func(vault.Sele
 		}
 		catalogs[i] = manifestCatalog{
 			Type:       sc.Type,
-			ID:         ManifestID(sc.Catalog),
+			ID:         ManifestID(sc),
 			Name:       sc.Name,
 			PageSize:   catalogPageSize,
 			Extra:      extra,
@@ -251,7 +251,7 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 	// A cold genre list is fetched with the profile owner's own TMDB key, on
 	// a server where each account brings one.
 	ctx := provider.WithKeySource(r.Context(), s.keys.ForToken(r.Context(), token))
-	m := buildManifest(selection, func(sc vault.SelectedCatalog) []string {
+	m := buildManifest(selection, func(sc vault.Catalog) []string {
 		return s.genreNames(ctx, sc)
 	})
 	m.Logo = s.logoURL
@@ -269,10 +269,10 @@ func (s *Server) ConfigureHandler(w http.ResponseWriter, r *http.Request) {
 // genreNames is a catalog's genre-extra option names. A TMDB failure (the
 // genre list is cached after its first fetch, so only a cold one can fail)
 // degrades to no names rather than failing the whole manifest.
-func (s *Server) genreNames(ctx context.Context, sc vault.SelectedCatalog) []string {
+func (s *Server) genreNames(ctx context.Context, sc vault.Catalog) []string {
 	genres, err := s.provider.GenreExtraOptions(ctx, sc.Type, sc.Params)
 	if err != nil {
-		logTMDBFailure("genre options for catalog "+ManifestID(sc.Catalog), err)
+		logTMDBFailure("genre options for catalog "+strconv.Quote(ManifestID(sc)), err)
 		return nil
 	}
 	names := make([]string, len(genres))

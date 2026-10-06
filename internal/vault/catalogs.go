@@ -393,23 +393,23 @@ func (db *DB) catalogNotDeleted(ctx context.Context, profileID, catalogID uuid.U
 }
 
 // saveCatalogSelectionTx resets this profile's catalog selection to exactly
-// input: every owned catalog's home_sort_order is cleared, then each
-// incoming entry's is set to its Position. A 0-rows-affected update (an id
-// that isn't owned, or is scoped rather than listed) is ErrInvalidInput naming
-// the id — this is the access check, not a separate query, since the same
-// WHERE clause both selects and validates.
+// entries: every owned catalog's home_sort_order is cleared, then each
+// entry's is set to its Position. A 0-rows-affected update (an id that isn't
+// owned, or is scoped rather than listed) is ErrInvalidInput naming the id,
+// backing up BuildPushRecord, which refuses such an id before Nuvio is
+// contacted.
 //
 // Takes a caller-supplied transaction rather than opening its own: its only
 // caller is SavePush (pushrecord.go), which needs both selection writes and
 // the push record to commit or roll back together.
-func saveCatalogSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CatalogSelectionForm) error {
+func saveCatalogSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, entries []SelectedCatalogInput) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs SET home_sort_order = NULL WHERE owner_id = ?
 	`, profileID.String()); err != nil {
 		return fmt.Errorf("clearing catalog home selection: %w", err)
 	}
 
-	for _, sc := range input.Catalogs {
+	for _, sc := range entries {
 		result, err := tx.ExecContext(ctx, `
 			UPDATE catalogs
 			SET home_sort_order = ?, show_in_home = ?

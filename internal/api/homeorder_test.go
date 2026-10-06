@@ -442,9 +442,9 @@ func newPushHomeOrderFixture(t *testing.T, fake *fakeNuvio) pushHomeOrderFixture
 	}
 	f.pinnedColl = createPushableCollection(t, ctx, db, profile.ID, "Pinned")
 	f.unpinnedColl = createPushableCollection(t, ctx, db, profile.ID, "Unpinned")
-	f.body = pushOf(vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
+	f.body = pushOf(vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{
 		{CatalogID: f.onHome.ID, ShowInHome: true}, {CatalogID: f.discover.ID, ShowInHome: false},
-	}}, vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{
+	}, Collections: []vault.SelectedCollectionInput{
 		{CollectionID: f.unpinnedColl.ID}, {CollectionID: f.pinnedColl.ID, PinToTop: true},
 	}})
 	fake.profiles = liveAs(profile)

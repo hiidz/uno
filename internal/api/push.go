@@ -19,10 +19,9 @@ import (
 )
 
 // pushRequest is POST /api/p/{i}/push's body: the full pending home screen
-// as one ordered list of rows, carried in one call rather than standalone PUT .../selection
-// endpoints — selection is only ever written here, in one transaction,
-// after Nuvio has accepted the push. See the "HTTP surface" section of
-// docs/architecture.md.
+// as one ordered list of rows. The Home selection is only ever written here,
+// in one transaction, after Nuvio has accepted the push. See the "HTTP
+// surface" section of docs/architecture.md.
 type pushRequest struct {
 	Rows []pushRow `json:"rows"`
 }
@@ -37,24 +36,22 @@ type pushRow struct {
 	PinToTop     bool       `json:"pin_to_top,omitempty"`
 }
 
-// selection is body as the vault's two Home selection forms, each entry's
-// Position its row's place in Rows. A row naming neither a catalog nor a
-// collection, or both, is vault.ErrInvalidInput.
-func (body pushRequest) selection() (vault.CatalogSelectionForm, vault.CollectionSelectionForm, error) {
-	var catalogs vault.CatalogSelectionForm
-	var collections vault.CollectionSelectionForm
+// selection is body as the vault's Home selection, each entry's Position its
+// row's place in Rows. A row naming neither a catalog nor a collection, or
+// both, is vault.ErrInvalidInput.
+func (body pushRequest) selection() (vault.PushedHome, error) {
+	var home vault.PushedHome
 	for i, row := range body.Rows {
 		switch {
 		case (row.CatalogID == nil) == (row.CollectionID == nil):
-			return vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{},
-				fmt.Errorf("%w: home row %d must name one catalog or one collection", vault.ErrInvalidInput, i)
+			return vault.PushedHome{}, fmt.Errorf("%w: home row %d must name one catalog or one collection", vault.ErrInvalidInput, i)
 		case row.CatalogID != nil:
-			catalogs.Catalogs = append(catalogs.Catalogs, vault.SelectedCatalogInput{CatalogID: *row.CatalogID, ShowInHome: row.ShowInHome, Position: i})
+			home.Catalogs = append(home.Catalogs, vault.SelectedCatalogInput{CatalogID: *row.CatalogID, ShowInHome: row.ShowInHome, Position: i})
 		default:
-			collections.Collections = append(collections.Collections, vault.SelectedCollectionInput{CollectionID: *row.CollectionID, PinToTop: row.PinToTop, Position: i})
+			home.Collections = append(home.Collections, vault.SelectedCollectionInput{CollectionID: *row.CollectionID, PinToTop: row.PinToTop, Position: i})
 		}
 	}
-	return catalogs, collections, nil
+	return home, nil
 }
 
 // pushResult is push's JSON answer once its body has decoded: Success, the
@@ -340,11 +337,11 @@ func (s *Server) listPendingPush(w http.ResponseWriter, r *http.Request) {
 // end, it is the only check standing between the request body and a
 // third-party API call.
 func (s *Server) pushRecord(ctx context.Context, profileID uuid.UUID, body pushRequest) (vault.PushRecord, error) {
-	catalogs, collections, err := body.selection()
+	home, err := body.selection()
 	if err != nil {
 		return vault.PushRecord{}, err
 	}
-	return s.vault.BuildPushRecord(ctx, profileID, catalogs, collections)
+	return s.vault.BuildPushRecord(ctx, profileID, home)
 }
 
 // pushAddons runs the addons read-modify-write cycle: pull the profile's

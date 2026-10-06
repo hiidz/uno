@@ -392,24 +392,23 @@ func compareCollectionsByHomeSortOrder(a, b Collection) int {
 }
 
 // saveCollectionSelectionTx resets this profile's collection selection to
-// exactly input, and writes each included collection's pin_to_top from its
+// exactly entries, and writes each included collection's pin_to_top from its
 // entry. Every owned collection's home_sort_order is cleared first, then each
-// incoming entry's is set to its Position; a collection left out keeps its
+// entry's is set to its Position; a collection left out keeps its
 // pin_to_top, which a later push putting it back on Home starts from. A
 // 0-rows-affected update (an id that isn't owned) is ErrInvalidInput naming
 // the id, the same pattern as saveCatalogSelectionTx.
 //
 // Takes a caller-supplied transaction — see saveCatalogSelectionTx in
-// catalogs.go for why, and for why there is no exported single-selection
-// wrapper.
-func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, input CollectionSelectionForm) error {
+// catalogs.go for why.
+func saveCollectionSelectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, entries []SelectedCollectionInput) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE collections SET home_sort_order = NULL WHERE owner_id = ?
 	`, profileID.String()); err != nil {
 		return fmt.Errorf("clearing collection home selection: %w", err)
 	}
 
-	for _, entry := range input.Collections {
+	for _, entry := range entries {
 		id := entry.CollectionID
 		result, err := tx.ExecContext(ctx, `
 			UPDATE collections

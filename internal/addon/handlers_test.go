@@ -88,7 +88,7 @@ func newHandlerFixture(t *testing.T) handlerFixture {
 		return c
 	}
 	publish := func(p vault.Profile, c vault.Catalog) {
-		savePush(t, f.db, p.ID, vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}}, vault.CollectionSelectionForm{})
+		savePush(t, f.db, p.ID, vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}})
 	}
 
 	f.owner, f.other, f.empty = profile("owner"), profile("other"), profile("empty")
@@ -452,6 +452,6 @@ func TestAddonServesWhatTheLastPushLeft(t *testing.T) {
 	}
 	wantServed("after a delete", true, http.StatusOK)
 
-	savePush(t, f.db, f.owner.ID, vault.CatalogSelectionForm{}, vault.CollectionSelectionForm{})
+	savePush(t, f.db, f.owner.ID, vault.PushedHome{})
 	wantServed("after the next push", false, http.StatusNotFound)
 }

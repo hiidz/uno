@@ -133,8 +133,7 @@ func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := db.BuildPushRecord(ctx, owner, CatalogSelectionForm{},
-		CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: c.ID}}})
+	record, err := db.BuildPushRecord(ctx, owner, PushedHome{Collections: []SelectedCollectionInput{{CollectionID: c.ID}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,14 +230,21 @@ func TestPinToTopIsWrittenOnlyByPush(t *testing.T) {
 	}
 }
 
-// A selection's ids are its collections', in the order push places them.
-func TestCollectionSelectionFormCollectionIDs(t *testing.T) {
-	a, b := uuid.New(), uuid.New()
-	form := CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: a, PinToTop: true}, {CollectionID: b}}}
-	if got := form.CollectionIDs(); len(got) != 2 || got[0] != a || got[1] != b {
-		t.Errorf("CollectionIDs = %v, want [%s %s]", got, a, b)
+// A Home selection's ids are its catalogs' and its collections', each in the
+// order push places them.
+func TestPushedHomeIDs(t *testing.T) {
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	home := PushedHome{
+		Catalogs:    []SelectedCatalogInput{{CatalogID: c, ShowInHome: true}},
+		Collections: []SelectedCollectionInput{{CollectionID: a, PinToTop: true}, {CollectionID: b}},
 	}
-	if got := (CollectionSelectionForm{}).CollectionIDs(); len(got) != 0 {
+	if got := home.collectionIDs(); len(got) != 2 || got[0] != a || got[1] != b {
+		t.Errorf("collectionIDs = %v, want [%s %s]", got, a, b)
+	}
+	if got := home.catalogIDs(); len(got) != 1 || got[0] != c {
+		t.Errorf("catalogIDs = %v, want [%s]", got, c)
+	}
+	if got := (PushedHome{}).collectionIDs(); len(got) != 0 {
 		t.Errorf("an empty selection's ids = %v, want none", got)
 	}
 }

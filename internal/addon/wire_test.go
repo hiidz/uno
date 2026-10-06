@@ -70,7 +70,7 @@ func requireKnownKeys(t *testing.T, uno, sample map[string]bool, unsampled map[s
 // docs/api/samples/manifest.json, a real Stremio manifest. Each catalog is
 // built with every optional field set, so none is skipped as empty.
 func TestManifestKeysMatchSample(t *testing.T) {
-	selection := []vault.SelectedCatalog{
+	selection := []vault.Catalog{
 		selectedWithParams("{}", true),
 		selectedWithParams("{}", false),
 	}

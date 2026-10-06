@@ -19,8 +19,7 @@ import (
 type pushRecordFixture struct {
 	db                           *DB
 	owner                        uuid.UUID
-	catalogs                     CatalogSelectionForm
-	collections                  CollectionSelectionForm
+	selection                    PushedHome
 	homeRow, offHomeID, scopedID uuid.UUID
 }
 
@@ -66,12 +65,14 @@ func newPushRecordFixture(t *testing.T) pushRecordFixture {
 	}
 	return pushRecordFixture{
 		db: db, owner: owner,
-		catalogs: CatalogSelectionForm{Catalogs: []SelectedCatalogInput{
-			{CatalogID: homeRow.ID, ShowInHome: true, Position: 1}, {CatalogID: discover.ID, Position: 2},
-		}},
-		collections: CollectionSelectionForm{Collections: []SelectedCollectionInput{
-			{CollectionID: second, PinToTop: true, Position: 0}, {CollectionID: first, Position: 3},
-		}},
+		selection: PushedHome{
+			Catalogs: []SelectedCatalogInput{
+				{CatalogID: homeRow.ID, ShowInHome: true, Position: 1}, {CatalogID: discover.ID, Position: 2},
+			},
+			Collections: []SelectedCollectionInput{
+				{CollectionID: second, PinToTop: true, Position: 0}, {CollectionID: first, Position: 3},
+			},
+		},
 		homeRow: homeRow.ID, offHomeID: offHomeOnly.ID, scopedID: scoped.ID,
 	}
 }
@@ -99,7 +100,7 @@ func storedRecord(t *testing.T, db *DB, profileID uuid.UUID) (PushRecord, string
 func TestPushRecordHoldsWhatNuvioReaches(t *testing.T) {
 	ctx := context.Background()
 	f := newPushRecordFixture(t)
-	savePush(t, f.db, f.owner, f.catalogs, f.collections)
+	savePush(t, f.db, f.owner, f.selection)
 
 	record, stamp := storedRecord(t, f.db, f.owner)
 	if stamp != "nuvio-profile-owner" {
@@ -140,7 +141,7 @@ func TestPushRecordHoldsWhatNuvioReaches(t *testing.T) {
 		}
 	}
 
-	if !reflect.DeepEqual(record.Home, PushedHome{Catalogs: f.catalogs.Catalogs, Collections: f.collections.Collections}) {
+	if !reflect.DeepEqual(record.Home, f.selection) {
 		t.Errorf("Home = %+v, want the pushed selection", record.Home)
 	}
 
@@ -171,11 +172,11 @@ func TestPushRecordHoldsWhatNuvioReaches(t *testing.T) {
 func TestAPushReplacesTheRecord(t *testing.T) {
 	ctx := context.Background()
 	f := newPushRecordFixture(t)
-	savePush(t, f.db, f.owner, f.catalogs, f.collections)
+	savePush(t, f.db, f.owner, f.selection)
 	if _, err := f.db.ResolveOrCreateProfile(ctx, "owner", 1, "reused-slot"); err != nil {
 		t.Fatal(err)
 	}
-	savePush(t, f.db, f.owner, CatalogSelectionForm{}, CollectionSelectionForm{})
+	savePush(t, f.db, f.owner, PushedHome{})
 
 	record, stamp := storedRecord(t, f.db, f.owner)
 	if stamp != "reused-slot" || len(record.Collections) != 0 || len(record.Catalogs) != 0 ||
@@ -193,7 +194,7 @@ func TestAPushReplacesTheRecord(t *testing.T) {
 func TestStoredPushRecordRebuildsTheLastPush(t *testing.T) {
 	ctx := context.Background()
 	f := newPushRecordFixture(t)
-	savePush(t, f.db, f.owner, f.catalogs, f.collections)
+	savePush(t, f.db, f.owner, f.selection)
 	want, _ := storedRecord(t, f.db, f.owner)
 
 	var got PushRecord
@@ -223,19 +224,18 @@ func TestPushRecordRefusals(t *testing.T) {
 	}
 	other := newTestProfile(t, f.db, "other")
 	for _, tc := range []struct {
-		name        string
-		profileID   uuid.UUID
-		catalogs    CatalogSelectionForm
-		collections CollectionSelectionForm
+		name      string
+		profileID uuid.UUID
+		home      PushedHome
 	}{
-		{"another profile's catalogs", other, f.catalogs, CollectionSelectionForm{}},
-		{"another profile's collections", other, CatalogSelectionForm{}, f.collections},
-		{"a collection that doesn't exist", f.owner, f.catalogs,
-			CollectionSelectionForm{Collections: []SelectedCollectionInput{{CollectionID: uuid.New()}}}},
-		{"a scoped catalog", f.owner,
-			CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: f.scopedID, ShowInHome: true}}}, f.collections},
+		{"another profile's catalogs", other, PushedHome{Catalogs: f.selection.Catalogs}},
+		{"another profile's collections", other, PushedHome{Collections: f.selection.Collections}},
+		{"a collection that doesn't exist", f.owner, PushedHome{Catalogs: f.selection.Catalogs,
+			Collections: []SelectedCollectionInput{{CollectionID: uuid.New()}}}},
+		{"a scoped catalog", f.owner, PushedHome{Collections: f.selection.Collections,
+			Catalogs: []SelectedCatalogInput{{CatalogID: f.scopedID, ShowInHome: true}}}},
 	} {
-		if _, err := f.db.BuildPushRecord(ctx, tc.profileID, tc.catalogs, tc.collections); !errors.Is(err, ErrInvalidInput) {
+		if _, err := f.db.BuildPushRecord(ctx, tc.profileID, tc.home); !errors.Is(err, ErrInvalidInput) {
 			t.Errorf("%s: build = %v, want ErrInvalidInput", tc.name, err)
 		}
 	}
@@ -309,11 +309,11 @@ func TestShowInHomeReadsOnlyOnHome(t *testing.T) {
 		return catalogs[0]
 	}
 
-	savePush(t, db, owner, CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}}, CollectionSelectionForm{})
+	savePush(t, db, owner, PushedHome{Catalogs: []SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}})
 	if got := read(); got.HomeSortOrder == nil || !got.ShowInHome {
 		t.Fatalf("on Home with a home row = order %v, show in home %v; want placed and true", got.HomeSortOrder, got.ShowInHome)
 	}
-	savePush(t, db, owner, CatalogSelectionForm{}, CollectionSelectionForm{})
+	savePush(t, db, owner, PushedHome{})
 	if got := read(); got.HomeSortOrder != nil || got.ShowInHome {
 		t.Errorf("off Home = order %v, show in home %v; want no place and false", got.HomeSortOrder, got.ShowInHome)
 	}

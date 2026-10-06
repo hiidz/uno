@@ -98,14 +98,14 @@ func mustOwnCollection(t *testing.T, db *DB, profileID, id uuid.UUID) Collection
 // catalog rows, and stores the push record of that Home as it is now.
 func pushSelection(t *testing.T, db *DB, profileID uuid.UUID, entries ...SelectedCollectionInput) {
 	t.Helper()
-	savePush(t, db, profileID, CatalogSelectionForm{}, CollectionSelectionForm{Collections: entries})
+	savePush(t, db, profileID, PushedHome{Collections: entries})
 }
 
-// savePush stands in for push's local write of catalogs and collections:
-// it builds their push record now and stores it.
-func savePush(t *testing.T, db *DB, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm) {
+// savePush stands in for push's local write of home: it builds its push
+// record now and stores it.
+func savePush(t *testing.T, db *DB, profileID uuid.UUID, home PushedHome) {
 	t.Helper()
-	record, err := db.BuildPushRecord(context.Background(), profileID, catalogs, collections)
+	record, err := db.BuildPushRecord(context.Background(), profileID, home)
 	if err != nil {
 		t.Fatalf("BuildPushRecord: %v", err)
 	}

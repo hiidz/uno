@@ -39,6 +39,24 @@ type PushedHome struct {
 	Collections []SelectedCollectionInput `json:"collections"`
 }
 
+// catalogIDs is the id of every catalog in h, in order.
+func (h PushedHome) catalogIDs() []uuid.UUID {
+	ids := make([]uuid.UUID, len(h.Catalogs))
+	for i, c := range h.Catalogs {
+		ids[i] = c.CatalogID
+	}
+	return ids
+}
+
+// collectionIDs is the id of every collection in h, in order.
+func (h PushedHome) collectionIDs() []uuid.UUID {
+	ids := make([]uuid.UUID, len(h.Collections))
+	for i, c := range h.Collections {
+		ids[i] = c.CollectionID
+	}
+	return ids
+}
+
 // PushedCatalog is one catalog Nuvio can reach, as a push left it.
 type PushedCatalog struct {
 	ID       uuid.UUID       `json:"id"`
@@ -48,13 +66,13 @@ type PushedCatalog struct {
 	Params   json.RawMessage `json:"params"`
 }
 
-// BuildPushRecord is what a push of catalogs and collections, profileID's
-// pending Home selection, puts in Nuvio now. Push calls it before contacting
-// Nuvio, so an id the selection may not hold — not profileID's own, or a
-// catalog that isn't listed — is refused here (inSelectionOrder), not by the
-// local write after Nuvio took the push.
-func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm) (PushRecord, error) {
-	return buildPushRecord(ctx, db.conn, profileID, catalogs, collections)
+// BuildPushRecord is what a push of home, profileID's pending Home selection,
+// puts in Nuvio now. Push calls it before contacting Nuvio, so an id the
+// selection may not hold — not profileID's own, or a catalog that isn't
+// listed — is refused here (inSelectionOrder), not by the local write after
+// Nuvio took the push.
+func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, home PushedHome) (PushRecord, error) {
+	return buildPushRecord(ctx, db.conn, profileID, home)
 }
 
 // StoredPushRecord is what a push of profileID's Home as push last stored it
@@ -66,9 +84,9 @@ func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (Push
 		return PushRecord{}, err
 	}
 	slices.SortFunc(listed, compareByHomeSortOrder)
-	var catalogs CatalogSelectionForm
+	var home PushedHome
 	for _, c := range listed {
-		catalogs.Catalogs = append(catalogs.Catalogs, SelectedCatalogInput{CatalogID: c.ID, ShowInHome: c.ShowInHome, Position: *c.HomeSortOrder})
+		home.Catalogs = append(home.Catalogs, SelectedCatalogInput{CatalogID: c.ID, ShowInHome: c.ShowInHome, Position: *c.HomeSortOrder})
 	}
 
 	onHome, err := selectLeanCollections(ctx, q, "col.owner_id = ? AND col.home_sort_order IS NOT NULL", profileID.String())
@@ -76,21 +94,20 @@ func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (Push
 		return PushRecord{}, err
 	}
 	slices.SortFunc(onHome, compareCollectionsByHomeSortOrder)
-	var collections CollectionSelectionForm
 	for _, c := range onHome {
-		collections.Collections = append(collections.Collections, SelectedCollectionInput{CollectionID: c.ID, PinToTop: c.PinToTop, Position: *c.HomeSortOrder})
+		home.Collections = append(home.Collections, SelectedCollectionInput{CollectionID: c.ID, PinToTop: c.PinToTop, Position: *c.HomeSortOrder})
 	}
-	return buildPushRecord(ctx, q, profileID, catalogs, collections)
+	return buildPushRecord(ctx, q, profileID, home)
 }
 
-// buildPushRecord is the push record of catalogs and collections, profileID's
-// Home selection, read through q.
-func buildPushRecord(ctx context.Context, q querier, profileID uuid.UUID, catalogs CatalogSelectionForm, collections CollectionSelectionForm) (PushRecord, error) {
-	trees, err := selectedTrees(ctx, q, profileID, collections)
+// buildPushRecord is the push record of home, profileID's Home selection, read
+// through q.
+func buildPushRecord(ctx context.Context, q querier, profileID uuid.UUID, home PushedHome) (PushRecord, error) {
+	trees, err := selectedTrees(ctx, q, profileID, home)
 	if err != nil {
 		return PushRecord{}, err
 	}
-	listed, err := selectedCatalogs(ctx, q, profileID, catalogs)
+	listed, err := selectedCatalogs(ctx, q, profileID, home)
 	if err != nil {
 		return PushRecord{}, err
 	}
@@ -98,8 +115,8 @@ func buildPushRecord(ctx context.Context, q querier, profileID uuid.UUID, catalo
 	record := PushRecord{
 		Collections: make([]json.RawMessage, 0, len(trees)),
 		Home: PushedHome{
-			Catalogs:    jsonwire.OrEmpty(catalogs.Catalogs),
-			Collections: jsonwire.OrEmpty(collections.Collections),
+			Catalogs:    jsonwire.OrEmpty(home.Catalogs),
+			Collections: jsonwire.OrEmpty(home.Collections),
 		},
 		Catalogs: reachableCatalogs(listed, trees),
 	}
@@ -113,11 +130,11 @@ func buildPushRecord(ctx context.Context, q querier, profileID uuid.UUID, catalo
 	return record, nil
 }
 
-// selectedTrees is profileID's collections selection names, each with its
-// tree, in selection order and with the pin its entry carries, read through
-// q. One that isn't profileID's own is ErrInvalidInput.
-func selectedTrees(ctx context.Context, q querier, profileID uuid.UUID, selection CollectionSelectionForm) ([]CollectionWithFolders, error) {
-	ids := selection.CollectionIDs()
+// selectedTrees is profileID's collections home names, each with its tree,
+// in Home order and with the pin its entry carries, read through q. One that
+// isn't profileID's own is ErrInvalidInput.
+func selectedTrees(ctx context.Context, q querier, profileID uuid.UUID, home PushedHome) ([]CollectionWithFolders, error) {
+	ids := home.collectionIDs()
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -129,29 +146,29 @@ func selectedTrees(ctx context.Context, q querier, profileID uuid.UUID, selectio
 	if err != nil {
 		return nil, err
 	}
-	return applySelection(trees, selection)
+	return applySelection(trees, home)
 }
 
-// applySelection is trees in selection's order, each with the pin its
-// selection entry carries: the pin a push sends is the pending one, which only
-// the write after Nuvio accepted the push stores. An entry trees lacks is
-// ErrInvalidInput (inSelectionOrder).
-func applySelection(trees []CollectionWithFolders, selection CollectionSelectionForm) ([]CollectionWithFolders, error) {
-	ordered, err := inSelectionOrder("collection", selection.CollectionIDs(), trees, treeID)
+// applySelection is trees in home's order, each with the pin its entry
+// carries: the pin a push sends is the pending one, which only the write after
+// Nuvio accepted the push stores. An entry trees lacks is ErrInvalidInput
+// (inSelectionOrder).
+func applySelection(trees []CollectionWithFolders, home PushedHome) ([]CollectionWithFolders, error) {
+	ordered, err := inSelectionOrder("collection", home.collectionIDs(), trees, treeID)
 	if err != nil {
 		return nil, err
 	}
-	for i, entry := range selection.Collections {
+	for i, entry := range home.Collections {
 		ordered[i].PinToTop = entry.PinToTop
 	}
 	return ordered, nil
 }
 
-// selectedCatalogs is profileID's listed catalogs selection names, in
-// selection order, read through q. One that isn't profileID's own, or is
-// scoped to a collection, is ErrInvalidInput.
-func selectedCatalogs(ctx context.Context, q querier, profileID uuid.UUID, selection CatalogSelectionForm) ([]Catalog, error) {
-	ids := selection.CatalogIDs()
+// selectedCatalogs is profileID's listed catalogs home names, in Home order,
+// read through q. One that isn't profileID's own, or is scoped to a
+// collection, is ErrInvalidInput.
+func selectedCatalogs(ctx context.Context, q querier, profileID uuid.UUID, home PushedHome) ([]Catalog, error) {
+	ids := home.catalogIDs()
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -212,10 +229,10 @@ func reachableCatalogs(listed []Catalog, trees []CollectionWithFolders) []Pushed
 // save landing during the push still shows as waiting for the next one.
 func (db *DB) SavePush(ctx context.Context, profileID uuid.UUID, record PushRecord) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
-		if err := saveCatalogSelectionTx(ctx, tx, profileID, CatalogSelectionForm{Catalogs: record.Home.Catalogs}); err != nil {
+		if err := saveCatalogSelectionTx(ctx, tx, profileID, record.Home.Catalogs); err != nil {
 			return err
 		}
-		if err := saveCollectionSelectionTx(ctx, tx, profileID, CollectionSelectionForm{Collections: record.Home.Collections}); err != nil {
+		if err := saveCollectionSelectionTx(ctx, tx, profileID, record.Home.Collections); err != nil {
 			return err
 		}
 		return WritePushRecord(ctx, tx, profileID, record)
@@ -309,17 +326,17 @@ func pushedHeadOf(raw json.RawMessage) (pushedHead, error) {
 
 // selectedCatalogs is every catalog the record holds as the addon's manifest
 // lists it, in the record's order: those with a Home row of their own with
-// the Home or Discover the record carries, then the ones only a folder uses,
-// all off Home.
-func (r PushRecord) selectedCatalogs() []SelectedCatalog {
+// the Home or Discover the record carries in ShowInHome, then the ones only a
+// folder uses, all off Home.
+func (r PushRecord) selectedCatalogs() []Catalog {
 	showInHome := make(map[uuid.UUID]bool, len(r.Home.Catalogs))
 	for _, c := range r.Home.Catalogs {
 		showInHome[c.CatalogID] = c.ShowInHome
 	}
-	out := make([]SelectedCatalog, len(r.Catalogs))
+	out := make([]Catalog, len(r.Catalogs))
 	for i, c := range r.Catalogs {
-		out[i] = SelectedCatalog{
-			Catalog:    Catalog{ID: c.ID, Type: c.Type, Name: c.Name, Provider: c.Provider, Params: string(c.Params)},
+		out[i] = Catalog{
+			ID: c.ID, Type: c.Type, Name: c.Name, Provider: c.Provider, Params: string(c.Params),
 			ShowInHome: showInHome[c.ID],
 		}
 	}

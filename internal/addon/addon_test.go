@@ -26,11 +26,11 @@ func newTestVault(t *testing.T) *vault.DB {
 	return db
 }
 
-// savePush stands in for push's local write of catalogs and collections:
-// it builds their push record now and stores it.
-func savePush(t *testing.T, db *vault.DB, profileID uuid.UUID, catalogs vault.CatalogSelectionForm, collections vault.CollectionSelectionForm) {
+// savePush stands in for push's local write of home: it builds its push
+// record now and stores it.
+func savePush(t *testing.T, db *vault.DB, profileID uuid.UUID, home vault.PushedHome) {
 	t.Helper()
-	record, err := db.BuildPushRecord(context.Background(), profileID, catalogs, collections)
+	record, err := db.BuildPushRecord(context.Background(), profileID, home)
 	if err != nil {
 		t.Fatalf("BuildPushRecord: %v", err)
 	}
@@ -71,8 +71,7 @@ func TestBuildManifestFolderOnlyCatalogGetsGenreExtra(t *testing.T) {
 		t.Fatalf("saving collection: %v", err)
 	}
 
-	savePush(t, db, owner.ID, vault.CatalogSelectionForm{},
-		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
+	savePush(t, db, owner.ID, vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
 
 	selection, err := db.GetPublishedCatalogs(ctx, owner.ID)
 	if err != nil {
@@ -128,8 +127,7 @@ func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testi
 		t.Fatalf("saving collection: %v", err)
 	}
 
-	savePush(t, db, owner.ID, vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}},
-		vault.CollectionSelectionForm{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
+	savePush(t, db, owner.ID, vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}, Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
 
 	selection, err := db.GetPublishedCatalogs(ctx, owner.ID)
 	if err != nil {
@@ -160,13 +158,10 @@ func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testi
 
 // actionComedy stands in for provider.GenreExtraOptions' names, so manifest
 // tests don't reach TMDB.
-func actionComedy(vault.SelectedCatalog) []string { return []string{"Action", "Comedy"} }
+func actionComedy(vault.Catalog) []string { return []string{"Action", "Comedy"} }
 
-func selectedWithParams(params string, showInHome bool) vault.SelectedCatalog {
-	return vault.SelectedCatalog{
-		Catalog:    vault.Catalog{ID: uuid.New(), Type: "movie", Provider: "tmdb", Params: params},
-		ShowInHome: showInHome,
-	}
+func selectedWithParams(params string, showInHome bool) vault.Catalog {
+	return vault.Catalog{ID: uuid.New(), Type: "movie", Provider: "tmdb", Params: params, ShowInHome: showInHome}
 }
 
 // The genre extra carries the off-home required flag and the genre names in
@@ -237,7 +232,7 @@ func TestParseCatalogPath(t *testing.T) {
 // showInHome is on the wire even when false: Nuvio TV reads an absent field
 // as "show on home".
 func TestManifestCatalogShowInHomeIsAlwaysExplicit(t *testing.T) {
-	m := buildManifest([]vault.SelectedCatalog{selectedWithParams(`{}`, false)}, actionComedy)
+	m := buildManifest([]vault.Catalog{selectedWithParams(`{}`, false)}, actionComedy)
 	raw, err := json.Marshal(m.Catalogs[0])
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -305,10 +300,9 @@ func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
 		t.Fatalf("create catalog: %v", err)
 	}
 
-	savePush(t, db, owner.ID, vault.CatalogSelectionForm{Catalogs: []vault.SelectedCatalogInput{
+	savePush(t, db, owner.ID, vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{
 		{CatalogID: catalog.ID, ShowInHome: true},
-	}},
-		vault.CollectionSelectionForm{})
+	}})
 
 	s, err := New(db, provider.NewTMDBClient("test-key"), nil, "https://uno.example")
 	if err != nil {

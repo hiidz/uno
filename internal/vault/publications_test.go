@@ -417,7 +417,7 @@ func TestOnlyOwnReadsCarrySharingState(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 	c := publishCatalog(t, db, owner, "Popular", "{}")
 	coll := publishCollection(t, db, owner, CollectionForm{Title: "C", Folders: []FolderData{{Title: "F", Catalogs: CatalogRefs(c.ID)}}})
-	savePush(t, db, owner, CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}}, CollectionSelectionForm{})
+	savePush(t, db, owner, PushedHome{Catalogs: []SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}})
 
 	own, err := db.GetUserCatalogs(ctx, owner)
 	if err != nil || own[0].Publication == nil {
