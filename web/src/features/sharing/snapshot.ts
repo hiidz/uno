@@ -16,6 +16,7 @@ export function asCatalog(catalog: SnapshotCatalog): Catalog {
     collection_id: null,
     created_at: '',
     updated_at: '',
+    show_in_home: false,
     publication: null,
     subscription: null,
     publisher_unpublished: false,

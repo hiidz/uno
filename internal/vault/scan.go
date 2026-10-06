@@ -80,6 +80,13 @@ func nullableInt(n sql.NullInt64) *int {
 	return &v
 }
 
+// showsInHome is a catalog's show_in_home as a read gives it: the stored flag
+// while homeSortOrder places the catalog on Home, and false off Home, where
+// push leaves the flag as it last was.
+func showsInHome(homeSortOrder sql.NullInt64, showInHome int) bool {
+	return homeSortOrder.Valid && showInHome != 0
+}
+
 // rowParser parses the text columns of one scanned row, keeping the first
 // error so a scanner checks once, after every column.
 type rowParser struct{ err error }
@@ -146,7 +153,7 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 		return Catalog{}, p.err
 	}
 	c.HomeSortOrder = nullableInt(homeSortOrder)
-	c.ShowInHome = showInHome != 0
+	c.ShowInHome = showsInHome(homeSortOrder, showInHome)
 	c.SubKey = subKey.String
 	c.markChangedSincePublish()
 	return c, nil

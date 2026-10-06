@@ -1,7 +1,7 @@
 import { createContext, useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useQueries, useQueryClient } from '@tanstack/react-query'
-import { fetchCatalogSelection, fetchCollectionSelection, fetchPendingPush, queryKeys } from '@/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchPendingPush, queryKeys } from '@/api'
 import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
 import { waitingIDs } from '@/features/sharing/sharingState'
@@ -11,7 +11,6 @@ import {
   EMPTY_HOME,
   catalogEntries,
   collectionEntries,
-  existingRowIDs,
   hydrateHome,
   moveInBand,
   reorderBand,
@@ -24,14 +23,15 @@ import type { HomeCatalogEntry, HomeCollectionEntry, HomeEntry, HomeRowsEdit, Ho
 import { usePrunedHome } from './usePrunedHome'
 
 export interface HomeSelection extends HomeEdits {
-  /** False until the server's current selection has loaded. Edits are blocked
-   *  until then — hydrating over a user's changes would silently discard them. */
+  /** False until both owned lists have loaded, which the Home is read from.
+   *  Edits are blocked until then — hydrating over a user's changes would
+   *  silently discard them. */
   ready: boolean
   isLoading: boolean
-  /** What stops the Home pane rendering: a selection that never loaded. A
-   *  selection refetch that fails after hydration doesn't count — pending edits
-   *  never read it again, and the lookup maps keep the rows they already had —
-   *  and neither does the library, whose failures the rail reports itself. */
+  /** What stops the Home pane rendering: an owned list that never loaded. A
+   *  refetch that fails after hydration doesn't count — pending edits never
+   *  read the lists again, and the lookup maps keep the rows they already
+   *  had. */
   error: Error | null
   /** Re-runs whatever failed. */
   retry: () => void
@@ -42,20 +42,14 @@ export interface HomeSelection extends HomeEdits {
   catalogs: HomeCatalogEntry[]
   collections: HomeCollectionEntry[]
 
-  /** Every catalog/collection the Home pane might need to render, keyed by id.
-   *  Assembled from the selection response *and* the library, because a
-   *  selected row can be absent from the library — see `isDetached`. */
+  /** Every catalog/collection the Home pane might need to render, keyed by id:
+   *  the library's rows, and the scoped catalogs its collections' folders use. */
   catalogById: ReadonlyMap<string, Catalog>
   collectionById: ReadonlyMap<string, Collection>
 
   /** The ids of the rows a push would change in Nuvio, which the rows flag
    *  To push (`waitingIDs`). */
   waitingForPush: ReadonlySet<string>
-
-  /** True when a selected item is not in the library, which the lists can show
-   *  for the moment between a delete and their refetch: the provider then drops
-   *  the row from the pending selection (`usePrunedHome`). */
-  isDetached: (id: string) => boolean
 
   /** Genre lookups, so the Home pane can render recipes without calling
    *  `useLibrary` again and re-deriving the whole dataset. */
@@ -125,21 +119,9 @@ export function HomeSelectionProvider({
 }) {
   const library = useLibrary(profileIndex)
 
-  const [catalogSelection, collectionSelection, pendingPush] = useQueries({
-    queries: [
-      {
-        queryKey: queryKeys.catalogSelection(profileIndex),
-        queryFn: () => fetchCatalogSelection(profileIndex),
-      },
-      {
-        queryKey: queryKeys.collectionSelection(profileIndex),
-        queryFn: () => fetchCollectionSelection(profileIndex),
-      },
-      {
-        queryKey: queryKeys.pendingPush(profileIndex),
-        queryFn: () => fetchPendingPush(profileIndex),
-      },
-    ],
+  const pendingPush = useQuery({
+    queryKey: queryKeys.pendingPush(profileIndex),
+    queryFn: () => fetchPendingPush(profileIndex),
   })
 
   // `baseline` is what the server says is live; `current` is what the user has
@@ -148,27 +130,18 @@ export function HomeSelectionProvider({
   const [current, setCurrent] = useState<HomeState | null>(null)
   const [baseline, setBaseline] = useState<HomeState>(EMPTY_HOME)
 
-  const selectionLoaded = catalogSelection.isSuccess && collectionSelection.isSuccess
-  const catalogSelectionData = catalogSelection.data
-  const collectionSelectionData = collectionSelection.data
-
-  if (current === null && selectionLoaded) {
-    const hydrated = hydrateHome(catalogSelectionData, collectionSelectionData)
+  if (current === null && library.listsLoaded) {
+    const hydrated = hydrateHome(library.catalogs, library.collections)
     setBaseline(hydrated)
     setCurrent(hydrated)
   }
 
-  const collectionById = useMemo(
-    () => collectionsById(collectionSelectionData, library.collections),
-    [collectionSelectionData, library.collections],
-  )
+  const collectionById = useMemo(() => byId(library.collections), [library.collections])
 
   const catalogById = useMemo(
-    () => catalogsById(catalogSelectionData, library.catalogs, collectionById.values()),
-    [catalogSelectionData, library.catalogs, collectionById],
+    () => byId([...library.catalogs, ...folderCatalogs(library.collections)]),
+    [library.catalogs, library.collections],
   )
-
-  const libraryLoaded = !library.isLoading && !library.failed.catalogs && !library.failed.collections
 
   const libraryIds = useMemo(
     () =>
@@ -183,13 +156,7 @@ export function HomeSelectionProvider({
   // selection and the baseline both, once the lists have refetched without it:
   // Push would be refused for naming it. Nuvio still holds it until the next
   // push, which the list of changes says from `pendingPush`.
-  usePrunedHome(
-    current,
-    baseline,
-    existingRowIDs(selectionLoaded, libraryLoaded, libraryIds, catalogSelectionData, collectionSelectionData),
-    setCurrent,
-    setBaseline,
-  )
+  usePrunedHome(current, baseline, library.listsLoaded ? libraryIds : null, setCurrent, setBaseline)
 
   // The Show first a collection was last pushed with, which one added to the
   // home screen starts from.
@@ -214,19 +181,15 @@ export function HomeSelectionProvider({
     })
   }, [])
 
-  // Data derived from the library and the selection responses — changes only
+  // Data derived from the library and the pending-push list — changes only
   // when one of those actually changes, not on every edit to `current`. Split
-  // out so an edit that doesn't touch any of this (most of them) doesn't force
-  // a new `isDetached` closure on every keystroke.
+  // out so an edit that doesn't touch any of this (most of them) doesn't
+  // rebuild it on every keystroke.
   const readData = useMemo(
     () => ({
       catalogById,
       collectionById,
       waitingForPush: waitingIDs(pendingPush.data),
-
-      // Only meaningful once the library has actually loaded; before that, or
-      // when it failed to, everything would look detached.
-      isDetached: (id: string) => libraryLoaded && !libraryIds.has(id),
       genres: library.genres,
 
       changes,
@@ -238,8 +201,6 @@ export function HomeSelectionProvider({
       catalogById,
       collectionById,
       pendingPush.data,
-      libraryLoaded,
-      libraryIds,
       library.genres,
       changes,
       pendingCount,
@@ -275,8 +236,8 @@ export function HomeSelectionProvider({
     [edit, storedPin],
   )
 
-  // Every failed query in this profile's subtree — the two selections, and the
-  // library's own lists if they failed too.
+  // Every failed query in this profile's subtree: the owned lists, and the
+  // pending-push list.
   const queryClient = useQueryClient()
   const retry = useCallback(() => {
     void queryClient.refetchQueries({
@@ -289,11 +250,8 @@ export function HomeSelectionProvider({
     function selection() {
       return {
         ready: current !== null,
-        isLoading: catalogSelection.isPending || collectionSelection.isPending || library.isLoading,
-        error:
-          current === null
-            ? ((catalogSelection.error ?? collectionSelection.error) as Error | null)
-            : null,
+        isLoading: library.isLoading,
+        error: current === null && (library.failed.catalogs || library.failed.collections) ? library.error : null,
         retry,
 
         rows: state.rows,
@@ -314,10 +272,9 @@ export function HomeSelectionProvider({
       current,
       state,
       library.isLoading,
-      catalogSelection.isPending,
-      catalogSelection.error,
-      collectionSelection.isPending,
-      collectionSelection.error,
+      library.failed.catalogs,
+      library.failed.collections,
+      library.error,
       retry,
       readData,
       editFns,
@@ -329,30 +286,6 @@ export function HomeSelectionProvider({
       <HomeSelectionContext.Provider value={value}>{children}</HomeSelectionContext.Provider>
     </HomeEditsContext.Provider>
   )
-}
-
-/** Every collection the Home pane might draw, by id: the selection's, then
- *  the library's over them. */
-function collectionsById(
-  selection: readonly Collection[] | undefined,
-  library: readonly Collection[],
-): Map<string, Collection> {
-  return byId([...(selection ?? []), ...library])
-}
-
-/**
- * Every catalog the Home pane might draw, by id. Library over the selection —
- * the library's is the canonical row, and anything only the selection knows
- * about still renders detached — then every catalog a known collection's own
- * folders reference: those are always scoped (never listed, so never in the
- * library), and `Collection.catalogs` is the only place they're carried.
- */
-function catalogsById(
-  selection: readonly Catalog[] | undefined,
-  library: readonly Catalog[],
-  collections: Iterable<Collection>,
-): Map<string, Catalog> {
-  return byId([...(selection ?? []), ...library, ...folderCatalogs(collections)])
 }
 
 /** Every catalog the folders of `collections` reference, in order. */

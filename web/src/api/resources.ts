@@ -19,7 +19,6 @@ import type {
   PendingChange,
   PreviewRequest,
   PublicationDetail,
-  SelectedCatalog,
   SelectedProfile,
   ServerConfig,
   SnapshotChange,
@@ -66,23 +65,6 @@ export function fetchChangesSincePublish(
   id: string,
 ): Promise<SnapshotChange[]> {
   return getList<SnapshotChange>(`/api/p/${profileIndex}/${kind}s/${id}/changes-since-publish`)
-}
-
-/**
- * The profile's current selection — what is live in Nuvio right now, and the
- * baseline the Home pane's pending edits are diffed against. Both are ordered
- * by `sort_order`; that order is the value, so preserve it.
- *
- * There is no write function here. Selection is only ever persisted by Push,
- * which sends the whole pending selection in its own request body. Nothing on
- * the Home pane writes on its own.
- */
-export function fetchCatalogSelection(profileIndex: number): Promise<SelectedCatalog[]> {
-  return getList<SelectedCatalog>(`/api/p/${profileIndex}/catalogs/selection`)
-}
-
-export function fetchCollectionSelection(profileIndex: number): Promise<Collection[]> {
-  return getList<Collection>(`/api/p/${profileIndex}/collections/selection`)
 }
 
 /** What a push of the Home as the server stores it would change in Nuvio: the

@@ -43,7 +43,6 @@ beforeEach(() => {
     catalogById: new Map([[noir.id, noir]]),
     collectionById: new Map([[night.id, night]]),
     waitingForPush: new Set(),
-    isDetached: () => false,
     genres: { movie: new Map(), tv: new Map() },
   }
 })

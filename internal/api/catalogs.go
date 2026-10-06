@@ -76,7 +76,3 @@ func (s *Server) deleteUserCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func (s *Server) listCurrentCatalogSelection(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listCurrentCatalogSelection", "failed to load catalog selection", s.vault.GetCurrentCatalogSelection)
-}

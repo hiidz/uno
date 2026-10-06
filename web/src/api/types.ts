@@ -36,6 +36,9 @@ export interface Catalog {
   /** Its place on Home, numbered with the collections there; absent when it
    *  isn't on Home. */
   home_position?: number
+  /** On Home with a home row of its own; `false` for Discover only, and for
+   *  every catalog off Home. Written only by Push. */
+  show_in_home: boolean
   /** This catalog's own publication; `null` while it isn't published. Only
    *  the owner's own reads carry it. */
   publication: PublicationState | null
@@ -121,19 +124,6 @@ export interface Collection {
   /** Every catalog this collection's folders reference, listed or scoped —
    *  so the editor never needs the library to render a folder. */
   catalogs: Catalog[] | null
-}
-
-/**
- * `GET /api/p/{i}/catalogs/selection` — the full catalog row plus its own
- * `show_in_home` flag, ordered by home position.
- *
- * The closed graph means a catalog has exactly one owner and can only ever
- * be selected by that owner, so `show_in_home` is a property of the catalog
- * row itself (`catalogs.show_in_home`) — this shape exists for the ordering
- * and the response's wire stability, not to disambiguate per-profile values.
- */
-export interface SelectedCatalog extends Catalog {
-  show_in_home: boolean
 }
 
 /**

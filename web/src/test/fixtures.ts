@@ -1,4 +1,4 @@
-import type { Catalog, Collection, CommunityFolder, CommunityItem, Folder, SelectedCatalog } from '@/api'
+import type { Catalog, Collection, CommunityFolder, CommunityItem, Folder } from '@/api'
 
 /**
  * Complete wire rows for tests, so a test names only the fields it is about
@@ -17,15 +17,12 @@ export function catalog(overrides: Partial<Catalog> = {}): Catalog {
     collection_id: null,
     created_at: '',
     updated_at: '',
+    show_in_home: false,
     publication: null,
     subscription: null,
     publisher_unpublished: false,
     ...overrides,
   }
-}
-
-export function selectedCatalog(overrides: Partial<SelectedCatalog> = {}): SelectedCatalog {
-  return { ...catalog(overrides), show_in_home: true, ...overrides }
 }
 
 export function folder(overrides: Partial<Folder> = {}): Folder {

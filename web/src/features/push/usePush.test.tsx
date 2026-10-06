@@ -82,8 +82,6 @@ describe('usePush', () => {
     const cached = [
       queryKeys.ownedCatalogs(4),
       queryKeys.ownedCollections(4),
-      queryKeys.catalogSelection(4),
-      queryKeys.collectionSelection(4),
       queryKeys.pendingPush(4),
     ]
     for (const queryKey of cached) queryClient.setQueryData(queryKey, [])

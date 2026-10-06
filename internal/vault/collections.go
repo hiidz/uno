@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,10 +69,9 @@ func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]Co
 }
 
 // GetCollectionsByIDs batch-loads collections (with folders) by id, no
-// ownership check and no ordering guarantee: the shape
-// GetCurrentCollectionSelection returns, keyed by an explicit id list instead
-// of a home_sort_order filter. Mirrors internal/vault/catalogs.go's
-// GetCatalogsByIDs, and like it reads no sharing state.
+// ownership check and no ordering guarantee. Mirrors
+// internal/vault/catalogs.go's GetCatalogsByIDs, and like it reads no sharing
+// state.
 func (db *DB) GetCollectionsByIDs(ctx context.Context, ids []uuid.UUID) ([]CollectionWithFolders, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -393,19 +391,6 @@ func compareCollectionsByHomeSortOrder(a, b Collection) int {
 	}
 }
 
-// GetCurrentCollectionSelection returns profileID's active collection
-// selection — every owned collection with a non-nil home_sort_order —
-// ordered by it, each with its folders assembled.
-func (db *DB) GetCurrentCollectionSelection(ctx context.Context, profileID uuid.UUID) ([]CollectionWithFolders, error) {
-	collections, err := db.queryCollections(ctx, "col.owner_id = ? AND col.home_sort_order IS NOT NULL", profileID.String())
-	if err != nil {
-		return nil, err
-	}
-
-	slices.SortFunc(collections, compareCollectionsByHomeSortOrder)
-
-	return assembleCollectionTree(ctx, db.conn, collections, catalogsByIDs)
-}
 
 // saveCollectionSelectionTx resets this profile's collection selection to
 // exactly input, and writes each included collection's pin_to_top from its

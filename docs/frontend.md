@@ -508,9 +508,8 @@ Other decisions worth keeping:
   pending until Push. Adding from the rail defaults `show_in_home: true`.
 - **Writes invalidate the owned catalog list** (`useCatalogMutations` also invalidates every
   Community key, through `invalidateProfileLists` — a save can make a published row changed since
-  publishing, and a delete unpublishes it). The selection queries refetch with them,
-  since their keys sit under the owned lists'; `HomeSelectionContext`'s one-shot hydration keeps
-  that from clobbering pending edits.
+  publishing, and a delete unpublishes it). The Home pane reads its rows from these lists;
+  `HomeSelectionContext`'s one-shot hydration keeps a refetch from clobbering pending edits.
 - **A collection save never invalidates the catalog list** (`useCollectionMutations`): catalog
   edits inside a collection change scoped rows, which the list never holds.
 - **`useCatalogMutations` also invalidates the collection lists.** Not defensive — required.
@@ -529,15 +528,15 @@ Other decisions worth keeping:
 ## Home pane — List view
 
 Add/remove from the rail, drag/keyboard/↑↓-reorder, `show_in_home` per catalog row. Hydrates once
-from both `GET .../selection` endpoints; client state only, nothing writes until Push.
+from the owned lists, the rows with a `home_position` in its order, once *both* have loaded: a Home
+read from one list alone would push without the other's rows, and Push replaces what Nuvio holds.
+Client state only, nothing writes until Push.
 
 - **The baseline is snapshotted at hydration, not read live from the query cache.** A background
   refetch must not move the baseline under the user and silently change the diff.
-- **Selected rows render from the selection response, not by library lookup** — the two are
-  separate queries, and a row the selection returns is live in the user's Nuvio whatever the
-  library says. The server refuses to delete a row Nuvio holds, so a selected row missing from
-  the library is a transient case, handled defensively rather than expected. Such rows are marked
-  "not in library" and carry the red Deleted sticker: they work, but removing them is one-way.
+- **Every Home row is a library row.** The rows come from the owned lists, and a row the lists
+  drop is pruned from the pending state and the baseline at once (`withoutDeleted`), so no row
+  is ever drawn without its library row.
 - **A row is its name, its kind, To push while one waits, and a detail line.** A catalog's detail
   is its recipe line. A collection's is its folders (`FolderChips`): up to six small tiles, each
   its cover image or emoji and its title (a folder with neither is its title alone), then "+N more"; a collection with no folders, or one
@@ -591,10 +590,9 @@ from both `GET .../selection` endpoints; client state only, nothing writes until
 
 **Selection is client state until Push, and the one thing enforcing that is the one-shot
 hydration guard** in `web/src/features/home/HomeSelectionContext.tsx`
-(`if (current !== null || !selectionLoaded) return`). The mutation hooks' invalidation of
-`['p', i, 'catalogs']` is a *prefix* of the selection key `['p', i, 'catalogs', 'selection']`,
-and `invalidateQueries` matches by prefix — so a selection refetch does fire on every catalog
-write; it just can't move `baseline` or `current`. Removing the guard, or making hydration re-run
+(`if (current === null && library.listsLoaded)`). The mutation hooks invalidate the owned lists
+the Home hydrates from, so they refetch on every catalog or collection write; the guard keeps that
+from moving `baseline` or `current`. Removing the guard, or making hydration re-run
 on fresh data, silently clobbers the user's pending home-screen edits on the next catalog or
 collection write.
 
@@ -672,15 +670,9 @@ Decisions that shape the code:
 - **A folder's `refs` are *sources*, never tiles.** Each is a standing query contributing
   an unknown number of items, so no view draws one tile per ref — that would misstate how much
   the folder holds. They are the folder page's spine: one row or one tab each.
-- **"Not in library" and "nothing resolves" are two different conditions here**, and conflating
-  them is a real bug. `catalogById`/`collectionById` are assembled from the selection response
-  *as well as* the library, so a selected row the library lacks still resolves through the
-  selection response. Per DESIGN.md's Clean Preview Rule,
-  `isDetached` marks nothing *inside* the preview
-  panel — Nuvio shows a detached row plainly, with no note pinned onto it — but the
-  Discover-only list beneath the panel still names it, in List's own wording, because that list is
-  Uno's own words about the rows, not the rows themselves. Unresolvability still degrades a row
-  inside the panel to an empty strip, no explanation, matching how Nuvio would show it.
+- **A row nothing resolves degrades to an empty strip**, no explanation, matching how Nuvio
+  would show it. `catalogById`/`collectionById` hold the library's rows and the scoped catalogs
+  its collections' folders use.
 - **Slack wire values are handled, not cast away.** An older row's `tile_shape` can be `''`
   (falls back to `POSTER`, and says so on screen; Nuvio does the same with a pushed `''` — see
   `docs/data-model.md`). `view_mode` is a bare `string`: `FOLLOW_LAYOUT` lands in a branch that
@@ -690,11 +682,10 @@ Decisions that shape the code:
   without discarding the order the user just dragged.
 - **`ListState` owns loading and error for both views; each view owns its own empty case.**
   List's empty is an instruction to go add something; Preview's is the colour-bars moment from
-  the design section below. The error is only one that leaves nothing to draw — a selection that
-  never hydrated — and carries a Retry. A library list that failed is the rail's to report, not
-  Home's: the rail shows one error and one Retry for both lists, and leaves out the group whose list
-  failed while the one that loaded keeps its rows. While it has, `isDetached` marks nothing, since every row would
-  otherwise read as missing from a library that simply hasn't arrived. A background refetch that
+  the design section below. The error is only one that leaves nothing to draw — an owned list
+  that never loaded, so Home never hydrated — and carries a Retry. The rail reports the same
+  failure itself: one error and one Retry for both lists, leaving out the group whose list failed
+  while the one that loaded keeps its rows. A background refetch that
   fails after the page has loaded keeps what it had rather than replacing the pane, since the only
   other way out of a replaced pane is a reload, which discards pending edits.
 
@@ -1054,7 +1045,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     Collection sticker, which the rail's Collections sign already says. An editor's sign and the
     From Community view's sign show every flag (`rowStickers`, and `viewStickers` for the view).
     The Home pane's rows, the "Not on home" tray's included, show the kind and To push alone
-    (`homeStickers`), plus Deleted on a row whose source is gone. Below `sm` the sign hides its
+    (`homeStickers`). Below `sm` the sign hides its
     stickers, so `EditorShell` heads the body with them.
   - **The kind wears its region's hue** wherever it shows: Movies and Series tangerine
     (`kindSticker`, `kindStickers`), Collection green (`COLLECTION_KIND`), on the rail, Home,
@@ -1305,16 +1296,11 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **`markPushed` takes the pushed state, not `current`.** The user can keep editing while a push
   is in flight; advancing the baseline to "whatever is current now" would silently swallow those
   edits and report them as already live.
-- **Both owned lists are invalidated on success, and with them both selections.** Each
-  selection key sits under its owned list's key (`['p', i, 'catalogs', 'selection']` under
-  `['p', i, 'catalogs']`), and `invalidateQueries` matches by prefix, so the owned key reaches
-  both; the selection key alone never reaches the owned list. Push rewrites every owned row's
-  `home_position` and a collection's `pin_to_top`. The delete dialog reads them from the owned
-  rows, and `HomeSelectionContext`'s lookup maps are built by writing the selection response
-  first and the owned list second, so on an id present in both (the ordinary case) the owned
-  list's copy wins. With `staleTime: 30_000`, a stale selection would also make switching
-  profile and returning inside that window re-hydrate the baseline from pre-push data, and the
-  pushed changes would look undone.
+- **Both owned lists are invalidated on success.** Push rewrites every owned row's
+  `home_position` and `show_in_home` and a collection's `pin_to_top`, which Home hydrates from,
+  an added collection starts its pin from, and the delete dialog reads. With `staleTime: 30_000`,
+  stale lists would make switching profile and returning inside that window re-hydrate the
+  baseline from pre-push data, and the pushed changes would look undone.
 - **The pending-push query is invalidated on success too.** The list of what
   waits for a push (`queryKeys.pendingPush`, `GET .../push/pending`) is read from the server, so
   without invalidating it the "changed since it was last pushed" lines would never clear after a
@@ -1376,8 +1362,7 @@ fonts only from `'self'` and `data:`.
 **Stickers.** Small printed pills state a row's states in words, following DESIGN.md's *Sticker
 Rule*: every pill is `.stk` plus one hue — `.stk-catalog` (the kind Movies or Series, in
 tangerine), `.stk-collection` (the kind Collection, in green), `.stk-community` (Published, From Community, Unpublished, To publish, Update available, because
-Community is where those rows turn up), `.stk-nuvio` (To push, bound for Nuvio) and `.stk-danger`
-(Deleted) — and `.stk-fill` while it waits on you, until one action clears it (To publish, Update
+Community is where those rows turn up) and `.stk-nuvio` (To push, bound for Nuvio) — and `.stk-fill` while it waits on you, until one action clears it (To publish, Update
 available, To push); every other pill is an outline. On a sign an outline pill turns sign ink and
 a filled one becomes a sign-ink pill lettered in its hue. A library row's home-screen toggle is `.home-sticker`: a dashed empty
 circle while it's off the home screen, a yellow ON NUVIO price sticker (two lines, ON over NUVIO)

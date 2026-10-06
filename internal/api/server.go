@@ -121,13 +121,9 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("POST /api/p/{profileIndex}/import/check", s.requireProfileAuth(s.checkImport))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/import", s.requireProfileAuth(s.importBundle))
 
-	// Selection is read here but never written here: the whole selection
-	// travels in POST .../push's body and is written by that handler, in one
-	// transaction, only after Nuvio has accepted the push.
-	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/selection", s.requireProfileAuth(s.listCurrentCatalogSelection))
-
-	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/selection", s.requireProfileAuth(s.listCurrentCollectionSelection))
-
+	// The Home selection travels whole in push's body and is written only by
+	// that handler, in one transaction, once Nuvio has accepted the push. It
+	// is read back from the owned lists, as each row's home_position.
 	s.router.HandleFunc("POST /api/p/{profileIndex}/push", s.requireProfileAuth(s.push))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/push/pending", s.requireProfileAuth(s.listPendingPush))
 

@@ -135,7 +135,3 @@ func (s *Server) deleteUserCollection(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func (s *Server) listCurrentCollectionSelection(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listCurrentCollectionSelection", "failed to load collection selection", s.vault.GetCurrentCollectionSelection)
-}

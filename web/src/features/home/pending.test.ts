@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { collection, selectedCatalog } from '@/test/fixtures'
+import { catalog, collection } from '@/test/fixtures'
 import {
   bandOf,
   catalogEntries,
   collectionEntries,
-  existingRowIDs,
   hydrateHome,
   moveInBand,
   moveWithinBand,
@@ -47,15 +46,23 @@ describe('toPushPayload', () => {
 })
 
 describe('hydrateHome', () => {
-  it('merges the two selection reads by home_position', () => {
+  it('merges the owned rows on Home by home_position', () => {
     const home = hydrateHome(
       [
-        selectedCatalog({ id: 'a', home_position: 2, show_in_home: true }),
-        selectedCatalog({ id: 'd', home_position: 4, show_in_home: false }),
+        catalog({ id: 'a', home_position: 2, show_in_home: true }),
+        catalog({ id: 'd', home_position: 4, show_in_home: false }),
       ],
       [collection({ id: 'x', home_position: 0, pin_to_top: true }), collection({ id: 'y', home_position: 3 })],
     )
     expect(home.rows).toEqual([first('x'), shown('a'), after('y'), discover('d')])
+  })
+
+  it('leaves out every row off Home, whatever its flags', () => {
+    const home = hydrateHome(
+      [catalog({ id: 'off', show_in_home: true }), catalog({ id: 'a', home_position: 0, show_in_home: true })],
+      [collection({ id: 'k', pin_to_top: true })],
+    )
+    expect(home.rows).toEqual([shown('a')])
   })
 })
 
@@ -143,16 +150,6 @@ describe('withRow and withoutRow', () => {
   })
 })
 
-describe('existingRowIDs', () => {
-  it('is null until the lists have loaded', () => {
-    expect(existingRowIDs(false, true, new Set(['a']), [{ id: 'b' }])).toBeNull()
-  })
-
-  it('unites the library with both selections', () => {
-    expect(existingRowIDs(true, true, new Set(['a']), [{ id: 'b' }], undefined)).toEqual(new Set(['a', 'b']))
-  })
-})
-
 describe('withoutDeleted', () => {
   const state = { rows: [shown('a'), after('x'), discover('b'), first('y')] }
 
@@ -164,11 +161,5 @@ describe('withoutDeleted', () => {
 
   it('drops the rows that are gone, keeping the order of the rest', () => {
     expect(withoutDeleted(state, new Set(['b', 'y']))).toEqual({ rows: [discover('b'), first('y')] })
-  })
-})
-
-describe('hydrateHome without positions', () => {
-  it('keeps the reads in their order when a row carries no position', () => {
-    expect(hydrateHome([selectedCatalog({ id: 'a' })], [collection({ id: 'x' })]).rows.map((r) => r.id)).toEqual(['a', 'x'])
   })
 })

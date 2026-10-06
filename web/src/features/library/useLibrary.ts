@@ -70,6 +70,10 @@ export interface Library {
   error: Error | null
   /** Which of the two lists that is, so the one that did load keeps its rows. */
   failed: { catalogs: boolean; collections: boolean }
+  /** Both lists have rows to show. The Home pane hydrates from them, so it
+   *  waits for both: a Home read from one list alone would push without the
+   *  other's rows, and Push replaces what Nuvio holds. */
+  listsLoaded: boolean
   refetch: () => void
 }
 
@@ -187,6 +191,7 @@ export function useLibrary(profileIndex: number): Library {
       catalogs: ownedCatalogs.isError && ownedCatalogs.data === undefined,
       collections: ownedCollections.isError && ownedCollections.data === undefined,
     },
+    listsLoaded: ownedCatalogs.data !== undefined && ownedCollections.data !== undefined,
     refetch: () => {
       for (const r of results) void r.refetch()
     },

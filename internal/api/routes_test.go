@@ -199,7 +199,6 @@ func TestCatalogRoutes(t *testing.T) {
 		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/catalogs", wantStatus: http.StatusNotFound, wantBody: "profile not found"},
 		{name: "list", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
 		{name: "list includes the created catalog", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"New"`},
-		{name: "selection", method: http.MethodGet, path: "/api/p/1/catalogs/selection", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "provider must be"},
@@ -246,7 +245,6 @@ func TestCollectionRoutes(t *testing.T) {
 
 	runSteps(t, f.s, []routeStep{
 		{name: "list", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
-		{name: "selection", method: http.MethodGet, path: "/api/p/1/collections/selection", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "community leaves out unpublished collections", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "create with a new scoped catalog", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(popular), wantStatus: http.StatusCreated, wantBody: `"title":"Scoped"`},
 		{name: "create with a broken scoped recipe", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(`{"sort_by":"bogus.desc"}`), wantStatus: http.StatusBadRequest},

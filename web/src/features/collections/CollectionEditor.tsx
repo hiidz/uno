@@ -142,6 +142,7 @@ function draftCatalog(seed: {
     collection_id: seed.collectionID,
     created_at: '',
     updated_at: '',
+    show_in_home: false,
     publication: null,
     subscription: null,
     publisher_unpublished: false,

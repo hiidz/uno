@@ -8,7 +8,7 @@
  * user their work isn't saved yet.
  */
 
-import type { Collection, PushRequest, SelectedCatalog } from '@/api'
+import type { Catalog, Collection, PushRequest } from '@/api'
 import { moveByOne, orderByKeys } from '@/lib/order'
 
 /** One row on Home: a catalog, or a collection. A catalog and a collection
@@ -64,12 +64,10 @@ export function collectionEntries(state: HomeState): HomeCollectionEntry[] {
   return state.rows.filter((entry): entry is HomeCollectionEntry => entry.kind === 'collection')
 }
 
-/** The two selection reads as one Home, by each row's `home_position`. */
-export function hydrateHome(
-  catalogs: readonly SelectedCatalog[] = [],
-  collections: readonly Collection[] = [],
-): HomeState {
-  const placed = [...catalogs.map(placedCatalog), ...collections.map(placedCollection)]
+/** The owned rows on Home as one Home, by each row's `home_position`; a row
+ *  without one is off Home. */
+export function hydrateHome(catalogs: readonly Catalog[], collections: readonly Collection[]): HomeState {
+  const placed = [...catalogs.flatMap(placedCatalog), ...collections.flatMap(placedCollection)]
   placed.sort((a, b) => a.position - b.position)
   return { rows: placed.map((p) => p.entry) }
 }
@@ -80,12 +78,14 @@ interface PlacedEntry {
   entry: HomeEntry
 }
 
-function placedCatalog(c: SelectedCatalog): PlacedEntry {
-  return { position: c.home_position ?? 0, entry: { kind: 'catalog', id: c.id, showInHome: c.show_in_home } }
+function placedCatalog(c: Catalog): PlacedEntry[] {
+  if (c.home_position === undefined) return []
+  return [{ position: c.home_position, entry: { kind: 'catalog', id: c.id, showInHome: c.show_in_home } }]
 }
 
-function placedCollection(c: Collection): PlacedEntry {
-  return { position: c.home_position ?? 0, entry: { kind: 'collection', id: c.id, pinToTop: c.pin_to_top } }
+function placedCollection(c: Collection): PlacedEntry[] {
+  if (c.home_position === undefined) return []
+  return [{ position: c.home_position, entry: { kind: 'collection', id: c.id, pinToTop: c.pin_to_top } }]
 }
 
 /**
@@ -136,7 +136,8 @@ export function moveWithinBand<T extends { id: string }>(
 /** `rows` with `entry` added at the end of Home, or `rows` itself when the row
  *  is on Home already. */
 export function withRow(rows: HomeEntry[], entry: HomeEntry): HomeEntry[] {
-  return rows.some((row) => row.id === entry.id) ? rows : [...rows, entry]
+  if (rows.some((row) => row.id === entry.id)) return rows
+  return [...rows, entry]
 }
 
 /** `rows` without row `id`. */
@@ -175,23 +176,6 @@ function flipped(entry: HomeEntry, id: string, kind: HomeEntry['kind']): HomeEnt
   if (entry.id !== id || entry.kind !== kind) return entry
   if (entry.kind === 'collection') return { ...entry, pinToTop: !entry.pinToTop }
   return { ...entry, showInHome: !entry.showInHome }
-}
-
-/**
- * The ids of the rows that still exist — the library's and the two selection
- * responses' — or `null` until all of those have loaded, when nothing can be
- * said to be gone.
- */
-export function existingRowIDs(
-  selectionLoaded: boolean,
-  libraryLoaded: boolean,
-  libraryIDs: ReadonlySet<string>,
-  ...selections: (readonly { id: string }[] | undefined)[]
-): ReadonlySet<string> | null {
-  if (!selectionLoaded || !libraryLoaded) return null
-  return new Set([...libraryIDs, ...selections.flatMap(function ids(rows) {
-    return (rows ?? []).map((row) => row.id)
-  })])
 }
 
 /**

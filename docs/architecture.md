@@ -181,11 +181,12 @@ silent auto-provision.
 
 Route-semantics facts the client has to honour:
 
-- **Selection is read via `GET .../selection` but never written there.** The whole pending
+- **The Home selection is read from the owned lists and written only by push.** Each owned row
+  carries its place on Home as `home_position`, with a catalog's `show_in_home` and a
+  collection's `pin_to_top`; a row without `home_position` is off Home. The whole pending
   selection travels in `POST .../push`'s body and is written by that handler, in one transaction,
-  only after Nuvio has accepted the push. There are no `PUT .../selection` routes; the
-  transactional write bodies are `saveCatalogSelectionTx`/`saveCollectionSelectionTx` inside
-  `internal/vault`.
+  only after Nuvio has accepted the push. There are no selection routes; the transactional write
+  bodies are `saveCatalogSelectionTx`/`saveCollectionSelectionTx` inside `internal/vault`.
 - **Community is other profiles' publications, by publication id.** Every route is
   profile-scoped, and the rules behind them are in `docs/data-model.md` → *Publications and
   subscriptions*. The handlers are in `internal/api/community.go`, and every one but the list
@@ -430,12 +431,11 @@ A failed genre-list fetch serves the page without `genres` instead of failing it
 deliberately absent: TMDB only has its own `vote_average`, and Nuvio labels the field IMDb.
 `logo` and `runtime` are absent because discover doesn't carry them.
 
-The manifest reads `vault.GetPublishedCatalogs`, not `GetCurrentCatalogSelection` — the derived
+The manifest reads `vault.GetPublishedCatalogs`, not the catalogs on Home — the derived
 union of listed catalogs on the home screen and every catalog referenced by a folder of a
 collection on the home screen, deduped by id with the home row's
-`ShowInHome` winning over a folder-derived one. `GetCurrentCatalogSelection` stays the narrower
-pre-push validation/selection-editor view; the manifest needs the wider set so a catalog used
-only inside an on-TV collection's folder is still listed, not a dangling reference. The catalog
+`ShowInHome` winning over a folder-derived one. The manifest needs the wider set so a catalog
+used only inside an on-TV collection's folder is still listed, not a dangling reference. The catalog
 route checks the same set, for one catalog at a time (above).
 
 Every catalog declares `extra: [{name: "skip"}]` and an explicit `showInHome` (its *published*

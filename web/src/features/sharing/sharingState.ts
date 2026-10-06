@@ -24,10 +24,10 @@ export function publisherUnpublished(row: Pick<Catalog, 'publication' | 'publish
 
 /** A sticker's look: `hue` names where the fact points (a row's kind its
  *  region, `catalog` tangerine or `collection` green; `community` pink,
- *  `nuvio` Nuvio yellow, `danger` red), and `fill` says it waits on you until
+ *  `nuvio` Nuvio yellow), and `fill` says it waits on you until
  *  one action clears it; an outline only states. */
 export interface StickerTone {
-  hue: 'catalog' | 'collection' | 'community' | 'nuvio' | 'danger'
+  hue: 'catalog' | 'collection' | 'community' | 'nuvio'
   fill: boolean
 }
 
@@ -62,8 +62,6 @@ export const UPDATE_AVAILABLE: SharingSticker = { label: 'Update available', ton
 /** A row its publisher unpublished, now this profile's own. */
 const UNPUBLISHED: SharingSticker = { label: 'Unpublished', tone: COMMUNITY }
 const TO_PUSH: SharingSticker = { label: 'To push', tone: { hue: 'nuvio', fill: true } }
-/** A home-screen row whose catalog or collection was deleted. */
-export const DELETED: SharingSticker = { label: 'Deleted', tone: { hue: 'danger', fill: false } }
 
 const CATALOG_KIND: StickerTone = { hue: 'catalog', fill: false }
 

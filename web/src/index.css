@@ -310,7 +310,7 @@
        One hue class names where the fact points — `.stk-catalog` tangerine
        and `.stk-collection` green, a row's kind in its region's colour;
        `.stk-community` pink, where Community turns it up; `.stk-nuvio`
-       yellow, bound for Nuvio; `.stk-danger` red. An outline only states;
+       yellow, bound for Nuvio. An outline only states;
        `.stk-fill` fills the pill in its hue while it waits on you, until one
        action clears it (To publish, To push, Update available). */
     .stk {
@@ -339,14 +339,10 @@
     .stk-nuvio {
         --stk-hue: var(--uno-nuvio-yellow);
     }
-    .stk-danger {
-        --stk-hue: var(--uno-danger);
-    }
     .stk-catalog,
     .stk-collection,
     .stk-community,
-    .stk-nuvio,
-    .stk-danger {
+    .stk-nuvio {
         box-shadow: inset 0 0 0 1.5px var(--stk-hue);
         color: var(--stk-hue);
     }

@@ -27,7 +27,6 @@ function mount(options: {
   collections?: Collection[]
   waiting?: string[]
   pinned?: string[]
-  detached?: string[]
 }) {
   const collections = options.collections ?? []
   selection.current = {
@@ -42,7 +41,6 @@ function mount(options: {
     catalogById: new Map(options.catalogs.map((c) => [c.catalog.id, c.catalog])),
     collectionById: new Map(collections.map((c) => [c.id, c])),
     waitingForPush: new Set(options.waiting),
-    isDetached: (id: string) => options.detached?.includes(id) ?? false,
     genres: { movie: new Map(), tv: new Map() },
   } satisfies Record<string, unknown>
   render(<HomePane view="list" onViewChange={() => {}} onShowLibrary={() => {}} />)
@@ -104,20 +102,6 @@ describe('HomePane', () => {
     expect(headings).toEqual(['Pinned', 'Rows'])
     expect(screen.getByRole('button', { name: 'Move Action up, already first of the rows' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Move Down below down, already last of the rows' })).toBeDisabled()
-  })
-
-  it('flags a row whose catalog was deleted, on the list and in the tray', () => {
-    const gone = catalog({ id: 'c5', name: 'Gone' })
-    const hidden = catalog({ id: 'c6', name: 'Hidden gone' })
-    mount({
-      catalogs: [
-        { catalog: gone, showInHome: true },
-        { catalog: hidden, showInHome: false },
-      ],
-      detached: ['c5', 'c6'],
-    })
-    expect(flagsOf('Gone')).toEqual(['Movies', 'Deleted'])
-    expect(flagsOf('Hidden gone')).toEqual(['Movies', 'Deleted'])
   })
 
   it('shows a collection row’s folders as tiles, the first six and then how many more', () => {

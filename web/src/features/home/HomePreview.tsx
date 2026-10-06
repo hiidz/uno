@@ -287,7 +287,6 @@ function RefreshPreviewButton() {
  * panel, never drawn as a row.
  */
 function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
-  const home = useHomeSelection()
   return (
     <section className="border-line flex flex-col gap-2 border-t pt-4">
       <div className="flex items-baseline gap-3">
@@ -300,14 +299,6 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
             <span className="text-dim text-[12px]">
               · Discover only
             </span>
-            {home.isDetached(row.id) && (
-              <span
-                className="text-danger text-[12.5px]"
-                title="Deleted. It still works on your home screen, but removing it here can't be undone."
-              >
-                · not in library
-              </span>
-            )}
           </div>
         ))}
       </div>

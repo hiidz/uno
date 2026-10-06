@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -143,7 +144,11 @@ func TestPushRecordHoldsWhatNuvioReaches(t *testing.T) {
 		t.Errorf("Home = %+v, want the pushed selection", record.Home)
 	}
 
-	selection, err := f.db.GetCurrentCollectionSelection(ctx, f.owner)
+	all, err := f.db.GetUserCollections(ctx, f.owner)
+	selection := slices.DeleteFunc(all, func(c CollectionWithFolders) bool { return c.HomeSortOrder == nil })
+	slices.SortFunc(selection, func(a, b CollectionWithFolders) int {
+		return compareCollectionsByHomeSortOrder(a.Collection, b.Collection)
+	})
 	if err != nil || len(selection) != 2 || len(record.Collections) != 2 {
 		t.Fatalf("selection %d, record %d collections (%v); want 2 each", len(selection), len(record.Collections), err)
 	}
@@ -267,5 +272,35 @@ func TestHomeRowsInNuvioOrder(t *testing.T) {
 	}
 	if got := want(rows); !reflect.DeepEqual(got, want(wantRows)) {
 		t.Errorf("rows = %v, want %v", got, want(wantRows))
+	}
+}
+
+// A catalog read carries the Home or Discover its push stored only while the
+// catalog is on Home: taken off Home, it reads as false, whatever the column
+// still holds.
+func TestShowInHomeReadsOnlyOnHome(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	c, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Popular"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() Catalog {
+		t.Helper()
+		catalogs, err := db.GetUserCatalogs(ctx, owner)
+		if err != nil || len(catalogs) != 1 {
+			t.Fatalf("GetUserCatalogs = %v, %v", catalogs, err)
+		}
+		return catalogs[0]
+	}
+
+	savePush(t, db, owner, CatalogSelectionForm{Catalogs: []SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}}, CollectionSelectionForm{})
+	if got := read(); got.HomeSortOrder == nil || !got.ShowInHome {
+		t.Fatalf("on Home with a home row = order %v, show in home %v; want placed and true", got.HomeSortOrder, got.ShowInHome)
+	}
+	savePush(t, db, owner, CatalogSelectionForm{}, CollectionSelectionForm{})
+	if got := read(); got.HomeSortOrder != nil || got.ShowInHome {
+		t.Errorf("off Home = order %v, show in home %v; want no place and false", got.HomeSortOrder, got.ShowInHome)
 	}
 }

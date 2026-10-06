@@ -12,7 +12,7 @@ import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
 import { describeCollection } from '@/features/library/collection'
 import { recipeLine } from '@/features/library/recipe'
 import type { PreviewCollection } from '@/features/preview/model'
-import { COLLECTION_KIND, DELETED, homeStickers, kindStickers } from '@/features/sharing/sharingState'
+import { COLLECTION_KIND, homeStickers, kindStickers } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { ordinal } from '@/lib/ordinal'
 import { showFirstAction } from './changes'
@@ -357,14 +357,9 @@ function RowBody({ name, stickers, detail }: { name: string; stickers: ReactNode
 }
 
 /** One name for the action everywhere, matching the add button's own "Remove
- *  from home" (see DESIGN.md's add button spec). Danger-styled when the item is
- *  detached, since removing it there can't be undone. */
-function RemoveFromHomeItem({ detached, onSelect }: { detached: boolean; onSelect: () => void }) {
-  return (
-    <MoreMenuItem danger={detached} reason={detached ? "can't be undone" : undefined} onSelect={onSelect}>
-      Remove from home
-    </MoreMenuItem>
-  )
+ *  from home" (see DESIGN.md's add button spec). */
+function RemoveFromHomeItem({ onSelect }: { onSelect: () => void }) {
+  return <MoreMenuItem onSelect={onSelect}>Remove from home</MoreMenuItem>
 }
 
 /** The flag a Home row carries beside its kind: To push while a push would
@@ -372,12 +367,6 @@ function RemoveFromHomeItem({ detached, onSelect }: { detached: boolean; onSelec
 function HomeFlags({ id }: { id: string }) {
   const home = useHomeSelection()
   return <SharingStickers stickers={homeStickers(home.waitingForPush.has(id))} />
-}
-
-/** A row whose catalog or collection was deleted: it still works on the home
- *  screen, but there is nothing left to edit. */
-function DetachedTag() {
-  return <SharingStickers stickers={[DELETED]} />
 }
 
 /** A catalog row's kind, Movies or Series, once the catalog is known. */
@@ -406,7 +395,6 @@ function CatalogRow({
 }) {
   const home = useHomeSelection()
   const catalog = home.catalogById.get(row.id)
-  const detached = home.isDetached(row.id)
   const detail = catalog
     ? recipeLine(catalog, home.genres[tmdbKind(catalog.type)])
     : ''
@@ -424,7 +412,7 @@ function CatalogRow({
       menu={
         <MoreMenu label={row.name}>
           <MoreMenuItem onSelect={() => home.toggleShowInHome(row.id)}>Move to Discover</MoreMenuItem>
-          <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCatalog(row.id)} />
+          <RemoveFromHomeItem onSelect={() => home.removeCatalog(row.id)} />
         </MoreMenu>
       }
     >
@@ -434,7 +422,6 @@ function CatalogRow({
           <>
             <CatalogKind id={row.id} />
             <HomeFlags id={row.id} />
-            {detached && <DetachedTag />}
           </>
         }
         detail={<DetailLine text={detail || 'No filters'} />}
@@ -459,7 +446,6 @@ function CollectionRow({
   onMove: (direction: -1 | 1) => void
 }) {
   const home = useHomeSelection()
-  const detached = home.isDetached(collection.id)
   const detail = describeCollection(home.collectionById.get(collection.id))
 
   return (
@@ -475,7 +461,7 @@ function CollectionRow({
       menu={
         <MoreMenu label={collection.title}>
           <PinItem collection={collection} />
-          <RemoveFromHomeItem detached={detached} onSelect={() => home.removeCollection(collection.id)} />
+          <RemoveFromHomeItem onSelect={() => home.removeCollection(collection.id)} />
         </MoreMenu>
       }
     >
@@ -485,7 +471,6 @@ function CollectionRow({
           <>
             <SharingStickers stickers={[COLLECTION_KIND]} />
             <HomeFlags id={collection.id} />
-            {detached && <DetachedTag />}
           </>
         }
         detail={<CollectionDetail collection={collection} summary={detail} />}
@@ -529,7 +514,6 @@ function TrayRow({ row }: { row: PreviewRow }) {
         <span className="max-w-full truncate text-[15px] font-semibold">{row.name}</span>
         <CatalogKind id={row.id} />
         <HomeFlags id={row.id} />
-        {home.isDetached(row.id) && <DetachedTag />}
       </div>
       <button
         type="button"

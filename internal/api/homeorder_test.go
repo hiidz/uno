@@ -463,11 +463,7 @@ func (f pushHomeOrderFixture) push(t *testing.T) (*httptest.ResponseRecorder, pu
 // selectionWritten reports whether the local write stored any selection.
 func (f pushHomeOrderFixture) selectionWritten(t *testing.T) bool {
 	t.Helper()
-	sel, err := f.db.GetCurrentCollectionSelection(t.Context(), f.profile.ID)
-	if err != nil {
-		t.Fatalf("GetCurrentCollectionSelection: %v", err)
-	}
-	return len(sel) != 0
+	return len(homeCollections(t, f.db, f.profile.ID)) != 0
 }
 
 // A push writes the home-order list from the selection it carries: the pinned
@@ -606,14 +602,8 @@ func TestPush_MixesCatalogsAndCollections(t *testing.T) {
 		t.Fatalf("pushed rows = %v\nwant          %v", got, want)
 	}
 
-	catalogs, err := f.db.GetCurrentCatalogSelection(t.Context(), f.profile.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	collections, err := f.db.GetCurrentCollectionSelection(t.Context(), f.profile.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	catalogs := homeCatalogs(t, f.db, f.profile.ID)
+	collections := homeCollections(t, f.db, f.profile.ID)
 	positions := map[uuid.UUID]int{}
 	for _, c := range catalogs {
 		positions[c.ID] = *c.HomeSortOrder
@@ -627,7 +617,13 @@ func TestPush_MixesCatalogsAndCollections(t *testing.T) {
 	}
 	raw, err := json.Marshal(collections[0])
 	if err != nil || !strings.Contains(string(raw), `"home_position":0`) {
-		t.Errorf("a selection read = %s (%v), want its home_position on the wire", raw, err)
+		t.Errorf("an owned collection on Home = %s (%v), want its home_position on the wire", raw, err)
+	}
+	for _, c := range catalogs {
+		want := fmt.Sprintf(`"show_in_home":%t`, c.ID == f.onHome.ID)
+		if raw, err := json.Marshal(c); err != nil || !strings.Contains(string(raw), want) {
+			t.Errorf("owned catalog %q = %s (%v), want %s on the wire", c.Name, raw, err, want)
+		}
 	}
 }
 

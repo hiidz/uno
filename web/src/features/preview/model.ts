@@ -94,14 +94,8 @@ export interface PreviewCollection {
   /** `backdrop_image_url` is set. Noted as text, not loaded. */
   hasBackdrop: boolean
   folders: PreviewFolder[]
-  /** Nothing on hand describes this collection — it's in neither the library
-   *  nor the selection response, so there's no layout to draw. The row exists
-   *  because it's still selected.
-   *
-   *  **Not the same as detached.** A collection that's left the library but is
-   *  still on the selection response resolves here and renders normally. That
-   *  case is `isDetached` on the Home selection, which the List view's rows
-   *  and the Preview's "Not on home" list ask separately.
+  /** Nothing on hand describes this collection — it isn't in the library, so
+   *  there's no layout to draw. The row exists because it's still selected.
    *
    *  Never true for a collection built from builder form state: the form *is*
    *  the description. */

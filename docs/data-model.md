@@ -331,9 +331,9 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   `genre` extra whose first option is `"All"`. Nuvio TV reads the field, while Nuvio mobile,
   Nuvio desktop and Stremio read the required extra. `docs/architecture.md`'s addon-server
   section covers both.
-  `GetCurrentCatalogSelection` (the narrower `home_sort_order IS NOT NULL` query)
-  remains the pre-push validation/selection-editor view; only the manifest needs the wider
-  published set. The addon's catalog route checks that same set for the one catalog it is asked
+  A catalog read carries `show_in_home` only while `home_sort_order` is set: off Home it reads
+  as `false`, whatever the column still holds, since push clears only `home_sort_order`. Only
+  the manifest needs the wider published set. The addon's catalog route checks that same set for the one catalog it is asked
   for (`ServedCatalog`), so it serves exactly what the manifest lists.
 - **`collections.pin_to_top` (Pin) is written only by push**, from its selection's entry
   for each collection it puts on Home (`saveCollectionSelectionTx`), in the same statement as

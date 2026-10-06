@@ -35,13 +35,13 @@ type Catalog struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	// HomeSortOrder is this catalog's position on its owner's home screen,
 	// one numbering shared with the collections there; nil means it isn't on
-	// Home. On the wire as home_position, which the builder merges the two
-	// selection reads by.
+	// Home. On the wire as home_position, which the builder places its Home
+	// rows by.
 	HomeSortOrder *int `json:"home_position,omitempty"`
-	// ShowInHome is only meaningful while HomeSortOrder is non-nil; it drives
-	// the manifest's per-catalog genre extra (see buildManifest). Never on
-	// the wire directly — SelectedCatalog carries its own copy for that.
-	ShowInHome bool `json:"-"`
+	// ShowInHome is whether this catalog on Home gets a home row, false for
+	// Discover only. A read sets it only while HomeSortOrder is non-nil, so it
+	// is false for every catalog off Home.
+	ShowInHome bool `json:"show_in_home"`
 	// RecipeHash names this catalog's recipes row (see RecipeHash), which
 	// every catalog with the same recipe shares; never on the wire.
 	RecipeHash string `json:"-"`
@@ -347,8 +347,8 @@ type CollectionWithFolders struct {
 	Catalogs []Catalog            `json:"catalogs"`
 }
 
-// SelectedCatalog is a Catalog as it appears in a profile's active
-// selection, carrying that selection's show-in-home flag.
+// SelectedCatalog is a Catalog as a push record holds it for the addon's
+// manifest, carrying the record's show-in-home flag.
 type SelectedCatalog struct {
 	Catalog
 	ShowInHome bool `json:"show_in_home"`

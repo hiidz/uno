@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -391,23 +390,6 @@ func (db *DB) catalogNotDeleted(ctx context.Context, profileID, catalogID uuid.U
 		return fmt.Errorf("checking catalog: %w", err)
 	}
 	return fmt.Errorf("%w: a catalog inside a collection is removed through the collection's save", ErrInvalidInput)
-}
-
-// GetCurrentCatalogSelection returns profileID's active catalog selection —
-// every owned catalog with a non-nil home_sort_order — ordered by it.
-func (db *DB) GetCurrentCatalogSelection(ctx context.Context, profileID uuid.UUID) ([]SelectedCatalog, error) {
-	catalogs, err := db.queryCatalogs(ctx, "c.owner_id = ? AND c.home_sort_order IS NOT NULL", profileID.String())
-	if err != nil {
-		return nil, err
-	}
-
-	slices.SortFunc(catalogs, compareByHomeSortOrder)
-
-	out := make([]SelectedCatalog, len(catalogs))
-	for i, c := range catalogs {
-		out[i] = SelectedCatalog{Catalog: c, ShowInHome: c.ShowInHome}
-	}
-	return out, nil
 }
 
 // saveCatalogSelectionTx resets this profile's catalog selection to exactly

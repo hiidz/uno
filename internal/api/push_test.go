@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,6 +20,31 @@ import (
 	"github.com/hiidz/uno/internal/nuvio"
 	"github.com/hiidz/uno/internal/vault"
 )
+
+// homeCollections is profileID's collections on Home, in Home order: what
+// push's local write stored.
+func homeCollections(t *testing.T, db *vault.DB, profileID uuid.UUID) []vault.CollectionWithFolders {
+	t.Helper()
+	all, err := db.GetUserCollections(t.Context(), profileID)
+	if err != nil {
+		t.Fatalf("GetUserCollections: %v", err)
+	}
+	onHome := slices.DeleteFunc(all, func(c vault.CollectionWithFolders) bool { return c.HomeSortOrder == nil })
+	slices.SortFunc(onHome, func(a, b vault.CollectionWithFolders) int { return cmp.Compare(*a.HomeSortOrder, *b.HomeSortOrder) })
+	return onHome
+}
+
+// homeCatalogs is profileID's catalogs on Home, in Home order.
+func homeCatalogs(t *testing.T, db *vault.DB, profileID uuid.UUID) []vault.Catalog {
+	t.Helper()
+	all, err := db.GetUserCatalogs(t.Context(), profileID)
+	if err != nil {
+		t.Fatalf("GetUserCatalogs: %v", err)
+	}
+	onHome := slices.DeleteFunc(all, func(c vault.Catalog) bool { return c.HomeSortOrder == nil })
+	slices.SortFunc(onHome, func(a, b vault.Catalog) int { return cmp.Compare(*a.HomeSortOrder, *b.HomeSortOrder) })
+	return onHome
+}
 
 func newTestVaultDB(t *testing.T) *vault.DB {
 	t.Helper()
@@ -201,11 +228,7 @@ func TestPush_NuvioUnreachable(t *testing.T) {
 		t.Fatalf("collections push was attempted despite addons push never completing")
 	}
 
-	sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID)
-	if err != nil {
-		t.Fatalf("GetCurrentCollectionSelection: %v", err)
-	}
-	if len(sel) != 0 {
+	if sel := homeCollections(t, db, profile.ID); len(sel) != 0 {
 		t.Fatalf("collection selection was written despite Nuvio being unreachable: %v", sel)
 	}
 }
@@ -271,11 +294,7 @@ func TestPush_OnePushRejected(t *testing.T) {
 				t.Fatalf("addons put back as %+v, want the pulled list %+v", last, existing)
 			}
 
-			sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID)
-			if err != nil {
-				t.Fatalf("GetCurrentCollectionSelection: %v", err)
-			}
-			if len(sel) != 0 {
+			if sel := homeCollections(t, db, profile.ID); len(sel) != 0 {
 				t.Fatalf("local selection was written despite a rejected push: %v", sel)
 			}
 		})
@@ -584,11 +603,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 		t.Fatalf("pushed collection = %s, want a fresh build of %q", pushed[1], "Selected")
 	}
 
-	sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID)
-	if err != nil {
-		t.Fatalf("GetCurrentCollectionSelection: %v", err)
-	}
-	if len(sel) != 1 {
+	if sel := homeCollections(t, db, profile.ID); len(sel) != 1 {
 		t.Fatalf("saved selection = %v, want the one selected collection", sel)
 	}
 	if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 0 {
@@ -639,8 +654,8 @@ func TestPush_RefusesABodyInAnotherShape(t *testing.T) {
 	if len(fake.pushAddonsCalls) != 0 || len(fake.pushCollectionsCalls) != 0 {
 		t.Errorf("Nuvio calls = %d addons, %d collections; want none", len(fake.pushAddonsCalls), len(fake.pushCollectionsCalls))
 	}
-	if sel, err := db.GetCurrentCollectionSelection(ctx, profile.ID); err != nil || len(sel) != 1 || sel[0].ID != onHome.ID {
-		t.Errorf("selection after the refused push = %v (%v), want On Home still on it", sel, err)
+	if sel := homeCollections(t, db, profile.ID); len(sel) != 1 || sel[0].ID != onHome.ID {
+		t.Errorf("selection after the refused push = %v, want On Home still on it", sel)
 	}
 }
 
