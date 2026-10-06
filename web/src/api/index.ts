@@ -67,6 +67,7 @@ export type {
   CertificationsByCountry,
   Collection,
   CommunityCopy,
+  CommunityFolder,
   CommunityItem,
   Country,
   Folder,

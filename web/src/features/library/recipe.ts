@@ -475,3 +475,42 @@ export function openFacts(catalog: Pick<Catalog, 'type' | 'params'>, facts: read
     .filter((filter) => !filter.set.some((label) => labels.has(label)))
     .map((filter) => filter.open)
 }
+
+/** How many of a recipe's phrases a folded catalog's line shows. */
+const FOLDED_PHRASES = 3
+
+/** A genre list longer than this reads as a count on a folded line. */
+const NAMED_GENRES = 2
+
+/** A folded catalog's line: its first phrases, and how many more it has. */
+export interface FoldedLine {
+  text: string
+  more: number
+}
+
+/**
+ * The line under a folded catalog's name: `describeRecipe`'s first three
+ * phrases, its order first, a genre list of more than two read as a count
+ * ("14 genres", "no 3 genres"), and how many phrases it leaves out, which
+ * the line shows as "+10". The whole recipe is in the tiles the block opens to.
+ */
+export function foldedLine(catalog: Pick<Catalog, 'type' | 'params'>, lookup: GenreLookup): FoldedLine {
+  const p = parseParams(catalog.params)
+  const phrases = describeRecipe(catalog, lookup)
+  const named = genreNames(p.with_genres, lookup)
+  const without = genreNames(p.without_genres, lookup)
+  const shown: string[] = []
+  for (const phrase of phrases.slice(0, FOLDED_PHRASES)) {
+    if (phrase === named) shown.push(genreCount(p.with_genres, phrase))
+    else if (phrase === `no ${without}`) shown.push(`no ${genreCount(p.without_genres, without ?? '')}`)
+    else shown.push(phrase)
+  }
+  return { text: capitalize(shown.join(' · ')), more: Math.max(0, phrases.length - FOLDED_PHRASES) }
+}
+
+/** A genre list as its names while it is short, else as how many it holds. */
+function genreCount(raw: string | undefined, names: string): string {
+  const count = countIDs(raw)
+  if (count > NAMED_GENRES) return `${count} genres`
+  return names
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { communityItem } from '@/test/fixtures'
+import { communityFolder, communityItem } from '@/test/fixtures'
 import {
   DEFAULT_FILTERS,
   itemKind,
@@ -38,7 +38,7 @@ describe('visibleItems', () => {
     title: 'Movie Night',
     catalog: null,
     catalog_names: ['Ghost Stories', 'Slashers'],
-    folder_titles: ['Ghosts', 'Slashers'],
+    folders: [communityFolder('Ghosts'), communityFolder('Slashers')],
   })
   const items = [zebra, night, apple]
   const ids = (list: ReturnType<typeof visibleItems>) => list.map((item) => item.id)
@@ -76,8 +76,8 @@ describe('row words', () => {
   it('summarizes a catalog by its recipe, and a collection by its folders as Home words them', () => {
     expect(itemSummary(communityItem(), 'Most popular · Horror')).toBe('Most popular · Horror')
     expect(itemSummary(communityItem(), '')).toBe('No filters')
-    const collection = (folder_titles: string[] | null) =>
-      itemSummary(communityItem({ kind: 'collection', catalog: null, folder_titles }), '')
+    const collection = (titles: string[] | null) =>
+      itemSummary(communityItem({ kind: 'collection', catalog: null, folders: titles && titles.map((t) => communityFolder(t)) }), '')
     expect(collection(['Action', 'Drama', 'Comedy'])).toBe('3 folders · Action, Drama, Comedy')
     expect(collection(['Action'])).toBe('1 folder · Action')
     expect(collection([])).toBe('0 folders')
@@ -92,7 +92,7 @@ describe('row words', () => {
   it('says how many took it, when it was published and when it last changed', () => {
     const now = new Date(2026, 8, 29, 12)
     const meta = (subscriber_count: number, updated_at: string) =>
-      itemMeta(communityItem({ subscriber_count, published_at: '2026-09-08T10:00:00Z', updated_at }), now)
+      itemMeta(communityItem({ subscriber_count, published_at: '2026-09-08T10:00:00Z', updated_at }), now).join(' · ')
     expect(meta(0, '2026-09-08T10:00:00Z')).toBe('Published 3 weeks ago')
     expect(meta(0, '2026-09-27T10:00:00Z')).toBe('Published 3 weeks ago · Updated 2 days ago')
     expect(meta(3, '2026-09-08T10:00:00Z')).toBe('Added by 3 · Published 3 weeks ago')

@@ -5,10 +5,11 @@ import { Toast } from './Toast'
 import { useToast } from './useToast'
 
 /** DESIGN.md's Sign Title: a name the user typed, set on a pane's sign in
- *  Archivo at a narrower width and in the user's own case. The caller adds
- *  its margin, truncation and focus outline. */
+ *  Archivo at a narrower width and in the user's own case, on two lines at
+ *  most and broken anywhere a long word needs. The caller adds its margin
+ *  and focus outline. */
 export const SIGN_TITLE =
-  'font-[family-name:var(--font-sign)] text-[18px] leading-tight font-extrabold [font-stretch:112%] lg:text-[25px]'
+  'font-[family-name:var(--font-sign)] text-[18px] leading-tight font-extrabold [font-stretch:112%] lg:text-[25px] line-clamp-2 [overflow-wrap:anywhere]'
 
 /**
  * The sign over the builder's pane — the Home pane's, and each editor's.

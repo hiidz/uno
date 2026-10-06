@@ -2,9 +2,10 @@ import { Check, ChevronRight } from 'lucide-react'
 import type { CommunityItem } from '@/api'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
-import { stickerClass, UPDATE_AVAILABLE } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { itemKind } from './communityQuery'
+import { MetaParts } from './MetaParts'
+import { RowFolders, RowPosters } from './RowPreview'
 import type { CommunityAction } from './useCommunityMutations'
 
 const PENDING_LABEL: Record<CommunityAction, string> = {
@@ -40,7 +41,7 @@ function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActio
         type="button"
         onClick={item.update_available ? actions.onUpdate : actions.onSubscribe}
         disabled={pending !== undefined || added}
-        className="btn-secondary btn-sm"
+        className={mainButtonClass(item)}
       >
         <MainLabel item={item} pending={pending} update={actions.updateLabel} />
       </button>
@@ -51,6 +52,13 @@ function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActio
       </MoreMenu>
     </div>
   )
+}
+
+/** The row's main button: outlined, and outlined in the Community accent while
+ *  an update waits, which is how the row says one does. */
+function mainButtonClass(item: CommunityItem): string {
+  if (item.update_available) return 'btn-secondary btn-sm btn-accent-outline'
+  return 'btn-secondary btn-sm'
 }
 
 /** What Duplicate makes, beside it in the row's "⋯": the latest version while
@@ -127,7 +135,7 @@ function MainLabel({
 interface CommunityRowProps {
   item: CommunityItem
   summary: string
-  meta: string
+  meta: string[]
   showKind: boolean
   /** The open button's id, which focus returns to when its page closes. */
   buttonID: string
@@ -137,50 +145,57 @@ interface CommunityRowProps {
 
 /**
  * One Community row: its name with its kind (Movies or Series; a collection's
- * list says it already, so `showKind` is off there) and an Update available
- * sticker while an update waits for this profile's added row; what it is in
- * plain words; how many have added it and when it last changed. The row
- * navigates, so it takes a pointer and a fill on hover and the name button
- * covers it; its actions sit above that and act. No publisher anywhere:
- * Community never names who published a row.
+ * list says it already, so `showKind` is off there); what it is in plain
+ * words; how many have added it and when it last changed. A catalog
+ * fans its first posters ahead of all that, and a collection lines up its
+ * folder tiles under its summary (`RowPreview`). The row navigates, so it
+ * takes a pointer and a fill on hover and the name button covers it; its
+ * actions sit above that and act. No publisher anywhere: Community never
+ * names who published a row.
  *
- * Below `sm` the row stacks — name, stickers, summary, meta, actions — and a
- * touch screen, which has no hover, ends the name with a chevron.
+ * Below `sm` the row stacks beside its posters — name, stickers, summary,
+ * meta, actions — and a touch screen, which has no hover, ends the name with
+ * a chevron.
  */
 export function CommunityRow({ item, summary, meta, showKind, buttonID, onOpen, actions }: CommunityRowProps) {
   return (
-    <div className="hover:bg-raised active:bg-raised-hi relative -mx-3 flex flex-col gap-2 rounded-[12px] px-3 py-3 transition-colors sm:flex-row sm:items-center sm:gap-3">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-          <button
-            id={buttonID}
-            type="button"
-            onClick={onOpen}
-            className="flex min-w-0 cursor-pointer items-start gap-2 text-left outline-none after:absolute after:inset-0 after:rounded-[12px] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ink"
-          >
-            <span className="line-clamp-2 min-w-0 flex-1 text-[16px] font-bold [overflow-wrap:anywhere] sm:truncate">{item.title}</span>
-            <Icon icon={ChevronRight} size={16} className="text-dimmer mt-[3px] hidden shrink-0 pointer-coarse:block" />
-          </button>
-          <RowStickers item={item} showKind={showKind} />
+    <div className="community-row hover:bg-raised active:bg-raised-hi relative -mx-3 flex items-start gap-3 rounded-[12px] px-3 py-3 transition-colors sm:items-center sm:gap-4">
+      <RowPosters item={item} />
+      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+            <button
+              id={buttonID}
+              type="button"
+              onClick={onOpen}
+              className="flex min-w-0 cursor-pointer items-start gap-2 text-left outline-none after:absolute after:inset-0 after:rounded-[12px] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ink"
+            >
+              <span className="line-clamp-2 min-w-0 flex-1 text-[16px] font-bold [overflow-wrap:anywhere] sm:truncate">{item.title}</span>
+              <Icon icon={ChevronRight} size={16} className="text-dimmer mt-[3px] hidden shrink-0 pointer-coarse:block" />
+            </button>
+            <RowStickers item={item} showKind={showKind} />
+          </div>
+          <span className="text-dim line-clamp-2 text-[13.5px] sm:line-clamp-1">{summary}</span>
+          <RowFolders item={item} onOpen={onOpen} />
+          <span className="type-data text-dimmer text-[12.5px]">
+            <MetaParts parts={meta} />
+          </span>
         </div>
-        <span className="text-dim line-clamp-2 text-[13.5px] sm:line-clamp-1">{summary}</span>
-        <span className="type-data text-dimmer text-[12.5px]">{meta}</span>
-      </div>
-      <div className="relative z-10 self-start sm:self-auto">
-        <ItemActions item={item} actions={actions} />
+        <div className="relative z-10 self-start sm:self-auto">
+          <ItemActions item={item} actions={actions} />
+        </div>
       </div>
     </div>
   )
 }
 
-/** A row's stickers: its kind, unless the list says it already, and Update
- *  available while an update waits. Nothing is drawn when there are none. */
+/** A row's sticker: its kind, unless the list says it already; nothing
+ *  otherwise. Its outlined pink Update… says an update waits. */
 function RowStickers({ item, showKind }: { item: CommunityItem; showKind: boolean }) {
-  if (!showKind && !item.update_available) return null
+  if (!showKind) return null
   return (
     <span className="flex flex-wrap items-center gap-1.5">
-      {showKind && <SharingStickers stickers={[itemKind(item)]} />}
-      {item.update_available && <span className={stickerClass(UPDATE_AVAILABLE.tone)}>{UPDATE_AVAILABLE.label}</span>}
+      <SharingStickers stickers={[itemKind(item)]} />
     </span>
   )
 }

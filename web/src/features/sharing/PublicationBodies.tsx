@@ -78,7 +78,7 @@ function FolderCard({
       <div className="border-line-hi mb-1 flex items-baseline justify-between gap-3 border-b pb-3">
         <span className="flex min-w-0 items-center gap-2 text-[16.5px] font-bold">
           {folder.cover_emoji && <span aria-hidden="true">{folder.cover_emoji}</span>}
-          {folder.title}
+          <span className="min-w-0 [overflow-wrap:anywhere]">{folder.title}</span>
         </span>
         <span className="type-data text-dim shrink-0 text-[12.5px]">{pluralCount(refs.length, 'catalog')}</span>
       </div>

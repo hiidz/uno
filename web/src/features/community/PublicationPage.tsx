@@ -4,11 +4,11 @@ import { ListState } from '@/components/ListState'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { UpdateChanges } from '@/features/sharing/Changes'
 import { CatalogBody, CollectionBody } from '@/features/sharing/PublicationBodies'
-import { stickerClass, UPDATE_AVAILABLE } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { snapshotAsCollection, snapshotCatalog } from '@/features/sharing/snapshot'
 import { itemKind } from './communityQuery'
 import { PageActions, type RowActions } from './CommunityRow'
+import { MetaParts } from './MetaParts'
 import { usePublication } from './useCommunity'
 
 /**
@@ -33,7 +33,7 @@ export function PublicationPage({
 }: {
   profileIndex: number
   item: CommunityItem
-  meta: string
+  meta: string[]
   genres: GenreLookups
   actions: RowActions
 }) {
@@ -43,7 +43,9 @@ export function PublicationPage({
       <div className="flex flex-wrap items-center gap-1.5 sm:hidden">
         <PageStickers item={item} />
       </div>
-      <p className="type-data text-dim m-0 text-[13px]">{meta}</p>
+      <p className="type-data text-dim m-0 text-[13px]">
+        <MetaParts parts={meta} />
+      </p>
       <PageActions item={item} actions={actions} />
       <UpdateChanges profileIndex={profileIndex} item={item} folders={foldersOf(detail.data)} genres={genres} />
       <ListState
@@ -92,13 +94,9 @@ function catalogOf(detail: PublicationDetail | undefined): Catalog | undefined {
   return detail && snapshotCatalog(detail)
 }
 
-/** The page's stickers: its kind, and Update available while an update waits.
- *  The sign prints them from `sm` up and the body below. */
+/** The page's sticker: its kind. The Update button and the In this update
+ *  shelf say an update waits, so no sticker does. The sign prints it from
+ *  `sm` up and the body below. */
 export function PageStickers({ item }: { item: CommunityItem }) {
-  return (
-    <>
-      <SharingStickers stickers={[itemKind(item)]} />
-      {item.update_available && <span className={stickerClass(UPDATE_AVAILABLE.tone)}>{UPDATE_AVAILABLE.label}</span>}
-    </>
-  )
+  return <SharingStickers stickers={[itemKind(item)]} />
 }

@@ -9,8 +9,8 @@ import { PageStickers } from './PublicationPage'
  * Community's sign. On the list it names the region. With a publication's page
  * open it becomes that page's sign: a round way back outlined in sign ink, then
  * the publication's name set as an editor's header sign sets its name
- * (DESIGN.md's Sign Title, in the user's own case), then its kind and Update
- * available from `sm` up; below `sm` they head the page's body.
+ * (DESIGN.md's Sign Title, in the user's own case), then its kind from `sm`
+ * up; below `sm` it heads the page's body.
  */
 export function CommunitySign({ open, onBack }: { open: CommunityItem | null; onBack: () => void }) {
   return (
@@ -53,7 +53,7 @@ function PageSign({ item, onBack }: { item: CommunityItem; onBack: () => void })
       <h1
         ref={headingRef}
         tabIndex={-1}
-        className={`m-0 min-w-0 truncate outline-none ${SIGN_TITLE}`}
+        className={`m-0 min-w-0 outline-none ${SIGN_TITLE}`}
       >
         {item.title}
       </h1>

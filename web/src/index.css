@@ -600,6 +600,16 @@
         color: var(--uno-dimmer);
         cursor: default;
     }
+    /* Outlined in the region's accent: a secondary action that is also the
+       region's news, such as a Community row's Update… while one waits. */
+    .btn-secondary.btn-accent-outline:not(:disabled) {
+        color: var(--accent);
+        box-shadow: inset 0 0 0 1.5px var(--accent);
+    }
+    .btn-secondary.btn-accent-outline:hover:not(:disabled) {
+        background: var(--uno-raised-hi);
+        box-shadow: inset 0 0 0 1.5px var(--accent);
+    }
 
     /* Quiet (DESIGN.md's "Quiet / Ghost"): dim label, no outline until the
        pointer is over it — Cancel, Stay, Hide, Undo, Import. */
@@ -881,6 +891,8 @@
         padding-right: var(--pv-edge, 0px);
     }
     .pv-row-title {
+        min-width: 0;
+        overflow-wrap: anywhere;
         margin: 0;
         font-size: 15px;
         font-weight: 600;
@@ -1482,10 +1494,13 @@
     }
 
     /* Results, docked right, run on request: a shelf of their own. */
+    /* One column no wider than the panel: the strips scroll inside it, so
+       their width never sets the panel's. */
     .ed-pv {
         position: sticky;
         top: 0;
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: 12px;
         padding: 18px;
         border-radius: 16px;
@@ -1741,20 +1756,147 @@
     }
 
     /* Community (DESIGN.md, "Community rows and pages"): the list keeps an
-       1100px column; a publication page takes 1320px, its details in a
-       narrow column beside what the publication shows. The details are a few
-       lines and tiles, not a form, so the results take the room and their
-       posters grow to 130px. Under the editors' undock widths the page stacks
-       as they do. */
+       1100px column; a publication page takes 1320px, its details (the lead,
+       the update, the tiles and folder cards) in a 45% column beside what the
+       publication shows, the results' posters at 130px or wider. Under the
+       editors' undock widths the page stacks as they do. */
     .community-body {
         max-width: 1100px;
+    }
+
+    /* A changed recipe's filters in the In this update shelf: each label
+       above its new value where the shelf is narrow (a publication page's
+       lead column, a phone), beside it in a label column where there is
+       room. */
+    .fact-changes {
+        container-type: inline-size;
+    }
+    .fact-changes dl {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 8px;
+    }
+    .fact-line {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+    @container (min-width: 22rem) {
+        .fact-changes dl {
+            grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+            column-gap: 12px;
+            row-gap: 4px;
+        }
+        .fact-line {
+            display: contents;
+        }
+    }
+
+    /* A Community row's preview. A catalog fans its first five posters, the
+       front one first, each cut out of the next by a 2px ring in the row's
+       own fill; a collection lines up its first folder tiles at their own
+       shapes. Faces are the preview rows' blank face until an image lands. */
+    .community-row {
+        --row-fill: var(--uno-ground);
+    }
+    .community-row:hover {
+        --row-fill: var(--uno-raised);
+    }
+    .community-row:active {
+        --row-fill: var(--uno-raised-hi);
+    }
+    .row-face {
+        position: relative;
+        display: grid;
+        place-items: center;
+        flex-shrink: 0;
+        overflow: hidden;
+        border-radius: 6px;
+        background: var(--uno-raised-hi);
+    }
+    .row-face::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+    }
+    .row-face img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .poster-stack {
+        --face-w: 40px;
+        --step: 9px;
+        position: relative;
+        pointer-events: none;
+        flex-shrink: 0;
+        width: calc(var(--face-w) + 4 * var(--step));
+        height: calc(var(--face-w) * 1.5);
+    }
+    .poster-stack .row-face {
+        position: absolute;
+        top: 0;
+        width: var(--face-w);
+        height: 100%;
+        border-radius: 4px;
+        outline: 2px solid var(--row-fill);
+        transition: outline-color 160ms var(--uno-ease);
+    }
+    /* Below `sm` the strip scrolls sideways, so it sits above the row's name
+       button, which would otherwise take the swipe, and opens the page on a
+       tap itself. The poster stack never takes a click. */
+    .folder-strip {
+        position: relative;
+        z-index: 10;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-block: 4px 2px;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .folder-strip .row-face {
+        height: 64px;
+        aspect-ratio: var(--ratio);
+        container-type: inline-size;
+    }
+    /* A folder's name on its tile, sized to the tile so a word fits a
+       poster tile's width whole. */
+    .row-face-name {
+        font-size: clamp(8px, 19cqw, 11px);
+    }
+    @media (min-width: 40rem) {
+        .poster-stack {
+            --face-w: 46px;
+            --step: 15px;
+        }
+        /* From `sm` the strip never scrolls, so a click passes through it to
+           the row's name button: where the row is too narrow for its tiles at
+           72px, they shrink together, each keeping its shape. */
+        .folder-strip {
+            position: static;
+            pointer-events: none;
+            align-items: flex-start;
+            overflow: hidden;
+        }
+        .folder-strip .row-face {
+            flex: 0 1 auto;
+            width: calc(72px * var(--ratio));
+            min-width: 0;
+            height: auto;
+        }
     }
     .community-body:has(.ed) {
         max-width: 1320px;
     }
     @container (min-width: 901px) {
         .community-body .ed.ed-results {
-            grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+            grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
         }
         .community-body .ed-results .tile-grid {
             --tile-min: 130px;
@@ -1763,7 +1905,7 @@
     }
     @container (min-width: 961px) {
         .community-body .ed.ed-preview {
-            grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+            grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
         }
     }
     @media (max-width: 640px) {

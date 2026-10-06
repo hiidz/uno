@@ -631,7 +631,8 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   in one call; the SPA searches, filters and sorts it. A row is light: counts, dates,
   `subscribed` and `update_available` from a join with the caller's subscriptions, the names of
   the catalogs it holds (`catalog_names`, read from the snapshot, for search), a collection's
-  folder titles in order (`folder_titles`, from the same snapshot; `[]` for a catalog), and for a
+  folders in order as their tiles show them (`folders`: each folder's `title`, `tile_shape`,
+  `cover_emoji` and `cover_image_url`, from the same snapshot; `[]` for a catalog), and for a
   catalog its recipe. It never carries a publisher. `GetPublication` returns one publication with its
   snapshot: a live one, or an unpublished one the caller subscribes to.
 

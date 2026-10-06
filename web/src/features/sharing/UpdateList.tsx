@@ -61,9 +61,9 @@ function headClass(section: UpdateSection): string {
 
 function FolderHead({ section }: { section: UpdateSection }) {
   return (
-    <div className={`flex items-baseline justify-between gap-3 ${headClass(section)}`}>
-      <span className="min-w-0 text-[14.5px] font-bold">{section.folder}</span>
-      <span className="text-dim shrink-0 text-right text-[12.5px]">{section.notes.join(' · ')}</span>
+    <div className={`flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 ${headClass(section)}`}>
+      <span className="min-w-0 flex-[1_1_12rem] text-[14.5px] font-bold [overflow-wrap:anywhere]">{section.folder}</span>
+      <span className="text-dim ml-auto min-w-0 text-right text-[12.5px] [overflow-wrap:anywhere]">{section.notes.join(' · ')}</span>
     </div>
   )
 }
@@ -72,9 +72,9 @@ function Row({ row, genres }: { row: UpdateRow; genres: GenreLookups }) {
   const { change } = row
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 text-[14px]">{row.name}</span>
-        <span className="text-dim shrink-0 text-right text-[12.5px]">{row.status}</span>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <span className="min-w-0 flex-[1_1_12rem] text-[14px] [overflow-wrap:anywhere]">{row.name}</span>
+        <span className="text-dim ml-auto shrink-0 text-right text-[12.5px]">{row.status}</span>
       </div>
       {change.aspect === 'recipe' && change.catalog && change.was_catalog && (
         <RecipeChanges was={asCatalog(change.was_catalog)} now={asCatalog(change.catalog)} genres={genres} />
@@ -97,21 +97,23 @@ function RecipeChanges({ was, now, genres }: { was: Catalog; now: Catalog; genre
   const changed = recipeChanges(useAllFacts(was, genres), useAllFacts(now, genres))
   if (changed.length === 0) return <p className="text-dim m-0 mt-1 pl-3 text-[13px]">Filters changed</p>
   return (
-    <dl className="m-0 mt-1.5 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-1 pl-3">
-      {changed.map((fact) => (
-        <FactLine key={fact.label} fact={fact} />
-      ))}
-    </dl>
+    <div className="fact-changes mt-1.5 pl-3">
+      <dl className="m-0">
+        {changed.map((fact) => (
+          <FactLine key={fact.label} fact={fact} />
+        ))}
+      </dl>
+    </div>
   )
 }
 
 function FactLine({ fact }: { fact: FactChange }) {
   return (
-    <div className="contents">
+    <div className="fact-line">
       <dt className="text-dim text-[13px]">{fact.label}</dt>
       <dd className="m-0 text-[13px]">
-        <span className="mr-1.5 font-semibold">{fact.value}</span>
-        <span className="text-dimmer whitespace-nowrap">was {fact.was}</span>
+        <span className="mr-1.5 font-semibold [overflow-wrap:anywhere] empty:hidden">{fact.value}</span>
+        <span className="text-dimmer [overflow-wrap:anywhere]">was {fact.was}</span>
       </dd>
     </div>
   )

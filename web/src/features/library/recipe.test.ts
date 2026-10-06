@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog } from '@/api'
 import { catalog as row } from '@/test/fixtures'
-import { describeRecipe, openFacts, recipeFacts } from './recipe'
+import { describeRecipe, foldedLine, openFacts, recipeFacts } from './recipe'
 
 function catalog(type: Catalog['type'], params: object): Catalog {
   return row({ type, params: JSON.stringify(params) })
@@ -226,5 +226,40 @@ describe('openFacts', () => {
 
   it('has none for a TMDB collection row', () => {
     expect(open('movie', { with_collection: '10' })).toEqual([])
+  })
+})
+
+describe('foldedLine', () => {
+  const lookup = new Map<number, string>([
+    [28, 'Action'],
+    [12, 'Adventure'],
+    [18, 'Drama'],
+    [99, 'Documentary'],
+    [10770, 'TV Movie'],
+    [36, 'History'],
+  ])
+
+  it('shows the first three phrases, the order first, and counts the rest', () => {
+    const line = foldedLine(
+      catalog('movie', {
+        sort_by: 'vote_average.desc',
+        with_genres: '28,12',
+        vote_average_gte: 7,
+        vote_count_gte: 100,
+        with_original_language: 'ja',
+      }),
+      lookup,
+    )
+    expect(line).toEqual({ text: 'Highest rated · Action and Adventure · rated 7.0 or more', more: 2 })
+  })
+
+  it('counts a genre list of more than two, kept and left out', () => {
+    expect(foldedLine(catalog('movie', { with_genres: '28|12|18' }), lookup).text).toBe('3 genres')
+    expect(foldedLine(catalog('movie', { without_genres: '99,10770,36' }), lookup).text).toBe('No 3 genres')
+    expect(foldedLine(catalog('movie', { without_genres: '99' }), lookup).text).toBe('No Documentary')
+  })
+
+  it('is empty for a recipe that sets nothing', () => {
+    expect(foldedLine(catalog('movie', {}), lookup)).toEqual({ text: '', more: 0 })
   })
 })

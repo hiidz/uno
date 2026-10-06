@@ -1075,7 +1075,9 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     keywords, networks and streaming services are **named** — "Production companies: Studio Ghibli or Pixar",
     the label singular for one id, the names joined with "and"/"or" as the stored list is;
     `recipeLine` and the rail's summaries keep counts); folded, a chevron, the catalog's name and
-    its recipe line under it, as a button with `aria-expanded`. The names load through the
+    under it its order and next two filters, a genre list of more than two counted, then "+9" for
+    the rest (`foldedLine`, drawn by `FoldedSummary`), as a button with `aria-expanded`. Folded
+    blocks' tiles flow at 140px a tile with the lists on a row each, like the open block's. The names load through the
     lookups the catalog editor's pickers use (`useRecipeNames`: `fetchCompany`, `fetchKeyword`
     and `fetchNetwork` under the pickers' own query keys, and the watch-provider list of the
     recipe's region). A list shows "…" while its lookups are answering (`useRecipeNames`' `loading`), then
@@ -1163,22 +1165,32 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   hover and raised-hi pressed, no dividers, and a pointer cursor, with the name button covering the
   row (`after:absolute after:inset-0`) and the actions above it (`z-10`) keeping the default cursor
   (DESIGN.md's Navigates Rule). Its content is the name with a kind sticker (Movies or Series; the
-  Collections list leaves Collection off) and, while an update waits for this profile's added row,
-  an Update available sticker; a summary (a catalog's recipe line, a collection's folders worded
-  as the Library rail and Home word them, "3 folders · Action, Drama, Comedy", from the row's
-  `folder_titles` through `describeFolders` — `itemSummary`); and "Added by 3 · Published 3 weeks
-  ago · Updated 2 days ago" (`itemMeta`), without Added by while nobody has added it and without
-  Updated while it was never updated. Below `sm` it stacks (name with a two-line clamp, stickers, summary, meta, actions on
-  their own line) and a touch screen adds a chevron to the name line. Its main button is Add (the
-  `subscribe` action), a disabled ✓ Added while the profile has added it, or Update… while an
+  Collections list leaves Collection off); a summary (a catalog's recipe line, a collection's folders worded
+  as the Library rail and Home word them, "3 folders · Action, Drama, Comedy", from the titles of
+  the row's `folders` through `describeFolders` — `itemSummary`); and "Added by 3 · Published 3 weeks
+  ago · Updated 2 days ago" (`itemMeta`'s facts, each kept whole by `MetaParts` so a narrow
+  column breaks between them), without Added by while nobody has added it and without
+  Updated while it was never updated. A row previews what it holds (`RowPreview.tsx`): a catalog
+  fans its first five posters ahead of the text (`PosterStack`), fetched under
+  `queryKeys.catalogPreview` once the row first scrolls into view (an `IntersectionObserver`), so
+  the publication page's results draw from the same answer with no second call; a collection
+  lines up its first six folder tiles under the summary at their own shapes, then "+N more"
+  (`FolderStrip`), from the row's `folders` with no fetch; from `sm` the tiles shrink together,
+  keeping their shapes, where the row is too narrow for them. The poster stack, and from `sm` the
+  strip, take no pointer events, so a click on them reaches the name button and opens the
+  page. Below `sm` a catalog row stacks
+  beside its posters (name with a two-line clamp, stickers, summary, meta, actions on
+  their own line), the folder strip scrolls sideways above the row's name button, and opens the
+  page on a tap itself, and a touch screen adds a chevron to the name line. Its main button is Add (the
+  `subscribe` action), a disabled ✓ Added while the profile has added it, or Update…, outlined in the Community accent (`btn-accent-outline`), while an
   update waits, which opens the publication's page; Duplicate, a copy that is the profile's own
   (`POST .../duplicate`), waits behind "⋯" with "yours to edit" beside it, or "the latest version"
   while an update waits, since it copies the publication and not the older added row. No ⓘ. While an action is
   in flight the button says so (Adding…, Updating…, Duplicating…). The search box says "Search".
 - **A row opens its publication's page in place of the list** (`PublicationPage.tsx`, DESIGN.md's
   One Occupant Rule). `CommunitySign` turns Community's sign into the page's: a round back arrow
-  outlined in sign ink, the name in Sign Title, then the kind and Update available stickers from
-  `sm` up (below `sm` they head the body). The arrow and Escape both leave (the One Way Back rule)
+  outlined in sign ink, the name in Sign Title, then the kind sticker from `sm` up (below `sm` it
+  heads the body); no sticker says an update waits, since the filled Update and the shelf do. The arrow and Escape both leave (the One Way Back rule)
   and focus lands on the title. The body leads with the dim meta line; then the actions
   (`PageActions`) — one primary in the Community accent, Add, or Update while an update waits, or
   a disabled outlined ✓ Added, beside an outlined Duplicate (no "⋯", no ⓘ); then, while an update
@@ -1190,8 +1202,8 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   as it mounts) — the same catalog block and bodies a row added from Community opens as
   (`features/sharing/PublicationBodies.tsx`, which take the lead and draw it alone while the detail
   loads). The list sits in an 1100px column and a page in a 1320px one (`.community-body`,
-  `index.css`); once the page is wide enough to dock, its details take a 300px column (380px for
-  a collection) and the results or Preview the rest, with posters at least 130px
+  `index.css`); once the page is wide enough to dock, its details take 45% of it and the results or
+  Preview the other 55%, with posters at least 130px
   (`--tile-min`), and below that it stacks as the editors do. Update applies the new version (`POST .../update`) and leaves the page on ✓ Added. A
   saved recipe with no results says "Nothing matches these filters." (`RecipePreview`'s
   `readOnly`). A page that won't load says "Couldn't load this. Its publisher may have

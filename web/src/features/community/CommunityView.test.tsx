@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicationDetail } from '@/api'
 import { failWith, fakeApi, type FakeRoute } from '@/test/fakeApi'
-import { communityItem } from '@/test/fixtures'
+import { communityFolder, communityItem } from '@/test/fixtures'
 import type { OpenPublication } from './communityQuery'
 import { CommunityView } from './CommunityView'
 
@@ -18,7 +18,7 @@ const night = communityItem({
   title: 'Horror Nights',
   catalog: null,
   catalog_names: ['Slasher classics'],
-  folder_titles: ['Slashers'],
+  folders: [communityFolder('Slashers')],
   folder_count: 1,
   catalog_count: 1,
   subscriber_count: 4,
@@ -97,8 +97,8 @@ describe('CommunityView', () => {
     expect(screen.getByText('Horror Nights')).toBeInTheDocument()
     expect(screen.getByText('1 folder · Slashers')).toBeInTheDocument()
     expect(screen.getByText(/Added by 4/)).toBeInTheDocument()
-    expect(screen.getByText('Update available')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Update…' })).toBeEnabled()
+    expect(screen.queryByText('Update available')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Update…' })).toHaveClass('btn-accent-outline')
     expect(calls.filter((call) => call.startsWith('GET /api/p/1/community'))).toEqual(['GET /api/p/1/community'])
   })
 
@@ -258,16 +258,16 @@ describe('CommunityView', () => {
     expect(screen.getByPlaceholderText('Search')).toBeInTheDocument()
   })
 
-  it('shows the kind sticker on a catalog row and not on a collection row', async () => {
+  it('shows the kind sticker on a catalog row, none on a collection row, and no update sticker', async () => {
     renderView({ 'GET /api/p/1/community': [night, a24] })
     await screen.findByText('A24 Horror')
     expect(screen.getByText('Movies', { selector: '.stk' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
     expect(screen.queryByText('Collection', { selector: '.stk' })).toBeNull()
-    expect(screen.getByText('Update available', { selector: '.stk' })).toBeInTheDocument()
+    expect(screen.queryByText('Update available', { selector: '.stk' })).toBeNull()
   })
 
-  it('opens a page that heads its sign with the way back, the name and its stickers', async () => {
+  it('opens a page that heads its sign with the way back, the name and its kind', async () => {
     renderView({
       'GET /api/p/1/community': [night],
       'GET /api/p/1/community/night': nightDetail,
@@ -277,7 +277,7 @@ describe('CommunityView', () => {
     const title = await screen.findByRole('heading', { level: 1, name: 'Horror Nights' })
     const sign = title.closest('.sign')!
     expect(sign).toContainElement(screen.getByRole('button', { name: 'Back to Community' }))
-    expect(sign).toHaveTextContent('CollectionUpdate available')
+    expect(sign).toHaveTextContent(/Collection$/)
     expect(screen.queryByRole('heading', { name: 'Community' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^More for/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'About add' })).toBeNull()
@@ -293,7 +293,7 @@ describe('CommunityView', () => {
     const add = await screen.findByRole('button', { name: 'Add' })
     expect(add).toHaveClass('btn-primary')
     expect(add.closest('.tone-community')).not.toBeNull()
-    expect(screen.getByText(/^Added by 1 · /)).toBeInTheDocument()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && /^Added by 1 · /.test(el.textContent ?? ''))).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
     expect(await screen.findByText('Duplicated to your catalogs')).toBeInTheDocument()
     expect(calls).toContain('POST /api/p/1/community/a24/duplicate')

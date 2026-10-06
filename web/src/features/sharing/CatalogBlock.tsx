@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { Catalog } from '@/api'
 import { Icon } from '@/components/Icon'
-import { openFacts, recipeFacts, recipeLine, type RecipeFact } from '@/features/library/recipe'
+import { foldedLine, openFacts, recipeFacts, type FoldedLine, type RecipeFact } from '@/features/library/recipe'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { useRecipeNames } from '@/features/library/useRecipeNames'
 
@@ -61,23 +61,21 @@ function useFacts(
 
 const TILE = 'flex min-w-0 flex-col gap-1 rounded-[10px] px-3 py-2.5'
 
-/** One tile's classes: flat on the ground and, for a list, a row of its own;
- *  in a folder card, a ground well. */
+/** One tile's classes: flat on the ground, or in a folder card a ground well,
+ *  and for a list a row of its own. */
 function tileClass(label: string, inFolder: boolean): string {
-  if (inFolder) return `${TILE} bg-ground`
-  return `${TILE} bg-raised ${isListFact(label) ? 'col-span-full' : ''}`
+  const fill = inFolder ? 'bg-ground' : 'bg-raised'
+  return `${TILE} ${fill} ${isListFact(label) ? 'col-span-full' : ''}`
 }
 
-/** A catalog's facts as spec tiles: a dim label over a bold value. Open on
- *  its own they sit flat on the ground and flow as far as 140px allows, the
- *  short ones first and then the lists on a row each; a folded block's,
- *  inside a folder card, step down to ground wells in two columns. After
- *  them come the filters the recipe leaves `open`, outlined and unfilled,
- *  in dimmer type. */
+/** A catalog's facts as spec tiles: a dim label over a bold value, flowing as
+ *  far as 140px a tile allows, the short ones first and then the lists on a
+ *  row each. Open on its own they sit flat on the ground; a folded block's,
+ *  inside a folder card, step down to ground wells. After them come the
+ *  filters the recipe leaves `open`, outlined and unfilled, in dimmer type. */
 function FactTiles({ facts, open, inFolder }: { facts: RecipeFact[]; open: RecipeFact[]; inFolder: boolean }) {
-  const grid = inFolder ? 'grid-cols-2' : 'grid-cols-[repeat(auto-fill,minmax(140px,1fr))]'
   return (
-    <dl className={`m-0 grid gap-2 ${grid}`}>
+    <dl className="m-0 grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
       {facts.map((fact) => (
         <div key={fact.label} className={tileClass(fact.label, inFolder)}>
           <dt className="text-dim text-[12px] font-semibold">{fact.label}</dt>
@@ -153,14 +151,14 @@ function FoldedBlock({ catalog, genres, narrowedTo }: { catalog: Catalog; genres
     <div className="border-line border-t py-2 first:border-t-0">
       <FoldHeader
         name={catalog.name}
-        line={recipeLine(catalog, lookupFor(catalog, genres))}
+        line={foldedLine(catalog, lookupFor(catalog, genres))}
         narrowedTo={narrowedTo}
         open={open}
         panelID={panelID}
         onToggle={toggle}
       />
       <div id={panelID} hidden={!open} className="pt-2 pl-[26px]">
-        {open && <FactTiles facts={facts} open={openFacts(catalog, facts)} inFolder />}
+        {open && <FactTiles facts={shortFactsFirst(facts)} open={openFacts(catalog, facts)} inFolder />}
       </div>
     </div>
   )
@@ -168,7 +166,7 @@ function FoldedBlock({ catalog, genres, narrowedTo }: { catalog: Catalog; genres
 
 interface FoldHeaderProps {
   name: string
-  line: string
+  line: FoldedLine
   narrowedTo: string
   open: boolean
   panelID: string
@@ -176,8 +174,8 @@ interface FoldHeaderProps {
 }
 
 /** A folded block's header, which is the button that opens it: a chevron, the
- *  catalog's name, and while closed its recipe line (with the genre a folder
- *  narrows it to) under that. */
+ *  catalog's name, and while closed its first filters and how many more
+ *  (`FoldedSummary`) under that. */
 function FoldHeader({ name, line, narrowedTo, open, panelID, onToggle }: FoldHeaderProps) {
   const turn = open ? 'rotate-90' : ''
   return (
@@ -190,9 +188,22 @@ function FoldHeader({ name, line, narrowedTo, open, panelID, onToggle }: FoldHea
     >
       <Icon icon={ChevronRight} size={16} className={`text-dimmer mt-0.5 shrink-0 transition-transform ${turn}`} />
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[14px] font-semibold">{name}</span>
-        {!open && <span className="text-dim text-[12.5px]">{narrowedTo ? `${line} • ${narrowedTo}` : line}</span>}
+        <span className="text-[14px] font-semibold [overflow-wrap:anywhere]">{name}</span>
+        {!open && <FoldedSummary line={line} narrowedTo={narrowedTo} />}
       </span>
     </button>
+  )
+}
+
+/** A folded block's second line: its first phrases with the genre a folder
+ *  narrows it to after them, then how many more phrases the tiles hold, in
+ *  dimmer, "+10". One line, cut to fit. */
+function FoldedSummary({ line, narrowedTo }: { line: FoldedLine; narrowedTo: string }) {
+  const text = narrowedTo ? `${line.text} • ${narrowedTo}` : line.text
+  return (
+    <span className="flex min-w-0 gap-1.5 text-[12.5px]">
+      <span className="text-dim truncate">{text}</span>
+      {line.more > 0 && <span className="type-data text-dimmer shrink-0">+{line.more}</span>}
+    </span>
   )
 }

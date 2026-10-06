@@ -73,14 +73,15 @@ export function itemKind(item: CommunityItem): SharingSticker {
  *  type. `recipe` is the catalog's recipe line, when it has one. */
 export function itemSummary(item: CommunityItem, recipe: string): string {
   if (item.kind === 'catalog') return recipe || 'No filters'
-  return describeFolders(item.folder_titles)
+  return describeFolders(folderTitles(item))
 }
 
-/** A row's third line: how many have added it, when it was published, and
- *  when it was last updated, if it was — "Added by 3 · Published 3 weeks ago ·
- *  Updated 2 days ago". */
-export function itemMeta(item: CommunityItem, now: Date): string {
-  return [addedBy(item), `Published ${relativeDay(item.published_at, now)}`, updatedAgo(item, now)].filter(Boolean).join(' · ')
+/** A row's third line, fact by fact so a narrow column breaks between them:
+ *  how many have added it, when it was published, and when it was last
+ *  updated, if it was — "Added by 3", "Published 3 weeks ago", "Updated 2
+ *  days ago". */
+export function itemMeta(item: CommunityItem, now: Date): string[] {
+  return [addedBy(item), `Published ${relativeDay(item.published_at, now)}`, updatedAgo(item, now)].filter(Boolean)
 }
 
 function addedBy(item: CommunityItem): string {
@@ -106,4 +107,11 @@ export function relativeDay(iso: string, now: Date): string {
 
 function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
+
+/** A listed collection's folder titles in order; none for a catalog. */
+function folderTitles(item: CommunityItem): string[] {
+  const titles: string[] = []
+  for (const folder of item.folders ?? []) titles.push(folder.title)
+  return titles
 }

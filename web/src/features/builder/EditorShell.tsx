@@ -93,7 +93,7 @@ export function EditorShell({
           <h1
             tabIndex={-1}
             data-landing
-            className={`m-0 truncate outline-none ${SIGN_TITLE}`}
+            className={`m-0 outline-none ${SIGN_TITLE}`}
           >
             <span className="sr-only">{purpose}: </span>
             {title}

@@ -1,4 +1,4 @@
-import type { Catalog, Collection, CommunityItem, Folder, SelectedCatalog } from '@/api'
+import type { Catalog, Collection, CommunityFolder, CommunityItem, Folder, SelectedCatalog } from '@/api'
 
 /**
  * Complete wire rows for tests, so a test names only the fields it is about
@@ -81,8 +81,13 @@ export function communityItem(overrides: Partial<CommunityItem> = {}): Community
     subscribed: false,
     update_available: false,
     catalog_names: ['Popular'],
-    folder_titles: [],
+    folders: [],
     catalog: { key: 'k1', name: 'Popular', type: 'movie', provider: 'tmdb', params: {} },
     ...overrides,
   }
+}
+
+/** A listed collection's folder: a poster tile with no cover. */
+export function communityFolder(title: string, overrides: Partial<CommunityFolder> = {}): CommunityFolder {
+  return { title, tile_shape: 'POSTER', cover_emoji: '', cover_image_url: '', ...overrides }
 }
