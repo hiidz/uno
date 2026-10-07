@@ -65,10 +65,16 @@ Entirely frontend code. Uno's Go side never mints, refreshes, or stores a Nuvio 
   against each other. Necessary because refresh tokens rotate and burn on use, so two tabs
   racing would strand one. A refresh attempt that loses the race *adopts the winning tab's
   session* rather than signing out a still-valid one.
+- **Only a refused refresh token ends the session** (`isTokenRefused`): a `NuvioAuthError` with
+  a 4xx other than 408 or 429. A network error, a 5xx, a 408 or a 429 keeps the session and the
+  stored refresh token, so waking a laptop before its Wi-Fi is up fails a request rather than
+  signing out every tab and dropping unpushed Home edits. During `bootstrap()` such a failure
+  settles signed out, and the next load redeems the stored token again.
 - **`apiFetch`** (`web/src/api/client.ts`) attaches the bearer header to every `/api/*` call,
   catches `401`, refreshes once, retries the original request, and only then clears session
   state and navigates to `/login` via the `router` singleton exported from
-  `web/src/routes/router.tsx`.
+  `web/src/routes/router.tsx`. A refresh that fails for any reason but a refused token rejects
+  the request instead.
 - **The query cache is per account.** No query key carries the user, so
   `web/src/lib/query-client.ts` subscribes to auth state and calls `queryClient.clear()`
   whenever the signed-in user id changes — sign-out, "Switch account", or another tab's
@@ -1349,7 +1355,8 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 
 ## Cross-cutting client rules
 
-- `401` from any call → refresh + retry, then bounce to login.
+- `401` from any call → refresh + retry, then bounce to login; a refresh that fails without
+  Nuvio refusing the token fails the call and keeps the session.
 - `404` with the JSON `code` `profile_not_found` from any `/api/p/{i}/...` route, `requireProfile`'s
   → profile not selected → send back to the picker (`ProfileNotSelectedError`,
   `web/src/api/http.ts`, which reads the code and never the words). A route's own 404 (a catalog

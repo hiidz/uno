@@ -1,4 +1,4 @@
-import { refreshWithToken, signInWithPassword, signOut as nuvioSignOut } from './client'
+import { NuvioAuthError, refreshWithToken, signInWithPassword, signOut as nuvioSignOut } from './client'
 import type { NuvioTokenResponse, NuvioUser } from './client'
 
 const REFRESH_TOKEN_KEY = 'uno:nuvio:refresh_token'
@@ -141,6 +141,23 @@ window.addEventListener('storage', (event) => {
   void refresh()
 })
 
+const RETRYABLE_STATUSES = new Set([408, 429])
+
+/** Whether a failed refresh is Nuvio refusing the refresh token itself: a
+ *  4xx other than a timeout or a rate limit. A network error, a 5xx, a 408 or
+ *  a 429 says nothing about the token. */
+export function isTokenRefused(err: unknown): boolean {
+  return err instanceof NuvioAuthError && err.status < 500 && !RETRYABLE_STATUSES.has(err.status)
+}
+
+// A refused token ends the session in every tab. Any other failure keeps the
+// session and the stored refresh token; with no session yet (bootstrap), the
+// app settles signed out, and the next load redeems the stored token again.
+function refreshFailed(err: unknown) {
+  if (isTokenRefused(err)) clearSession({ broadcast: true })
+  else if (session === null) setPublicState({ status: 'unauthenticated', user: null })
+}
+
 let refreshInFlight: Promise<Session> | null = null
 
 // Single-flight: concurrent callers (e.g. several 401s in one tab) share
@@ -169,7 +186,7 @@ export function refresh(): Promise<Session> {
       if (session && session.refreshToken !== attemptedToken) {
         return session
       }
-      clearSession({ broadcast: true })
+      refreshFailed(err)
       throw err
     })
     .finally(() => {

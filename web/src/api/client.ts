@@ -1,4 +1,4 @@
-import { getAccessToken, logout, refresh } from '@/auth'
+import { getAccessToken, isTokenRefused, logout, refresh } from '@/auth'
 import { router } from '@/routes/router'
 
 function withAuthHeader(init: RequestInit, token: string | null): RequestInit {
@@ -17,6 +17,20 @@ async function redirectToLogin(): Promise<void> {
   void router.navigate('/login', { replace: true })
 }
 
+// Whether refresh produced a new session. A refused refresh token sends the
+// user to login; any other failure (offline, Nuvio's auth down) rejects, so the
+// request fails and the session, with whatever the user hasn't pushed, stays.
+async function refreshed(): Promise<boolean> {
+  try {
+    await refresh()
+    return true
+  } catch (err) {
+    if (!isTokenRefused(err)) throw err
+    await redirectToLogin()
+    return false
+  }
+}
+
 // Fetch wrapper for every /api/* call: attaches the current access token,
 // and on a 401 refreshes once (single-flight — see auth/session.ts) and
 // retries with the new token before giving up. Only a 401 that survives a
@@ -25,13 +39,7 @@ async function redirectToLogin(): Promise<void> {
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(input, withAuthHeader(init, getAccessToken()))
   if (res.status !== 401) return res
-
-  try {
-    await refresh()
-  } catch {
-    await redirectToLogin()
-    return res
-  }
+  if (!(await refreshed())) return res
 
   const retryRes = await fetch(input, withAuthHeader(init, getAccessToken()))
   if (retryRes.status === 401) {

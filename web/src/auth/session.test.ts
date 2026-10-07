@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NuvioAuthError } from './client'
 import type { NuvioTokenResponse } from './client'
 
 const nuvio = vi.hoisted(() => ({
@@ -7,7 +8,7 @@ const nuvio = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
   signOut: vi.fn(),
 }))
-vi.mock('./client', () => nuvio)
+vi.mock('./client', async (importActual) => ({ ...(await importActual<typeof import('./client')>()), ...nuvio }))
 
 /** Stands in for the cross-tab channel: records what this tab posts, and
  *  delivers what another tab would. */
@@ -35,6 +36,7 @@ class FakeChannel {
 
 const REFRESH_TOKEN_KEY = 'uno:nuvio:refresh_token'
 const SIGNED_OUT = { type: 'signed-out' }
+const refused = () => new NuvioAuthError('Invalid Refresh Token', 400)
 
 function tokens(n: number): NuvioTokenResponse {
   return {
@@ -105,12 +107,29 @@ describe('refresh', () => {
   it('signs out every tab when the token is refused', async () => {
     localStorage.setItem(REFRESH_TOKEN_KEY, 'refresh-0')
     const session = await load()
-    nuvio.refreshWithToken.mockRejectedValue(new Error('invalid grant'))
+    nuvio.refreshWithToken.mockRejectedValue(refused())
 
-    await expect(session.refresh()).rejects.toThrow('invalid grant')
+    await expect(session.refresh()).rejects.toThrow('Invalid Refresh Token')
     expect(session.getAuthState().status).toBe('unauthenticated')
     expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBeNull()
     expect(FakeChannel.current.posted).toContainEqual(SIGNED_OUT)
+  })
+
+  it.each([
+    ['offline', new TypeError('Failed to fetch')],
+    ['a 5xx', new NuvioAuthError('Bad Gateway', 502)],
+    ['a rate limit', new NuvioAuthError('Too Many Requests', 429)],
+  ])('keeps the session when the refresh fails from %s', async (_, failure) => {
+    const session = await load()
+    nuvio.signInWithPassword.mockResolvedValue(tokens(1))
+    await session.login('viewer@example.com', 'secret')
+    nuvio.refreshWithToken.mockRejectedValue(failure)
+
+    await expect(session.refresh()).rejects.toBe(failure)
+    expect(session.getAccessToken()).toBe('access-1')
+    expect(session.getAuthState().status).toBe('authenticated')
+    expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBe('refresh-1')
+    expect(FakeChannel.current.posted).not.toContainEqual(SIGNED_OUT)
   })
 
   it('adopts the session another tab refreshed to, instead of signing out', async () => {
@@ -162,9 +181,20 @@ describe('bootstrap', () => {
   it('settles signed out, without rejecting, when the stored token is refused', async () => {
     localStorage.setItem(REFRESH_TOKEN_KEY, 'refresh-0')
     const session = await load()
-    nuvio.refreshWithToken.mockRejectedValue(new Error('invalid grant'))
+    nuvio.refreshWithToken.mockRejectedValue(refused())
     await expect(session.bootstrap()).resolves.toBeUndefined()
     expect(session.getAuthState().status).toBe('unauthenticated')
+    expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBeNull()
+  })
+
+  it('settles signed out but keeps the stored token when offline', async () => {
+    localStorage.setItem(REFRESH_TOKEN_KEY, 'refresh-0')
+    const session = await load()
+    nuvio.refreshWithToken.mockRejectedValue(new TypeError('Failed to fetch'))
+    await expect(session.bootstrap()).resolves.toBeUndefined()
+    expect(session.getAuthState().status).toBe('unauthenticated')
+    expect(localStorage.getItem(REFRESH_TOKEN_KEY)).toBe('refresh-0')
+    expect(FakeChannel.current.posted).not.toContainEqual(SIGNED_OUT)
   })
 })
 

@@ -5,6 +5,7 @@ const auth = vi.hoisted(() => ({
   getAccessToken: vi.fn<() => string | null>(),
   refresh: vi.fn(),
   logout: vi.fn(),
+  isTokenRefused: vi.fn<(err: unknown) => boolean>(),
 }))
 vi.mock('@/auth', () => auth)
 
@@ -25,6 +26,7 @@ beforeEach(() => {
   auth.getAccessToken.mockReset().mockReturnValue('token-1')
   auth.refresh.mockReset().mockResolvedValue(undefined)
   auth.logout.mockReset().mockResolvedValue(undefined)
+  auth.isTokenRefused.mockReset().mockReturnValue(true)
   router.navigate.mockReset()
 })
 
@@ -69,7 +71,20 @@ describe('apiFetch', () => {
     expect(auth.logout).not.toHaveBeenCalled()
   })
 
-  it('signs out to the login page when the refresh fails, without retrying', async () => {
+  it('fails the request but stays signed in when the refresh fails for another reason', async () => {
+    const offline = new TypeError('Failed to fetch')
+    auth.refresh.mockRejectedValue(offline)
+    auth.isTokenRefused.mockReturnValue(false)
+    fetchMock.mockResolvedValueOnce(status(401))
+
+    await expect(apiFetch('/api/profiles')).rejects.toBe(offline)
+    expect(auth.isTokenRefused).toHaveBeenCalledWith(offline)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(auth.logout).not.toHaveBeenCalled()
+    expect(router.navigate).not.toHaveBeenCalled()
+  })
+
+  it('signs out to the login page when the refresh token is refused, without retrying', async () => {
     auth.refresh.mockRejectedValue(new Error('invalid grant'))
     fetchMock.mockResolvedValueOnce(status(401))
 
