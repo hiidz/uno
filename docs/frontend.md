@@ -1046,20 +1046,23 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   publisher of a row added from Community published a newer version). Only the incoming one says
   "update". A row carries **one Community sticker**, changing with its state: an own row reads
   Published, then To publish; a row added from Community reads From Community, then Update
-  available; and a row whose publisher unpublished it, now the profile's own, reads
-  **Unpublished** until its release is acknowledged or this profile publishes it
-  (`publisherUnpublished`). A
+  available; a row whose publisher unpublished it is the profile's own and carries what any own
+  row does. A
   sticker's `tone` is `{hue, fill}` (DESIGN.md's *Sticker Rule*), drawn by
   `stickerClass` as `.stk` with one hue class and `.stk-fill`: a pill is filled only while it
   waits on you, until one action clears it — To publish and Update available (pink), To push
-  (yellow); Published, From Community and Unpublished are pink outlines.
-- **A row its publisher unpublished opens in its editor**, like any own row, since it no longer
-  has a subscription. While it reads Unpublished, the form leads with one dim line, "Its
-  publisher unpublished this. It’s yours to edit now." (`UnpublishedNotice`, passed to
-  `CatalogEditor` and `CollectionEditor` as `sharingNotice` by `useWorkspaceSharing`). A save no
-  longer clears the mark (`publisher_unpublished`): only acknowledging the release does
-  (`POST .../acknowledge-release`), which the SPA doesn't call yet, so the line and the sticker
-  stay.
+  (yellow); Published and From Community are pink outlines.
+- **A row its publisher unpublished is told about once, then is an own row like any other.**
+  `ReleasedDialog` (`features/sharing/ReleasedDialog.tsx`, mounted by `Builder` under both tabs)
+  reads `GET .../released` under `queryKeys.released`, so a profile switch drops it and a
+  refocus refetches it, and shows the oldest released row: "Its publisher removed “X” from
+  Community. It’s now yours to edit." Every way out — Got it, Escape, the scrim — acknowledges
+  it (`POST .../acknowledge-release`), and the list the server answers replaces the cached one,
+  opening the next row's dialog. A failed acknowledgement rereads the list, so a row deleted in
+  another tab drops out; a row still listed keeps the dialog open with the error.
+  The released list carries no publisher, whose publication is gone, so the line says "Its
+  publisher". Nothing else marks the row: it opens in its editor with no sticker or line, and
+  the SPA never reads `publisher_unpublished`.
   - **Where they show:** the library rail shows a catalog's kind and the Community sticker
     only (`railStickers`) — never To push, which the pending count already covers, and no
     Collection sticker, which the rail's Collections sign already says. An editor's sign and the
@@ -1385,7 +1388,7 @@ fonts only from `'self'` and `data:`.
 
 **Stickers.** Small printed pills state a row's states in words, following DESIGN.md's *Sticker
 Rule*: every pill is `.stk` plus one hue — `.stk-catalog` (the kind Movies or Series, in
-tangerine), `.stk-collection` (the kind Collection, in green), `.stk-community` (Published, From Community, Unpublished, To publish, Update available, because
+tangerine), `.stk-collection` (the kind Collection, in green), `.stk-community` (Published, From Community, To publish, Update available, because
 Community is where those rows turn up) and `.stk-nuvio` (To push, bound for Nuvio) — and `.stk-fill` while it waits on you, until one action clears it (To publish, Update
 available, To push); every other pill is an outline. On a sign an outline pill turns sign ink and
 a filled one becomes a sign-ink pill lettered in its hue. A library row's home-screen toggle is `.home-sticker`: a dashed empty

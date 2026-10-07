@@ -564,8 +564,7 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   - **The mark** is the row's `publisher_unpublished` (`unpublished_at IS NOT NULL`, read with the
     row's own columns): released, not yet acknowledged. `ReleasedCopies`
     (`GET /api/p/{i}/released`, `internal/vault/released.go`) lists a profile's marked rows,
-    oldest release first, for the builder to tell its owner once on each profile load (the SPA
-    doesn't call it yet). Only `AcknowledgeReleasedCatalog`/`AcknowledgeReleasedCollection`
+    oldest release first, for the builder to tell its owner once on each profile load. Only `AcknowledgeReleasedCatalog`/`AcknowledgeReleasedCollection`
     (`POST .../acknowledge-release`) clear it; a save never does. Push, Update, Duplicate and import
     never set it.
   - The publication's snapshot goes with it: `GetPublication`, a subscribe and an Update of it

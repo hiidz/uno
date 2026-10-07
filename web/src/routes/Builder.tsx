@@ -19,6 +19,7 @@ import { BlockablePushButton, PushBlockNote } from '@/features/push/PushBlockCon
 import { AddonURLButton, ChangesStrip, PushBanner } from '@/features/push/PushControls'
 import { usePush } from '@/features/push/usePush'
 import { usePushBlock } from '@/features/push/usePushBlock'
+import { ReleasedDialog } from '@/features/sharing/ReleasedDialog'
 import { useCountDown } from '@/lib/useCountDown'
 import { plural, pluralCount } from '@/lib/plural'
 
@@ -92,6 +93,7 @@ export function Builder() {
             <CommunityView profileIndex={profile.profileIndex} initialOpen={opening} />
           )}
         </div>
+        <ReleasedDialog profileIndex={profile.profileIndex} />
       </EditorGuardProvider>
     </HomeSelectionProvider>
   )

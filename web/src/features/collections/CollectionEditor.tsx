@@ -116,8 +116,6 @@ interface CollectionEditorProps {
   sharingStep?: SignStep
   /** Its sharing stickers, on the sign beside the kind. */
   sharingBadges?: ReactNode
-  /** The line the form leads with once its publisher unpublished it. */
-  sharingNotice?: ReactNode
   /** A folder row's Copy into library: written at once, not with this
    *  collection's Save. */
   onCopyToLibrary: CopyToLibrary
@@ -218,7 +216,6 @@ export function CollectionEditor({
   usedInFolders,
   sharingStep,
   sharingBadges,
-  sharingNotice,
   onCopyToLibrary,
 }: CollectionEditorProps) {
   const baseline = initial
@@ -526,7 +523,6 @@ export function CollectionEditor({
       <div className="ed-container">
         <div className="ed ed-preview">
           <div className="ed-form">
-            {sharingNotice}
             <div className="setting">
               <label htmlFor="col-title" className="setting-label type-label">
                 Title

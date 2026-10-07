@@ -110,7 +110,7 @@ two layers differ.
 | The feature as a whole | sharing (`features/sharing`, `serveSharingCall`): a name, never a verb or status | never says "share" |
 | Browse tab | Community | Community |
 | Put it out | publish, publication, publisher | Publish…, Publish update…, "Published" |
-| Take it back, for good | unpublish; a subscriber's row is then released, carrying `publisher_unpublished` until they acknowledge it | Unpublish; that row reads "Unpublished" until the release is acknowledged |
+| Take it back, for good | unpublish; a subscriber's row is then released, carrying `publisher_unpublished` until they acknowledge it | Unpublish; the subscriber is told once, "Its publisher removed “X” from Community", and dismissing it acknowledges the release |
 | Read-only copy that gets updates | subscribe, subscription, subscriber, subscribed copy | **Add**, ✓ Added, "Added by N", the **From Community** sticker |
 | Copy that's yours to edit | duplicate (`DuplicatePublication`, `DuplicateCollection`) | Duplicate |
 | Get the update | update | Update |
@@ -216,8 +216,8 @@ Route-semantics facts the client has to honour:
     collection copy on Home.
   - `GET /api/p/{i}/released` (`ReleasedCopies`) answers the caller's rows released and not yet
     acknowledged, oldest release first, as `[{kind, id, name}]`: copies whose publication ended,
-    by an unpublish or by its source's delete. It is there for the builder to read on each profile
-    load and tell the caller once; the SPA doesn't call it or acknowledge yet.
+    by an unpublish or by its source's delete. The builder reads it on each profile load and
+    refocus and tells the caller of each row once (`ReleasedDialog`), acknowledging it on dismiss.
     `POST .../catalogs/{id}/acknowledge-release` and `.../collections/{id}/acknowledge-release`
     (`AcknowledgeReleasedCatalog`/`...Collection`, 200) clear one row's mark, marked or not, and answer the list still unacknowledged; another
     profile's row is a 404. A save never clears the mark. No publisher is named: Community never

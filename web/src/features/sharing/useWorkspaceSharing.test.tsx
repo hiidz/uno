@@ -16,7 +16,7 @@ const genres = { movie: new Map([[27, 'Horror']]), tv: new Map() }
 const subscription: SubscriptionState = { publication_id: 'pub', update_available: true }
 
 /** Renders what the workspace renders from the hook for an own row: its
- *  sign button, stickers and notice, and the dialogs. */
+ *  sign button and stickers, and the dialogs. */
 function Harness(props: {
   catalog?: Catalog
   collection?: Collection
@@ -36,7 +36,6 @@ function Harness(props: {
   return (
     <>
       <div data-testid="badges">{own?.sharingBadges}</div>
-      <div data-testid="notice">{own?.sharingNotice}</div>
       <SignStepButton step={own?.sharingStep} />
       {sharing.dialogs}
     </>
@@ -208,18 +207,10 @@ describe('useWorkspaceSharing', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('leads a row its publisher unpublished with the line that says it is yours now', () => {
+  it('treats a row its publisher unpublished as any own row, with no sticker saying so', () => {
     renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror', publisher_unpublished: true }) }, {})
-    expect(screen.getByTestId('notice')).toHaveTextContent('Its publisher unpublished this. It’s yours to edit now.')
-    expect(within(screen.getByTestId('badges')).getByText('Unpublished')).toBeInTheDocument()
+    expect(screen.getByTestId('badges')).toBeEmptyDOMElement()
     expect(screen.getByRole('button', { name: 'Publish…' })).toBeInTheDocument()
-  })
-
-  it('drops the line once the row is published again', () => {
-    const live = { id: 'p', changed_since_publish: false }
-    renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror', publisher_unpublished: true, publication: live }) }, {})
-    expect(screen.getByTestId('notice')).toBeEmptyDOMElement()
-    expect(within(screen.getByTestId('badges')).queryByText('Unpublished')).toBeNull()
   })
 
   it('turns the publish dialog of a changed row into the Unpublish question', async () => {

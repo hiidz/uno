@@ -153,6 +153,15 @@ export interface PendingChange {
   change: 'added' | 'changed' | 'removed'
 }
 
+/** One of the profile's rows released and not yet acknowledged — a copy
+ *  whose publication ended, now the profile's own — as `GET /api/p/{i}/released`
+ *  lists them, oldest release first. `name` is a collection's title. */
+export interface ReleasedCopy {
+  kind: 'catalog' | 'collection'
+  id: string
+  name: string
+}
+
 /** One catalog of a snapshot or a diff, in the bundle form: named by a `key`
  *  rather than an id, with `params` an object rather than the JSON-encoded
  *  string a `Catalog` carries. */

@@ -1,5 +1,6 @@
 export { ApiError, ProfileNotSelectedError, RateLimitedError } from './http'
 export {
+  acknowledgeRelease,
   CATALOG_PROVIDER,
   createCatalog,
   createCollection,
@@ -35,6 +36,7 @@ export {
   fetchUpdateChanges,
   fetchChangesSincePublish,
   fetchPendingPush,
+  fetchReleased,
   fetchGenres,
   fetchCertifications,
   fetchLanguages,
@@ -76,6 +78,7 @@ export type {
   Language,
   NuvioProfile,
   PendingChange,
+  ReleasedCopy,
   PreviewItem,
   PublicationDetail,
   PublicationState,

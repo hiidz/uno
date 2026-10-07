@@ -39,6 +39,10 @@ export const queryKeys = {
    *  library list leaves Community alone; a write that changes Community
    *  refreshes this prefix itself. Every Community key sits under it. */
   community: (profileIndex: number) => ['p', profileIndex, 'community'] as const,
+
+  /** The rows released and not yet acknowledged, each told about once
+   *  (`ReleasedDialog`). */
+  released: (profileIndex: number) => ['p', profileIndex, 'released'] as const,
   /** Every live publication Community lists, in one call. */
   communityList: (profileIndex: number) => ['p', profileIndex, 'community', 'list'] as const,
   publication: (profileIndex: number, publicationID: string) =>

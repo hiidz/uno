@@ -1,5 +1,5 @@
 import { sendJSON } from './http'
-import type { Catalog, CatalogType, Collection, CommunityCopy, FolderLook, TMDBKeyStatus, ViewMode } from './types'
+import type { Catalog, CatalogType, Collection, CommunityCopy, FolderLook, ReleasedCopy, TMDBKeyStatus, ViewMode } from './types'
 
 /** Publishes a listed catalog as it is saved now, or publishes its update —
  *  `POST .../catalogs/{id}/publish`. An update keeps the publication's id;
@@ -24,6 +24,17 @@ export function publishCollection(profileIndex: number, collectionID: string): P
 
 export function unpublishCollection(profileIndex: number, collectionID: string): Promise<Collection> {
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/unpublish`)
+}
+
+/** Acknowledges a released row, clearing its `publisher_unpublished` mark —
+ *  `POST .../{kind}s/{id}/acknowledge-release` — and answers the released
+ *  rows still unacknowledged. */
+export function acknowledgeRelease(
+  profileIndex: number,
+  kind: ReleasedCopy['kind'],
+  id: string,
+): Promise<ReleasedCopy[]> {
+  return sendJSON<ReleasedCopy[]>('POST', `/api/p/${profileIndex}/${kind}s/${id}/acknowledge-release`)
 }
 
 /** Subscribe (the UI's Add): a read-only copy of a publication that follows

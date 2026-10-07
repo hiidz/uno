@@ -7,7 +7,6 @@ import type { GenreLookups } from '@/features/library/useLibrary'
 import { SinceLastPublished } from './Changes'
 import { PublishDialog, type PublishSubject } from './PublishDialog'
 import { SharingStickers } from './SharingStickers'
-import { UnpublishedNotice } from './UnpublishedNotice'
 import { errorText, ownSharing, publishGroups, rowStickers, sharingStep, type OwnSharing } from './sharingState'
 import { useSharingMutations, type SharingTarget } from './useSharingMutations'
 
@@ -24,12 +23,10 @@ interface Publishing extends Named {
 }
 
 /** What an open editor shows of its own row's sharing: its next step as the
- *  sign's button, its stickers, and the line its body leads with once its
- *  publisher unpublished it. */
+ *  sign's button, and its stickers. */
 export interface EditorSharing {
   sharingStep: SignStep
   sharingBadges: ReactNode
-  sharingNotice: ReactNode
 }
 
 /** The two things the sign's button can do. */
@@ -45,7 +42,7 @@ function stepAction(state: OwnSharing, actions: StepActions) {
 }
 
 /** A library row as the editor's sharing reads it. */
-type SharedRow = Named & Pick<Catalog, 'publication' | 'subscription' | 'publisher_unpublished'>
+type SharedRow = Named & Pick<Catalog, 'publication' | 'subscription'>
 
 interface WorkspaceSharingOptions {
   profileIndex: number
@@ -94,8 +91,7 @@ export function useWorkspaceSharing({ profileIndex, genres, dirty, waitingForPus
     const onUnpublish = () => askToUnpublish(row)
     return {
       sharingStep: { ...sharingStep(state, dirty), onClick: stepAction(state, { publish: onPublish, unpublish: onUnpublish }) },
-      sharingBadges: <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} />,
-      sharingNotice: <UnpublishedNotice row={row} />,
+      sharingBadges: <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} />
     }
   }
 

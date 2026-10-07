@@ -19,6 +19,7 @@ import type {
   PendingChange,
   PreviewRequest,
   PublicationDetail,
+  ReleasedCopy,
   SelectedProfile,
   ServerConfig,
   SnapshotChange,
@@ -73,6 +74,12 @@ export function fetchChangesSincePublish(
  *  edits to it. */
 export function fetchPendingPush(profileIndex: number): Promise<PendingChange[]> {
   return getList<PendingChange>(`/api/p/${profileIndex}/push/pending`)
+}
+
+/** This profile's rows released and not yet acknowledged: copies whose
+ *  publisher unpublished them, oldest release first. */
+export function fetchReleased(profileIndex: number): Promise<ReleasedCopy[]> {
+  return getList<ReleasedCopy>(`/api/p/${profileIndex}/released`)
 }
 
 /** Live from TMDB via the Go side. Takes the catalog's own `type`

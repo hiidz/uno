@@ -9,7 +9,6 @@ import {
   kindStickers,
   ownSharing,
   publishGroups,
-  publisherUnpublished,
   railStickers,
   rowStickers,
   sharingStep,
@@ -36,20 +35,12 @@ describe('ownSharing', () => {
   })
 })
 
-describe('publisherUnpublished', () => {
-  it('holds while the row is marked and not published by this profile', () => {
-    expect(publisherUnpublished(catalog({ publisher_unpublished: true }))).toBe(true)
-    expect(publisherUnpublished(catalog({ publisher_unpublished: true, publication: live }))).toBe(false)
-    expect(publisherUnpublished(catalog())).toBe(false)
-  })
-})
-
 type StickerRow = Parameters<typeof rowStickers>[0]
 const words = (stickers: SharingSticker[]) => stickers.map((s) => `${s.label}:${stickerClass(s.tone)}`)
 
-const plain: StickerRow = { publication: null, subscription: null, publisher_unpublished: false }
+const plain: StickerRow = { publication: null, subscription: null }
 const updating: StickerRow = { ...plain, subscription: { ...subscription, update_available: true } }
-const unpublishedByPublisher: StickerRow = { ...plain, publisher_unpublished: true }
+const unpublishedByPublisher: StickerRow = catalog({ publisher_unpublished: true })
 const changed: StickerRow = { ...plain, publication: { ...live, changed_since_publish: true } }
 
 describe('railStickers', () => {
@@ -61,10 +52,10 @@ describe('railStickers', () => {
     expect(rail(changed)).toEqual(['To publish:stk stk-community stk-fill'])
     expect(rail({ ...plain, subscription })).toEqual(['From Community:stk stk-community'])
     expect(rail(updating)).toEqual(['Update available:stk stk-community stk-fill'])
-    expect(rail(unpublishedByPublisher)).toEqual(['Unpublished:stk stk-community'])
+    expect(rail(unpublishedByPublisher)).toEqual([])
   })
 
-  it('says Published, not Unpublished, once this profile publishes the row', () => {
+  it('gives a row its publisher unpublished the stickers of any own row', () => {
     expect(rail({ ...unpublishedByPublisher, publication: live })).toEqual(['Published:stk stk-community'])
   })
 })
@@ -77,7 +68,7 @@ describe('rowStickers', () => {
     expect(all(plain, true)).toEqual(['To push:stk stk-nuvio stk-fill'])
     expect(all(changed, true)).toEqual(['To publish:stk stk-community stk-fill', 'To push:stk stk-nuvio stk-fill'])
     expect(all(updating, true)).toEqual(['Update available:stk stk-community stk-fill', 'To push:stk stk-nuvio stk-fill'])
-    expect(all(unpublishedByPublisher, true)).toEqual(['Unpublished:stk stk-community', 'To push:stk stk-nuvio stk-fill'])
+    expect(all(unpublishedByPublisher, true)).toEqual(['To push:stk stk-nuvio stk-fill'])
   })
 
   it('never says "update" except for an incoming one', () => {

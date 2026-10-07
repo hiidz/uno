@@ -16,12 +16,6 @@ export function isPublished(row: { publication: PublicationState | null }): bool
   return row.publication !== null
 }
 
-/** Whether a row is one its publisher unpublished, made this profile's own
- *  and not saved since, and not published again by this profile either. */
-export function publisherUnpublished(row: Pick<Catalog, 'publication' | 'publisher_unpublished'>): boolean {
-  return row.publisher_unpublished && row.publication === null
-}
-
 /** A sticker's look: `hue` names where the fact points (a row's kind its
  *  region, `catalog` tangerine or `collection` green; `community` pink,
  *  `nuvio` Nuvio yellow), and `fill` says it waits on you until
@@ -59,8 +53,6 @@ const TO_PUBLISH: SharingSticker = { label: 'To publish', tone: COMMUNITY_FILL }
 export const FROM_COMMUNITY: SharingSticker = { label: 'From Community', tone: COMMUNITY }
 /** The only sticker that says "update": a publisher's newer version waits. */
 const UPDATE_AVAILABLE: SharingSticker = { label: 'Update available', tone: COMMUNITY_FILL }
-/** A row its publisher unpublished, now this profile's own. */
-const UNPUBLISHED: SharingSticker = { label: 'Unpublished', tone: COMMUNITY }
 const TO_PUSH: SharingSticker = { label: 'To push', tone: { hue: 'nuvio', fill: true } }
 
 const CATALOG_KIND: StickerTone = { hue: 'catalog', fill: false }
@@ -78,23 +70,17 @@ export function kindStickers(catalog: Pick<Catalog, 'type'> | undefined): Sharin
   return catalog ? [kindSticker(catalog.type)] : []
 }
 
-type StickerRow = Pick<Catalog, 'publication' | 'subscription' | 'publisher_unpublished'>
+type StickerRow = Pick<Catalog, 'publication' | 'subscription'>
 
 /** The one Community sticker a row carries, changing with its state: an own
  *  row reads Published, then To publish once edited since; a row added
- *  from Community reads From Community, then Update available, and
- *  Unpublished once its publisher unpublished it, until its release is
- *  acknowledged. */
+ *  from Community reads From Community, then Update available. A row its
+ *  publisher unpublished is an own row like any other. */
 function communitySticker(row: StickerRow): SharingSticker | null {
   if (row.subscription) return row.subscription.update_available ? UPDATE_AVAILABLE : FROM_COMMUNITY
   const state = ownSharing(row.publication)
   if (state === 'live') return PUBLISHED
-  return state === 'changed' ? TO_PUBLISH : unpublishedSticker(row)
-}
-
-/** Unpublished on a row its publisher unpublished; none otherwise. */
-function unpublishedSticker(row: StickerRow): SharingSticker | null {
-  return publisherUnpublished(row) ? UNPUBLISHED : null
+  return state === 'changed' ? TO_PUBLISH : null
 }
 
 /** What the library rail shows besides the kind: the row's Community sticker. */
