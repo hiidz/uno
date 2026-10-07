@@ -68,13 +68,29 @@ describe('PublishDialog', () => {
       },
     })
     expect(screen.getByText('2 folders, 1 catalog of its own')).toBeInTheDocument()
-    expect(screen.getByText('From your library, published as they are now')).toBeInTheDocument()
+    expect(screen.getByText('From your library, public as part of this collection')).toBeInTheDocument()
     expect(screen.getByText('Library one')).toBeInTheDocument()
+  })
+
+  it('says a collection’s library catalogs are readable with it but not listed on their own', () => {
+    renderDialog({
+      subject: {
+        kind: 'collection',
+        name: 'Night',
+        folderCount: 1,
+        own: [],
+        library: [catalog({ id: 'l', name: 'Library one' })],
+      },
+    })
+    expect(screen.getByText(/Anyone who opens this collection can read these catalogs/)).toHaveTextContent(
+      'They aren’t listed in Community on their own.',
+    )
   })
 
   it('leaves out the library heading when a collection uses none', () => {
     renderDialog({ subject: { kind: 'collection', name: 'Night', folderCount: 1, own: [], library: [] } })
-    expect(screen.queryByText('From your library, published as they are now')).toBeNull()
+    expect(screen.queryByText('From your library, public as part of this collection')).toBeNull()
+    expect(screen.queryByText(/aren’t listed in Community on their own/)).toBeNull()
   })
 
   it('publishes an update, and says so while it runs', () => {

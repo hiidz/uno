@@ -258,10 +258,25 @@ func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUI
 	return nil
 }
 
+// catalogKind is what never changes about a catalog once it exists: its type
+// and provider. A folder source in the pushed collections blob names both, so
+// a change would alter what Nuvio should have with no save of any collection.
+type catalogKind struct {
+	catalogType, provider string
+}
+
+// sameKind reports whether input is of the kind stored is: the one rule every
+// write that rewrites a catalog's recipe holds to, whether it refuses a change
+// (an edit, an Update of a catalog copy) or replaces the catalog (an Update of
+// a collection copy).
+func sameKind(stored, input catalogKind) bool {
+	return stored == input
+}
+
 // storedCatalog is what UpdateUserCatalog reads of the row it rewrites: its
-// type and its scope.
+// kind and its scope.
 type storedCatalog struct {
-	catalogType  string
+	kind         catalogKind
 	collectionID sql.NullString
 }
 
@@ -270,8 +285,8 @@ type storedCatalog struct {
 func loadCatalogForUpdate(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID) (storedCatalog, error) {
 	var s storedCatalog
 	err := tx.QueryRowContext(ctx, `
-		SELECT r.type, c.collection_id FROM `+catalogsWithRecipes+` WHERE c.id = ? AND c.owner_id = ?
-	`, catalogID.String(), profileID.String()).Scan(&s.catalogType, &s.collectionID)
+		SELECT r.type, r.provider, c.collection_id FROM `+catalogsWithRecipes+` WHERE c.id = ? AND c.owner_id = ?
+	`, catalogID.String(), profileID.String()).Scan(&s.kind.catalogType, &s.kind.provider, &s.collectionID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return storedCatalog{}, ErrCatalogNotFound
@@ -287,16 +302,16 @@ func loadCatalogForUpdate(ctx context.Context, tx *sql.Tx, profileID, catalogID 
 //     collection's save (CollectionForm.CatalogEdits), so an edit made in the
 //     collection editor lands, or is discarded, with the rest of the
 //     collection.
-//   - A catalog's type is part of the pushed collections blob (each folder
-//     source names its catalog's type), so changing it here would alter what
-//     Nuvio should have with no save of any collection. The UI locks the
-//     field once a catalog exists; this is the server enforcing it.
+//   - A catalog's kind is part of the pushed collections blob (each folder
+//     source names its catalog's type and provider), so changing it here would
+//     alter what Nuvio should have with no save of any collection. The UI
+//     locks the type once a catalog exists; this is the server enforcing it.
 func checkCatalogRewrite(stored storedCatalog, input CatalogForm) error {
 	switch {
 	case stored.collectionID.Valid:
 		return fmt.Errorf("%w: a catalog inside a collection is edited through the collection's save", ErrInvalidInput)
-	case input.Type != stored.catalogType:
-		return fmt.Errorf("%w: a catalog's type can't be changed", ErrInvalidInput)
+	case !sameKind(stored.kind, catalogKind{input.Type, input.Provider}):
+		return fmt.Errorf("%w: a catalog's type and provider can't be changed", ErrInvalidInput)
 	}
 	return nil
 }

@@ -61,7 +61,9 @@ describe('pushSelection', () => {
   })
 
   it('throws when the profile was never selected', async () => {
-    fetchMock.mockResolvedValueOnce(new Response('profile not found\n', { status: 404 }))
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ error: 'profile not found', code: 'profile_not_found' }, { status: 404 }),
+    )
     await expect(pushSelection(0, body)).rejects.toBeInstanceOf(ProfileNotSelectedError)
   })
 })

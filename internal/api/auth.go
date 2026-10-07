@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
@@ -99,9 +100,9 @@ func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 		profile, err := s.vault.GetProfileBySlot(r.Context(), sub, index)
 		if err != nil {
 			if errors.Is(err, vault.ErrProfileNotFound) {
-				// The builder tells this 404 from a route's own by its text
+				// The builder tells this 404 from a route's own by its code
 				// (web/src/api/http.ts).
-				http.Error(w, "profile not found", http.StatusNotFound)
+				httpx.WriteJSON(w, http.StatusNotFound, codedError{Error: "profile not found", Code: codeProfileNotFound})
 				return
 			}
 			log.Printf("requireProfile: %v", err)

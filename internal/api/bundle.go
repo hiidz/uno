@@ -129,7 +129,7 @@ func (s *Server) checkImport(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
 	var req importCheckRequest
-	if !decodeStrictJSONLimit(w, r, &req, maxBundleBodyBytes) {
+	if !decodeJSONLimit(w, r, &req, maxBundleBodyBytes) {
 		return
 	}
 	if err := s.prepareBundle(r.Context(), &req.Bundle); err != nil {
@@ -256,7 +256,7 @@ func (s *Server) importBundle(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
 	var req importRequest
-	if !decodeStrictJSONLimit(w, r, &req, maxBundleBodyBytes) {
+	if !decodeJSONLimit(w, r, &req, maxBundleBodyBytes) {
 		return
 	}
 	b, err := s.importedBundle(r.Context(), req)

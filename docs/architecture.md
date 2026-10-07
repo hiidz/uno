@@ -299,10 +299,13 @@ Route-semantics facts the client has to honour:
   catalog, which replaces its params with the canonical form its row stores. So a bad file or
   recipe is a 400 (a recipe error names the catalog's key), and a TMDB outage a 502. Import runs
   all of that again rather than relying on an earlier check, then every form check before its
-  transaction opens; the reuse targets are checked inside it, and any failure writes nothing. The
-  two import routes take a body up to `maxBundleBodyBytes` (4 MiB, `decodeStrictJSONLimit`); every
-  other route keeps the 1 MiB `maxRequestBodyBytes`, and either limit exceeded is a 413. They decode
-  strictly: a key the bundle has no field for, a mistyped `"tile_shap"`, is a 400 that names it
+  transaction opens; the reuse targets are checked inside it (each must be a listed catalog of the
+  caller's holding the recipe of the bundle catalog it stands in for, `checkReuseRecipes`), and any
+  failure writes nothing. The
+  two import routes take a body up to `maxBundleBodyBytes` (4 MiB, `decodeJSONLimit`); every
+  other route keeps the 1 MiB `maxRequestBodyBytes`, and either limit exceeded is a 413. Every
+  route with a body decodes strictly (`decodeJSONLimit`, *Error responses* below): a key the bundle
+  has no field for, a mistyped `"tile_shap"`, is a 400 that names it
   (`invalid request body: unknown field "tile_shap"`) rather than being dropped with the field left
   at its default. `BundleCatalog.UnmarshalJSON` decodes strictly itself, since a custom unmarshaler
   does not inherit the outer decoder's setting.
@@ -552,7 +555,8 @@ no key, and each call's comes from its context (`provider.WithKeySource`):
 - **Routes.** `GET /api/config` (no sign-in) says the mode. `GET`, `PUT` and `DELETE
   /api/account/tmdb-key` read, save and remove the signed-in account's key, and answer `404` in
   shared mode (`perAccountKeys`). `GET` answers `{set, last4}`. `PUT {key}` trims the key and
-  refuses one that isn't 32 hexadecimal characters with a `400`, naming TMDB's Read Access Token
+  refuses one that isn't 32 hexadecimal characters with a `400` ("A TMDB API Key is 32
+  characters, 0–9 and a–f."), naming TMDB's Read Access Token
   when it is one (`tmdbkey.Clean`); then it checks the key with one call to TMDB's
   `/authentication` (`TMDBClient.CheckKey`). A key TMDB refuses is a `400`, TMDB unreachable a
   `502`, and neither saves anything.
@@ -683,6 +687,17 @@ field name in a machine-readable position. Per-field form errors are therefore g
 client-side by mirroring `provider`'s `Validate()`; a server 400 firing in normal use means the
 mirror has drifted, and that is its only job in the UI (an unexpected-case banner, not the
 primary error channel).
+
+**One 404 is JSON.** `requireProfile`'s answer for a profile slot the caller never selected is
+`{"error": "profile not found", "code": "profile_not_found"}` (`codedError`, `internal/api/respond.go`),
+the one error the SPA acts on by kind rather than by status: it reads the `code`, never the words
+(`ProfileNotSelectedError`, `web/src/api/http.ts`), and sends the user back to the profile picker.
+A route's own 404 (a catalog or a publication not found) stays plain text with no code.
+
+**Every body is decoded strictly.** `decodeJSONLimit` (`internal/api/respond.go`, 1 MiB, or 4 MiB
+for the import routes) refuses a field the request type doesn't have, at any depth, with a `400`
+that names it (`invalid request body: unknown field "focus_glow_enable"`). A lenient decoder
+would save a misspelled boolean as `false`, and a push in an older shape as an empty selection.
 
 Classification is unified: `writeVaultError` (`internal/api/respond.go`) is the single classifier
 for create/update/delete on both resources *and* for the two preview routes, so a recipe fails the
@@ -861,8 +876,10 @@ self-host build `39ea2bd` (2026-10-03).
 ordered list, `{rows: [{catalog_id, show_in_home} | {collection_id, pin_to_top}]}`: a row's place
 in `rows` is its place on Home, which push stores as its `home_sort_order` (`pushRequest.selection`,
 which turns the list into the vault's Home selection, `vault.PushedHome`, each entry with its
-`Position`). A row naming neither a catalog nor a collection, or both, is a 400. The body is
-decoded strictly (`decodeStrictJSON`): a field it doesn't have is a 400 before anything reaches Nuvio. A lenient
+`Position`). A row naming neither a catalog nor a collection, or both, is a 400, and so is a row
+naming a catalog or collection an earlier row names: a home screen holds each row once
+(`pushRequest.check`). The body is
+decoded strictly like every body (`decodeJSON`): a field it doesn't have is a 400 before anything reaches Nuvio. A lenient
 read would take a body in an older shape, from a tab loaded before a deploy, as an empty
 selection, and a full-replace push of that clears every Uno collection. The pin (`pin_to_top`)
 is part of the selection, not of a collection save: push builds each collection it sends with

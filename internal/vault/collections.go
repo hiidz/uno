@@ -256,18 +256,18 @@ type storedRecipe struct {
 // client.
 func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, e ScopedCatalogEdit) (storedRecipe, error) {
 	var s storedRecipe
-	var catalogType, catalogProvider string
+	var kind catalogKind
 	err := tx.QueryRowContext(ctx, `
 		SELECT r.type, r.provider, c.name, c.recipe_hash FROM `+catalogsWithRecipes+`
 		WHERE c.id = ? AND c.owner_id = ? AND c.collection_id = ?
-	`, e.ID.String(), profileID.String(), collectionID.String()).Scan(&catalogType, &catalogProvider, &s.name, &s.recipeHash)
+	`, e.ID.String(), profileID.String(), collectionID.String()).Scan(&kind.catalogType, &kind.provider, &s.name, &s.recipeHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storedRecipe{}, fmt.Errorf("%w: catalog %s is not inside this collection", ErrInvalidInput, e.ID)
 	}
 	if err != nil {
 		return storedRecipe{}, fmt.Errorf("loading edited catalog: %w", err)
 	}
-	if catalogType != e.Type || catalogProvider != e.Provider {
+	if !sameKind(kind, catalogKind{e.Type, e.Provider}) {
 		return storedRecipe{}, fmt.Errorf("%w: catalog %s: a catalog's type and provider can't be changed", ErrInvalidInput, e.ID)
 	}
 	return s, nil

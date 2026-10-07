@@ -46,25 +46,14 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 }
 
 // decodeJSONLimit decodes the request body into v, refusing a body over
-// limit bytes. An oversized body is its own status (413) rather than a
-// generic 400, so a client can tell "too big" from "malformed".
+// limit bytes and, as a 400 naming it, any field v doesn't have. Every route
+// with a body decodes this way: a field a client misspells would otherwise
+// save as its zero value (a misspelled focus_glow_enabled saves false), and a
+// push sent in another shape by a tab loaded before the shape changed would
+// read as an empty selection and take every Uno collection off Nuvio. An
+// oversized body is its own status (413) rather than a generic 400, so a
+// client can tell "too big" from "malformed".
 func decodeJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, limit)
-	return decoded(w, json.NewDecoder(r.Body), v)
-}
-
-// decodeStrictJSON is decodeJSON refusing, as a 400, any field v doesn't
-// have. Push decodes this way: its body is the whole selection, so one sent
-// in another shape, by a tab loaded before the shape changed, would otherwise
-// read as empty and take every Uno collection off Nuvio.
-func decodeStrictJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	return decodeStrictJSONLimit(w, r, v, maxRequestBodyBytes)
-}
-
-// decodeStrictJSONLimit is decodeStrictJSON with decodeJSONLimit's limit. The
-// import routes decode this way, so a mistyped key in a bundle is refused by
-// name rather than dropped.
-func decodeStrictJSONLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
@@ -168,6 +157,21 @@ var clientErrors = slices.Concat(keyFailures, []clientFailure{
 	{vault.ErrInvalidInput, http.StatusBadRequest, ""},
 	{vault.ErrConflict, http.StatusConflict, ""},
 })
+
+// codedError is the JSON body of an error the SPA acts on by kind rather than
+// by status: Error is its words and Code a stable name for it. Every other
+// error answer is plain text.
+type codedError struct {
+	Error string `json:"error"`
+	Code  string `json:"code"`
+}
+
+// The codedError codes.
+const (
+	// codeProfileNotFound: the caller has no Uno profile in the URL's slot, so
+	// it was never selected (requireProfile).
+	codeProfileNotFound = "profile_not_found"
+)
 
 // writeNuvioError classifies a Nuvio-call error and writes a plain-text
 // response: nuvio.ErrNuvioRequestFailed is upstream's fault (502, "nuvio

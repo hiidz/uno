@@ -436,3 +436,64 @@ func TestSubscribeCopiesStoredValuesAsTheyAre(t *testing.T) {
 		t.Error("the copy does not snapshot to what its publication holds")
 	}
 }
+
+// Lengths count characters, not bytes: a name made only of three-byte
+// characters fits at maxNameLen of them and not at one more, a media URL and a
+// cover emoji count the same way, and the message says characters because they
+// are.
+func TestLengthBoundsCountCharacters(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+
+	atCeiling := strings.Repeat("字", maxNameLen) // 600 bytes
+	if len(atCeiling) <= maxNameLen {
+		t.Fatalf("the test name is %d bytes, want more than %d", len(atCeiling), maxNameLen)
+	}
+	if _, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm(atCeiling)); err != nil {
+		t.Fatalf("create with a name of %d characters in a script of three-byte characters: %v", maxNameLen, err)
+	}
+	_, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: atCeiling, Folders: []FolderData{{Title: atCeiling}}})
+	if err != nil {
+		t.Fatalf("create a collection and folder titled with %d such characters: %v", maxNameLen, err)
+	}
+
+	over := strings.Repeat("字", maxNameLen+1)
+	_, err = db.CreateUserCatalog(ctx, owner, listedCatalogForm(over))
+	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "name is longer than 200 characters") {
+		t.Errorf("create with %d characters = %v, want ErrInvalidInput naming 200 characters", maxNameLen+1, err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		form CollectionForm
+		want string
+	}{
+		{"a cover emoji", CollectionForm{Title: "C", Folders: []FolderData{{Title: "F", FolderArt: FolderArt{CoverEmoji: strings.Repeat("字", maxCoverEmojiLen+1)}}}}, "cover emoji is longer than 32 characters"},
+		{"a genre", CollectionForm{Title: "C", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{CatalogID: &uuid.UUID{1}, Genre: strings.Repeat("字", maxGenreLen+1)}}}}}, "genre is longer than 64 characters"},
+		{"a media URL", CollectionForm{Title: "C", BackdropImageURL: "https://example.com/" + strings.Repeat("字", maxMediaURLLen)}, "backdrop image url is longer than 2048 characters"},
+	} {
+		if err := tc.form.Validate(); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: Validate = %v, want it to say %q", tc.name, err, tc.want)
+		}
+	}
+
+	// Within the bound in characters, though past it in bytes.
+	fits := CollectionForm{Title: "C", BackdropImageURL: "https://example.com/" + strings.Repeat("字", 1000)}
+	if len(fits.BackdropImageURL) <= maxMediaURLLen {
+		t.Fatalf("the test URL is %d bytes, want more than %d", len(fits.BackdropImageURL), maxMediaURLLen)
+	}
+	if err := fits.Validate(); err != nil {
+		t.Errorf("a URL of %d characters: Validate = %v, want nil", len([]rune(fits.BackdropImageURL)), err)
+	}
+}
+
+// A bundle catalog key counts characters too, like every other length.
+func TestBundleKeyLengthCountsCharacters(t *testing.T) {
+	if problem := bundleKeyProblem("", strings.Repeat("字", maxBundleKeyLen), map[string]bool{}); problem != "" {
+		t.Errorf("a key of %d characters: %q, want none", maxBundleKeyLen, problem)
+	}
+	if problem := bundleKeyProblem("", strings.Repeat("字", maxBundleKeyLen+1), map[string]bool{}); !strings.Contains(problem, "longer than 64 characters") {
+		t.Errorf("a key of %d characters: %q, want it too long", maxBundleKeyLen+1, problem)
+	}
+}

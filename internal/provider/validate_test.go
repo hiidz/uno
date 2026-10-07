@@ -423,3 +423,68 @@ func TestValidateParamsRejectsUnknownCatalogType(t *testing.T) {
 		t.Fatalf("TMDB requests = %d, want 0", n)
 	}
 }
+
+// A range whose low end is above its high end can't match any title, so the
+// server refuses it as the builder does. Zero is "unset": a range with no high
+// end, or one whose two ends are equal, is fine.
+func TestValidateRefusesAnInvertedRange(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		params  TMDBCommonParams
+		wantErr string
+	}{
+		{"vote_average inverted", TMDBCommonParams{VoteAverageGte: 8, VoteAverageLte: 6}, "vote_average_gte cannot be higher than vote_average_lte"},
+		{"vote_count inverted", TMDBCommonParams{VoteCountGte: 500, VoteCountLte: 100}, "vote_count_gte cannot be higher than vote_count_lte"},
+		{"runtime inverted", TMDBCommonParams{WithRuntimeGte: 120, WithRuntimeLte: 90}, "with_runtime_gte cannot be higher than with_runtime_lte"},
+		{"equal ends", TMDBCommonParams{VoteAverageGte: 7, VoteAverageLte: 7, WithRuntimeGte: 90, WithRuntimeLte: 90}, ""},
+		{"a low end alone", TMDBCommonParams{VoteAverageGte: 7, VoteCountGte: 100, WithRuntimeGte: 90}, ""},
+		{"a high end alone", TMDBCommonParams{VoteAverageLte: 7, VoteCountLte: 100, WithRuntimeLte: 90}, ""},
+		{"an ordered range", TMDBCommonParams{VoteAverageGte: 6, VoteAverageLte: 8}, ""},
+	} {
+		for kind, validate := range map[string]func() error{
+			"movie": TMDBMovieParams{TMDBCommonParams: tc.params}.Validate,
+			"tv":    TMDBTVParams{TMDBCommonParams: tc.params}.Validate,
+		} {
+			err := validate()
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Errorf("%s %s: Validate = %v, want nil", kind, tc.name, err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Errorf("%s %s: Validate = %v, want it to say %q", kind, tc.name, err, tc.wantErr)
+			}
+		}
+	}
+}
+
+// A fixed date is a YYYY-MM-DD date that exists, and a range's start is not
+// after its end; each type's own two fields are checked, and an empty bound is
+// unset.
+func TestValidateChecksFixedDates(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		from, to string
+		wantErr  string
+	}{
+		{"an ordered range", "2020-01-01", "2020-12-31", ""},
+		{"the same day", "2020-06-15", "2020-06-15", ""},
+		{"a start alone", "2020-01-01", "", ""},
+		{"an end alone", "", "2020-12-31", ""},
+		{"start after end", "2021-01-01", "2020-12-31", "cannot be after"},
+		{"a start in another form", "01/02/2020", "", "must be a date as YYYY-MM-DD"},
+		{"a start with a time", "2020-01-01T00:00:00Z", "", "must be a date as YYYY-MM-DD"},
+		{"an end that isn't a date", "", "soon", "must be a date as YYYY-MM-DD"},
+		{"a day that doesn't exist", "2021-02-30", "", "must be a date as YYYY-MM-DD"},
+		{"an unpadded month", "2020-1-05", "", "must be a date as YYYY-MM-DD"},
+	} {
+		movie := TMDBMovieParams{PrimaryReleaseDateGte: tc.from, PrimaryReleaseDateLte: tc.to}.Validate()
+		tv := TMDBTVParams{FirstAirDateGte: tc.from, FirstAirDateLte: tc.to}.Validate()
+		for kind, err := range map[string]error{"movie": movie, "tv": tv} {
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Errorf("%s %s: Validate = %v, want nil", kind, tc.name, err)
+			case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+				t.Errorf("%s %s: Validate = %v, want it to say %q", kind, tc.name, err, tc.wantErr)
+			}
+		}
+	}
+}

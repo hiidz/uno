@@ -236,12 +236,12 @@ func TestCatalogRoutes(t *testing.T) {
 	valid := `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{\"sort_by\":\"popularity.desc\"}"}`
 	runSteps(t, f.s, []routeStep{
 		{name: "unauthenticated", method: http.MethodGet, path: "/api/p/1/catalogs", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/catalogs", wantStatus: http.StatusNotFound, wantBody: "profile not found"},
+		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/catalogs", wantStatus: http.StatusNotFound, wantBody: `"code":"profile_not_found"`},
 		{name: "list", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
 		{name: "list includes the created catalog", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"New"`},
 		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
-		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "provider must be"},
+		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: `no recipes for provider "mdblist"`},
 		{name: "create with a broken recipe", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"tmdb","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest},
 		{name: "create with no name", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest},
 		{name: "update", method: http.MethodPut, path: mine, body: valid, wantStatus: http.StatusOK, wantBody: `"name":"Renamed"`},
@@ -518,5 +518,61 @@ func TestNewRequiresEveryDependency(t *testing.T) {
 		if _, err := New(d); err == nil || !strings.Contains(err.Error(), name) {
 			t.Errorf("New without %s: err = %v, want one naming it", name, err)
 		}
+	}
+}
+
+// Every route that takes a body decodes it strictly: a key the request type
+// doesn't have, at the top level or inside a folder, is a 400 naming it, so a
+// misspelled field never saves as its zero value.
+func TestRoutesRefuseAnUnknownField(t *testing.T) {
+	f := newRouteFixture(t)
+	noTMDB(t)
+	mine := "/api/p/1/catalogs/" + f.mine.ID.String()
+	collection := "/api/p/1/collections/" + f.mineColl.ID.String()
+	steps := []routeStep{
+		{"create a catalog", http.MethodPost, "/api/p/1/catalogs", `{"type":"movie","name":"X","provider":"tmdb","params":"{}","colour":"red"}`, false, 0, `unknown field "colour"`},
+		{"update a catalog", http.MethodPut, mine, `{"type":"movie","name":"X","provider":"tmdb","params":"{}","colour":"red"}`, false, 0, `unknown field "colour"`},
+		{"create a collection", http.MethodPost, "/api/p/1/collections", `{"title":"T","focus_glow_enable":true,"folders":[]}`, false, 0, `unknown field "focus_glow_enable"`},
+		{"update a collection", http.MethodPut, collection, `{"title":"T","focus_glow_enable":true,"folders":[]}`, false, 0, `unknown field "focus_glow_enable"`},
+		{"a folder of a collection", http.MethodPost, "/api/p/1/collections", `{"title":"T","folders":[{"title":"F","focus_gif_enable":true,"catalogs":[]}]}`, false, 0, `unknown field "focus_gif_enable"`},
+		{"a catalog ref of a folder", http.MethodPost, "/api/p/1/collections", `{"title":"T","folders":[{"title":"F","catalogs":[{"catalog_id":"` + f.mine.ID.String() + `","genres":"Action"}]}]}`, false, 0, `unknown field "genres"`},
+		{"select a profile", http.MethodPost, "/api/profiles/select", `{"profile_index":1,"index":1}`, false, 0, `unknown field "index"`},
+		{"preview a recipe", http.MethodPost, "/api/catalogs/preview", `{"type":"movie","params":"{}","gnre":"x"}`, false, 0, `unknown field "gnre"`},
+		{"genre options", http.MethodPost, "/api/catalogs/genre-options", `{"type":"movie","params":"{}","gnre":"x"}`, false, 0, `unknown field "gnre"`},
+		{"export", http.MethodPost, "/api/p/1/export", `{"catalog_ids":[],"collection":[]}`, false, 0, `unknown field "collection"`},
+		{"check an import", http.MethodPost, "/api/p/1/import/check", `{"bundle":{},"reuse":{}}`, false, 0, `unknown field "reuse"`},
+		{"import", http.MethodPost, "/api/p/1/import", `{"bundle":{},"skip":[]}`, false, 0, `unknown field "skip"`},
+		{"push", http.MethodPost, "/api/p/1/push", `{"rows":[],"row":[]}`, false, 0, `unknown field "row"`},
+	}
+	for i := range steps {
+		steps[i].wantStatus = http.StatusBadRequest
+	}
+	runSteps(t, f.s, steps)
+}
+
+// A profile slot the caller never selected answers 404 with a JSON body whose
+// code is profile_not_found, which is how the builder tells it from a route's
+// own 404, an ordinary plain-text answer with no code.
+func TestProfileNotFoundCarriesACode(t *testing.T) {
+	f := newRouteFixture(t)
+
+	w := serve(t, f.s, http.MethodGet, "/api/p/2/catalogs", "", false)
+	var body struct{ Error, Code string }
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body %q is not JSON: %v", w.Body.String(), err)
+	}
+	if w.Code != http.StatusNotFound || body.Code != "profile_not_found" || body.Error != "profile not found" {
+		t.Errorf("unselected slot = %d %+v, want 404 {profile not found, profile_not_found}", w.Code, body)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+
+	w = serve(t, f.s, http.MethodDelete, "/api/p/1/catalogs/"+uuid.NewString(), "", false)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("deleting a missing catalog = %d, want 404", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "profile_not_found") || json.Valid(w.Body.Bytes()) {
+		t.Errorf("a route's own 404 = %q, want plain text with no code", w.Body.String())
 	}
 }

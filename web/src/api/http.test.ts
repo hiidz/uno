@@ -73,11 +73,36 @@ describe('failed responses', () => {
   })
 
   it('reads the profile check\'s 404 as the profile never having been selected', async () => {
-    answer(new Response('profile not found\n', { status: 404 }))
+    answer(Response.json({ error: 'profile not found', code: 'profile_not_found' }, { status: 404 }))
     const err = await rejection(getJSON('/api/p/3/catalogs'))
     expect(err).toBeInstanceOf(ProfileNotSelectedError)
     expect(err).toBeInstanceOf(ApiError)
-    expect(err).toMatchObject({ status: 404 })
+    expect(err).toMatchObject({ status: 404, message: 'profile not found' })
+  })
+
+  it('tells the profile check\'s 404 by its code, not by its words', async () => {
+    answer(Response.json({ error: 'No such profile here', code: 'profile_not_found' }, { status: 404 }))
+    await expect(rejection(getJSON('/api/p/3/catalogs'))).resolves.toBeInstanceOf(ProfileNotSelectedError)
+
+    answer(new Response('profile not found\n', { status: 404 }))
+    const plain = await rejection(getJSON('/api/p/3/catalogs'))
+    expect(plain).toBeInstanceOf(ApiError)
+    expect(plain).not.toBeInstanceOf(ProfileNotSelectedError)
+
+    answer(Response.json({ error: 'profile not found', code: 'something_else' }, { status: 404 }))
+    await expect(rejection(getJSON('/api/p/3/catalogs'))).resolves.not.toBeInstanceOf(ProfileNotSelectedError)
+
+    answer(Response.json({ error: 'profile not found', code: 'profile_not_found' }, { status: 400 }))
+    await expect(rejection(getJSON('/api/p/3/catalogs'))).resolves.not.toBeInstanceOf(ProfileNotSelectedError)
+  })
+
+  it('words a JSON error body by its error field and keeps the body', async () => {
+    answer(Response.json({ error: 'Something specific', code: 'x' }, { status: 409 }))
+    await expect(getJSON('/api/p/1/catalogs')).rejects.toMatchObject({
+      status: 409,
+      message: 'Something specific',
+      body: { error: 'Something specific', code: 'x' },
+    })
   })
 
   it('reads a route\'s own 404 under a profile as an ordinary failure', async () => {

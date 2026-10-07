@@ -253,6 +253,13 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   changes `collection_id`. `CreateUserCollection` refuses any edit,
   since a new collection has no scoped catalogs. So an edit made in the collection editor lands
   with the rest of the collection, and a discarded one never wrote anything.
+- **A catalog's kind, its type and provider, never changes.** A folder source in the pushed
+  collections blob names both, so a change would alter what Nuvio should have with no save of any
+  collection. `sameKind` (`internal/vault/catalogs.go`) is the one comparison every write holds to:
+  `UpdateUserCatalog` and a collection save's catalog edit refuse a recipe of another kind
+  (`ErrInvalidInput`), and an Update of a subscribed copy applies the same rule in its own shape
+  (below): a catalog copy refuses a snapshot of another kind, a collection copy replaces the
+  scoped catalog with a new one.
 - **A profile's data graph is closed: references never cross an owner boundary.** A folder may
   reference a catalog only if `internal/vault/access.go`'s `validateFolderRefs` accepts it: the
   catalog's `owner_id` must equal the collection's `owner_id`, and the catalog's `collection_id`
@@ -440,7 +447,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   collection's and a folder's `title`; `maxParamsLen` (8192) a catalog's `params` JSON;
   `maxCoverEmojiLen` (32) a folder's `cover_emoji`; `maxGenreLen` (64) a folder ref's genre;
   `maxMediaURLLen` (2048) every media URL; `maxNewKeyLen` (128) an inline-`new` entry's client
-  key; and `maxFoldersPerCollection`/`maxRefsPerFolder` (100 each) how many folders a collection
+  key (every length counts characters, as runes: `tooLong`, so a name in a script of multi-byte
+  characters fits as many of them as one in Latin, and the messages say "characters"); and `maxFoldersPerCollection`/`maxRefsPerFolder` (100 each) how many folders a collection
   holds and how many catalog refs a folder holds. These are bounds against absurdity, not product
   limits — each one sits well past anything the builder can produce — and they exist because
   `api.maxRequestBodyBytes` (1 MiB) is no substitute: 1 MiB is thousands of folders, and every one
@@ -532,7 +540,9 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     change.
 - **Publish** (`PublishCatalog`, `PublishCollection`) snapshots an owner's listed catalog or
   collection, including every private library catalog a collection references: publishing is
-  the consent to publish them. In one write transaction it reads the source, runs the form
+  the consent to make them publicly readable as part of that collection. They are not listed in
+  Community on their own: `ListCommunity` lists the publication, never the catalogs inside its
+  snapshot. In one write transaction it reads the source, runs the form
   validators the snapshot's copies are written through, and writes the publication. It makes no
   TMDB call: every recipe was checked against TMDB when its row was saved. A catalog
   inside a collection and a subscribed copy are refused (`ErrInvalidInput`): only its publisher
@@ -600,8 +610,8 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   - a snapshot folder whose key names one of the copy's folders keeps that folder's id; the
     others are new folders under their keys, and the copy's folders the snapshot no longer has
     are removed;
-  - a snapshot catalog whose key names one of the copy's scoped catalogs, of the same type and
-    provider, is a catalog edit of it; any other is a new scoped catalog under its key, and a
+  - a snapshot catalog whose key names one of the copy's scoped catalogs, of the same kind
+    (`sameKind`: type and provider), is a catalog edit of it; any other is a new scoped catalog under its key, and a
     catalog no folder references any more is removed;
   - the copy's pin and Home placement stay; on Home, an update that changes what push sends for
     it leaves it waiting for a push (`PendingPush`), so Home shows the update as a change to push.
@@ -650,7 +660,9 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   folders in order as their tiles show them (`folders`: each folder's `title`, `tile_shape`,
   `cover_emoji` and `cover_image_url`, from the same snapshot; `[]` for a catalog), and for a
   catalog its recipe. It never carries a publisher. `GetPublication` returns one publication with its
-  snapshot.
+  snapshot, and unlike the list, Subscribe and Duplicate it also answers for the caller's own
+  publication, so a publisher can preview their page as everyone else sees it. Subscribing to or
+  duplicating one's own publication is still refused.
 
 ## Recipe params (TMDB)
 
@@ -684,12 +696,17 @@ describing what a TMDB-backed catalog may ask for.
   and names the first one set, so a field added later is covered without editing it.
 - **Validation split, part one: the rules that need no network.** `Validate()` on each leaf type
   checks the `sort_by` enum (per type — movie and tv have different sort vocabularies),
-  fixed-vs-rolling date exclusivity, that the rolling window isn't negative, (movie) that
+  fixed-vs-rolling date exclusivity, that the rolling window isn't negative and is at most 50
+  years (`maxWithinDays`; the builder's presets stop at 10, so the cap bounds a hand-written request),
+  that each fixed date is a `YYYY-MM-DD` date that exists (`time.Parse`) and a range's start isn't
+  after its end (`dateRangeError`), (movie) that
   `with_collection` is a single id rather than a `,`/`|` list with no other filter beside it, and
   (series) that `with_networks` holds at most 20 ids, then delegates
   to `TMDBCommonParams`'s shared check for the two required-together pairs (certification needs
   a country, watch providers need a region), the numeric bounds (`vote_average_*` within
-  0–10, and no negative `vote_count_*` or `with_runtime_*`), and the id-list cap:
+  0–10, and no negative `vote_count_*` or `with_runtime_*`), that no range is inverted
+  (`vote_average`, `vote_count` and `with_runtime` with a low end above a set high end, which
+  no title can satisfy; `rangeError`), and the id-list cap:
   `with_companies`, `with_keywords`, `without_companies` and `without_keywords` each hold at
   most 20 ids (`maxEntityIDs`, counted with
   `parseIDList`), so an over-cap recipe is rejected before any TMDB lookup. Zero means "unset" for every numeric
@@ -848,7 +865,7 @@ Version 1:
   keys between the top-level ones. A scoped catalog can't be selected by itself; it travels
   inside its collection.
 - **File-level rules** (`Bundle.Validate`): format `"uno"` and version 1; each key non-empty, at
-  most 64 bytes, and unique across the whole bundle; `params` a JSON object; a ref names a
+  most 64 characters, and unique across the whole bundle; `params` a JSON object; a ref names a
   top-level key or one of its own collection's keys, never another collection's; at most 200
   catalogs (top-level and in collections together) and 50 collections. Every problem is listed in
   one 400. Decoding refuses a key a type has no field for, naming it (the import routes decode
@@ -868,8 +885,12 @@ Version 1:
 - Imported rows are unpublished and off Home, subscribed to nothing, and in no push record. Titles are kept as they are, with no "(copy)" suffix.
 - **Optional reuse.** `reuse` maps a bundle catalog key, top-level or a collection's own, to one
   of the importer's own *listed* catalogs; its refs then point at that row and no new row is
-  written for it. The import check offers the listed catalogs whose recipe matches. A reuse
-  target owned by someone else, or scoped to one of the importer's collections, fails the import.
+  written for it. The import check offers the listed catalogs whose recipe matches, and the vault
+  holds every reuse to that: the target's `recipe_hash` must equal the `RecipeHash` of the bundle
+  catalog its key names (`checkReuseRecipes`, inside the import's transaction), so a hand-written
+  `reuse` can't point a movie key at a series catalog or a catalog with other filters. A reuse
+  target owned by someone else, or scoped to one of the importer's collections, or holding another
+  recipe, fails the import.
   Reuse can map two bundle catalogs onto one row, so within a folder a repeated (catalog, trimmed
   genre) ref is dropped, keeping the first.
 - **All or nothing.** Every check that needs no database runs before the transaction. Inside it,

@@ -179,19 +179,13 @@ func pathTMDBID(w http.ResponseWriter, r *http.Request) (int, bool) {
 var errUpstreamValidation = errors.New("cannot validate params against TMDB")
 
 // validateCatalogParams checks the TMDB-specific recipe rules for a
-// catalog's params. provider is constrained to "tmdb" here as well as in
-// vault.CatalogForm.Validate() — this is the path that actually parses
-// params, so an unrecognized provider must be rejected here too rather than
-// passed through, or its params never get validated at all. The catalog
-// type's own params shape comes from provider.DecodeParams, the one place
-// that mapping lives. Every error returned is wrapped in
-// vault.ErrInvalidInput so callers can route it through the same errors.Is
-// switch as a vault-layer failure.
-func (s *Server) validateCatalogParams(ctx context.Context, catalogType, catalogProvider, params string) error {
-	if catalogProvider != "tmdb" {
-		return fmt.Errorf("%w: provider must be %q", vault.ErrInvalidInput, "tmdb")
-	}
-
+// catalog's params. It judges them as TMDB's, so a caller holding a recipe of
+// another provider doesn't reach it: checkRecipe's canonical form, and the
+// vault's form validation, refuse that provider. The catalog type's own params
+// shape comes from provider.DecodeParams, the one place that mapping lives.
+// Every error returned is wrapped in vault.ErrInvalidInput so callers can
+// route it through the same errors.Is switch as a vault-layer failure.
+func (s *Server) validateCatalogParams(ctx context.Context, catalogType, params string) error {
 	p, err := provider.DecodeParams(catalogType, params)
 	if err != nil {
 		if errors.Is(err, provider.ErrInvalidCatalogType) {
@@ -229,7 +223,7 @@ func (s *Server) validateCatalogParams(ctx context.Context, catalogType, catalog
 // vault.ErrInvalidInput or errUpstreamValidation, the same as
 // validateCatalogParams, so writeVaultError classifies them.
 func (s *Server) checkRecipe(ctx context.Context, catalogType, catalogProvider, params string) (string, error) {
-	if err := s.validateCatalogParams(ctx, catalogType, catalogProvider, params); err != nil {
+	if err := s.validateCatalogParams(ctx, catalogType, params); err != nil {
 		return "", err
 	}
 	canonical, err := provider.CanonicalParams(catalogType, catalogProvider, params)

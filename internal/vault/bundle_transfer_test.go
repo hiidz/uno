@@ -155,6 +155,28 @@ func createListed(t *testing.T, db *DB, owner uuid.UUID, name string) Catalog {
 	return c
 }
 
+// reusedFrom is the catalog of b under key, top-level or a collection's own.
+func reusedFrom(b Bundle, key string) BundleCatalog {
+	for _, c := range append(slices.Clone(b.Catalogs), b.Collections[0].Catalogs...) {
+		if c.Key == key {
+			return c
+		}
+	}
+	panic("no bundle catalog " + key)
+}
+
+// createLike creates a listed catalog named name holding the recipe of like.
+func createLike(t *testing.T, db *DB, owner uuid.UUID, name string, like BundleCatalog) Catalog {
+	t.Helper()
+	c, err := db.CreateUserCatalog(context.Background(), owner, CatalogForm{
+		Type: like.Type, Name: name, Provider: like.Provider, Params: string(like.Params),
+	})
+	if err != nil {
+		t.Fatalf("create %s: %v", name, err)
+	}
+	return c
+}
+
 // Selected catalogs come first in library order whatever order they were
 // asked for in, then each listed catalog a collection references, once; a
 // scoped catalog stays in its collection's own list.
@@ -381,11 +403,12 @@ func TestImportBundleReuse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newTestDB(t)
 			importer := newTestProfile(t, db, "importer")
-			mine := createListed(t, db, importer, "Mine")
 			b := readTestBundle(t)
 			if tc.sameGenre {
 				b.Collections[0].Folders[0].Refs[1].Genre = ""
+				b.Collections[0].Catalogs[0].Params = b.Catalogs[0].Params
 			}
+			mine := createLike(t, db, importer, "Mine", reusedFrom(b, tc.reuse[0]))
 			reuse := map[string]uuid.UUID{}
 			for _, key := range tc.reuse {
 				reuse[key] = mine.ID
@@ -440,6 +463,15 @@ func TestImportBundleFailsWhole(t *testing.T) {
 			scoped, _ := scopedCatalogInFolder(t, db, importer, newTestCollection(t, db, importer, "Own"), "Scoped")
 			return readTestBundle(t), map[string]uuid.UUID{"c1": scoped.ID}
 		}, "is not usable in this collection's folders"},
+		{"a listed catalog of another type", func(t *testing.T, db *DB, importer uuid.UUID) (Bundle, map[string]uuid.UUID) {
+			b := readTestBundle(t)
+			series := reusedFrom(b, "c1")
+			series.Type = "series"
+			return b, map[string]uuid.UUID{"c1": createLike(t, db, importer, "Series", series).ID}
+		}, `reuse catalog key "c1" points at a catalog with a different recipe`},
+		{"a listed catalog with other filters", func(t *testing.T, db *DB, importer uuid.UUID) (Bundle, map[string]uuid.UUID) {
+			return readTestBundle(t), map[string]uuid.UUID{"c3": createListed(t, db, importer, "Other").ID}
+		}, `reuse catalog key "c3" points at a catalog with a different recipe`},
 		{"a key the bundle doesn't have", func(t *testing.T, _ *DB, _ uuid.UUID) (Bundle, map[string]uuid.UUID) {
 			return readTestBundle(t), map[string]uuid.UUID{"c9": uuid.New()}
 		}, `reuse names catalog key "c9"`},

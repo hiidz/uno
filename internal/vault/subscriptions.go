@@ -284,7 +284,7 @@ func updateCatalogCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sub
 // snapshot of another type, since a catalog's type never changes, or one a
 // catalog save would refuse.
 func catalogCopyProblem(c Catalog, want CatalogForm) error {
-	if want.Type != c.Type {
+	if !sameKind(catalogKind{c.Type, c.Provider}, catalogKind{want.Type, want.Provider}) {
 		return fmt.Errorf("%w: its publisher changed its type, so this update can't apply to your copy; duplicate it from Community instead", ErrInvalidInput)
 	}
 	return want.Validate()
@@ -382,7 +382,7 @@ func matchCopyCatalogs(catalogs []BundleCatalog, copies map[string]Catalog) cata
 	m := catalogMatch{counterparts: map[string]uuid.UUID{}, edits: []ScopedCatalogEdit{}, fresh: []BundleCatalog{}}
 	for _, c := range catalogs {
 		counterpart, ok := copies[c.Key]
-		if !ok || counterpart.Type != c.Type || counterpart.Provider != c.Provider {
+		if !ok || !sameKind(catalogKind{counterpart.Type, counterpart.Provider}, catalogKind{c.Type, c.Provider}) {
 			m.fresh = append(m.fresh, c)
 			continue
 		}

@@ -127,22 +127,24 @@ func TestValidateCatalogParams(t *testing.T) {
 	cancel()
 
 	tests := []struct {
-		name, catalogType, catalogProvider, params string
-		ctx                                        context.Context
-		wantErr                                    error
+		name, catalogType, params string
+		ctx                       context.Context
+		wantErr                   error
 	}{
-		{"clean recipe", "movie", "tmdb", `{"sort_by":"popularity.desc"}`, t.Context(), nil},
-		{"other provider", "movie", "mdblist", `{}`, t.Context(), vault.ErrInvalidInput},
-		{"unknown catalog type", "anime", "tmdb", `{}`, t.Context(), vault.ErrInvalidInput},
-		{"undecodable params", "movie", "tmdb", `{`, t.Context(), vault.ErrInvalidInput},
-		{"recipe rule broken", "movie", "tmdb", `{"sort_by":"bogus.desc"}`, t.Context(), vault.ErrInvalidInput},
-		{"vocabulary rejected", "series", "tmdb", `{"with_collection":"10"}`, t.Context(), vault.ErrInvalidInput},
-		{"TMDB unreachable", "movie", "tmdb", `{"with_genres":"28"}`, cancelled, errUpstreamValidation},
+		{"clean recipe", "movie", `{"sort_by":"popularity.desc"}`, t.Context(), nil},
+		{"unknown catalog type", "anime", `{}`, t.Context(), vault.ErrInvalidInput},
+		{"undecodable params", "movie", `{`, t.Context(), vault.ErrInvalidInput},
+		{"recipe rule broken", "movie", `{"sort_by":"bogus.desc"}`, t.Context(), vault.ErrInvalidInput},
+		{"inverted range", "movie", `{"vote_count_gte":500,"vote_count_lte":100}`, t.Context(), vault.ErrInvalidInput},
+		{"inverted fixed dates", "series", `{"first_air_date_gte":"2021-01-01","first_air_date_lte":"2020-01-01"}`, t.Context(), vault.ErrInvalidInput},
+		{"fixed date in another form", "movie", `{"primary_release_date_gte":"1/2/2020"}`, t.Context(), vault.ErrInvalidInput},
+		{"vocabulary rejected", "series", `{"with_collection":"10"}`, t.Context(), vault.ErrInvalidInput},
+		{"TMDB unreachable", "movie", `{"with_genres":"28"}`, cancelled, errUpstreamValidation},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := s.validateCatalogParams(tc.ctx, tc.catalogType, tc.catalogProvider, tc.params)
+			err := s.validateCatalogParams(tc.ctx, tc.catalogType, tc.params)
 			if tc.wantErr == nil {
 				if err != nil {
 					t.Fatalf("err = %v, want nil", err)
@@ -156,5 +158,19 @@ func TestValidateCatalogParams(t *testing.T) {
 				t.Fatalf("err = %v, an unreachable TMDB must not read as a rejected recipe", err)
 			}
 		})
+	}
+}
+
+// checkRecipe refuses a recipe of any provider but TMDB as a 400's
+// vault.ErrInvalidInput, through the canonical form, not through a check of
+// its own ahead of validateCatalogParams.
+func TestCheckRecipeRefusesAnotherProvider(t *testing.T) {
+	s := newProfileTestServer(t, newTestVaultDB(t))
+	if _, err := s.checkRecipe(t.Context(), "movie", "tmdb", `{"sort_by":"popularity.desc"}`); err != nil {
+		t.Fatalf("a TMDB recipe: %v", err)
+	}
+	_, err := s.checkRecipe(t.Context(), "movie", "mdblist", `{}`)
+	if !errors.Is(err, vault.ErrInvalidInput) || !strings.Contains(err.Error(), `no recipes for provider "mdblist"`) {
+		t.Fatalf("a recipe of another provider: %v, want vault.ErrInvalidInput naming the provider", err)
 	}
 }

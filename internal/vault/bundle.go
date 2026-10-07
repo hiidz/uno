@@ -185,7 +185,7 @@ func bundleKeyProblem(prefix, key string, seen map[string]bool) string {
 	switch {
 	case key == "":
 		return prefix + "key is required"
-	case len(key) > maxBundleKeyLen:
+	case tooLong(key, maxBundleKeyLen):
 		return fmt.Sprintf("%skey is longer than %d characters", prefix, maxBundleKeyLen)
 	case seen[key]:
 		return fmt.Sprintf("%skey %q is used by another catalog", prefix, key)

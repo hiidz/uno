@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicationDetail } from '@/api'
-import { failWith, fakeApi, type FakeRoute } from '@/test/fakeApi'
+import { failWith, fakeApi, profileNotFound, type FakeRoute } from '@/test/fakeApi'
 import { communityFolder, communityItem } from '@/test/fixtures'
 import type { OpenPublication } from './communityQuery'
 import { CommunityView } from './CommunityView'
@@ -394,7 +394,7 @@ describe('CommunityView', () => {
   })
 
   it('sends an unselected profile back to the picker', async () => {
-    renderView({ 'GET /api/p/1/community': () => failWith(404, 'profile not found') })
+    renderView({ 'GET /api/p/1/community': () => profileNotFound() })
     expect(await screen.findByText('Pick a profile')).toBeInTheDocument()
   })
 })

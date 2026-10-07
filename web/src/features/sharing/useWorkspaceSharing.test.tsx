@@ -191,7 +191,7 @@ describe('useWorkspaceSharing', () => {
     )
     expect(screen.getByRole('button', { name: 'Publish…' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Publish…' }))
-    expect(within(dialog()).getByText('From your library, published as they are now')).toBeInTheDocument()
+    expect(within(dialog()).getByText('From your library, public as part of this collection')).toBeInTheDocument()
     expect(within(dialog()).getByText('Giallo')).toBeInTheDocument()
     expect(within(dialog()).getByText('From Community')).toBeInTheDocument()
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Publish' }))

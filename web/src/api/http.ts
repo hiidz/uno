@@ -72,21 +72,44 @@ function parseJSONOrUndefined(text: string): unknown {
   }
 }
 
-/** The text of `requireProfile`'s 404 (`internal/api/auth.go`), which tells it
+/** The `code` of `requireProfile`'s 404 (`internal/api/auth.go`), which tells it
  *  from a route's own. */
-const PROFILE_NOT_FOUND = 'profile not found'
+const PROFILE_NOT_FOUND_CODE = 'profile_not_found'
+
+/** A string field of an error body that is a JSON object, else `undefined`. */
+function stringField(body: unknown, name: string): string | undefined {
+  const value: unknown = Object(body)[name] // Object() of null or undefined is {}
+  return typeof value === 'string' ? value : undefined
+}
+
+/** The answer's body text, or `''` when it can't be read. */
+async function bodyText(res: Response): Promise<string> {
+  return (await res.text().catch(() => '')).trim()
+}
+
+/** The words of a failed answer: a JSON body's `error`, else its text, else
+ *  the status. */
+function failureMessage(status: number, text: string, body: unknown): string {
+  return stringField(body, 'error') || text || `Request failed (${status})`
+}
+
+/** Whether a failed answer is `requireProfile`'s 404. */
+function isProfileNotFound(status: number, body: unknown): boolean {
+  return status === 404 && stringField(body, 'code') === PROFILE_NOT_FOUND_CODE
+}
 
 /** The error a failed answer is thrown as. */
 async function failure(res: Response): Promise<ApiError> {
   if (res.status === 429) return new RateLimitedError(res.headers.get('Retry-After'))
-  // The Go handlers write errors with `http.Error`, so the body is plain
-  // text and more specific than anything the status alone gives.
-  const body = (await res.text().catch(() => '')).trim()
-  const message = body || `Request failed (${res.status})`
-  if (res.status === 404 && body === PROFILE_NOT_FOUND) {
-    return new ProfileNotSelectedError(message)
-  }
-  return new ApiError(res.status, message, parseJSONOrUndefined(body))
+  // Most Go handlers write errors with `http.Error`, so the body is plain
+  // text and more specific than anything the status alone gives. The few
+  // that write JSON carry their words in `error`, and the profile check's
+  // 404 a `code` as well.
+  const text = await bodyText(res)
+  const body = parseJSONOrUndefined(text)
+  const message = failureMessage(res.status, text, body)
+  if (isProfileNotFound(res.status, body)) return new ProfileNotSelectedError(message)
+  return new ApiError(res.status, message, body)
 }
 
 async function request(path: string, init?: RequestInit): Promise<unknown> {

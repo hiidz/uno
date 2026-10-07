@@ -44,11 +44,20 @@ function CatalogGroup({ title, catalogs, genres }: { title: string; catalogs: Ca
   )
 }
 
-/** The library catalogs a collection uses, published as they stand; nothing
- *  when it uses none. */
+/** The library catalogs a collection uses: readable by anyone who opens the
+ *  collection, as they stand, but not listed in Community on their own;
+ *  nothing when it uses none. */
 function LibraryGroup({ catalogs, genres }: { catalogs: Catalog[]; genres: GenreLookups }) {
   if (catalogs.length === 0) return null
-  return <CatalogGroup title="From your library, published as they are now" catalogs={catalogs} genres={genres} />
+  return (
+    <>
+      <CatalogGroup title="From your library, public as part of this collection" catalogs={catalogs} genres={genres} />
+      <p className="text-dim m-0">
+        Anyone who opens this collection can read these catalogs as they are now. They aren’t listed in Community on
+        their own.
+      </p>
+    </>
+  )
 }
 
 /** The server's refusal, in the dialog. */
@@ -117,8 +126,9 @@ interface PublishDialogProps {
 /**
  * Asks before publishing a row, or publishing its update, and lists
  * everything the publication will hold, each catalog with its recipe line. A
- * collection's library catalogs sit under their own heading: they are
- * published as they are now, which someone reading the collection's name
+ * collection's library catalogs sit under their own heading: they become
+ * readable as part of the collection, as they are now, though Community
+ * doesn't list them on their own, which someone reading the collection's name
  * alone might not expect. A catalog added from Community carries the From
  * Community sticker, so it is clear it is someone else's catalog being
  * published as it stands. Publishing makes no copy for anyone; people add it

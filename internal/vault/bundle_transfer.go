@@ -102,7 +102,8 @@ func indexByID[T any](items []T, idOf func(T) uuid.UUID) map[uuid.UUID]int {
 // checks the recipes (api.prepareBundle). Every check that needs no
 // database runs before the transaction: Bundle.Validate, the reuse keys, and
 // each row's form validator. Inside it, each reuse target must be one of
-// profileID's listed catalogs. Any failure writes nothing.
+// profileID's listed catalogs, holding the same recipe as the bundle catalog
+// it stands in for. Any failure writes nothing.
 func (db *DB) ImportBundle(ctx context.Context, profileID uuid.UUID, b Bundle, reuse map[string]uuid.UUID) ([]Catalog, []CollectionWithFolders, error) {
 	plan, err := planImport(profileID, b, reuse)
 	if err != nil {
@@ -122,11 +123,19 @@ func (db *DB) ImportBundle(ctx context.Context, profileID uuid.UUID, b Bundle, r
 
 // importPlan is what ImportBundle writes, fully checked except for the reuse
 // targets: the new listed catalogs, the collection forms, and the reused
-// catalog ids.
+// catalogs.
 type importPlan struct {
 	listed      []Catalog
 	collections []CollectionForm
-	reuseIDs    []uuid.UUID
+	reuse       []reuseTarget
+}
+
+// reuseTarget is a catalog an import points a bundle catalog's refs at, with
+// the recipe hash the bundle catalog has: the target must hold the same recipe.
+type reuseTarget struct {
+	key  string
+	id   uuid.UUID
+	hash string
 }
 
 // planImport checks b and reuse and builds the rows ImportBundle writes; see
@@ -146,7 +155,7 @@ func planImport(profileID uuid.UUID, b Bundle, reuse map[string]uuid.UUID) (impo
 	if err != nil {
 		return importPlan{}, err
 	}
-	return importPlan{listed: listed, collections: collections, reuseIDs: sortedValues(reuse)}, nil
+	return importPlan{listed: listed, collections: collections, reuse: reuseTargets(b, reuse)}, nil
 }
 
 // checkReuseKeys confirms every key reuse maps is a catalog key of b.
@@ -163,24 +172,70 @@ func checkReuseKeys(b Bundle, reuse map[string]uuid.UUID) error {
 // bundleKeys is the set of every catalog key in b.
 func bundleKeys(b Bundle) map[string]bool {
 	keys := map[string]bool{}
-	for _, c := range b.Catalogs {
-		keys[c.Key] = true
-	}
-	for _, bc := range b.Collections {
-		for _, c := range bc.Catalogs {
-			keys[c.Key] = true
-		}
+	for key := range bundleRecipeHashes(b) {
+		keys[key] = true
 	}
 	return keys
 }
 
-// sortedValues is reuse's catalog ids, ordered by key.
-func sortedValues(reuse map[string]uuid.UUID) []uuid.UUID {
-	ids := make([]uuid.UUID, 0, len(reuse))
+// bundleRecipeHashes is the recipe hash of every catalog in b by its key.
+func bundleRecipeHashes(b Bundle) map[string]string {
+	hashes := map[string]string{}
+	add := func(c BundleCatalog) { hashes[c.Key] = RecipeHash(c.Type, c.Provider, string(c.Params)) }
+	for _, c := range b.Catalogs {
+		add(c)
+	}
+	for _, bc := range b.Collections {
+		for _, c := range bc.Catalogs {
+			add(c)
+		}
+	}
+	return hashes
+}
+
+// reuseTargets is reuse as targets, ordered by key. Every key of reuse is one
+// of b's (checkReuseKeys).
+func reuseTargets(b Bundle, reuse map[string]uuid.UUID) []reuseTarget {
+	hashes := bundleRecipeHashes(b)
+	targets := make([]reuseTarget, 0, len(reuse))
 	for _, key := range slices.Sorted(maps.Keys(reuse)) {
-		ids = append(ids, reuse[key])
+		targets = append(targets, reuseTarget{key: key, id: reuse[key], hash: hashes[key]})
+	}
+	return targets
+}
+
+// reuseIDs is the id of each target.
+func reuseIDs(targets []reuseTarget) []uuid.UUID {
+	ids := make([]uuid.UUID, len(targets))
+	for i, t := range targets {
+		ids[i] = t.id
 	}
 	return ids
+}
+
+// checkReuseTargets confirms each target is one of profileID's listed catalogs
+// and holds the recipe of the bundle catalog that names it.
+func checkReuseTargets(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, targets []reuseTarget) error {
+	if err := validateFolderRefs(ctx, tx, profileID, nil, reuseIDs(targets)); err != nil {
+		return err
+	}
+	return checkReuseRecipes(ctx, tx, targets)
+}
+
+// checkReuseRecipes confirms each target holds the recipe of the bundle catalog
+// that names it, so a reused catalog is the one the file describes and not
+// another type or another filter. The targets are already known to exist.
+func checkReuseRecipes(ctx context.Context, tx *sql.Tx, targets []reuseTarget) error {
+	for _, t := range targets {
+		held, err := queryStrings(ctx, tx, "recipe hash", `SELECT recipe_hash FROM catalogs WHERE id = ?`, t.id.String())
+		if err != nil {
+			return err
+		}
+		if !slices.Equal(held, []string{t.hash}) {
+			return fmt.Errorf("%w: reuse catalog key %q points at a catalog with a different recipe", ErrInvalidInput, t.key)
+		}
+	}
+	return nil
 }
 
 // mintListed builds a new listed catalog, owned by profileID, for each
@@ -275,10 +330,11 @@ func dedupeCatalogRefs(refs []FolderCatalogRef) []FolderCatalogRef {
 }
 
 // write writes p inside tx: it checks each reuse target is one of
-// profileID's listed catalogs, inserts the new listed catalogs, then creates
-// each collection, all in bundle order. Returns the new collections' ids.
+// profileID's listed catalogs holding the recipe its bundle catalog has,
+// inserts the new listed catalogs, then creates each collection, all in bundle
+// order. Returns the new collections' ids.
 func (p importPlan) write(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) ([]uuid.UUID, error) {
-	if err := validateFolderRefs(ctx, tx, profileID, nil, p.reuseIDs); err != nil {
+	if err := checkReuseTargets(ctx, tx, profileID, p.reuse); err != nil {
 		return nil, err
 	}
 	if err := insertCatalogs(ctx, tx, p.listed); err != nil {

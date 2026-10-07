@@ -36,18 +36,43 @@ type pushRow struct {
 	PinToTop     bool       `json:"pin_to_top,omitempty"`
 }
 
+// id is the catalog or collection the row names; check has already refused a
+// row that names neither or both.
+func (row pushRow) id() uuid.UUID {
+	if row.CatalogID != nil {
+		return *row.CatalogID
+	}
+	return *row.CollectionID
+}
+
+// check refuses, as vault.ErrInvalidInput, a row naming neither a catalog nor a
+// collection, or both, and a row naming one an earlier row already names: a
+// home screen holds each row once.
+func (body pushRequest) check() error {
+	seen := make(map[uuid.UUID]bool, len(body.Rows))
+	for i, row := range body.Rows {
+		if (row.CatalogID == nil) == (row.CollectionID == nil) {
+			return fmt.Errorf("%w: home row %d must name one catalog or one collection", vault.ErrInvalidInput, i)
+		}
+		if seen[row.id()] {
+			return fmt.Errorf("%w: home row %d repeats a row already on the home screen", vault.ErrInvalidInput, i)
+		}
+		seen[row.id()] = true
+	}
+	return nil
+}
+
 // selection is body as the vault's Home selection, each entry's Position its
-// row's place in Rows. A row naming neither a catalog nor a collection, or
-// both, is vault.ErrInvalidInput.
+// row's place in Rows, or vault.ErrInvalidInput for a body check refuses.
 func (body pushRequest) selection() (vault.PushedHome, error) {
+	if err := body.check(); err != nil {
+		return vault.PushedHome{}, err
+	}
 	var home vault.PushedHome
 	for i, row := range body.Rows {
-		switch {
-		case (row.CatalogID == nil) == (row.CollectionID == nil):
-			return vault.PushedHome{}, fmt.Errorf("%w: home row %d must name one catalog or one collection", vault.ErrInvalidInput, i)
-		case row.CatalogID != nil:
+		if row.CatalogID != nil {
 			home.Catalogs = append(home.Catalogs, vault.SelectedCatalogInput{CatalogID: *row.CatalogID, ShowInHome: row.ShowInHome, Position: i})
-		default:
+		} else {
 			home.Collections = append(home.Collections, vault.SelectedCollectionInput{CollectionID: *row.CollectionID, PinToTop: row.PinToTop, Position: i})
 		}
 	}
@@ -101,7 +126,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	accessToken, _ := nuvioTokenFrom(ctx) // guaranteed by requireNuvioAuth
 
 	var body pushRequest
-	if !decodeStrictJSON(w, r, &body) {
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 

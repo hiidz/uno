@@ -26,3 +26,8 @@ export function fakeApi(routes: Record<string, FakeRoute>) {
 export function failWith(status: number, message: string): Response {
   return new Response(message, { status })
 }
+
+/** The 404 `requireProfile` answers for a profile slot never selected. */
+export function profileNotFound(): Response {
+  return Response.json({ error: 'profile not found', code: 'profile_not_found' }, { status: 404 })
+}

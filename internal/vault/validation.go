@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -38,8 +39,7 @@ var validCatalogTypes = map[string]bool{
 // implemented" state, see the "Recipe params (TMDB)" section of
 // docs/data-model.md — but the check still
 // matters now, not just once a second provider is real: an unrecognized
-// provider stored here would bypass api.validateCatalogParams' params check
-// entirely (that function only validates when provider == "tmdb"), and
+// provider stored here would have params no validator has judged, and
 // provider is not inert like endpoint — it round-trips into
 // the addon manifest (vault.ManifestID) and Nuvio's catalogSources[].catalogId.
 var validProviders = map[string]bool{
@@ -58,11 +58,17 @@ const maxNameLen = 200
 // which runs to a couple of kilobytes; anything past this is not a recipe.
 const maxParamsLen = 8192
 
-// lengthProblem reports that field is longer than limit, or "" when it isn't.
-// The message counts bytes and says "characters", the same way the other
-// length messages in this file do.
+// tooLong reports whether value is longer than limit characters: runes, so a
+// name in a script that takes several bytes per character counts the way it
+// reads.
+func tooLong(value string, limit int) bool {
+	return utf8.RuneCountInString(value) > limit
+}
+
+// lengthProblem reports that field is longer than limit characters, or "" when
+// it isn't.
 func lengthProblem(field, value string, limit int) string {
-	if len(value) > limit {
+	if tooLong(value, limit) {
 		return fmt.Sprintf("%s is longer than %d characters", field, limit)
 	}
 	return ""
@@ -161,7 +167,8 @@ func (fd FolderData) normalized() FolderData {
 const maxGenreLen = 64
 
 // maxCoverEmojiLen bounds a folder's cover emoji. The editor's input for it
-// caps at eight UTF-16 code units, whose UTF-8 encoding never reaches this.
+// caps at eight UTF-16 code units, which never come to more characters than
+// this.
 const maxCoverEmojiLen = 32
 
 // maxFoldersPerCollection bounds how many folders one collection holds and
@@ -189,8 +196,8 @@ func mediaURLProblem(field, raw string) string {
 	if raw == "" {
 		return ""
 	}
-	if len(raw) > maxMediaURLLen {
-		return fmt.Sprintf("%s is longer than %d characters", field, maxMediaURLLen)
+	if problem := lengthProblem(field, raw, maxMediaURLLen); problem != "" {
+		return problem
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -325,7 +332,7 @@ func (in CollectionForm) Validate() error {
 			switch key := ref.New.Key; {
 			case key == "":
 				problems = append(problems, fmt.Sprintf("folder %d: new catalog %d: key is required", i, j))
-			case len(key) > maxNewKeyLen:
+			case tooLong(key, maxNewKeyLen):
 				problems = append(problems, fmt.Sprintf("folder %d: new catalog %d: key is longer than %d characters", i, j, maxNewKeyLen))
 			default:
 				newKey := folderNewRefKey{key, strings.TrimSpace(ref.Genre)}

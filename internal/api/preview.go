@@ -48,7 +48,7 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateCatalogParams(r.Context(), input.Type, "tmdb", input.Params); err != nil {
+	if err := s.validateCatalogParams(r.Context(), input.Type, input.Params); err != nil {
 		writeVaultError(w, "previewCatalog", err, nil, "", "failed to preview catalog")
 		return
 	}
@@ -90,7 +90,7 @@ func (s *Server) catalogGenreOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.validateCatalogParams(r.Context(), input.Type, "tmdb", input.Params); err != nil {
+	if err := s.validateCatalogParams(r.Context(), input.Type, input.Params); err != nil {
 		writeVaultError(w, "catalogGenreOptions", err, nil, "", "failed to fetch genre options")
 		return
 	}

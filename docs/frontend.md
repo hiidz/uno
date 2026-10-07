@@ -1017,9 +1017,11 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   row added from Community can't be: it opens as a view with no publish button (below).
 - **The publish dialog** (`PublishDialog.tsx`) lists everything the publication will hold, each
   catalog by name over its recipe line: for a collection, its own catalogs under "N folders, N
-  catalogs of its own", then the library catalogs it uses under "From your library, published as
-  they are now" (`publishGroups`) — publishing a collection publishes those as they stand, which is the
-  point to consent to. When it publishes changes to an already published row — the row's
+  catalogs of its own", then the library catalogs it uses under "From your library, public as part
+  of this collection" (`publishGroups`), with a line saying anyone who opens the collection can read
+  them as they are now and that Community doesn't list them on their own: publishing a collection
+  makes those catalogs readable as part of it, which is the point to consent to, and nothing more.
+  When it publishes changes to an already published row — the row's
   publish button says Publish update… — a **Since you last published** list comes first, under
   its line: what every follower will be offered (`SinceLastPublished`, from
   `GET .../changes-since-publish`, fetched as the dialog opens). It is also what explains a
@@ -1328,9 +1330,11 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 ## Cross-cutting client rules
 
 - `401` from any call → refresh + retry, then bounce to login.
-- `404` `profile not found` from any `/api/p/{i}/...` route, `requireProfile`'s → profile not
-  selected → send back to the picker (`ProfileNotSelectedError`, `web/src/api/http.ts`). A
-  route's own 404 (a catalog or a publication not found) is an ordinary `ApiError`.
+- `404` with the JSON `code` `profile_not_found` from any `/api/p/{i}/...` route, `requireProfile`'s
+  → profile not selected → send back to the picker (`ProfileNotSelectedError`,
+  `web/src/api/http.ts`, which reads the code and never the words). A route's own 404 (a catalog
+  or a publication not found) is plain text with no code, an ordinary `ApiError`. A JSON error
+  body is worded by its `error` field and kept as `ApiError.body`.
 - `429` from any call → `RateLimitedError` (`web/src/api/http.ts`), worded from `Retry-After`. Uno's
   own server answers none, so only something in front of it can:
   "Too many requests. Try again in 10 seconds.", or "in a moment" without a usable header. Nothing

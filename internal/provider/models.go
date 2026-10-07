@@ -1,12 +1,14 @@
 package provider
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // CatalogParams is a decoded catalog recipe: everything the rest of the
@@ -192,10 +194,14 @@ type TMDBTVParams struct {
 // nothing.
 const tmdbMaxVoteAverage = 10.0
 
-// maxWithinDays caps released_within_days / aired_within_days at the same 50
-// years the builder's "Last N years" box allows, so a hand-crafted request
-// can't exceed what the UI itself permits.
+// maxWithinDays caps released_within_days / aired_within_days at 50 years. The
+// builder's presets stop at 10 years (DATE_PRESETS in
+// web/src/features/catalogs/params.ts), so the cap bounds a hand-written
+// request, not anything the UI offers.
 const maxWithinDays = 50 * 365
+
+// dateLayout is the form of every fixed date in a recipe: YYYY-MM-DD.
+const dateLayout = "2006-01-02"
 
 // maxEntityIDs caps how many ids with_companies, with_keywords,
 // without_companies, without_keywords and with_networks each hold.
@@ -281,7 +287,58 @@ func (p TMDBCommonParams) validate() error {
 		}
 	}
 
+	return p.rangeError()
+}
+
+// rangeError is the first of the shared ranges whose low end is above its high
+// end, which no title can satisfy, or nil. Zero means "unset", so a range with
+// no high end is never inverted.
+func (p TMDBCommonParams) rangeError() error {
+	for _, r := range []struct {
+		name      string
+		low, high float64
+	}{
+		{"vote_average", p.VoteAverageGte, p.VoteAverageLte},
+		{"vote_count", float64(p.VoteCountGte), float64(p.VoteCountLte)},
+		{"with_runtime", float64(p.WithRuntimeGte), float64(p.WithRuntimeLte)},
+	} {
+		if r.high != 0 && r.low > r.high {
+			return fmt.Errorf("%s_gte cannot be higher than %s_lte", r.name, r.name)
+		}
+	}
 	return nil
+}
+
+// dateRangeError is the first problem in a fixed date range: a bound that isn't
+// a YYYY-MM-DD date, or a start after its end. An empty bound is unset.
+func dateRangeError(gteName, gte, lteName, lte string) error {
+	from, fromErr := parseDate(gteName, gte)
+	to, toErr := parseDate(lteName, lte)
+	if err := errors.Join(fromErr, toErr); err != nil {
+		return err
+	}
+	if startsAfter(from, to) {
+		return fmt.Errorf("%s cannot be after %s", gteName, lteName)
+	}
+	return nil
+}
+
+// startsAfter reports whether a range from from to to is inverted; a bound
+// that is the zero time is unset, and an open range is never inverted.
+func startsAfter(from, to time.Time) bool {
+	return !from.IsZero() && !to.IsZero() && from.After(to)
+}
+
+// parseDate is value as a date, or the zero time for an empty value.
+func parseDate(name, value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(dateLayout, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s must be a date as YYYY-MM-DD", name)
+	}
+	return t, nil
 }
 
 // Validate checks cross-field rules that a single JSON field can't express
@@ -317,7 +374,10 @@ func (p TMDBMovieParams) Validate() error {
 		}
 	}
 
-	return p.validate()
+	return cmp.Or(
+		dateRangeError("primary_release_date_gte", p.PrimaryReleaseDateGte, "primary_release_date_lte", p.PrimaryReleaseDateLte),
+		p.validate(),
+	)
 }
 
 // firstSetField returns the JSON name of the first non-zero field of struct
@@ -368,7 +428,10 @@ func (p TMDBTVParams) Validate() error {
 		return fmt.Errorf("with_networks cannot hold more than %d ids", maxEntityIDs)
 	}
 
-	return p.validate()
+	return cmp.Or(
+		dateRangeError("first_air_date_gte", p.FirstAirDateGte, "first_air_date_lte", p.FirstAirDateLte),
+		p.validate(),
+	)
 }
 
 // WatchProvider is one streaming service TMDB can filter on —

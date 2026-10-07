@@ -138,6 +138,30 @@ func TestUpdateUserCatalogRejectsTypeChange(t *testing.T) {
 	}
 }
 
+// A catalog's kind is its type and its provider: every write that rewrites a
+// recipe holds both, listed edit, scoped edit and Update alike.
+func TestSameKindHoldsTypeAndProvider(t *testing.T) {
+	movie := catalogKind{"movie", "tmdb"}
+	for _, tc := range []struct {
+		name  string
+		input catalogKind
+		want  bool
+	}{
+		{"the same kind", catalogKind{"movie", "tmdb"}, true},
+		{"another type", catalogKind{"series", "tmdb"}, false},
+		{"another provider", catalogKind{"movie", "other"}, false},
+	} {
+		if got := sameKind(movie, tc.input); got != tc.want {
+			t.Errorf("%s: sameKind = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+
+	stored := storedCatalog{kind: catalogKind{"movie", "other"}}
+	if err := checkCatalogRewrite(stored, CatalogForm{Type: "movie", Provider: "tmdb"}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("a listed edit that changes the provider: got %v, want ErrInvalidInput", err)
+	}
+}
+
 // Deleting a collection cascades to the scoped catalogs that lived inside
 // it.
 func TestDeleteCollectionCascadesScopedCatalogs(t *testing.T) {

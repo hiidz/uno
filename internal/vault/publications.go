@@ -96,7 +96,8 @@ func publishableCatalog(ctx context.Context, q dbtx, profileID, catalogID uuid.U
 // PublishCollection publishes profileID's collection collectionID, or
 // publishes an update to it, as PublishCatalog does a catalog. The snapshot holds
 // every catalog its folders reference, private library catalogs included:
-// publishing is the consent to publish them. The collection must not be a
+// publishing is the consent to make them publicly readable as part of the
+// collection. Community never lists them on their own. The collection must not be a
 // subscribed copy (ErrInvalidInput). Returns the collection, with its
 // publication.
 func (db *DB) PublishCollection(ctx context.Context, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {

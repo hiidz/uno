@@ -100,7 +100,7 @@ func keyShapeMessage(err error) string {
 	if errors.Is(err, tmdbkey.ErrReadAccessToken) {
 		return "That's the Read Access Token. Paste the shorter API Key from the same page."
 	}
-	return "A TMDB API Key is 32 letters and numbers."
+	return "A TMDB API Key is 32 characters, 0–9 and a–f."
 }
 
 // writeKeyCheckError answers a key TMDB refused (400: the key as sent is at

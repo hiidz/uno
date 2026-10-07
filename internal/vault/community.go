@@ -153,7 +153,9 @@ func (s Snapshot) listed(kind string) ([]string, *BundleCatalog) {
 }
 
 // GetPublication is publicationID with its snapshot, for profileID, or
-// ErrPublicationNotFound when there is no such publication.
+// ErrPublicationNotFound when there is no such publication. Unlike the list, a
+// subscribe and a duplicate, it answers for profileID's own publication too: a
+// publisher previews their page as everyone else sees it.
 func (db *DB) GetPublication(ctx context.Context, profileID, publicationID uuid.UUID) (PublicationDetail, error) {
 	row := db.conn.QueryRowContext(ctx, `
 		SELECT `+communityItemColumns+`

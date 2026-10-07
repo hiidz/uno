@@ -115,10 +115,11 @@ func TestTMDBKeyRoutes(t *testing.T) {
 		code       int
 		want       string
 	}{
-		{"not a key", `{"key":"hello"}`, http.StatusBadRequest, "32 letters and numbers"},
+		{"not a key", `{"key":"hello"}`, http.StatusBadRequest, "32 characters, 0–9 and a–f"},
 		{"a Read Access Token", `{"key":"eyJhbGciOiJIUzI1NiJ9.e30.x"}`, http.StatusBadRequest, "Read Access Token"},
 		{"refused by TMDB", `{"key":"ffffffffffffffffffffffffffffffff"}`, http.StatusBadRequest, "TMDB didn't accept this key"},
 		{"a bad body", `{`, http.StatusBadRequest, "invalid request body"},
+		{"a field the body doesn't have", `{"key":"ffffffffffffffffffffffffffffffff","api_key":"x"}`, http.StatusBadRequest, `unknown field "api_key"`},
 	} {
 		w := serve(t, s, http.MethodPut, "/api/account/tmdb-key", tc.body, false)
 		if w.Code != tc.code || !strings.Contains(w.Body.String(), tc.want) {
