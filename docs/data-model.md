@@ -400,8 +400,7 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   `FOLLOW_LAYOUT` included, is a 400, never given a default. The same validators hold a bundle's
   collections on import and a snapshot on publish, subscribe, duplicate and Update, so neither
   carries one in. The schema has no default for `folders.tile_shape`, so an INSERT that leaves it
-  out fails. Schema version 9 rewrote every stored `FOLLOW_LAYOUT` or empty view mode as
-  `TABBED_GRID` and every empty tile shape as `POSTER`, what Nuvio shows for each.
+  out fails.
 - **`catalogs.created_at`/`updated_at` and `collections.created_at`/`updated_at` are `TEXT`
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`. Neither is on the builder API's wire: the builder reads

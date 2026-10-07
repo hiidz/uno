@@ -171,44 +171,4 @@ A schema change edits `schema.sql` and bumps `schemaVersion`.
 
 **Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 
-**`uno migrate --db <path>`** moves a version 8 vault to version 9. It is a one-off, deleted once
-prod has run it (`cmd/server/migrate.go`). It refuses any version but 8, and first prints a
-report:
-- the collections whose `FOLLOW_LAYOUT` or empty view mode becomes `TABBED_GRID`, and the folders
-  whose empty tile shape becomes `POSTER`;
-- rows it refuses to migrate: a view mode or tile shape no version allows, or a publication
-  whose snapshot holds a view mode or tile shape version 9 refuses. Any of these stops it before
-  it changes anything;
-- the collections and publications over the 10-folder and 20-catalog caps, which it leaves as
-  they are.
-
-`--report` prints that and stops. Otherwise it runs in one transaction on one connection with
-foreign keys off, so dropping a table cascades nothing and `publications_release_subscribers`
-never fires:
-- it rewrites those view modes and tile shapes;
-- it rebuilds `catalogs` with its recipe's `type`, `provider` and `params` copied from the
-  `recipes` row it named, and `folders` without a tile shape default, each as `schema.sql`
-  declares it, and drops `recipes` and its triggers;
-- it stamps version 9 and checks the result: every other column of every row reads as before
-  (the release marks, snapshot keys, publications, subscriptions and push records included),
-  every catalog's recipe hashes to the `recipe_hash` it held, the foreign keys hold, and the
-  structure matches a fresh v9 database.
-
-Any refusal or failure leaves the file as it was. It prints every table's row count before and
-after.
-
-On the deployed volume, with the image distroless and `ENTRYPOINT ["/app/uno"]`:
-
-1. `docker compose stop uno`, then back up `/data` (`docker compose cp uno:/data ./uno-data-backup`),
-   which holds `vault.db` and its `-wal` and `-shm` files.
-2. `docker tag uno uno:pre-v9`, so the v8 image survives the build.
-3. Build or deploy the new image.
-4. `docker compose run --rm uno migrate --db /data/vault.db --report`, and read it.
-5. `docker compose run --rm uno migrate --db /data/vault.db`.
-6. `docker compose up -d`.
-
-The new binary refuses a version 8 vault until it is migrated. If the migration refuses, the vault
-is still at version 8: `docker tag uno:pre-v9 uno && docker compose up -d --no-build` runs the old
-image again.
-
 **The deployed `uno-data` volume** holds real data, so never `docker compose down -v` it.
