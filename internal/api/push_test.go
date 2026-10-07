@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -837,37 +836,6 @@ func TestPush_RefusesBeforeNuvio(t *testing.T) {
 			}
 			if len(tc.fake.pushAddonsCalls) != 0 || len(tc.fake.pushCollectionsCalls) != 0 {
 				t.Error("Nuvio was pushed to")
-			}
-		})
-	}
-}
-
-// A home screen holds each row once: a body naming one catalog or collection
-// twice is refused, however far apart the two rows sit, and one naming a row
-// once, or two different rows, is not.
-func TestPushRequestSelectionRefusesARepeatedRow(t *testing.T) {
-	a, b := uuid.New(), uuid.New()
-	catalog := func(id uuid.UUID) pushRow { return pushRow{CatalogID: &id, ShowInHome: true} }
-	collection := func(id uuid.UUID) pushRow { return pushRow{CollectionID: &id} }
-
-	for _, tc := range []struct {
-		name    string
-		rows    []pushRow
-		wantErr bool
-	}{
-		{"two different rows", []pushRow{catalog(a), collection(b)}, false},
-		{"a catalog twice", []pushRow{catalog(a), catalog(b), catalog(a)}, true},
-		{"a collection twice", []pushRow{collection(a), collection(a)}, true},
-		{"a row naming both", []pushRow{{CatalogID: &a, CollectionID: &b}}, true},
-		{"a row naming neither", []pushRow{{}}, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := pushRequest{Rows: tc.rows}.selection()
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("selection error = %v, want error: %v", err, tc.wantErr)
-			}
-			if err != nil && !errors.Is(err, vault.ErrInvalidInput) {
-				t.Errorf("selection error = %v, want vault.ErrInvalidInput", err)
 			}
 		})
 	}

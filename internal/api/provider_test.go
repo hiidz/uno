@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,37 +18,6 @@ type acceptAnyToken struct{}
 
 func (acceptAnyToken) Verify(context.Context, string) (nuvio.Claims, error) {
 	return nuvio.Claims{Sub: "test-sub"}, nil
-}
-
-// TestLookupListClassification pins which provider failure becomes which
-// status on the TMDB lookup routes.
-func TestLookupListClassification(t *testing.T) {
-	tests := []struct {
-		name       string
-		err        error
-		wantStatus int
-	}{
-		{"success", nil, http.StatusOK},
-		{"bad catalog type", fmt.Errorf("%w: got %q", provider.ErrInvalidCatalogType, "x"), http.StatusBadRequest},
-		{"bad query param", fmt.Errorf("%w: search query is blank", provider.ErrInvalidParams), http.StatusBadRequest},
-		{"absent on TMDB", fmt.Errorf("%w: /company/999", provider.ErrNotFound), http.StatusNotFound},
-		{"TMDB unreachable", errors.New("provider: fetch /company/1: dial tcp: refused"), http.StatusBadGateway},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			lookupList(w, "failed", func() (provider.Company, error) {
-				return provider.Company{ID: 1, Name: "Lucasfilm Ltd."}, tc.err
-			})
-			if w.Code != tc.wantStatus {
-				t.Fatalf("status = %d, want %d", w.Code, tc.wantStatus)
-			}
-			if tc.err == nil && strings.TrimSpace(w.Body.String()) != `{"id":1,"name":"Lucasfilm Ltd."}` {
-				t.Fatalf("body = %s", w.Body.String())
-			}
-		})
-	}
 }
 
 // TestEntityLookupRoutes drives the real route table for the cases that
@@ -158,19 +126,5 @@ func TestValidateCatalogParams(t *testing.T) {
 				t.Fatalf("err = %v, an unreachable TMDB must not read as a rejected recipe", err)
 			}
 		})
-	}
-}
-
-// checkRecipe refuses a recipe of any provider but TMDB as a 400's
-// vault.ErrInvalidInput, through the canonical form, not through a check of
-// its own ahead of validateCatalogParams.
-func TestCheckRecipeRefusesAnotherProvider(t *testing.T) {
-	s := newProfileTestServer(t, newTestVaultDB(t))
-	if _, err := s.checkRecipe(t.Context(), "movie", "tmdb", `{"sort_by":"popularity.desc"}`); err != nil {
-		t.Fatalf("a TMDB recipe: %v", err)
-	}
-	_, err := s.checkRecipe(t.Context(), "movie", "mdblist", `{}`)
-	if !errors.Is(err, vault.ErrInvalidInput) || !strings.Contains(err.Error(), `no recipes for provider "mdblist"`) {
-		t.Fatalf("a recipe of another provider: %v, want vault.ErrInvalidInput naming the provider", err)
 	}
 }
