@@ -174,6 +174,7 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   certification_country: 'age',
   watch_region: 'watch',
   within_days: 'date',
+  date_range: 'date',
   with_companies: 'companies',
   with_keywords: 'keywords',
   without_companies: 'companies',
@@ -190,6 +191,7 @@ const ERROR_PRIORITY = [
   'watch_region',
   'certification_country',
   'within_days',
+  'date_range',
   'vote_average',
   'with_runtime',
   'vote_count',
@@ -413,7 +415,7 @@ function buildSections(args: SectionArgs) {
           gte={dateGte}
           lte={dateLte}
           days={dateDays}
-          error={errorFor('within_days')}
+          error={errorFor('within_days') ?? errorFor('date_range')}
           onMode={(dateMode) => patch({ dateMode })}
           onParams={patchParams}
         />

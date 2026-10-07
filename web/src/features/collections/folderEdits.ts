@@ -178,13 +178,18 @@ export function errorRoleLabels(errors: CollectionErrors, folders: FolderFormSta
 }
 
 function ownErrorLabels(errors: CollectionErrors): string[] {
-  return [...(errors.title ? ['Title'] : []), ...(errors.folderCount ? ['Folders'] : [])]
+  return [
+    ...(errors.title ? ['Title'] : []),
+    ...(errors.backdrop ? ['Background image'] : []),
+    ...(errors.folderCount ? ['Folders'] : []),
+  ]
 }
 
 function folderErrorLabels(folderErrors: FolderErrors | undefined, index: number): string[] {
   return [
     ...(folderErrors?.title ? [`folder ${index + 1}’s title`] : []),
     ...(folderErrors?.catalogIDs ? [`folder ${index + 1}’s catalogs`] : []),
+    ...(folderErrors?.media ? [`folder ${index + 1}’s appearance`] : []),
   ]
 }
 

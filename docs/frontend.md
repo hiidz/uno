@@ -407,7 +407,9 @@ the point:
    ratings, series use TV content ratings, both scoped by `certification_country`.
 2. **Grouped controls** for the two required-together pairs: picking an age rating defaults its
    country, picking a streaming service defaults the region, and clearing one clears the other.
-3. **Mirrored checks** (`web/src/features/catalogs/catalogForm.ts`) as the per-field backstop.
+3. **Checks for the rules a form can reach** (`web/src/features/catalogs/catalogForm.ts`: name
+   length, rating 0–10, no negative counts or runtimes, inverted ranges, fixed dates as real
+   dates in order) as the per-field backstop.
 4. **The server's plain-text 400** as an unexpected-case banner only.
 
 Other decisions worth keeping:
@@ -799,7 +801,10 @@ button.
   catalog (`refGroups`) and each ref as a genre chip under it. The picker adds an unfiltered ref
   only to a catalog the folder doesn't hold (`addRef` guards too), the genre dropdown adds only a
   genre not already ticked, and the validator's "same catalog with the same genre twice"
-  backstops both, mirroring `CollectionForm.Validate`.
+  backstops both, as `CollectionForm.Validate` does. The same validator holds the title and
+  folder-title lengths (200 characters), the 10-folder and 20-ref caps, and the media addresses
+  (http or https, 2048 characters), the last shown under the folder's or the collection's
+  Appearance, which opens to show it.
 - **Removing a folder is a standing warning, not a confirm.** Omitting a folder from the payload
   deletes it server-side and cascades its refs — but nothing commits until Save, so
   `removedFolders(initial, current)` names exactly which folders the next save would destroy,

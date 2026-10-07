@@ -60,7 +60,9 @@ export function FolderDetail({
   onRemove: () => void
 } & Omit<FolderCatalogsProps, 'folder' | 'errors'>) {
   const idBase = useId()
-  const [appearanceOpen, setAppearanceOpen] = useState(false)
+  const [appearanceToggled, setAppearanceOpen] = useState(false)
+  // An address error stays in view: the settings are folded otherwise.
+  const appearanceOpen = appearanceToggled || Boolean(errors?.media)
   const label = folderLabel(folder, position)
 
   return (
@@ -99,7 +101,7 @@ export function FolderDetail({
         type="button"
         className="sec-head fold-appearance"
         aria-expanded={appearanceOpen}
-        onClick={() => setAppearanceOpen((current) => !current)}
+        onClick={() => setAppearanceOpen(!appearanceOpen)}
       >
         <span className="setting-label type-label">Folder Appearance</span>
         <span className="sec-sum text-dim text-[14px]">{appearanceSummary(folder)}</span>
@@ -221,6 +223,7 @@ export function FolderDetail({
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home title logo URL for ${label}`}
           />
+          {errors?.media && <FieldError>{errors.media}</FieldError>}
         </>
       )}
     </section>

@@ -9,6 +9,8 @@ import type {
   ViewMode,
 } from '@/api'
 import {
+  MAX_NAME_LENGTH,
+  characterCount,
   formFromCatalog,
   isSameCatalog,
   toPayload as toCatalogPayload,
@@ -31,13 +33,15 @@ export function isDraftCatalogID(id: string): boolean {
 }
 
 /**
- * The collection builder's form model, and the client-side mirror of what the
- * server rejects.
+ * The collection builder's form model, and the collection rules a form can
+ * reach, checked here as the server checks them.
  *
  * Same premise as `catalogForm.ts`: every `400` out of the collection handlers
  * is `http.Error(w, err.Error(), …)` — plain text, no field name in a
- * machine-readable position — so the rules live here too, and a server 400 that
- * gets through means this mirror has drifted.
+ * machine-readable position — so those rules live here too, and a server 400
+ * on one of them means this copy has drifted. The rules no control can break
+ * (a genre's length, the cover emoji's, a catalog edit's repeats) are left to
+ * the server.
  *
  * The tree makes two rules structural that the catalog form didn't have to
  * think about:
@@ -271,10 +275,14 @@ export const MAX_REFS_PER_FOLDER = 20
 export interface FolderErrors {
   title?: string
   catalogIDs?: string
+  /** The first of the folder's media addresses that isn't one the server takes. */
+  media?: string
 }
 
 export interface CollectionErrors {
   title?: string
+  /** The background image's address, when it isn't one the server takes. */
+  backdrop?: string
   /** Set while the collection holds more than `MAX_FOLDERS` folders. */
   folderCount?: string
   /** Keyed by folder `key`, not `id` — a new folder has no id and still needs
@@ -286,7 +294,7 @@ export interface CollectionErrors {
  *  count. */
 export function ownErrors(errors: CollectionErrors): string[] {
   const own: string[] = []
-  for (const error of [errors.title, errors.folderCount]) {
+  for (const error of [errors.title, errors.backdrop, errors.folderCount]) {
     if (error !== undefined) own.push(error)
   }
   return own
@@ -297,13 +305,15 @@ export function countErrors(errors: CollectionErrors): number {
   for (const folder of Object.values(errors.folders)) {
     if (folder.title) n += 1
     if (folder.catalogIDs) n += 1
+    if (folder.media) n += 1
   }
   return n
 }
 
 /**
- * Mirrors `CollectionForm.Validate()` plus the folder-ref rule that lives
- * outside it, in `UpdateUserCollection`'s `validateFolderRefs`.
+ * The rules of `CollectionForm.Validate()` that a form can reach, plus the
+ * folder-ref rule that lives outside it, in `UpdateUserCollection`'s
+ * `validateFolderRefs`.
  *
  * What is *not* checked here, because the types make it unrepresentable:
  * `view_mode` and `tile_shape` are the server's own enums, and a folder `id`
@@ -324,13 +334,15 @@ export function validateCollectionForm(
 ): CollectionErrors {
   const errors: CollectionErrors = { title: undefined, folders: {} }
 
-  if (!state.title.trim()) errors.title = 'Give this collection a title.'
+  errors.title = titleProblem(state.title, 'Give this collection a title.')
+  errors.backdrop = mediaProblem('Background image', state.backdropImageURL)
   errors.folderCount = folderCountError(state.folders.length)
 
   for (const folder of state.folders) {
     const folderErrors: FolderErrors = {}
 
-    if (!folder.title.trim()) folderErrors.title = 'Every folder needs a title.'
+    folderErrors.title = titleProblem(folder.title, 'Every folder needs a title.')
+    folderErrors.media = folderMediaProblem(folder)
 
     // A draft (staged locally, not yet a row) is always "accessible" — it
     // doesn't exist yet for the library to have excluded.
@@ -356,8 +368,58 @@ export function validateCollectionForm(
 }
 
 function hasFolderErrors(errors: FolderErrors): boolean {
-  return Boolean(errors.title || errors.catalogIDs)
+  return Boolean(errors.title || errors.catalogIDs || errors.media)
 }
+
+/** Why a title can't save: empty (`empty` says so), or past the server's
+ *  length. */
+function titleProblem(title: string, empty: string): string | undefined {
+  const trimmed = title.trim()
+  if (!trimmed) return empty
+  if (characterCount(trimmed) > MAX_NAME_LENGTH) return `Keep the title to ${MAX_NAME_LENGTH} characters or fewer.`
+  return undefined
+}
+
+/** The most characters a media address may hold: the server's
+ *  `maxMediaURLLen`. */
+const MAX_MEDIA_URL_LENGTH = 2048
+
+/** Why `raw`, a media address, can't save, or undefined when it is empty or
+ *  one the server takes: an absolute http or https address. Every one of
+ *  these is pushed into Nuvio and read by its clients. */
+function mediaProblem(label: string, raw: string): string | undefined {
+  const address = raw.trim()
+  if (!address) return undefined
+  if (characterCount(address) > MAX_MEDIA_URL_LENGTH) return `${label} address is too long.`
+  if (!isWebAddress(address)) return `${label} must be a web address starting with http:// or https://.`
+  return undefined
+}
+
+function isWebAddress(address: string): boolean {
+  try {
+    const url = new URL(address)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== ''
+  } catch {
+    return false
+  }
+}
+
+/** The first of a folder's media addresses that can't save. */
+function folderMediaProblem(folder: FolderFormState): string | undefined {
+  for (const [label, key] of FOLDER_ADDRESSES) {
+    const problem = mediaProblem(label, folder[key])
+    if (problem) return problem
+  }
+  return undefined
+}
+
+const FOLDER_ADDRESSES = [
+  ['Cover image', 'coverImageURL'],
+  ['Focus GIF', 'focusGIFURL'],
+  ['Hero backdrop', 'heroBackdropURL'],
+  ['Hero video', 'heroVideoURL'],
+  ['Title logo', 'titleLogoURL'],
+] as const satisfies readonly (readonly [string, keyof FolderFormState])[]
 
 /** Why a collection of `count` folders can't save, while it holds more than
  *  `MAX_FOLDERS`. */

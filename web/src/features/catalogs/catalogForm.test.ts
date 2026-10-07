@@ -171,3 +171,36 @@ describe('company and keyword cap', () => {
     ])
   })
 })
+
+describe('validateForm: the other server rules a form can reach', () => {
+  const named = (update: Partial<CatalogFormState>): CatalogFormState => ({ ...emptyForm('movie'), name: 'Row', ...update })
+
+  it('holds the name to 200 characters, counted as characters', () => {
+    expect(validateForm(named({ name: '日'.repeat(200) }))).toEqual({})
+    expect(validateForm(named({ name: '日'.repeat(201) })).name).toBe('Keep the name to 200 characters or fewer.')
+  })
+
+  it('keeps a rating between 0 and 10 and the counts non-negative', () => {
+    expect(validateForm(named({ params: { vote_average_gte: 0, vote_average_lte: 10 } }))).toEqual({})
+    expect(validateForm(named({ params: { vote_average_lte: 10.5 } })).vote_average).toBe('Pick a number from 0 to 10.')
+    expect(validateForm(named({ params: { vote_average_gte: -1 } })).vote_average).toBe('Pick a number from 0 to 10.')
+    expect(validateForm(named({ params: { vote_count_gte: -5 } })).vote_count).toBe('Numbers can’t be negative.')
+    expect(validateForm(named({ params: { with_runtime_gte: -1 } })).with_runtime).toBe('Numbers can’t be negative.')
+  })
+
+  it('wants fixed dates that are real and in order, for the type in use', () => {
+    const fixed = (params: CatalogFormState['params'], type: CatalogFormState['type'] = 'movie') =>
+      validateForm(named({ type, dateMode: 'fixed', params })).date_range
+    expect(fixed({ primary_release_date_gte: '2020-01-01', primary_release_date_lte: '2020-01-01' })).toBeUndefined()
+    expect(fixed({ primary_release_date_gte: '2021-01-01', primary_release_date_lte: '2020-01-01' })).toBe(
+      'The start date is after the end date.',
+    )
+    expect(fixed({ primary_release_date_gte: '2020-02-30' })).toBe('Pick real dates.')
+    expect(fixed({ primary_release_date_lte: '275760-09-13' })).toBe('Pick real dates.')
+    expect(fixed({ first_air_date_gte: '2021-01-01', first_air_date_lte: '2020-01-01' }, 'series')).toBe(
+      'The start date is after the end date.',
+    )
+    // The other type's dates are not sent, so they raise nothing.
+    expect(fixed({ first_air_date_gte: '2021-01-01', first_air_date_lte: '2020-01-01' })).toBeUndefined()
+  })
+})

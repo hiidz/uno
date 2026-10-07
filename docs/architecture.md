@@ -702,9 +702,11 @@ series. There is no `type` param: networks filter series only.
 
 `400`s from the CRUD handlers are **plain text**, via `http.Error(w, err.Error(), ...)` — no
 field name in a machine-readable position. Per-field form errors are therefore generated
-client-side by mirroring `provider`'s `Validate()`; a server 400 firing in normal use means the
-mirror has drifted, and that is its only job in the UI (an unexpected-case banner, not the
-primary error channel).
+client-side, checking the rules a form can reach (`provider`'s `Validate()` and the vault's form
+validators: name and title lengths, media address scheme, rating, count and date ranges, the
+folder and ref caps); a server 400 firing on one of them in normal use means the client copy has
+drifted, and that is its only job in the UI (an unexpected-case banner, not the primary error
+channel).
 
 **One 404 is JSON.** `requireProfile`'s answer for a profile slot the caller never selected is
 `{"error": "profile not found", "code": "profile_not_found"}` (`codedError`, `internal/api/respond.go`),

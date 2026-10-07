@@ -63,6 +63,38 @@ describe('validateCollectionForm', () => {
     expect(ownErrors(errors)).toEqual(['Give this collection a title.', errors.folderCount])
     expect(countErrors(errors)).toBe(2)
   })
+
+  it('holds titles to 200 characters, counted as characters', () => {
+    const wide = '日'.repeat(200)
+    const at = validateCollectionForm({ ...emptyCollectionForm(), title: wide, folders: [{ ...newFolder(), title: wide }] }, accessible)
+    expect(countErrors(at)).toBe(0)
+    const over = validateCollectionForm(
+      { ...emptyCollectionForm(), title: `${wide}日`, folders: [{ ...newFolder(), title: `${wide}日` }] },
+      accessible,
+    )
+    expect(over.title).toBe('Keep the title to 200 characters or fewer.')
+    expect(Object.values(over.folders)[0]?.title).toBe('Keep the title to 200 characters or fewer.')
+  })
+
+  it('takes media addresses that are http or https, and says which one is not', () => {
+    const media = (update: Partial<ReturnType<typeof newFolder>>) => {
+      const form = { ...emptyCollectionForm(), title: 'C', folders: [{ ...newFolder(), title: 'F', ...update }] }
+      return Object.values(validateCollectionForm(form, accessible).folders)[0]?.media
+    }
+    expect(media({ coverImageURL: 'https://x.test/a.png', heroVideoURL: ' http://x.test/v.mp4 ' })).toBeUndefined()
+    expect(media({ coverImageURL: 'javascript:alert(1)' })).toBe(
+      'Cover image must be a web address starting with http:// or https://.',
+    )
+    expect(media({ titleLogoURL: 'not a url' })).toMatch(/^Title logo must be a web address/)
+    expect(media({ focusGIFURL: `https://x.test/${'a'.repeat(2048)}` })).toBe('Focus GIF address is too long.')
+
+    const backdrop = validateCollectionForm(
+      { ...emptyCollectionForm(), title: 'C', backdropImageURL: 'data:image/png;base64,AA' },
+      accessible,
+    )
+    expect(backdrop.backdrop).toMatch(/^Background image must be a web address/)
+    expect(countErrors(backdrop)).toBe(1)
+  })
 })
 
 describe('toCollectionPayload', () => {

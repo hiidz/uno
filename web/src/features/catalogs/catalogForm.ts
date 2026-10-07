@@ -3,13 +3,16 @@ import type { Catalog, CatalogPayload, CatalogType, TMDBParams } from '@/api'
 import { parseIdList, parseParams } from './params'
 
 /**
- * The catalog builder's form model, and the client-side mirror of
- * `provider.Validate()`.
+ * The catalog builder's form model, and the catalog rules a form can reach,
+ * checked here as the server checks them in `provider.Validate()` and
+ * `CatalogForm.Validate`.
  *
- * The mirror exists because the server can't give us per-field errors: every
- * `400` from the catalog handlers is `http.Error(w, err.Error(), …)` — plain
- * text, no field name in a machine-readable position. So the rules live here
- * too, and a server 400 that gets through means this mirror has drifted.
+ * They are checked here because the server can't give us per-field errors:
+ * every `400` from the catalog handlers is `http.Error(w, err.Error(), …)` —
+ * plain text, no field name in a machine-readable position. A rule the form
+ * can't reach (the provider, a type outside the enum, the params length) is
+ * left to the server, and a server 400 on a rule the form can reach means
+ * this copy has drifted.
  *
  * Where possible the rules are encoded *structurally* rather than checked
  * after the fact — the date window is one mode toggle, so "both fixed and
@@ -30,6 +33,16 @@ export type SourceMode = 'filters' | 'collection'
  *  `without_companies`, `without_keywords` and `with_networks` may hold.
  *  Mirrors the server's cap in `provider.Validate()`. */
 export const MAX_ENTITY_IDS = 20
+
+/** The longest a catalog's name may be, in characters: the server's
+ *  `maxNameLen`. */
+export const MAX_NAME_LENGTH = 200
+
+/** The top of TMDB's rating scale: the server's `tmdbMaxVoteAverage`. */
+const MAX_VOTE_AVERAGE = 10
+
+/** The form of every fixed date in a recipe. */
+const DATE_FORMAT = /^\d{4}-\d{2}-\d{2}$/
 
 export interface CatalogFormState {
   name: string
@@ -205,8 +218,8 @@ function recipeParams(state: CatalogFormState): TMDBParams {
 export type FieldErrors = Partial<Record<string, string>>
 
 /**
- * Mirrors every rule in `TMDBMovieParams.Validate` / `TMDBTVParams.Validate`,
- * plus `CatalogForm.Validate`'s required fields. Keyed by field so the form can
+ * The rules of `TMDBMovieParams.Validate` / `TMDBTVParams.Validate` and
+ * `CatalogForm.Validate` that a form can reach. Keyed by field so the form can
  * render errors in place instead of as a banner.
  */
 export function validateForm(state: CatalogFormState): FieldErrors {
@@ -219,6 +232,7 @@ export function validateForm(state: CatalogFormState): FieldErrors {
     ...certificationErrors(p),
     ...watchErrors(p),
     ...windowErrors(state, p),
+    ...dateRangeErrors(state, p),
     ...rangeErrors(p),
     ...capErrors(p),
   }
@@ -228,6 +242,9 @@ export function validateForm(state: CatalogFormState): FieldErrors {
 function nameErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
   const errors: FieldErrors = {}
   if (!state.name.trim()) errors.name = 'Give this catalog a name.'
+  else if (characterCount(state.name.trim()) > MAX_NAME_LENGTH) {
+    errors.name = `Keep the name to ${MAX_NAME_LENGTH} characters or fewer.`
+  }
   if (isCollectionRow(state) && parseIdList(p.with_collection).ids.length === 0) {
     errors.with_collection = 'Pick a TMDB collection.'
   }
@@ -268,19 +285,86 @@ function rollingDays(type: CatalogType, p: TMDBParams): number | undefined {
   return type === 'movie' ? p.released_within_days : p.aired_within_days
 }
 
-const RANGES: [string, keyof TMDBParams, keyof TMDBParams][] = [
-  ['vote_average', 'vote_average_gte', 'vote_average_lte'],
-  ['with_runtime', 'with_runtime_gte', 'with_runtime_lte'],
-  ['vote_count', 'vote_count_gte', 'vote_count_lte'],
+/** A text's length in characters, as the server counts it: runes. */
+export function characterCount(text: string): number {
+  return [...text].length
+}
+
+/** The fixed date range of this type, when its bounds are not dates or the
+ *  start is after the end. */
+function dateRangeErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
+  if (state.dateMode !== 'fixed') return {}
+  const problem = dateRangeProblem(...fixedBounds(state.type, p))
+  return problem ? { date_range: problem } : {}
+}
+
+/** This type's own fixed date bounds. */
+function fixedBounds(type: CatalogType, p: TMDBParams): [string | undefined, string | undefined] {
+  if (type === 'movie') return [p.primary_release_date_gte, p.primary_release_date_lte]
+  return [p.first_air_date_gte, p.first_air_date_lte]
+}
+
+function dateRangeProblem(from: string | undefined, to: string | undefined): string | undefined {
+  if (!isDateOrUnset(from) || !isDateOrUnset(to)) return 'Pick real dates.'
+  if (startsAfter(from, to)) return 'The start date is after the end date.'
+  return undefined
+}
+
+function isDateOrUnset(value: string | undefined): boolean {
+  return !value || validDate(value)
+}
+
+/** A range with both bounds set whose start is after its end; the dates
+ *  compare as text because they are `YYYY-MM-DD`. */
+function startsAfter(from: string | undefined, to: string | undefined): boolean {
+  return Boolean(from && to && from > to)
+}
+
+/** `value` as a calendar date in the recipe's form: the shape, and a day the
+ *  month has. */
+function validDate(value: string): boolean {
+  if (!DATE_FORMAT.test(value)) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
+}
+
+interface Range {
+  key: string
+  low: keyof TMDBParams
+  high: keyof TMDBParams
+  /** The highest a bound may be. */
+  top: number
+  /** What a bound outside 0 to `top` is told. */
+  outside: string
+}
+
+const NOT_NEGATIVE = 'Numbers can’t be negative.'
+
+const RANGES: Range[] = [
+  { key: 'vote_average', low: 'vote_average_gte', high: 'vote_average_lte', top: MAX_VOTE_AVERAGE, outside: `Pick a number from 0 to ${MAX_VOTE_AVERAGE}.` },
+  { key: 'with_runtime', low: 'with_runtime_gte', high: 'with_runtime_lte', top: Infinity, outside: NOT_NEGATIVE },
+  { key: 'vote_count', low: 'vote_count_gte', high: 'vote_count_lte', top: Infinity, outside: NOT_NEGATIVE },
 ]
 
-/** A range whose low end is above its high end. */
+/** A range with a bound outside what the field allows, or whose low end is
+ *  above its high end. */
 function rangeErrors(p: TMDBParams): FieldErrors {
   const errors: FieldErrors = {}
-  for (const [key, low, high] of RANGES) {
-    if (inverted(p[low], p[high])) errors[key] = 'The first number is higher than the second.'
+  for (const range of RANGES) {
+    const problem = rangeProblem(range, p)
+    if (problem) errors[range.key] = problem
   }
   return errors
+}
+
+function rangeProblem({ low, high, top, outside: message }: Range, p: TMDBParams): string | undefined {
+  if (outside(p[low], top) || outside(p[high], top)) return message
+  if (inverted(p[low], p[high])) return 'The first number is higher than the second.'
+  return undefined
+}
+
+function outside(bound: unknown, top: number): boolean {
+  return typeof bound === 'number' && (bound < 0 || bound > top)
 }
 
 function inverted(low: unknown, high: unknown): boolean {

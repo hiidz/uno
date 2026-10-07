@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
+import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { VIEW_MODES, VIEW_MODE_LABELS, appearanceSummary, type CollectionFormState } from './collectionForm'
 
@@ -14,6 +14,8 @@ const OFF_ON: { value: 'off' | 'on'; label: string }[] = [
 
 interface CollectionAppearanceProps {
   state: CollectionFormState
+  /** The background image's address error, once errors are on show. */
+  backdropError?: string
   onChange: (update: CollectionPatch) => void
 }
 
@@ -44,8 +46,10 @@ function ViewModeChoices({ value, onChange }: ViewModeChoicesProps) {
  * the way a folder's own Appearance is: how folders open, the "All" tab, the
  * background image and the focus glow, summarised on the closed head.
  */
-export function CollectionAppearance({ state, onChange }: CollectionAppearanceProps) {
-  const [open, setOpen] = useState(false)
+export function CollectionAppearance({ state, backdropError, onChange }: CollectionAppearanceProps) {
+  const [toggled, setOpen] = useState(false)
+  // An address error stays in view: the shelf is folded otherwise.
+  const open = toggled || Boolean(backdropError)
   const toggle = () => setOpen(!open)
   const setAllTab = (value: 'off' | 'on') => onChange({ showAllTab: value === 'on' })
   const setBackdrop = (backdropImageURL: string) => onChange({ backdropImageURL })
@@ -89,7 +93,14 @@ export function CollectionAppearance({ state, onChange }: CollectionAppearancePr
             />
           </div>
           <div className="setting-value">
-            <TextInput id="col-backdrop" value={state.backdropImageURL} onChange={setBackdrop} placeholder="https://…" />
+            <TextInput
+              id="col-backdrop"
+              value={state.backdropImageURL}
+              onChange={setBackdrop}
+              placeholder="https://…"
+              invalid={Boolean(backdropError)}
+            />
+            {backdropError && <FieldError>{backdropError}</FieldError>}
           </div>
         </div>
 

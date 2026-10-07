@@ -612,7 +612,7 @@ export function CollectionEditor({
               </FolderTreeDnd>
             )}
 
-            <CollectionAppearance state={state} onChange={patch} />
+            <CollectionAppearance state={state} backdropError={showErrors ? errors.backdrop : undefined} onChange={patch} />
           </div>
 
           <CollectionPreview collection={preview} />

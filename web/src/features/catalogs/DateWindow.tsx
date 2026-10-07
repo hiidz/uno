@@ -107,8 +107,16 @@ export function DateWindow({
         onParams={onParams}
         onDays={setDays}
       />
+      <FixedDatesError view={view} error={error} />
     </>
   )
+}
+
+/** The fixed dates' own error, under their two boxes; the recent window shows
+ *  its error beside its chips. */
+function FixedDatesError({ view, error }: { view: DateView; error?: string }) {
+  if (view !== 'fixed' || !error) return null
+  return <FieldNote tone="danger">{error}</FieldNote>
 }
 
 interface WindowBodyProps {

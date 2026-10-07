@@ -40,7 +40,7 @@ export function indexRefOptions(options: RefOption[]): ReadonlyMap<string, RefOp
  * The ids a folder is allowed to reference — the library, which under the
  * closed-graph model is exactly this profile's own listed catalogs, the same
  * set the server's `validateFolderRefs` checks against. Handed to
- * `validateCollectionForm` as that mirror.
+ * `validateCollectionForm` for that check.
  */
 export function accessibleIDs(options: RefOption[]): ReadonlySet<string> {
   return new Set(options.map((option) => option.id))
