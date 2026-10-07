@@ -120,13 +120,6 @@ func compareByHomeSortOrder(a, b Catalog) int {
 	}
 }
 
-// CatalogParamsValidator checks a catalog recipe against its provider. This
-// package is the leaf of the dependency graph and cannot reach
-// internal/provider, so the check is passed in by the caller that can
-// (api.validateCatalogParams): a publish runs it over every recipe it
-// shares.
-type CatalogParamsValidator func(catalogType, catalogProvider, params string) error
-
 // execer is the common subset of *sql.DB and *sql.Tx a single write needs —
 // the ExecContext counterpart to scan.go's querier.
 type execer interface {

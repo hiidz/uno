@@ -209,7 +209,7 @@ Route-semantics facts the client has to honour:
     `{kind, catalog | collection}`. A second subscribe is a 409. `.../update`
     (`UpdateSubscription`, 200) brings the caller's subscribed copy up to the current snapshot.
     None of the three reaches TMDB: they run the form validators over a snapshot whose recipes
-    were checked at publish, so a snapshot today's rules refuse is a 400.
+    were checked when their rows were saved, so a snapshot today's rules refuse is a 400.
   - Updating a subscribed *listed* catalog changes what Nuvio shows only at the next push: the
     addon serves a catalog's name and params from the push record (*Addon server* below), so an
     Update, like an editor Save, waits for Push. It shows on Home as a change to push
@@ -218,10 +218,10 @@ Route-semantics facts the client has to honour:
 - **Publishing an owned row is a call on the row.**
   - `POST /api/p/{i}/catalogs/{id}/publish` and `.../collections/{id}/publish`
     (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish it or
-    publish its update. They run every recipe the snapshot publishes through `validateCatalogParams`, so
-    a recipe TMDB refuses is a 400 and TMDB being unreachable a 502. A catalog inside a
-    collection and a subscribed copy are 400s, and a source edited while it was being checked a
-    409. A collection that references a catalog the caller subscribes to publishes, with that
+    publish its update, in one transaction that reads the vault only: every recipe the snapshot
+    publishes was checked against TMDB when its row was saved, so a publish makes no TMDB call.
+    A snapshot the form validators refuse, a catalog inside a collection and a subscribed copy are
+    400s. A collection that references a catalog the caller subscribes to publishes, with that
     catalog frozen as it stands. Two publications of the same content are both listed in
     Community.
   - `.../unpublish` (`UnpublishCatalog`/`UnpublishCollection`, 200 with the row, its
@@ -526,8 +526,8 @@ every call uses `TMDB_API_KEY`, the `TMDBClient`'s own key. In `per-account` mod
 no key, and each call's comes from its context (`provider.WithKeySource`):
 
 - **Which key.** The builder routes use the signed-in account's (`requireNuvioAuth` attaches
-  `tmdbkey.Keys.ForAccount`), so a preview, a save's recipe check, a lookup and a publish's check
-  use the caller's key. The catalog route uses the key of the account that owns the token's
+  `tmdbkey.Keys.ForAccount`), so a preview, a save's recipe check and a lookup use the caller's
+  key. The catalog route uses the key of the account that owns the token's
   profile, read in its one lookup (`Keys.Sealed`); the manifest route looks it up by token for a
   cold genre list (`Keys.ForToken`). A subscribe (Add) makes no TMDB call. A source runs at most once per
   request, and only when a call goes out, so a request answered from a cache reads no key.
@@ -693,9 +693,8 @@ same way wherever it is judged. `validateCatalogParams` wraps a rejected recipe 
 `defaultMsg`, which would blame Uno for a TMDB outage). `clientErrors`, a `clientFailure` table
 read by `clientFailureOf`, maps the errors the caller can act on: a key problem → `422` in fixed
 words (`keyFailures`, *TMDB keys*), then the vault errors, each answered with its own message:
-`ErrInvalidInput` → `400`, `ErrConflict` → `409` (a publish whose source changed while it was
-being checked, and a second subscribe). Preview and genre-options classify what TMDB
-answers after validation the same way (`previewErrors`). The `403` of the access policy comes from
+`ErrInvalidInput` → `400`, `ErrConflict` → `409` (a second subscribe). Preview and
+genre-options classify what TMDB answers after validation the same way (`previewErrors`). The `403` of the access policy comes from
 the middleware, before any handler (*Access*). `writeNuvioError`
 delegates to `nuvioErrorStatus` so push's JSON responses and the plain-text ones classify Nuvio
 failures identically — `nuvio.ErrNuvioRequestFailed` → `502`, anything else → `500`.

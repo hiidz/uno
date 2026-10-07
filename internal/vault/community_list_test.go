@@ -89,7 +89,7 @@ func TestListCommunitySubscriptionFlags(t *testing.T) {
 	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, listedCatalogForm("Renamed")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCatalog(ctx, owner, source.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCatalog(ctx, owner, source.ID); err != nil {
 		t.Fatal(err)
 	}
 	if item := row(); !item.Subscribed || !item.UpdateAvailable {

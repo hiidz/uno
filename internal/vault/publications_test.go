@@ -46,7 +46,7 @@ func TestPublishAndRepublishCatalog(t *testing.T) {
 		t.Errorf("publication title after a private edit = %q, want Popular", still.Title)
 	}
 
-	again, err := db.PublishCatalog(ctx, owner, c.ID, allowAnyCatalogParams)
+	again, err := db.PublishCatalog(ctx, owner, c.ID)
 	if err != nil {
 		t.Fatalf("republish: %v", err)
 	}
@@ -94,9 +94,7 @@ func TestPublishCollectionSharesEveryReferencedCatalog(t *testing.T) {
 }
 
 // A publish refuses what can't be shared: a catalog inside a collection, a
-// subscribed copy, someone else's row, a recipe the validator refuses, and a
-// source edited while it was being checked. A refused publish writes
-// nothing, and a nil validator is a programming error.
+// subscribed copy and someone else's row. A refused publish writes nothing.
 func TestPublishRefusals(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -104,7 +102,7 @@ func TestPublishRefusals(t *testing.T) {
 
 	collectionID := newTestCollection(t, db, owner, "C")
 	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
-	if _, err := db.PublishCatalog(ctx, owner, scoped.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.PublishCatalog(ctx, owner, scoped.ID); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("publish a scoped catalog = %v, want ErrInvalidInput", err)
 	}
 
@@ -112,25 +110,11 @@ func TestPublishRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCatalog(ctx, other, listed.ID, allowAnyCatalogParams); !errors.Is(err, ErrCatalogNotFound) {
+	if _, err := db.PublishCatalog(ctx, other, listed.ID); !errors.Is(err, ErrCatalogNotFound) {
 		t.Errorf("publish someone else's catalog = %v, want ErrCatalogNotFound", err)
 	}
-	if _, err := db.PublishCollection(ctx, other, collectionID, allowAnyCatalogParams); !errors.Is(err, ErrCollectionNotFound) {
+	if _, err := db.PublishCollection(ctx, other, collectionID); !errors.Is(err, ErrCollectionNotFound) {
 		t.Errorf("publish someone else's collection = %v, want ErrCollectionNotFound", err)
-	}
-	if _, err := db.PublishCatalog(ctx, owner, listed.ID, nil); err == nil || errors.Is(err, ErrInvalidInput) {
-		t.Errorf("publish with no validator = %v, want a programming error", err)
-	}
-	refused := errors.New("recipe refused")
-	if _, err := db.PublishCatalog(ctx, owner, listed.ID, func(_, _, _ string) error { return refused }); !errors.Is(err, refused) {
-		t.Errorf("publish with a refusing validator = %v, want its error", err)
-	}
-	editMeanwhile := func(_, _, _ string) error {
-		_, err := db.UpdateUserCatalog(ctx, owner, listed.ID, listedCatalogForm("Edited meanwhile"))
-		return err
-	}
-	if _, err := db.PublishCatalog(ctx, owner, listed.ID, editMeanwhile); !errors.Is(err, ErrConflict) {
-		t.Errorf("publish of a catalog edited while checked = %v, want ErrConflict", err)
 	}
 	if c := reloadCatalog(t, db, listed.ID); c.Publication != nil {
 		t.Errorf("refused publishes wrote a publication: %+v", c.Publication)
@@ -138,12 +122,12 @@ func TestPublishRefusals(t *testing.T) {
 
 	source := publishCatalog(t, db, owner, "Source", "{}")
 	copied := subscribe(t, db, other, source.Publication.ID)
-	if _, err := db.PublishCatalog(ctx, other, copied.Catalog.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.PublishCatalog(ctx, other, copied.Catalog.ID); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("publish a subscribed catalog = %v, want ErrInvalidInput", err)
 	}
 	sourceCollection := publishCollection(t, db, owner, CollectionForm{Title: "Shared"})
 	copiedCollection := subscribe(t, db, other, sourceCollection.Publication.ID)
-	if _, err := db.PublishCollection(ctx, other, copiedCollection.Collection.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.PublishCollection(ctx, other, copiedCollection.Collection.ID); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("publish a subscribed collection = %v, want ErrInvalidInput", err)
 	}
 }
@@ -197,7 +181,7 @@ func TestUnpublishReleasesSubscribers(t *testing.T) {
 		t.Errorf("released copy after a save = name %q, publisher unpublished %v; want renamed, unmarked", saved.Name, saved.PublisherUnpublished)
 	}
 
-	again, err := db.PublishCatalog(ctx, owner, c.ID, allowAnyCatalogParams)
+	again, err := db.PublishCatalog(ctx, owner, c.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +337,7 @@ func TestPublishAcceptsACollectionWithASubscribedCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	published, err := db.PublishCollection(ctx, owner, collection.ID, allowAnyCatalogParams)
+	published, err := db.PublishCollection(ctx, owner, collection.ID)
 	if err != nil {
 		t.Fatalf("publish a collection with a subscribed catalog = %v, want nil", err)
 	}
@@ -375,31 +359,6 @@ func TestPublishAcceptsACollectionWithASubscribedCatalog(t *testing.T) {
 	}
 	if detail.SubscriberCount != 1 {
 		t.Errorf("the original publication's subscribers = %d, want 1 (the owner's)", detail.SubscriberCount)
-	}
-}
-
-// A publish checks each distinct recipe it shares once, however many of
-// its catalogs ask for it.
-func TestPublishChecksEachRecipeOnce(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	owner := newTestProfile(t, db, "owner")
-	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "C", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{
-		newScoped("a", "A", `{"with_genres":"27"}`), newScoped("b", "B", `{"with_genres":"27"}`), newScoped("c", "C", `{"with_genres":"35"}`),
-	}}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	checked := map[string]int{}
-	count := func(_, _, params string) error {
-		checked[params]++
-		return nil
-	}
-	if _, err := db.PublishCollection(ctx, owner, c.ID, count); err != nil {
-		t.Fatal(err)
-	}
-	if len(checked) != 2 || checked[`{"with_genres":"27"}`] != 1 {
-		t.Errorf("recipes checked = %v, want each of the two once", checked)
 	}
 }
 

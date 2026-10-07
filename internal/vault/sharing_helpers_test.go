@@ -7,11 +7,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// allowAnyCatalogParams is a CatalogParamsValidator that accepts every
-// recipe, for tests exercising a publish rather than the recipe check. The
-// real validator lives in internal/api, which this package cannot import.
-func allowAnyCatalogParams(_, _, _ string) error { return nil }
-
 // publishCatalog creates a listed catalog named name for owner and
 // publishes it, returning the catalog with its publication.
 func publishCatalog(t *testing.T, db *DB, owner uuid.UUID, name, params string) Catalog {
@@ -22,7 +17,7 @@ func publishCatalog(t *testing.T, db *DB, owner uuid.UUID, name, params string) 
 	if err != nil {
 		t.Fatalf("create catalog %q: %v", name, err)
 	}
-	published, err := db.PublishCatalog(context.Background(), owner, c.ID, allowAnyCatalogParams)
+	published, err := db.PublishCatalog(context.Background(), owner, c.ID)
 	if err != nil {
 		t.Fatalf("publish catalog %q: %v", name, err)
 	}
@@ -37,7 +32,7 @@ func publishCollection(t *testing.T, db *DB, owner uuid.UUID, form CollectionFor
 	if err != nil {
 		t.Fatalf("create collection %q: %v", form.Title, err)
 	}
-	published, err := db.PublishCollection(context.Background(), owner, c.ID, allowAnyCatalogParams)
+	published, err := db.PublishCollection(context.Background(), owner, c.ID)
 	if err != nil {
 		t.Fatalf("publish collection %q: %v", form.Title, err)
 	}
@@ -64,7 +59,7 @@ func newScoped(key, name, params string) FolderCatalogRef {
 // subscriber to it, returning subscriber's copy.
 func subscribeCollection(t *testing.T, db *DB, owner, subscriber, sourceID uuid.UUID) CollectionWithFolders {
 	t.Helper()
-	published, err := db.PublishCollection(context.Background(), owner, sourceID, allowAnyCatalogParams)
+	published, err := db.PublishCollection(context.Background(), owner, sourceID)
 	if err != nil {
 		t.Fatalf("PublishCollection: %v", err)
 	}

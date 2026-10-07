@@ -33,7 +33,7 @@ func newSharingFixture(t *testing.T) sharingFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err = f.db.PublishCatalog(ctx, owner.ID, catalog.ID, acceptAnyRecipe)
+	catalog, err = f.db.PublishCatalog(ctx, owner.ID, catalog.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func newSharingFixture(t *testing.T) sharingFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	collection, err = f.db.PublishCollection(ctx, owner.ID, collection.ID, acceptAnyRecipe)
+	collection, err = f.db.PublishCollection(ctx, owner.ID, collection.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,15 +55,11 @@ func newSharingFixture(t *testing.T) sharingFixture {
 	}
 }
 
-// acceptAnyRecipe is a vault.CatalogParamsValidator that accepts every
-// recipe, for publishing the fixture's rows through the vault.
-func acceptAnyRecipe(_, _, _ string) error { return nil }
-
 // TestSharingRoutes drives the Community, subscription and publication
 // routes through the real router, as the caller, in order: each step's
 // answer depends on what the steps before it did. None of them reaches TMDB:
-// a subscribe, an Update and a duplicate copy a snapshot checked at publish, and
-// the recipes published here need no TMDB list to check.
+// a publish, a subscribe, an Update and a duplicate read and write the vault
+// only.
 func TestSharingRoutes(t *testing.T) {
 	x := newSharingFixture(t)
 	noTMDB(t)
@@ -183,9 +179,9 @@ func subscribedCatalog(t *testing.T, f routeFixture, publicationID uuid.UUID) uu
 	return uuid.Nil
 }
 
-// A publish checks every recipe it shares against TMDB, the check a catalog
-// save runs: TMDB down is a 502, and nothing is published.
-func TestPublishChecksRecipesAgainstTMDB(t *testing.T) {
+// A publish reads only the vault: every recipe it shares was checked against
+// TMDB when its row was written, so TMDB being down doesn't stop it.
+func TestPublishMakesNoTMDBCall(t *testing.T) {
 	f := newRouteFixture(t)
 	catalog, err := f.db.CreateUserCatalog(t.Context(), f.caller.ID, vault.CatalogForm{
 		Type: "movie", Name: "Action", Provider: "tmdb", Params: `{"with_genres":"28"}`,
@@ -193,21 +189,9 @@ func TestPublishChecksRecipesAgainstTMDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "/api/p/1/catalogs/" + catalog.ID.String() + "/publish"
-	for _, tc := range []struct {
-		name       string
-		tmdb       http.HandlerFunc
-		wantStatus int
-	}{
-		{"TMDB down", tmdbDown, http.StatusBadGateway},
-		{"TMDB up", tmdbUp, http.StatusOK},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			hits := fakeTMDB(t, tc.tmdb)
-			w := serve(t, f.s, http.MethodPost, path, "", false)
-			if w.Code != tc.wantStatus || hits.Load() == 0 {
-				t.Fatalf("status = %d after %d TMDB calls, want %d after some (body %q)", w.Code, hits.Load(), tc.wantStatus, w.Body.String())
-			}
-		})
+	hits := fakeTMDB(t, tmdbDown)
+	w := serve(t, f.s, http.MethodPost, "/api/p/1/catalogs/"+catalog.ID.String()+"/publish", "", false)
+	if w.Code != http.StatusOK || hits.Load() != 0 {
+		t.Fatalf("status = %d after %d TMDB calls, want 200 after none (body %q)", w.Code, hits.Load(), w.Body.String())
 	}
 }

@@ -387,7 +387,6 @@ paths:
       tags: [publishing]
       operationId: publishCatalog
       summary: Publish a listed catalog, or publish its update
-      description: The recipe is checked against TMDB first.
       responses:
         "200":
           description: Published; the catalog with its publication.
@@ -399,9 +398,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}/unpublish:
     parameters:
@@ -570,8 +566,7 @@ paths:
       operationId: publishCollection
       summary: Publish a collection, or publish its update
       description: |
-        Each distinct recipe it uses is checked against TMDB first. A
-        subscribed copy is refused; a collection using catalogs added from
+        A subscribed copy is refused; a collection using catalogs added from
         Community is not.
       responses:
         "200":
@@ -584,9 +579,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
 
   /api/p/{profileIndex}/collections/{collectionID}/unpublish:
     parameters:

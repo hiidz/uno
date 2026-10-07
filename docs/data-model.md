@@ -531,11 +531,10 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     hash, and every subscriber would see an update that changes nothing, so it is a schema
     change.
 - **Publish** (`PublishCatalog`, `PublishCollection`) snapshots an owner's listed catalog or
-  collection. It runs the form validators the snapshot's copies are written through and the TMDB
-  recipe check over every catalog it publishes, which is the consent to publish a private library
-  catalog a collection references. It reads and checks through the pool, then reads the source
-  again inside the write transaction and writes only if its snapshot is unchanged, so a source
-  edited while TMDB was checking it is `ErrConflict` rather than published unchecked. A catalog
+  collection, including every private library catalog a collection references: publishing is
+  the consent to publish them. In one write transaction it reads the source, runs the form
+  validators the snapshot's copies are written through, and writes the publication. It makes no
+  TMDB call: every recipe was checked against TMDB when its row was saved. A catalog
   inside a collection and a subscribed copy are refused (`ErrInvalidInput`): only its publisher
   publishes a publication. A copy that is duplicated is the caller's own, and publishes
   like any other row. A collection that references a catalog its owner subscribes to
@@ -578,7 +577,7 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   rows: a catalog as a listed catalog, a collection as a collection with every catalog scoped to
   it, each catalog and folder carrying its snapshot key in `sub_key`. The copy is unpublished,
   off Home and never pushed. Only the form validators run: the recipes were checked
-  against TMDB at publish, so a subscribe makes no TMDB call. `subscriptions` is unique on
+  against TMDB when their rows were saved, so a subscribe makes no TMDB call. `subscriptions` is unique on
   `(subscriber_id, publication_id)`, so a second subscribe is `ErrConflict`, and deleting the copy
   deletes its subscription by cascade. `subscriber_count` is kept by the
   `subscriptions_count_*` triggers.
@@ -735,22 +734,19 @@ describing what a TMDB-backed catalog may ask for.
   rejected with `ErrInvalidParams`, for the same `json.Unmarshal` reason. Validation never reads
   the network export that network search uses (`docs/architecture.md`), so saving a recipe does
   not depend on TMDB's file host.
-- **A publish checks what it publishes; a copy re-checks the form rules.** A publish runs the TMDB
-  recipe check over every catalog its snapshot publishes, via a validator passed in by `api` —
-  `internal/vault` is the leaf package and cannot reach `internal/provider` — and requires it:
-  nil is a programming error, not "skip the check". One rejected recipe fails the whole publish.
-  It first runs the form validators the snapshot's copies are written through, because being
+- **A publish and a copy check the form rules; TMDB checks a recipe only when a row is saved.**
+  A publish runs the form validators the snapshot's copies are written through, because being
   stored is not evidence a row was ever checked: rows written before a given check existed reach
-  here too. A catalog snapshot is checked by `CatalogForm.Validate`; a collection snapshot by
+  here too. It makes no TMDB call: every recipe it publishes passed the TMDB check when its row
+  was written by a save or an import, or is a copy of one that did. A catalog snapshot is checked by `CatalogForm.Validate`; a collection snapshot by
   `CollectionForm.Validate` over the form that writes it as a new collection: the collection's
   and every folder's enum values and media URLs, their titles, a folder's cover emoji, each
   folder's ref count and ref genres, and every catalog the copy writes as a new row. A stored row
   that never passed one of those checks — an unrecognized `view_mode`, a title past `maxNameLen`,
   a blank catalog name, a `type` or `provider` Uno doesn't accept, params that aren't JSON — is
   not publishable, and fails with `ErrInvalidInput` → 400. A subscribe, a duplicate and an Update run
-  the same form validators over what they write from the snapshot, and nothing else: the
-  snapshot's recipes were checked against TMDB when it was published, so none of them makes a
-  TMDB call. An Update that writes nothing checks nothing.
+  the same form validators over what they write from the snapshot, and nothing else, so none of
+  them makes a TMDB call either. An Update that writes nothing checks nothing.
   `DuplicateCollection` runs `CollectionForm.Validate` over the form built from the caller's own
   source, with no params check: a recipe TMDB has since outgrown must not block you from
   duplicating your own collection. A stale enum, an overlong title, or a scoped catalog with a
@@ -759,14 +755,9 @@ describing what a TMDB-backed catalog may ask for.
   fills the bound cannot be duplicated rather than being copied into a row the collection
   editor's own save would then refuse. The listed catalogs a Duplicate references are not
   checked: they stay `catalog_id` refs to rows the caller already owns, and nothing is written
-  from them.
-- **A publish reads and checks before it opens a transaction.** The TMDB check can reach the
-  network, and holding SQLite's write lock across a cold-cache call would stall every other
-  writer. So `publish` reads the source through the pool and checks it, then opens the write
-  transaction, reads the source again and writes the publication only if the source still
-  snapshots to what was checked. A Duplicate reads its source through the pool too, then writes
-  it through `createCollectionTx`, the create core `CreateUserCollection` runs, each scoped
-  catalog copy one of the form's `new` entries.
+  from them. A Duplicate reads its source through the pool, then writes it through
+  `createCollectionTx`, the create core `CreateUserCollection` runs, each scoped catalog copy one
+  of the form's `new` entries.
 - **Certification applies to both types.** `certification`, `certification.gte`,
   `certification.lte`, and `certification_country` sit on `TMDBCommonParams` and map in
   `commonQuery` (`internal/provider/query.go`), so `/discover/tv` gets them too. The **value

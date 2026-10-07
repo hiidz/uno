@@ -342,10 +342,10 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 
 			t.Run("listed", func(t *testing.T) {
 				corrupt(listed.ID, "Listed")
-				if _, err := db.PublishCatalog(ctx, owner, listed.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+				if _, err := db.PublishCatalog(ctx, owner, listed.ID); !errors.Is(err, ErrInvalidInput) {
 					t.Errorf("PublishCatalog = %v, want ErrInvalidInput", err)
 				}
-				if _, err := db.PublishCollection(ctx, owner, onlyListed.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+				if _, err := db.PublishCollection(ctx, owner, onlyListed.ID); !errors.Is(err, ErrInvalidInput) {
 					t.Errorf("PublishCollection = %v, want ErrInvalidInput", err)
 				}
 				if _, err := db.DuplicateCollection(ctx, owner, onlyListed.ID); err != nil {
@@ -355,7 +355,7 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 
 			t.Run("scoped", func(t *testing.T) {
 				corrupt(scopedID, "Scoped")
-				if _, err := db.PublishCollection(ctx, owner, withScoped.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+				if _, err := db.PublishCollection(ctx, owner, withScoped.ID); !errors.Is(err, ErrInvalidInput) {
 					t.Errorf("PublishCollection = %v, want ErrInvalidInput", err)
 				}
 				if _, err := db.DuplicateCollection(ctx, owner, withScoped.ID); !errors.Is(err, ErrInvalidInput) {

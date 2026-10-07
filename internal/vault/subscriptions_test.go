@@ -287,7 +287,7 @@ func TestRefusedSaveLeavesCopiesUpdatingByKey(t *testing.T) {
 	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, reordered); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCollection(ctx, owner, source.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCollection(ctx, owner, source.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -359,7 +359,7 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, edit); err != nil {
 		t.Fatalf("publisher's edit: %v", err)
 	}
-	republished, err := db.PublishCollection(ctx, owner, source.ID, allowAnyCatalogParams)
+	republished, err := db.PublishCollection(ctx, owner, source.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func TestUpdateSubscribedCatalog(t *testing.T) {
 	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, form); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCatalog(ctx, owner, source.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCatalog(ctx, owner, source.ID); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := db.UpdateSubscription(ctx, subscriber, source.Publication.ID)

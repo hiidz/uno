@@ -180,7 +180,7 @@ func TestAddonReadsHoldUntilThePush(t *testing.T) {
 	if _, err := f.db.UpdateUserCatalog(ctx, publisher, source.ID, form); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.db.PublishCatalog(ctx, publisher, source.ID, allowAnyCatalogParams); err != nil {
+	if _, err := f.db.PublishCatalog(ctx, publisher, source.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.db.UpdateSubscription(ctx, f.owner, source.Publication.ID); err != nil {

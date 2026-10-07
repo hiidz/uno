@@ -9,7 +9,6 @@ package vault
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -50,60 +49,29 @@ func newPublication(kind string, id uuid.UUID, existing bool, publisherID, sourc
 }
 
 // publicationID is the id a publish of a row whose publication is state
-// uses: its existing publication's, or newID for a first publish.
-func publicationID(state *PublicationState, newID uuid.UUID) (uuid.UUID, bool) {
+// uses: its existing publication's, or a new one for a first publish.
+func publicationID(state *PublicationState) (uuid.UUID, bool) {
 	if state == nil {
-		return newID, false
+		return uuid.New(), false
 	}
 	return state.ID, true
 }
 
-// check runs the checks a publish runs: the form validators the snapshot's
-// copies are written through, then validateParams over every distinct
-// recipe it publishes, once each.
-func (p publication) check(validateParams CatalogParamsValidator) error {
-	if err := p.snapshot.validate(); err != nil {
-		return err
-	}
-	for _, c := range distinctRecipes(p.snapshot.Catalogs) {
-		if err := validateParams(c.Type, c.Provider, string(c.Params)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// distinctRecipes is catalogs with every catalog whose recipe an earlier one
-// already asks for left out, in order.
-func distinctRecipes(catalogs []BundleCatalog) []BundleCatalog {
-	seen := map[string]bool{}
-	var distinct []BundleCatalog
-	for _, c := range catalogs {
-		hash := RecipeHash(c.Type, c.Provider, string(c.Params))
-		if !seen[hash] {
-			seen[hash] = true
-			distinct = append(distinct, c)
-		}
-	}
-	return distinct
-}
-
 // PublishCatalog publishes profileID's listed catalog catalogID, or
 // publishes an update to it: its content now becomes the publication's
-// snapshot, under the publication's existing id when it has one. The catalog must be listed and not a subscribed copy
-// (ErrInvalidInput), and its recipe passes validateParams, which is
-// required. Returns the catalog, with its publication.
-func (db *DB) PublishCatalog(ctx context.Context, profileID, catalogID uuid.UUID, validateParams CatalogParamsValidator) (Catalog, error) {
-	newID := uuid.New()
-	load := func(q querier) (publication, error) {
-		c, err := publishableCatalog(ctx, q, profileID, catalogID)
+// snapshot, under the publication's existing id when it has one. The catalog
+// must be listed and not a subscribed copy (ErrInvalidInput). Returns the
+// catalog, with its publication.
+func (db *DB) PublishCatalog(ctx context.Context, profileID, catalogID uuid.UUID) (Catalog, error) {
+	load := func(tx *sql.Tx) (publication, error) {
+		c, err := publishableCatalog(ctx, tx, profileID, catalogID)
 		if err != nil {
 			return publication{}, err
 		}
-		id, existing := publicationID(c.Publication, newID)
+		id, existing := publicationID(c.Publication)
 		return newPublication(kindCatalog, id, existing, profileID, c.ID, c.Name, catalogSnapshot(id, c))
 	}
-	if err := db.publish(ctx, load, validateParams); err != nil {
+	if err := db.publish(ctx, load); err != nil {
 		return Catalog{}, err
 	}
 	return ownCatalog(ctx, db.conn, profileID, catalogID)
@@ -129,20 +97,18 @@ func publishableCatalog(ctx context.Context, q querier, profileID, catalogID uui
 // publishes an update to it, as PublishCatalog does a catalog. The snapshot holds
 // every catalog its folders reference, private library catalogs included:
 // publishing is the consent to publish them. The collection must not be a
-// subscribed copy (ErrInvalidInput), and every recipe it publishes passes
-// validateParams, which is required. Returns the collection, with its
+// subscribed copy (ErrInvalidInput). Returns the collection, with its
 // publication.
-func (db *DB) PublishCollection(ctx context.Context, profileID, collectionID uuid.UUID, validateParams CatalogParamsValidator) (CollectionWithFolders, error) {
-	newID := uuid.New()
-	load := func(q querier) (publication, error) {
-		tree, err := publishableCollection(ctx, q, profileID, collectionID)
+func (db *DB) PublishCollection(ctx context.Context, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {
+	load := func(tx *sql.Tx) (publication, error) {
+		tree, err := publishableCollection(ctx, tx, profileID, collectionID)
 		if err != nil {
 			return publication{}, err
 		}
-		id, existing := publicationID(tree.Publication, newID)
+		id, existing := publicationID(tree.Publication)
 		return newPublication(kindCollection, id, existing, profileID, tree.ID, tree.Title, collectionSnapshot(id, tree))
 	}
-	if err := db.publish(ctx, load, validateParams); err != nil {
+	if err := db.publish(ctx, load); err != nil {
 		return CollectionWithFolders{}, err
 	}
 	return ownCollection(ctx, db.conn, profileID, collectionID)
@@ -161,31 +127,20 @@ func publishableCollection(ctx context.Context, q querier, profileID, collection
 	return tree, nil
 }
 
-// publish runs one publish: load the source as its publication through the
-// pool, check it, then load it again inside the write transaction and write
-// it if it is still the same. validateParams reaches TMDB, so it runs
-// before the transaction opens, and a source edited meanwhile is refused
-// with ErrConflict rather than published unchecked.
-func (db *DB) publish(ctx context.Context, load func(querier) (publication, error), validateParams CatalogParamsValidator) error {
-	if validateParams == nil {
-		return errors.New("vault: publishing requires a params validator")
-	}
-	checked, err := load(db.conn)
-	if err != nil {
-		return err
-	}
-	if err := checked.check(validateParams); err != nil {
-		return err
-	}
+// publish runs one publish in one transaction: load the source as its
+// publication, refuse a snapshot the form validators its copies are written
+// through would refuse, and write it. Every recipe in it was checked against
+// TMDB when its row was written, so a publish makes no TMDB call.
+func (db *DB) publish(ctx context.Context, load func(*sql.Tx) (publication, error)) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
-		current, err := load(tx)
+		p, err := load(tx)
 		if err != nil {
 			return err
 		}
-		if current.contentHash != checked.contentHash || current.id != checked.id {
-			return fmt.Errorf("%w: it changed while being published; publish it again", ErrConflict)
+		if err := p.snapshot.validate(); err != nil {
+			return err
 		}
-		return writePublication(ctx, tx, current, time.Now().UTC().Format(time.RFC3339))
+		return writePublication(ctx, tx, p, time.Now().UTC().Format(time.RFC3339))
 	})
 }
 

@@ -57,20 +57,9 @@ func serveSharingCall[T any](w http.ResponseWriter, r *http.Request, call sharin
 	httpx.WriteJSON(w, call.status, result)
 }
 
-// publishWith adapts a vault publish to serveSharingCall, checking every
-// recipe it publishes against TMDB with validateCatalogParams, the check a
-// catalog save runs.
-func publishWith[T any](s *Server, publish func(ctx context.Context, profileID, id uuid.UUID, validateParams vault.CatalogParamsValidator) (T, error)) func(context.Context, uuid.UUID, uuid.UUID) (T, error) {
-	return func(ctx context.Context, profileID, id uuid.UUID) (T, error) {
-		return publish(ctx, profileID, id, func(catalogType, catalogProvider, params string) error {
-			return s.validateCatalogParams(ctx, catalogType, catalogProvider, params)
-		})
-	}
-}
-
 func (s *Server) publishCatalog(w http.ResponseWriter, r *http.Request) {
 	serveSharingCall(w, r, sharingCall{catalogRow, "publishCatalog", "failed to publish catalog", http.StatusOK},
-		publishWith(s, s.vault.PublishCatalog))
+		s.vault.PublishCatalog)
 }
 
 func (s *Server) unpublishCatalog(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +69,7 @@ func (s *Server) unpublishCatalog(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) publishCollection(w http.ResponseWriter, r *http.Request) {
 	serveSharingCall(w, r, sharingCall{collectionRow, "publishCollection", "failed to publish collection", http.StatusOK},
-		publishWith(s, s.vault.PublishCollection))
+		s.vault.PublishCollection)
 }
 
 func (s *Server) unpublishCollection(w http.ResponseWriter, r *http.Request) {

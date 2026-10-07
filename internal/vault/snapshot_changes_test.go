@@ -42,7 +42,7 @@ func TestUpdateChangesForACollectionCopy(t *testing.T) {
 	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, renamed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCollection(ctx, owner, source.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCollection(ctx, owner, source.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,7 +79,7 @@ func TestUpdateChangesForACatalogCopy(t *testing.T) {
 	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, form); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCatalog(ctx, owner, source.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCatalog(ctx, owner, source.ID); err != nil {
 		t.Fatal(err)
 	}
 	changes, err := db.UpdateChanges(ctx, subscriber, source.Publication.ID)
@@ -134,7 +134,7 @@ func TestCollectionChangesSincePublish(t *testing.T) {
 	}
 	empty("never published")
 
-	if _, err := db.PublishCollection(ctx, owner, created.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCollection(ctx, owner, created.ID); err != nil {
 		t.Fatal(err)
 	}
 	empty("as published")
@@ -158,7 +158,7 @@ func TestCollectionChangesSincePublish(t *testing.T) {
 	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, edited); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.PublishCollection(ctx, owner, created.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCollection(ctx, owner, created.ID); err != nil {
 		t.Fatal(err)
 	}
 	empty("republished")

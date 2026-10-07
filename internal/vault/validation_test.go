@@ -144,7 +144,7 @@ func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 				}
 			})
 
-			if _, err := db.PublishCollection(ctx, owner, source.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+			if _, err := db.PublishCollection(ctx, owner, source.ID); !errors.Is(err, ErrInvalidInput) {
 				t.Errorf("PublishCollection = %v, want ErrInvalidInput", err)
 			}
 			if _, err := db.DuplicateCollection(ctx, owner, source.ID); !errors.Is(err, ErrInvalidInput) {
@@ -190,14 +190,14 @@ func TestPublishCatalogRejectsStaleSourceRows(t *testing.T) {
 				}
 			})
 
-			if _, err := db.PublishCatalog(ctx, owner, source.ID, allowAnyCatalogParams); !errors.Is(err, ErrInvalidInput) {
+			if _, err := db.PublishCatalog(ctx, owner, source.ID); !errors.Is(err, ErrInvalidInput) {
 				t.Errorf("PublishCatalog = %v, want ErrInvalidInput", err)
 			}
 		})
 	}
 
 	// The restored row publishes, so the bound is what refused it.
-	if _, err := db.PublishCatalog(ctx, owner, source.ID, allowAnyCatalogParams); err != nil {
+	if _, err := db.PublishCatalog(ctx, owner, source.ID); err != nil {
 		t.Errorf("PublishCatalog on the restored row: %v", err)
 	}
 }

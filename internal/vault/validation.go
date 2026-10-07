@@ -23,8 +23,8 @@ var (
 	ErrPublicationNotFound = errors.New("publication not found")
 	ErrInvalidInput        = errors.New("invalid input")
 	// ErrConflict is a request the caller's own current state rules out: a
-	// second subscription to one publication, or a publish racing an edit of
-	// its source. Its message is safe to show the client.
+	// second subscription to one publication. Its message is safe to show the
+	// client.
 	ErrConflict = errors.New("conflict")
 )
 
