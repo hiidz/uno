@@ -47,7 +47,7 @@ func dedupeUUIDs(ids []uuid.UUID) []uuid.UUID {
 }
 
 // nullableUUIDString returns id.String(), or nil (a SQL NULL) when id is
-// nil — for writing an optional *uuid.UUID column.
+// nil — for an optional *uuid.UUID column or query argument.
 func nullableUUIDString(id *uuid.UUID) any {
 	if id == nil {
 		return nil

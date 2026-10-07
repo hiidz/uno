@@ -15,77 +15,47 @@ type queryRower interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// ownedIDsQuery describes one closed-graph ownership check for
-// requireOwnedIDs: which table the ids must exist in, how to name them in
-// errors, and an optional fragment ANDed onto the ownership test. The closed
-// graph has no cross-owner reference, so there is never an "or public"
-// branch.
-//
-// table and extraWhere are always internal literals, never client input.
-type ownedIDsQuery struct {
-	table string
-	// label names one row in the singular, e.g. "catalog".
-	label string
-	// extraWhere is ANDed onto "owner_id = ?" (e.g. " AND collection_id IS
-	// NULL" to also require "listed"); extraArgs fill its placeholders and
-	// are appended after profileID.
-	extraWhere string
-	extraArgs  []any
-	// rejection completes the message for an id that didn't come back, after
-	// "<label> <id> ".
-	rejection string
-}
-
-// requireOwnedIDs confirms every id in ids satisfies q, returning an
-// ErrInvalidInput naming the first that doesn't. Must run inside the
-// caller's transaction.
-func requireOwnedIDs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, ids []uuid.UUID, q ownedIDsQuery) error {
-	unique := dedupeUUIDs(ids)
-	if len(unique) == 0 {
-		return nil
-	}
-
-	args := append([]any{idsJSON(unique), profileID.String()}, q.extraArgs...)
-
-	got, err := queryUUIDs(ctx, tx, q.label+" id", fmt.Sprintf(`
-		SELECT id FROM %s
-		WHERE id IN (SELECT value FROM json_each(?)) AND owner_id = ?%s
-	`, q.table, q.extraWhere), args...)
-	if err != nil {
-		return err
-	}
-
-	found := make(map[uuid.UUID]bool, len(got))
-	for _, id := range got {
-		found[id] = true
-	}
-
-	for _, id := range unique {
-		if !found[id] {
-			return fmt.Errorf("%w: %s %s %s", ErrInvalidInput, q.label, id, q.rejection)
-		}
-	}
-	return nil
-}
-
 // validateFolderRefs confirms every catalog ID may be referenced by a
 // folder in a collection this profile owns, under the closed-graph rule:
 // owned by profileID, and either listed (collection_id IS NULL) or already
 // scoped to this same collection. A nil collectionID means the collection
 // doesn't exist yet (CreateUserCollection has no id to compare against), so
-// only listed catalogs qualify. Must run inside the caller's transaction.
+// only listed catalogs qualify. Returns an ErrInvalidInput naming the first
+// id that doesn't. Must run inside the caller's transaction.
 func validateFolderRefs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionID *uuid.UUID, ids []uuid.UUID) error {
-	q := ownedIDsQuery{
-		table:      "catalogs",
-		label:      "catalog",
-		extraWhere: ` AND collection_id IS NULL`,
-		rejection:  "is not usable in this collection's folders",
+	unique := dedupeUUIDs(ids)
+	usable, err := usableCatalogIDs(ctx, tx, profileID, collectionID, unique)
+	if err != nil {
+		return err
 	}
-	if collectionID != nil {
-		q.extraWhere = ` AND (collection_id IS NULL OR collection_id = ?)`
-		q.extraArgs = []any{collectionID.String()}
+	return refuseUnusable(unique, usable)
+}
+
+// usableCatalogIDs is those of ids validateFolderRefs admits, read through tx.
+func usableCatalogIDs(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, collectionID *uuid.UUID, ids []uuid.UUID) ([]uuid.UUID, error) {
+	if len(ids) == 0 {
+		return nil, nil
 	}
-	return requireOwnedIDs(ctx, tx, profileID, ids, q)
+	return queryUUIDs(ctx, tx, "catalog id", `
+		SELECT id FROM catalogs
+		WHERE id IN (SELECT value FROM json_each(?)) AND owner_id = ?
+		  AND (collection_id IS NULL OR collection_id = ?)
+	`, idsJSON(ids), profileID.String(), nullableUUIDString(collectionID))
+}
+
+// refuseUnusable is the ErrInvalidInput naming the first of ids usable lacks,
+// or nil when it has them all.
+func refuseUnusable(ids, usable []uuid.UUID) error {
+	found := make(map[uuid.UUID]bool, len(usable))
+	for _, id := range usable {
+		found[id] = true
+	}
+	for _, id := range ids {
+		if !found[id] {
+			return fmt.Errorf("%w: catalog %s is not usable in this collection's folders", ErrInvalidInput, id)
+		}
+	}
+	return nil
 }
 
 // errSubscribedCopy is the ErrInvalidInput for writing or publishing a
