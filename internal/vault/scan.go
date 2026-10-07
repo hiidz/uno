@@ -9,18 +9,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// querier is the common subset of *sql.DB and *sql.Tx the multi-row query
-// helpers below need, so callers can run them either inside a transaction or
-// straight against the pool — the QueryContext counterpart to access.go's
-// queryRower.
-type querier interface {
+// dbtx is the common subset of *sql.DB and *sql.Tx the vault's query helpers
+// need, so callers can run them either inside a transaction or straight
+// against the pool.
+type dbtx interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 // queryUUIDs runs a query whose rows are a single TEXT column holding a UUID
 // and returns them in row order. label names one such value (e.g. "folder
 // id") and appears in every error this can return.
-func queryUUIDs(ctx context.Context, q querier, label, query string, args ...any) ([]uuid.UUID, error) {
+func queryUUIDs(ctx context.Context, q dbtx, label, query string, args ...any) ([]uuid.UUID, error) {
 	strs, err := queryStrings(ctx, q, label, query, args...)
 	if err != nil {
 		return nil, err
@@ -39,7 +40,7 @@ func queryUUIDs(ctx context.Context, q querier, label, query string, args ...any
 // queryStrings runs a query whose rows are a single TEXT column and returns
 // them in row order. label names one such value and appears in every error
 // this can return.
-func queryStrings(ctx context.Context, q querier, label, query string, args ...any) ([]string, error) {
+func queryStrings(ctx context.Context, q dbtx, label, query string, args ...any) ([]string, error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying %s list: %w", label, err)

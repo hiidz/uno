@@ -35,20 +35,20 @@ const collectionColumns = `col.id, col.title, col.owner_id, col.pin_to_top, col.
 // sharing state. where is built from this package's own literals — never
 // from client input, which reaches the query only as a bound arg — and names
 // every column through col, since the joined tables share column names.
-func selectCollections(ctx context.Context, q querier, where string, args ...any) ([]Collection, error) {
+func selectCollections(ctx context.Context, q dbtx, where string, args ...any) ([]Collection, error) {
 	return queryCollectionRows(ctx, q, `SELECT `+collectionColumns+`, `+sharingColumns+` FROM `+collectionRows+` WHERE `+where, args...)
 }
 
 // selectLeanCollections is selectCollections without the sharing state,
 // which saves the joins and the changed-since-publish hash: push's read.
-func selectLeanCollections(ctx context.Context, q querier, where string, args ...any) ([]Collection, error) {
+func selectLeanCollections(ctx context.Context, q dbtx, where string, args ...any) ([]Collection, error) {
 	return queryCollectionRows(ctx, q, `SELECT `+collectionColumns+`, `+noSharingColumns+` FROM collections col WHERE `+where, args...)
 }
 
 // queryCollectionRows runs query, built by selectCollections or
 // selectLeanCollections from internal literals, through q and parses its
 // rows.
-func queryCollectionRows(ctx context.Context, q querier, query string, args ...any) ([]Collection, error) {
+func queryCollectionRows(ctx context.Context, q dbtx, query string, args ...any) ([]Collection, error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying collections: %w", err)

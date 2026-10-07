@@ -80,7 +80,7 @@ func (db *DB) PublishCatalog(ctx context.Context, profileID, catalogID uuid.UUID
 // publishableCatalog reads profileID's catalog catalogID through q,
 // refusing one inside a collection, which is published with its collection,
 // and a subscribed copy.
-func publishableCatalog(ctx context.Context, q querier, profileID, catalogID uuid.UUID) (Catalog, error) {
+func publishableCatalog(ctx context.Context, q dbtx, profileID, catalogID uuid.UUID) (Catalog, error) {
 	c, err := ownCatalog(ctx, q, profileID, catalogID)
 	switch {
 	case err != nil:
@@ -116,7 +116,7 @@ func (db *DB) PublishCollection(ctx context.Context, profileID, collectionID uui
 
 // publishableCollection reads profileID's collection collectionID through
 // q, refusing a subscribed copy.
-func publishableCollection(ctx context.Context, q querier, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {
+func publishableCollection(ctx context.Context, q dbtx, profileID, collectionID uuid.UUID) (CollectionWithFolders, error) {
 	tree, err := ownCollection(ctx, q, profileID, collectionID)
 	if err != nil {
 		return CollectionWithFolders{}, err
@@ -214,7 +214,7 @@ func (db *DB) UnpublishCollection(ctx context.Context, profileID, collectionID u
 
 // unpublish deletes profileID's publication of sourceID, a catalog or a
 // collection, if there is one.
-func unpublish(ctx context.Context, e execer, profileID, sourceID uuid.UUID) error {
+func unpublish(ctx context.Context, e dbtx, profileID, sourceID uuid.UUID) error {
 	if _, err := e.ExecContext(ctx, `
 		DELETE FROM publications WHERE (catalog_id = ?1 OR collection_id = ?1) AND publisher_id = ?2
 	`, sourceID.String(), profileID.String()); err != nil {

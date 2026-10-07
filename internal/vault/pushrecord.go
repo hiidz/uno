@@ -78,7 +78,7 @@ func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, home Pus
 // StoredPushRecord is what a push of profileID's Home as push last stored it
 // (the Home columns) puts in Nuvio now, read through q: what the
 // waiting-for-push list compares the held record with.
-func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (PushRecord, error) {
+func StoredPushRecord(ctx context.Context, q dbtx, profileID uuid.UUID) (PushRecord, error) {
 	listed, err := selectLeanCatalogs(ctx, q, "c.owner_id = ? AND c.home_sort_order IS NOT NULL", profileID.String())
 	if err != nil {
 		return PushRecord{}, err
@@ -102,7 +102,7 @@ func StoredPushRecord(ctx context.Context, q querier, profileID uuid.UUID) (Push
 
 // buildPushRecord is the push record of home, profileID's Home selection, read
 // through q.
-func buildPushRecord(ctx context.Context, q querier, profileID uuid.UUID, home PushedHome) (PushRecord, error) {
+func buildPushRecord(ctx context.Context, q dbtx, profileID uuid.UUID, home PushedHome) (PushRecord, error) {
 	trees, err := selectedTrees(ctx, q, profileID, home)
 	if err != nil {
 		return PushRecord{}, err
@@ -133,7 +133,7 @@ func buildPushRecord(ctx context.Context, q querier, profileID uuid.UUID, home P
 // selectedTrees is profileID's collections home names, each with its tree,
 // in Home order and with the pin its entry carries, read through q. One that
 // isn't profileID's own is ErrInvalidInput.
-func selectedTrees(ctx context.Context, q querier, profileID uuid.UUID, home PushedHome) ([]CollectionWithFolders, error) {
+func selectedTrees(ctx context.Context, q dbtx, profileID uuid.UUID, home PushedHome) ([]CollectionWithFolders, error) {
 	ids := home.collectionIDs()
 	if len(ids) == 0 {
 		return nil, nil
@@ -167,7 +167,7 @@ func applySelection(trees []CollectionWithFolders, home PushedHome) ([]Collectio
 // selectedCatalogs is profileID's listed catalogs home names, in Home order,
 // read through q. One that isn't profileID's own, or is scoped to a
 // collection, is ErrInvalidInput.
-func selectedCatalogs(ctx context.Context, q querier, profileID uuid.UUID, home PushedHome) ([]Catalog, error) {
+func selectedCatalogs(ctx context.Context, q dbtx, profileID uuid.UUID, home PushedHome) ([]Catalog, error) {
 	ids := home.catalogIDs()
 	if len(ids) == 0 {
 		return nil, nil
@@ -277,7 +277,7 @@ const currentRecords = `push_records pr JOIN profiles p
 // through q, when it is current (currentRecords). ok is false when there is
 // none, which is what Nuvio holds for a profile that never pushed or whose
 // slot was reused since.
-func heldRecord(ctx context.Context, q querier, profileID uuid.UUID) (record PushRecord, ok bool, err error) {
+func heldRecord(ctx context.Context, q dbtx, profileID uuid.UUID) (record PushRecord, ok bool, err error) {
 	raws, err := queryStrings(ctx, q, "push record",
 		`SELECT pr.record FROM `+currentRecords+` WHERE pr.profile_id = ?`, profileID.String())
 	if err != nil || len(raws) == 0 {

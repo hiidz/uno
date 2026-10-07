@@ -60,20 +60,20 @@ const catalogRows = catalogsWithRecipes + `
 // client input, which reaches the query only as a bound arg — and names
 // every column through its table's alias, c for catalogs and r for recipes,
 // since the joined tables share column names.
-func selectCatalogs(ctx context.Context, q querier, where string, args ...any) ([]Catalog, error) {
+func selectCatalogs(ctx context.Context, q dbtx, where string, args ...any) ([]Catalog, error) {
 	return queryCatalogRows(ctx, q, `SELECT `+catalogColumns+` FROM `+catalogRows+` WHERE `+where, args...)
 }
 
 // selectLeanCatalogs is selectCatalogs without the sharing state, which
 // saves the joins and the changed-since-publish hash: the read for push, the
 // addon and the catalogs of a collection tree, none of which shows it.
-func selectLeanCatalogs(ctx context.Context, q querier, where string, args ...any) ([]Catalog, error) {
+func selectLeanCatalogs(ctx context.Context, q dbtx, where string, args ...any) ([]Catalog, error) {
 	return queryCatalogRows(ctx, q, `SELECT `+leanCatalogColumns+` FROM `+catalogsWithRecipes+` WHERE `+where, args...)
 }
 
 // queryCatalogRows runs query, built by selectCatalogs or
 // selectLeanCatalogs from internal literals, through q and parses its rows.
-func queryCatalogRows(ctx context.Context, q querier, query string, args ...any) ([]Catalog, error) {
+func queryCatalogRows(ctx context.Context, q dbtx, query string, args ...any) ([]Catalog, error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying catalogs: %w", err)
@@ -92,7 +92,7 @@ func (db *DB) GetUserCatalogs(ctx context.Context, profileID uuid.UUID) ([]Catal
 
 // ownCatalog reads catalog id, which must be owned by profileID
 // (ErrCatalogNotFound otherwise), through q.
-func ownCatalog(ctx context.Context, q querier, profileID, id uuid.UUID) (Catalog, error) {
+func ownCatalog(ctx context.Context, q dbtx, profileID, id uuid.UUID) (Catalog, error) {
 	catalogs, err := selectCatalogs(ctx, q, "c.id = ? AND c.owner_id = ?", id.String(), profileID.String())
 	if err != nil {
 		return Catalog{}, err
@@ -118,12 +118,6 @@ func compareByHomeSortOrder(a, b Catalog) int {
 	default:
 		return cmp.Compare(*a.HomeSortOrder, *b.HomeSortOrder)
 	}
-}
-
-// execer is the common subset of *sql.DB and *sql.Tx a single write needs —
-// the ExecContext counterpart to scan.go's querier.
-type execer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 // insertCatalog writes c as a new catalogs row, storing its recipe first, and
@@ -164,16 +158,16 @@ func (db *DB) GetCatalogsByIDs(ctx context.Context, ids []uuid.UUID) ([]Catalog,
 // catalogReader reads the catalogs ids names through q, as a collection
 // tree holds them: catalogsByIDs for an owner's read, leanCatalogsByIDs for
 // push's.
-type catalogReader func(ctx context.Context, q querier, ids []uuid.UUID) ([]Catalog, error)
+type catalogReader func(ctx context.Context, q dbtx, ids []uuid.UUID) ([]Catalog, error)
 
 // catalogsByIDs reads the catalogs ids names through q, each with its
 // sharing state.
-func catalogsByIDs(ctx context.Context, q querier, ids []uuid.UUID) ([]Catalog, error) {
+func catalogsByIDs(ctx context.Context, q dbtx, ids []uuid.UUID) ([]Catalog, error) {
 	return selectCatalogs(ctx, q, "c.id IN (SELECT value FROM json_each(?))", idsJSON(ids))
 }
 
 // leanCatalogsByIDs is GetCatalogsByIDs through q.
-func leanCatalogsByIDs(ctx context.Context, q querier, ids []uuid.UUID) ([]Catalog, error) {
+func leanCatalogsByIDs(ctx context.Context, q dbtx, ids []uuid.UUID) ([]Catalog, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}

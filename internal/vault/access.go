@@ -8,13 +8,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// queryRower is the common subset of *sql.DB and *sql.Tx the single-row
-// lookups below need, so callers can run them either inside a transaction or
-// straight against the pool.
-type queryRower interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
 // validateFolderRefs confirms every catalog ID may be referenced by a
 // folder in a collection this profile owns, under the closed-graph rule:
 // owned by profileID, and either listed (collection_id IS NULL) or already
@@ -67,7 +60,7 @@ func errSubscribedCopy(kind string) error {
 // refuseSubscribedCopy is errSubscribedCopy when id, a catalog or a collection
 // as kind names it, is one of profileID's subscribed copies. Every content
 // write other than Update runs it inside its transaction, ahead of the write.
-func refuseSubscribedCopy(ctx context.Context, q queryRower, profileID uuid.UUID, kind string, id uuid.UUID) error {
+func refuseSubscribedCopy(ctx context.Context, q dbtx, profileID uuid.UUID, kind string, id uuid.UUID) error {
 	var subscribed bool
 	err := q.QueryRowContext(ctx, `
 		SELECT EXISTS (SELECT 1 FROM subscriptions WHERE (catalog_id = ?1 OR collection_id = ?1) AND subscriber_id = ?2)

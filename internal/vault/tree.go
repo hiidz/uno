@@ -17,7 +17,7 @@ import (
 // the given collections through q, the catalogs by readCatalogs, and zips
 // everything into the nested response shape. Order of the input collections
 // slice is preserved.
-func assembleCollectionTree(ctx context.Context, q querier, collections []Collection, readCatalogs catalogReader) ([]CollectionWithFolders, error) {
+func assembleCollectionTree(ctx context.Context, q dbtx, collections []Collection, readCatalogs catalogReader) ([]CollectionWithFolders, error) {
 	if len(collections) == 0 {
 		return []CollectionWithFolders{}, nil
 	}
@@ -95,13 +95,13 @@ func (tree *CollectionWithFolders) markChangedSincePublish() {
 
 // ownCollection reads collection id's tree, which must be owned by
 // profileID (ErrCollectionNotFound otherwise), through q.
-func ownCollection(ctx context.Context, q querier, profileID, id uuid.UUID) (CollectionWithFolders, error) {
+func ownCollection(ctx context.Context, q dbtx, profileID, id uuid.UUID) (CollectionWithFolders, error) {
 	return selectTree(ctx, q, "col.id = ? AND col.owner_id = ?", id.String(), profileID.String())
 }
 
 // selectTree loads the one collection where selects, with its tree
 // assembled, through q. Returns ErrCollectionNotFound if there is none.
-func selectTree(ctx context.Context, q querier, where string, args ...any) (CollectionWithFolders, error) {
+func selectTree(ctx context.Context, q dbtx, where string, args ...any) (CollectionWithFolders, error) {
 	collections, err := selectCollections(ctx, q, where, args...)
 	if err != nil {
 		return CollectionWithFolders{}, err
@@ -119,7 +119,7 @@ func selectTree(ctx context.Context, q querier, where string, args ...any) (Coll
 // loadFoldersByCollections reads the folders of the given collections in one
 // query, ordered by collection and then by sort_order within each — the order
 // assembleCollectionTree's grouping relies on.
-func loadFoldersByCollections(ctx context.Context, q querier, collectionIDs []uuid.UUID) ([]Folder, error) {
+func loadFoldersByCollections(ctx context.Context, q dbtx, collectionIDs []uuid.UUID) ([]Folder, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, collection_id, title, sort_order, tile_shape, hide_title, cover_emoji, cover_image_url,
 		       focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url, sub_key
@@ -144,7 +144,7 @@ func loadFoldersByCollections(ctx context.Context, q querier, collectionIDs []uu
 // rewriteFolderCatalogRefs writes as the ref's position in its folder. A
 // folder with no refs has no entry, which reads back from the map as a nil
 // slice.
-func loadFolderRefs(ctx context.Context, q querier, folderIDs []uuid.UUID) (map[uuid.UUID][]FolderRef, error) {
+func loadFolderRefs(ctx context.Context, q dbtx, folderIDs []uuid.UUID) (map[uuid.UUID][]FolderRef, error) {
 	refsByFolder := make(map[uuid.UUID][]FolderRef, len(folderIDs))
 	if len(folderIDs) == 0 {
 		return refsByFolder, nil

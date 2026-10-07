@@ -190,7 +190,7 @@ type subscription struct {
 
 // loadSubscription reads profileID's subscription to publicationID through
 // q, or ErrPublicationNotFound when there is none.
-func loadSubscription(ctx context.Context, q queryRower, profileID, publicationID uuid.UUID) (subscription, error) {
+func loadSubscription(ctx context.Context, q dbtx, profileID, publicationID uuid.UUID) (subscription, error) {
 	var sub subscription
 	var id, copyID string
 	pub, err := scanPublication(q.QueryRowContext(ctx, `
