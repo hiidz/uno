@@ -35,7 +35,6 @@ vi.mock('@/features/library/useLibrary', () => ({
     countryNames: new Map(),
     isLoading: false,
     error: null,
-    failed: { catalogs: false, collections: false },
     refetch: () => {},
   }),
 }))

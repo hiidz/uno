@@ -28,16 +28,14 @@ export const queryKeys = {
    *  outside the `['p', i, …]` prefix like `profiles`. */
   tmdbKey: () => ['account', 'tmdb-key'] as const,
 
-  ownedCatalogs: (profileIndex: number) => ['p', profileIndex, 'catalogs'] as const,
-  ownedCollections: (profileIndex: number) => ['p', profileIndex, 'collections'] as const,
+  /** `GET /api/p/{i}/library`: the profile's own catalogs and collections and
+   *  what a push would change in Nuvio, in one read. Any write to a row refreshes
+   *  it, and so does a push. */
+  library: (profileIndex: number) => ['p', profileIndex, 'library'] as const,
 
-  /** What a push would change in Nuvio: edits and deletes since the last one.
-   *  Any write to a row Nuvio may hold refreshes it, and so does a push. */
-  pendingPush: (profileIndex: number) => ['p', profileIndex, 'push', 'pending'] as const,
-
-  /** Beside the owned-list keys rather than under them, so refreshing a
-   *  library list leaves Community alone; a write that changes Community
-   *  refreshes this prefix itself. Every Community key sits under it. */
+  /** Beside the library key rather than under it, so refreshing the library
+   *  leaves Community alone; a write that changes Community refreshes this
+   *  prefix itself. Every Community key sits under it. */
   community: (profileIndex: number) => ['p', profileIndex, 'community'] as const,
 
   /** The rows released and not yet acknowledged, each told about once
@@ -105,18 +103,14 @@ export const queryKeys = {
 } as const
 
 /**
- * Marks this profile's own catalog and collection lists stale, with what a push
- * would change and every Community query beside them — what a write that can
- * add a copy, change a row's sharing or change what Nuvio holds has to refresh.
- * Settles once every active query has refetched.
+ * Marks this profile's library stale, with every Community query beside it —
+ * what a write that can add a copy, change a row's sharing or change what Nuvio
+ * holds has to refresh. Settles once every active query has refetched.
  */
 export async function invalidateProfileLists(queryClient: QueryClient, profileIndex: number): Promise<void> {
   await Promise.all(
-    [
-      queryKeys.ownedCatalogs(profileIndex),
-      queryKeys.ownedCollections(profileIndex),
-      queryKeys.pendingPush(profileIndex),
-      queryKeys.community(profileIndex),
-    ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    [queryKeys.library(profileIndex), queryKeys.community(profileIndex)].map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey }),
+    ),
   )
 }

@@ -293,26 +293,35 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
 
-  /api/p/{profileIndex}/catalogs:
+  /api/p/{profileIndex}/library:
     parameters:
       - $ref: "#/components/parameters/ProfileIndex"
     get:
       tags: [catalogs]
-      operationId: listUserCatalogs
-      summary: The profile's listed catalogs
+      operationId: getLibrary
+      summary: The profile's own catalogs and collections, and what a push would change
+      description: |
+        Everything the builder shows for a profile in one read: its listed
+        catalogs (none scoped to a collection), its collections with their
+        folders and catalogs, and the rows a push of the stored Home would
+        change in Nuvio. Unpushed Home edits live in the builder and are not
+        in it. It is not paged: a profile holds at most 200 listed catalogs and
+        50 collections, and a write that would add past either is a `400`.
       responses:
         "200":
-          description: Every listed catalog (none scoped to a collection).
+          description: The library.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Catalog"
+                $ref: "#/components/schemas/Library"
         "400": { $ref: "#/components/responses/BadProfileIndex" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
+
+  /api/p/{profileIndex}/catalogs:
+    parameters:
+      - $ref: "#/components/parameters/ProfileIndex"
     post:
       tags: [catalogs]
       operationId: createUserCatalog
@@ -485,7 +494,7 @@ paths:
       operationId: acknowledgeReleasedCatalog
       summary: Acknowledge a released catalog
       description: |
-        Clears the catalog's publisher_unpublished mark, set or not, once the
+        Clears the catalog's release mark, set or not, once the
         builder has told its owner the publication ended. Saving never clears it.
       responses:
         "200":
@@ -504,23 +513,6 @@ paths:
   /api/p/{profileIndex}/collections:
     parameters:
       - $ref: "#/components/parameters/ProfileIndex"
-    get:
-      tags: [collections]
-      operationId: listUserCollections
-      summary: The profile's collections
-      responses:
-        "200":
-          description: Every collection, each with its folders and scoped catalogs.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Collection"
-        "400": { $ref: "#/components/responses/BadProfileIndex" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/ProfileNotFound" }
     post:
       tags: [collections]
       operationId: createUserCollection
@@ -695,7 +687,7 @@ paths:
       operationId: acknowledgeReleasedCollection
       summary: Acknowledge a released collection
       description: |
-        Clears the collection's publisher_unpublished mark, set or not, once the
+        Clears the collection's release mark, set or not, once the
         builder has told its owner the publication ended. Saving never clears it.
       responses:
         "200":
@@ -1084,30 +1076,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PushResult"
-
-  /api/p/{profileIndex}/push/pending:
-    parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-    get:
-      tags: [push]
-      operationId: listPendingPush
-      summary: What a push of the stored Home would change in Nuvio
-      description: |
-        Catalog rows first, then collections. Unpushed Home edits live in the
-        builder and are not in it.
-      responses:
-        "200":
-          description: The pending changes.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PendingChange"
-        "400": { $ref: "#/components/responses/BadProfileIndex" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/ProfileNotFound" }
 
   /api/genres/{type}:
     parameters:
@@ -1816,7 +1784,7 @@ components:
 
     Catalog:
       type: object
-      required: [id, type, name, provider, params, collection_id, show_in_home, publication, subscription, publisher_unpublished]
+      required: [id, type, name, provider, params, collection_id, show_in_home, publication, subscription]
       properties:
         id: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/CatalogType" }
@@ -1841,9 +1809,6 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SubscriptionState"
             - type: "null"
-        publisher_unpublished:
-          type: boolean
-          description: Was a subscribed copy until its publisher unpublished; cleared only by acknowledging the release.
     ReleasedCopy:
       type: object
       required: [kind, id, name]
@@ -1907,7 +1872,7 @@ components:
 
     Collection:
       type: object
-      required: [id, title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, publication, subscription, publisher_unpublished, folders, catalogs]
+      required: [id, title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, publication, subscription, folders, catalogs]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
@@ -1927,9 +1892,6 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SubscriptionState"
             - type: "null"
-        publisher_unpublished:
-          type: boolean
-          description: Was a subscribed copy until its publisher unpublished; cleared only by acknowledging the release.
         folders:
           type: array
           items:
@@ -2281,6 +2243,20 @@ components:
           type: string
           enum: [empty_collection, shares_addons, profile_changed, home_order_unreadable]
           description: Why push turned the Home away before writing anything to Nuvio.
+    Library:
+      type: object
+      required: [catalogs, collections, pending]
+      properties:
+        catalogs:
+          type: array
+          items: { $ref: "#/components/schemas/Catalog" }
+        collections:
+          type: array
+          items: { $ref: "#/components/schemas/Collection" }
+        pending:
+          type: array
+          description: Catalog rows first, then collections.
+          items: { $ref: "#/components/schemas/PendingChange" }
     PendingChange:
       type: object
       required: [kind, id, name, change]

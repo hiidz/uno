@@ -79,11 +79,7 @@ describe('usePush', () => {
   it('sends the selection as it was when pressed, and acknowledges only that', async () => {
     const answer = deferred<PushResult>()
     api.pushSelection.mockReturnValue(answer.promise)
-    const cached = [
-      queryKeys.ownedCatalogs(4),
-      queryKeys.ownedCollections(4),
-      queryKeys.pendingPush(4),
-    ]
+    const cached = [queryKeys.library(4)]
     for (const queryKey of cached) queryClient.setQueryData(queryKey, [])
     const { result } = renderPush()
 

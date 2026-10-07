@@ -3,22 +3,18 @@ import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PendingChange } from '@/api'
 import type { Library, LibraryCollection } from '@/features/library/useLibrary'
 import { catalog, collection } from '@/test/fixtures'
 import { HomeSelectionProvider } from './HomeSelectionContext'
 import { catalogEntries } from './pending'
 import { useHomeSelection } from './useHomeSelection'
 
-const api = vi.hoisted(() => ({
-  fetchPendingPush: vi.fn<(i: number) => Promise<PendingChange[]>>(),
-}))
-vi.mock('@/api', async () => ({ ...api, queryKeys: (await import('@/api/keys')).queryKeys }))
+vi.mock('@/api', async () => ({ queryKeys: (await import('@/api/keys')).queryKeys }))
 
 const library = vi.hoisted(() => ({ current: null as unknown as Library }))
 vi.mock('@/features/library/useLibrary', () => ({ useLibrary: () => library.current }))
 
-/** The owned lists as the server reads them: Alpha and Bravo on Home, Charlie
+/** The library as the server reads it: Alpha and Bravo on Home, Charlie
  *  off it. */
 const LOADED: Library = {
   catalogs: [
@@ -32,10 +28,10 @@ const LOADED: Library = {
   certifications: { movie: {}, tv: {} },
   languages: [],
   countryNames: new Map(),
+  pending: [],
   isLoading: false,
   error: null,
-  failed: { catalogs: false, collections: false },
-  listsLoaded: true,
+  loaded: true,
   refetch: () => {},
 }
 
@@ -63,12 +59,11 @@ async function renderLoaded() {
 beforeEach(() => {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   library.current = LOADED
-  api.fetchPendingPush.mockReset().mockResolvedValue([])
 })
 
 describe('HomeSelectionProvider', () => {
-  it('ignores edits until both owned lists load, then starts with nothing pending', async () => {
-    library.current = { ...LOADED, catalogs: [], isLoading: true, listsLoaded: false }
+  it('ignores edits until the library loads, then starts with nothing pending', async () => {
+    library.current = { ...LOADED, catalogs: [], pending: undefined, isLoading: true, loaded: false }
     const { result, rerender } = renderSelection()
     expect(result.current.ready).toBe(false)
     act(() => result.current.addCatalog('c'))
@@ -79,13 +74,6 @@ describe('HomeSelectionProvider', () => {
     expect(catalogEntries(result.current.snapshot()).map((c) => c.id)).toEqual(['a', 'b'])
     expect(result.current.pendingCount).toBe(0)
     expect(result.current.isDirty).toBe(false)
-  })
-
-  it('waits for the collections too while the catalogs have loaded', () => {
-    library.current = { ...LOADED, listsLoaded: false }
-    const { result } = renderSelection()
-    expect(result.current.ready).toBe(false)
-    expect(result.current.rows).toEqual([])
   })
 
   it('keeps pending edits through a refetch that brings different data', async () => {
@@ -120,8 +108,11 @@ describe('HomeSelectionProvider', () => {
   })
 
   it('counts a saved but unpushed change as pending, but not as dirty', async () => {
-    library.current = { ...LOADED, collections: [libraryCollection({ id: 'stale', title: 'Stale', home_position: 2 })] }
-    api.fetchPendingPush.mockResolvedValue([{ kind: 'collection', id: 'stale', name: 'Stale', change: 'changed' }])
+    library.current = {
+      ...LOADED,
+      collections: [libraryCollection({ id: 'stale', title: 'Stale', home_position: 2 })],
+      pending: [{ kind: 'collection', id: 'stale', name: 'Stale', change: 'changed' }],
+    }
     const { result } = await renderLoaded()
     await waitFor(() => expect(result.current.pendingCount).toBe(1))
     expect(result.current.changes.map((c) => c.text)).toEqual(['“Stale” changed since it was last pushed'])
@@ -135,7 +126,7 @@ describe('HomeSelectionProvider', () => {
   })
 
   it('counts an edited catalog on the home screen as waiting for a push', async () => {
-    api.fetchPendingPush.mockResolvedValue([{ kind: 'catalog', id: 'a', name: 'Alpha', change: 'changed' }])
+    library.current = { ...LOADED, pending: [{ kind: 'catalog', id: 'a', name: 'Alpha', change: 'changed' }] }
     const { result } = await renderLoaded()
     await waitFor(() => expect(result.current.pendingCount).toBe(1))
     expect(result.current.changes.map((c) => c.text)).toEqual(['“Alpha” changed since it was last pushed'])
@@ -143,7 +134,7 @@ describe('HomeSelectionProvider', () => {
   })
 
   it('flags no row for a removal, which has no row left', async () => {
-    api.fetchPendingPush.mockResolvedValue([{ kind: 'catalog', id: 'gone', name: 'Gone', change: 'removed' }])
+    library.current = { ...LOADED, pending: [{ kind: 'catalog', id: 'gone', name: 'Gone', change: 'removed' }] }
     const { result } = await renderLoaded()
     await waitFor(() => expect(result.current.pendingCount).toBe(1))
     expect(result.current.waitingForPush.size).toBe(0)
@@ -153,10 +144,12 @@ describe('HomeSelectionProvider', () => {
     const { result, rerender } = await renderLoaded()
     act(() => result.current.addCatalog('c'))
 
-    api.fetchPendingPush.mockResolvedValue([{ kind: 'catalog', id: 'a', name: 'Alpha', change: 'removed' }])
-    library.current = { ...LOADED, catalogs: LOADED.catalogs.filter((c) => c.id !== 'a') }
+    library.current = {
+      ...LOADED,
+      catalogs: LOADED.catalogs.filter((c) => c.id !== 'a'),
+      pending: [{ kind: 'catalog', id: 'a', name: 'Alpha', change: 'removed' }],
+    }
     rerender()
-    await act(() => queryClient.refetchQueries())
 
     await waitFor(() => expect(catalogEntries(result.current.snapshot()).map((c) => c.id)).toEqual(['b', 'c']))
     expect(result.current.snapshot().rows.map((row) => row.id)).toEqual(['b', 'c'])
@@ -166,14 +159,13 @@ describe('HomeSelectionProvider', () => {
     ])
   })
 
-  it('reports an owned list that never loaded, but not a refetch that fails later', async () => {
+  it('reports a library that never loaded, but not a refetch that fails later', async () => {
     const unavailable = new Error('collections unavailable')
     library.current = {
       ...LOADED,
       collections: [],
       error: unavailable,
-      failed: { catalogs: false, collections: true },
-      listsLoaded: false,
+      loaded: false,
     }
     const failed = renderSelection()
     expect(failed.result.current.error).toBe(unavailable)
@@ -182,7 +174,7 @@ describe('HomeSelectionProvider', () => {
 
     library.current = LOADED
     const { result, rerender } = await renderLoaded()
-    library.current = { ...LOADED, error: unavailable, failed: { catalogs: false, collections: true } }
+    library.current = { ...LOADED, error: unavailable }
     rerender()
     expect(result.current.error).toBeNull()
     expect(result.current.ready).toBe(true)

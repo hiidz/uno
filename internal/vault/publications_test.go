@@ -155,8 +155,8 @@ func TestUnpublishReleasesSubscribers(t *testing.T) {
 		t.Errorf("Community after an unpublish = %+v, want nothing", items)
 	}
 	released := reloadCatalog(t, db, copied.Catalog.ID)
-	if released.Subscription != nil || !released.PublisherUnpublished {
-		t.Errorf("subscriber's copy = subscription %+v, publisher unpublished %v; want no subscription, marked", released.Subscription, released.PublisherUnpublished)
+	if marked := isReleased(t, db, subscriber, released.ID); released.Subscription != nil || !marked {
+		t.Errorf("subscriber's copy = subscription %+v, marked %v; want no subscription, marked", released.Subscription, marked)
 	}
 	for name, err := range map[string]error{
 		"the subscriber's GetPublication": second(db.GetPublication(ctx, subscriber, c.Publication.ID)),
@@ -177,8 +177,8 @@ func TestUnpublishReleasesSubscribers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save of the released copy: %v", err)
 	}
-	if saved.Name != "Mine now" || !saved.PublisherUnpublished {
-		t.Errorf("released copy after a save = name %q, publisher unpublished %v; want renamed, still marked", saved.Name, saved.PublisherUnpublished)
+	if marked := isReleased(t, db, subscriber, saved.ID); saved.Name != "Mine now" || !marked {
+		t.Errorf("released copy after a save = name %q, marked %v; want renamed, still marked", saved.Name, marked)
 	}
 	acknowledgeCatalog(t, db, subscriber, released.ID)
 
@@ -215,8 +215,8 @@ func TestUnpublishCollection(t *testing.T) {
 		t.Fatalf("UnpublishCollection = %+v, %v; want no publication", unpublished.Publication, err)
 	}
 	released := mustOwnCollection(t, db, subscriber, copied.ID)
-	if released.Subscription != nil || !released.PublisherUnpublished {
-		t.Errorf("subscriber's copy = subscription %+v, publisher unpublished %v; want no subscription, marked", released.Subscription, released.PublisherUnpublished)
+	if marked := isReleased(t, db, subscriber, released.ID); released.Subscription != nil || !marked {
+		t.Errorf("subscriber's copy = subscription %+v, marked %v; want no subscription, marked", released.Subscription, marked)
 	}
 	if f, c := released.Folders[0], released.Catalogs[0]; f.SubKey != "" || c.SubKey != "" {
 		t.Errorf("released copy's keys = folder %q, catalog %q; want none", f.SubKey, c.SubKey)
@@ -226,7 +226,7 @@ func TestUnpublishCollection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save of the released copy: %v", err)
 	}
-	if !saved.PublisherUnpublished {
+	if !isReleased(t, db, subscriber, saved.ID) {
 		t.Error("released copy is unmarked by a save, want it marked until acknowledged")
 	}
 	if got := releasedCopies(t, db, subscriber); len(got) != 1 || got[0] != (ReleasedCopy{Kind: "collection", ID: copied.ID, Name: "Shared"}) {
@@ -238,7 +238,7 @@ func TestUnpublishCollection(t *testing.T) {
 	if rest, err := db.AcknowledgeReleasedCollection(ctx, subscriber, copied.ID); err != nil || len(rest) != 0 {
 		t.Errorf("AcknowledgeReleasedCollection = %+v, %v; want nothing left", rest, err)
 	}
-	if mustOwnCollection(t, db, subscriber, copied.ID).PublisherUnpublished {
+	if isReleased(t, db, subscriber, copied.ID) {
 		t.Error("released copy is still marked once acknowledged")
 	}
 }
@@ -269,11 +269,11 @@ func TestDeletingASourceUnpublishes(t *testing.T) {
 
 	catalogCopy := reloadCatalog(t, db, copies[0].Catalog.ID)
 	collectionCopy := mustOwnCollection(t, db, subscriber, copies[1].Collection.ID)
-	if catalogCopy.Subscription != nil || !catalogCopy.PublisherUnpublished {
-		t.Errorf("catalog copy = subscription %+v, publisher unpublished %v; want no subscription, marked", catalogCopy.Subscription, catalogCopy.PublisherUnpublished)
+	if marked := isReleased(t, db, subscriber, catalogCopy.ID); catalogCopy.Subscription != nil || !marked {
+		t.Errorf("catalog copy = subscription %+v, marked %v; want no subscription, marked", catalogCopy.Subscription, marked)
 	}
-	if collectionCopy.Subscription != nil || !collectionCopy.PublisherUnpublished {
-		t.Errorf("collection copy = subscription %+v, publisher unpublished %v; want no subscription, marked", collectionCopy.Subscription, collectionCopy.PublisherUnpublished)
+	if marked := isReleased(t, db, subscriber, collectionCopy.ID); collectionCopy.Subscription != nil || !marked {
+		t.Errorf("collection copy = subscription %+v, marked %v; want no subscription, marked", collectionCopy.Subscription, marked)
 	}
 	for _, id := range []uuid.UUID{deleted.Publication.ID, collection.Publication.ID} {
 		if _, err := db.GetPublication(ctx, subscriber, id); !errors.Is(err, ErrPublicationNotFound) {
@@ -459,7 +459,18 @@ func acknowledgeCatalog(t *testing.T, db *DB, profileID, id uuid.UUID) {
 	if err != nil || len(rest) != 0 {
 		t.Fatalf("AcknowledgeReleasedCatalog = %+v, %v; want nothing left", rest, err)
 	}
-	if reloadCatalog(t, db, id).PublisherUnpublished {
+	if isReleased(t, db, profileID, id) {
 		t.Error("released catalog is still marked once acknowledged")
 	}
+}
+
+// isReleased reports whether row id is among profileID's released copies.
+func isReleased(t *testing.T, db *DB, profileID, id uuid.UUID) bool {
+	t.Helper()
+	for _, c := range releasedCopies(t, db, profileID) {
+		if c.ID == id {
+			return true
+		}
+	}
+	return false
 }

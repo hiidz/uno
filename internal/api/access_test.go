@@ -81,7 +81,7 @@ func TestAccessAllowlist(t *testing.T) {
 		{"another email", "Bearer stranger@example.com", "/api/profiles", http.StatusForbidden, "can't use this Uno server"},
 		{"a token without an email", "Bearer no-email", "/api/profiles", http.StatusForbidden, "can't use this Uno server"},
 		{"the dev bypass's account, not admitted", "Bearer " + DevBypassSub, "/api/profiles", http.StatusForbidden, "can't use this Uno server"},
-		{"another email on a profile route", "Bearer stranger@example.com", "/api/p/1/catalogs", http.StatusForbidden, "can't use this Uno server"},
+		{"another email on a profile route", "Bearer stranger@example.com", "/api/p/1/library", http.StatusForbidden, "can't use this Uno server"},
 		{"another email on a lookup", "Bearer stranger@example.com", "/api/languages", http.StatusForbidden, "can't use this Uno server"},
 		{"no header", "", "/api/profiles", http.StatusUnauthorized, "missing or malformed"},
 		{"not a bearer token", "Basic allowed@example.com", "/api/profiles", http.StatusUnauthorized, "missing or malformed"},

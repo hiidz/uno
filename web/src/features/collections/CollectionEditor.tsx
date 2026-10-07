@@ -142,7 +142,6 @@ function draftCatalog(seed: {
     show_in_home: false,
     publication: null,
     subscription: null,
-    publisher_unpublished: false,
   }
 }
 

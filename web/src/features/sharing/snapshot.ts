@@ -16,7 +16,6 @@ export function asCatalog(catalog: SnapshotCatalog): Catalog {
     show_in_home: false,
     publication: null,
     subscription: null,
-    publisher_unpublished: false,
   }
 }
 
@@ -48,7 +47,6 @@ export function snapshotAsCollection(detail: PublicationDetail): Collection | nu
     focus_glow_enabled: snapshot.focus_glow_enabled,
     publication: null,
     subscription: null,
-    publisher_unpublished: false,
     folders: (snapshot.folders ?? []).map((folder) => asFolder(folder)),
     catalogs: (detail.snapshot.catalogs ?? []).map(asCatalog),
   }

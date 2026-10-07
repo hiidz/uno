@@ -197,7 +197,7 @@ func TestBuilderUsesTheAccountsKey(t *testing.T) {
 	if len(sent()) != 0 {
 		t.Fatalf("TMDB was reached %d times without a key", len(sent()))
 	}
-	if w := serve(t, newPerAccountServer(t, db), http.MethodGet, "/api/p/1/catalogs", "", false); w.Code != http.StatusOK {
+	if w := serve(t, newPerAccountServer(t, db), http.MethodGet, "/api/p/1/library", "", false); w.Code != http.StatusOK {
 		t.Errorf("a list with no key = %d, want 200", w.Code)
 	}
 

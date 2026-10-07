@@ -11,7 +11,7 @@ export function publishCatalog(profileIndex: number, catalogID: string): Promise
 
 /** Unpublishes a catalog — `POST .../catalogs/{id}/unpublish`. Its
  *  publication is gone for good: copies other profiles subscribed to become
- *  their own, marked `publisher_unpublished`. */
+ *  their own, with a release mark. */
 export function unpublishCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/unpublish`)
 }
@@ -26,7 +26,7 @@ export function unpublishCollection(profileIndex: number, collectionID: string):
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/unpublish`)
 }
 
-/** Acknowledges a released row, clearing its `publisher_unpublished` mark —
+/** Acknowledges a released row, clearing its release mark —
  *  `POST .../{kind}s/{id}/acknowledge-release` — and answers the released
  *  rows still unacknowledged. */
 export function acknowledgeRelease(
@@ -111,7 +111,7 @@ export function updateCatalog(
 
 /** Hard delete of an owned catalog, cascading to the folder refs that point
  *  at it. A published catalog is unpublished; copies other profiles added
- *  become their own, marked `publisher_unpublished`. */
+ *  become their own, with a release mark. */
 export function deleteCatalog(profileIndex: number, catalogID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/catalogs/${catalogID}`)
 }

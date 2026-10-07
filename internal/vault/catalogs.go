@@ -20,7 +20,7 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 // first.
 const baseCatalogColumns = `c.id, c.type, c.name, c.provider, c.params, c.owner_id,
 	c.collection_id, c.home_sort_order, c.show_in_home, c.sub_key,
-	c.unpublished_at IS NOT NULL, c.created_at, c.updated_at`
+	c.created_at, c.updated_at`
 
 // catalogColumns are the columns scanCatalog reads, in its order, from
 // catalogRows: the base columns, then the sharing state.
@@ -119,8 +119,17 @@ func compareByHomeSortOrder(a, b Catalog) int {
 // subscribe or duplicate of a catalog and a collection save's New entries all
 // go through it. home_sort_order and show_in_home are left to their column
 // defaults, since no catalog is born on the home screen. An empty SubKey is
-// stored as NULL.
+// stored as NULL. A listed catalog (no CollectionID) is refused once its owner
+// holds maxListedCatalogsPerProfile.
 func insertCatalog(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) {
+	if err := checkCatalogAdd(ctx, tx, c); err != nil {
+		return Catalog{}, err
+	}
+	return insertCatalogRow(ctx, tx, c)
+}
+
+// insertCatalogRow is insertCatalog's INSERT.
+func insertCatalogRow(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO catalogs (id, name, type, provider, params, owner_id, collection_id, sub_key, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

@@ -110,7 +110,7 @@ two layers differ.
 | The feature as a whole | sharing (`features/sharing`, `serveSharingCall`): a name, never a verb or status | never says "share" |
 | Browse tab | Community | Community |
 | Put it out | publish, publication, publisher | Publish…, Publish update…, "Published" |
-| Take it back, for good | unpublish; a subscriber's row is then released, carrying `publisher_unpublished` until they acknowledge it | Unpublish; the subscriber is told once, "Its publisher removed “X” from Community", and dismissing it acknowledges the release |
+| Take it back, for good | unpublish; a subscriber's row is then released, carrying a release mark until they acknowledge it | Unpublish; the subscriber is told once, "Its publisher removed “X” from Community", and dismissing it acknowledges the release |
 | Read-only copy that gets updates | subscribe, subscription, subscriber, subscribed copy | **Add**, ✓ Added, "Added by N", the **From Community** sticker |
 | Copy that's yours to edit | duplicate (`DuplicatePublication`, `DuplicateCollection`) | Duplicate |
 | Get the update | update | Update |
@@ -181,7 +181,20 @@ silent auto-provision.
 
 Route-semantics facts the client has to honour:
 
-- **The Home selection is read from the owned lists and written only by push.** Each owned row
+- **The library is one read: `GET /api/p/{i}/library`** (`getLibrary`,
+  `internal/api/library.go`) answers `{catalogs, collections, pending}`: the listed catalogs
+  (`GetUserCatalogs`), the collections with their folders and catalogs (`GetUserCollections`),
+  and what a push would change in Nuvio (`PendingPush`, below). The builder's lists have no
+  other GET: the catalog and collection routes keep their writes, and `push/pending` is gone.
+  It is unpaged, so a profile is capped at 200 listed catalogs and 50 collections
+  (`internal/vault/limits.go`). Every path that adds a row checks it inside its own transaction:
+  a catalog create or Duplicate, a collection create or Duplicate, a subscribe, a Community
+  Duplicate and an import, which is refused whole. The refusal is a 400 (`ErrInvalidInput`). A
+  collection's scoped catalogs don't count, and a profile already past a cap still reads, pushes,
+  saves and deletes.
+  The three reads are separate vault calls, so a write landing between them can show in one part
+  and not another until the next read.
+- **The Home selection is read from the library and written only by push.** Each owned row
   carries its place on Home as `home_position`, with a catalog's `show_in_home` and a
   collection's `pin_to_top`; a row without `home_position` is off Home. The whole pending
   selection travels in `POST .../push`'s body and is written by that handler, in one transaction,
@@ -212,7 +225,7 @@ Route-semantics facts the client has to honour:
   - Updating a subscribed *listed* catalog changes what Nuvio shows only at the next push: the
     addon serves a catalog's name and params from the push record (*Addon server* below), so an
     Update, like an editor Save, waits for Push. It shows on Home as a change to push
-    (`GET .../push/pending`, *Push*), as does an Update that changes what push sends for a
+    (`pending` in `GET .../library`, *Push*), as does an Update that changes what push sends for a
     collection copy on Home.
   - `GET /api/p/{i}/released` (`ReleasedCopies`) answers the caller's rows released and not yet
     acknowledged, oldest release first, as `[{kind, id, name}]`: copies whose publication ended,
@@ -233,7 +246,7 @@ Route-semantics facts the client has to honour:
     Community.
   - `.../unpublish` (`UnpublishCatalog`/`UnpublishCollection`, 200 with the row, its
     `publication` now `null`) deletes its publication, if any. It is one-way: every subscriber's
-    copy becomes that subscriber's own row, `publisher_unpublished` until they acknowledge the
+    copy becomes that subscriber's own row, marked released until they acknowledge the
     release (below), and publishing the row again is a new publication with no subscribers.
   - `GET .../catalogs/{id}/changes-since-publish` and `.../collections/{id}/changes-since-publish`
     (`CatalogChangesSincePublish`/`CollectionChangesSincePublish`) answer what publishing an
@@ -281,7 +294,7 @@ Route-semantics facts the client has to honour:
   nothing else about Nuvio: a collection whose folders used the catalog loses it by cascade, so
   that collection shows as changed. The delete confirm says so: "Delete removes it from Uno and
   Community now, and from Nuvio at your next push."
-- **What waits for a push is read from the server.** `GET /api/p/{i}/push/pending`
+- **What waits for a push is read from the server.** The `pending` list of `GET /api/p/{i}/library`
   (`PendingPush`, `internal/vault/pushpending.go`) answers the rows a push of the Home as Uno
   stores it would change in Nuvio, as `[{kind, id, name, change}]` with `change` one of `changed`
   (Nuvio holds the row differently: a catalog's name or recipe, a collection's pushed bytes, or

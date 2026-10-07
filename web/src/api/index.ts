@@ -30,13 +30,11 @@ export { pushSelection } from './push'
 export type { PushRefusal, PushRequest, PushResult } from './push'
 export { invalidateProfileLists, queryKeys } from './keys'
 export {
-  fetchOwnedCatalogs,
-  fetchOwnedCollections,
+  fetchLibrary,
   fetchCommunity,
   fetchPublication,
   fetchUpdateChanges,
   fetchChangesSincePublish,
-  fetchPendingPush,
   fetchReleased,
   fetchGenres,
   fetchCertifications,
@@ -77,6 +75,7 @@ export type {
   ImportCheck,
   ImportResult,
   Language,
+  LibraryData,
   NuvioProfile,
   PendingChange,
   ReleasedCopy,

@@ -1,10 +1,8 @@
 import { getJSON, getList, sendJSON } from './http'
 import type {
-  Catalog,
   CatalogPreview,
   CatalogType,
   CertificationsByCountry,
-  Collection,
   CommunityItem,
   Company,
   CompanySearchResult,
@@ -13,10 +11,10 @@ import type {
   GenreOptionsRequest,
   Keyword,
   Language,
+  LibraryData,
   Network,
   NetworkSearchResult,
   NuvioProfile,
-  PendingChange,
   PreviewRequest,
   PublicationDetail,
   ReleasedCopy,
@@ -33,12 +31,12 @@ import type {
  *  server leaves out the caller's own publications and marks the ones it
  *  subscribes to, so there is no merge to do on this side. */
 
-export function fetchOwnedCatalogs(profileIndex: number): Promise<Catalog[]> {
-  return getList<Catalog>(`/api/p/${profileIndex}/catalogs`)
-}
-
-export function fetchOwnedCollections(profileIndex: number): Promise<Collection[]> {
-  return getList<Collection>(`/api/p/${profileIndex}/collections`)
+/** Everything the builder shows for a profile, in one call: its listed
+ *  catalogs, its collections, and what a push of the Home as the server stores
+ *  it would change in Nuvio. The Home pane adds its own unpushed edits to the
+ *  pending list. */
+export function fetchLibrary(profileIndex: number): Promise<LibraryData> {
+  return getJSON<LibraryData>(`/api/p/${profileIndex}/library`)
 }
 
 /** Every live publication Community lists, in one call: the SPA searches,
@@ -66,14 +64,6 @@ export function fetchChangesSincePublish(
   id: string,
 ): Promise<SnapshotChange[]> {
   return getList<SnapshotChange>(`/api/p/${profileIndex}/${kind}s/${id}/changes-since-publish`)
-}
-
-/** What a push of the Home as the server stores it would change in Nuvio: the
- *  catalogs and collections edited or deleted since the last push, and any row
- *  on Home that Nuvio holds nothing for. The Home pane adds its own unpushed
- *  edits to it. */
-export function fetchPendingPush(profileIndex: number): Promise<PendingChange[]> {
-  return getList<PendingChange>(`/api/p/${profileIndex}/push/pending`)
 }
 
 /** This profile's rows released and not yet acknowledged: copies whose

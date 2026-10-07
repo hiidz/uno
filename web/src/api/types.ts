@@ -42,10 +42,6 @@ export interface Catalog {
   /** The publication this listed catalog is a subscribed copy of; `null`
    *  for the owner's own catalog, and always `null` inside a collection. */
   subscription: SubscriptionState | null
-  /** Its publisher unpublished what it was added from, which made it this
-   *  profile's own; cleared once the owner acknowledges the release
-   *  (`POST .../acknowledge-release`), never by a save. */
-  publisher_unpublished: boolean
 }
 
 /** What a publisher's row shows of its publication. `changed_since_publish`
@@ -131,8 +127,6 @@ export type Collection = CollectionSettings & {
    *  it, so they carry no subscription of their own. */
   publication: PublicationState | null
   subscription: SubscriptionState | null
-  /** As on `Catalog`. */
-  publisher_unpublished: boolean
   folders: Folder[] | null
   /** Every catalog this collection's folders reference, listed or scoped —
    *  so the editor never needs the library to render a folder. */
@@ -140,7 +134,7 @@ export type Collection = CollectionSettings & {
 }
 
 /**
- * One row `GET /api/p/{i}/push/pending` says a push would change in Nuvio:
+ * One row `GET /api/p/{i}/library` says a push would change in Nuvio:
  * `changed` (Nuvio holds it differently — a collection also when a catalog its
  * folders use changed), `added` (on Home, and Nuvio holds nothing for it) or
  * `removed` (deleted since the last push, which drops it). `name` is the row's
@@ -151,6 +145,14 @@ export interface PendingChange {
   id: string
   name: string
   change: 'added' | 'changed' | 'removed'
+}
+
+/** `GET /api/p/{i}/library`: the profile's listed catalogs, its collections, and
+ *  what a push of the stored Home would change in Nuvio. */
+export interface LibraryData {
+  catalogs: Catalog[]
+  collections: Collection[]
+  pending: PendingChange[]
 }
 
 /** One of the profile's rows released and not yet acknowledged — a copy

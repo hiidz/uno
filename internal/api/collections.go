@@ -51,10 +51,6 @@ func (s *Server) checkCatalogEdits(ctx context.Context, edits []vault.ScopedCata
 	return nil
 }
 
-func (s *Server) listUserCollections(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listUserCollections", "failed to load collections", s.vault.GetUserCollections)
-}
-
 func (s *Server) duplicateUserCollection(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 

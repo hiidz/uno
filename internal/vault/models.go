@@ -58,10 +58,6 @@ type Catalog struct {
 	// when there is none.
 	Publication  *PublicationState  `json:"publication"`
 	Subscription *SubscriptionState `json:"subscription"`
-	// PublisherUnpublished is set on a listed catalog that was a subscribed
-	// copy until its publisher unpublished it, until its owner acknowledges
-	// the release (AcknowledgeReleased).
-	PublisherUnpublished bool `json:"publisher_unpublished"`
 }
 
 // PublicationState is what a publisher's row shows of its live publication:
@@ -105,10 +101,6 @@ type Collection struct {
 	// publication it is a subscribed copy of; each is nil when there is none.
 	Publication  *PublicationState  `json:"publication"`
 	Subscription *SubscriptionState `json:"subscription"`
-	// PublisherUnpublished is set on a collection that was a subscribed copy
-	// until its publisher unpublished it, until its owner acknowledges the
-	// release (AcknowledgeReleased).
-	PublisherUnpublished bool `json:"publisher_unpublished"`
 }
 
 // Folder is one tile row within a Collection. Its CollectionID and SortOrder

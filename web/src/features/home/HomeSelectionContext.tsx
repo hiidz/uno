@@ -1,7 +1,7 @@
 import { createContext, useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchPendingPush, queryKeys } from '@/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/api'
 import type { Catalog, Collection } from '@/api'
 import { useLibrary } from '@/features/library/useLibrary'
 import { waitingIDs } from '@/features/sharing/sharingState'
@@ -118,10 +118,7 @@ export function HomeSelectionProvider({
 }) {
   const library = useLibrary(profileIndex)
 
-  const pendingPush = useQuery({
-    queryKey: queryKeys.pendingPush(profileIndex),
-    queryFn: () => fetchPendingPush(profileIndex),
-  })
+  const pending = library.pending
 
   // `baseline` is what the server says is live; `current` is what the user has
   // pending. Both are snapshotted once, at hydration — a later refetch must
@@ -129,7 +126,7 @@ export function HomeSelectionProvider({
   const [current, setCurrent] = useState<HomeState | null>(null)
   const [baseline, setBaseline] = useState<HomeState>(EMPTY_HOME)
 
-  if (current === null && library.listsLoaded) {
+  if (current === null && library.loaded) {
     const hydrated = hydrateHome(library.catalogs, library.collections)
     setBaseline(hydrated)
     setCurrent(hydrated)
@@ -154,8 +151,8 @@ export function HomeSelectionProvider({
   // A row deleted since — here, or in another tab — leaves the pending
   // selection and the baseline both, once the lists have refetched without it:
   // Push would be refused for naming it. Nuvio still holds it until the next
-  // push, which the list of changes says from `pendingPush`.
-  usePrunedHome(current, baseline, library.listsLoaded ? libraryIds : null, setCurrent, setBaseline)
+  // push, which the list of changes says from `pending`.
+  usePrunedHome(current, baseline, library.loaded ? libraryIds : null, setCurrent, setBaseline)
 
   // The Show first a collection was last pushed with, which one added to the
   // home screen starts from.
@@ -168,8 +165,8 @@ export function HomeSelectionProvider({
 
   const state = current ?? EMPTY_HOME
   const changes = useMemo(
-    () => computeHomeChanges({ baseline, current: state, catalogById, collectionById, waiting: pendingPush.data }),
-    [baseline, state, catalogById, collectionById, pendingPush.data],
+    () => computeHomeChanges({ baseline, current: state, catalogById, collectionById, waiting: pending }),
+    [baseline, state, catalogById, collectionById, pending],
   )
   const pendingCount = changes.length
   const unsavedCount = countUnsaved(changes)
@@ -188,7 +185,7 @@ export function HomeSelectionProvider({
     () => ({
       catalogById,
       collectionById,
-      waitingForPush: waitingIDs(pendingPush.data),
+      waitingForPush: waitingIDs(pending),
       genres: library.genres,
 
       changes,
@@ -199,7 +196,7 @@ export function HomeSelectionProvider({
     [
       catalogById,
       collectionById,
-      pendingPush.data,
+      pending,
       library.genres,
       changes,
       pendingCount,
@@ -235,8 +232,7 @@ export function HomeSelectionProvider({
     [edit, storedPin],
   )
 
-  // Every failed query in this profile's subtree: the owned lists, and the
-  // pending-push list.
+  // Every failed query in this profile's subtree: the library and the rest.
   const queryClient = useQueryClient()
   const retry = useCallback(() => {
     void queryClient.refetchQueries({
@@ -250,7 +246,7 @@ export function HomeSelectionProvider({
       return {
         ready: current !== null,
         isLoading: library.isLoading,
-        error: current === null && (library.failed.catalogs || library.failed.collections) ? library.error : null,
+        error: current === null ? library.error : null,
         retry,
 
         rows: state.rows,
@@ -270,8 +266,6 @@ export function HomeSelectionProvider({
       current,
       state,
       library.isLoading,
-      library.failed.catalogs,
-      library.failed.collections,
       library.error,
       retry,
       readData,

@@ -106,20 +106,16 @@ export function usePush(profileIndex: number): Push {
         const result = await pushSelection(profileIndex, toPushPayload(sent))
         if (result.success) {
           home.markPushed(sent)
-          // Push rewrote every owned row's place on Home, so both owned lists
-          // are stale, and each key is the prefix of its selection's key. The
-          // owned rows' `home_position` and `pin_to_top` feed
-          // the delete dialog and `HomeSelectionContext`'s lookup maps, where
-          // the owned row wins over the selection's. `staleTime` is 30s, so
-          // without this a profile switch and return inside that window would
-          // re-hydrate the baseline from pre-push data and the pushed changes
-          // would look undone. The provider's hydration is guarded by
-          // `current !== null`, so the refetch updates the lookup maps without
-          // touching pending edits.
-          void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCatalogs(profileIndex) })
-          void queryClient.invalidateQueries({ queryKey: queryKeys.ownedCollections(profileIndex) })
-          // What waited for this push is in Nuvio now.
-          void queryClient.invalidateQueries({ queryKey: queryKeys.pendingPush(profileIndex) })
+          // Push rewrote every owned row's place on Home, and what waited for
+          // it is in Nuvio now, so the library is stale. The owned rows'
+          // `home_position` and `pin_to_top` feed the delete dialog and
+          // `HomeSelectionContext`'s lookup maps, where the owned row wins over
+          // the selection's. `staleTime` is 30s, so without this a profile
+          // switch and return inside that window would re-hydrate the baseline
+          // from pre-push data and the pushed changes would look undone. The
+          // provider's hydration is guarded by `current !== null`, so the
+          // refetch updates the lookup maps without touching pending edits.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.library(profileIndex) })
           setOutcome({ kind: 'success' })
         } else {
           setOutcome(failedOutcome(result))

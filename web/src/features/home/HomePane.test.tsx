@@ -80,7 +80,7 @@ describe('HomePane', () => {
         folder({ id: 'f3', title: 'Plain', cover_emoji: '' }),
       ],
     })
-    const day = collection({ id: 'k2', title: 'Day shift', publisher_unpublished: true })
+    const day = collection({ id: 'k2', title: 'Day shift' })
     mount({ catalogs: [], collections: [night, day], waiting: ['k1'] })
     expect(flagsOf('Night shift')).toEqual(['Collection', 'To push'])
     expect(flagsOf('Day shift')).toEqual(['Collection'])

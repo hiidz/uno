@@ -20,7 +20,7 @@ function setup(initial: string, state?: unknown) {
 }
 
 function seed() {
-  queryClient.setQueryData(queryKeys.ownedCatalogs(1), ['stale'])
+  queryClient.setQueryData(queryKeys.library(1), ['stale'])
   queryClient.setQueryData(queryKeys.genres('movie'), ['kept'])
 }
 
@@ -34,7 +34,7 @@ describe('watchActiveProfile', () => {
     const router = setup('/profiles')
     seed()
     await router.navigate('/configure', { state: { profileIndex: 1 } })
-    expect(queryClient.getQueryData(queryKeys.ownedCatalogs(1))).toBeUndefined()
+    expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
     expect(queryClient.getQueryData(queryKeys.genres('movie'))).toEqual(['kept'])
   })
 
@@ -43,14 +43,14 @@ describe('watchActiveProfile', () => {
     await router.navigate('/profiles')
     seed()
     await router.navigate('/configure', { state: { profileIndex: 1 } })
-    expect(queryClient.getQueryData(queryKeys.ownedCatalogs(1))).toBeUndefined()
+    expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
   })
 
   it('drops them when one profile’s entry gives way to another’s, as history back does', async () => {
     const router = setup('/configure', { profileIndex: 1 })
     seed()
     await router.navigate('/configure', { state: { profileIndex: 2 } })
-    expect(queryClient.getQueryData(queryKeys.ownedCatalogs(1))).toBeUndefined()
+    expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
   })
 
   it('leaves the cache alone while the active profile stays the same or the builder closes', async () => {
@@ -58,6 +58,6 @@ describe('watchActiveProfile', () => {
     seed()
     await router.navigate('/configure', { state: { profileIndex: 1 } })
     await router.navigate('/profiles')
-    expect(queryClient.getQueryData(queryKeys.ownedCatalogs(1))).toEqual(['stale'])
+    expect(queryClient.getQueryData(queryKeys.library(1))).toEqual(['stale'])
   })
 })

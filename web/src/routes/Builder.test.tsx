@@ -13,9 +13,11 @@ import { Builder } from './Builder'
 const server = vi.hoisted(() => ({ catalogs: new Map<number, unknown[]>() }))
 
 vi.mock('@/api', async () => ({
-  fetchOwnedCatalogs: async (profileIndex: number) => server.catalogs.get(profileIndex) ?? [],
-  fetchOwnedCollections: async () => [],
-  fetchPendingPush: async () => [],
+  fetchLibrary: async (profileIndex: number) => ({
+    catalogs: server.catalogs.get(profileIndex) ?? [],
+    collections: [],
+    pending: [],
+  }),
   fetchGenres: async () => [],
   fetchCertifications: async () => ({}),
   fetchLanguages: async () => [],

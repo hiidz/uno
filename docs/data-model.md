@@ -344,7 +344,7 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   the exact push JSON (`PushJSON`, *Push wire shape*) that push built and sent *before* the local
   write. A new collection (a create, subscribe, duplicate, Duplicate or import) is off Home, and no
   record holds it.
-  - **`GET /api/p/{i}/push/pending`** (`PendingPush`) lists a collection on Home as changed when
+  - **`pending` in `GET /api/p/{i}/library`** (`PendingPush`) lists a collection on Home as changed when
     what push would send for it now, with its stored `pin_to_top`, differs from the bytes the
     record holds for it, and as added when the record holds none. Off Home, it waits for nothing.
     Only push writes the Home columns, so a collection on Home was in the last push and the
@@ -561,8 +561,8 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     collection copy's folders and scoped catalogs. Each copy keeps its ids, its Home placement
     and its pin, and with no subscription left it is an ordinary own row: saves reach it, and it
     can be published.
-  - **The mark** is the row's `publisher_unpublished` (`unpublished_at IS NOT NULL`, read with the
-    row's own columns): released, not yet acknowledged. `ReleasedCopies`
+  - **The mark** is the row's `unpublished_at IS NOT NULL`: released, not yet acknowledged. It is
+    not on the wire with the row; `ReleasedCopies`
     (`GET /api/p/{i}/released`, `internal/vault/released.go`) lists a profile's marked rows,
     oldest release first, for the builder to tell its owner once on each profile load. Only `AcknowledgeReleasedCatalog`/`AcknowledgeReleasedCollection`
     (`POST .../acknowledge-release`) clear it; a save never does. Push, Update, Duplicate and import

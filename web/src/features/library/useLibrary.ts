@@ -5,12 +5,11 @@ import {
   fetchCountries,
   fetchGenres,
   fetchLanguages,
-  fetchOwnedCatalogs,
-  fetchOwnedCollections,
+  fetchLibrary,
   ProfileNotSelectedError,
   queryKeys,
 } from '@/api'
-import type { Catalog, CertificationsByCountry, Collection, Folder, Genre, Language } from '@/api'
+import type { Catalog, CertificationsByCountry, Collection, Folder, Genre, Language, PendingChange } from '@/api'
 import { buildCountryLookup, type CountryLookup } from '@/features/catalogs/countries'
 import { buildGenreLookup, type GenreLookup } from './recipe'
 
@@ -65,15 +64,15 @@ export interface Library {
   /** Names the country codes in `certifications`, keyed by ISO 3166-1. Empty
    *  until the query lands — same degrade-gracefully treatment as genres. */
   countryNames: CountryLookup
+  /** What a push of the stored Home would change in Nuvio; `undefined` until
+   *  the library loads. */
+  pending: PendingChange[] | undefined
   isLoading: boolean
-  /** Only set while a list has no rows to show — see `error` below. */
+  /** Only set while the library has no rows to show — see `error` below. */
   error: Error | null
-  /** Which of the two lists that is, so the one that did load keeps its rows. */
-  failed: { catalogs: boolean; collections: boolean }
-  /** Both lists have rows to show. The Home pane hydrates from them, so it
-   *  waits for both: a Home read from one list alone would push without the
-   *  other's rows, and Push replaces what Nuvio holds. */
-  listsLoaded: boolean
+  /** The library has rows to show. The Home pane hydrates from it, and Push
+   *  replaces what Nuvio holds, so it waits for the whole library. */
+  loaded: boolean
   refetch: () => void
 }
 
@@ -107,21 +106,14 @@ export function useGenreLookups(): Pick<Library, 'genres' | 'genreLists'> {
   return { genres, genreLists }
 }
 
-export function useLibrary(profileIndex: number): Library {
-  const results = useQueries({
-    queries: [
-      {
-        queryKey: queryKeys.ownedCatalogs(profileIndex),
-        queryFn: () => fetchOwnedCatalogs(profileIndex),
-      },
-      {
-        queryKey: queryKeys.ownedCollections(profileIndex),
-        queryFn: () => fetchOwnedCollections(profileIndex),
-      },
-    ],
-  })
+/** The query behind the library: the profile's catalogs, collections and
+ *  pending push changes, read together. */
+export function libraryQuery(profileIndex: number) {
+  return { queryKey: queryKeys.library(profileIndex), queryFn: () => fetchLibrary(profileIndex) }
+}
 
-  const [ownedCatalogs, ownedCollections] = results
+export function useLibrary(profileIndex: number): Library {
+  const owned = useQuery(libraryQuery(profileIndex))
 
   const { genres, genreLists } = useGenreLookups()
 
@@ -164,11 +156,11 @@ export function useLibrary(profileIndex: number): Library {
   })
   const countryNames = useMemo(() => buildCountryLookup(countriesResult.data ?? []), [countriesResult.data])
 
-  const catalogs = ownedCatalogs.data ?? NO_CATALOGS
+  const catalogs = owned.data?.catalogs ?? NO_CATALOGS
 
   const collections = useMemo(
-    () => (ownedCollections.data ?? []).map((c) => ({ ...c, folders: c.folders ?? [] })),
-    [ownedCollections.data],
+    () => (owned.data?.collections ?? []).map((c) => ({ ...c, folders: c.folders ?? [] })),
+    [owned.data?.collections],
   )
 
   return {
@@ -179,21 +171,16 @@ export function useLibrary(profileIndex: number): Library {
     certifications,
     languages,
     countryNames,
-    isLoading: results.some((r) => r.isPending),
+    pending: owned.data?.pending,
+    isLoading: owned.isPending,
     // A failed background refetch keeps the rows it already had, so only a
     // query with nothing to show counts as failed. A profile-not-selected 404
     // always counts: it is what sends the builder back to the picker.
     error:
-      (results.find(
-        (r) => r.error && (r.data === undefined || r.error instanceof ProfileNotSelectedError),
-      )?.error as Error | undefined) ?? null,
-    failed: {
-      catalogs: ownedCatalogs.isError && ownedCatalogs.data === undefined,
-      collections: ownedCollections.isError && ownedCollections.data === undefined,
-    },
-    listsLoaded: ownedCatalogs.data !== undefined && ownedCollections.data !== undefined,
-    refetch: () => {
-      for (const r of results) void r.refetch()
-    },
+      owned.error && (owned.data === undefined || owned.error instanceof ProfileNotSelectedError)
+        ? owned.error
+        : null,
+    loaded: owned.data !== undefined,
+    refetch: () => void owned.refetch(),
   }
 }

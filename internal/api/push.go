@@ -351,14 +351,6 @@ func undoPush(status int, reverts ...pushRevert) (int, pushResult) {
 	return status, pushResult{}
 }
 
-// listPendingPush serves GET /api/p/{profileIndex}/push/pending: what a push of
-// the Home as Uno stores it would change in Nuvio, the catalogs and
-// collections edited or deleted since the last push among them
-// (vault.PendingPush). The builder adds its own unpushed Home edits to it.
-func (s *Server) listPendingPush(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listPendingPush", "failed to load pending push", s.vault.PendingPush)
-}
-
 // pushRecord builds what a push of body puts in Nuvio, once: its collections
 // are the bytes sent, and the whole record is what the local write stores. The
 // build refuses an id profileID may not put on Home (vault.ErrInvalidInput),

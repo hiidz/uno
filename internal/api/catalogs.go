@@ -7,10 +7,6 @@ import (
 	"github.com/hiidz/uno/internal/vault"
 )
 
-func (s *Server) listUserCatalogs(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listUserCatalogs", "failed to load catalogs", s.vault.GetUserCatalogs)
-}
-
 func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 

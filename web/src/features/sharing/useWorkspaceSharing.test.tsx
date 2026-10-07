@@ -207,12 +207,6 @@ describe('useWorkspaceSharing', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('treats a row its publisher unpublished as any own row, with no sticker saying so', () => {
-    renderHarness({ catalog: catalog({ id: 'c1', name: 'Horror', publisher_unpublished: true }) }, {})
-    expect(screen.getByTestId('badges')).toBeEmptyDOMElement()
-    expect(screen.getByRole('button', { name: 'Publish…' })).toBeInTheDocument()
-  })
-
   it('turns the publish dialog of a changed row into the Unpublish question', async () => {
     const changed = { id: 'p', changed_since_publish: true }
     renderHarness(

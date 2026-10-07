@@ -234,8 +234,8 @@ schema's word and stays in code, types, and endpoint names; it does not appear o
 ## Library rail
 
 **The library is exactly this profile's own catalogs and collections — `useLibrary`
-(`web/src/features/library/useLibrary.ts`) fetches only `GET /api/p/{i}/catalogs` and
-`GET /api/p/{i}/collections`.** There is no merge and no `owned` field on `LibraryCatalog`/
+(`web/src/features/library/useLibrary.ts`) reads only `GET /api/p/{i}/library`, one query
+(`queryKeys.library`) that also carries what waits for a push.** There is no merge and no `owned` field on `LibraryCatalog`/
 `LibraryCollection`: under the closed-graph sharing model, a folder can
 only ever reference your own listed catalogs, so "the library" and "what you own" are one set by
 construction, not two sets reconciled in the frontend. Browsing and adding what someone else
@@ -339,8 +339,8 @@ by the Go types alone (`docs/data-model.md`, "Bundle format"). Only the `/import
     Nothing was added." (`writeProblem`), true because the import is one transaction, and keeps
     the review and its choices. Every error line takes focus when it appears, which scrolls it
     into view and has it read out.
-  - **After a write.** `useImport` invalidates the two owned lists and settles only once they
-    have refetched. The dialog then closes, and a toast under the rail's search row names what the
+  - **After a write.** `useImport` invalidates the library and settles only once it
+    has refetched. The dialog then closes, and a toast under the rail's search row names what the
     rail gained, for example "Imported 2 catalogs and 1 collection". It counts only new listed
     catalogs and new collections, which is what the import response lists. An import opens
     nothing and adds nothing to home.
@@ -541,14 +541,15 @@ Other decisions worth keeping:
 ## Home pane — List view
 
 Add/remove from the rail, drag/keyboard/↑↓-reorder, `show_in_home` per catalog row. Hydrates once
-from the owned lists, the rows with a `home_position` in its order, once *both* have loaded: a Home
-read from one list alone would push without the other's rows, and Push replaces what Nuvio holds.
+from the library, the rows with a `home_position` in its order, once it has loaded: the library
+is one read, so Home never hydrates from one list without the other, and Push replaces what Nuvio
+holds.
 Client state only, nothing writes until Push.
 
 - **The baseline is snapshotted at hydration, not read live from the query cache.** A background
   refetch must not move the baseline under the user and silently change the diff.
-- **Every Home row is a library row.** The rows come from the owned lists, and a row the lists
-  drop is pruned from the pending state and the baseline at once (`withoutDeleted`), so no row
+- **Every Home row is a library row.** The rows come from the library, and a row the library
+  drops is pruned from the pending state and the baseline at once (`withoutDeleted`), so no row
   is ever drawn without its library row.
 - **A row is its name, its kind, To push while one waits, and a detail line.** A catalog's detail
   is its recipe line. A collection's is its folders (`FolderChips`): up to six small tiles, each
@@ -587,8 +588,8 @@ Client state only, nothing writes until Push.
   doubles as the toggle that opens the list itself (`ChangesStrip` in `PushControls.tsx`) — the
   count and the sentences behind it must never disagree, which is why there is only one number.
 - **What the server says waits for a push is a source of lines too**, with no selection edit at
-  all: `computeHomeChanges` takes the list `GET .../push/pending` answers
-  (`HomeSelectionContext`'s `pendingPush` query, `docs/architecture.md`, *HTTP surface*) and adds
+  all: `computeHomeChanges` takes the `pending` list `GET .../library` answers
+  (`useLibrary`'s `pending`, `docs/architecture.md`, *HTTP surface*) and adds
   a saved line for each row in it — a catalog or collection edited since its last push, one on
   Home that Nuvio holds nothing for ("isn’t in Nuvio yet"), or one **deleted** since ("Removed …
   from home screen", by the name Nuvio still holds it under). A catalog's name or recipe edit is
@@ -598,12 +599,12 @@ Client state only, nothing writes until Push.
   changed or added row counts only while it is in *both* `baseline` and `current`: one taken off
   the home screen in this tab is the "Removed …" edit instead. A removal says once what the tab
   already said (the lines share a key). A row deleted here or in another tab leaves `baseline`
-  and `current` both once the lists have refetched without it (`withoutDeleted`), so Push is
+  and `current` both once the library has refetched without it (`withoutDeleted`), so Push is
   never refused for naming it.
 
 **Selection is client state until Push, and the one thing enforcing that is the one-shot
 hydration guard** in `web/src/features/home/HomeSelectionContext.tsx`
-(`if (current === null && library.listsLoaded)`). The mutation hooks invalidate the owned lists
+(`if (current === null && library.loaded)`). The mutation hooks invalidate the library
 the Home hydrates from, so they refetch on every catalog or collection write; the guard keeps that
 from moving `baseline` or `current`. Removing the guard, or making hydration re-run
 on fresh data, silently clobbers the user's pending home-screen edits on the next catalog or
@@ -692,10 +693,9 @@ Decisions that shape the code:
   without discarding the order the user just dragged.
 - **`ListState` owns loading and error for both views; each view owns its own empty case.**
   List's empty is an instruction to go add something; Preview's is the colour-bars moment from
-  the design section below. The error is only one that leaves nothing to draw — an owned list
+  the design section below. The error is only one that leaves nothing to draw — a library
   that never loaded, so Home never hydrated — and carries a Retry. The rail reports the same
-  failure itself: one error and one Retry for both lists, leaving out the group whose list failed
-  while the one that loaded keeps its rows. A background refetch that
+  failure itself: one error and one Retry, leaving out both groups. A background refetch that
   fails after the page has loaded keeps what it had rather than replacing the pane, since the only
   other way out of a replaced pane is a reload, which discards pending edits.
 
@@ -1068,7 +1068,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   another tab drops out; a row still listed keeps the dialog open with the error.
   The released list carries no publisher, whose publication is gone, so the line says "Its
   publisher". Nothing else marks the row: it opens in its editor with no sticker or line, and
-  the SPA never reads `publisher_unpublished`.
+  the row on the wire carries no release mark.
   - **Where they show:** the library rail shows a catalog's kind and the Community sticker
     only (`railStickers`) — never To push, which the pending count already covers, and no
     Collection sticker, which the rail's Collections sign already says. An editor's sign and the
@@ -1080,10 +1080,10 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     (`kindSticker`, `kindStickers`), Collection green (`COLLECTION_KIND`), on the rail, Home,
     a folder's catalog rows, Community rows and pages, and the publish dialog. On a sign it is
     printed in sign ink like every sticker there.
-  - **To push comes from the waiting list** (`GET .../push/pending`, `waitingIDs`: the
+  - **To push comes from the waiting list** (`pending` in `GET .../library`, `waitingIDs`: the
     `added` and `changed` rows, never `removed`), for catalogs and collections alike.
     `usePushWaiting` reads it for the Workspace, `HomeSelection.waitingForPush` for the Home pane,
-    both from the one query the list of changes reads. A catalog scoped to a collection has no
+    both from the one library query the list of changes reads. A catalog scoped to a collection has no
     flag of its own: editing one makes the list report its collection `changed`, which flags the
     collection.
 - **A row added from Community opens as a view** (`FromCommunityView.tsx`), with no form: `Workspace`
@@ -1325,17 +1325,17 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **`markPushed` takes the pushed state, not `current`.** The user can keep editing while a push
   is in flight; advancing the baseline to "whatever is current now" would silently swallow those
   edits and report them as already live.
-- **Both owned lists are invalidated on success.** Push rewrites every owned row's
+- **The library is invalidated on success.** Push rewrites every owned row's
   `home_position` and `show_in_home` and a collection's `pin_to_top`, which Home hydrates from,
   an added collection starts its pin from, and the delete dialog reads. With `staleTime: 30_000`,
-  stale lists would show pre-push data for up to that window while the builder stays open, and
+  a stale library would show pre-push data for up to that window while the builder stays open, and
   the pushed changes would look undone.
-- **The pending-push query is invalidated on success too.** The list of what
-  waits for a push (`queryKeys.pendingPush`, `GET .../push/pending`) is read from the server, so
-  without invalidating it the "changed since it was last pushed" lines would never clear after a
+- **The pending list rides in the library, so that invalidation covers it.** The list of what
+  waits for a push (`pending` in `GET .../library`) is read from the server, so without
+  refreshing it the "changed since it was last pushed" lines would never clear after a
   successful push, and every push would look as if it had failed to update anything. The writes
   that change what Nuvio holds (`invalidateProfileLists`, and the collection mutations) refresh
-  it too.
+  the library too.
 - **`ApiError` carries an optional `body`** (`web/src/api/http.ts`), best-effort JSON-parsed
   from the text it already reads on every non-2xx. Without it, push's structured failure arrives
   as an `ApiError` whose `message` is the raw JSON blob — unusable, and worse, renderable

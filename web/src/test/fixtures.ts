@@ -17,7 +17,6 @@ export function catalog(overrides: Partial<Catalog> = {}): Catalog {
     show_in_home: false,
     publication: null,
     subscription: null,
-    publisher_unpublished: false,
     ...overrides,
   }
 }
@@ -51,7 +50,6 @@ export function collection(overrides: Partial<Collection> = {}): Collection {
     focus_glow_enabled: true,
     publication: null,
     subscription: null,
-    publisher_unpublished: false,
     folders: [],
     catalogs: [],
     ...overrides,

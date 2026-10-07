@@ -117,9 +117,7 @@ export function LibrarySection({
       {notice}
 
       {/* One error and one Retry for the whole library: both lists come from
-          the same kind of request, and a single refetch reloads whichever
-          failed. A group whose own list failed isn't drawn at all; the one
-          that loaded keeps its rows. */}
+          the same request, so a failure leaves both groups undrawn. */}
       {library.error && (
         <ListError label="Couldn't load your library." error={library.error} onRetry={library.refetch} />
       )}
@@ -135,7 +133,7 @@ export function LibrarySection({
         }
         count={catalogs.length}
         isLoading={library.isLoading}
-        failed={library.failed.catalogs}
+        failed={library.error !== null}
         emptyLabel={
           query
             ? 'No catalogs match this filter.'
@@ -174,7 +172,7 @@ export function LibrarySection({
         }
         count={collections.length}
         isLoading={library.isLoading}
-        failed={library.failed.collections}
+        failed={library.error !== null}
         emptyLabel={
           query
             ? 'No collections match this filter.'

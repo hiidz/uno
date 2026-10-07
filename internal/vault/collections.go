@@ -28,7 +28,7 @@ const collectionRows = `collections col
 // collectionColumns are a collection's own columns, the ones scanCollection
 // reads before the sharing state.
 const collectionColumns = `col.id, col.title, col.owner_id, col.pin_to_top, col.view_mode, col.show_all_tab, col.backdrop_image_url,
-	col.focus_glow_enabled, col.home_sort_order, col.unpublished_at IS NOT NULL, col.created_at, col.updated_at`
+	col.focus_glow_enabled, col.home_sort_order, col.created_at, col.updated_at`
 
 // selectCollections runs a SELECT over collectionRows through q with the
 // given WHERE clause and args, parsing the result rows, each with its
@@ -132,7 +132,7 @@ func (db *DB) CreateUserCollection(ctx context.Context, profileID uuid.UUID, inp
 // Catalogs unset, and the id of every catalog those folders reference,
 // repeats included.
 func createCollectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, form CollectionForm) (CollectionWithFolders, []uuid.UUID, error) {
-	if err := validateFolderRefs(ctx, tx, profileID, nil, existingFolderRefIDs(form.Folders)); err != nil {
+	if err := checkCollectionAdd(ctx, tx, profileID, form); err != nil {
 		return CollectionWithFolders{}, nil, err
 	}
 

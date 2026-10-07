@@ -151,11 +151,11 @@ func newRouteFixture(t *testing.T) routeFixture {
 	return f
 }
 
-// The owned lists carry none of the row columns the builder never reads: a
+// The library carries none of the row columns the builder never reads: a
 // row's owner, which is always the caller, its created and updated times, and
 // a folder's collection and place, which its collection and its order already
 // give.
-func TestOwnedListsLeaveOutUnreadColumns(t *testing.T) {
+func TestLibraryLeavesOutUnreadColumns(t *testing.T) {
 	f := newRouteFixture(t)
 	keysOf := func(t *testing.T, raw json.RawMessage) map[string]json.RawMessage {
 		t.Helper()
@@ -165,13 +165,12 @@ func TestOwnedListsLeaveOutUnreadColumns(t *testing.T) {
 		}
 		return keys
 	}
-	var catalogs, collections []json.RawMessage
-	for path, rows := range map[string]*[]json.RawMessage{"/api/p/1/catalogs": &catalogs, "/api/p/1/collections": &collections} {
-		w := serve(t, f.s, http.MethodGet, path, "", false)
-		if err := json.Unmarshal(w.Body.Bytes(), rows); err != nil || len(*rows) != 1 {
-			t.Fatalf("GET %s = %s (%v), want one row", path, w.Body.String(), err)
-		}
+	var lib struct{ Catalogs, Collections, Pending []json.RawMessage }
+	w := serve(t, f.s, http.MethodGet, "/api/p/1/library", "", false)
+	if err := json.Unmarshal(w.Body.Bytes(), &lib); err != nil || len(lib.Catalogs) != 1 || len(lib.Collections) != 1 || lib.Pending == nil {
+		t.Fatalf("GET library = %s (%v), want one catalog, one collection and a pending list", w.Body.String(), err)
 	}
+	catalogs, collections := lib.Catalogs, lib.Collections
 	collection := keysOf(t, collections[0])
 	var folders []json.RawMessage
 	if err := json.Unmarshal(collection["folders"], &folders); err != nil || len(folders) != 1 {
@@ -180,7 +179,7 @@ func TestOwnedListsLeaveOutUnreadColumns(t *testing.T) {
 	for name, row := range map[string]map[string]json.RawMessage{
 		"catalog": keysOf(t, catalogs[0]), "collection": collection, "folder": keysOf(t, folders[0]),
 	} {
-		for _, key := range []string{"owner_id", "sort_order", "created_at", "updated_at"} {
+		for _, key := range []string{"owner_id", "sort_order", "created_at", "updated_at", "publisher_unpublished"} {
 			if _, ok := row[key]; ok {
 				t.Errorf("%s carries %q", name, key)
 			}
@@ -235,10 +234,10 @@ func TestCatalogRoutes(t *testing.T) {
 	theirs := "/api/p/1/catalogs/" + f.theirs.ID.String()
 	valid := `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{\"sort_by\":\"popularity.desc\"}"}`
 	runSteps(t, f.s, []routeStep{
-		{name: "unauthenticated", method: http.MethodGet, path: "/api/p/1/catalogs", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/catalogs", wantStatus: http.StatusNotFound, wantBody: `"code":"profile_not_found"`},
-		{name: "list", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
-		{name: "list includes the created catalog", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"New"`},
+		{name: "unauthenticated", method: http.MethodGet, path: "/api/p/1/library", noAuth: true, wantStatus: http.StatusUnauthorized},
+		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/library", wantStatus: http.StatusNotFound, wantBody: `"code":"profile_not_found"`},
+		{name: "list", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
+		{name: "list includes the created catalog", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: `"name":"New"`},
 		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: `no recipes for provider "mdblist"`},
@@ -287,7 +286,7 @@ func TestCollectionRoutes(t *testing.T) {
 	}
 
 	runSteps(t, f.s, []routeStep{
-		{name: "list", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
+		{name: "list", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
 		{name: "community leaves out unpublished collections", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "create with a new scoped catalog", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(popular), wantStatus: http.StatusCreated, wantBody: `"title":"Scoped"`},
 		{name: "create with a broken scoped recipe", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(`{"sort_by":"bogus.desc"}`), wantStatus: http.StatusBadRequest},
@@ -318,12 +317,12 @@ func TestDeleteRoutesAllowWhatNuvioHolds(t *testing.T) {
 		t.Fatal(err)
 	}
 	runSteps(t, f.s, []routeStep{
-		{name: "nothing is waiting after the push", method: http.MethodGet, path: "/api/p/1/push/pending", wantStatus: http.StatusOK, wantBody: "[]"},
+		{name: "nothing is waiting after the push", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: "[]"},
 		{name: "delete a catalog on Home", method: http.MethodDelete, path: "/api/p/1/catalogs/" + f.mine.ID.String(), wantStatus: http.StatusNoContent},
 		{name: "delete a collection on Home", method: http.MethodDelete, path: "/api/p/1/collections/" + f.mineColl.ID.String(), wantStatus: http.StatusNoContent},
-		{name: "the catalog's removal waits for a push", method: http.MethodGet, path: "/api/p/1/push/pending", wantStatus: http.StatusOK,
+		{name: "the catalog's removal waits for a push", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK,
 			wantBody: fmt.Sprintf(`{"kind":"catalog","id":%q,"name":"Mine","change":"removed"}`, f.mine.ID)},
-		{name: "the collection's removal waits for a push", method: http.MethodGet, path: "/api/p/1/push/pending", wantStatus: http.StatusOK,
+		{name: "the collection's removal waits for a push", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK,
 			wantBody: fmt.Sprintf(`{"kind":"collection","id":%q,"name":"Mine","change":"removed"}`, f.mineColl.ID)},
 	})
 }
@@ -559,7 +558,7 @@ func TestRoutesRefuseAnUnknownField(t *testing.T) {
 func TestProfileNotFoundCarriesACode(t *testing.T) {
 	f := newRouteFixture(t)
 
-	w := serve(t, f.s, http.MethodGet, "/api/p/2/catalogs", "", false)
+	w := serve(t, f.s, http.MethodGet, "/api/p/2/library", "", false)
 	var body struct{ Error, Code string }
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("body %q is not JSON: %v", w.Body.String(), err)

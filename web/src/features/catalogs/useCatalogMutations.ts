@@ -9,21 +9,18 @@ import type { CatalogPayload } from '@/api'
  * whether a published catalog has changed since it was published, and a
  * delete unpublishes it.
  *
- * The collection lists are invalidated too, because of a real cascade:
+ * The library holds the collections too, so one refetch covers a real cascade:
  * `DELETE FROM catalogs` drops the row's `folder_catalogs` entries
  * (`ON DELETE CASCADE`), so every cached collection that referenced it is now
  * wrong — the collection editor would keep listing a folder member that no
  * longer exists, and saving that collection would `400` on a catalog id the
  * user can't see. Create takes the same path because it adds a row a folder
- * may reference.
+ * may reference. What waits for a push is in the library as well.
  *
- * The selection queries are refetched as well: their keys sit under the owned
- * list keys and invalidation prefix-matches, so `['p', i, 'catalogs']` and
- * `['p', i, 'collections']` each take their `…, 'selection'` child with them.
- * Selection is client state until Push, and the one-shot hydration guard in
- * `HomeSelectionContext` is what keeps those refetches from clobbering the
- * user's pending home-screen edits; only a row the refetches show deleted
- * leaves them (`usePrunedHome`). What waits for a push is refreshed too.
+ * Home's selection is client state until Push, and the one-shot hydration
+ * guard in `HomeSelectionContext` is what keeps the refetch from clobbering the
+ * user's pending home-screen edits; only a row the refetch shows deleted leaves
+ * them (`usePrunedHome`).
  */
 export function useCatalogMutations(profileIndex: number) {
   const queryClient = useQueryClient()

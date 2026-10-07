@@ -92,7 +92,7 @@ func (s *Server) routes() error {
 	// publishing and Community, lives under /api/p/{profileIndex}/.
 	s.router.HandleFunc("POST /api/catalogs/preview", s.requireNuvioAuth(s.previewCatalog))
 	s.router.HandleFunc("POST /api/catalogs/genre-options", s.requireNuvioAuth(s.catalogGenreOptions))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.listUserCatalogs))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/library", s.requireProfileAuth(s.getLibrary))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.createUserCatalog))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.updateUserCatalog))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
@@ -102,7 +102,6 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/{catalogID}/changes-since-publish", s.requireProfileAuth(s.catalogChanges))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/acknowledge-release", s.requireProfileAuth(s.acknowledgeReleasedCatalog))
 
-	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireProfileAuth(s.listUserCollections))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/duplicate", s.requireProfileAuth(s.duplicateUserCollection))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.updateUserCollection))
@@ -129,9 +128,8 @@ func (s *Server) routes() error {
 
 	// The Home selection travels whole in push's body and is written only by
 	// that handler, in one transaction, once Nuvio has accepted the push. It
-	// is read back from the owned lists, as each row's home_position.
+	// is read back from the library, as each row's home_position.
 	s.router.HandleFunc("POST /api/p/{profileIndex}/push", s.requireProfileAuth(s.push))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/push/pending", s.requireProfileAuth(s.listPendingPush))
 
 	s.router.HandleFunc("GET /api/genres/{type}", s.requireNuvioAuth(s.listGenres))
 	s.router.HandleFunc("GET /api/certifications/{type}", s.requireNuvioAuth(s.listCertifications))
