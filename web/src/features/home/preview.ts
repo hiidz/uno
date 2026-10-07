@@ -27,10 +27,6 @@ export interface PreviewRow {
   id: string
   name: string
   type: CatalogType
-  /** Same meaning, and the same warning, as `PreviewCollection.missing`: this
-   *  is "nothing describes it", not "no longer in the library". It drives the
-   *  placeholder name only. */
-  missing: boolean
 }
 
 /** One home row: a catalog's, or a collection's. */
@@ -112,7 +108,6 @@ export function toPreviewCollection(
       viewMode: 'ROWS',
       viewModeAssumed: true,
       showAllTab: false,
-      hasBackdrop: false,
       folders: [],
       missing: true,
     }
@@ -127,7 +122,6 @@ export function toPreviewCollection(
     viewMode: mode,
     viewModeAssumed: assumed,
     showAllTab: collection.show_all_tab,
-    hasBackdrop: collection.backdrop_image_url !== '',
     // Same guard as `catalog_ids` above.
     folders: (collection.folders ?? []).map((f) => toFolder(f, catalogById)),
     missing: false,
@@ -139,7 +133,6 @@ function toRow(entry: HomeCatalogEntry, catalog: Catalog | undefined): PreviewRo
     id: entry.id,
     name: catalog?.name ?? 'Unavailable catalog',
     type: catalog?.type ?? 'movie',
-    missing: catalog === undefined,
   }
 }
 

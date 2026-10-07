@@ -19,7 +19,7 @@ import {
   withRow,
   withoutRow,
 } from './pending'
-import type { HomeCatalogEntry, HomeCollectionEntry, HomeEntry, HomeRowsEdit, HomeState } from './pending'
+import type { HomeCollectionEntry, HomeEntry, HomeRowsEdit, HomeState } from './pending'
 import { usePrunedHome } from './usePrunedHome'
 
 export interface HomeSelection extends HomeEdits {
@@ -38,8 +38,7 @@ export interface HomeSelection extends HomeEdits {
 
   /** Every row on Home, in Home order. */
   rows: HomeEntry[]
-  /** The catalogs and the collections among `rows`, each in Home order. */
-  catalogs: HomeCatalogEntry[]
+  /** The collections among `rows`, in Home order. */
   collections: HomeCollectionEntry[]
 
   /** Every catalog/collection the Home pane might need to render, keyed by id:
@@ -255,7 +254,6 @@ export function HomeSelectionProvider({
         retry,
 
         rows: state.rows,
-        catalogs: catalogEntries(state),
         collections: collectionEntries(state),
         ...readData,
 

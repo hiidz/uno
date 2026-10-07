@@ -91,8 +91,6 @@ export interface PreviewCollection {
    *  the folder into one grid. Meaningless in `ROWS`, where every catalog is
    *  already on the page. */
   showAllTab: boolean
-  /** `backdrop_image_url` is set. Noted as text, not loaded. */
-  hasBackdrop: boolean
   folders: PreviewFolder[]
   /** Nothing on hand describes this collection — it isn't in the library, so
    *  there's no layout to draw. The row exists because it's still selected.

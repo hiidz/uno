@@ -1,11 +1,10 @@
 import { createContext, useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { bootstrap, getAuthState, login, logout, subscribeAuth } from './session'
+import { bootstrap, getAuthState, login, subscribeAuth } from './session'
 import type { AuthState } from './session'
 
 export interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>
-  logout: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
@@ -22,5 +21,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // synchronously with no network round trip, so /login isn't delayed.
   if (state.status === 'loading') return null
 
-  return <AuthContext.Provider value={{ ...state, login, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ ...state, login }}>{children}</AuthContext.Provider>
 }

@@ -24,7 +24,7 @@ function genresFor(catalog: Catalog, genres: GenreLookups) {
   return genres.tv
 }
 
-export function FactValue({ value }: { value: string }) {
+function FactValue({ value }: { value: string }) {
   const tone = value === NAMES_PENDING ? 'text-dimmer' : ''
   return <dd className={`m-0 text-[15px] font-bold [overflow-wrap:anywhere] tabular-nums ${tone}`}>{value}</dd>
 }

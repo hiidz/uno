@@ -11,7 +11,7 @@ interface Session {
   user: NuvioUser
 }
 
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
+type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
 export interface AuthState {
   status: AuthStatus

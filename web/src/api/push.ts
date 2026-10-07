@@ -13,7 +13,7 @@ export interface PushRequest {
 
 /** One row of the pending Home: a catalog with whether it gets a home row, or
  *  a collection with whether Nuvio shows it first. */
-export type PushRow =
+type PushRow =
   | { catalog_id: string; show_in_home: boolean }
   | { collection_id: string; pin_to_top: boolean }
 

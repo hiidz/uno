@@ -88,7 +88,7 @@ func (v *Verifier) Verify(ctx context.Context, tokenString string) (Claims, erro
 	// one without it reads as "".
 	email, _ := claims["email"].(string)
 
-	return Claims{Sub: sub, Email: email, Exp: expTime.Time}, nil
+	return Claims{Sub: sub, Email: email}, nil
 }
 
 // resolveKey extracts kid from tokenString's header and returns the

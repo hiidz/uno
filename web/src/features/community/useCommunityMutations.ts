@@ -13,7 +13,7 @@ export type CommunityAction = 'subscribe' | 'update' | 'duplicate'
 
 /** A 404 or a 409 from a Community call: the row was behind the server — its
  *  publisher unpublished it, or this profile already added it. */
-export function isStale(error: Error): boolean {
+function isStale(error: Error): boolean {
   return error instanceof ApiError && (error.status === 404 || error.status === 409)
 }
 

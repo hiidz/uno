@@ -1539,12 +1539,6 @@ components:
         text/plain:
           schema:
             type: string
-    Conflict:
-      description: The row's state refuses the change.
-      content:
-        text/plain:
-          schema:
-            type: string
     PayloadTooLarge:
       description: The body is over its cap (1 MiB; 4 MiB for the import routes).
       content:

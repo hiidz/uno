@@ -15,7 +15,7 @@ import { factKey } from './changeWords'
 
 /** How a list filter's items changed: what it gained and lost, the join it
  *  had when that changed, and the region it was read in when that did. */
-export interface ListChange {
+interface ListChange {
   added: string[]
   removed: string[]
   join: 'and' | 'or'
@@ -136,7 +136,7 @@ export interface FolderMark {
 
 /** A catalog whose name or recipe changed: its old name when renamed, and
  *  the change carrying both recipes when its recipe changed. */
-export interface CatalogMark {
+interface CatalogMark {
   was: string
   recipe: SnapshotChange | null
 }
@@ -315,7 +315,7 @@ export function folderMarkID(key: string): string {
 }
 
 /** The id of the block where a changed catalog shows its marks. */
-export function catalogMarkID(key: string): string {
+function catalogMarkID(key: string): string {
   return `update-catalog-${key}`
 }
 

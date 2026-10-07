@@ -1,14 +1,11 @@
 package nuvio
 
-import "time"
-
 // Claims is the subset of a verified Nuvio JWT's claims Uno needs.
 type Claims struct {
 	Sub string
 	// Email is the account's email address as the token carries it, "" when
 	// it carries none. The access allowlist matches it (internal/api).
 	Email string
-	Exp   time.Time
 }
 
 // NuvioProfile is the subset of sync_pull_profiles's response fields Uno

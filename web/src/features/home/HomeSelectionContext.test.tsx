@@ -7,6 +7,7 @@ import type { PendingChange } from '@/api'
 import type { Library, LibraryCollection } from '@/features/library/useLibrary'
 import { catalog, collection } from '@/test/fixtures'
 import { HomeSelectionProvider } from './HomeSelectionContext'
+import { catalogEntries } from './pending'
 import { useHomeSelection } from './useHomeSelection'
 
 const api = vi.hoisted(() => ({
@@ -75,7 +76,7 @@ describe('HomeSelectionProvider', () => {
     library.current = LOADED
     rerender()
     await waitFor(() => expect(result.current.ready).toBe(true))
-    expect(result.current.catalogs.map((c) => c.id)).toEqual(['a', 'b'])
+    expect(catalogEntries(result.current.snapshot()).map((c) => c.id)).toEqual(['a', 'b'])
     expect(result.current.pendingCount).toBe(0)
     expect(result.current.isDirty).toBe(false)
   })
@@ -101,7 +102,7 @@ describe('HomeSelectionProvider', () => {
       ],
     }
     rerender()
-    expect(result.current.catalogs.map((c) => c.id)).toEqual(['b'])
+    expect(catalogEntries(result.current.snapshot()).map((c) => c.id)).toEqual(['b'])
     expect(result.current.changes.map((c) => c.text)).toEqual(['Removed “Alpha” from home screen'])
   })
 
@@ -157,7 +158,7 @@ describe('HomeSelectionProvider', () => {
     rerender()
     await act(() => queryClient.refetchQueries())
 
-    await waitFor(() => expect(result.current.catalogs.map((c) => c.id)).toEqual(['b', 'c']))
+    await waitFor(() => expect(catalogEntries(result.current.snapshot()).map((c) => c.id)).toEqual(['b', 'c']))
     expect(result.current.snapshot().rows.map((row) => row.id)).toEqual(['b', 'c'])
     expect(result.current.changes.map((c) => c.text)).toEqual([
       'Added “Charlie”, 2nd on your home screen',
@@ -192,7 +193,7 @@ describe('HomeSelectionProvider', () => {
     act(() => result.current.addCatalog('c'))
     act(() => result.current.toggleShowInHome('a'))
     act(() => result.current.reorderBand('home', ['c', 'b']))
-    expect(result.current.catalogs).toEqual([
+    expect(catalogEntries(result.current.snapshot())).toEqual([
       { kind: 'catalog', id: 'c', showInHome: true },
       { kind: 'catalog', id: 'b', showInHome: true },
       { kind: 'catalog', id: 'a', showInHome: false },

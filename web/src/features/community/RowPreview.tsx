@@ -31,7 +31,7 @@ export function RowFolders({ item, onOpen }: RowFoldersProps) {
  * page draws from the same answer. A face stays blank while its poster loads
  * and where TMDB has none. Decorative: the row's name button says what it is.
  */
-export function PosterStack({ catalog }: { catalog: SnapshotCatalog }) {
+function PosterStack({ catalog }: { catalog: SnapshotCatalog }) {
   const ref = useRef<HTMLDivElement>(null)
   const seen = useSeen(ref)
   const posters = usePosters(catalog, seen)
@@ -81,7 +81,7 @@ function useSeen(ref: RefObject<HTMLElement | null>): boolean {
  * where it scrolls and so sits above that button, a tap on it opens the page
  * itself.
  */
-export function FolderStrip({ folders, onOpen }: { folders: CommunityFolder[]; onOpen(): void }) {
+function FolderStrip({ folders, onOpen }: { folders: CommunityFolder[]; onOpen(): void }) {
   const { shown, more } = shownFolders(folders)
   return (
     <div aria-hidden="true" className="folder-strip" onClick={onOpen}>

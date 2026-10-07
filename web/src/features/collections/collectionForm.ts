@@ -501,7 +501,6 @@ export function previewFromForm(
     viewMode: mode,
     viewModeAssumed: assumed,
     showAllTab: state.showAllTab,
-    hasBackdrop: state.backdropImageURL.trim() !== '',
     folders,
     // The form is the description, so there is always something to draw.
     missing: false,

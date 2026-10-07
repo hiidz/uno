@@ -58,7 +58,7 @@ const TO_PUBLISH: SharingSticker = { label: 'To publish', tone: COMMUNITY_FILL }
 /** The sticker a row added from Community carries wherever it is listed. */
 export const FROM_COMMUNITY: SharingSticker = { label: 'From Community', tone: COMMUNITY }
 /** The only sticker that says "update": a publisher's newer version waits. */
-export const UPDATE_AVAILABLE: SharingSticker = { label: 'Update available', tone: COMMUNITY_FILL }
+const UPDATE_AVAILABLE: SharingSticker = { label: 'Update available', tone: COMMUNITY_FILL }
 /** A row its publisher unpublished, now this profile's own. */
 const UNPUBLISHED: SharingSticker = { label: 'Unpublished', tone: COMMUNITY }
 const TO_PUSH: SharingSticker = { label: 'To push', tone: { hue: 'nuvio', fill: true } }

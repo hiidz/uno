@@ -46,7 +46,7 @@ describe('buildHomePreview', () => {
   })
 
   it('names a row nothing describes as unavailable', () => {
-    expect(preview(shown('gone')).rows).toEqual([{ id: 'gone', name: 'Unavailable catalog', type: 'movie', missing: true }])
+    expect(preview(shown('gone')).rows).toEqual([{ id: 'gone', name: 'Unavailable catalog', type: 'movie' }])
   })
 })
 

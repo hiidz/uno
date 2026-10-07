@@ -59,7 +59,7 @@ function thrownOutcome(err: unknown): PushOutcome {
 /** What a push that came back unsuccessful is reported as: undo-failed when
  *  Nuvio was left holding part of it, the refusal when the server turned it
  *  away for one the builder has words for, failed otherwise. */
-export function failedOutcome(result: PushResult): PushOutcome {
+function failedOutcome(result: PushResult): PushOutcome {
   if (result.undo_failed) return { kind: 'undo-failed' }
   if (result.refused) return { kind: REFUSAL_OUTCOME[result.refused] ?? 'failed' }
   return { kind: 'failed' }

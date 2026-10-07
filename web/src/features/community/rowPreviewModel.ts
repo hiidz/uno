@@ -4,7 +4,7 @@ import type { CatalogPreview, CommunityFolder } from '@/api'
 export const STACK_SIZE = 5
 
 /** How many folder tiles a collection row shows before "+N more". */
-export const STRIP_SIZE = 6
+const STRIP_SIZE = 6
 
 /** A catalog row's posters: one per face, the first `STACK_SIZE` results in
  *  order, `''` for a face with no poster yet or none at all. */

@@ -85,7 +85,7 @@ export interface Folder {
 }
 
 /** One entry in a folder's catalog list — `vault.FolderRef`. */
-export interface FolderRef {
+interface FolderRef {
   catalog_id: string
   /** The genre this reference is narrowed to, pushed as the folder source's
    *  `genre`; `''` for unfiltered. */
@@ -144,7 +144,7 @@ export interface SnapshotCatalog {
 }
 
 /** One folder ref of a snapshot, naming its catalog by snapshot `key`. */
-export interface SnapshotRef {
+interface SnapshotRef {
   catalog: string
   genre: string
 }
@@ -164,7 +164,7 @@ export interface SnapshotFolder {
   refs: SnapshotRef[] | null
 }
 
-export interface SnapshotCollection {
+interface SnapshotCollection {
   title: string
   view_mode: string
   show_all_tab: boolean
@@ -175,7 +175,7 @@ export interface SnapshotCollection {
 
 /** What a publication froze when it was published: every catalog it publishes,
  *  at the top level, and for a collection its own fields and folders. */
-export interface Snapshot {
+interface Snapshot {
   format: string
   version: number
   catalogs: SnapshotCatalog[] | null
@@ -273,7 +273,7 @@ export interface ImportCatalog {
 
 /** One bundle collection as the dialog lists it. `matched` is whether its
  *  title, trimmed and in any case, is one of this profile's collections'. */
-export interface ImportCollection {
+interface ImportCollection {
   title: string
   folders: string[]
   matched: boolean

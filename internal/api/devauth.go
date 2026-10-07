@@ -8,7 +8,6 @@ import (
 	"log"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/hiidz/uno/internal/nuvio"
 )
@@ -58,7 +57,7 @@ func NewDevBypassVerifier(next TokenVerifier, bypassToken string) TokenVerifier 
 
 func (v *devBypassVerifier) Verify(ctx context.Context, token string) (nuvio.Claims, error) {
 	if isBypassToken(token, v.token) {
-		return nuvio.Claims{Sub: DevBypassSub, Exp: time.Now().Add(24 * time.Hour)}, nil
+		return nuvio.Claims{Sub: DevBypassSub}, nil
 	}
 	return v.next.Verify(ctx, token)
 }
