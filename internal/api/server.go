@@ -112,7 +112,7 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/acknowledge-release", s.requireProfileAuth(s.acknowledgeReleasedCollection))
 
 	// Community: other profiles' live publications, by publication id.
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.listCommunity))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.listCommunityPage))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}", s.requireProfileAuth(s.getPublication))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/subscribe", s.requireProfileAuth(s.subscribe))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}/changes", s.requireProfileAuth(s.updateChanges))

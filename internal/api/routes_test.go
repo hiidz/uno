@@ -238,7 +238,7 @@ func TestCatalogRoutes(t *testing.T) {
 		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/library", wantStatus: http.StatusNotFound, wantBody: `"code":"profile_not_found"`},
 		{name: "list", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
 		{name: "list includes the created catalog", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: `"name":"New"`},
-		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
+		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=newest", wantStatus: http.StatusOK, wantBody: `{"items":[],"next_cursor":null}`},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: `no recipes for provider "mdblist"`},
 		{name: "create with a broken recipe", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"tmdb","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest},
@@ -287,7 +287,7 @@ func TestCollectionRoutes(t *testing.T) {
 
 	runSteps(t, f.s, []routeStep{
 		{name: "list", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
-		{name: "community leaves out unpublished collections", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: "[]"},
+		{name: "community leaves out unpublished collections", method: http.MethodGet, path: "/api/p/1/community?kind=collection&sort=newest", wantStatus: http.StatusOK, wantBody: `{"items":[],"next_cursor":null}`},
 		{name: "create with a new scoped catalog", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(popular), wantStatus: http.StatusCreated, wantBody: `"title":"Scoped"`},
 		{name: "create with a broken scoped recipe", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(`{"sort_by":"bogus.desc"}`), wantStatus: http.StatusBadRequest},
 		{name: "create referencing another profile's private catalog", method: http.MethodPost, path: "/api/p/1/collections", body: referencing(f.theirs.ID), wantStatus: http.StatusBadRequest},

@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
-import type { CatalogType } from './types'
+import type { CatalogType, CommunityQuery } from './types'
 
 /**
  * Query keys, scoped by profile wherever the endpoint is.
@@ -41,8 +41,9 @@ export const queryKeys = {
   /** The rows released and not yet acknowledged, each told about once
    *  (`ReleasedDialog`). */
   released: (profileIndex: number) => ['p', profileIndex, 'released'] as const,
-  /** Every live publication Community lists, in one call. */
-  communityList: (profileIndex: number) => ['p', profileIndex, 'community', 'list'] as const,
+  /** Community's pages for one query, read a page at a time. */
+  communityList: (profileIndex: number, query: CommunityQuery) =>
+    ['p', profileIndex, 'community', 'list', query.kind, query.sort, query.q] as const,
   publication: (profileIndex: number, publicationID: string) =>
     ['p', profileIndex, 'community', 'publication', publicationID] as const,
 

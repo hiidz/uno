@@ -1195,18 +1195,29 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 
 ## Community tab
 
-`web/src/features/community/` — what other profiles publish, loaded in one call
-(`GET /api/p/{i}/community`) and searched, filtered and sorted here. No publisher, no handle, no
-"copied from" line appears anywhere here: Community never names who published a row.
+`web/src/features/community/` — what other profiles publish, a page at a time
+(`GET /api/p/{i}/community`), searched, filtered and sorted by the server. No publisher, no
+handle, no "copied from" line appears anywhere here: Community never names who published a row.
 
 - **`CommunityView.tsx`** holds Catalogs / Collections, the search box, and Sort: Name / Newest.
-  `useCommunityList` (`useCommunity.ts`) is one query for the whole list, and `visibleItems`
-  (`communityQuery.ts`) shows the rows of the chosen kind where every word of the search is in the
-  title or one of the catalog names (`catalog_names`), whatever the case and not necessarily all in
-  one name, sorted by name or newest first. While
-  a search narrows a kind it says "N of M catalogs". An empty list says whether nothing of that
-  kind is published ("Nobody has published any catalogs yet. Publish one of your own from its
-  editor.") or nothing matches.
+  `useCommunityList` (`useCommunity.ts`) is an infinite query keyed on kind, sort and search
+  (`queryKeys.communityList`), and the server answers the rows of the chosen kind where every
+  word of the search is in the title or one of the catalog names, whatever the ASCII case and not
+  necessarily all in one name, sorted by name or newest first. The search reaches the server
+  trimmed, once typing has held still for 300ms (`useDebounce`); the box takes at most the
+  server's 200 characters, and a search of over 8 distinct words is not sent: `SearchNote` says
+  "Search with 8 words at most." under the box (`searchProblem`). A new query keeps the rows on
+  show until its first page arrives
+  (`keepPreviousData`). `rowsOf` (`communityQuery.ts`) joins the pages read; **Show more**
+  (`ShowMore.tsx`) under them reads the next while one follows, says Loading… meanwhile, and on a
+  failure says "Couldn’t load more." and offers Try again, the rows read so far staying
+  (`listError` keeps a failed next page out of the list's own error). An empty list says whether
+  nothing of that kind is published ("Nobody has published any catalogs yet. Publish one of your
+  own from its editor.") or nothing matches.
+- **The open page's row** is `openRow`: the listed row while one is read, else the publication's
+  detail (`useOpenPublication`, the same query the page reads), so a page opened from an added
+  row's Update… shows though its row is on a page not read yet. A detail that failed to refresh
+  counts for nothing, so a publication unpublished meanwhile drops back to the list.
 - **A row** (`CommunityRow.tsx`) is a Library-row-style target: 12px corners, a raised fill on
   hover and raised-hi pressed, no dividers, and a pointer cursor, with the name button covering the
   row (`after:absolute after:inset-0`) and the actions above it (`z-10`) keeping the default cursor

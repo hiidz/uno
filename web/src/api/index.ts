@@ -31,7 +31,7 @@ export type { PushRefusal, PushRequest, PushResult } from './push'
 export { invalidateProfileLists, queryKeys } from './keys'
 export {
   fetchLibrary,
-  fetchCommunity,
+  fetchCommunityPage,
   fetchPublication,
   fetchUpdateChanges,
   fetchChangesSincePublish,
@@ -68,6 +68,8 @@ export type {
   CommunityCopy,
   CommunityFolder,
   CommunityItem,
+  CommunityPage,
+  CommunityQuery,
   Country,
   Folder,
   Genre,

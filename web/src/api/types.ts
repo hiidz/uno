@@ -221,6 +221,21 @@ export interface CommunityItem {
   catalog: SnapshotCatalog | null
 }
 
+/** What one Community page asks for: publications of one kind, in one order,
+ *  where every word of `q` is in the title or a catalog's name. */
+export interface CommunityQuery {
+  kind: CommunityItem['kind']
+  sort: 'name' | 'newest'
+  q: string
+}
+
+/** `GET /api/p/{i}/community`: one page, and the cursor that reads the next;
+ *  `null` on the last page. */
+export interface CommunityPage {
+  items: CommunityItem[]
+  next_cursor: string | null
+}
+
 /** One folder of a listed collection, as much as its tile shows. */
 export interface CommunityFolder {
   title: string

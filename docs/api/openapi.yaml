@@ -734,18 +734,47 @@ paths:
     get:
       tags: [community]
       operationId: listCommunity
-      summary: Other profiles' live publications
-      description: All of them in one array, newest first; the SPA searches, filters and sorts.
+      summary: Other profiles' live publications, a page at a time
+      description: |
+        One page of 50 publications of one kind, in one order, filtered by
+        the search. The next page is read with this page's `next_cursor`
+        and the same kind and sort; a cursor made for another sort is a 400.
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [catalog, collection]
+        - name: sort
+          in: query
+          required: true
+          description: By title, folding ASCII case, or newest first; ties go by id.
+          schema:
+            type: string
+            enum: [name, newest]
+        - name: q
+          in: query
+          description: |
+            Words that must each be in the title or one of the catalog
+            names, folding ASCII case. At most 200 characters and 8 distinct
+            words.
+          schema:
+            type: string
+            maxLength: 200
+        - name: cursor
+          in: query
+          description: The previous page's `next_cursor`; omitted, the first page.
+          schema:
+            type: string
       responses:
         "200":
-          description: The publications.
+          description: The page.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/CommunityItem"
-        "400": { $ref: "#/components/responses/BadProfileIndex" }
+                $ref: "#/components/schemas/CommunityPage"
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
@@ -2095,6 +2124,16 @@ components:
               id: { type: string, format: uuid }
               name: { type: string }
 
+    CommunityPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CommunityItem" }
+        next_cursor:
+          type: [string, "null"]
+          description: Reads the next page; null on the last page.
     CommunityItem:
       type: object
       description: One publication as Community lists it. Its publisher is never on the wire.

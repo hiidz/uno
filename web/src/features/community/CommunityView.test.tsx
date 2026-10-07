@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PublicationDetail } from '@/api'
+import type { CommunityItem, PublicationDetail } from '@/api'
 import { failWith, fakeApi, profileNotFound, type FakeRoute } from '@/test/fakeApi'
 import { communityFolder, communityItem } from '@/test/fixtures'
 import type { OpenPublication } from './communityQuery'
@@ -58,6 +58,21 @@ const nightDetail: PublicationDetail = {
   },
 }
 
+/** Community as the server answers it, on one page: the rows of the kind asked
+ *  for, in the order given, where every word of the search is in the title or
+ *  a catalog's name. */
+function listing(rows: CommunityItem[] | (() => CommunityItem[])) {
+  return (url: URL) => {
+    const words = (url.searchParams.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean)
+    const matches = (row: CommunityItem) =>
+      words.every((word) => [row.title, ...(row.catalog_names ?? [])].some((name) => name.toLowerCase().includes(word)))
+    const all = typeof rows === 'function' ? rows() : rows
+    return { items: all.filter((row) => row.kind === url.searchParams.get('kind') && matches(row)), next_cursor: null }
+  }
+}
+
+const listCalls = (calls: string[]) => calls.filter((call) => call.startsWith('GET /api/p/1/community?'))
+
 /** The library's two lists answer empty: every action settles only once
  *  they have refetched. */
 function renderView(routes: Record<string, FakeRoute>, initialOpen: OpenPublication | null = null) {
@@ -84,50 +99,95 @@ beforeEach(() => {
 })
 
 describe('CommunityView', () => {
-  it('lists one kind at a time in one call, with each row’s summary and meta', async () => {
-    const calls = renderView({ 'GET /api/p/1/community': [night, a24, zombies] })
+  it('lists one kind at a time, a page from the server, with each row’s summary and meta', async () => {
+    const calls = renderView({ 'GET /api/p/1/community': listing([night, a24, zombies]) })
     expect(await screen.findByText('A24 Horror')).toBeInTheDocument()
     expect(titles()).toEqual(['A24 Horror', 'Zombies'])
     expect(screen.queryByText('Horror Nights')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
-    expect(screen.getByText('Horror Nights')).toBeInTheDocument()
+    expect(await screen.findByText('Horror Nights')).toBeInTheDocument()
     expect(screen.getByText('1 folder · Slashers')).toBeInTheDocument()
     expect(screen.getByText(/Added by 4/)).toBeInTheDocument()
     expect(screen.queryByText('Update available')).toBeNull()
     expect(screen.getByRole('button', { name: 'Update…' })).toHaveClass('btn-accent-outline')
-    expect(calls.filter((call) => call.startsWith('GET /api/p/1/community'))).toEqual(['GET /api/p/1/community'])
+    expect(listCalls(calls)).toEqual([
+      'GET /api/p/1/community?kind=catalog&sort=name',
+      'GET /api/p/1/community?kind=collection&sort=name',
+    ])
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
   })
 
-  it('searches titles and catalog names, and sorts by name or newest', async () => {
-    renderView({ 'GET /api/p/1/community': [night, a24, zombies] })
+  it('asks the server for the order and, once typing settles, the trimmed search', async () => {
+    const calls = renderView({ 'GET /api/p/1/community': listing([night, a24, zombies]) })
     await screen.findByText('A24 Horror')
     fireEvent.click(screen.getByRole('button', { name: 'Newest' }))
-    expect(titles()).toEqual(['Zombies', 'A24 Horror'])
+    await waitFor(() => expect(listCalls(calls)).toContain('GET /api/p/1/community?kind=catalog&sort=newest'))
 
-    fireEvent.change(screen.getByLabelText('Search Community'), { target: { value: 'ZOMB' } })
-    expect(titles()).toEqual(['Zombies'])
-    expect(screen.getByText('1 of 2 catalogs')).toBeInTheDocument()
+    const search = screen.getByLabelText('Search Community')
+    expect(search).toHaveAttribute('maxLength', '200')
+    fireEvent.change(search, { target: { value: 'Z' } })
+    fireEvent.change(search, { target: { value: ' ZOMB ' } })
+    await waitFor(() => expect(titles()).toEqual(['Zombies']))
+    expect(listCalls(calls)).toContain('GET /api/p/1/community?kind=catalog&sort=newest&q=ZOMB')
+    expect(listCalls(calls).filter((call) => call.includes('q=Z&'))).toEqual([])
+    expect(screen.queryByText(/ of 2 catalogs/)).toBeNull()
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
-    fireEvent.change(screen.getByLabelText('Search Community'), { target: { value: 'slasher' } })
-    expect(titles()).toEqual(['Horror Nights'])
+  it('holds back a search of over eight words, saying why, and keeps the rows on show', async () => {
+    const calls = renderView({ 'GET /api/p/1/community': listing([a24, zombies]) })
+    await screen.findByText('A24 Horror')
+    fireEvent.change(screen.getByLabelText('Search Community'), { target: { value: 'one two three four five six seven eight nine' } })
+    expect(await screen.findByText('Search with 8 words at most.')).toBeInTheDocument()
+    expect(titles()).toEqual(['A24 Horror', 'Zombies'])
+    expect(listCalls(calls).some((call) => call.includes('q='))).toBe(false)
+  })
+
+  it('reads the next page from Show more, after the last row read, and offers it again when it fails', async () => {
+    let failNext = true
+    const calls = renderView({
+      'GET /api/p/1/community': (url: URL) => {
+        if (!url.searchParams.get('cursor')) return { items: [a24], next_cursor: 'after-a24' }
+        if (failNext) return failWith(500, 'boom')
+        return { items: [zombies], next_cursor: null }
+      },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }))
+    expect(await screen.findByText('Couldn’t load more.')).toBeInTheDocument()
+    expect(titles()).toEqual(['A24 Horror'])
+    failNext = false
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(titles()).toEqual(['A24 Horror', 'Zombies']))
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull()
+    expect(listCalls(calls)).toContain('GET /api/p/1/community?kind=catalog&sort=name&cursor=after-a24')
+  })
+
+  it('starts on the page of a publication not on the first page, from its detail', async () => {
+    renderView(
+      {
+        'GET /api/p/1/community': listing([a24]),
+        'GET /api/p/1/community/night': nightDetail,
+      },
+      { id: 'night', kind: 'collection' },
+    )
+    expect(await screen.findByRole('heading', { name: 'Horror Nights' })).toBeInTheDocument()
+    expect((await screen.findAllByText('Slashers')).length).toBeGreaterThan(0)
   })
 
   it('says when nothing is published, and when nothing matches', async () => {
-    renderView({ 'GET /api/p/1/community': [a24] })
+    renderView({ 'GET /api/p/1/community': listing([a24]) })
     await screen.findByText('A24 Horror')
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
-    expect(screen.getByText(/Nobody has published any collections yet/)).toBeInTheDocument()
+    expect(await screen.findByText(/Nobody has published any collections yet/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Catalogs' }))
     fireEvent.change(screen.getByLabelText('Search Community'), { target: { value: 'nothing like it' } })
-    expect(screen.getByText('No catalogs match this search.')).toBeInTheDocument()
+    expect(await screen.findByText('No catalogs match this search.')).toBeInTheDocument()
   })
 
   it('adds it, and the row shows it added once the list refetches', async () => {
     let added = false
     renderView({
-      'GET /api/p/1/community': () => [{ ...a24, subscribed: added }],
+      'GET /api/p/1/community': listing(() => [{ ...a24, subscribed: added }]),
       'POST /api/p/1/community/a24/subscribe': () => {
         added = true
         return { kind: 'catalog' }
@@ -141,7 +201,7 @@ describe('CommunityView', () => {
   it('says what a stale or failed Add means', async () => {
     let answer = failWith(409, 'already subscribed')
     renderView({
-      'GET /api/p/1/community': [a24],
+      'GET /api/p/1/community': listing([a24]),
       'POST /api/p/1/community/a24/subscribe': () => answer,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
@@ -158,7 +218,7 @@ describe('CommunityView', () => {
 
   it('duplicates from the ⋯ menu', async () => {
     const calls = renderView({
-      'GET /api/p/1/community': [a24],
+      'GET /api/p/1/community': listing([a24]),
       'POST /api/p/1/community/a24/duplicate': { kind: 'catalog' },
     })
     const more = await screen.findByRole('button', { name: 'More for A24 Horror' })
@@ -170,12 +230,12 @@ describe('CommunityView', () => {
 
   it('opens a publication’s page, and comes back to its row', async () => {
     renderView({
-      'GET /api/p/1/community': [night, a24],
+      'GET /api/p/1/community': listing([night, a24]),
       'GET /api/p/1/community/night': nightDetail,
     })
     await screen.findByText('A24 Horror')
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
-    fireEvent.click(screen.getByText('Horror Nights'))
+    fireEvent.click(await screen.findByText('Horror Nights'))
     expect((await screen.findAllByText('Slashers')).length).toBeGreaterThan(0)
     expect(screen.getByText(/Slasher classics/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Search Community')).toBeNull()
@@ -196,7 +256,7 @@ describe('CommunityView', () => {
 
   it('says when a publication’s page can’t load', async () => {
     renderView({
-      'GET /api/p/1/community': [a24],
+      'GET /api/p/1/community': listing([a24]),
       'GET /api/p/1/community/a24': () => failWith(500, 'boom'),
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
@@ -205,7 +265,7 @@ describe('CommunityView', () => {
 
   it('shows a catalog publication’s recipe on its page', async () => {
     renderView({
-      'GET /api/p/1/community': [a24],
+      'GET /api/p/1/community': listing([a24]),
       'GET /api/p/1/community/a24': { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
@@ -216,11 +276,11 @@ describe('CommunityView', () => {
 
   it('opens a collection publication’s catalogs in place, as the view of an added row does', async () => {
     renderView({
-      'GET /api/p/1/community': [night],
+      'GET /api/p/1/community': listing([night]),
       'GET /api/p/1/community/night': nightDetail,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
-    fireEvent.click(screen.getByText('Horror Nights'))
+    fireEvent.click(await screen.findByText('Horror Nights'))
     const catalog = await screen.findByRole('button', { name: /Slasher classics/ })
     expect(catalog).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(catalog)
@@ -229,7 +289,7 @@ describe('CommunityView', () => {
   })
 
   it('says what Duplicate makes inside its ⋯ menu item, with no tip on the row', async () => {
-    renderView({ 'GET /api/p/1/community': [a24] })
+    renderView({ 'GET /api/p/1/community': listing([a24]) })
     await screen.findByText('A24 Horror')
     expect(screen.queryByRole('button', { name: 'About add' })).toBeNull()
     fireEvent.pointerDown(screen.getByRole('button', { name: 'More for A24 Horror' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
@@ -237,14 +297,14 @@ describe('CommunityView', () => {
   })
 
   it('says Duplicate makes the latest version while an update waits for the added row', async () => {
-    renderView({ 'GET /api/p/1/community': [night] })
+    renderView({ 'GET /api/p/1/community': listing([night]) })
     fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'More for Horror Nights' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.pointerDown(await screen.findByRole('button', { name: 'More for Horror Nights' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
     expect(await screen.findByRole('menuitem', { name: /^Duplicate/ })).toHaveTextContent('the latest version')
   })
 
   it('draws a row as one target: a pointer name button covering it, its actions above', async () => {
-    renderView({ 'GET /api/p/1/community': [a24] })
+    renderView({ 'GET /api/p/1/community': listing([a24]) })
     await screen.findByText('A24 Horror')
     const button = rowButton('a24')!
     expect(button).toHaveClass('cursor-pointer', 'after:absolute', 'after:inset-0')
@@ -256,7 +316,7 @@ describe('CommunityView', () => {
   })
 
   it('shows the kind sticker on a catalog row, none on a collection row, and no update sticker', async () => {
-    renderView({ 'GET /api/p/1/community': [night, a24] })
+    renderView({ 'GET /api/p/1/community': listing([night, a24]) })
     await screen.findByText('A24 Horror')
     expect(screen.getByText('Movies', { selector: '.stk' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Collections' }))
@@ -266,11 +326,11 @@ describe('CommunityView', () => {
 
   it('opens a page that heads its sign with the way back, the name and its kind', async () => {
     renderView({
-      'GET /api/p/1/community': [night],
+      'GET /api/p/1/community': listing([night]),
       'GET /api/p/1/community/night': nightDetail,
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
-    fireEvent.click(screen.getByText('Horror Nights'))
+    fireEvent.click(await screen.findByText('Horror Nights'))
     const title = await screen.findByRole('heading', { level: 1, name: 'Horror Nights' })
     const sign = title.closest('.sign')!
     expect(sign).toContainElement(screen.getByRole('button', { name: 'Back to Community' }))
@@ -282,7 +342,7 @@ describe('CommunityView', () => {
 
   it('leads the page with its meta, then Add in the Community accent beside Duplicate', async () => {
     const calls = renderView({
-      'GET /api/p/1/community': [{ ...a24, subscriber_count: 1 }],
+      'GET /api/p/1/community': listing([{ ...a24, subscriber_count: 1 }]),
       'GET /api/p/1/community/a24': { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
       'POST /api/p/1/community/a24/duplicate': { kind: 'catalog' },
     })
@@ -298,7 +358,7 @@ describe('CommunityView', () => {
 
   it('rests a page on a disabled ✓ Added once its copy is in step', async () => {
     renderView(
-      { 'GET /api/p/1/community': [{ ...night, update_available: false }], 'GET /api/p/1/community/night': nightDetail },
+      { 'GET /api/p/1/community': listing([{ ...night, update_available: false }]), 'GET /api/p/1/community/night': nightDetail },
       { id: 'night', kind: 'collection' },
     )
     const added = await screen.findByRole('button', { name: 'Added' })
@@ -308,7 +368,7 @@ describe('CommunityView', () => {
 
   it('draws nothing for a publication whose snapshot holds no catalog', async () => {
     renderView({
-      'GET /api/p/1/community': [a24],
+      'GET /api/p/1/community': listing([a24]),
       'GET /api/p/1/community/a24': { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: null } },
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
@@ -319,7 +379,7 @@ describe('CommunityView', () => {
   it('opens the new version from Update…, and applies it from its page', async () => {
     let updated = false
     const calls = renderView({
-      'GET /api/p/1/community': () => [{ ...night, update_available: !updated }],
+      'GET /api/p/1/community': listing(() => [{ ...night, update_available: !updated }]),
       'GET /api/p/1/community/night': nightDetail,
       'POST /api/p/1/community/night/update': () => {
         updated = true
@@ -328,7 +388,7 @@ describe('CommunityView', () => {
     })
     await screen.findByRole('heading', { name: 'Community' })
     fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Update…' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Update…' }))
     expect((await screen.findAllByText('Slashers')).length).toBeGreaterThan(0)
     expect(calls).not.toContain('POST /api/p/1/community/night/update')
 
@@ -345,7 +405,7 @@ describe('CommunityView', () => {
       { op: 'changed', kind: 'folder', aspect: 'name', key: 'f1', name: 'Slashers', was: 'Stabby' },
     ]
     const routes = {
-      'GET /api/p/1/community': [night, a24],
+      'GET /api/p/1/community': listing([night, a24]),
       'GET /api/p/1/community/night': nightDetail,
       'GET /api/p/1/community/night/changes': changes,
     }
@@ -368,7 +428,7 @@ describe('CommunityView', () => {
   it('asks for no list on a page with no update waiting', async () => {
     const calls = renderView(
       {
-        'GET /api/p/1/community': [{ ...night, update_available: false }],
+        'GET /api/p/1/community': listing([{ ...night, update_available: false }]),
         'GET /api/p/1/community/night': nightDetail,
       },
       { id: 'night', kind: 'collection' },
@@ -381,7 +441,7 @@ describe('CommunityView', () => {
   it('starts on a publication’s page, and comes back to its kind’s list', async () => {
     renderView(
       {
-        'GET /api/p/1/community': [night, a24],
+        'GET /api/p/1/community': listing([night, a24]),
         'GET /api/p/1/community/night': nightDetail,
       },
       { id: 'night', kind: 'collection' },

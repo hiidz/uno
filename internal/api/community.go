@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hiidz/uno/internal/httpx"
+	"github.com/hiidz/uno/internal/jsonwire"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -77,10 +78,24 @@ func (s *Server) unpublishCollection(w http.ResponseWriter, r *http.Request) {
 		s.vault.UnpublishCollection)
 }
 
-// listCommunity answers every live publication Community lists, in one
-// call; the SPA searches, filters and sorts them itself.
-func (s *Server) listCommunity(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listCommunity", "failed to load community", s.vault.ListCommunity)
+// listCommunityPage answers one page of the live publications Community lists,
+// as the query string asks: kind, sort, q and cursor (vault.CommunityQuery).
+// A query the vault refuses is a 400.
+func (s *Server) listCommunityPage(w http.ResponseWriter, r *http.Request) {
+	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
+	page, err := s.vault.ListCommunity(r.Context(), profileID, communityQueryFrom(r))
+	if err != nil {
+		writeVaultError(w, "listCommunityPage", err, nil, "", "failed to load community")
+		return
+	}
+	page.Items = jsonwire.OrEmpty(page.Items)
+	httpx.WriteJSON(w, http.StatusOK, page)
+}
+
+// communityQueryFrom is the Community page r's query string asks for.
+func communityQueryFrom(r *http.Request) vault.CommunityQuery {
+	q := r.URL.Query()
+	return vault.CommunityQuery{Kind: q.Get("kind"), Sort: q.Get("sort"), Search: q.Get("q"), Cursor: q.Get("cursor")}
 }
 
 func (s *Server) getPublication(w http.ResponseWriter, r *http.Request) {

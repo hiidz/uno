@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
@@ -8,14 +8,16 @@ import { ListState } from '@/components/ListState'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
 import { useGenreLookups, type GenreLookups } from '@/features/library/useLibrary'
+import { useDebounce } from '@/lib/useDebounce'
 import { snapshotRecipeLine } from '@/features/sharing/snapshot'
 import {
   itemMeta,
   itemSummary,
-  ofKind,
-  openItemIn,
+  listError,
+  openRow,
+  rowsOf,
+  searchProblem,
   startingView,
-  visibleItems,
   type CommunityFilters,
   type OpenPublication,
 } from './communityQuery'
@@ -23,14 +25,20 @@ import { CommunityRow, type RowActions } from './CommunityRow'
 import { CommunitySign } from './CommunitySign'
 import { PublicationPage } from './PublicationPage'
 import { focusRow, rowButtonID, useScrollMemory } from './scroll'
-import { useCommunityList } from './useCommunity'
+import { SearchNote } from './SearchNote'
+import { ShowMore } from './ShowMore'
+import { useCommunityList, useOpenPublication } from './useCommunity'
 import { useCommunityMutations, type CommunityAction } from './useCommunityMutations'
 
-const NO_ITEMS: CommunityItem[] = []
+/** How long the search box holds still before its words reach the server. */
+const SEARCH_SETTLE_MS = 300
+
+/** The longest search the server takes, its `maxSearchLen`. */
+const SEARCH_MAX_LENGTH = 200
 
 /**
- * The Community tab: what other profiles publish, loaded in one call and
- * searched, filtered and sorted here. A row opens its publication's page in
+ * The Community tab: what other profiles publish, a page at a time, searched,
+ * filtered and sorted by the server; Show more reads the next page. A row opens its publication's page in
  * place of the list, and the way back returns to the same scroll position.
  * Add puts it in the library, read-only, following its publisher's updates;
  * Update… opens the page, which shows the new version and applies it;
@@ -47,18 +55,20 @@ export function CommunityView({
 }) {
   const { genres } = useGenreLookups()
   const mutations = useCommunityMutations(profileIndex)
-  const list = useCommunityList(profileIndex)
-
   const [start] = useState(() => startingView(initialOpen))
   const [filters, setFilters] = useState<CommunityFilters>(start.filters)
   const [openID, setOpenID] = useState<string | null>(start.openID)
+  const q = useDebounce(filters.q.trim(), SEARCH_SETTLE_MS)
+  const problem = searchProblem(q)
+  const list = useCommunityList(profileIndex, { ...filters, q }, problem === '')
+  const openDetail = useOpenPublication(profileIndex, openID)
+
   const [toast, setToast] = useToast()
   // Keyed by publication id. Actions on different rows can overlap.
   const [pending, setPending] = useState<ReadonlyMap<string, CommunityAction>>(new Map())
 
-  const all = list.data ?? NO_ITEMS
-  const items = useMemo(() => visibleItems(all, filters), [all, filters])
-  const open = openItemIn(all, openID)
+  const items = rowsOf(list.data?.pages)
+  const open = openRow(items, openID, openDetail)
   const now = new Date()
 
   const { scrollRef, remember, restore } = useScrollMemory()
@@ -70,6 +80,10 @@ export function CommunityView({
     },
     [restore],
   )
+
+  function closePage() {
+    if (open) back(open.id)
+  }
 
   function openItem(id: string) {
     remember()
@@ -111,7 +125,7 @@ export function CommunityView({
 
   return (
     <div ref={scrollRef} className="tone-community flex w-full flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-      <CommunitySign open={open} onBack={() => open && back(open.id)} />
+      <CommunitySign open={open} onBack={closePage} />
       <section className="community-body mx-auto flex w-full flex-col gap-4 p-4 lg:p-6 [&_.ed]:pt-0">
         <Toast toast={toast} />
 
@@ -127,10 +141,10 @@ export function CommunityView({
         ) : (
           <>
             <Controls filters={filters} onChange={setFilters} />
-            <SearchCount filters={filters} shown={items.length} of={ofKind(all, filters.kind).length} />
+            <SearchNote problem={problem} />
             <ListState
               isLoading={list.isPending}
-              error={list.error as Error | null}
+              error={listError(list)}
               isEmpty={items.length === 0}
               loadingLabel="Loading Community…"
               errorLabel="Couldn’t load Community."
@@ -151,6 +165,7 @@ export function CommunityView({
                   />
                 ))}
               </div>
+              <ShowMore pages={list} />
             </ListState>
           </>
         )}
@@ -170,16 +185,6 @@ const KIND_WORD: Record<CommunityItem['kind'], string> = { catalog: 'catalogs', 
 function emptyLabel(filters: CommunityFilters): string {
   if (filters.q.trim()) return `No ${KIND_WORD[filters.kind]} match this search.`
   return `Nobody has published any ${KIND_WORD[filters.kind]} yet. Publish one of your own from its editor.`
-}
-
-/** "3 of 12 catalogs" while a search narrows a kind that has any rows. */
-function SearchCount({ filters, shown, of }: { filters: CommunityFilters; shown: number; of: number }) {
-  if (!filters.q.trim() || of === 0) return null
-  return (
-    <p className="type-data text-dim m-0 text-[13.5px]">
-      {shown} of {of} {KIND_WORD[filters.kind]}
-    </p>
-  )
 }
 
 /** The kind switch, the search box and the sort. */
@@ -210,6 +215,7 @@ function Controls({
           onChange={(event) => patch({ q: event.target.value })}
           placeholder="Search"
           aria-label="Search Community"
+          maxLength={SEARCH_MAX_LENGTH}
           className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:text-[16px]"
         />
       </div>

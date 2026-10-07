@@ -68,8 +68,13 @@ func TestSharingRoutes(t *testing.T) {
 	theirCollection := community + x.theirCollection.String()
 
 	runSteps(t, x.f.s, []routeStep{
-		{name: "list", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: x.theirCatalog.String()},
-		{name: "list holds the collection", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: `"title":"Their Weekend"`},
+		{name: "list", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=newest", wantStatus: http.StatusOK, wantBody: x.theirCatalog.String()},
+		{name: "list ends on one page", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=name", wantStatus: http.StatusOK, wantBody: `"next_cursor":null`},
+		{name: "list with no kind", method: http.MethodGet, path: "/api/p/1/community?sort=name", wantStatus: http.StatusBadRequest, wantBody: "kind must be catalog or collection"},
+		{name: "list in an unknown order", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=oldest", wantStatus: http.StatusBadRequest, wantBody: "sort must be name or newest"},
+		{name: "list after a cursor that is none", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=name&cursor=nope", wantStatus: http.StatusBadRequest, wantBody: "cursor is not one of this list's"},
+		{name: "list searched for too many words", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=name&q=a+b+c+d+e+f+g+h+i", wantStatus: http.StatusBadRequest, wantBody: "search has over 8 words"},
+		{name: "list holds the collection", method: http.MethodGet, path: "/api/p/1/community?kind=collection&sort=name&q=weekend", wantStatus: http.StatusOK, wantBody: `"title":"Their Weekend"`},
 		{name: "detail", method: http.MethodGet, path: theirCollection, wantStatus: http.StatusOK, wantBody: `"snapshot":{"format":"uno-publication"`},
 		{name: "detail of an unknown publication", method: http.MethodGet, path: community + uuid.NewString(), wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
 		{name: "detail with a path id that isn't a uuid", method: http.MethodGet, path: community + "nope", wantStatus: http.StatusBadRequest, wantBody: "invalid publication id"},
@@ -82,7 +87,7 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "changes of a copy in step", method: http.MethodGet, path: theirCollection + "/changes", wantStatus: http.StatusOK, wantBody: `[]`},
 		{name: "changes of a publication not added", method: http.MethodGet, path: community + uuid.NewString() + "/changes", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
 		{name: "changes with a path id that isn't a uuid", method: http.MethodGet, path: community + "nope/changes", wantStatus: http.StatusBadRequest, wantBody: "invalid publication id"},
-		{name: "list after subscribing", method: http.MethodGet, path: "/api/p/1/community", wantStatus: http.StatusOK, wantBody: `"subscribed":true`},
+		{name: "list after subscribing", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=newest", wantStatus: http.StatusOK, wantBody: `"subscribed":true`},
 	})
 
 	collectionCopy := subscribedCopy(t, x.f, x.theirCollection)

@@ -1,13 +1,10 @@
-import type { CommunityItem } from '@/api'
+import type { CommunityItem, CommunityPage, CommunityQuery } from '@/api'
 import { COLLECTION_KIND, kindSticker, type SharingSticker } from '@/features/sharing/sharingState'
 import { describeFolders } from '@/features/library/collection'
 
-/** What Community shows: the search words, which kind, and the order. */
-export interface CommunityFilters {
-  q: string
-  kind: CommunityItem['kind']
-  sort: 'name' | 'newest'
-}
+/** What Community shows: the search words, which kind, and the order. The
+ *  server searches, filters and sorts, a page at a time. */
+export type CommunityFilters = CommunityQuery
 
 export const DEFAULT_FILTERS: CommunityFilters = { q: '', kind: 'catalog', sort: 'name' }
 
@@ -25,41 +22,36 @@ export function startingView(open: OpenPublication | null): { filters: Community
   return { filters: { ...DEFAULT_FILTERS, kind: open.kind }, openID: open.id }
 }
 
-/** The row of `items` whose page is open, while it is listed. */
-export function openItemIn(items: CommunityItem[], openID: string | null): CommunityItem | null {
-  return items.find((item) => item.id === openID) ?? null
+/** Every row of the pages read so far, in order. */
+export function rowsOf(pages: CommunityPage[] | undefined): CommunityItem[] {
+  const rows: CommunityItem[] = []
+  for (const page of pages ?? []) rows.push(...page.items)
+  return rows
 }
 
-/** The rows of one kind; that kind's rows where every word of the search is
- *  in the title or a catalog's name, whatever the case; in order by name or
- *  newest first. */
-export function visibleItems(items: CommunityItem[], filters: CommunityFilters): CommunityItem[] {
-  const q = filters.q.trim().toLowerCase()
-  return ofKind(items, filters.kind)
-    .filter((item) => matches(item, q))
-    .sort(filters.sort === 'name' ? byName : byNewest)
+/** What the open publication's detail query holds. */
+export interface OpenDetail {
+  data: CommunityItem | undefined
+  isError: boolean
 }
 
-/** The rows of `kind`: what the search and its "N of M" count run over. */
-export function ofKind(items: CommunityItem[], kind: CommunityItem['kind']): CommunityItem[] {
-  return items.filter((item) => item.kind === kind)
+/** The publication whose page is open: its row while one is listed, else its
+ *  detail, for a page opened on a publication not among the rows read. A
+ *  detail that failed to refresh counts for nothing, so a page whose
+ *  publication has gone closes as it does when the list stops holding it. */
+export function openRow(rows: CommunityItem[], openID: string | null, detail: OpenDetail): CommunityItem | null {
+  if (openID === null) return null
+  return listedRow(rows, openID) ?? detailRow(detail)
 }
 
-/** Whether each word of `q`, which is trimmed and lower case, is in `item`'s
- *  title or one of its catalogs' names — not necessarily the same one, so
- *  "horror slashers" finds "Horror Night" holding "Slashers". An empty `q`
- *  matches every row. */
-function matches(item: CommunityItem, q: string): boolean {
-  const names = [item.title, ...(item.catalog_names ?? [])].map((name) => name.toLowerCase())
-  return q.split(/\s+/).every((word) => names.some((name) => name.includes(word)))
+function listedRow(rows: CommunityItem[], id: string): CommunityItem | null {
+  for (const row of rows) if (row.id === id) return row
+  return null
 }
 
-function byName(a: CommunityItem, b: CommunityItem): number {
-  return a.title.localeCompare(b.title)
-}
-
-function byNewest(a: CommunityItem, b: CommunityItem): number {
-  return b.published_at.localeCompare(a.published_at)
+function detailRow(detail: OpenDetail): CommunityItem | null {
+  if (detail.isError) return null
+  return detail.data ?? null
 }
 
 /** A row's kind sticker: a catalog's type (Movies, Series), or Collection. */
@@ -114,4 +106,22 @@ function folderTitles(item: CommunityItem): string[] {
   const titles: string[] = []
   for (const folder of item.folders ?? []) titles.push(folder.title)
   return titles
+}
+
+/** What the list's own error shows: a failed first page. A failed next page
+ *  leaves the rows read so far on show, under Show more's own line. */
+export function listError(pages: { error: Error | null; isFetchNextPageError: boolean }): Error | null {
+  if (pages.isFetchNextPageError) return null
+  return pages.error
+}
+
+/** The most distinct words a search may hold, the server's `maxSearchWords`. */
+export const MAX_SEARCH_WORDS = 8
+
+/** Why the server would refuse the search `q`, or `''` when it takes it: the
+ *  server counts each word once, whatever its case. */
+export function searchProblem(q: string): string {
+  const words = new Set(q.toLowerCase().split(/\s+/).filter(Boolean))
+  if (words.size <= MAX_SEARCH_WORDS) return ''
+  return `Search with ${MAX_SEARCH_WORDS} words at most.`
 }

@@ -205,10 +205,14 @@ Route-semantics facts the client has to honour:
   subscriptions*. The handlers are in `internal/api/community.go`, and every one but the list
   runs through `serveSharingCall`: the id comes from the path, and a vault error goes through
   `writeVaultError`, whose 404 for these routes is `vault.ErrPublicationNotFound`.
-  - `GET /api/p/{i}/community` (`ListCommunity`) answers every publication not the
-    caller's own, newest first, in one array: the SPA searches, filters and sorts it. A row
-    carries its counts, dates, `subscribed` and `update_available` for the caller, the names of
-    its catalogs, and for a catalog its recipe, but never its publisher.
+  - `GET /api/p/{i}/community?kind=&sort=&q=&cursor=` (`ListCommunity`) answers one page of the
+    publications not the caller's own, `{items, next_cursor}`: 50 rows of one `kind` (`catalog`,
+    `collection`) by `sort` (`name`, `newest`), where every word of `q` is in the title or a
+    catalog's name, after `cursor`, the last page's `next_cursor` (`null` on the last page). The
+    server searches, filters and sorts, so the list's size grows with the server without the
+    response doing so. A bad kind, sort or cursor, or a `q` over 200 characters or 8 words, is a
+    400. A row carries its counts, dates, `subscribed` and `update_available` for the caller, the
+    names of its catalogs, and for a catalog its recipe, but never its publisher.
   - `GET .../community/{id}` (`GetPublication`) is the row with its `snapshot`; 404 once it is
     unpublished. It is also how the SPA previews an update: the page shows the new version
     before Update applies it.

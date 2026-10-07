@@ -412,14 +412,30 @@ func TestOnlyOwnReadsCarrySharingState(t *testing.T) {
 	}
 }
 
-// listCommunity is ListCommunity, failing the test on an error.
+// listCommunity is every row Community lists for profileID, newest first, the
+// catalogs then the collections, failing the test on an error.
 func listCommunity(t *testing.T, db *DB, profileID uuid.UUID) []CommunityItem {
 	t.Helper()
-	items, err := db.ListCommunity(context.Background(), profileID)
-	if err != nil {
-		t.Fatalf("ListCommunity: %v", err)
+	catalogs := communityPages(t, db, profileID, CommunityQuery{Kind: kindCatalog, Sort: "newest"})
+	return append(catalogs, communityPages(t, db, profileID, CommunityQuery{Kind: kindCollection, Sort: "newest"})...)
+}
+
+// communityPages is every page of q, read cursor by cursor, failing the test
+// on an error.
+func communityPages(t *testing.T, db *DB, profileID uuid.UUID, q CommunityQuery) []CommunityItem {
+	t.Helper()
+	items := []CommunityItem{}
+	for {
+		page, err := db.ListCommunity(context.Background(), profileID, q)
+		if err != nil {
+			t.Fatalf("ListCommunity(%+v): %v", q, err)
+		}
+		items = append(items, page.Items...)
+		if page.NextCursor == nil {
+			return items
+		}
+		q.Cursor = *page.NextCursor
 	}
-	return items
 }
 
 // countKind is how many of items are of kind.

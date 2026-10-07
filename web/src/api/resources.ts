@@ -3,7 +3,8 @@ import type {
   CatalogPreview,
   CatalogType,
   CertificationsByCountry,
-  CommunityItem,
+  CommunityPage,
+  CommunityQuery,
   Company,
   CompanySearchResult,
   Country,
@@ -39,10 +40,14 @@ export function fetchLibrary(profileIndex: number): Promise<LibraryData> {
   return getJSON<LibraryData>(`/api/p/${profileIndex}/library`)
 }
 
-/** Every live publication Community lists, in one call: the SPA searches,
- *  filters and sorts them itself (`features/community/communityQuery.ts`). */
-export function fetchCommunity(profileIndex: number): Promise<CommunityItem[]> {
-  return getList<CommunityItem>(`/api/p/${profileIndex}/community`)
+/** One page of the live publications Community lists, as `query` asks, from
+ *  after `cursor`, the previous page's `next_cursor`; `''` reads the first. The
+ *  server searches, filters and sorts. */
+export function fetchCommunityPage(profileIndex: number, query: CommunityQuery, cursor: string): Promise<CommunityPage> {
+  const params = new URLSearchParams({ kind: query.kind, sort: query.sort })
+  if (query.q) params.set('q', query.q)
+  if (cursor) params.set('cursor', cursor)
+  return getJSON<CommunityPage>(`/api/p/${profileIndex}/community?${params}`)
 }
 
 /** One publication with its snapshot. 404s once it is unpublished. */

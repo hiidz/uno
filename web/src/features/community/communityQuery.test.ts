@@ -5,11 +5,11 @@ import {
   itemKind,
   itemMeta,
   itemSummary,
-  ofKind,
-  openItemIn,
+  openRow,
   relativeDay,
+  rowsOf,
+  searchProblem,
   startingView,
-  visibleItems,
 } from './communityQuery'
 
 describe('where Community starts', () => {
@@ -20,55 +20,32 @@ describe('where Community starts', () => {
       openID: 'n',
     })
   })
-
-  it('finds the open row while it is listed', () => {
+  it('opens the listed row, else the detail of one not read yet, never a failed one', () => {
     const row = communityItem({ id: 'n' })
-    expect(openItemIn([row], 'n')).toBe(row)
-    expect(openItemIn([row], 'gone')).toBeNull()
-    expect(openItemIn([row], null)).toBeNull()
+    const detail = communityItem({ id: 'far', title: 'Far down' })
+    const loaded = { data: detail, isError: false }
+    expect(openRow([row], 'n', loaded)).toBe(row)
+    expect(openRow([row], 'far', loaded)).toBe(detail)
+    expect(openRow([row], 'far', { data: detail, isError: true })).toBeNull()
+    expect(openRow([row], 'far', { data: undefined, isError: false })).toBeNull()
+    expect(openRow([row], null, loaded)).toBeNull()
   })
 })
 
-describe('visibleItems', () => {
-  const zebra = communityItem({ id: 'z', title: 'Zebra', published_at: '2026-09-01T10:00:00Z' })
-  const apple = communityItem({ id: 'a', title: 'apple', published_at: '2026-09-20T10:00:00Z' })
-  const night = communityItem({
-    id: 'n',
-    kind: 'collection',
-    title: 'Movie Night',
-    catalog: null,
-    catalog_names: ['Ghost Stories', 'Slashers'],
-    folders: [communityFolder('Ghosts'), communityFolder('Slashers')],
+describe('searchProblem', () => {
+  it('takes eight distinct words, counting a word once whatever its case', () => {
+    expect(searchProblem('')).toBe('')
+    expect(searchProblem('a b c d e f g h')).toBe('')
+    expect(searchProblem('a A b B c C d D e E f F g G h H')).toBe('')
+    expect(searchProblem('best horror movies of the 80s and 90s too')).toBe('Search with 8 words at most.')
   })
-  const items = [zebra, night, apple]
-  const ids = (list: ReturnType<typeof visibleItems>) => list.map((item) => item.id)
+})
 
-  it('shows one kind, by name', () => {
-    expect(ids(visibleItems(items, DEFAULT_FILTERS))).toEqual(['a', 'z'])
-    expect(ids(visibleItems(items, { ...DEFAULT_FILTERS, kind: 'collection' }))).toEqual(['n'])
-    expect(ids(ofKind(items, 'catalog'))).toEqual(['z', 'a'])
-  })
-
-  it('sorts newest first', () => {
-    expect(ids(visibleItems(items, { ...DEFAULT_FILTERS, sort: 'newest' }))).toEqual(['a', 'z'])
-  })
-
-  it('searches titles and catalog names, whatever the case', () => {
-    expect(ids(visibleItems(items, { ...DEFAULT_FILTERS, q: ' ZEB ' }))).toEqual(['z'])
-    expect(ids(visibleItems(items, { q: 'ghost', kind: 'collection', sort: 'name' }))).toEqual(['n'])
-    expect(ids(visibleItems(items, { q: 'nothing', kind: 'collection', sort: 'name' }))).toEqual([])
-  })
-
-  it('finds each word of a search in any name, in any order', () => {
-    const collections = (q: string) => ids(visibleItems(items, { q, kind: 'collection', sort: 'name' }))
-    expect(collections('movie slashers')).toEqual(['n'])
-    expect(collections('stories  NIGHT')).toEqual(['n'])
-    expect(collections('movie zombies')).toEqual([])
-  })
-
-  it('reads a row without catalog names by its title alone', () => {
-    const bare = communityItem({ id: 'b', title: 'Bare', catalog_names: null })
-    expect(ids(visibleItems([bare], { ...DEFAULT_FILTERS, q: 'bare' }))).toEqual(['b'])
+describe('rowsOf', () => {
+  it('reads every page’s rows in order, none before the first arrives', () => {
+    const [a, b, c] = ['a', 'b', 'c'].map((id) => communityItem({ id }))
+    expect(rowsOf(undefined)).toEqual([])
+    expect(rowsOf([{ items: [a, b], next_cursor: 'x' }, { items: [c], next_cursor: null }])).toEqual([a, b, c])
   })
 })
 
@@ -83,12 +60,10 @@ describe('row words', () => {
     expect(collection([])).toBe('0 folders')
     expect(collection(null)).toBe('0 folders')
   })
-
   it('names a catalog’s kind by its type, and a collection as a collection', () => {
     expect(itemKind(communityItem())).toEqual({ label: 'Movies', tone: { hue: 'catalog', fill: false } })
     expect(itemKind(communityItem({ kind: 'collection', catalog: null }))).toEqual({ label: 'Collection', tone: { hue: 'collection', fill: false } })
   })
-
   it('says how many took it, when it was published and when it last changed', () => {
     const now = new Date(2026, 8, 29, 12)
     const meta = (subscriber_count: number, updated_at: string) =>
@@ -98,7 +73,6 @@ describe('row words', () => {
     expect(meta(3, '2026-09-08T10:00:00Z')).toBe('Added by 3 · Published 3 weeks ago')
     expect(meta(3, '2026-09-27T10:00:00Z')).toBe('Added by 3 · Published 3 weeks ago · Updated 2 days ago')
   })
-
   it('counts days, weeks, months and years', () => {
     const now = new Date(2026, 8, 29, 12)
     const ago = (days: number) => relativeDay(new Date(2026, 8, 29 - days, 9).toISOString(), now)

@@ -642,8 +642,15 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
 - **Duplicate** (`DuplicatePublication`) is a subscribe without the subscription: an editable copy with
   no `sub_key`s, and any number of them beside a subscription. Its catalog's name or collection's
   title gets `" (copy)"` (`copyName`), as every Duplicate's does, a subscribe's keeps the publisher's.
-- **Community** (`ListCommunity`) is every publication not the caller's own, newest first,
-  in one call; the SPA searches, filters and sorts it. A row is light: counts, dates,
+- **Community** (`ListCommunity`) is the publications not the caller's own, a page of 50 at a
+  time, of one kind, in one of two orders: newest first (`published_at`, then `id`, both
+  descending) or by title (`title COLLATE NOCASE`, then `id`). Each order is an index,
+  `publications_by_kind_newest` and `publications_by_kind_title`, and a page is a range of it:
+  the cursor holds the last row's key column as stored and its id, and the next page starts after
+  that row value, so a row is never lost or repeated where titles or seconds tie. A search keeps
+  the rows where every word, matched by `LIKE` and so folding ASCII case only, is in the title or
+  in a catalog name in the snapshot (`json_each`); a word costs a pass over each row's catalog
+  names, so a search is held to 200 characters and 8 distinct words. A row is light: counts, dates,
   `subscribed` and `update_available` from a join with the caller's subscriptions, the names of
   the catalogs it holds (`catalog_names`, read from the snapshot, for search), a collection's
   folders in order as their tiles show them (`folders`: each folder's `title`, `tile_shape`,
