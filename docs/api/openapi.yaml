@@ -486,31 +486,6 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/p/{profileIndex}/catalogs/{catalogID}/acknowledge-release:
-    parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CatalogID"
-    post:
-      tags: [community]
-      operationId: acknowledgeReleasedCatalog
-      summary: Acknowledge a released catalog
-      description: |
-        Clears the catalog's release mark, set or not, once the
-        builder has told its owner the publication ended. Saving never clears it.
-      responses:
-        "200":
-          description: Acknowledged; the released copies still unacknowledged.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ReleasedCopy"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
   /api/p/{profileIndex}/collections:
     parameters:
       - $ref: "#/components/parameters/ProfileIndex"
@@ -678,56 +653,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-
-  /api/p/{profileIndex}/collections/{collectionID}/acknowledge-release:
-    parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CollectionID"
-    post:
-      tags: [community]
-      operationId: acknowledgeReleasedCollection
-      summary: Acknowledge a released collection
-      description: |
-        Clears the collection's release mark, set or not, once the
-        builder has told its owner the publication ended. Saving never clears it.
-      responses:
-        "200":
-          description: Acknowledged; the released copies still unacknowledged.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ReleasedCopy"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-
-  /api/p/{profileIndex}/released:
-    parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-    get:
-      tags: [community]
-      operationId: listReleased
-      summary: The caller's released copies not yet acknowledged
-      description: |
-        Copies whose publication ended (unpublished, or its source deleted),
-        oldest release first, until each is acknowledged, for the builder to
-        read on each profile load.
-      responses:
-        "200":
-          description: The released copies.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ReleasedCopy"
-        "400": { $ref: "#/components/responses/BadProfileIndex" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/ProfileNotFound" }
 
   /api/p/{profileIndex}/community:
     parameters:
@@ -1837,13 +1762,6 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SubscriptionState"
             - type: "null"
-    ReleasedCopy:
-      type: object
-      required: [kind, id, name]
-      properties:
-        kind: { type: string, enum: [catalog, collection] }
-        id: { type: string, format: uuid }
-        name: { type: string, description: "A catalog's name or a collection's title." }
     CatalogForm:
       type: object
       required: [type, name, provider, params]

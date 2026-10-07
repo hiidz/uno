@@ -1059,17 +1059,8 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   `stickerClass` as `.stk` with one hue class and `.stk-fill`: a pill is filled only while it
   waits on you, until one action clears it — To publish and Update available (pink), To push
   (yellow); Published and From Community are pink outlines.
-- **A row its publisher unpublished is told about once, then is an own row like any other.**
-  `ReleasedDialog` (`features/sharing/ReleasedDialog.tsx`, mounted by `Builder` under both tabs)
-  reads `GET .../released` under `queryKeys.released`, so a profile switch drops it and a
-  refocus refetches it, and shows the oldest released row: "Its publisher removed “X” from
-  Community. It’s now yours to edit." Every way out — Got it, Escape, the scrim — acknowledges
-  it (`POST .../acknowledge-release`), and the list the server answers replaces the cached one,
-  opening the next row's dialog. A failed acknowledgement rereads the list, so a row deleted in
-  another tab drops out; a row still listed keeps the dialog open with the error.
-  The released list carries no publisher, whose publication is gone, so the line says "Its
-  publisher". Nothing else marks the row: it opens in its editor with no sticker or line, and
-  the row on the wire carries no release mark.
+- **A row its publisher unpublished becomes an own row like any other, silently.** Nothing
+  tells its owner: the From Community sticker goes and its editor opens for edits.
   - **Where they show:** the library rail shows a catalog's kind and the Community sticker
     only (`railStickers`) — never To push, which the pending count already covers, and no
     Collection sticker, which the rail's Collections sign already says. An editor's sign and the

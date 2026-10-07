@@ -1,10 +1,11 @@
 // The v10→v11 migration, `uno migrate --db <path>`: run once against a vault at
 // schema version 10, then deleted. Version 11 adds the index a publication's
-// subscribers are read by and drops publications.catalog_count and
-// folder_count, which nothing reads. In one transaction it applies both as
-// schema.sql writes them, stamps version 11, and checks that the database's
-// tables, columns, indexes and triggers are a fresh v11 database's. No row is
-// rewritten.
+// subscribers are read by, drops publications.catalog_count and folder_count,
+// which nothing reads, and drops the release mark, catalogs.unpublished_at and
+// collections.unpublished_at, with the trigger that set it. In one transaction
+// it applies these as schema.sql writes them, stamps version 11, and checks
+// that the database's tables, columns, indexes and triggers are a fresh v11
+// database's. No row is rewritten.
 
 package main
 
@@ -27,6 +28,16 @@ const changes = `
 CREATE INDEX subscriptions_by_publication ON subscriptions (publication_id);
 ALTER TABLE publications DROP COLUMN catalog_count;
 ALTER TABLE publications DROP COLUMN folder_count;
+DROP TRIGGER publications_release_subscribers;
+ALTER TABLE catalogs DROP COLUMN unpublished_at;
+ALTER TABLE collections DROP COLUMN unpublished_at;
+CREATE TRIGGER publications_release_subscribers BEFORE DELETE ON publications
+BEGIN
+    UPDATE catalogs SET sub_key = NULL
+    WHERE collection_id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
+    UPDATE folders SET sub_key = NULL
+    WHERE collection_id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
+END;
 PRAGMA user_version = 11;
 `
 
@@ -48,7 +59,7 @@ func runMigrate(ctx context.Context, args []string, out io.Writer) error {
 	if err := migrateToV11(ctx, *path); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(out, "migrated %s to schema version 11: added subscriptions_by_publication, dropped publications.catalog_count and folder_count\n", *path)
+	_, err := fmt.Fprintf(out, "migrated %s to schema version 11: added subscriptions_by_publication, dropped publications.catalog_count and folder_count and the release mark\n", *path)
 	return err
 }
 
@@ -138,12 +149,12 @@ func freshStructure(ctx context.Context) ([]string, error) {
 
 // structureQuery lists every table, index and trigger in a database as its
 // kind, name and table, then every column of every table in order with its
-// type, nullability, default and primary-key place; the one index the
-// migration writes also carries its SQL. Other rows' SQL is left out: a table
+// type, nullability, default and primary-key place; the index and the trigger
+// the migration writes also carry their SQL. Other rows' SQL is left out: a table
 // whose column was dropped stores its CREATE text in another form.
 const structureQuery = `
 	SELECT type || ' ' || name || ' on ' || tbl_name
-	       || CASE WHEN name = 'subscriptions_by_publication' THEN ': ' || sql ELSE '' END
+	       || CASE WHEN name IN ('subscriptions_by_publication', 'publications_release_subscribers') THEN ': ' || sql ELSE '' END
 	FROM sqlite_master WHERE name NOT LIKE 'sqlite\_%' ESCAPE '\'
 	UNION ALL
 	SELECT 'column ' || m.name || ' ' || c.cid || ' ' || c.name || ' ' || c.type

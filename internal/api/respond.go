@@ -2,7 +2,6 @@ package api
 
 import (
 	"cmp"
-	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -10,27 +9,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/google/uuid"
-
 	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
-
-// listByProfile answers with everything load returns for the request's
-// profile. op names the handler in the 500's log line, failMsg is what the
-// client sees instead of the error. Must run behind requireProfile, which is
-// what makes the profile id in the context a given.
-func listByProfile[T any](w http.ResponseWriter, r *http.Request, op, failMsg string, load func(context.Context, uuid.UUID) ([]T, error)) {
-	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
-
-	items, err := load(r.Context(), profileID)
-	if err != nil {
-		serverError(w, op, err, failMsg)
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, items)
-}
 
 // maxRequestBodyBytes caps every JSON request body the builder API accepts.
 // The largest legitimate body is a collection save or a push carrying a

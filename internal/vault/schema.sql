@@ -51,8 +51,7 @@ CREATE TABLE "collections" (
     focus_glow_enabled INTEGER NOT NULL DEFAULT 1,
     home_sort_order    INTEGER,                    -- place on Home, numbered with catalogs.home_sort_order; NULL = not on Home
     created_at         TEXT    NOT NULL,           -- RFC3339 UTC
-    updated_at         TEXT    NOT NULL,           -- RFC3339 UTC
-    unpublished_at     TEXT                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once acknowledged
+    updated_at         TEXT    NOT NULL            -- RFC3339 UTC
 );
 
 CREATE INDEX collections_by_owner ON collections (owner_id);
@@ -70,7 +69,6 @@ CREATE TABLE catalogs (
     sub_key         TEXT,                        -- in a subscribed collection: its key in the snapshot
     created_at      TEXT    NOT NULL,            -- RFC3339 UTC
     updated_at      TEXT    NOT NULL,            -- RFC3339 UTC
-    unpublished_at  TEXT,                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once acknowledged
     CHECK (collection_id IS NULL OR home_sort_order IS NULL)
 );
 
@@ -126,14 +124,9 @@ CREATE INDEX subscriptions_by_publication ON subscriptions (publication_id);
 
 -- Ending a publication, by unpublishing it or by deleting its source, releases
 -- its subscribers ahead of the cascade that deletes their subscriptions: each
--- subscribed row becomes its subscriber's own, marked unpublished until they
--- acknowledge it, with no snapshot keys left in it.
+-- subscribed row becomes its subscriber's own, with no snapshot keys left in it.
 CREATE TRIGGER publications_release_subscribers BEFORE DELETE ON publications
 BEGIN
-    UPDATE catalogs SET unpublished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-    WHERE id IN (SELECT catalog_id FROM subscriptions WHERE publication_id = OLD.id);
-    UPDATE collections SET unpublished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-    WHERE id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
     UPDATE catalogs SET sub_key = NULL
     WHERE collection_id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
     UPDATE folders SET sub_key = NULL

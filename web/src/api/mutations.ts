@@ -1,5 +1,5 @@
 import { sendJSON } from './http'
-import type { Catalog, CatalogType, Collection, CommunityCopy, FolderLook, ReleasedCopy, TMDBKeyStatus, ViewMode } from './types'
+import type { Catalog, CatalogType, Collection, CommunityCopy, FolderLook, TMDBKeyStatus, ViewMode } from './types'
 
 /** Publishes a listed catalog as it is saved now, or publishes its update —
  *  `POST .../catalogs/{id}/publish`. An update keeps the publication's id;
@@ -11,7 +11,7 @@ export function publishCatalog(profileIndex: number, catalogID: string): Promise
 
 /** Unpublishes a catalog — `POST .../catalogs/{id}/unpublish`. Its
  *  publication is gone for good: copies other profiles subscribed to become
- *  their own, with a release mark. */
+ *  their own. */
 export function unpublishCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/unpublish`)
 }
@@ -24,17 +24,6 @@ export function publishCollection(profileIndex: number, collectionID: string): P
 
 export function unpublishCollection(profileIndex: number, collectionID: string): Promise<Collection> {
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/unpublish`)
-}
-
-/** Acknowledges a released row, clearing its release mark —
- *  `POST .../{kind}s/{id}/acknowledge-release` — and answers the released
- *  rows still unacknowledged. */
-export function acknowledgeRelease(
-  profileIndex: number,
-  kind: ReleasedCopy['kind'],
-  id: string,
-): Promise<ReleasedCopy[]> {
-  return sendJSON<ReleasedCopy[]>('POST', `/api/p/${profileIndex}/${kind}s/${id}/acknowledge-release`)
 }
 
 /** Subscribe (the UI's Add): a read-only copy of a publication that follows
@@ -111,7 +100,7 @@ export function updateCatalog(
 
 /** Hard delete of an owned catalog, cascading to the folder refs that point
  *  at it. A published catalog is unpublished; copies other profiles added
- *  become their own, with a release mark. */
+ *  become their own. */
 export function deleteCatalog(profileIndex: number, catalogID: string): Promise<null> {
   return sendJSON<null>('DELETE', `/api/p/${profileIndex}/catalogs/${catalogID}`)
 }

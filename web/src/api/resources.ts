@@ -18,7 +18,6 @@ import type {
   NuvioProfile,
   PreviewRequest,
   PublicationDetail,
-  ReleasedCopy,
   SelectedProfile,
   ServerConfig,
   SnapshotChange,
@@ -69,12 +68,6 @@ export function fetchChangesSincePublish(
   id: string,
 ): Promise<SnapshotChange[]> {
   return getList<SnapshotChange>(`/api/p/${profileIndex}/${kind}s/${id}/changes-since-publish`)
-}
-
-/** This profile's rows released and not yet acknowledged: copies whose
- *  publisher unpublished them, oldest release first. */
-export function fetchReleased(profileIndex: number): Promise<ReleasedCopy[]> {
-  return getList<ReleasedCopy>(`/api/p/${profileIndex}/released`)
 }
 
 /** Live from TMDB via the Go side. Takes the catalog's own `type`

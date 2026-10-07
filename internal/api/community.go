@@ -134,21 +134,3 @@ func (s *Server) duplicatePublication(w http.ResponseWriter, r *http.Request) {
 	serveSharingCall(w, r, sharingCall{publicationRow, "duplicatePublication", "failed to duplicate", http.StatusCreated},
 		s.vault.DuplicatePublication)
 }
-
-// listReleased answers the caller's rows released and not yet acknowledged:
-// copies whose publication ended, which the builder tells them about once.
-func (s *Server) listReleased(w http.ResponseWriter, r *http.Request) {
-	listByProfile(w, r, "listReleased", "failed to load released copies", s.vault.ReleasedCopies)
-}
-
-// acknowledgeReleasedCatalog and acknowledgeReleasedCollection clear a row's
-// release mark and answer the released copies still unacknowledged.
-func (s *Server) acknowledgeReleasedCatalog(w http.ResponseWriter, r *http.Request) {
-	serveSharingCall(w, r, sharingCall{catalogRow, "acknowledgeReleasedCatalog", "failed to acknowledge", http.StatusOK},
-		s.vault.AcknowledgeReleasedCatalog)
-}
-
-func (s *Server) acknowledgeReleasedCollection(w http.ResponseWriter, r *http.Request) {
-	serveSharingCall(w, r, sharingCall{collectionRow, "acknowledgeReleasedCollection", "failed to acknowledge", http.StatusOK},
-		s.vault.AcknowledgeReleasedCollection)
-}

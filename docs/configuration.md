@@ -175,7 +175,8 @@ A schema change edits `schema.sql` and bumps `schemaVersion`.
 prod has run it (`cmd/server/migrate.go`). It refuses any version but 10. In one transaction it
 creates `subscriptions_by_publication`, which a publication's cascade and release trigger read its
 subscribers through, drops `publications.catalog_count` and `folder_count`, which nothing read,
-stamps version 11, and checks that the tables, columns, indexes and triggers match a fresh v11
+drops `catalogs.unpublished_at` and `collections.unpublished_at` and recreates the release trigger
+without them, stamps version 11, and checks that the tables, columns, indexes and triggers match a fresh v11
 database. No row is rewritten. Any refusal or failure leaves the file as it was.
 
 On the deployed volume, with the image distroless and `ENTRYPOINT ["/app/uno"]`:

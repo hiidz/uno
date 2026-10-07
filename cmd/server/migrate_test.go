@@ -61,7 +61,7 @@ func count(t *testing.T, path, query string) int {
 }
 
 // A v10 database migrates to one this build opens, with its rows, the new index
-// and neither dropped column; a second run is refused.
+// and none of the dropped columns; a second run is refused.
 func TestMigrateToV11(t *testing.T) {
 	ctx := context.Background()
 	path := newV10Database(t, "")
@@ -79,6 +79,8 @@ func TestMigrateToV11(t *testing.T) {
 		`SELECT subscriber_count FROM publications`: 1,
 		`SELECT count(*) FROM pragma_table_info('publications') WHERE name LIKE '%\_count' ESCAPE '\'`: 1,
 		`SELECT count(*) FROM sqlite_master WHERE name = 'subscriptions_by_publication'`:               1,
+		`SELECT count(*) FROM pragma_table_info('catalogs') WHERE name = 'unpublished_at'`:             0,
+		`SELECT count(*) FROM pragma_table_info('collections') WHERE name = 'unpublished_at'`:          0,
 		`SELECT count(*) FROM pragma_foreign_key_check`:                                                0,
 	} {
 		if got := count(t, path, query); got != want {

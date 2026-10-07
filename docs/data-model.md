@@ -74,7 +74,6 @@ erDiagram
     int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
     bool show_in_home
     string sub_key "nullable — in a subscribed collection, its snapshot key"
-    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once its owner acknowledges the release"
     string created_at
     string updated_at
   }
@@ -88,7 +87,6 @@ erDiagram
     string backdrop_image_url
     bool focus_glow_enabled "defaults to 1, matching Nuvio"
     int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
-    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once its owner acknowledges the release"
     string created_at
     string updated_at
   }
@@ -557,17 +555,10 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   scopes a listed catalog.
   - **Its subscribers are released.** The `publications_release_subscribers` trigger runs before
     the publication's row goes, whichever way it goes, and before the cascade deletes its
-    subscriptions (`subscriptions.publication_id` is `ON DELETE CASCADE`): it stamps
-    `unpublished_at` on every subscribed catalog and collection, and clears the `sub_key`s of a
-    collection copy's folders and scoped catalogs. Each copy keeps its ids, its Home placement
-    and its pin, and with no subscription left it is an ordinary own row: saves reach it, and it
-    can be published.
-  - **The mark** is the row's `unpublished_at IS NOT NULL`: released, not yet acknowledged. It is
-    not on the wire with the row; `ReleasedCopies`
-    (`GET /api/p/{i}/released`, `internal/vault/released.go`) lists a profile's marked rows,
-    oldest release first, for the builder to tell its owner once on each profile load. Only `AcknowledgeReleasedCatalog`/`AcknowledgeReleasedCollection`
-    (`POST .../acknowledge-release`) clear it; a save never does. Push, Update, Duplicate and import
-    never set it.
+    subscriptions (`subscriptions.publication_id` is `ON DELETE CASCADE`): it clears the
+    `sub_key`s of a collection copy's folders and scoped catalogs. Each copy keeps its ids, its
+    Home placement and its pin, and with no subscription left it is an ordinary own row: saves
+    reach it, and it can be published. Nothing records the release and its owner is not told.
   - The publication's snapshot goes with it: `GetPublication`, a subscribe and an Update of it
     answer `ErrPublicationNotFound`.
 - **No collapse.** Two publications of the same content, a recipe two profiles both publish or

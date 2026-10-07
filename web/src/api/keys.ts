@@ -38,9 +38,6 @@ export const queryKeys = {
    *  prefix itself. Every Community key sits under it. */
   community: (profileIndex: number) => ['p', profileIndex, 'community'] as const,
 
-  /** The rows released and not yet acknowledged, each told about once
-   *  (`ReleasedDialog`). */
-  released: (profileIndex: number) => ['p', profileIndex, 'released'] as const,
   /** Community's pages for one query, read a page at a time. */
   communityList: (profileIndex: number, query: CommunityQuery) =>
     ['p', profileIndex, 'community', 'list', query.kind, query.sort, query.q] as const,
