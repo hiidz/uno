@@ -5,14 +5,17 @@ import type { CatalogType } from './types'
  * Query keys, scoped by profile wherever the endpoint is.
  *
  * Everything under `/api/p/{i}/...` keys on `['p', profileIndex, …]` so
- * switching profile slots invalidates the whole subtree in one call and no
- * stale row from another profile can survive — this includes the community
+ * opening the builder on a profile drops the whole subtree in one call
+ * (`watchActiveProfile`) and no stale row from an earlier visit can survive —
+ * this includes the community
  * routes, which are profile-scoped (they exclude the caller's own publications
  * and mark the ones it subscribes to). Genre lookups are account-wide, so they sit
  * outside that prefix and stay cached across a profile switch.
  */
 export const queryKeys = {
   profile: (profileIndex: number) => ['p', profileIndex] as const,
+  /** The prefix every profile's subtree sits under. */
+  allProfiles: () => ['p'] as const,
 
   /** `GET /api/profiles` — the caller's Nuvio account, not any one selected
    *  profile, so this sits outside the `['p', i, …]` prefix like the genre

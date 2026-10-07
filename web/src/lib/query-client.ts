@@ -17,10 +17,10 @@ export const queryClient = new QueryClient({
         if (error instanceof ApiError && error.status < 500) return false
         return failureCount < 2
       },
-      // Every list endpoint is unpaginated and small, and nothing else
-      // mutates them behind our back — a window refocus doesn't need to
-      // refetch every query on the page.
-      refetchOnWindowFocus: false,
+      // Another tab or device can change what a list holds, so a refocus
+      // refetches the stale queries; the ones kept with `staleTime: Infinity`
+      // never go stale and stay put.
+      refetchOnWindowFocus: true,
       staleTime: 30_000,
     },
   },

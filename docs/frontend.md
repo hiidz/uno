@@ -73,6 +73,16 @@ Entirely frontend code. Uno's Go side never mints, refreshes, or stores a Nuvio 
   `web/src/lib/query-client.ts` subscribes to auth state and calls `queryClient.clear()`
   whenever the signed-in user id changes — sign-out, "Switch account", or another tab's
   session for a different user.
+- **The profile's cache is dropped each time the builder opens on a profile.** The router's
+  location state is where the active profile is set, so `watchActiveProfile`
+  (`web/src/routes/activeProfile.ts`, wired in `App.tsx`) watches it and calls
+  `removeQueries({ queryKey: ['p'] })` whenever `/configure` opens on a profile — from the picker,
+  from a history entry, or from one profile's entry to another's. The account-wide queries (genres,
+  lookups, recipe previews, the TMDB key) stay. `Builder` keys `HomeSelectionProvider` on the
+  profile index, so a profile change under the mounted builder starts a new pending and baseline
+  state rather than keeping the last profile's. Queries refetch on window focus once stale, so a
+  change made in another tab or on another device shows without a reload; the account-wide
+  lookups kept with `staleTime: Infinity` never go stale and are not refetched.
 - **Dev bypass** — in a dev build only, `/login` renders a "Dev bypass login" button when
   `VITE_DEV_AUTH_BYPASS_TOKEN` is set in `web/.env`. `loginWithBypassToken` (`session.ts`) builds
   a synthetic session holding that token as its access token and applies it directly, with no
@@ -1299,8 +1309,8 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - **Both owned lists are invalidated on success.** Push rewrites every owned row's
   `home_position` and `show_in_home` and a collection's `pin_to_top`, which Home hydrates from,
   an added collection starts its pin from, and the delete dialog reads. With `staleTime: 30_000`,
-  stale lists would make switching profile and returning inside that window re-hydrate the
-  baseline from pre-push data, and the pushed changes would look undone.
+  stale lists would show pre-push data for up to that window while the builder stays open, and
+  the pushed changes would look undone.
 - **The pending-push query is invalidated on success too.** The list of what
   waits for a push (`queryKeys.pendingPush`, `GET .../push/pending`) is read from the server, so
   without invalidating it the "changed since it was last pushed" lines would never clear after a

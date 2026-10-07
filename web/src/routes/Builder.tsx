@@ -80,7 +80,9 @@ export function Builder() {
   }
 
   return (
-    <HomeSelectionProvider profileIndex={profile.profileIndex}>
+    // Keyed on the profile: the provider's pending and baseline state is
+    // built once, so another profile's entry in the history must start a new one.
+    <HomeSelectionProvider key={profile.profileIndex} profileIndex={profile.profileIndex}>
       <EditorGuardProvider>
         <div className="flex min-h-svh flex-col lg:h-svh">
           <BuilderHeader profile={profile} tab={tab} onTabChange={changeTab} />
