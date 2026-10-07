@@ -64,6 +64,18 @@ func tooLong(value string, limit int) bool {
 	return utf8.RuneCountInString(value) > limit
 }
 
+// copySuffix is what every Duplicate adds to the name of the row it copies.
+const copySuffix = " (copy)"
+
+// copyName is name as a Duplicate titles its copy: name and copySuffix,
+// with name cut short, in characters, so the result fits maxNameLen.
+func copyName(name string) string {
+	if room := maxNameLen - utf8.RuneCountInString(copySuffix); tooLong(name, room) {
+		name = string([]rune(name)[:room])
+	}
+	return name + copySuffix
+}
+
 // lengthProblem reports that field is longer than limit characters, or "" when
 // it isn't.
 func lengthProblem(field, value string, limit int) string {

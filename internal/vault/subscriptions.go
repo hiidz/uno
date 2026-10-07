@@ -85,7 +85,8 @@ func (db *DB) Subscribe(ctx context.Context, profileID, publicationID uuid.UUID)
 // DuplicatePublication is Subscribe without the subscription: a copy of the
 // snapshot as profileID's own, fully editable rows, which Community never
 // offers an Update for, and any number of which can sit beside a
-// subscription.
+// subscription. The copy's name or title gets a " (copy)" suffix
+// (copyName).
 func (db *DB) DuplicatePublication(ctx context.Context, profileID, publicationID uuid.UUID) (CommunityCopy, error) {
 	return db.copyPublication(ctx, profileID, publicationID, false)
 }
@@ -96,6 +97,7 @@ func (db *DB) copyPublication(ctx context.Context, profileID, publicationID uuid
 	if err != nil {
 		return CommunityCopy{}, err
 	}
+	pub.snapshot = pub.snapshot.forCopy(subscribe)
 	if err := pub.snapshot.validate(); err != nil {
 		return CommunityCopy{}, err
 	}

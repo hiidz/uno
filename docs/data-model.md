@@ -640,7 +640,8 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   available always has something to show, and an edit and its undo has nothing. The SPA puts the
   items into words (`docs/frontend.md`, *Sharing*).
 - **Duplicate** (`DuplicatePublication`) is a subscribe without the subscription: an editable copy with
-  no `sub_key`s, and any number of them beside a subscription.
+  no `sub_key`s, and any number of them beside a subscription. Its catalog's name or collection's
+  title gets `" (copy)"` (`copyName`), as every Duplicate's does, a subscribe's keeps the publisher's.
 - **Community** (`ListCommunity`) is every publication not the caller's own, newest first,
   in one call; the SPA searches, filters and sorts it. A row is light: counts, dates,
   `subscribed` and `update_available` from a join with the caller's subscriptions, the names of
@@ -755,10 +756,10 @@ describing what a TMDB-backed catalog may ask for.
   `DuplicateCollection` runs `CollectionForm.Validate` over the form built from the caller's own
   source, with no params check: a recipe TMDB has since outgrown must not block you from
   duplicating your own collection. A stale enum, an overlong title, or a scoped catalog with a
-  blank name or an unknown type or provider is stale whoever owns it, and that includes
-  `maxNameLen` on the `" (copy)"`-suffixed title it writes, so a collection whose title already
-  fills the bound cannot be duplicated rather than being copied into a row the collection
-  editor's own save would then refuse. The listed catalogs a Duplicate references are not
+  blank name or an unknown type or provider is stale whoever owns it. The title it writes is
+  `copyName` of the source's: `" (copy)"` after it, the title cut short in characters when the
+  two would pass `maxNameLen`, so a title that fills the bound still duplicates, into a row the
+  collection editor's own save accepts. The listed catalogs a Duplicate references are not
   checked: they stay `catalog_id` refs to rows the caller already owns, and nothing is written
   from them. A Duplicate reads its source through the pool, then writes it through
   `createCollectionTx`, the create core `CreateUserCollection` runs, each scoped catalog copy one

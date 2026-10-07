@@ -12,7 +12,6 @@ import { ExportDialog } from '@/features/bundle/ExportDialog'
 import { ImportDialog } from '@/features/bundle/ImportDialog'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
 import {
-  duplicatePayload,
   emptyForm,
   toPayload,
   type CatalogFormState,
@@ -359,7 +358,7 @@ export function Workspace({
   }
 
   function duplicateCatalog(catalog: LibraryCatalog) {
-    catalogMutations.create.reset()
+    catalogMutations.duplicate.reset()
     setConfirming({ kind: 'duplicate-catalog', catalog })
   }
 
@@ -368,12 +367,11 @@ export function Workspace({
     setConfirming({ kind: 'duplicate-collection', collection })
   }
 
-  // Duplicating a catalog is one server call — the same `create` mutation
-  // `createBareCatalog` uses, seeded from an existing row (`duplicatePayload`)
-  // instead of a bare name. The finished copy opens straight into its own
-  // editor for review, as a duplicated collection does below.
+  // Duplicating a catalog is one server call (`DuplicateCatalog`), which
+  // makes no TMDB call. The finished copy opens straight into its own editor
+  // for review, as a duplicated collection does below.
   function confirmDuplicateCatalog(catalog: LibraryCatalog) {
-    catalogMutations.create.mutate(duplicatePayload(catalog), {
+    catalogMutations.duplicate.mutate(catalog.id, {
       onSuccess: (newCatalog) => {
         setConfirming(null)
         open(catalogTarget(newCatalog))
@@ -466,13 +464,13 @@ export function Workspace({
               Creates a copy of <strong className="text-ink">{catalog.name}</strong>.
             </>
           ),
-          confirmLabel: catalogMutations.create.isPending ? 'Duplicating…' : 'Duplicate catalog',
+          confirmLabel: catalogMutations.duplicate.isPending ? 'Duplicating…' : 'Duplicate catalog',
           cancelLabel: 'Cancel',
-          pending: catalogMutations.create.isPending,
-          error: catalogMutations.create.error?.message ?? null,
+          pending: catalogMutations.duplicate.isPending,
+          error: catalogMutations.duplicate.error?.message ?? null,
           onConfirm: () => confirmDuplicateCatalog(catalog),
           onCancel: () => {
-            catalogMutations.create.reset()
+            catalogMutations.duplicate.reset()
             setConfirming(null)
           },
         }

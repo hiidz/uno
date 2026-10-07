@@ -51,7 +51,7 @@ function mutation() {
 }
 
 vi.mock('@/features/catalogs/useCatalogMutations', () => ({
-  useCatalogMutations: () => ({ create: mutation(), update: mutation(), remove: mutation() }),
+  useCatalogMutations: () => ({ create: mutation(), duplicate: mutation(), update: mutation(), remove: mutation() }),
 }))
 vi.mock('@/features/collections/useCollectionMutations', () => ({
   useCollectionMutations: () => ({ create: mutation(), update: mutation(), remove: mutation(), duplicate: mutation() }),

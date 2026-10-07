@@ -128,24 +128,6 @@ export function formFromCatalog(catalog: Catalog): CatalogFormState {
   }
 }
 
-/**
- * The create payload for an atomic catalog duplicate — `Workspace.tsx`'s
- * `confirmDuplicateCatalog`, which posts this directly rather than opening an
- * editor first. A duplicate gets a distinguishable name and is never born
- * shared or scoped — sharing and scoping are deliberate acts, not
- * something inherited from whoever it was duplicated from; only reachable from
- * the library, which is listed catalogs only. `type`/`params` are copied
- * verbatim: a duplicate is a straight copy.
- */
-export function duplicatePayload(catalog: Catalog): CatalogPayload {
-  return {
-    type: catalog.type,
-    name: `${catalog.name} (copy)`,
-    provider: CATALOG_PROVIDER,
-    params: catalog.params,
-  }
-}
-
 /** Drops empty strings, zeros and NaN so the payload carries only fields the
  *  user actually set — matching Go's `omitempty`, where an absent field means
  *  "not filtered on" rather than zero. */

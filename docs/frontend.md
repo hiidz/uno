@@ -42,10 +42,10 @@ composes all of it.
 Every row either editor opens is a saved one, and `EditorTarget`
 (`web/src/features/builder/target.ts`) always carries its `id`. A catalog or collection is named
 into existence before its editor opens, and duplicating a catalog (`useCatalogMutations`'
-`create`, called directly with a duplicate payload) or a collection (`useCollectionMutations`'s
+`duplicate`) or a collection (`useCollectionMutations`'s
 `duplicate`) is a single server call that hands back a finished copy — see "Catalog authoring"
 and "Collection authoring" below. An open editor reads only its `update` mutation's pending state
-and error: `create` belongs to the naming dialogs and to Duplicate, which can run while an editor
+and error: `create` belongs to the naming dialogs and `duplicate` to Duplicate, which can run while an editor
 is open, and their failures stay in their own dialogs.
 
 ## Auth / session
@@ -368,9 +368,10 @@ places.
 **Duplicate is a first-class action on your own rows, not a hidden overflow item, and it's
 atomic** — every row in the library is yours, so opening one always edits it; the Duplicate button
 (`LibraryItem`'s row actions, or the editor header below `lg`) is the only way to reach it.
-`Workspace.tsx`'s `confirmDuplicateCatalog` `POST`s a straight copy of the source's exact type and
-params the instant the confirm dialog is accepted (`catalogForm.ts`'s `duplicatePayload` — no form
-to fill in first, unlike a bare "New catalog"), then opens the finished copy in this same editor
+`Workspace.tsx`'s `confirmDuplicateCatalog` calls `POST .../catalogs/{id}/duplicate` the instant
+the confirm dialog is accepted — no form to fill in first, unlike a bare "New catalog". The server
+writes a straight copy of the source's exact type and params, named "<name> (copy)" and cut short
+to fit 200 characters, with no TMDB call. The SPA then opens the finished copy in this same editor
 like any other real row — the same atomic-then-open shape `confirmDuplicateCollection` uses for
 collections. A duplicate is never published, whatever its source, because publishing is a
 deliberate act rather than something inherited from what was duplicated. Nothing changes a

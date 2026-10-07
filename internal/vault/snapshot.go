@@ -9,6 +9,7 @@ package vault
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -181,6 +182,24 @@ func (s Snapshot) collectionForm(keyed bool) CollectionForm {
 		}
 	}
 	return form
+}
+
+// forCopy is s as a copy of it is written: a subscribe's is s as it is, and a
+// duplicate's has its catalog's name or its collection's title given a
+// " (copy)" suffix (copyName). s is left as it was.
+func (s Snapshot) forCopy(subscribe bool) Snapshot {
+	if subscribe {
+		return s
+	}
+	if s.Collection == nil {
+		s.Catalogs = slices.Clone(s.Catalogs)
+		s.Catalogs[0].Name = copyName(s.Catalogs[0].Name)
+		return s
+	}
+	c := *s.Collection
+	c.Title = copyName(c.Title)
+	s.Collection = &c
+	return s
 }
 
 // validate runs the form validators a copy of s is written through: a

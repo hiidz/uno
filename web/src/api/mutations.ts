@@ -87,6 +87,13 @@ export function createCatalog(profileIndex: number, body: CatalogPayload): Promi
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs`, body)
 }
 
+/** Copies a listed catalog this profile owns, named "<name> (copy)", with no
+ *  TMDB call — `POST .../catalogs/{id}/duplicate`. 404s if the source isn't
+ *  one of this profile's listed catalogs. */
+export function duplicateCatalog(profileIndex: number, catalogID: string): Promise<Catalog> {
+  return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs/${catalogID}/duplicate`)
+}
+
 /**
  * `type` and `provider` are immutable once a catalog exists, and the server
  * enforces both: a `type` that differs from the stored one is a 400, and

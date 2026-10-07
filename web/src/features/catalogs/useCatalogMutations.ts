@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { createCatalog, deleteCatalog, invalidateProfileLists, updateCatalog } from '@/api'
+import { createCatalog, deleteCatalog, duplicateCatalog, invalidateProfileLists, updateCatalog } from '@/api'
 import type { CatalogPayload } from '@/api'
 
 /**
@@ -39,6 +39,11 @@ export function useCatalogMutations(profileIndex: number) {
     onSuccess: invalidate,
   })
 
+  const duplicate = useMutation({
+    mutationFn: (id: string) => duplicateCatalog(profileIndex, id),
+    onSuccess: invalidate,
+  })
+
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: CatalogPayload }) =>
       updateCatalog(profileIndex, id, payload),
@@ -50,5 +55,5 @@ export function useCatalogMutations(profileIndex: number) {
     onSuccess: invalidate,
   })
 
-  return { create, update, remove }
+  return { create, duplicate, update, remove }
 }

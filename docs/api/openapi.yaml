@@ -386,6 +386,30 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/p/{profileIndex}/catalogs/{catalogID}/duplicate:
+    parameters:
+      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/CatalogID"
+    post:
+      tags: [catalogs]
+      operationId: duplicateUserCatalog
+      summary: Duplicate one of the profile's own listed catalogs
+      description: |
+        Writes a listed copy named "<name> (copy)", the name cut short to fit
+        200 characters. The stored recipe is checked by the form validators
+        only, with no TMDB call.
+      responses:
+        "201":
+          description: The copy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Catalog"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/p/{profileIndex}/catalogs/{catalogID}/publish:
     parameters:
       - $ref: "#/components/parameters/ProfileIndex"
@@ -576,7 +600,9 @@ paths:
       tags: [collections]
       operationId: duplicateUserCollection
       summary: Duplicate one of the profile's own collections
-      description: Copies the whole tree, scoped catalogs included, in one transaction.
+      description: |
+        Copies the whole tree, scoped catalogs included, in one transaction.
+        The title gets a " (copy)" suffix, cut short to fit 200 characters.
       responses:
         "201":
           description: The copy.
@@ -836,7 +862,10 @@ paths:
       tags: [community]
       operationId: duplicatePublication
       summary: Duplicate a publication
-      description: Writes an editable copy into the caller's profile, with no subscription.
+      description: |
+        Writes an editable copy into the caller's profile, with no subscription.
+        The copy's name or title gets a " (copy)" suffix, cut short to fit 200
+        characters.
       responses:
         "201":
           description: The copy.

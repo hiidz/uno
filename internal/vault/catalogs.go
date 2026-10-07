@@ -188,6 +188,26 @@ func (db *DB) CreateUserCatalog(ctx context.Context, profileID uuid.UUID, input 
 	return created, nil
 }
 
+// DuplicateCatalog copies the listed catalog catalogID, which profileID owns,
+// as a new listed catalog of theirs: the same type, provider and params, its
+// name given a " (copy)" suffix (copyName), unpublished and subscribed to
+// nothing even when the source is a subscribed copy. The stored recipe is
+// checked by the form validators only, with no TMDB call, so a recipe TMDB
+// has since outgrown doesn't block a copy. Returns ErrCatalogNotFound for a
+// catalog that isn't one of profileID's listed ones.
+func (db *DB) DuplicateCatalog(ctx context.Context, profileID, catalogID uuid.UUID) (Catalog, error) {
+	source, err := ownCatalog(ctx, db.conn, profileID, catalogID)
+	if err != nil {
+		return Catalog{}, err
+	}
+	if source.CollectionID != nil {
+		return Catalog{}, ErrCatalogNotFound
+	}
+	return db.CreateUserCatalog(ctx, profileID, CatalogForm{
+		Type: source.Type, Name: copyName(source.Name), Provider: source.Provider, Params: source.Params,
+	})
+}
+
 // UpdateUserCatalog validates input and updates the listed catalog
 // identified by catalogID, provided it's owned by profileID. Returns
 // ErrCatalogNotFound if no such row exists (including one owned by another

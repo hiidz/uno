@@ -19,16 +19,14 @@ import (
 // becomes one fresh scoped copy in the new collection, referenced wherever
 // the source referenced it. The copy is unpublished and subscribed to
 // nothing, even when its source is a subscribed copy, and its title gets a
-// " (copy)" suffix. Returns ErrCollectionNotFound if sourceID isn't owned by
-// profileID.
+// " (copy)" suffix (copyName), cut short to fit maxNameLen. Returns
+// ErrCollectionNotFound if sourceID isn't owned by profileID.
 //
 // The source is checked as the form that writes the copy, by
 // CollectionForm.Validate, the rules a collection save runs, since being
-// stored is not evidence a row passes today's rules. The title is checked
-// with its suffix, so a title already at maxNameLen is refused rather than
-// copied into a row the collection editor's own save would then refuse. The
-// listed catalogs it references are not checked: they stay references to
-// rows the caller already owns, and nothing is written from them.
+// stored is not evidence a row passes today's rules. The listed catalogs it
+// references are not checked: they stay references to rows the caller already
+// owns, and nothing is written from them.
 func (db *DB) DuplicateCollection(ctx context.Context, profileID uuid.UUID, sourceID uuid.UUID) (CollectionWithFolders, error) {
 	return db.copyCollection(ctx, profileID, sourceID)
 }
@@ -42,7 +40,7 @@ func (db *DB) copyCollection(ctx context.Context, profileID, sourceID uuid.UUID)
 	}
 	b := extractBundle(nil, []CollectionWithFolders{source}, false)
 	form := collectionFormFromBundle(b.Collections[0], topSourceIDs(b.Catalogs), false)
-	form.Title += " (copy)"
+	form.Title = copyName(form.Title)
 	if err := form.Validate(); err != nil {
 		return CollectionWithFolders{}, err
 	}

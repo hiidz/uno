@@ -34,6 +34,22 @@ func (s *Server) createUserCatalog(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, catalog)
 }
 
+func (s *Server) duplicateUserCatalog(w http.ResponseWriter, r *http.Request) {
+	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
+
+	catalogID, ok := httpx.PathUUID(w, r, "catalogID", "catalog id")
+	if !ok {
+		return
+	}
+
+	catalog, err := s.vault.DuplicateCatalog(r.Context(), profileID, catalogID)
+	if err != nil {
+		writeVaultError(w, "duplicateUserCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to duplicate catalog")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, catalog)
+}
+
 func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 

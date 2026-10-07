@@ -96,6 +96,7 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs", s.requireProfileAuth(s.createUserCatalog))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.updateUserCatalog))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/duplicate", s.requireProfileAuth(s.duplicateUserCatalog))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/publish", s.requireProfileAuth(s.publishCatalog))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/unpublish", s.requireProfileAuth(s.unpublishCatalog))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/{catalogID}/changes-since-publish", s.requireProfileAuth(s.catalogChanges))

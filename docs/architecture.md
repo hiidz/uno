@@ -248,6 +248,16 @@ Route-semantics facts the client has to honour:
     or Discover and the pin (`pin_to_top`) all travel in push's selection (*Push* below), for
     a copy as for any row.
   - Another profile's row answers 404 on all of them, like one that doesn't exist.
+- **Duplicating a catalog you own is one server call, and makes no TMDB call.**
+  `POST /api/p/{i}/catalogs/{id}/duplicate` (`DuplicateCatalog`, 201) writes a listed copy of the
+  stored type, provider and params through `CreateUserCatalog`, so only the form validators run:
+  a recipe TMDB has since outgrown doesn't block a copy of your own catalog. The name is
+  `copyName` of the source's, and the copy is unpublished and subscribed to nothing, even when its
+  source is a subscribed copy. 404s via `ErrCatalogNotFound` for another profile's catalog and
+  for one scoped to a collection.
+- **Every Duplicate names its copy the same way.** `copyName` appends `" (copy)"`, cutting the
+  name short, in characters, when the two would pass `maxNameLen`: the library's catalog and
+  collection and Community's, never refusing for length.
 - **Duplicating a collection you own is one atomic server call, not a client-built copy.**
   `POST /api/p/{i}/collections/{id}/duplicate` (`DuplicateCollection`) extracts the source into
   its bundle form and writes it back through the same `createCollectionTx` a collection create

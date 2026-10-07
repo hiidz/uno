@@ -540,8 +540,8 @@ func TestDuplicatePublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := *duplicated.Collection
-	if c.Subscription != nil || c.Title != "Shared" || c.Folders[0].SubKey != "" || c.Catalogs[0].SubKey != "" {
-		t.Errorf("duplicate = %+v, want Shared with no subscription and no sub_keys", c)
+	if c.Subscription != nil || c.Title != "Shared (copy)" || c.Folders[0].SubKey != "" || c.Catalogs[0].SubKey != "" {
+		t.Errorf("duplicate = %+v, want Shared (copy) with no subscription and no sub_keys", c)
 	}
 	if _, err := db.UpdateUserCollection(ctx, duplicator, c.ID, saveFormOf(c)); err != nil {
 		t.Errorf("save a duplicate = %v, want nil", err)

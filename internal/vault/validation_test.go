@@ -203,9 +203,27 @@ func TestPublishCatalogRejectsStaleSourceRows(t *testing.T) {
 	}
 }
 
-// DuplicateCollection's "(copy)" suffix is part of the title it writes, so a
-// title with room for it duplicates and the result saves again, while one
-// already at maxNameLen is refused rather than stored past the bound.
+// copyName gives every Duplicate's name its suffix and cuts the name, in
+// characters, to leave room for it.
+func TestCopyName(t *testing.T) {
+	const suffix = " (copy)"
+	room := maxNameLen - len(suffix)
+	for name, tc := range map[string]struct{ in, want string }{
+		"short":                 {"Source", "Source (copy)"},
+		"exactly fits":          {strings.Repeat("n", room), strings.Repeat("n", room) + suffix},
+		"one over":              {strings.Repeat("n", room+1), strings.Repeat("n", room) + suffix},
+		"at the bound":          {strings.Repeat("n", maxNameLen), strings.Repeat("n", room) + suffix},
+		"multi-byte, cut whole": {strings.Repeat("字", maxNameLen), strings.Repeat("字", room) + suffix},
+	} {
+		if got := copyName(tc.in); got != tc.want || tooLong(got, maxNameLen) {
+			t.Errorf("%s: copyName = %d characters, want %d", name, len([]rune(got)), len([]rune(tc.want)))
+		}
+	}
+}
+
+// DuplicateCollection's "(copy)" suffix is part of the title it writes: a
+// title with room for it keeps all of it and the result saves again, and one
+// already at maxNameLen is cut short to leave room, not refused.
 func TestDuplicateCollectionBoundsTheSuffixedTitle(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -234,8 +252,12 @@ func TestDuplicateCollectionBoundsTheSuffixedTitle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create collection at the title bound: %v", err)
 	}
-	if _, err := db.DuplicateCollection(ctx, owner, full.ID); !errors.Is(err, ErrInvalidInput) {
-		t.Errorf("duplicate a title with no room for the suffix = %v, want ErrInvalidInput", err)
+	cut, err := db.DuplicateCollection(ctx, owner, full.ID)
+	if err != nil {
+		t.Fatalf("duplicate a title with no room for the suffix: %v", err)
+	}
+	if want := strings.Repeat("t", maxNameLen-len(suffix)) + suffix; cut.Title != want {
+		t.Errorf("duplicate title = %d characters, want %d, the title cut short before the suffix", len(cut.Title), len(want))
 	}
 }
 
