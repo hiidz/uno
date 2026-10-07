@@ -549,8 +549,7 @@ export function Workspace({
             library={library}
             selectedID={target?.id ?? null}
             onNewCatalog={() => {
-              // A rejection from a previous attempt — or from a duplicate,
-              // which shares this mutation — must not greet the next one.
+              // A rejection from a previous attempt must not greet the next one.
               resetCatalogCreate()
               setNewCatalogType('movie')
               setNamingCatalog(true)

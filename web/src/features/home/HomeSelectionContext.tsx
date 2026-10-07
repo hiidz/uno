@@ -177,32 +177,7 @@ export function HomeSelectionProvider({
     })
   }, [])
 
-  // Data derived from the library and the pending-push list — changes only
-  // when one of those actually changes, not on every edit to `current`. Split
-  // out so an edit that doesn't touch any of this (most of them) doesn't
-  // rebuild it on every keystroke.
-  const readData = useMemo(
-    () => ({
-      catalogById,
-      collectionById,
-      waitingForPush: waitingIDs(pending),
-      genres: library.genres,
-
-      changes,
-      pendingCount,
-      unsavedCount,
-      isDirty: unsavedCount > 0,
-    }),
-    [
-      catalogById,
-      collectionById,
-      pending,
-      library.genres,
-      changes,
-      pendingCount,
-      unsavedCount,
-    ],
-  )
+  const waitingForPush = useMemo(() => waitingIDs(pending), [pending])
 
   // Every one of these only closes over `edit` — stable for the life of the
   // provider — and, for `addCollection`, `storedPin`, so this whole cluster
@@ -251,7 +226,15 @@ export function HomeSelectionProvider({
 
         rows: state.rows,
         collections: collectionEntries(state),
-        ...readData,
+        catalogById,
+        collectionById,
+        waitingForPush,
+        genres: library.genres,
+
+        changes,
+        pendingCount,
+        unsavedCount,
+        isDirty: unsavedCount > 0,
 
         snapshot: () => state,
         markPushed: (pushed) => setBaseline(pushed),
@@ -267,8 +250,14 @@ export function HomeSelectionProvider({
       state,
       library.isLoading,
       library.error,
+      library.genres,
       retry,
-      readData,
+      catalogById,
+      collectionById,
+      waitingForPush,
+      changes,
+      pendingCount,
+      unsavedCount,
       editFns,
     ],
   )

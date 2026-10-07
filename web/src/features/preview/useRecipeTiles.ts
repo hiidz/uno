@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchCatalogPreview, queryKeys } from '@/api'
 import type { CatalogType } from '@/api'
@@ -40,15 +40,6 @@ export interface RecipePreview {
   isStale: boolean
   /** Fetch the recipe as it stands now. */
   run: () => void
-  /**
-   * Forget what was requested, back to `idle`.
-   *
-   * For a caller that re-seeds its recipe in place: without this, the new
-   * recipe would inherit the old one's tiles and merely label them stale.
-   * `CatalogEditor` is keyed per catalog, so it gets a fresh hook for each one
-   * and only resets when its `initial` is replaced under the same key.
-   */
-  reset: () => void
 }
 
 /** The recipe a request was made for, as opposed to the one in the form now. */
@@ -84,16 +75,11 @@ export function useRecipeTiles(type: CatalogType, params: string): RecipePreview
     setRequested({ type, params })
   }
 
-  // Stable, so a caller can reset from the same effect that seeds the form
-  // without that effect re-running on every render.
-  const reset = useCallback(() => setRequested(null), [])
-
   return {
     tiles: requested === null ? noTiles() : tilesFrom(query),
     totalResults: query.data?.total_results ?? null,
     idle: requested === null,
     isStale: requested !== null && !isSameRecipe,
     run,
-    reset,
   }
 }

@@ -70,8 +70,8 @@ import { buildRefOptions, indexRefOptions, type RefOption } from './refs'
 import type { CopyToLibrary } from './useCopyToLibrary'
 
 interface CollectionEditorProps {
-  /** The form as the row stands. A new identity re-seeds the editor (see
-   *  `useEditorForm`), so callers hand over a stable object. */
+  /** The form as the row stands, read once on mount: callers key the editor
+   *  per subject. */
   initial: CollectionFormState
   options: RefOption[]
   optionByID: ReadonlyMap<string, RefOption>
@@ -293,10 +293,7 @@ export function CollectionEditor({
   // occupant of it. `null` means closed.
   const [nestedCatalogID, setNestedCatalogID] = useState<string | null>(null)
   const nestedCatalog = nestedCatalogID === null ? undefined : localCatalogs.get(nestedCatalogID)
-  // Keyed on the catalog object, which only changes when `rememberCatalog`
-  // replaces it: a fresh form on every render of this editor would re-seed the
-  // nested one (see `useEditorForm`) and drop its edits when a save fails.
-  const nestedInitial = useMemo(() => nestedCatalogForm(nestedCatalog), [nestedCatalog])
+  const nestedInitial = nestedCatalogForm(nestedCatalog)
   // "New inside this collection" is named first, same two-step as the main
   // library's own "New catalog" — see Workspace's `createBareCatalog`.
   const [namingNewFolderKey, setNamingNewFolderKey] = useState<string | null>(null)

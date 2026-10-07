@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown } from 'lucide-react'
 import { fetchCollection, queryKeys } from '@/api'
@@ -548,8 +548,8 @@ function buildSections(args: SectionArgs) {
 
 
 interface CatalogEditorProps {
-  /** The form as the row stands. A new identity re-seeds the editor (see
-   *  `useEditorForm`), so callers hand over a stable object. */
+  /** The form as the row stands, read once on mount: callers key the editor
+   *  per subject. */
   initial: CatalogFormState
   genres: { movie: Genre[]; tv: Genre[] }
   certifications: { movie: CertificationsByCountry; tv: CertificationsByCountry }
@@ -650,14 +650,6 @@ export function CatalogEditor({
   // part of a recipe, so renaming a catalog doesn't make its preview stale.
   const params = paramsString(state)
   const preview = useRecipeTiles(state.type, params)
-  const resetPreview = preview.reset
-
-  // Seeding a different catalog means the tiles on screen belong to the
-  // previous one. Stale is the wrong word for that — they aren't this recipe's
-  // results at all — so they go rather than being labelled.
-  useEffect(() => {
-    resetPreview()
-  }, [baseline, resetPreview])
 
   const errors = useMemo(() => validateForm(state), [state])
   const errorCount = Object.keys(errors).length

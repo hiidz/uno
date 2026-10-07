@@ -37,17 +37,6 @@ describe('useEditorForm', () => {
     expect(result.current.state).toEqual({ name: 'Renamed' })
   })
 
-  it('re-seeds from a new baseline, hiding errors again', () => {
-    const { result, rerender, onDirtyChange } = renderForm({ name: 'Row' })
-    act(() => result.current.setState({ name: 'Renamed' }))
-    act(() => result.current.revealErrors())
-
-    rerender({ baseline: { name: 'Other' } })
-    expect(result.current.state).toEqual({ name: 'Other' })
-    expect(result.current.showErrors).toBe(false)
-    expect(onDirtyChange).toHaveBeenLastCalledWith(false)
-  })
-
   it('reveals errors instead of saving while there are any, and saves the state once there are none', () => {
     const { result } = renderForm({ name: 'Row' })
     const save = vi.fn()

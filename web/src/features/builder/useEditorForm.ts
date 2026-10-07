@@ -5,9 +5,9 @@ import type { Dispatch, SetStateAction } from 'react'
  * The state both builders keep around their fields: the form itself, whether
  * its errors are on show yet, and the dirtiness the pane guards on.
  *
- * `baseline` is the form as it was seeded, and a **new identity re-seeds it** —
- * so it has to be stable at the call site. A form object built fresh each
- * render would clear the fields between keystrokes.
+ * `baseline` is the form as it was seeded. It is read once, on mount: a
+ * different subject is a different mounted editor (callers key it), never a new
+ * baseline under the same one.
  *
  * **Dirtiness is reported, not handled.** Every way out of an editor originates
  * outside it — the × in the shell, Escape, selecting another row in the rail,
@@ -35,13 +35,6 @@ export function useEditorForm<T>(
 } {
   const [state, setState] = useState<T>(baseline)
   const [showErrors, setShowErrors] = useState(false)
-  const [seededFrom, setSeededFrom] = useState(baseline)
-
-  if (seededFrom !== baseline) {
-    setSeededFrom(baseline)
-    setState(baseline)
-    setShowErrors(false)
-  }
 
   const dirty = !isSame(baseline, state)
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])

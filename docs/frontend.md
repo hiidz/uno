@@ -612,14 +612,15 @@ collection write.
 
 **The provider publishes two contexts.** `useHomeSelection` returns everything, and its value
 changes on every edit; `useHomeEdits` returns only the edit functions, which change only with
-the collections an added one reads its stored pin from (`storedPin`). `Workspace` reads
-`useHomeEdits`, so an edit to the home screen re-renders the
+the collections an added one reads its stored pin from (`storedPin`). A component that only
+makes edits (`PinItem` in `HomePane.tsx`) reads `useHomeEdits` and doesn't re-render on every
+change. `Workspace` reads neither hook, so an edit to the home screen re-renders the
 components that show the selection — the rail, the Home pane, the header, a collection editor's
 "used in N places" rows — and not the workspace and the open editor under it.
 
 **`HomeSelectionContext`'s `genres` passthrough is load-bearing, not a redundant re-export.**
-`HomePane` is rendered as `<HomePane />` with no props, so it has no `profileIndex` to call
-`useLibrary` with itself.
+The provider builds the genre lookups once and every Home row reads that one value; a row
+calling `useGenreLookups` itself would add a query observer and rebuild the lookup per row.
 
 `useLibrary` runs at two simultaneously-live call sites —
 `web/src/features/home/HomeSelectionContext.tsx` and
