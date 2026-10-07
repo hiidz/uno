@@ -65,7 +65,7 @@ export function collectionEntries(state: HomeState): HomeCollectionEntry[] {
 }
 
 /** The owned rows on Home as one Home, by each row's `home_position`; a row
- *  without one is off Home. */
+ *  whose `home_position` is `null` is off Home. */
 export function hydrateHome(catalogs: readonly Catalog[], collections: readonly Collection[]): HomeState {
   const placed = [...catalogs.flatMap(placedCatalog), ...collections.flatMap(placedCollection)]
   placed.sort((a, b) => a.position - b.position)
@@ -79,12 +79,12 @@ interface PlacedEntry {
 }
 
 function placedCatalog(c: Catalog): PlacedEntry[] {
-  if (c.home_position === undefined) return []
+  if (c.home_position === null) return []
   return [{ position: c.home_position, entry: { kind: 'catalog', id: c.id, showInHome: c.show_in_home } }]
 }
 
 function placedCollection(c: Collection): PlacedEntry[] {
-  if (c.home_position === undefined) return []
+  if (c.home_position === null) return []
   return [{ position: c.home_position, entry: { kind: 'collection', id: c.id, pinToTop: c.pin_to_top } }]
 }
 

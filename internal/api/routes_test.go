@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/nuvio"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
@@ -85,6 +86,16 @@ func serve(t *testing.T, s *Server, method, path, body string, noAuth bool) *htt
 	return w
 }
 
+// answerText is the words of w's error answer: the error field of an ErrorBody,
+// else the whole body, trimmed.
+func answerText(w *httptest.ResponseRecorder) string {
+	var body httpx.ErrorBody
+	if json.Unmarshal(w.Body.Bytes(), &body) == nil && body.Error != "" {
+		return body.Error
+	}
+	return strings.TrimSpace(w.Body.String())
+}
+
 // runSteps runs steps in order as subtests, since a step's answer can
 // depend on what the steps before it changed.
 func runSteps(t *testing.T, s *Server, steps []routeStep) {
@@ -95,8 +106,8 @@ func runSteps(t *testing.T, s *Server, steps []routeStep) {
 			if w.Code != step.wantStatus {
 				t.Fatalf("status = %d, want %d (body %q)", w.Code, step.wantStatus, w.Body.String())
 			}
-			if !strings.Contains(w.Body.String(), step.wantBody) {
-				t.Fatalf("body = %q, want it to contain %q", strings.TrimSpace(w.Body.String()), step.wantBody)
+			if !strings.Contains(answerText(w), step.wantBody) {
+				t.Fatalf("body = %q, want it to contain %q", answerText(w), step.wantBody)
 			}
 		})
 	}
@@ -235,7 +246,7 @@ func TestCatalogRoutes(t *testing.T) {
 	valid := `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{\"sort_by\":\"popularity.desc\"}"}`
 	runSteps(t, f.s, []routeStep{
 		{name: "unauthenticated", method: http.MethodGet, path: "/api/p/1/library", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/library", wantStatus: http.StatusNotFound, wantBody: `"code":"profile_not_found"`},
+		{name: "unprovisioned profile slot", method: http.MethodGet, path: "/api/p/2/library", wantStatus: http.StatusNotFound, wantBody: "profile not found"},
 		{name: "list", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: f.mine.ID.String()},
 		{name: "list includes the created catalog", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: `"name":"New"`},
 		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=newest", wantStatus: http.StatusOK, wantBody: `{"items":[],"next_cursor":null}`},
@@ -357,8 +368,8 @@ func TestRecipeRoutesReachTMDB(t *testing.T) {
 			if w.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (body %q)", w.Code, tc.wantStatus, w.Body.String())
 			}
-			if !strings.Contains(w.Body.String(), tc.wantBody) {
-				t.Fatalf("body = %q, want it to contain %q", strings.TrimSpace(w.Body.String()), tc.wantBody)
+			if !strings.Contains(answerText(w), tc.wantBody) {
+				t.Fatalf("body = %q, want it to contain %q", answerText(w), tc.wantBody)
 			}
 			if hits.Load() == 0 {
 				t.Fatal("TMDB was never called")
@@ -408,7 +419,7 @@ func TestProfileRoutes(t *testing.T) {
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "list unauthenticated", method: http.MethodGet, path: "/api/profiles", noAuth: true, wantStatus: http.StatusUnauthorized}},
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":2}`, wantStatus: http.StatusOK, wantBody: `{"manifest_url":"http://example.com/u/`}, wantSlot: 2},
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select an index the account doesn't have", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":5}`, wantStatus: http.StatusBadRequest, wantBody: "profile index not found"}},
-		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select another account's profile", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":3}`, wantStatus: http.StatusBadRequest, wantBody: "profile index not found"}},
+		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select another account's profile", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":3}`, wantStatus: http.StatusBadRequest, wantBody: "profile index not found on this account"}},
 		{fake: &fakeNuvio{profiles: profiles}, routeStep: routeStep{name: "select with a malformed body", method: http.MethodPost, path: "/api/profiles/select", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"}},
 		{fake: &fakeNuvio{listProfilesErr: nuvioDown}, routeStep: routeStep{name: "select with Nuvio down", method: http.MethodPost, path: "/api/profiles/select", body: `{"profile_index":1}`, wantStatus: http.StatusBadGateway, wantBody: "nuvio unavailable"}},
 	}
@@ -421,8 +432,8 @@ func TestProfileRoutes(t *testing.T) {
 			if w.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (body %q)", w.Code, tc.wantStatus, w.Body.String())
 			}
-			if !strings.Contains(w.Body.String(), tc.wantBody) {
-				t.Fatalf("body = %q, want it to contain %q", strings.TrimSpace(w.Body.String()), tc.wantBody)
+			if !strings.Contains(answerText(w), tc.wantBody) {
+				t.Fatalf("body = %q, want it to contain %q", answerText(w), tc.wantBody)
 			}
 			for slot := 1; slot <= 3; slot++ {
 				_, err := db.GetProfileBySlot(t.Context(), "test-sub", slot)
@@ -491,6 +502,51 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+// Every failure the builder API answers, whichever layer refuses it, is JSON
+// with an error field: a path no route serves, an unauthenticated call, a
+// malformed id, a missing row, a route in the wrong key mode.
+func TestEveryAPIErrorIsJSON(t *testing.T) {
+	f := newRouteFixture(t)
+	for _, c := range []struct {
+		name, method, path string
+		noAuth             bool
+		status             int
+	}{
+		{"unknown path", http.MethodGet, "/api/nope", false, http.StatusNotFound},
+		{"unauthenticated", http.MethodGet, "/api/profiles", true, http.StatusUnauthorized},
+		{"bad profile index", http.MethodGet, "/api/p/9/library", false, http.StatusBadRequest},
+		{"malformed id", http.MethodDelete, "/api/p/1/catalogs/nope", false, http.StatusBadRequest},
+		{"missing row", http.MethodDelete, "/api/p/1/catalogs/" + uuid.NewString(), false, http.StatusNotFound},
+		{"TMDB key route in shared mode", http.MethodGet, "/api/account/tmdb-key", false, http.StatusNotFound},
+		{"malformed TMDB id", http.MethodGet, "/api/companies/abc", false, http.StatusBadRequest},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := serve(t, f.s, c.method, c.path, "", c.noAuth)
+			var body httpx.ErrorBody
+			if w.Code != c.status || w.Header().Get("Content-Type") != "application/json" ||
+				json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Error == "" {
+				t.Errorf("%s %s = %d %q (%s), want %d with a JSON error", c.method, c.path, w.Code, w.Body.String(), w.Header().Get("Content-Type"), c.status)
+			}
+		})
+	}
+}
+
+// A path under /api no route serves is a 404, whatever its method, never the
+// SPA's index.html.
+func TestUnknownAPIPathIsNotFound(t *testing.T) {
+	s := newProfileTestServer(t, newTestVaultDB(t))
+	for _, c := range []struct{ method, path string }{
+		{http.MethodGet, "/api/nope"},
+		{http.MethodDelete, "/api/health"},
+		{http.MethodPost, "/api/p/1/library"},
+	} {
+		w := serve(t, s, c.method, c.path, "", true)
+		if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "<html") {
+			t.Errorf("%s %s = %d %q, want 404 without the SPA", c.method, c.path, w.Code, w.Body.String())
+		}
+	}
+}
+
 // New refuses Deps missing any dependency a request would otherwise panic
 // on, and an empty SiteBaseURL, which would push a relative manifest URL.
 func TestNewRequiresEveryDependency(t *testing.T) {
@@ -554,7 +610,7 @@ func TestRoutesRefuseAnUnknownField(t *testing.T) {
 
 // A profile slot the caller never selected answers 404 with a JSON body whose
 // code is profile_not_found, which is how the builder tells it from a route's
-// own 404, an ordinary plain-text answer with no code.
+// own 404, an ordinary answer with no code.
 func TestProfileNotFoundCarriesACode(t *testing.T) {
 	f := newRouteFixture(t)
 
@@ -574,7 +630,23 @@ func TestProfileNotFoundCarriesACode(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("deleting a missing catalog = %d, want 404", w.Code)
 	}
-	if strings.Contains(w.Body.String(), "profile_not_found") || json.Valid(w.Body.Bytes()) {
-		t.Errorf("a route's own 404 = %q, want plain text with no code", w.Body.String())
+	var own httpx.ErrorBody
+	if err := json.Unmarshal(w.Body.Bytes(), &own); err != nil || own.Error != "catalog not found" || own.Code != "" {
+		t.Errorf("a route's own 404 = %q (%v), want {catalog not found} with no code", w.Body.String(), err)
+	}
+}
+
+// Selecting a profile that belongs to another account is answered exactly as
+// selecting an index the account doesn't have, so the answer says nothing of
+// the other account.
+func TestSelectingAnotherAccountsProfileSaysNothingOfIt(t *testing.T) {
+	s := newTestServer(t, newTestVaultDB(t), &fakeNuvio{profiles: []nuvio.NuvioProfile{
+		{ID: "nuvio-3", UserID: "someone-else", ProfileIndex: 3, Name: "Not yours"},
+	}})
+	other := serve(t, s, http.MethodPost, "/api/profiles/select", `{"profile_index":3}`, false)
+	missing := serve(t, s, http.MethodPost, "/api/profiles/select", `{"profile_index":5}`, false)
+	if other.Code != http.StatusBadRequest || other.Body.String() != missing.Body.String() {
+		t.Errorf("another account's profile = %d %q, an absent index = %d %q; want the same answer",
+			other.Code, other.Body.String(), missing.Code, missing.Body.String())
 	}
 }

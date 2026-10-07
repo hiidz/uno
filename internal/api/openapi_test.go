@@ -46,7 +46,7 @@ var templateExpr = regexp.MustCompile(`\{(\w+)\}`)
 
 // TestOpenAPISpecMatchesRoutes holds docs/api/openapi.yaml to the route
 // table: every operation it describes reaches a registered route, and every
-// registered route but the SPA fallback is described.
+// registered route but the fallbacks (apiNotFound and the SPA) is described.
 func TestOpenAPISpecMatchesRoutes(t *testing.T) {
 	s := newProfileTestServer(t, newTestVaultDB(t))
 
@@ -58,7 +58,7 @@ func TestOpenAPISpecMatchesRoutes(t *testing.T) {
 			}
 			r := httptest.NewRequest(strings.ToUpper(method), samplePath(path), nil)
 			_, pattern := s.router.Handler(r)
-			if pattern == "" || pattern == "/" {
+			if slices.Contains(fallbackPatterns, pattern) {
 				t.Errorf("%s %s is in the spec but no route serves it", strings.ToUpper(method), path)
 				continue
 			}
@@ -72,6 +72,10 @@ func TestOpenAPISpecMatchesRoutes(t *testing.T) {
 		}
 	}
 }
+
+// fallbackPatterns are the patterns that answer a request no documented route
+// serves: no match, the /api 404 and the SPA.
+var fallbackPatterns = []string{"", "/", "/api/"}
 
 // openAPIPaths is the spec's path items by path.
 func openAPIPaths(t *testing.T) map[string]map[string]any {
@@ -104,7 +108,7 @@ func samplePath(path string) string {
 }
 
 // registeredPatterns is every pattern routes() in server.go registers on
-// s.router, except the SPA fallback "/", read from its source.
+// s.router, except the fallbackPatterns, read from its source.
 func registeredPatterns(t *testing.T) []string {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), "server.go", nil, 0)
@@ -118,7 +122,7 @@ func registeredPatterns(t *testing.T) []string {
 			return true
 		}
 		pattern := patternValue(t, call.Args[0])
-		if pattern != "/" {
+		if !slices.Contains(fallbackPatterns, pattern) {
 			patterns = append(patterns, pattern)
 		}
 		return true

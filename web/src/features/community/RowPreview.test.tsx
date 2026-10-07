@@ -34,7 +34,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('row preview model', () => {
   it('fills five faces from the first results, blank where no poster is', () => {
     expect(firstPosters(undefined)).toEqual(['', '', '', '', ''])
-    const item = (poster?: string) => ({ tmdb_id: 1, title: 't', year: '2001', poster })
+    const item = (poster = '') => ({ tmdb_id: 1, title: 't', year: '2001', poster })
     const preview = { randomized: false, total_results: 3, items: [item('a.jpg'), item(), item('c.jpg')] }
     expect(firstPosters(preview)).toEqual(['a.jpg', '', 'c.jpg', '', ''])
   })

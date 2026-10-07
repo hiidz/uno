@@ -56,13 +56,13 @@ func (s *Server) previewCatalog(w http.ResponseWriter, r *http.Request) {
 	items, totalResults, randomized, err := s.provider.PreviewCatalog(r.Context(), input.Type, input.Params, input.Genre)
 	if err != nil {
 		if status, msg := clientFailureOf(previewErrors, err); status != 0 {
-			http.Error(w, msg, status)
+			httpx.WriteError(w, status, msg)
 			return
 		}
 		// 502, never 500: tells the client this was TMDB's fault, so it can
 		// degrade to placeholder tiles instead of showing an error.
 		log.Printf("previewCatalog: %v", err)
-		http.Error(w, "failed to reach TMDB", http.StatusBadGateway)
+		httpx.WriteError(w, http.StatusBadGateway, "failed to reach TMDB")
 		return
 	}
 
@@ -98,11 +98,11 @@ func (s *Server) catalogGenreOptions(w http.ResponseWriter, r *http.Request) {
 	genres, err := s.provider.GenreExtraOptions(r.Context(), input.Type, input.Params)
 	if err != nil {
 		if status, msg := clientFailureOf(previewErrors, err); status != 0 {
-			http.Error(w, msg, status)
+			httpx.WriteError(w, status, msg)
 			return
 		}
 		log.Printf("catalogGenreOptions: %v", err)
-		http.Error(w, "failed to fetch genres", http.StatusBadGateway)
+		httpx.WriteError(w, http.StatusBadGateway, "failed to fetch genres")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, genres)

@@ -106,7 +106,7 @@ export function fetchCountries(): Promise<Country[]> {
  *  carries a different id per market — passing none returns everything TMDB
  *  knows about, which is what the picker shows before a region is chosen. */
 export function fetchWatchProviders(type: CatalogType, region: string): Promise<WatchProvider[]> {
-  const query = region ? `?region=${encodeURIComponent(region)}` : ''
+  const query = region ? `?watch_region=${encodeURIComponent(region)}` : ''
   return getList<WatchProvider>(`/api/watch-providers/${type}${query}`)
 }
 

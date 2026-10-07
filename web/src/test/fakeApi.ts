@@ -22,9 +22,9 @@ export function fakeApi(routes: Record<string, FakeRoute>) {
   return { apiFetch, calls }
 }
 
-/** A plain-text error answer, the way the Go handlers write one. */
+/** An error answer, the way the Go handlers write one: JSON `{error}`. */
 export function failWith(status: number, message: string): Response {
-  return new Response(message, { status })
+  return Response.json({ error: message }, { status })
 }
 
 /** The 404 `requireProfile` answers for a profile slot never selected. */

@@ -150,7 +150,7 @@ func createCollectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, fo
 	}
 
 	now := time.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
+	nowStr := utcTimestamp(now)
 	c := Collection{
 		ID:               uuid.New(),
 		Title:            form.Title,
@@ -348,7 +348,7 @@ func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 	if err := refuseSubscribedCopy(ctx, tx, profileID, kindCollection, collectionID); err != nil {
 		return err
 	}
-	return updateCollectionTx(ctx, tx, profileID, collectionID, input, time.Now().UTC().Format(time.RFC3339))
+	return updateCollectionTx(ctx, tx, profileID, collectionID, input, utcTimestamp(time.Now()))
 }
 
 // DeleteUserCollection deletes the collection identified by collectionID,

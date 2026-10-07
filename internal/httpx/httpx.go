@@ -30,8 +30,26 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 func PathUUID(w http.ResponseWriter, r *http.Request, param, label string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(r.PathValue(param))
 	if err != nil {
-		http.Error(w, "invalid "+label, http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "invalid "+label)
 		return uuid.UUID{}, false
 	}
 	return id, true
+}
+
+// ErrorBody is the JSON body of every error the builder API answers: Error is
+// its words and Code, when it has one, a stable name for an error the caller
+// acts on by kind rather than by status.
+type ErrorBody struct {
+	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
+}
+
+// WriteError answers status with msg as an ErrorBody.
+func WriteError(w http.ResponseWriter, status int, msg string) {
+	WriteJSON(w, status, ErrorBody{Error: msg})
+}
+
+// WriteCodedError is WriteError for an error with a stable code.
+func WriteCodedError(w http.ResponseWriter, status int, msg, code string) {
+	WriteJSON(w, status, ErrorBody{Error: msg, Code: code})
 }

@@ -22,11 +22,11 @@ func lookupList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, e
 	result, err := fetch()
 	if err != nil {
 		if status, msg := clientFailureOf(lookupErrors, err); status != 0 {
-			http.Error(w, msg, status)
+			httpx.WriteError(w, status, msg)
 			return
 		}
 		log.Printf("lookupList: %s: %v", failMsg, err)
-		http.Error(w, failMsg, http.StatusBadGateway)
+		httpx.WriteError(w, http.StatusBadGateway, failMsg)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, result)
@@ -73,7 +73,7 @@ func (s *Server) listCountries(w http.ResponseWriter, r *http.Request) {
 // omitted, which is what the picker shows before a region is chosen.
 func (s *Server) listWatchProviders(w http.ResponseWriter, r *http.Request) {
 	lookupList(w, "failed to fetch watch providers", func() ([]provider.WatchProvider, error) {
-		return s.provider.WatchProviders(r.Context(), r.PathValue("type"), r.URL.Query().Get("region"))
+		return s.provider.WatchProviders(r.Context(), r.PathValue("type"), r.URL.Query().Get("watch_region"))
 	})
 }
 
@@ -164,7 +164,7 @@ func (s *Server) getNetwork(w http.ResponseWriter, r *http.Request) {
 func pathTMDBID(w http.ResponseWriter, r *http.Request) (int, bool) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+		httpx.WriteError(w, http.StatusBadRequest, "invalid id")
 		return 0, false
 	}
 	return id, true

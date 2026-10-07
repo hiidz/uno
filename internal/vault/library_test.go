@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -75,5 +76,18 @@ func TestSubscribersAreIndexedByPublication(t *testing.T) {
 	detail := queryPlan(t, db, `SELECT collection_id FROM subscriptions WHERE publication_id = ?`, []any{"x"})
 	if !strings.Contains(detail, "subscriptions_by_publication") {
 		t.Errorf("plan %q, want subscriptions_by_publication", detail)
+	}
+}
+
+// A row off Home carries home_position, null, rather than leaving the key out.
+func TestOffHomeRowsCarryANullHomePosition(t *testing.T) {
+	for _, row := range []any{Catalog{}, Collection{}} {
+		raw, err := json.Marshal(row)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `"home_position":null`) {
+			t.Errorf("%T off Home = %s, want \"home_position\":null", row, raw)
+		}
 	}
 }

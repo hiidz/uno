@@ -1,7 +1,6 @@
 package api
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/hiidz/uno/internal/httpx"
@@ -17,8 +16,7 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 
 	lib, err := s.vault.GetLibrary(r.Context(), profileID)
 	if err != nil {
-		log.Printf("getLibrary: %v", err)
-		http.Error(w, "failed to load library", http.StatusInternalServerError)
+		serverError(w, "getLibrary", err, "failed to load library")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, lib)

@@ -21,7 +21,7 @@ type PreviewItem struct {
 	TMDBID int    `json:"tmdb_id"`
 	Title  string `json:"title"`
 	Year   string `json:"year"`
-	Poster string `json:"poster,omitempty"`
+	Poster string `json:"poster"`
 }
 
 // PreviewCatalog runs a recipe against TMDB and returns one page of tiles

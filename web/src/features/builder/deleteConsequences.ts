@@ -32,7 +32,7 @@ export function catalogDeleteConsequences(
 ): DeleteConsequences {
   const using = collections.filter((collection) => usesCatalog(collection, catalog.id))
   const onNuvio =
-    catalog.home_position !== undefined || using.some((c) => c.home_position !== undefined)
+    catalog.home_position !== null || using.some((c) => c.home_position !== null)
   const places: string[] = []
   if (isPublished(catalog)) places.push('Community')
   if (using.length > 0) places.push(pluralCount(using.length, 'collection'))
@@ -45,7 +45,7 @@ export function catalogDeleteConsequences(
 export function collectionDeleteConsequences(collection: Collection): DeleteConsequences {
   const places: string[] = []
   if (isPublished(collection)) places.push('Community')
-  if (collection.home_position !== undefined) places.push('Nuvio (next push)')
+  if (collection.home_position !== null) places.push('Nuvio (next push)')
   const scopedCatalogs = (collection.catalogs ?? []).filter(
     (c) => c.collection_id === collection.id,
   ).length

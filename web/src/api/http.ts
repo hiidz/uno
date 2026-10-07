@@ -7,14 +7,11 @@ export class ApiError extends Error {
   readonly status: number
 
   /**
-   * The error body parsed as JSON, when it *was* JSON. Most Go handlers write
-   * errors with `http.Error` (plain text), so this is `undefined` for nearly
-   * every failure in the app — `message` is the channel that always works.
-   *
-   * It exists for the one endpoint that reports a structured failure on a
-   * non-2xx status: `POST .../push` answers in JSON whatever happens, so the
-   * caller can tell an ordinary failure from one where a compensating undo
-   * also failed.
+   * The error body parsed as JSON, when it *was* JSON: `{error, code?}` from
+   * every route under `/api`, or `PushResult` from `POST .../push`, which
+   * answers in JSON whatever happens, so the caller can tell an ordinary
+   * failure from one where a compensating undo also failed. `message` is the
+   * channel that always works.
    */
   readonly body?: unknown
 
@@ -62,7 +59,7 @@ function waitWords(retryAfter: string | null): string {
 }
 
 /** Best-effort: an error body that happens to be JSON becomes `ApiError.body`.
- *  Never throws — a plain-text body is the norm, not an exceptional case. */
+ *  Never throws — a body that is not JSON is an ordinary case. */
 function parseJSONOrUndefined(text: string): unknown {
   if (!text) return undefined
   try {
@@ -101,10 +98,10 @@ function isProfileNotFound(status: number, body: unknown): boolean {
 /** The error a failed answer is thrown as. */
 async function failure(res: Response): Promise<ApiError> {
   if (res.status === 429) return new RateLimitedError(res.headers.get('Retry-After'))
-  // Most Go handlers write errors with `http.Error`, so the body is plain
-  // text and more specific than anything the status alone gives. The few
-  // that write JSON carry their words in `error`, and the profile check's
-  // 404 a `code` as well.
+  // Every error under `/api` is JSON whose `error` carries its words, more
+  // specific than anything the status alone gives, and the profile check's
+  // 404 a `code` as well. A body that is not JSON (a proxy's, say) is its own
+  // text.
   const text = await bodyText(res)
   const body = parseJSONOrUndefined(text)
   const message = failureMessage(res.status, text, body)
@@ -126,10 +123,10 @@ export async function getJSON<T>(path: string): Promise<T> {
 /**
  * POST/PUT/DELETE with a JSON body.
  *
- * A `400` surfaces as an `ApiError` carrying the server's plain-text body. That
- * body is all the Go handlers give — `http.Error`, with no field name in a
- * machine-readable position — so forms mirror `provider.Validate()` client-side
- * and treat a 400 that gets through as an unexpected-case banner.
+ * A `400` surfaces as an `ApiError` carrying the server's words, the `error` of
+ * its JSON body. Those words are all the Go handlers give — with no field name
+ * in a machine-readable position — so forms mirror `provider.Validate()`
+ * client-side and treat a 400 that gets through as an unexpected-case banner.
  */
 export async function sendJSON<T>(
   method: 'POST' | 'PUT' | 'DELETE',

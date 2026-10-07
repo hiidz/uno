@@ -8,12 +8,13 @@ info:
     Everything else on the server is the embedded SPA and is not described
     here.
 
-    **Errors.** Unless an operation says otherwise, an error is a plain-text
-    body (`text/plain; charset=utf-8`) holding one line of words. Push is an
+    **Errors.** Every error under `/api`, an unknown path included, is JSON
+    (`Error`): `error` holds one line of words and, for an error the builder
+    acts on by kind, `code` names it (`ProfileNotFound`). Push is the one
     exception: past auth, profile resolution and body decoding it answers
-    JSON (`PushResult`) whether it succeeds or fails. So is the 404 for a
-    profile slot that was never selected, JSON with a `code`
-    (`ProfileNotFound`).
+    `PushResult` whether it succeeds or fails. The addon under `/u/{token}`
+    answers errors in plain text (`text/plain; charset=utf-8`), which its
+    clients don't read.
 
     **Request bodies.** Every body is decoded strictly: a field the request
     doesn't have, at any depth, is a 400 naming it (`invalid request body:
@@ -152,9 +153,9 @@ paths:
         "400":
           description: The body doesn't decode, or the caller's Nuvio account has no profile at that index.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/Error"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
@@ -203,9 +204,9 @@ paths:
         "400":
           description: The key isn't shaped like a TMDB API key, or TMDB refused it.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/Error"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/SharedKeyMode" }
@@ -823,9 +824,9 @@ paths:
         "404":
           description: The caller doesn't subscribe to it, or it is no longer live.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/Error"
 
   /api/p/{profileIndex}/community/{publicationID}/subscribe:
     parameters:
@@ -850,9 +851,9 @@ paths:
         "409":
           description: Already added.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/Error"
 
   /api/p/{profileIndex}/community/{publicationID}/update:
     parameters:
@@ -1067,17 +1068,16 @@ paths:
                 $ref: "#/components/schemas/PushResult"
         "400":
           description: |
-            The body doesn't decode (plain text), a row names an id the profile
+            The body doesn't decode (`Error`), a row names an id the profile
             can't push, names neither or both of a catalog and a collection, or
             names a catalog or collection an earlier row already names, or a
             collection on Home has no folders (`refused: empty_collection`).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PushResult"
-            text/plain:
-              schema:
-                type: string
+                oneOf:
+                  - $ref: "#/components/schemas/PushResult"
+                  - $ref: "#/components/schemas/Error"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
@@ -1160,7 +1160,7 @@ paths:
       operationId: listWatchProviders
       summary: TMDB's streaming services for a catalog type
       parameters:
-        - name: region
+        - name: watch_region
           in: query
           description: An ISO 3166-1 watch region; omitted, every service TMDB knows.
           schema:
@@ -1594,32 +1594,31 @@ components:
     BadRequest:
       description: The request is malformed or refused in words the caller can act on.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     BadProfileIndex:
       description: The profile index isn't 1–6.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Missing, malformed, invalid or expired bearer token.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     Forbidden:
       description: The server's allowlist doesn't list this Nuvio account.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     ProfileNotFound:
       description: >-
-        The caller has no Uno profile in this slot. The body is JSON whose
-        `code` is `profile_not_found`, which the builder tells apart from a
-        route's own plain-text 404 by.
+        The caller has no Uno profile in this slot. `code` is `profile_not_found`,
+        which the builder tells apart from a route's own 404 by.
       content:
         application/json:
           schema:
@@ -1635,51 +1634,51 @@ components:
     NotFound:
       description: No such row in this profile. A slot with no Uno profile answers `ProfileNotFound` instead.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     PublicationGone:
       description: The publication isn't live in Community any more. A slot with no Uno profile answers `ProfileNotFound` instead.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     NotOnTMDB:
       description: TMDB has no such id.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     SharedKeyMode:
       description: The server shares one TMDB key; accounts have none of their own.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     PayloadTooLarge:
       description: The body is over its cap (1 MiB; 4 MiB for the import routes).
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     KeyProblem:
       description: Per-account key server only. The account has no TMDB key yet, or TMDB doesn't accept it.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     TMDBUnavailable:
       description: TMDB couldn't be reached, or the auth service is unavailable.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     NuvioUnavailable:
       description: A Nuvio call failed, or the auth service is unavailable.
       content:
-        text/plain:
+        application/json:
           schema:
-            type: string
+            $ref: "#/components/schemas/Error"
     AddonCatalogPage:
       description: Up to twenty titles.
       content:
@@ -1813,7 +1812,7 @@ components:
 
     Catalog:
       type: object
-      required: [id, type, name, provider, params, collection_id, show_in_home, publication, subscription]
+      required: [id, type, name, provider, params, collection_id, home_position, show_in_home, publication, subscription]
       properties:
         id: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/CatalogType" }
@@ -1825,8 +1824,8 @@ components:
           format: uuid
           description: The collection this catalog is scoped to; null for a listed catalog.
         home_position:
-          type: integer
-          description: Its place on Home, one numbering shared with collections; absent when not on Home.
+          type: [integer, "null"]
+          description: Its place on Home, one numbering shared with collections; null when not on Home.
         show_in_home:
           type: boolean
           description: On Home with a home row of its own; false for Discover only, and for every catalog off Home. Written only by push.
@@ -1901,7 +1900,7 @@ components:
 
     Collection:
       type: object
-      required: [id, title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, publication, subscription, folders, catalogs]
+      required: [id, title, pin_to_top, home_position, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, publication, subscription, folders, catalogs]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
@@ -1911,8 +1910,8 @@ components:
         backdrop_image_url: { type: string }
         focus_glow_enabled: { type: boolean }
         home_position:
-          type: integer
-          description: Its place on Home, one numbering shared with catalogs; absent when not on Home.
+          type: [integer, "null"]
+          description: Its place on Home, one numbering shared with catalogs; null when not on Home.
         publication:
           oneOf:
             - $ref: "#/components/schemas/PublicationState"
@@ -2013,7 +2012,7 @@ components:
           description: TMDB's count of matches across every page.
     PreviewItem:
       type: object
-      required: [tmdb_id, title, year]
+      required: [tmdb_id, title, year, poster]
       properties:
         tmdb_id: { type: integer }
         title: { type: string }
@@ -2268,6 +2267,17 @@ components:
         pin_to_top:
           type: boolean
           description: Collection rows only; Nuvio shows it first.
+    Error:
+      type: object
+      description: The answer to every failed request under `/api` but push's own.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: One line of words, for a person to read.
+        code:
+          type: string
+          description: A stable name for an error the builder acts on by kind rather than by status; absent when there is none.
     PushResult:
       type: object
       required: [success]

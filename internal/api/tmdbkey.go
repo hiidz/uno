@@ -41,7 +41,7 @@ type tmdbKeyStatus struct {
 func (s *Server) perAccountKeys(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.keys == nil {
-			http.NotFound(w, r)
+			httpx.WriteError(w, http.StatusNotFound, "not found")
 			return
 		}
 		next(w, r)
@@ -58,8 +58,7 @@ func (s *Server) getTMDBKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		log.Printf("getTMDBKey: %v", err)
-		http.Error(w, "failed to read your TMDB key", http.StatusInternalServerError)
+		serverError(w, "getTMDBKey", err, "failed to read your TMDB key")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, tmdbKeyStatus{Set: true, Last4: key.Last4})
@@ -79,7 +78,7 @@ func (s *Server) putTMDBKey(w http.ResponseWriter, r *http.Request) {
 	}
 	key, err := tmdbkey.Clean(input.Key)
 	if err != nil {
-		http.Error(w, keyShapeMessage(err), http.StatusBadRequest)
+		httpx.WriteError(w, http.StatusBadRequest, keyShapeMessage(err))
 		return
 	}
 	if err := s.provider.CheckKey(r.Context(), key); err != nil {
@@ -88,8 +87,7 @@ func (s *Server) putTMDBKey(w http.ResponseWriter, r *http.Request) {
 	}
 	status, err := s.storeTMDBKey(r.Context(), key)
 	if err != nil {
-		log.Printf("putTMDBKey: %v", err)
-		http.Error(w, "failed to save your TMDB key", http.StatusInternalServerError)
+		serverError(w, "putTMDBKey", err, "failed to save your TMDB key")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, status)
@@ -107,11 +105,11 @@ func keyShapeMessage(err error) string {
 // fault) or couldn't check (502). Neither saves anything.
 func writeKeyCheckError(w http.ResponseWriter, err error) {
 	if errors.Is(err, provider.ErrKeyRejected) {
-		http.Error(w, "TMDB didn't accept this key. Check you copied the API Key.", http.StatusBadRequest)
+		httpx.WriteError(w, http.StatusBadRequest, "TMDB didn't accept this key. Check you copied the API Key.")
 		return
 	}
 	log.Printf("putTMDBKey: checking the key: %v", err)
-	http.Error(w, "Couldn't reach TMDB to check this key. Nothing was saved; try again in a moment.", http.StatusBadGateway)
+	httpx.WriteError(w, http.StatusBadGateway, "Couldn't reach TMDB to check this key. Nothing was saved; try again in a moment.")
 }
 
 // storeTMDBKey seals key for the signed-in account and saves it.
@@ -132,8 +130,7 @@ func (s *Server) storeTMDBKey(ctx context.Context, key string) (tmdbKeyStatus, e
 func (s *Server) deleteTMDBKey(w http.ResponseWriter, r *http.Request) {
 	sub, _ := nuvioUserIDFrom(r.Context()) // guaranteed by requireNuvioAuth
 	if err := s.vault.DeleteAccountKey(r.Context(), sub); err != nil {
-		log.Printf("deleteTMDBKey: %v", err)
-		http.Error(w, "failed to remove your TMDB key", http.StatusInternalServerError)
+		serverError(w, "deleteTMDBKey", err, "failed to remove your TMDB key")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

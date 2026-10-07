@@ -55,11 +55,18 @@ describe('successful responses', () => {
 })
 
 describe('failed responses', () => {
-  it('carries the plain-text body as the message', async () => {
+  it('carries a body that is not JSON as the message', async () => {
     answer(new Response('name is required\n', { status: 400 }))
     const err = await rejection(sendJSON('POST', '/api/p/0/catalogs', {}))
     expect(err).toBeInstanceOf(ApiError)
     expect(err).toMatchObject({ status: 400, message: 'name is required', body: undefined })
+  })
+
+  it('words a route\'s JSON error by its error field', async () => {
+    answer(Response.json({ error: 'name is required' }, { status: 400 }))
+    const err = await rejection(sendJSON('POST', '/api/p/0/catalogs', {}))
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err).toMatchObject({ status: 400, message: 'name is required', body: { error: 'name is required' } })
   })
 
   it('falls back to the status when the body is empty', async () => {

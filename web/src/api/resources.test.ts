@@ -26,6 +26,6 @@ describe('resources', () => {
     fetchMock.mockImplementation(() => Promise.resolve(Response.json([])))
     await fetchWatchProviders('series', '')
     await fetchWatchProviders('movie', 'GB')
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/watch-providers/series', '/api/watch-providers/movie?region=GB'])
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/watch-providers/series', '/api/watch-providers/movie?watch_region=GB'])
   })
 })

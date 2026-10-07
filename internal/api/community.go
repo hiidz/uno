@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/hiidz/uno/internal/httpx"
-	"github.com/hiidz/uno/internal/jsonwire"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -88,7 +87,6 @@ func (s *Server) listCommunityPage(w http.ResponseWriter, r *http.Request) {
 		writeVaultError(w, "listCommunityPage", err, nil, "", "failed to load community")
 		return
 	}
-	page.Items = jsonwire.OrEmpty(page.Items)
 	httpx.WriteJSON(w, http.StatusOK, page)
 }
 

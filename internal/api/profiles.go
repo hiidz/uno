@@ -116,7 +116,7 @@ func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {
 	profile, err := s.resolveSelectedProfile(r.Context(), sub, token, body.ProfileIndex)
 	if err != nil {
 		if errors.Is(err, errProfileIndexNotOnAccount) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpx.WriteError(w, http.StatusBadRequest, errProfileIndexNotOnAccount.Error())
 			return
 		}
 		writeNuvioError(w, err, "failed to resolve profile")

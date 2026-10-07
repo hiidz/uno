@@ -133,8 +133,9 @@ visible at the URL level (`/u/...` vs `/api/...`), not merely enforced by middle
 `/api` routes are the exceptions, and neither says anything about an account: `GET /api/health`
 answers `ok`, and `GET /api/config` says the server's TMDB key mode (*TMDB keys*).
 
-Route registration is in `internal/api/server.go`. Everything not matching a registered route
-falls through to the embedded SPA (`static.Gzip(static.Handler(distFS))`); Go's `ServeMux`
+Route registration is in `internal/api/server.go`. A path under `/api/` that no registered route
+serves, whatever its method, is a 404 (`apiNotFound`). Everything else not matching a registered
+route falls through to the embedded SPA (`static.Gzip(static.Handler(distFS))`); Go's `ServeMux`
 matches the most specific registered pattern first.
 
 `docs/api/openapi.yaml` (OpenAPI 3.1) describes every registered route: request and response
@@ -196,7 +197,7 @@ Route-semantics facts the client has to honour:
   and not another until the next read.
 - **The Home selection is read from the library and written only by push.** Each owned row
   carries its place on Home as `home_position`, with a catalog's `show_in_home` and a
-  collection's `pin_to_top`; a row without `home_position` is off Home. The whole pending
+  collection's `pin_to_top`; a row whose `home_position` is `null` is off Home. The whole pending
   selection travels in `POST .../push`'s body and is written by that handler, in one transaction,
   only after Nuvio has accepted the push. There are no selection routes; the transactional write
   bodies are `saveCatalogSelectionTx`/`saveCollectionSelectionTx` inside `internal/vault`.
@@ -672,7 +673,7 @@ genre list can't be fetched.
 The builder's pickers read TMDB's vocabulary through thin `requireNuvioAuth` routes in
 `internal/api/provider.go`, all answered by one helper, `lookupList`: `GET /api/genres/{type}`,
 `/api/certifications/{type}`, `/api/languages`, `/api/countries`,
-`/api/watch-providers/{type}?region=`, `/api/watch-regions`, and, for the four vocabularies TMDB's
+`/api/watch-providers/{type}?watch_region=`, `/api/watch-regions`, and, for the four vocabularies TMDB's
 API serves no whole list of, `GET /api/keywords/search?q=` and `/api/collections/search?q=`
 (`[{id, name}]`, TMDB's first result page, `[]` when nothing matches),
 `GET /api/companies/search?q=&type=movie|series` and `GET /api/networks/search?q=` (below), plus
@@ -717,19 +718,26 @@ series. There is no `type` param: networks filter series only.
 
 ### Error responses
 
-`400`s from the CRUD handlers are **plain text**, via `http.Error(w, err.Error(), ...)` — no
-field name in a machine-readable position. Per-field form errors are therefore generated
-client-side, checking the rules a form can reach (`provider`'s `Validate()` and the vault's form
-validators: name and title lengths, media address scheme, rating, count and date ranges, the
-folder and ref caps); a server 400 firing on one of them in normal use means the client copy has
-drifted, and that is its only job in the UI (an unexpected-case banner, not the primary error
-channel).
+Every error under `/api` is JSON, `{"error": "<words>"}` with a `code` when the SPA acts on the
+error by kind (`httpx.ErrorBody`, written by `httpx.WriteError`/`WriteCodedError`; a 500 goes
+through `serverError`, `internal/api/respond.go`, which logs the cause and answers only what
+failed). That includes a path no route serves: `apiNotFound` answers a 404, never the SPA. Push is
+the one exception, answering `PushResult` whether it succeeds or fails. The public addon under
+`/u/` answers plain text, which its clients don't read (*Addon server*).
 
-**One 404 is JSON.** `requireProfile`'s answer for a profile slot the caller never selected is
-`{"error": "profile not found", "code": "profile_not_found"}` (`codedError`, `internal/api/respond.go`),
-the one error the SPA acts on by kind rather than by status: it reads the `code`, never the words
-(`ProfileNotSelectedError`, `web/src/api/http.ts`), and sends the user back to the profile picker.
-A route's own 404 (a catalog or a publication not found) stays plain text with no code.
+The `400`s from the CRUD handlers carry the vault's words in `error`, with no field name in a
+machine-readable position. Per-field form errors are therefore generated client-side, checking
+the rules a form can reach (`provider`'s `Validate()` and the vault's form validators: name and
+title lengths, media address scheme, rating, count and date ranges, the folder and ref caps); a
+server 400 firing on one of them in normal use means the client copy has drifted, and that is its
+only job in the UI (an unexpected-case banner, not the primary error channel).
+
+**One 404 carries a code.** `requireProfile`'s answer for a profile slot the caller never
+selected is `{"error": "profile not found", "code": "profile_not_found"}`
+(`codeProfileNotFound`, `internal/api/respond.go`), the one error the SPA acts on by kind rather
+than by status: it reads the `code`, never the words (`ProfileNotSelectedError`,
+`web/src/api/http.ts`), and sends the user back to the profile picker. A route's own 404 (a
+catalog or a publication not found) has no code.
 
 **Every body is decoded strictly.** `decodeJSONLimit` (`internal/api/respond.go`, 1 MiB, or 4 MiB
 for the import routes) refuses a field the request type doesn't have, at any depth, with a `400`
@@ -747,7 +755,7 @@ words (`keyFailures`, *TMDB keys*), then the vault errors, each answered with it
 `ErrInvalidInput` → `400`, `ErrConflict` → `409` (a second subscribe). Preview and
 genre-options classify what TMDB answers after validation the same way (`previewErrors`). The `403` of the access policy comes from
 the middleware, before any handler (*Access*). `writeNuvioError`
-delegates to `nuvioErrorStatus` so push's JSON responses and the plain-text ones classify Nuvio
+delegates to `nuvioErrorStatus` so push's answers and the others classify Nuvio
 failures identically — `nuvio.ErrNuvioRequestFailed` → `502`, anything else → `500`.
 
 ### Static serving

@@ -38,9 +38,9 @@ type Catalog struct {
 	UpdatedAt time.Time `json:"-"`
 	// HomeSortOrder is this catalog's position on its owner's home screen,
 	// one numbering shared with the collections there; nil means it isn't on
-	// Home. On the wire as home_position, which the builder places its Home
-	// rows by.
-	HomeSortOrder *int `json:"home_position,omitempty"`
+	// Home. On the wire as home_position, null when off Home, which the builder
+	// places its Home rows by.
+	HomeSortOrder *int `json:"home_position"`
 	// ShowInHome is whether this catalog on Home gets a home row, false for
 	// Discover only. A read sets it only while HomeSortOrder is non-nil, so it
 	// is false for every catalog off Home.
@@ -95,8 +95,8 @@ type Collection struct {
 	UpdatedAt        time.Time `json:"-"`
 	// HomeSortOrder is this collection's position on its owner's home
 	// screen, one numbering shared with the catalogs there; nil means it isn't
-	// on Home. On the wire as home_position.
-	HomeSortOrder *int `json:"home_position,omitempty"`
+	// on Home. On the wire as home_position, null when off Home.
+	HomeSortOrder *int `json:"home_position"`
 	// Publication is this collection's own publication, and Subscription the
 	// publication it is a subscribed copy of; each is nil when there is none.
 	Publication  *PublicationState  `json:"publication"`

@@ -212,7 +212,7 @@ export function duplicateCollection(
  * `id = ? AND owner_id = ?` and 404s otherwise.
  *
  * Two ways this 400s that the form has to prevent rather than report, since
- * the body is plain text with no field name in it: a folder `id` that doesn't
+ * the error carries no field name in a machine-readable position: a folder `id` that doesn't
  * belong to this collection, and a folder ref to a catalog that isn't this
  * profile's own and either listed or scoped to this collection
  * (`validateFolderRefs`). See `collectionForm.ts`.

@@ -410,7 +410,7 @@ the point:
 3. **Checks for the rules a form can reach** (`web/src/features/catalogs/catalogForm.ts`: name
    length, rating 0–10, no negative counts or runtimes, inverted ranges, fixed dates as real
    dates in order) as the per-field backstop.
-4. **The server's plain-text 400** as an unexpected-case banner only.
+4. **The server's 400** as an unexpected-case banner only.
 
 Other decisions worth keeping:
 
@@ -1362,7 +1362,7 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 - `404` with the JSON `code` `profile_not_found` from any `/api/p/{i}/...` route, `requireProfile`'s
   → profile not selected → send back to the picker (`ProfileNotSelectedError`,
   `web/src/api/http.ts`, which reads the code and never the words). A route's own 404 (a catalog
-  or a publication not found) is plain text with no code, an ordinary `ApiError`. A JSON error
+  or a publication not found) has no code, an ordinary `ApiError`. A JSON error
   body is worded by its `error` field and kept as `ApiError.body`.
 - `429` from any call → `RateLimitedError` (`web/src/api/http.ts`), worded from `Retry-After`. Uno's
   own server answers none, so only something in front of it can:

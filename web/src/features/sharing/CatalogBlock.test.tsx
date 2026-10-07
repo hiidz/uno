@@ -90,7 +90,7 @@ describe('CatalogBlock names', () => {
     expect(await screen.findByText('Studio Ghibli or Pixar')).toBeInTheDocument()
     expect(value('Left-out keyword')).toHaveTextContent('gore')
     expect(await screen.findByText(/^Netflix or Disney Plus in /)).toBeInTheDocument()
-    expect(calls).toContain('GET /api/watch-providers/movie?region=US')
+    expect(calls).toContain('GET /api/watch-providers/movie?watch_region=US')
   })
 
   it('settles on the count for a list a lookup can’t name', async () => {

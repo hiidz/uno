@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
@@ -122,7 +121,7 @@ func TestTMDBKeyRoutes(t *testing.T) {
 		{"a field the body doesn't have", `{"key":"ffffffffffffffffffffffffffffffff","api_key":"x"}`, http.StatusBadRequest, `unknown field "api_key"`},
 	} {
 		w := serve(t, s, http.MethodPut, "/api/account/tmdb-key", tc.body, false)
-		if w.Code != tc.code || !strings.Contains(w.Body.String(), tc.want) {
+		if w.Code != tc.code || !strings.Contains(answerText(w), tc.want) {
 			t.Errorf("%s: %d %q, want %d containing %q", tc.name, w.Code, w.Body.String(), tc.code, tc.want)
 		}
 	}
@@ -238,8 +237,7 @@ func TestSharedKeyRejectedIsUpstream(t *testing.T) {
 		t.Errorf("GET /api/genres/movie with a refused shared key = %d, want 502", w.Code)
 	}
 	w := serve(t, s, http.MethodPost, "/api/catalogs/preview", `{"type":"movie","params":"{}"}`, false)
-	var body map[string]any
-	if w.Code != http.StatusBadGateway || json.Unmarshal(w.Body.Bytes(), &body) == nil {
-		t.Errorf("preview with a refused shared key = %d %q, want a plain 502", w.Code, w.Body.String())
+	if w.Code != http.StatusBadGateway || answerText(w) != "failed to reach TMDB" {
+		t.Errorf("preview with a refused shared key = %d %q, want a 502 saying TMDB can't be reached", w.Code, w.Body.String())
 	}
 }

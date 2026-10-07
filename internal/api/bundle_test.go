@@ -103,8 +103,8 @@ func (f bundleRouteFixture) postOK(t *testing.T, path, body string, want int, v 
 // requireAnswer fails unless w is status with a body containing fragment.
 func requireAnswer(t *testing.T, w *httptest.ResponseRecorder, status int, fragment string) {
 	t.Helper()
-	if w.Code != status || !strings.Contains(w.Body.String(), fragment) {
-		t.Fatalf("status = %d, body %q; want %d containing %q", w.Code, strings.TrimSpace(w.Body.String()), status, fragment)
+	if w.Code != status || !strings.Contains(answerText(w), fragment) {
+		t.Fatalf("status = %d, body %q; want %d containing %q", w.Code, answerText(w), status, fragment)
 	}
 }
 

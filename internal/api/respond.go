@@ -26,8 +26,7 @@ func listByProfile[T any](w http.ResponseWriter, r *http.Request, op, failMsg st
 
 	items, err := load(r.Context(), profileID)
 	if err != nil {
-		log.Printf("%s: %v", op, err)
-		http.Error(w, failMsg, http.StatusInternalServerError)
+		serverError(w, op, err, failMsg)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, items)
@@ -70,10 +69,10 @@ func decoded(w http.ResponseWriter, d *json.Decoder, v any) bool {
 	if err := d.Decode(v); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			httpx.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
 			return false
 		}
-		http.Error(w, badBodyMessage(err), http.StatusBadRequest)
+		httpx.WriteError(w, http.StatusBadRequest, badBodyMessage(err))
 		return false
 	}
 	return true
@@ -105,15 +104,14 @@ func badBodyMessage(err error) string {
 func writeVaultError(w http.ResponseWriter, op string, err error, notFound error, notFoundMsg, defaultMsg string) {
 	switch status, msg := clientFailureOf(clientErrors, err); {
 	case status != 0:
-		http.Error(w, msg, status)
+		httpx.WriteError(w, status, msg)
 	case notFound != nil && errors.Is(err, notFound):
-		http.Error(w, notFoundMsg, http.StatusNotFound)
+		httpx.WriteError(w, http.StatusNotFound, notFoundMsg)
 	case errors.Is(err, errUpstreamValidation):
 		log.Printf("%s: %v", op, err)
-		http.Error(w, "failed to reach TMDB", http.StatusBadGateway)
+		httpx.WriteError(w, http.StatusBadGateway, "failed to reach TMDB")
 	default:
-		log.Printf("%s: %v", op, err)
-		http.Error(w, defaultMsg, http.StatusInternalServerError)
+		serverError(w, op, err, defaultMsg)
 	}
 }
 
@@ -158,31 +156,31 @@ var clientErrors = slices.Concat(keyFailures, []clientFailure{
 	{vault.ErrConflict, http.StatusConflict, ""},
 })
 
-// codedError is the JSON body of an error the SPA acts on by kind rather than
-// by status: Error is its words and Code a stable name for it. Every other
-// error answer is plain text.
-type codedError struct {
-	Error string `json:"error"`
-	Code  string `json:"code"`
-}
-
-// The codedError codes.
+// The codes of the errors the SPA acts on by kind rather than by status
+// (httpx.ErrorBody.Code).
 const (
 	// codeProfileNotFound: the caller has no Uno profile in the URL's slot, so
 	// it was never selected (requireProfile).
 	codeProfileNotFound = "profile_not_found"
 )
 
-// writeNuvioError classifies a Nuvio-call error and writes a plain-text
-// response: nuvio.ErrNuvioRequestFailed is upstream's fault (502, "nuvio
+// serverError logs err under op and answers a 500 with msg, which says what
+// failed and nothing of why.
+func serverError(w http.ResponseWriter, op string, err error, msg string) {
+	log.Printf("%s: %v", op, err)
+	httpx.WriteError(w, http.StatusInternalServerError, msg)
+}
+
+// writeNuvioError classifies a Nuvio-call error and writes an error
+// answer: nuvio.ErrNuvioRequestFailed is upstream's fault (502, "nuvio
 // unavailable"), anything else is ours (500, defaultMsg). Delegates the
-// classification to nuvioErrorStatus (push.go) so its JSON responses and
-// these plain-text ones can't drift apart on what counts as an upstream
+// classification to nuvioErrorStatus (push.go) so push's answers and
+// these can't drift apart on what counts as an upstream
 // failure.
 func writeNuvioError(w http.ResponseWriter, err error, defaultMsg string) {
 	if nuvioErrorStatus(err) == http.StatusBadGateway {
-		http.Error(w, "nuvio unavailable", http.StatusBadGateway)
+		httpx.WriteError(w, http.StatusBadGateway, "nuvio unavailable")
 		return
 	}
-	http.Error(w, defaultMsg, http.StatusInternalServerError)
+	httpx.WriteError(w, http.StatusInternalServerError, defaultMsg)
 }

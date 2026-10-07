@@ -4,7 +4,7 @@ import { catalogDeleteConsequences, collectionDeleteConsequences } from './delet
 
 const live = { id: 'p1', changed_since_publish: false }
 
-const using = (id: string, home?: number) =>
+const using = (id: string, home: number | null = null) =>
   collection({
     id: `k-${id}`,
     home_position: home,

@@ -37,8 +37,9 @@ export function isDraftCatalogID(id: string): boolean {
  * reach, checked here as the server checks them.
  *
  * Same premise as `catalogForm.ts`: every `400` out of the collection handlers
- * is `http.Error(w, err.Error(), …)` — plain text, no field name in a
- * machine-readable position — so those rules live here too, and a server 400
+ * Same premise as `catalogForm.ts`: every `400` out of the collection handlers
+ * is `{"error": err.Error()}` — words, no field name in a machine-readable
+ * position — so those rules live here too, and a server 400
  * on one of them means this copy has drifted. The rules no control can break
  * (a genre's length, the cover emoji's, a catalog edit's repeats) are left to
  * the server.

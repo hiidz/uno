@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -120,5 +121,16 @@ func TestPreviewCatalogAppliesGenre(t *testing.T) {
 	want := []string{"10752,37", "10752", "10752"}
 	if fmt.Sprint(withGenres) != fmt.Sprint(want) {
 		t.Fatalf("with_genres sent = %q, want %q", withGenres, want)
+	}
+}
+
+// A title TMDB has no poster for still carries the poster key, empty.
+func TestPreviewItemAlwaysCarriesAPoster(t *testing.T) {
+	raw, err := json.Marshal(PreviewItem{TMDBID: 1, Title: "A", Year: "2001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"tmdb_id":1,"title":"A","year":"2001","poster":""}`; string(raw) != want {
+		t.Fatalf("PreviewItem = %s, want %s", raw, want)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/hiidz/uno/internal/addon"
+	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/static"
 	"github.com/hiidz/uno/internal/tmdbkey"
@@ -161,6 +162,9 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", s.addon.Public(s.addon.CatalogHandler))
 	s.router.HandleFunc("GET "+addon.ConfigurePathPattern, s.addon.Public(s.addon.ConfigureHandler))
 
+	// A path under /api that no route above serves is a 404, not the SPA.
+	s.router.HandleFunc("/api/", s.apiNotFound)
+
 	// Everything else: the embedded SPA build (web:embed.go), with the
 	// existing routes above taking precedence since ServeMux matches the
 	// most specific registered pattern first.
@@ -178,6 +182,12 @@ func (s *Server) routes() error {
 	}
 	s.router.Handle("/", gzipped)
 	return nil
+}
+
+// apiNotFound answers a request under /api that no route serves, whatever its
+// method, so an unknown or mistyped API path is never answered with the SPA.
+func (s *Server) apiNotFound(w http.ResponseWriter, _ *http.Request) {
+	httpx.WriteError(w, http.StatusNotFound, "not found")
 }
 
 // health is the liveness probe: a plain-text 200 that reads nothing, so it

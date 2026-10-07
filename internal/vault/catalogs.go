@@ -139,7 +139,7 @@ func insertCatalogRow(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, erro
 		INSERT INTO catalogs (id, name, type, provider, params, owner_id, collection_id, sub_key, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, c.ID.String(), c.Name, c.Type, c.Provider, c.Params, c.OwnerID.String(), nullableUUIDString(c.CollectionID),
-		nullableString(c.SubKey), c.CreatedAt.Format(time.RFC3339), c.UpdatedAt.Format(time.RFC3339)); err != nil {
+		nullableString(c.SubKey), utcTimestamp(c.CreatedAt), utcTimestamp(c.UpdatedAt)); err != nil {
 		return Catalog{}, fmt.Errorf("inserting catalog: %w", err)
 	}
 	c.RecipeHash = RecipeHash(c.Type, c.Provider, c.Params)
@@ -259,7 +259,7 @@ func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.
 // writeCatalog writes input's name and params over catalogID; see
 // UpdateUserCatalog. Its type and provider never change (checkCatalogRewrite).
 func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
-	nowStr := time.Now().UTC().Format(time.RFC3339)
+	nowStr := utcTimestamp(time.Now())
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs SET name = ?, params = ?, updated_at = ?
 		WHERE id = ? AND owner_id = ?

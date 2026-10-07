@@ -8,8 +8,8 @@ import { parseIdList, parseParams } from './params'
  * `CatalogForm.Validate`.
  *
  * They are checked here because the server can't give us per-field errors:
- * every `400` from the catalog handlers is `http.Error(w, err.Error(), …)` —
- * plain text, no field name in a machine-readable position. A rule the form
+ * every `400` from the catalog handlers is `{"error": err.Error()}` — words,
+ * no field name in a machine-readable position. A rule the form
  * can't reach (the provider, a type outside the enum, the params length) is
  * left to the server, and a server 400 on a rule the form can reach means
  * this copy has drifted.

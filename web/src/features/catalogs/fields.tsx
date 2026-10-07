@@ -11,7 +11,7 @@ import { countryName, type CountryLookup } from './countries'
  * The "required together" pairs are single components rather than two fields
  * plus an assertion, and the date window is one mode toggle rather than four
  * independent inputs. The server's validation rules can't be reported per-field
- * (its 400s are plain text), so the form encodes them structurally: an invalid
+ * (its 400s carry no field name), so the form encodes them structurally: an invalid
  * combination is unrepresentable rather than merely caught.
  *
  * The generic primitives the catalog builder uses (`FieldError`, `FieldNote`,

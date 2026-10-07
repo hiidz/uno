@@ -148,7 +148,7 @@ func insertSubscription(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pu
 		SELECT ?, ?, ?, ?, ?, ?, ?
 		WHERE EXISTS (SELECT 1 FROM publications WHERE id = ?)
 	`, uuid.New().String(), profileID.String(), pub.id.String(), catalogID, collectionID, pub.contentHash,
-		time.Now().UTC().Format(time.RFC3339), pub.id.String())
+		utcTimestamp(time.Now()), pub.id.String())
 	if isUniqueConstraintErr(err) {
 		return fmt.Errorf("%w: you already added this", ErrConflict)
 	}
@@ -295,7 +295,7 @@ func catalogCopyProblem(c Catalog, want CatalogForm) error {
 // writeCatalogCopy writes want's name and params over catalog id, whose type
 // and provider want already matches (catalogCopyProblem).
 func writeCatalogCopy(ctx context.Context, tx *sql.Tx, id uuid.UUID, want CatalogForm) error {
-	nowStr := time.Now().UTC().Format(time.RFC3339)
+	nowStr := utcTimestamp(time.Now())
 	if _, err := tx.ExecContext(ctx, `UPDATE catalogs SET name = ?, params = ?, updated_at = ? WHERE id = ?`,
 		want.Name, want.Params, nowStr, id.String()); err != nil {
 		return fmt.Errorf("updating subscribed catalog: %w", err)
@@ -323,7 +323,7 @@ func updateCollectionCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, 
 	if err := form.Validate(); err != nil {
 		return err
 	}
-	return updateCollectionTx(ctx, tx, profileID, tree.ID, form, time.Now().UTC().Format(time.RFC3339))
+	return updateCollectionTx(ctx, tx, profileID, tree.ID, form, utcTimestamp(time.Now()))
 }
 
 // copyTreeSnapshot is a subscribed collection copy as a snapshot under its

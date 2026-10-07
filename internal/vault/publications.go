@@ -141,7 +141,7 @@ func (db *DB) publish(ctx context.Context, load func(*sql.Tx) (publication, erro
 		if err := p.snapshot.validate(); err != nil {
 			return err
 		}
-		return writePublication(ctx, tx, p, time.Now().UTC().Format(time.RFC3339))
+		return writePublication(ctx, tx, p, utcTimestamp(time.Now()))
 	})
 }
 

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -65,7 +64,7 @@ func (s *Server) requireNuvioAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, claims, refusal := s.authenticate(r)
 		if refusal != nil {
-			http.Error(w, refusal.msg, refusal.status)
+			httpx.WriteError(w, refusal.status, refusal.msg)
 			return
 		}
 		ctx := withNuvioUserID(r.Context(), claims.Sub)
@@ -93,7 +92,7 @@ func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 
 		index, err := strconv.Atoi(r.PathValue("profileIndex"))
 		if err != nil || index < 1 || index > 6 {
-			http.Error(w, "invalid profile index", http.StatusBadRequest)
+			httpx.WriteError(w, http.StatusBadRequest, "invalid profile index")
 			return
 		}
 
@@ -102,11 +101,10 @@ func (s *Server) requireProfile(next http.HandlerFunc) http.HandlerFunc {
 			if errors.Is(err, vault.ErrProfileNotFound) {
 				// The builder tells this 404 from a route's own by its code
 				// (web/src/api/http.ts).
-				httpx.WriteJSON(w, http.StatusNotFound, codedError{Error: "profile not found", Code: codeProfileNotFound})
+				httpx.WriteCodedError(w, http.StatusNotFound, "profile not found", codeProfileNotFound)
 				return
 			}
-			log.Printf("requireProfile: %v", err)
-			http.Error(w, "failed to resolve profile", http.StatusInternalServerError)
+			serverError(w, "requireProfile", err, "failed to resolve profile")
 			return
 		}
 

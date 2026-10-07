@@ -30,9 +30,9 @@ export interface Catalog {
   /** Scopes the catalog to one collection (hidden from the library, usable
    *  only in that collection's folders); `null` means listed. */
   collection_id: string | null
-  /** Its place on Home, numbered with the collections there; absent when it
+  /** Its place on Home, numbered with the collections there; `null` when it
    *  isn't on Home. */
-  home_position?: number
+  home_position: number | null
   /** On Home with a home row of its own; `false` for Discover only, and for
    *  every catalog off Home. Written only by Push. */
   show_in_home: boolean
@@ -120,9 +120,9 @@ export type Collection = CollectionSettings & {
   /** Show first, as last pushed: only Push writes it, from Home's pending
    *  selection (`HomeEntry.pinToTop`). */
   pin_to_top: boolean
-  /** Its place on Home, numbered with the catalogs there; absent when it
+  /** Its place on Home, numbered with the catalogs there; `null` when it
    *  isn't on Home. */
-  home_position?: number
+  home_position: number | null
   /** As on `Catalog`. A subscribed collection's catalogs are all scoped to
    *  it, so they carry no subscription of their own. */
   publication: PublicationState | null
@@ -434,7 +434,7 @@ export interface PreviewItem {
   title: string
   year: string
   /** Absolute `image.tmdb.org` URL, or `''` when TMDB has no poster. */
-  poster?: string
+  poster: string
 }
 
 export interface CatalogPreview {

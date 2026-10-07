@@ -25,7 +25,7 @@ function folderOf(sources: PreviewSource[]): PreviewFolder {
   }
 }
 
-const tile = (tmdb_id: number) => ({ tmdb_id, title: `T${tmdb_id}`, year: '' })
+const tile = (tmdb_id: number) => ({ tmdb_id, title: `T${tmdb_id}`, year: '', poster: '' })
 
 describe('sourceLabel', () => {
   it('names a source as Nuvio does, with the genre only when set', () => {
@@ -62,8 +62,8 @@ describe('folderRecipes', () => {
 
 describe('interleaveTiles', () => {
   it('keeps a movie and a series that share a TMDB id, each with its own kind', () => {
-    const movie = { tmdb_id: 550, title: 'Fight Club', year: '1999' }
-    const series = { tmdb_id: 550, title: 'Other', year: '2001' }
+    const movie = { tmdb_id: 550, title: 'Fight Club', year: '1999', poster: '' }
+    const series = { tmdb_id: 550, title: 'Other', year: '2001', poster: '' }
     const merged = interleaveTiles([
       { kind: 'movie', items: [movie] },
       { kind: 'tv', items: [series] },
@@ -73,7 +73,7 @@ describe('interleaveTiles', () => {
   })
 
   it('drops a title a second source of the same kind repeats', () => {
-    const a = { tmdb_id: 1, title: 'A', year: '' }
+    const a = { tmdb_id: 1, title: 'A', year: '', poster: '' }
     const merged = interleaveTiles([
       { kind: 'movie', items: [a] },
       { kind: 'movie', items: [{ ...a }] },

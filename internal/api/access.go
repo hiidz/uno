@@ -60,7 +60,7 @@ func (a *admission) admits(claims nuvio.Claims) bool {
 }
 
 // authRefusal is why requireNuvioAuth turned a request away: the status and
-// the plain-text body it answers with.
+// the words it answers with.
 type authRefusal struct {
 	status int
 	msg    string

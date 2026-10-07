@@ -56,7 +56,7 @@ export function ListError({
   return (
     <div className="flex flex-col items-start gap-2 py-2">
       <p className="type-data text-danger m-0 text-[12.5px]">{label}</p>
-      {/* The server's plain-text body is usually more specific than
+      {/* The server's error is usually more specific than
           anything we'd synthesise, so surface it under the headline. */}
       <p className="type-data text-dimmer m-0 text-[12.5px]">{error.message}</p>
       {onRetry && (
