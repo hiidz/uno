@@ -20,9 +20,9 @@ func TestListCommunity(t *testing.T) {
 	owner, viewer := newTestProfile(t, db, "owner"), newTestProfile(t, db, "viewer")
 	movie := publishCatalog(t, db, owner, "Movie", `{"sort_by":"popularity.desc"}`)
 	publishCollection(t, db, owner, CollectionForm{Title: "Movie Night", Folders: []FolderData{
-		{Title: "Ghosts", TileShape: "LANDSCAPE", CoverEmoji: "👻",
+		{Title: "Ghosts", FolderArt: FolderArt{TileShape: "LANDSCAPE", CoverEmoji: "👻"},
 			Catalogs: []FolderCatalogRef{newScoped("k1", "Ghost Stories", `{"with_genres":"27"}`)}},
-		{Title: "Slashers", CoverImageURL: "https://image.tmdb.org/t/p/w500/a.jpg",
+		{Title: "Slashers", FolderArt: FolderArt{CoverImageURL: "https://image.tmdb.org/t/p/w500/a.jpg"},
 			Catalogs: []FolderCatalogRef{newScoped("k2", "Slashers", `{"with_genres":"53"}`)}},
 	}})
 	unpublished := publishCatalog(t, db, owner, "Unpublished", `{"sort_by":"revenue.desc"}`)

@@ -112,14 +112,25 @@ type Collection struct {
 // Folder is one tile row within a Collection. Its CollectionID and SortOrder
 // are never on the wire: a folder travels inside its collection, in order.
 type Folder struct {
-	ID            uuid.UUID `json:"id"`
-	CollectionID  uuid.UUID `json:"-"`
-	Title         string    `json:"title"`
-	SortOrder     int       `json:"-"`
-	TileShape     string    `json:"tile_shape"`
-	HideTitle     bool      `json:"hide_title"`
-	CoverEmoji    string    `json:"cover_emoji"`
-	CoverImageURL string    `json:"cover_image_url"`
+	ID           uuid.UUID `json:"id"`
+	CollectionID uuid.UUID `json:"-"`
+	Title        string    `json:"title"`
+	SortOrder    int       `json:"-"`
+	FolderArt
+	// SubKey is, in a subscribed collection, the key of the snapshot folder
+	// this one was written from, which Update pairs it by; empty otherwise.
+	// Never on the wire.
+	SubKey string `json:"-"`
+}
+
+// FolderArt is how a folder looks: everything it holds but its title, refs and
+// identity. Folder, FolderData and BundleFolder embed it, so a row, a form, a
+// bundle and a snapshot carry the same fields in the same order.
+type FolderArt struct {
+	TileShape     string `json:"tile_shape"`
+	HideTitle     bool   `json:"hide_title"`
+	CoverEmoji    string `json:"cover_emoji"`
+	CoverImageURL string `json:"cover_image_url"`
 	// FocusGIFURL is an animated GIF Nuvio plays over the folder's tile while
 	// it's focused, when FocusGIFEnabled is set.
 	FocusGIFURL     string `json:"focus_gif_url"`
@@ -129,10 +140,6 @@ type Folder struct {
 	HeroBackdropURL string `json:"hero_backdrop_url"`
 	HeroVideoURL    string `json:"hero_video_url"`
 	TitleLogoURL    string `json:"title_logo_url"`
-	// SubKey is, in a subscribed collection, the key of the snapshot folder
-	// this one was written from, which Update pairs it by; empty otherwise.
-	// Never on the wire.
-	SubKey string `json:"-"`
 }
 
 // FolderCatalog joins a Folder to one of its member Catalogs, in order.
@@ -194,18 +201,10 @@ func (e ScopedCatalogEdit) recipeHash() string {
 
 // FolderData is one folder within a CollectionForm.
 type FolderData struct {
-	ID              *uuid.UUID         `json:"id,omitempty"` // nil = new folder, present = existing
-	Title           string             `json:"title"`
-	TileShape       string             `json:"tile_shape"`
-	HideTitle       bool               `json:"hide_title"`
-	CoverEmoji      string             `json:"cover_emoji"`
-	CoverImageURL   string             `json:"cover_image_url"`
-	FocusGIFURL     string             `json:"focus_gif_url"`
-	FocusGIFEnabled bool               `json:"focus_gif_enabled"`
-	HeroBackdropURL string             `json:"hero_backdrop_url"`
-	HeroVideoURL    string             `json:"hero_video_url"`
-	TitleLogoURL    string             `json:"title_logo_url"`
-	Catalogs        []FolderCatalogRef `json:"catalogs"` // ordered — index gives folder_catalogs.sort_order
+	ID    *uuid.UUID `json:"id,omitempty"` // nil = new folder, present = existing
+	Title string     `json:"title"`
+	FolderArt
+	Catalogs []FolderCatalogRef `json:"catalogs"` // ordered — index gives folder_catalogs.sort_order
 	// SubKey is written to a new folder's sub_key. Only a subscribe or an
 	// Update sets it; never accepted from the client.
 	SubKey string `json:"-"`

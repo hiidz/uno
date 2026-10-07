@@ -46,7 +46,7 @@ func testCatalog(key, name, params string) BundleCatalog {
 // testFolder is a folder under key whose refs are the catalogs named, each as
 // "key" or "key/genre".
 func testFolder(key, title string, refs ...BundleRef) SnapshotFolder {
-	return SnapshotFolder{Key: key, BundleFolder: BundleFolder{Title: title, TileShape: "POSTER", Refs: refs}}
+	return SnapshotFolder{Key: key, BundleFolder: BundleFolder{Title: title, FolderArt: FolderArt{TileShape: "POSTER"}, Refs: refs}}
 }
 
 func testCollectionSnapshot(title string, folders []SnapshotFolder, catalogs ...BundleCatalog) Snapshot {

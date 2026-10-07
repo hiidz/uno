@@ -19,7 +19,7 @@ func saveFormOf(tree CollectionWithFolders) CollectionForm {
 	}
 	for _, f := range tree.Folders {
 		id := f.ID
-		fd := FolderData{ID: &id, Title: f.Title, TileShape: f.TileShape, FocusGIFEnabled: f.FocusGIFEnabled}
+		fd := FolderData{ID: &id, Title: f.Title, FolderArt: FolderArt{TileShape: f.TileShape, FocusGIFEnabled: f.FocusGIFEnabled}}
 		for _, ref := range f.Refs {
 			catalogID := ref.CatalogID
 			fd.Catalogs = append(fd.Catalogs, FolderCatalogRef{CatalogID: &catalogID, Genre: ref.Genre})

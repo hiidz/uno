@@ -18,20 +18,12 @@ import (
 // lives, shared by insertFolder and updateFolder.
 func folderFrom(id, collectionID uuid.UUID, sortOrder int, fd FolderData) Folder {
 	return Folder{
-		ID:              id,
-		CollectionID:    collectionID,
-		Title:           fd.Title,
-		SortOrder:       sortOrder,
-		TileShape:       fd.TileShape,
-		HideTitle:       fd.HideTitle,
-		CoverEmoji:      fd.CoverEmoji,
-		CoverImageURL:   fd.CoverImageURL,
-		FocusGIFURL:     fd.FocusGIFURL,
-		FocusGIFEnabled: fd.FocusGIFEnabled,
-		HeroBackdropURL: fd.HeroBackdropURL,
-		HeroVideoURL:    fd.HeroVideoURL,
-		TitleLogoURL:    fd.TitleLogoURL,
-		SubKey:          fd.SubKey,
+		ID:           id,
+		CollectionID: collectionID,
+		Title:        fd.Title,
+		SortOrder:    sortOrder,
+		FolderArt:    fd.FolderArt,
+		SubKey:       fd.SubKey,
 	}
 }
 

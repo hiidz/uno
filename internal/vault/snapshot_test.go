@@ -21,11 +21,11 @@ func fixedTree() CollectionWithFolders {
 		Collection: Collection{ID: collectionID, Title: "Halloween <3", ViewMode: "ROWS", ShowAllTab: true,
 			BackdropImageURL: "https://example.com/b.jpg", FocusGlowEnabled: true},
 		Folders: []FolderWithCatalogs{
-			{Folder: Folder{ID: fixedID(4), Title: "Classics", TileShape: "POSTER", CoverEmoji: "🎃", FocusGIFEnabled: true,
+			{Folder: Folder{ID: fixedID(4), Title: "Classics", FolderArt: FolderArt{TileShape: "POSTER", CoverEmoji: "🎃", FocusGIFEnabled: true,
 				CoverImageURL: "https://example.com/c.png", FocusGIFURL: "https://example.com/f.gif", HeroBackdropURL: "https://example.com/h.jpg",
-				HeroVideoURL: "https://example.com/h.mp4", TitleLogoURL: "https://example.com/l.png"},
+				HeroVideoURL: "https://example.com/h.mp4", TitleLogoURL: "https://example.com/l.png"}},
 				Refs: []FolderRef{{listed.ID, ""}, {scoped.ID, "Horror"}}},
-			{Folder: Folder{ID: fixedID(5), Title: "Modern", TileShape: "SQUARE", HideTitle: true}, Refs: []FolderRef{{listed.ID, "War"}}},
+			{Folder: Folder{ID: fixedID(5), Title: "Modern", FolderArt: FolderArt{TileShape: "SQUARE", HideTitle: true}}, Refs: []FolderRef{{listed.ID, "War"}}},
 		},
 		Catalogs: []Catalog{listed, scoped},
 	}

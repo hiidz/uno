@@ -65,17 +65,9 @@ type BundleCollection struct {
 
 // BundleFolder is one folder of a BundleCollection, with its refs in order.
 type BundleFolder struct {
-	Title           string      `json:"title"`
-	TileShape       string      `json:"tile_shape"`
-	HideTitle       bool        `json:"hide_title"`
-	CoverEmoji      string      `json:"cover_emoji"`
-	CoverImageURL   string      `json:"cover_image_url"`
-	FocusGIFURL     string      `json:"focus_gif_url"`
-	FocusGIFEnabled bool        `json:"focus_gif_enabled"`
-	HeroBackdropURL string      `json:"hero_backdrop_url"`
-	HeroVideoURL    string      `json:"hero_video_url"`
-	TitleLogoURL    string      `json:"title_logo_url"`
-	Refs            []BundleRef `json:"refs"`
+	Title string `json:"title"`
+	FolderArt
+	Refs []BundleRef `json:"refs"`
 }
 
 // UnmarshalJSON decodes c refusing a key it has no field for, as the strict
@@ -315,19 +307,7 @@ func (cx *collectionExtractor) folder(f FolderWithCatalogs) BundleFolder {
 			refs = append(refs, BundleRef{Catalog: key, Genre: ref.Genre})
 		}
 	}
-	return BundleFolder{
-		Title:           f.Title,
-		TileShape:       f.TileShape,
-		HideTitle:       f.HideTitle,
-		CoverEmoji:      f.CoverEmoji,
-		CoverImageURL:   f.CoverImageURL,
-		FocusGIFURL:     f.FocusGIFURL,
-		FocusGIFEnabled: f.FocusGIFEnabled,
-		HeroBackdropURL: f.HeroBackdropURL,
-		HeroVideoURL:    f.HeroVideoURL,
-		TitleLogoURL:    f.TitleLogoURL,
-		Refs:            refs,
-	}
+	return BundleFolder{Title: f.Title, FolderArt: f.FolderArt, Refs: refs}
 }
 
 // refKey returns the key of the catalog a ref names, emitting the catalog
@@ -423,19 +403,7 @@ func folderDataFromBundle(f BundleFolder, specs map[string]*NewScopedCatalog, to
 		id := topIDs[ref.Catalog]
 		refs[i].CatalogID = &id
 	}
-	return FolderData{
-		Title:           f.Title,
-		TileShape:       f.TileShape,
-		HideTitle:       f.HideTitle,
-		CoverEmoji:      f.CoverEmoji,
-		CoverImageURL:   f.CoverImageURL,
-		FocusGIFURL:     f.FocusGIFURL,
-		FocusGIFEnabled: f.FocusGIFEnabled,
-		HeroBackdropURL: f.HeroBackdropURL,
-		HeroVideoURL:    f.HeroVideoURL,
-		TitleLogoURL:    f.TitleLogoURL,
-		Catalogs:        refs,
-	}
+	return FolderData{Title: f.Title, FolderArt: f.FolderArt, Catalogs: refs}
 }
 
 // sha256Hex is the hex sha256 of b.

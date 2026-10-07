@@ -223,14 +223,17 @@ func TestBundleRoundTripsThroughCreate(t *testing.T) {
 	}
 	folder := func(title, shape string, refs ...FolderCatalogRef) FolderData {
 		return FolderData{
-			Title: title, TileShape: shape, HideTitle: true, CoverEmoji: "🎃",
-			CoverImageURL:   "https://example.com/" + title + "/cover.png",
-			FocusGIFURL:     "https://example.com/" + title + "/focus.gif",
-			FocusGIFEnabled: true,
-			HeroBackdropURL: "https://example.com/" + title + "/hero.jpg",
-			HeroVideoURL:    "https://example.com/" + title + "/hero.mp4",
-			TitleLogoURL:    "https://example.com/" + title + "/logo.png",
-			Catalogs:        refs,
+			Title: title,
+			FolderArt: FolderArt{
+				TileShape: shape, HideTitle: true, CoverEmoji: "🎃",
+				CoverImageURL:   "https://example.com/" + title + "/cover.png",
+				FocusGIFURL:     "https://example.com/" + title + "/focus.gif",
+				FocusGIFEnabled: true,
+				HeroBackdropURL: "https://example.com/" + title + "/hero.jpg",
+				HeroVideoURL:    "https://example.com/" + title + "/hero.mp4",
+				TitleLogoURL:    "https://example.com/" + title + "/logo.png",
+			},
+			Catalogs: refs,
 		}
 	}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{

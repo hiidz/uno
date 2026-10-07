@@ -271,7 +271,7 @@ func folderEdit(old, f SnapshotFolder) []SnapshotChange {
 	if old.Title != f.Title {
 		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectName, Key: f.Key, Name: f.Title, Was: old.Title})
 	}
-	if folderArt(old.BundleFolder) != folderArt(f.BundleFolder) {
+	if old.FolderArt != f.FolderArt {
 		out = append(out, SnapshotChange{Op: changeChanged, Kind: changeFolder, Aspect: aspectArt, Key: f.Key, Name: f.Title})
 	}
 	if reordered(old.Refs, f.Refs) {
@@ -283,24 +283,6 @@ func folderEdit(old, f SnapshotFolder) []SnapshotChange {
 // reordered is whether a and b hold the same refs in another order.
 func reordered(a, b []BundleRef) bool {
 	return len(refsBeyond(a, b)) == 0 && len(refsBeyond(b, a)) == 0 && !slices.Equal(a, b)
-}
-
-// art is how a folder looks: everything it holds but its title and refs.
-type art struct {
-	tileShape       string
-	hideTitle       bool
-	coverEmoji      string
-	coverImageURL   string
-	focusGIFURL     string
-	focusGIFEnabled bool
-	heroBackdropURL string
-	heroVideoURL    string
-	titleLogoURL    string
-}
-
-func folderArt(f BundleFolder) art {
-	return art{f.TileShape, f.HideTitle, f.CoverEmoji, f.CoverImageURL, f.FocusGIFURL, f.FocusGIFEnabled,
-		f.HeroBackdropURL, f.HeroVideoURL, f.TitleLogoURL}
 }
 
 // catalogEdits is each catalog both snapshots hold, in to's order, whose name

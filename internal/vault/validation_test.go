@@ -63,7 +63,7 @@ func TestCollectionFormLengthAndCountBounds(t *testing.T) {
 			{Title: strings.Repeat("t", maxNameLen+1)},
 		}}},
 		{"overlong cover emoji", CollectionForm{Title: "Fine", Folders: []FolderData{
-			{Title: "F", CoverEmoji: strings.Repeat("x", maxCoverEmojiLen+1)},
+			{Title: "F", FolderArt: FolderArt{CoverEmoji: strings.Repeat("x", maxCoverEmojiLen+1)}},
 		}}},
 		{"too many folders", CollectionForm{Title: "Fine", Folders: tooManyFolders}},
 		{"too many refs", CollectionForm{Title: "Fine", Folders: []FolderData{
@@ -91,7 +91,7 @@ func TestCollectionFormLengthAndCountBounds(t *testing.T) {
 	// exactly on every one of them saves.
 	folders := make([]FolderData, maxFoldersPerCollection)
 	for i := range folders {
-		folders[i] = FolderData{Title: strings.Repeat("t", maxNameLen), CoverEmoji: strings.Repeat("x", maxCoverEmojiLen)}
+		folders[i] = FolderData{Title: strings.Repeat("t", maxNameLen), FolderArt: FolderArt{CoverEmoji: strings.Repeat("x", maxCoverEmojiLen)}}
 	}
 	folders[0].Catalogs = []FolderCatalogRef{{CatalogID: &catalog.ID, Genre: strings.Repeat("g", maxGenreLen)}}
 	if _, err := db.CreateUserCollection(ctx, owner, CollectionForm{
@@ -306,8 +306,9 @@ func paddedForm(refs ...FolderCatalogRef) CollectionForm {
 	return CollectionForm{
 		Title: " C ", BackdropImageURL: " https://example.com/b.jpg ",
 		Folders: []FolderData{{
-			Title: " Folder ", CoverEmoji: " 🎃 ", CoverImageURL: " https://example.com/cover.jpg ",
-			Catalogs: refs,
+			Title:     " Folder ",
+			FolderArt: FolderArt{CoverEmoji: " 🎃 ", CoverImageURL: " https://example.com/cover.jpg "},
+			Catalogs:  refs,
 		}},
 	}
 }

@@ -60,9 +60,11 @@ func TestPushPayloadAppearanceFields(t *testing.T) {
 			{Folder: Folder{ID: uuid.New(), Title: "Off"}},
 			{Folder: Folder{
 				ID: uuid.New(), Title: "On",
-				FocusGIFURL: "https://example.com/f.gif", FocusGIFEnabled: true,
-				HeroBackdropURL: "https://example.com/b.jpg", HeroVideoURL: "https://example.com/v.mp4",
-				TitleLogoURL: "https://example.com/l.png",
+				FolderArt: FolderArt{
+					FocusGIFURL: "https://example.com/f.gif", FocusGIFEnabled: true,
+					HeroBackdropURL: "https://example.com/b.jpg", HeroVideoURL: "https://example.com/v.mp4",
+					TitleLogoURL: "https://example.com/l.png",
+				},
 			}},
 		},
 	}

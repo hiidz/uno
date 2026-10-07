@@ -816,6 +816,9 @@ describing what a TMDB-backed catalog may ask for.
 export writes and import reads, and the in-memory shape every collection copy and a
 publication's snapshot are built on. The Go types in `internal/vault/bundle.go` (`Bundle`, `BundleCatalog`,
 `BundleCollection`, `BundleFolder`, `BundleRef`) are its only definition. Keys are snake_case.
+A folder's nine appearance fields are one `vault.FolderArt`, embedded in `Folder`, `FolderData` and
+`BundleFolder` (and so in a snapshot's folders): adding a field to it changes the bundle and
+snapshot bytes, which moves every content hash and needs a `schemaVersion` bump.
 Version 1:
 
 ```json

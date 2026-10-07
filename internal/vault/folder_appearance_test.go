@@ -19,13 +19,15 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 	}
 
 	folder := FolderData{
-		Title:           "Folder",
-		FocusGIFURL:     "https://example.com/focus.gif",
-		FocusGIFEnabled: true,
-		HeroBackdropURL: "https://example.com/backdrop.jpg",
-		HeroVideoURL:    "https://example.com/hero.mp4",
-		TitleLogoURL:    "https://example.com/logo.png",
-		Catalogs:        CatalogRefs(listed.ID),
+		Title: "Folder",
+		FolderArt: FolderArt{
+			FocusGIFURL:     "https://example.com/focus.gif",
+			FocusGIFEnabled: true,
+			HeroBackdropURL: "https://example.com/backdrop.jpg",
+			HeroVideoURL:    "https://example.com/hero.mp4",
+			TitleLogoURL:    "https://example.com/logo.png",
+		},
+		Catalogs: CatalogRefs(listed.ID),
 	}
 	created, err := db.CreateUserCollection(ctx, owner, CollectionForm{
 		Title:            "C",

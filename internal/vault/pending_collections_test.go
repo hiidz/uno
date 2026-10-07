@@ -82,7 +82,7 @@ func TestACollectionWaitsWhenWhatPushSendsDiffers(t *testing.T) {
 	folderID := c.Folders[0].ID
 	form := func(title, cover, genre string) CollectionForm {
 		return CollectionForm{Title: title, Folders: []FolderData{{
-			ID: &folderID, Title: "F", CoverImageURL: cover,
+			ID: &folderID, Title: "F", FolderArt: FolderArt{CoverImageURL: cover},
 			Catalogs: []FolderCatalogRef{{CatalogID: &catalog.ID, Genre: genre}},
 		}}}
 	}
@@ -157,7 +157,7 @@ func TestEscapedTextDoesNotWaitForAPush(t *testing.T) {
 	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{
 		Title:            "Fish & <Chips>",
 		BackdropImageURL: "https://images.weserv.nl/?url=image.tmdb.org/t/p/original/a.jpg&w=1280&output=webp",
-		Folders:          []FolderData{{Title: "A < B > C & D", CoverEmoji: "🎃"}},
+		Folders:          []FolderData{{Title: "A < B > C & D", FolderArt: FolderArt{CoverEmoji: "🎃"}}},
 	})
 	if err != nil {
 		t.Fatal(err)
