@@ -47,7 +47,7 @@ func TestCollectionFormLengthAndCountBounds(t *testing.T) {
 
 	tooManyFolders := make([]FolderData, maxFoldersPerCollection+1)
 	for i := range tooManyFolders {
-		tooManyFolders[i] = FolderData{Title: "F"}
+		tooManyFolders[i] = FolderData{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F"}
 	}
 	tooManyRefs := make([]FolderCatalogRef, maxRefsPerFolder+1)
 	for i := range tooManyRefs {
@@ -58,24 +58,24 @@ func TestCollectionFormLengthAndCountBounds(t *testing.T) {
 		name string
 		form CollectionForm
 	}{
-		{"overlong title", CollectionForm{Title: strings.Repeat("t", maxNameLen+1)}},
-		{"overlong folder title", CollectionForm{Title: "Fine", Folders: []FolderData{
-			{Title: strings.Repeat("t", maxNameLen+1)},
+		{"overlong title", CollectionForm{Title: strings.Repeat("t", maxNameLen+1), ViewMode: "TABBED_GRID"}},
+		{"overlong folder title", CollectionForm{Title: "Fine", ViewMode: "TABBED_GRID", Folders: []FolderData{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: strings.Repeat("t", maxNameLen+1)},
 		}}},
-		{"overlong cover emoji", CollectionForm{Title: "Fine", Folders: []FolderData{
-			{Title: "F", FolderArt: FolderArt{CoverEmoji: strings.Repeat("x", maxCoverEmojiLen+1)}},
+		{"overlong cover emoji", CollectionForm{Title: "Fine", ViewMode: "TABBED_GRID", Folders: []FolderData{
+			{Title: "F", FolderArt: FolderArt{TileShape: "POSTER", CoverEmoji: strings.Repeat("x", maxCoverEmojiLen+1)}},
 		}}},
-		{"too many folders", CollectionForm{Title: "Fine", Folders: tooManyFolders}},
-		{"too many refs", CollectionForm{Title: "Fine", Folders: []FolderData{
-			{Title: "F", Catalogs: tooManyRefs},
+		{"too many folders", CollectionForm{Title: "Fine", ViewMode: "TABBED_GRID", Folders: tooManyFolders}},
+		{"too many refs", CollectionForm{Title: "Fine", ViewMode: "TABBED_GRID", Folders: []FolderData{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: tooManyRefs},
 		}}},
-		{"overlong new catalog name", CollectionForm{Title: "Fine", Folders: []FolderData{
-			{Title: "F", Catalogs: []FolderCatalogRef{{New: &NewScopedCatalog{
+		{"overlong new catalog name", CollectionForm{Title: "Fine", ViewMode: "TABBED_GRID", Folders: []FolderData{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{{New: &NewScopedCatalog{
 				Key: "draft:a", Type: "movie", Name: strings.Repeat("n", maxNameLen+1), Provider: "tmdb", Params: "{}",
 			}}}},
 		}}},
-		{"overlong new catalog params", CollectionForm{Title: "Fine", Folders: []FolderData{
-			{Title: "F", Catalogs: []FolderCatalogRef{{New: &NewScopedCatalog{
+		{"overlong new catalog params", CollectionForm{Title: "Fine", ViewMode: "TABBED_GRID", Folders: []FolderData{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{{New: &NewScopedCatalog{
 				Key: "draft:a", Type: "movie", Name: "Staged", Provider: "tmdb", Params: strings.Repeat("p", maxParamsLen+1),
 			}}}},
 		}}},
@@ -91,28 +91,29 @@ func TestCollectionFormLengthAndCountBounds(t *testing.T) {
 	// exactly on every one of them saves.
 	folders := make([]FolderData, maxFoldersPerCollection)
 	for i := range folders {
-		folders[i] = FolderData{Title: strings.Repeat("t", maxNameLen), FolderArt: FolderArt{CoverEmoji: strings.Repeat("x", maxCoverEmojiLen)}}
+		folders[i] = FolderData{Title: strings.Repeat("t", maxNameLen), FolderArt: FolderArt{TileShape: "POSTER", CoverEmoji: strings.Repeat("x", maxCoverEmojiLen)}}
 	}
 	folders[0].Catalogs = []FolderCatalogRef{{CatalogID: &catalog.ID, Genre: strings.Repeat("g", maxGenreLen)}}
 	if _, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:   strings.Repeat("t", maxNameLen),
+		Title: strings.Repeat("t", maxNameLen), ViewMode: "TABBED_GRID",
 		Folders: folders,
 	}); err != nil {
 		t.Fatalf("create with every field exactly at its bound: %v", err)
 	}
 }
 
-// A stored collection that never passed today's checks — an unrecognized
-// view mode, an overlong folder title — is neither publishable nor copyable
-// by Duplicate: both re-check the source rather than trusting it.
+// A stored collection that never passed today's checks — an unrecognized,
+// FOLLOW_LAYOUT or empty view mode, an empty tile shape, an overlong folder
+// title — is neither publishable nor copyable by Duplicate: both re-check
+// the source rather than trusting it.
 func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
 
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:   "Source",
-		Folders: []FolderData{{Title: "Folder 1"}},
+		Title: "Source", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1"}},
 	})
 	if err != nil {
 		t.Fatalf("create source collection: %v", err)
@@ -124,6 +125,9 @@ func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 		arg   string
 	}{
 		{"unrecognized view mode", `UPDATE collections SET view_mode = ? WHERE id = ?`, "CAROUSEL"},
+		{"follow layout", `UPDATE collections SET view_mode = ? WHERE id = ?`, "FOLLOW_LAYOUT"},
+		{"empty view mode", `UPDATE collections SET view_mode = ? WHERE id = ?`, ""},
+		{"empty tile shape", `UPDATE folders SET tile_shape = ? WHERE collection_id = ?`, ""},
 		{"overlong folder title", `UPDATE folders SET title = ? WHERE collection_id = ?`, strings.Repeat("t", maxNameLen+1)},
 		{"javascript backdrop", `UPDATE collections SET backdrop_image_url = ? WHERE id = ?`, "javascript:alert(1)"},
 	} {
@@ -138,7 +142,7 @@ func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 				`, source.ID.String()); err != nil {
 					t.Errorf("restoring the collection row: %v", err)
 				}
-				if _, err := db.conn.ExecContext(ctx, `UPDATE folders SET title = 'Folder 1' WHERE collection_id = ?`,
+				if _, err := db.conn.ExecContext(ctx, `UPDATE folders SET title = 'Folder 1', tile_shape = 'POSTER' WHERE collection_id = ?`,
 					source.ID.String()); err != nil {
 					t.Errorf("restoring the folder row: %v", err)
 				}
@@ -174,7 +178,7 @@ func TestPublishCatalogRejectsStaleSourceRows(t *testing.T) {
 		arg   string
 	}{
 		{"overlong name", `UPDATE catalogs SET name = ? WHERE id = ?`, strings.Repeat("n", maxNameLen+1)},
-		{"overlong params", `UPDATE recipes SET params = ? WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)`, strings.Repeat("p", maxParamsLen+1)},
+		{"overlong params", `UPDATE catalogs SET params = ? WHERE id = ?`, strings.Repeat("p", maxParamsLen+1)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := db.conn.ExecContext(ctx, tt.query, tt.arg, source.ID.String()); err != nil {
@@ -182,11 +186,8 @@ func TestPublishCatalogRejectsStaleSourceRows(t *testing.T) {
 			}
 			// Restored before the next case runs, so each one tests its field alone.
 			t.Cleanup(func() {
-				if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = 'Source' WHERE id = ?`, source.ID.String()); err != nil {
+				if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = 'Source', params = ? WHERE id = ?`, source.Params, source.ID.String()); err != nil {
 					t.Errorf("restoring the catalog row: %v", err)
-				}
-				if _, err := db.conn.ExecContext(ctx, `UPDATE recipes SET params = '{}' WHERE hash = ?`, source.RecipeHash); err != nil {
-					t.Errorf("restoring the recipe row: %v", err)
 				}
 			})
 
@@ -212,8 +213,8 @@ func TestDuplicateCollectionBoundsTheSuffixedTitle(t *testing.T) {
 
 	const suffix = " (copy)"
 	roomy, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:   strings.Repeat("t", maxNameLen-len(suffix)),
-		Folders: []FolderData{{Title: "Folder 1"}},
+		Title: strings.Repeat("t", maxNameLen-len(suffix)), ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1"}},
 	})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -223,13 +224,13 @@ func TestDuplicateCollectionBoundsTheSuffixedTitle(t *testing.T) {
 		t.Fatalf("duplicate a title with room for the suffix: %v", err)
 	}
 	if _, err := db.UpdateUserCollection(ctx, owner, copied.ID, CollectionForm{
-		Title:   copied.Title,
-		Folders: []FolderData{{Title: "Folder 1"}},
+		Title: copied.Title, ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1"}},
 	}); err != nil {
 		t.Fatalf("saving the duplicate's own title back: %v", err)
 	}
 
-	full, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: strings.Repeat("t", maxNameLen)})
+	full, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: strings.Repeat("t", maxNameLen), ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("create collection at the title bound: %v", err)
 	}
@@ -253,7 +254,7 @@ func TestUpdateFolderRejectsAForeignFolder(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	_, err = updateFolder(ctx, tx, uuid.New(), collectionID, 0, FolderData{Title: "Nowhere"})
+	_, err = updateFolder(ctx, tx, uuid.New(), collectionID, 0, FolderData{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Nowhere"})
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("updateFolder on a folder of no collection = %v, want ErrInvalidInput", err)
 	}
@@ -284,30 +285,30 @@ func TestCollectionFormCatalogEditProblems(t *testing.T) {
 		{"same catalog twice", []ScopedCatalogEdit{valid, valid}, "catalog edit 1: repeats a catalog"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			err := CollectionForm{Title: "C", CatalogEdits: tt.edits}.Validate()
+			err := CollectionForm{Title: "C", ViewMode: "TABBED_GRID", CatalogEdits: tt.edits}.Validate()
 			if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Validate = %v, want ErrInvalidInput mentioning %q", err, tt.want)
 			}
 		})
 	}
 
-	if err := (CollectionForm{Title: "C", CatalogEdits: []ScopedCatalogEdit{valid}}).Validate(); err != nil {
+	if err := (CollectionForm{Title: "C", ViewMode: "TABBED_GRID", CatalogEdits: []ScopedCatalogEdit{valid}}).Validate(); err != nil {
 		t.Fatalf("Validate with one valid edit = %v, want nil", err)
 	}
 }
 
-// normalizedWant is what the normalization tests store for their padded,
-// empty-valued forms.
+// normalizedWant is what the normalization tests store for their padded
+// forms.
 var normalizedWant = []string{"C", "TABBED_GRID", "https://example.com/b.jpg", "Folder", "POSTER", "🎃", "https://example.com/cover.jpg"}
 
-// paddedForm is a collection form with every trimmed field padded and an
-// empty view mode and tile shape, its one folder holding refs.
+// paddedForm is a collection form with every trimmed field padded, its one
+// folder holding refs.
 func paddedForm(refs ...FolderCatalogRef) CollectionForm {
 	return CollectionForm{
-		Title: " C ", BackdropImageURL: " https://example.com/b.jpg ",
+		Title: " C ", ViewMode: "TABBED_GRID", BackdropImageURL: " https://example.com/b.jpg ",
 		Folders: []FolderData{{
 			Title:     " Folder ",
-			FolderArt: FolderArt{CoverEmoji: " 🎃 ", CoverImageURL: " https://example.com/cover.jpg "},
+			FolderArt: FolderArt{TileShape: "POSTER", CoverEmoji: " 🎃 ", CoverImageURL: " https://example.com/cover.jpg "},
 			Catalogs:  refs,
 		}},
 	}
@@ -330,8 +331,7 @@ func requireNormalizedTree(t *testing.T, label string, tree CollectionWithFolder
 }
 
 // A builder write stores its form normalized — text trimmed, new and edited
-// catalog names included, an empty view mode or tile shape as its default —
-// and responds with what it stored. A padded URL is trimmed before it is
+// catalog names included — and responds with what it stored. A padded URL is trimmed before it is
 // checked, so it is accepted.
 func TestBuilderWritesStoreNormalizedValues(t *testing.T) {
 	ctx := context.Background()
@@ -387,10 +387,10 @@ func TestImportBundleStoresNormalizedValues(t *testing.T) {
 	b := readTestBundle(t)
 	b.Catalogs[0].Name = " 80s Horror "
 	bc := &b.Collections[0]
-	bc.Title, bc.ViewMode, bc.BackdropImageURL = " C ", "", " https://example.com/b.jpg "
+	bc.Title, bc.BackdropImageURL = " C ", " https://example.com/b.jpg "
 	bc.Catalogs[0].Name = " Slashers "
 	f := &bc.Folders[0]
-	f.Title, f.TileShape, f.CoverEmoji, f.CoverImageURL = " Folder ", "", " 🎃 ", " https://example.com/cover.jpg "
+	f.Title, f.TileShape, f.CoverEmoji, f.CoverImageURL = " Folder ", "POSTER", " 🎃 ", " https://example.com/cover.jpg "
 
 	catalogs, collections, err := db.ImportBundle(context.Background(), newTestProfile(t, db, "importer"), b, nil)
 	if err != nil {
@@ -411,23 +411,18 @@ func TestSubscribeCopiesStoredValuesAsTheyAre(t *testing.T) {
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	scoped := &NewScopedCatalog{Key: "k", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}"}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Source", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: scoped}}}},
+		Title: "Source", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{{New: scoped}}}},
 	})
 	if err != nil {
 		t.Fatalf("CreateUserCollection: %v", err)
 	}
-	for _, stmt := range []string{
-		`UPDATE collections SET title = ' Source ', view_mode = '' WHERE id = ?`,
-		`UPDATE folders SET tile_shape = '' WHERE collection_id = ?`,
-	} {
-		if _, err := db.conn.ExecContext(ctx, stmt, source.ID.String()); err != nil {
-			t.Fatalf("storing unnormalized values: %v", err)
-		}
+	if _, err := db.conn.ExecContext(ctx, `UPDATE collections SET title = ' Source ' WHERE id = ?`, source.ID.String()); err != nil {
+		t.Fatalf("storing an unnormalized value: %v", err)
 	}
 
 	subscribed := subscribeCollection(t, db, owner, subscriber, source.ID)
-	if subscribed.Title != " Source " || subscribed.ViewMode != "" || subscribed.Folders[0].TileShape != "" {
-		t.Errorf("subscribed title, view mode, tile shape = %q, %q, %q, want the source's as stored", subscribed.Title, subscribed.ViewMode, subscribed.Folders[0].TileShape)
+	if subscribed.Title != " Source " {
+		t.Errorf("subscribed title = %q, want the source's as stored", subscribed.Title)
 	}
 	if subscribed.Subscription == nil || subscribed.Subscription.UpdateAvailable {
 		t.Errorf("subscription = %+v, want one with no update available", subscribed.Subscription)
@@ -453,7 +448,7 @@ func TestLengthBoundsCountCharacters(t *testing.T) {
 	if _, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm(atCeiling)); err != nil {
 		t.Fatalf("create with a name of %d characters in a script of three-byte characters: %v", maxNameLen, err)
 	}
-	_, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: atCeiling, Folders: []FolderData{{Title: atCeiling}}})
+	_, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: atCeiling, ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: atCeiling}}})
 	if err != nil {
 		t.Fatalf("create a collection and folder titled with %d such characters: %v", maxNameLen, err)
 	}
@@ -469,9 +464,9 @@ func TestLengthBoundsCountCharacters(t *testing.T) {
 		form CollectionForm
 		want string
 	}{
-		{"a cover emoji", CollectionForm{Title: "C", Folders: []FolderData{{Title: "F", FolderArt: FolderArt{CoverEmoji: strings.Repeat("字", maxCoverEmojiLen+1)}}}}, "cover emoji is longer than 32 characters"},
-		{"a genre", CollectionForm{Title: "C", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{CatalogID: &uuid.UUID{1}, Genre: strings.Repeat("字", maxGenreLen+1)}}}}}, "genre is longer than 64 characters"},
-		{"a media URL", CollectionForm{Title: "C", BackdropImageURL: "https://example.com/" + strings.Repeat("字", maxMediaURLLen)}, "backdrop image url is longer than 2048 characters"},
+		{"a cover emoji", CollectionForm{Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{{Title: "F", FolderArt: FolderArt{TileShape: "POSTER", CoverEmoji: strings.Repeat("字", maxCoverEmojiLen+1)}}}}, "cover emoji is longer than 32 characters"},
+		{"a genre", CollectionForm{Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{{CatalogID: &uuid.UUID{1}, Genre: strings.Repeat("字", maxGenreLen+1)}}}}}, "genre is longer than 64 characters"},
+		{"a media URL", CollectionForm{Title: "C", ViewMode: "TABBED_GRID", BackdropImageURL: "https://example.com/" + strings.Repeat("字", maxMediaURLLen)}, "backdrop image url is longer than 2048 characters"},
 	} {
 		if err := tc.form.Validate(); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: Validate = %v, want it to say %q", tc.name, err, tc.want)
@@ -479,7 +474,7 @@ func TestLengthBoundsCountCharacters(t *testing.T) {
 	}
 
 	// Within the bound in characters, though past it in bytes.
-	fits := CollectionForm{Title: "C", BackdropImageURL: "https://example.com/" + strings.Repeat("字", 1000)}
+	fits := CollectionForm{Title: "C", ViewMode: "TABBED_GRID", BackdropImageURL: "https://example.com/" + strings.Repeat("字", 1000)}
 	if len(fits.BackdropImageURL) <= maxMediaURLLen {
 		t.Fatalf("the test URL is %d bytes, want more than %d", len(fits.BackdropImageURL), maxMediaURLLen)
 	}
@@ -495,5 +490,92 @@ func TestBundleKeyLengthCountsCharacters(t *testing.T) {
 	}
 	if problem := bundleKeyProblem("", strings.Repeat("字", maxBundleKeyLen+1), map[string]bool{}); !strings.Contains(problem, "longer than 64 characters") {
 		t.Errorf("a key of %d characters: %q, want it too long", maxBundleKeyLen+1, problem)
+	}
+}
+
+// A view mode and a tile shape are required: a builder write or an import
+// with either empty, or with the FOLLOW_LAYOUT view mode, is refused rather
+// than given a default.
+func TestViewModeAndTileShapeAreRequired(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	valid := func() CollectionForm {
+		return CollectionForm{Title: "C", ViewMode: "ROWS", Folders: []FolderData{{Title: "F", FolderArt: FolderArt{TileShape: "SQUARE"}}}}
+	}
+	for _, tt := range []struct {
+		name   string
+		change func(*CollectionForm)
+		want   string
+	}{
+		{"empty view mode", func(f *CollectionForm) { f.ViewMode = "" }, `view mode must be "TABBED_GRID" or "ROWS"`},
+		{"follow layout", func(f *CollectionForm) { f.ViewMode = "FOLLOW_LAYOUT" }, `view mode must be "TABBED_GRID" or "ROWS"`},
+		{"empty tile shape", func(f *CollectionForm) { f.Folders[0].TileShape = "" }, `folder 0: tile shape must be`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			form := valid()
+			tt.change(&form)
+			if _, err := db.CreateUserCollection(ctx, owner, form); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("create = %v, want ErrInvalidInput naming %q", err, tt.want)
+			}
+		})
+	}
+
+	b := readTestBundle(t)
+	b.Collections[0].ViewMode = "FOLLOW_LAYOUT"
+	b.Collections[0].Folders[1].TileShape = ""
+	_, _, err := db.ImportBundle(ctx, owner, b, nil)
+	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "view mode must be") || !strings.Contains(err.Error(), "folder 1: tile shape must be") {
+		t.Errorf("import = %v, want both refused", err)
+	}
+
+	created, err := db.CreateUserCollection(ctx, owner, valid())
+	if err != nil {
+		t.Fatalf("create the valid form: %v", err)
+	}
+	if created.ViewMode != "ROWS" || created.Folders[0].TileShape != "SQUARE" {
+		t.Errorf("stored view mode, tile shape = %q, %q; want the form's", created.ViewMode, created.Folders[0].TileShape)
+	}
+}
+
+// A collection stored past the folder or ref caps stays readable and goes on
+// Home, but its save is refused until it is trimmed back under them.
+func TestOverCapCollectionStaysReadable(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	catalog, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Popular"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := make([]FolderCatalogRef, maxRefsPerFolder)
+	for i := range refs {
+		refs[i] = FolderCatalogRef{CatalogID: &catalog.ID, Genre: strings.Repeat("g", i+1)}
+	}
+	form := CollectionForm{Title: "Big", ViewMode: "TABBED_GRID", Folders: []FolderData{{Title: "F", FolderArt: FolderArt{TileShape: "POSTER"}, Catalogs: refs}}}
+	created, err := db.CreateUserCollection(ctx, owner, form)
+	if err != nil {
+		t.Fatalf("create at the caps: %v", err)
+	}
+	if _, err := db.conn.ExecContext(ctx, `
+		INSERT INTO folder_catalogs (folder_id, catalog_id, sort_order, genre) VALUES (?, ?, ?, 'one too many')
+	`, created.Folders[0].ID.String(), catalog.ID.String(), maxRefsPerFolder); err != nil {
+		t.Fatal(err)
+	}
+
+	stored := mustOwnCollection(t, db, owner, created.ID)
+	if got := len(stored.Folders[0].Refs); got != maxRefsPerFolder+1 {
+		t.Fatalf("stored refs = %d, want %d", got, maxRefsPerFolder+1)
+	}
+	if _, err := db.BuildPushRecord(ctx, owner, PushedHome{Collections: []SelectedCollectionInput{{CollectionID: created.ID}}}); err != nil {
+		t.Errorf("a push record with the over-cap collection = %v, want it built", err)
+	}
+	saved := saveFormOf(stored)
+	if _, err := db.UpdateUserCollection(ctx, owner, created.ID, saved); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "holds more than 20 catalogs") {
+		t.Errorf("save of the over-cap collection = %v, want refused", err)
+	}
+	saved.Folders[0].Catalogs = saved.Folders[0].Catalogs[:maxRefsPerFolder]
+	if _, err := db.UpdateUserCollection(ctx, owner, created.ID, saved); err != nil {
+		t.Errorf("save once trimmed = %v, want it saved", err)
 	}
 }

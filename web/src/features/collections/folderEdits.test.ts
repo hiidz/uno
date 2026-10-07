@@ -129,6 +129,7 @@ describe('errorRoleLabels', () => {
     const errors = { title: 'Give this collection a title.', folders: { [second.key]: { title: 'x', catalogIDs: 'y' } } }
     expect(errorRoleLabels(errors, [first, second])).toEqual(['Title', 'folder 2’s title', 'folder 2’s catalogs'])
     expect(errorRoleLabels({ folders: { [first.key]: { catalogIDs: 'y' } } }, [first])).toEqual(['folder 1’s catalogs'])
+    expect(errorRoleLabels({ title: 't', folderCount: 'n', folders: {} }, [first])).toEqual(['Title', 'Folders'])
   })
 })
 

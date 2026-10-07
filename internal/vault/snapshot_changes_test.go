@@ -20,9 +20,9 @@ func TestUpdateChangesForACollectionCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", Folders: []FolderData{
-		{Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}, newScoped("k", "Scoped", `{"with_genres":"27"}`)}},
-		{Title: "B", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID, Genre: "War"}}},
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", ViewMode: "TABBED_GRID", Folders: []FolderData{
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}, newScoped("k", "Scoped", `{"with_genres":"27"}`)}},
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "B", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID, Genre: "War"}}},
 	}})
 	pubID := source.Publication.ID
 	subscribe(t, db, subscriber, pubID)
@@ -34,7 +34,7 @@ func TestUpdateChangesForACollectionCopy(t *testing.T) {
 	form := saveFormOf(source)
 	form.Folders[0].Title = "Family"
 	form.Folders[0].Catalogs = form.Folders[0].Catalogs[:1]
-	form.Folders = append(form.Folders, FolderData{Title: "C", Catalogs: []FolderCatalogRef{newScoped("n", "Fresh", `{"with_genres":"35"}`)}})
+	form.Folders = append(form.Folders, FolderData{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "C", Catalogs: []FolderCatalogRef{newScoped("n", "Fresh", `{"with_genres":"35"}`)}})
 	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, form); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestCollectionChangesSincePublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	form := CollectionForm{Title: "Weekend", Folders: []FolderData{{Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}}}}}
+	form := CollectionForm{Title: "Weekend", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}}}}}
 	created, err := db.CreateUserCollection(ctx, owner, form)
 	if err != nil {
 		t.Fatal(err)

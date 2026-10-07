@@ -75,9 +75,9 @@ func TestSubscribeCollection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", Folders: []FolderData{
-		{Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}, newScoped("k", "Scoped", `{"with_genres":"27"}`)}},
-		{Title: "B", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID, Genre: "War"}}},
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", ViewMode: "TABBED_GRID", Folders: []FolderData{
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}, newScoped("k", "Scoped", `{"with_genres":"27"}`)}},
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "B", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID, Genre: "War"}}},
 	}})
 	pubID := source.Publication.ID
 
@@ -172,7 +172,7 @@ func TestSubscribeChecksTheSnapshot(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared"})
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", ViewMode: "TABBED_GRID"})
 	if _, err := db.conn.ExecContext(ctx, `UPDATE publications SET snapshot = json_set(snapshot, '$.collection.view_mode', 'CAROUSEL') WHERE id = ?`,
 		source.Publication.ID.String()); err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestWritingASubscribedCollectionIsRefused(t *testing.T) {
 		},
 	}
 	for name, write := range writes {
-		source := publishCollection(t, db, owner, CollectionForm{Title: name, Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
+		source := publishCollection(t, db, owner, CollectionForm{Title: name, ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 		copied := *subscribe(t, db, subscriber, source.Publication.ID).Collection
 		if err := write(copied); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("%s = %v, want ErrInvalidInput", name, err)
@@ -251,12 +251,12 @@ func TestWritingASubscribedCollectionIsRefused(t *testing.T) {
 		}
 	}
 
-	theirs := *subscribe(t, db, subscriber, publishCollection(t, db, owner, CollectionForm{Title: "Theirs"}).Publication.ID).Collection
+	theirs := *subscribe(t, db, subscriber, publishCollection(t, db, owner, CollectionForm{Title: "Theirs", ViewMode: "TABBED_GRID"}).Publication.ID).Collection
 	if err := second(db.UpdateUserCollection(ctx, owner, theirs.ID, saveFormOf(theirs))); !errors.Is(err, ErrCollectionNotFound) {
 		t.Errorf("save of someone else's subscribed collection = %v, want ErrCollectionNotFound", err)
 	}
 
-	doomed := *subscribe(t, db, subscriber, publishCollection(t, db, owner, CollectionForm{Title: "Doomed"}).Publication.ID).Collection
+	doomed := *subscribe(t, db, subscriber, publishCollection(t, db, owner, CollectionForm{Title: "Doomed", ViewMode: "TABBED_GRID"}).Publication.ID).Collection
 	if err := db.DeleteUserCollection(ctx, subscriber, doomed.ID); err != nil {
 		t.Errorf("delete a subscribed collection = %v, want nil", err)
 	}
@@ -269,9 +269,9 @@ func TestRefusedSaveLeavesCopiesUpdatingByKey(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, first, other := newTestProfile(t, db, "owner"), newTestProfile(t, db, "first"), newTestProfile(t, db, "other")
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{
-		{Title: "A", Catalogs: []FolderCatalogRef{newScoped("a", "SA", `{"with_genres":"27"}`)}},
-		{Title: "B", Catalogs: []FolderCatalogRef{newScoped("b", "SB", `{"with_genres":"35"}`)}},
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", ViewMode: "TABBED_GRID", Folders: []FolderData{
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "A", Catalogs: []FolderCatalogRef{newScoped("a", "SA", `{"with_genres":"27"}`)}},
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "B", Catalogs: []FolderCatalogRef{newScoped("b", "SB", `{"with_genres":"35"}`)}},
 	}})
 	pubID := source.Publication.ID
 	mine := *subscribe(t, db, first, pubID).Collection
@@ -333,10 +333,10 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", Folders: []FolderData{
-		{Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}, newScoped("s1", "S1", `{"with_genres":"27"}`)}},
-		{Title: "B", Catalogs: []FolderCatalogRef{newScoped("s2", "S2", `{"with_genres":"35"}`)}},
-		{Title: "C", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID, Genre: "War"}}},
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", ViewMode: "TABBED_GRID", Folders: []FolderData{
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID}, newScoped("s1", "S1", `{"with_genres":"27"}`)}},
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "B", Catalogs: []FolderCatalogRef{newScoped("s2", "S2", `{"with_genres":"35"}`)}},
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "C", Catalogs: []FolderCatalogRef{{CatalogID: &listed.ID, Genre: "War"}}},
 	}})
 	pubID := source.Publication.ID
 	before := *subscribe(t, db, subscriber, pubID).Collection
@@ -352,7 +352,7 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 	}
 	s1 := catalogNamed(t, source, "S1")
 	edit := saveFormOf(source)
-	edit.Folders = []FolderData{edit.Folders[2], edit.Folders[0], {Title: "D", Catalogs: []FolderCatalogRef{newScoped("s3", "S3", `{"with_genres":"18"}`)}}}
+	edit.Folders = []FolderData{edit.Folders[2], edit.Folders[0], {FolderArt: FolderArt{TileShape: "POSTER"}, Title: "D", Catalogs: []FolderCatalogRef{newScoped("s3", "S3", `{"with_genres":"18"}`)}}}
 	edit.Folders[0].Catalogs[0].Genre = "Western"
 	edit.Folders[1].Title = "A2"
 	edit.CatalogEdits = []ScopedCatalogEdit{{ID: s1.ID, Type: "movie", Provider: "tmdb", Name: "S1b", Params: s1.Params}}
@@ -406,7 +406,7 @@ func TestUpdateSubscriptionRestampsAnIdenticalCopy(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 	copied := *subscribe(t, db, subscriber, source.Publication.ID).Collection
 	if _, err := db.conn.ExecContext(ctx, `UPDATE subscriptions SET subscribed_hash = 'stale' WHERE collection_id = ?`, copied.ID.String()); err != nil {
 		t.Fatal(err)
@@ -534,7 +534,7 @@ func TestDuplicatePublication(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, duplicator := newTestProfile(t, db, "owner"), newTestProfile(t, db, "duplicator")
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 	duplicated, err := db.DuplicatePublication(ctx, duplicator, source.Publication.ID)
 	if err != nil {
 		t.Fatal(err)

@@ -170,7 +170,7 @@ func liveAs(profile vault.Profile) []nuvio.NuvioProfile {
 // needs every collection on Home to have.
 func createPushableCollection(t *testing.T, ctx context.Context, db *vault.DB, profileID uuid.UUID, title string) vault.CollectionWithFolders {
 	t.Helper()
-	coll, err := db.CreateUserCollection(ctx, profileID, vault.CollectionForm{Title: title, Folders: []vault.FolderData{{Title: "Folder"}}})
+	coll, err := db.CreateUserCollection(ctx, profileID, vault.CollectionForm{Title: title, ViewMode: "TABBED_GRID", Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder"}}})
 	if err != nil {
 		t.Fatalf("creating collection %q: %v", title, err)
 	}
@@ -568,7 +568,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 		t.Fatalf("creating profile: %v", err)
 	}
 	selected := createPushableCollection(t, ctx, db, profile.ID, "Selected")
-	deselected, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Deselected"})
+	deselected, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Deselected", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("creating deselected collection: %v", err)
 	}
@@ -610,7 +610,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 0 {
 		t.Errorf("pending right after the push = %+v, %v; want nothing: push stores the record of what it sent", pending, err)
 	}
-	if _, err := db.UpdateUserCollection(ctx, profile.ID, selected.ID, vault.CollectionForm{Title: "Renamed"}); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, profile.ID, selected.ID, vault.CollectionForm{Title: "Renamed", ViewMode: "TABBED_GRID"}); err != nil {
 		t.Fatal(err)
 	}
 	if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 1 || pending[0].ID != selected.ID || pending[0].Change != vault.PendingChanged {
@@ -793,7 +793,7 @@ func TestPush_RefusesBeforeNuvio(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating profile: %v", err)
 	}
-	empty, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Empty"})
+	empty, err := db.CreateUserCollection(ctx, profile.ID, vault.CollectionForm{Title: "Empty", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatal(err)
 	}

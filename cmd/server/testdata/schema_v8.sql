@@ -16,7 +16,7 @@ CREATE TABLE folders (
     collection_id     TEXT    NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
     title             TEXT    NOT NULL,
     sort_order        INTEGER NOT NULL,
-    tile_shape        TEXT    NOT NULL,           -- POSTER | LANDSCAPE | SQUARE
+    tile_shape        TEXT    NOT NULL DEFAULT 'LANDSCAPE',
     hide_title        INTEGER NOT NULL DEFAULT 0,
     cover_emoji       TEXT    NOT NULL DEFAULT '',
     cover_image_url   TEXT    NOT NULL DEFAULT '',
@@ -24,9 +24,8 @@ CREATE TABLE folders (
     focus_gif_enabled INTEGER NOT NULL DEFAULT 1,
     hero_video_url    TEXT    NOT NULL DEFAULT '',
     hero_backdrop_url TEXT    NOT NULL DEFAULT '',
-    title_logo_url    TEXT    NOT NULL DEFAULT '',
-    sub_key           TEXT                        -- in a subscribed collection: its key in the snapshot
-);
+    title_logo_url    TEXT    NOT NULL DEFAULT ''
+, sub_key TEXT);
 
 CREATE INDEX folders_by_collection ON folders (collection_id, sort_order);
 
@@ -40,6 +39,14 @@ CREATE TABLE folder_catalogs (
 
 CREATE INDEX folder_catalogs_by_order ON folder_catalogs (folder_id, sort_order);
 
+CREATE TABLE recipes (
+    hash       TEXT PRIMARY KEY, -- sha256 hex of uno-recipe/1, type, provider and params
+    type       TEXT NOT NULL,    -- Stremio's word: movie | series
+    provider   TEXT NOT NULL,    -- tmdb, for now
+    params     TEXT NOT NULL,    -- canonical JSON: known keys, no zero values, keys sorted
+    created_at TEXT NOT NULL     -- RFC3339 UTC
+);
+
 CREATE TABLE "collections" (
     id                 TEXT    PRIMARY KEY,
     title              TEXT    NOT NULL,
@@ -52,17 +59,15 @@ CREATE TABLE "collections" (
     home_sort_order    INTEGER,                    -- place on Home, numbered with catalogs.home_sort_order; NULL = not on Home
     created_at         TEXT    NOT NULL,           -- RFC3339 UTC
     updated_at         TEXT    NOT NULL,           -- RFC3339 UTC
-    unpublished_at     TEXT                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once acknowledged
+    unpublished_at     TEXT                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once saved
 );
 
 CREATE INDEX collections_by_owner ON collections (owner_id);
 
-CREATE TABLE catalogs (
+CREATE TABLE "catalogs" (
     id              TEXT    PRIMARY KEY,         -- UUID, permanent once selected
     name            TEXT    NOT NULL,
-    type            TEXT    NOT NULL,            -- Stremio's word: movie | series
-    provider        TEXT    NOT NULL,            -- tmdb, for now
-    params          TEXT    NOT NULL,            -- canonical JSON: known keys, no zero values, keys sorted
+    recipe_hash     TEXT    NOT NULL REFERENCES recipes(hash),
     owner_id        TEXT    NOT NULL REFERENCES profiles(id),
     collection_id   TEXT    REFERENCES collections(id) ON DELETE CASCADE, -- NULL = listed
     home_sort_order INTEGER,                     -- place on Home, numbered with collections.home_sort_order; NULL = not on Home
@@ -70,13 +75,28 @@ CREATE TABLE catalogs (
     sub_key         TEXT,                        -- in a subscribed collection: its key in the snapshot
     created_at      TEXT    NOT NULL,            -- RFC3339 UTC
     updated_at      TEXT    NOT NULL,            -- RFC3339 UTC
-    unpublished_at  TEXT,                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once acknowledged
+    unpublished_at  TEXT,                        -- RFC3339 UTC: when the publication it was added from was unpublished; NULL once saved
     CHECK (collection_id IS NULL OR home_sort_order IS NULL)
 );
 
 CREATE INDEX catalogs_by_owner ON catalogs (owner_id);
 
 CREATE INDEX catalogs_by_collection ON catalogs (collection_id);
+
+CREATE INDEX catalogs_by_recipe ON catalogs (recipe_hash);
+
+CREATE TRIGGER recipes_drop_unused_on_delete AFTER DELETE ON catalogs
+WHEN NOT EXISTS (SELECT 1 FROM catalogs WHERE recipe_hash = OLD.recipe_hash)
+BEGIN
+    DELETE FROM recipes WHERE hash = OLD.recipe_hash;
+END;
+
+CREATE TRIGGER recipes_drop_unused_on_repoint AFTER UPDATE OF recipe_hash ON catalogs
+WHEN OLD.recipe_hash IS NOT NEW.recipe_hash
+ AND NOT EXISTS (SELECT 1 FROM catalogs WHERE recipe_hash = OLD.recipe_hash)
+BEGIN
+    DELETE FROM recipes WHERE hash = OLD.recipe_hash;
+END;
 
 CREATE TABLE publications (
     id               TEXT    PRIMARY KEY,         -- UUID, kept when an update is published
@@ -119,8 +139,8 @@ CREATE UNIQUE INDEX subscriptions_by_collection ON subscriptions (collection_id)
 
 -- Ending a publication, by unpublishing it or by deleting its source, releases
 -- its subscribers ahead of the cascade that deletes their subscriptions: each
--- subscribed row becomes its subscriber's own, marked unpublished until they
--- acknowledge it, with no snapshot keys left in it.
+-- subscribed row becomes its subscriber's own, marked unpublished, with no
+-- snapshot keys left in it.
 CREATE TRIGGER publications_release_subscribers BEFORE DELETE ON publications
 BEGIN
     UPDATE catalogs SET unpublished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')

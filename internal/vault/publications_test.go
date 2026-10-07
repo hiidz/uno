@@ -73,9 +73,9 @@ func TestPublishCollectionSharesEveryReferencedCatalog(t *testing.T) {
 	}
 	series := newScoped("draft:s", "Ghosts", "{}")
 	series.New.Type = "series"
-	c := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", Folders: []FolderData{
-		{Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &private.ID}, series}},
-		{Title: "B", Catalogs: []FolderCatalogRef{{CatalogID: &private.ID, Genre: "Drama"}}},
+	c := publishCollection(t, db, owner, CollectionForm{Title: "Weekend", ViewMode: "TABBED_GRID", Folders: []FolderData{
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "A", Catalogs: []FolderCatalogRef{{CatalogID: &private.ID}, series}},
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "B", Catalogs: []FolderCatalogRef{{CatalogID: &private.ID, Genre: "Drama"}}},
 	}})
 	detail, err := db.GetPublication(context.Background(), other, c.Publication.ID)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestPublishRefusals(t *testing.T) {
 	if _, err := db.PublishCatalog(ctx, other, copied.Catalog.ID); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("publish a subscribed catalog = %v, want ErrInvalidInput", err)
 	}
-	sourceCollection := publishCollection(t, db, owner, CollectionForm{Title: "Shared"})
+	sourceCollection := publishCollection(t, db, owner, CollectionForm{Title: "Shared", ViewMode: "TABBED_GRID"})
 	copiedCollection := subscribe(t, db, other, sourceCollection.Publication.ID)
 	if _, err := db.PublishCollection(ctx, other, copiedCollection.Collection.ID); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("publish a subscribed collection = %v, want ErrInvalidInput", err)
@@ -177,9 +177,10 @@ func TestUnpublishReleasesSubscribers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save of the released copy: %v", err)
 	}
-	if saved.Name != "Mine now" || saved.PublisherUnpublished {
-		t.Errorf("released copy after a save = name %q, publisher unpublished %v; want renamed, unmarked", saved.Name, saved.PublisherUnpublished)
+	if saved.Name != "Mine now" || !saved.PublisherUnpublished {
+		t.Errorf("released copy after a save = name %q, publisher unpublished %v; want renamed, still marked", saved.Name, saved.PublisherUnpublished)
 	}
+	acknowledgeCatalog(t, db, subscriber, released.ID)
 
 	again, err := db.PublishCatalog(ctx, owner, c.ID)
 	if err != nil {
@@ -203,7 +204,7 @@ func TestUnpublishCollection(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Shared", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 	copied := subscribe(t, db, subscriber, source.Publication.ID).Collection
 
 	if _, err := db.UnpublishCollection(ctx, subscriber, source.ID); !errors.Is(err, ErrCollectionNotFound) {
@@ -225,8 +226,20 @@ func TestUnpublishCollection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save of the released copy: %v", err)
 	}
-	if saved.PublisherUnpublished {
-		t.Error("released copy is still marked after a save")
+	if !saved.PublisherUnpublished {
+		t.Error("released copy is unmarked by a save, want it marked until acknowledged")
+	}
+	if got := releasedCopies(t, db, subscriber); len(got) != 1 || got[0] != (ReleasedCopy{Kind: "collection", ID: copied.ID, Name: "Shared"}) {
+		t.Errorf("ReleasedCopies = %+v, want the collection copy", got)
+	}
+	if _, err := db.AcknowledgeReleasedCollection(ctx, owner, copied.ID); !errors.Is(err, ErrCollectionNotFound) {
+		t.Errorf("acknowledge someone else's collection = %v, want ErrCollectionNotFound", err)
+	}
+	if rest, err := db.AcknowledgeReleasedCollection(ctx, subscriber, copied.ID); err != nil || len(rest) != 0 {
+		t.Errorf("AcknowledgeReleasedCollection = %+v, %v; want nothing left", rest, err)
+	}
+	if mustOwnCollection(t, db, subscriber, copied.ID).PublisherUnpublished {
+		t.Error("released copy is still marked once acknowledged")
 	}
 }
 
@@ -241,7 +254,7 @@ func TestDeletingASourceUnpublishes(t *testing.T) {
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 
 	deleted := publishCatalog(t, db, owner, "Deleted", `{"sort_by":"revenue.desc"}`)
-	collection := publishCollection(t, db, owner, CollectionForm{Title: "Gone"})
+	collection := publishCollection(t, db, owner, CollectionForm{Title: "Gone", ViewMode: "TABBED_GRID"})
 	copies := []CommunityCopy{
 		subscribe(t, db, subscriber, deleted.Publication.ID),
 		subscribe(t, db, subscriber, collection.Publication.ID),
@@ -275,7 +288,7 @@ func TestSubscriberCountFollowsDeletes(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, a, b := newTestProfile(t, db, "owner"), newTestProfile(t, db, "a"), newTestProfile(t, db, "b")
-	c := publishCollection(t, db, owner, CollectionForm{Title: "Shared", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
+	c := publishCollection(t, db, owner, CollectionForm{Title: "Shared", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")}}}})
 	subscribe(t, db, a, c.Publication.ID)
 	copyB := subscribe(t, db, b, c.Publication.ID)
 	count := func() int {
@@ -304,7 +317,7 @@ func TestCommunityListsEveryLivePublication(t *testing.T) {
 	a, b, viewer := newTestProfile(t, db, "a"), newTestProfile(t, db, "b"), newTestProfile(t, db, "viewer")
 	first := publishCatalog(t, db, a, "Same Recipe", `{"sort_by":"revenue.desc"}`)
 	publishCatalog(t, db, b, "Same Recipe Too", `{"sort_by":"revenue.desc"}`)
-	form := CollectionForm{Title: "Twins", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", `{"with_genres":"27"}`)}}}}
+	form := CollectionForm{Title: "Twins", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", `{"with_genres":"27"}`)}}}}
 	publishCollection(t, db, a, form)
 	publishCollection(t, db, b, form)
 
@@ -331,8 +344,8 @@ func TestPublishAcceptsACollectionWithASubscribedCatalog(t *testing.T) {
 	publisher, owner, subscriber := newTestProfile(t, db, "publisher"), newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	theirs := publishCatalog(t, db, publisher, "Theirs", "{}")
 	added := subscribe(t, db, owner, theirs.Publication.ID).Catalog
-	collection, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Mine", Folders: []FolderData{
-		{Title: "F", Catalogs: CatalogRefs(added.ID)},
+	collection, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Mine", ViewMode: "TABBED_GRID", Folders: []FolderData{
+		{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(added.ID)},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -370,7 +383,7 @@ func TestOnlyOwnReadsCarrySharingState(t *testing.T) {
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
 	c := publishCatalog(t, db, owner, "Popular", "{}")
-	coll := publishCollection(t, db, owner, CollectionForm{Title: "C", Folders: []FolderData{{Title: "F", Catalogs: CatalogRefs(c.ID)}}})
+	coll := publishCollection(t, db, owner, CollectionForm{Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(c.ID)}}})
 	savePush(t, db, owner, PushedHome{Catalogs: []SelectedCatalogInput{{CatalogID: c.ID, ShowInHome: true}}})
 
 	own, err := db.GetUserCatalogs(ctx, owner)
@@ -423,4 +436,30 @@ func countKind(items []CommunityItem, kind string) int {
 // sameCatalog reports whether a and b have the same name and recipe.
 func sameCatalog(a, b BundleCatalog) bool {
 	return a.Name == b.Name && a.Type == b.Type && a.Provider == b.Provider && string(a.Params) == string(b.Params)
+}
+
+// releasedCopies is ReleasedCopies for profileID, failing t on an error.
+func releasedCopies(t *testing.T, db *DB, profileID uuid.UUID) []ReleasedCopy {
+	t.Helper()
+	copies, err := db.ReleasedCopies(context.Background(), profileID)
+	if err != nil {
+		t.Fatalf("ReleasedCopies: %v", err)
+	}
+	return copies
+}
+
+// acknowledgeCatalog checks that released catalog id is profileID's one
+// released copy, acknowledges it, and checks it is no longer marked.
+func acknowledgeCatalog(t *testing.T, db *DB, profileID, id uuid.UUID) {
+	t.Helper()
+	if got := releasedCopies(t, db, profileID); len(got) != 1 || got[0].Kind != "catalog" || got[0].ID != id {
+		t.Fatalf("ReleasedCopies = %+v, want catalog %s", got, id)
+	}
+	rest, err := db.AcknowledgeReleasedCatalog(context.Background(), profileID, id)
+	if err != nil || len(rest) != 0 {
+		t.Fatalf("AcknowledgeReleasedCatalog = %+v, %v; want nothing left", rest, err)
+	}
+	if reloadCatalog(t, db, id).PublisherUnpublished {
+		t.Error("released catalog is still marked once acknowledged")
+	}
 }

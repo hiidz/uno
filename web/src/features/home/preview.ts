@@ -13,13 +13,7 @@
  */
 
 import type { Catalog, CatalogType, Collection } from '@/api'
-import {
-  normalizeTileShape,
-  normalizeViewMode,
-  type PreviewCollection,
-  type PreviewFolder,
-  type PreviewSource,
-} from '@/features/preview/model'
+import type { PreviewCollection, PreviewFolder, PreviewSource } from '@/features/preview/model'
 import { bandOf } from './pending'
 import type { HomeBand, HomeCatalogEntry, HomeEntry } from './pending'
 
@@ -61,8 +55,6 @@ function toFolder(
   folder: NonNullable<Collection['folders']>[number],
   catalogById: ReadonlyMap<string, Catalog>,
 ): PreviewFolder {
-  const { shape, assumed } = normalizeTileShape(folder.tile_shape)
-
   // `?? []` is a guard, not a live case: the Go side runs `refs` through
   // `orEmpty`. It stays because `getList` coerces only the top-level response,
   // never nested arrays like this one.
@@ -83,8 +75,7 @@ function toFolder(
     id: folder.id,
     title: folder.title,
     hideTitle: folder.hide_title,
-    tileShape: shape,
-    tileShapeAssumed: assumed,
+    tileShape: folder.tile_shape,
     coverEmoji: folder.cover_emoji,
     coverImageUrl: folder.cover_image_url,
     sources,
@@ -106,21 +97,17 @@ export function toPreviewCollection(
       title: 'Unavailable collection',
       pinned: false,
       viewMode: 'ROWS',
-      viewModeAssumed: true,
       showAllTab: false,
       folders: [],
       missing: true,
     }
   }
 
-  const { mode, assumed } = normalizeViewMode(collection.view_mode)
-
   return {
     id,
     title: collection.title,
     pinned: collection.pin_to_top,
-    viewMode: mode,
-    viewModeAssumed: assumed,
+    viewMode: collection.view_mode,
     showAllTab: collection.show_all_tab,
     // Same guard as `catalog_ids` above.
     folders: (collection.folders ?? []).map((f) => toFolder(f, catalogById)),

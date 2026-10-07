@@ -20,8 +20,8 @@ func TestValidateInlineCatalogs(t *testing.T) {
 
 	form := func(newParams, editParams string) vault.CollectionForm {
 		return vault.CollectionForm{
-			Title: "C",
-			Folders: []vault.FolderData{{Title: "F", Catalogs: []vault.FolderCatalogRef{
+			Title: "C", ViewMode: "TABBED_GRID",
+			Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []vault.FolderCatalogRef{
 				{New: &vault.NewScopedCatalog{Key: "draft:a", Type: "movie", Name: "New", Provider: "tmdb", Params: newParams}},
 			}}},
 			CatalogEdits: []vault.ScopedCatalogEdit{

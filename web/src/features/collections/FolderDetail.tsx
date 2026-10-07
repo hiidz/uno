@@ -7,6 +7,7 @@ import { Icon } from '@/components/Icon'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import { CatalogRow } from './CatalogRow'
 import {
+  MAX_REFS_PER_FOLDER,
   TILE_SHAPES,
   folderLabel,
   refGroups,
@@ -317,6 +318,7 @@ function FolderCatalogs({ folder, errors, options, optionByID, unit, ...actions 
           <CatalogRefPicker
             options={options}
             inFolder={inFolder}
+            full={folder.refs.length >= MAX_REFS_PER_FOLDER}
             onAdd={actions.onAddRef}
             onRemove={actions.onRemoveCatalog}
             onNew={actions.onAddNewInCollection}

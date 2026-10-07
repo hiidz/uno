@@ -320,10 +320,8 @@ export function PreviewCatalogRow({ row, tiles }: { row: PreviewRow; tiles: Cata
 
 /**
  * A folder's page, opened from its tile — DESIGN.md's "Preview folder page".
- * `view_mode` decides the body: `TABBED_GRID` and `FOLLOW_LAYOUT` both render
- * as tabs (the latter forcing the "All" tab first, Nuvio's own default, per
- * the Follows the app's layout amendment); `ROWS` stacks every catalog as its
- * own row. The tabs are the app's own `.choice` pills.
+ * `view_mode` decides the body: `TABBED_GRID` renders as tabs; `ROWS` stacks
+ * every catalog as its own row. The tabs are the app's own `.choice` pills.
  *
  * The back button lives beside the folder's own title — the Back Like the
  * Remote rule. `onBack` is the one way this asks to
@@ -345,7 +343,7 @@ export function PreviewFolderPage({
   backLabel?: string
 }) {
   const name = folder.title || 'Untitled folder'
-  const tabbed = collection.viewMode === 'TABBED_GRID' || collection.viewMode === 'FOLLOW_LAYOUT'
+  const tabbed = collection.viewMode === 'TABBED_GRID'
 
   return (
     <>
@@ -365,7 +363,7 @@ export function PreviewFolderPage({
         (tabbed ? (
           <PreviewTabbedCatalogs
             folder={folder}
-            showAllTab={collection.viewMode === 'FOLLOW_LAYOUT' ? true : collection.showAllTab}
+            showAllTab={collection.showAllTab}
             tiles={tiles}
           />
         ) : (
@@ -477,5 +475,4 @@ function PreviewFolderSourceRow({
 export const FOLDER_LAYOUT_LABEL: Record<PreviewCollection['viewMode'], string> = {
   TABBED_GRID: 'Tabbed grids, one tab per catalog',
   ROWS: 'Rows, one per catalog',
-  FOLLOW_LAYOUT: "Follows the app's layout",
 }

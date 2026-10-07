@@ -43,7 +43,8 @@ export interface Catalog {
    *  for the owner's own catalog, and always `null` inside a collection. */
   subscription: SubscriptionState | null
   /** Its publisher unpublished what it was added from, which made it this
-   *  profile's own; cleared by its next save. */
+   *  profile's own; cleared once the owner acknowledges the release
+   *  (`POST .../acknowledge-release`), never by a save. */
   publisher_unpublished: boolean
 }
 
@@ -65,11 +66,20 @@ export interface SubscriptionState {
 
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
 
+/**
+ * A collection's `view_mode`, as `validViewModes` in
+ * `internal/vault/validation.go` holds it: required, and nothing else. It is a
+ * collection-level setting that applies to every folder; it describes how a
+ * folder's catalogs are laid out once you're inside it, not how the collection
+ * itself sits on home.
+ */
+export type ViewMode = 'TABBED_GRID' | 'ROWS'
+
 /** How a folder looks: everything it holds but its identity, title and refs.
  *  The wire shape of `vault.FolderArt`, shared by the saved folder, a
  *  snapshot's folder and the save payload. */
 export interface FolderLook {
-  tile_shape: TileShape | ''
+  tile_shape: TileShape
   hide_title: boolean
   cover_emoji: string
   cover_image_url: string
@@ -101,7 +111,7 @@ interface FolderRef {
 /** A collection's own settings, as a saved collection and a snapshot's
  *  collection both carry them. */
 interface CollectionSettings {
-  view_mode: string
+  view_mode: ViewMode
   show_all_tab: boolean
   backdrop_image_url: string
   /** Nuvio's focus glow on this collection's home-screen folder cards. */
@@ -203,7 +213,7 @@ export interface CommunityItem {
 /** One folder of a listed collection, as much as its tile shows. */
 export interface CommunityFolder {
   title: string
-  tile_shape: TileShape | ''
+  tile_shape: TileShape
   cover_emoji: string
   cover_image_url: string
 }

@@ -452,6 +452,31 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/p/{profileIndex}/catalogs/{catalogID}/acknowledge-release:
+    parameters:
+      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/CatalogID"
+    post:
+      tags: [community]
+      operationId: acknowledgeReleasedCatalog
+      summary: Acknowledge a released catalog
+      description: |
+        Clears the catalog's publisher_unpublished mark, set or not, once the
+        builder has told its owner the publication ended. Saving never clears it.
+      responses:
+        "200":
+          description: Acknowledged; the released copies still unacknowledged.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReleasedCopy"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/p/{profileIndex}/collections:
     parameters:
       - $ref: "#/components/parameters/ProfileIndex"
@@ -634,6 +659,56 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/p/{profileIndex}/collections/{collectionID}/acknowledge-release:
+    parameters:
+      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/CollectionID"
+    post:
+      tags: [community]
+      operationId: acknowledgeReleasedCollection
+      summary: Acknowledge a released collection
+      description: |
+        Clears the collection's publisher_unpublished mark, set or not, once the
+        builder has told its owner the publication ended. Saving never clears it.
+      responses:
+        "200":
+          description: Acknowledged; the released copies still unacknowledged.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReleasedCopy"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/p/{profileIndex}/released:
+    parameters:
+      - $ref: "#/components/parameters/ProfileIndex"
+    get:
+      tags: [community]
+      operationId: listReleased
+      summary: The caller's released copies not yet acknowledged
+      description: |
+        Copies whose publication ended (unpublished, or its source deleted),
+        oldest release first, until each is acknowledged, for the builder to
+        read on each profile load.
+      responses:
+        "200":
+          description: The released copies.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReleasedCopy"
+        "400": { $ref: "#/components/responses/BadProfileIndex" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/ProfileNotFound" }
 
   /api/p/{profileIndex}/community:
     parameters:
@@ -1739,7 +1814,14 @@ components:
             - type: "null"
         publisher_unpublished:
           type: boolean
-          description: Was a subscribed copy until its publisher unpublished; cleared by the next save.
+          description: Was a subscribed copy until its publisher unpublished; cleared only by acknowledging the release.
+    ReleasedCopy:
+      type: object
+      required: [kind, id, name]
+      properties:
+        kind: { type: string, enum: [catalog, collection] }
+        id: { type: string, format: uuid }
+        name: { type: string, description: "A catalog's name or a collection's title." }
     CatalogForm:
       type: object
       required: [type, name, provider, params]
@@ -1751,12 +1833,12 @@ components:
 
     ViewMode:
       type: string
-      enum: [TABBED_GRID, ROWS, FOLLOW_LAYOUT]
-      description: Empty is stored as TABBED_GRID.
+      enum: [TABBED_GRID, ROWS]
+      description: Required; empty or any other value is a 400.
     TileShape:
       type: string
       enum: [POSTER, LANDSCAPE, SQUARE]
-      description: Empty is stored as POSTER.
+      description: Required; empty or any other value is a 400.
 
     FolderArt:
       type: object
@@ -1816,7 +1898,9 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SubscriptionState"
             - type: "null"
-        publisher_unpublished: { type: boolean }
+        publisher_unpublished:
+          type: boolean
+          description: Was a subscribed copy until its publisher unpublished; cleared only by acknowledging the release.
         folders:
           type: array
           items:
@@ -1829,7 +1913,7 @@ components:
 
     CollectionForm:
       type: object
-      required: [title]
+      required: [title, view_mode]
       properties:
         title: { type: string }
         view_mode: { $ref: "#/components/schemas/ViewMode" }
@@ -1838,6 +1922,7 @@ components:
         focus_glow_enabled: { type: boolean }
         folders:
           type: array
+          maxItems: 10
           items:
             $ref: "#/components/schemas/FolderForm"
         catalog_edits:
@@ -1849,6 +1934,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/FolderArt"
         - type: object
+          required: [title, tile_shape]
           properties:
             id:
               type: string
@@ -1856,6 +1942,7 @@ components:
               description: An existing folder's id; absent for a new folder.
             catalogs:
               type: array
+              maxItems: 20
               description: The folder's catalogs, in order.
               items:
                 $ref: "#/components/schemas/FolderCatalogRef"

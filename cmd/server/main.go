@@ -1,13 +1,16 @@
 // Command server wires up config, vault, TMDB, and Nuvio into an api.Server
-// and starts listening.
+// and starts listening; `server migrate --db <path>` runs the v8→v9
+// migration instead (migrate.go).
 package main
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -30,9 +33,18 @@ import (
 const shutdownGracePeriod = 60 * time.Second
 
 func main() {
-	if err := run(); err != nil {
+	if err := runCommand(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// runCommand runs the migrate subcommand when args name it, writing its
+// report to out, and the server otherwise.
+func runCommand(ctx context.Context, args []string, out io.Writer) error {
+	if len(args) > 0 && args[0] == "migrate" {
+		return runMigrate(ctx, args[1:], out)
+	}
+	return run()
 }
 
 // run holds every startup step, so each one's cleanup can unwind through a

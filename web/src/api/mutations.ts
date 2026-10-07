@@ -1,5 +1,5 @@
 import { sendJSON } from './http'
-import type { Catalog, CatalogType, Collection, CommunityCopy, FolderLook, TMDBKeyStatus } from './types'
+import type { Catalog, CatalogType, Collection, CommunityCopy, FolderLook, TMDBKeyStatus, ViewMode } from './types'
 
 /** Publishes a listed catalog as it is saved now, or publishes its update —
  *  `POST .../catalogs/{id}/publish`. An update keeps the publication's id;
@@ -163,7 +163,7 @@ interface ScopedCatalogEdit {
  */
 export interface CollectionPayload {
   title: string
-  view_mode: string
+  view_mode: ViewMode
   show_all_tab: boolean
   backdrop_image_url: string
   focus_glow_enabled: boolean

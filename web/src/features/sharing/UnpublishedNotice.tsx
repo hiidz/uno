@@ -7,7 +7,7 @@ interface UnpublishedNoticeProps {
 
 /** The line an editor leads with while its row is one its publisher
  *  unpublished: added from Community, and now this profile's own to edit.
- *  Saving the row clears it. Nothing otherwise. */
+ *  It stays until the release is acknowledged. Nothing otherwise. */
 export function UnpublishedNotice({ row }: UnpublishedNoticeProps) {
   if (!publisherUnpublished(row)) return null
   return (

@@ -139,7 +139,7 @@ func newRouteFixture(t *testing.T) routeFixture {
 		}
 		coll, err := f.db.CreateUserCollection(ctx, p.ID, vault.CollectionForm{
 			Title: name, ViewMode: "ROWS",
-			Folders: []vault.FolderData{{Title: "Folder", Catalogs: vault.CatalogRefs(c.ID)}},
+			Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(c.ID)}},
 		})
 		if err != nil {
 			t.Fatalf("create collection %s: %v", name, err)
@@ -271,7 +271,7 @@ func TestCollectionRoutes(t *testing.T) {
 	withNew := func(params string) string {
 		return string(mustJSON(t, vault.CollectionForm{
 			Title: "Scoped", ViewMode: "ROWS",
-			Folders: []vault.FolderData{{Title: "F", Catalogs: []vault.FolderCatalogRef{{New: &vault.NewScopedCatalog{
+			Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []vault.FolderCatalogRef{{New: &vault.NewScopedCatalog{
 				Key: "s", Type: "movie", Name: "S", Provider: "tmdb", Params: params,
 			}}}}},
 		}))
@@ -279,7 +279,7 @@ func TestCollectionRoutes(t *testing.T) {
 	referencing := func(id uuid.UUID) string {
 		return string(mustJSON(t, vault.CollectionForm{
 			Title: "Refs", ViewMode: "ROWS",
-			Folders: []vault.FolderData{{Title: "F", Catalogs: vault.CatalogRefs(id)}},
+			Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: vault.CatalogRefs(id)}},
 		}))
 	}
 

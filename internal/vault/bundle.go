@@ -36,17 +36,15 @@ type Bundle struct {
 }
 
 // BundleCatalog is one catalog of a Bundle. Params is the stored recipe
-// string, carried byte for byte. SourceID and RecipeHash remember the row it
-// was extracted from and that row's recipe hash; neither is part of the
-// format.
+// string, carried byte for byte. SourceID remembers the row it was extracted
+// from and is not part of the format.
 type BundleCatalog struct {
-	Key        string          `json:"key"`
-	Name       string          `json:"name"`
-	Type       string          `json:"type"`
-	Provider   string          `json:"provider"`
-	Params     json.RawMessage `json:"params"`
-	SourceID   *uuid.UUID      `json:"-"`
-	RecipeHash string          `json:"-"`
+	Key      string          `json:"key"`
+	Name     string          `json:"name"`
+	Type     string          `json:"type"`
+	Provider string          `json:"provider"`
+	Params   json.RawMessage `json:"params"`
+	SourceID *uuid.UUID      `json:"-"`
 }
 
 // BundleCollection is one collection of a Bundle: its own fields, the
@@ -340,13 +338,12 @@ func (cx *collectionExtractor) ownKey(c Catalog) string {
 func bundleCatalogFrom(key string, c Catalog) BundleCatalog {
 	sourceID := c.ID
 	return BundleCatalog{
-		Key:        key,
-		Name:       c.Name,
-		Type:       c.Type,
-		Provider:   c.Provider,
-		Params:     json.RawMessage(c.Params),
-		SourceID:   &sourceID,
-		RecipeHash: c.RecipeHash,
+		Key:      key,
+		Name:     c.Name,
+		Type:     c.Type,
+		Provider: c.Provider,
+		Params:   json.RawMessage(c.Params),
+		SourceID: &sourceID,
 	}
 }
 

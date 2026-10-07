@@ -83,7 +83,8 @@ type StickerRow = Pick<Catalog, 'publication' | 'subscription' | 'publisher_unpu
 /** The one Community sticker a row carries, changing with its state: an own
  *  row reads Published, then To publish once edited since; a row added
  *  from Community reads From Community, then Update available, and
- *  Unpublished once its publisher unpublished it, until it is saved. */
+ *  Unpublished once its publisher unpublished it, until its release is
+ *  acknowledged. */
 function communitySticker(row: StickerRow): SharingSticker | null {
   if (row.subscription) return row.subscription.update_available ? UPDATE_AVAILABLE : FROM_COMMUNITY
   const state = ownSharing(row.publication)

@@ -24,8 +24,8 @@ func TestUpdateUserCollectionRejectsFolderRefToAnotherOwnersPublicCatalog(t *tes
 	}
 
 	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title:   "My Collection",
-		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(othersCatalog.ID)}},
+		Title: "My Collection", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(othersCatalog.ID)}},
 	})
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("folder ref to another owner's public catalog: got %v, want ErrInvalidInput", err)
@@ -45,8 +45,8 @@ func TestUpdateUserCollectionRejectsFolderRefToCatalogScopedElsewhere(t *testing
 	scoped := createScopedCatalog(t, db, owner, collectionA, listedCatalogForm("Scoped to A"))
 
 	_, err := db.UpdateUserCollection(ctx, owner, collectionB, CollectionForm{
-		Title:   "B",
-		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(scoped.ID)}},
+		Title: "B", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(scoped.ID)}},
 	})
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("folder ref in B to catalog scoped to A: got %v, want ErrInvalidInput", err)
@@ -66,8 +66,8 @@ func TestCreateUserCollectionRejectsFolderRefToScopedCatalog(t *testing.T) {
 	scoped := createScopedCatalog(t, db, owner, otherCollection, listedCatalogForm("Scoped"))
 
 	_, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:   "New",
-		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(scoped.ID)}},
+		Title: "New", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(scoped.ID)}},
 	})
 	if !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("folder ref to scoped catalog on create: got %v, want ErrInvalidInput", err)
@@ -88,10 +88,10 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 
 	// Referenced by two folders in the same collection.
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title: "My Collection",
+		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Folder 1", Catalogs: CatalogRefs(scoped.ID)},
-			{Title: "Folder 2", Catalogs: CatalogRefs(scoped.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: CatalogRefs(scoped.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 2", Catalogs: CatalogRefs(scoped.ID)},
 		},
 	})
 	if err != nil {
@@ -101,9 +101,9 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 
 	// Drop the ref from folder 2, keep folder 1 — the catalog must survive.
 	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title: "My Collection",
+		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{ID: &folder1ID, Title: "Folder 1", Catalogs: CatalogRefs(scoped.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, ID: &folder1ID, Title: "Folder 1", Catalogs: CatalogRefs(scoped.ID)},
 		},
 	})
 	if err != nil {
@@ -119,8 +119,8 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 
 	// Drop the last ref — the catalog must now be GC'd.
 	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title:   "My Collection",
-		Folders: []FolderData{{ID: &folder1ID, Title: "Folder 1", Catalogs: nil}},
+		Title: "My Collection", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, ID: &folder1ID, Title: "Folder 1", Catalogs: nil}},
 	})
 	if err != nil {
 		t.Fatalf("saving with no refs: %v", err)
@@ -146,9 +146,9 @@ func TestUpdateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 	collectionID := newTestCollection(t, db, owner, "My Collection")
 
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title: "My Collection",
+		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Folder", Catalogs: []FolderCatalogRef{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: []FolderCatalogRef{
 				{New: &NewScopedCatalog{Key: "draft:a", Type: "movie", Name: "New Scoped", Provider: "tmdb", Params: `{"a":1}`}},
 			}},
 		},
@@ -182,9 +182,9 @@ func TestCreateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 
 	saved, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "New Collection",
+		Title: "New Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Folder", Catalogs: []FolderCatalogRef{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: []FolderCatalogRef{
 				{New: &NewScopedCatalog{Key: "draft:a", Type: "series", Name: "New Scoped", Provider: "tmdb", Params: "{}"}},
 			}},
 		},
@@ -218,12 +218,12 @@ func TestUpdateUserCollectionRollsBackNewCatalogOnLaterFolderFailure(t *testing.
 	}
 
 	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title: "My Collection",
+		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Folder 1", Catalogs: []FolderCatalogRef{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: []FolderCatalogRef{
 				{New: &NewScopedCatalog{Key: "draft:a", Type: "movie", Name: "New Scoped", Provider: "tmdb", Params: "{}"}},
 			}},
-			{Title: "Folder 2", Catalogs: CatalogRefs(listed.ID, listed.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 2", Catalogs: CatalogRefs(listed.ID, listed.ID)},
 		},
 	})
 	if err == nil {
@@ -257,8 +257,8 @@ func TestUpdateUserCollectionResponseIncludesScopedCatalogs(t *testing.T) {
 	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title:   "My Collection",
-		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(listed.ID, scoped.ID)}},
+		Title: "My Collection", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(listed.ID, scoped.ID)}},
 	})
 	if err != nil {
 		t.Fatalf("saving collection: %v", err)
@@ -309,12 +309,12 @@ func TestUpdateUserCollectionResolvesSharedNewKeyToOneCatalog(t *testing.T) {
 	}
 
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title: "My Collection",
+		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Folder 1", Catalogs: []FolderCatalogRef{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: []FolderCatalogRef{
 				ref(shared, "Action"), ref(shared, "Comedy"), ref(twinA, ""), ref(twinB, ""),
 			}},
-			{Title: "Folder 2", Catalogs: []FolderCatalogRef{ref(shared, "")}},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 2", Catalogs: []FolderCatalogRef{ref(shared, "")}},
 		},
 	})
 	if err != nil {

@@ -1,4 +1,4 @@
-import type { CatalogType, PreviewItem, TileShape, TMDBKind } from '@/api'
+import type { CatalogType, PreviewItem, TileShape, TMDBKind, ViewMode } from '@/api'
 import type { TileRecipe } from './useRecipesTiles'
 
 /**
@@ -19,20 +19,6 @@ import type { TileRecipe } from './useRecipesTiles'
  * gives one tab per catalog (plus "All" when `show_all_tab`) over a grid;
  * `ROWS` stacks one row per catalog, the same shape as home.
  */
-
-/**
- * A collection's `view_mode`, mirroring `validViewModes` in
- * `internal/vault/validation.go` — the collection form edits exactly these.
- * On the wire it is a bare `string`, not an enum, so an unrecognised value is
- * representable and `normalizeViewMode` handles it rather than casting.
- * `FOLLOW_LAYOUT` means "use whatever the app is globally set to" — a value
- * Uno cannot know, so the renderer picks a shape and says it is guessing.
- *
- * It is a **collection-level** setting that applies to every folder in the
- * collection; it describes how a folder's catalogs are laid out once you're
- * inside it, not how the collection itself sits on home.
- */
-export type ViewMode = 'TABBED_GRID' | 'ROWS' | 'FOLLOW_LAYOUT'
 
 /** One catalog referenced by a folder. This is the folder page's content spine:
  *  each source is a row (`ROWS`) or a tab (`TABBED_GRID`). `name === null`
@@ -63,8 +49,6 @@ export interface PreviewFolder {
    *  one collection can disagree, so a row can be ragged — drawn as-is, since
    *  the raggedness is the thing being previewed. */
   tileShape: TileShape
-  /** True when the wire value was `''` and `POSTER` was assumed. */
-  tileShapeAssumed: boolean
   coverEmoji: string
   /** The folder tile's cover art, loaded for real. Empty string when unset, in
    *  which case the tile falls back to the cover emoji, then to the title. */
@@ -82,11 +66,6 @@ export interface PreviewCollection {
    *  above the catalog rows, not merely to the front of the collections. */
   pinned: boolean
   viewMode: ViewMode
-  /** True when the layout drawn is a stand-in: `FOLLOW_LAYOUT`, which leaves
-   *  it to an app setting Uno can't read, or a collection nothing describes.
-   *  An empty or unknown `view_mode` is no guess: Nuvio reads it as
-   *  `TABBED_GRID`. */
-  viewModeAssumed: boolean
   /** Adds an "All" tab to a `TABBED_GRID` folder page, merging every catalog in
    *  the folder into one grid. Meaningless in `ROWS`, where every catalog is
    *  already on the page. */
@@ -98,30 +77,6 @@ export interface PreviewCollection {
    *  Never true for a collection built from builder form state: the form *is*
    *  the description. */
   missing: boolean
-}
-
-export function normalizeTileShape(shape: TileShape | ''): {
-  shape: TileShape
-  assumed: boolean
-} {
-  // Only an older row holds `''`. Nuvio shows it as a poster, and so does
-  // this; the renderer notes that no shape was set.
-  if (shape === 'POSTER' || shape === 'LANDSCAPE' || shape === 'SQUARE') {
-    return { shape, assumed: false }
-  }
-  return { shape: 'POSTER', assumed: true }
-}
-
-export function normalizeViewMode(mode: string): {
-  mode: ViewMode
-  assumed: boolean
-} {
-  // Uno can't read the app's global layout setting, so `FOLLOW_LAYOUT` is
-  // drawn as a flagged guess. An empty or unknown value is what every Nuvio
-  // client reads it as: `TABBED_GRID`.
-  if (mode === 'FOLLOW_LAYOUT') return { mode, assumed: true }
-  if (mode === 'ROWS') return { mode, assumed: false }
-  return { mode: 'TABBED_GRID', assumed: false }
 }
 
 const KIND_LABEL: Record<CatalogType, string> = { movie: 'Movie', series: 'Series' }

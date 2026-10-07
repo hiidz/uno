@@ -20,8 +20,7 @@ type Profile struct {
 }
 
 // Catalog is a stored addon catalog: a named request recipe (Provider,
-// Params) against a content Type, owned by a profile. Type, Provider and
-// Params are its recipe's, read from the recipes row RecipeHash names.
+// Params) against a content Type, owned by a profile.
 type Catalog struct {
 	ID       uuid.UUID `json:"id"`
 	Type     string    `json:"type"`
@@ -46,8 +45,9 @@ type Catalog struct {
 	// Discover only. A read sets it only while HomeSortOrder is non-nil, so it
 	// is false for every catalog off Home.
 	ShowInHome bool `json:"show_in_home"`
-	// RecipeHash names this catalog's recipes row (see RecipeHash), which
-	// every catalog with the same recipe shares; never on the wire.
+	// RecipeHash is this catalog's recipe's hash (see RecipeHash), which
+	// every catalog with the same recipe shares, computed when the row is
+	// read; never on the wire.
 	RecipeHash string `json:"-"`
 	// SubKey is, for a catalog inside a subscribed collection, the key of the
 	// snapshot catalog it was written from, which Update pairs it by; empty
@@ -59,7 +59,8 @@ type Catalog struct {
 	Publication  *PublicationState  `json:"publication"`
 	Subscription *SubscriptionState `json:"subscription"`
 	// PublisherUnpublished is set on a listed catalog that was a subscribed
-	// copy until its publisher unpublished it, until it is next saved.
+	// copy until its publisher unpublished it, until its owner acknowledges
+	// the release (AcknowledgeReleased).
 	PublisherUnpublished bool `json:"publisher_unpublished"`
 }
 
@@ -105,7 +106,8 @@ type Collection struct {
 	Publication  *PublicationState  `json:"publication"`
 	Subscription *SubscriptionState `json:"subscription"`
 	// PublisherUnpublished is set on a collection that was a subscribed copy
-	// until its publisher unpublished it, until it is next saved.
+	// until its publisher unpublished it, until its owner acknowledges the
+	// release (AcknowledgeReleased).
 	PublisherUnpublished bool `json:"publisher_unpublished"`
 }
 
@@ -192,11 +194,6 @@ type ScopedCatalogEdit struct {
 	Provider string    `json:"provider"`
 	Name     string    `json:"name"`
 	Params   string    `json:"params"`
-}
-
-// recipeHash is the hash of the recipe e writes.
-func (e ScopedCatalogEdit) recipeHash() string {
-	return RecipeHash(e.Type, e.Provider, e.Params)
 }
 
 // FolderData is one folder within a CollectionForm.

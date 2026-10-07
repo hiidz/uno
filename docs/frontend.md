@@ -658,8 +658,6 @@ applied to every folder in it, and it governs this page only:
 | --- | --- |
 | `TABBED_GRID` | One tab per **catalog in the folder** (plus "All" when `show_all_tab`), over a grid of that catalog's content |
 | `ROWS` | One row per catalog in the folder, stacked — the same shape home uses |
-| `FOLLOW_LAYOUT` | Drawn as tabs with the "All" tab first, the app's own default (`PreviewFolderPage` in `features/home/previewScreen.tsx`); the caption above the panel reads "Follows the app's layout" |
-| `''` / unknown | Drawn as `TABBED_GRID`, which is how every Nuvio client reads it |
 
 Corroborating details from Nuvio's own field descriptions: `hideTitle` is "Hide the **tile**
 title text" (singular tile — it hides the title under the folder's own tile on home). Nuvio's
@@ -683,11 +681,10 @@ Decisions that shape the code:
 - **A row nothing resolves degrades to an empty strip**, no explanation, matching how Nuvio
   would show it. `catalogById`/`collectionById` hold the library's rows and the scoped catalogs
   its collections' folders use.
-- **Slack wire values are handled, not cast away.** An older row's `tile_shape` can be `''`
-  (falls back to `POSTER`, and says so on screen; Nuvio does the same with a pushed `''` — see
-  `docs/data-model.md`). `view_mode` is a bare `string`: `FOLLOW_LAYOUT` lands in a branch that
-  admits it's guessing, and `''` or anything unrecognised is drawn as `TABBED_GRID`, which is
-  what Nuvio does with it.
+- **The wire's view mode and tile shape are drawn as they are.** The server requires both
+  (`view_mode` `TABBED_GRID` or `ROWS`, `tile_shape` `POSTER`, `LANDSCAPE` or `SQUARE`; see
+  `docs/data-model.md`), so `ViewMode` and `TileShape` in `api/types.ts` are those unions and
+  nothing reads an empty or unknown value.
 - **Selection order is preserved within each band**, so pinning moves a row between bands
   without discarding the order the user just dragged.
 - **`ListState` owns loading and error for both views; each view owns its own empty case.**
@@ -822,9 +819,17 @@ button.
   `DiscardPrompt` (`EditorGuard.tsx`) asks the same "Discard unsaved changes?" with Keep editing
   and Discard.
 - **`view_mode` and `tile_shape` are the server's enums, with no "unset" option.** The server
-  stores an empty value as `TABBED_GRID` or `POSTER`, what every Nuvio client shows for one
-  (`docs/data-model.md`), so a new folder starts as Poster and an empty or unrecognised value in
-  an older row loads as Tabbed Grids or Poster.
+  refuses an empty or unknown value (`docs/data-model.md`), so a new collection starts as Tabbed
+  Grids (`emptyCollectionForm`), a new folder as Poster (`newFolder`), and a saved row loads as
+  it is. How folders open offers Tabbed Grids and Rows (`VIEW_MODES`).
+- **A collection holds at most 10 folders and a folder at most 20 refs** (`MAX_FOLDERS`,
+  `MAX_REFS_PER_FOLDER` in `collectionForm.ts`, the server's caps). "Add folder" is off at 10,
+  with a line under the Folders heading saying why (`FolderCount`, `FolderCap.tsx`). A folder
+  holding 20 refs, a catalog split by genre counting once a genre, is full: the Add catalogs
+  dropdown turns off New catalog and every unticked catalog and says so (`RefCapNote`), while
+  unticking still works. A collection loaded past either cap, stored before the caps existed,
+  opens as it is, and `validateCollectionForm` names it (`folderCount`, and the folder's
+  `catalogIDs`) so Save is refused until it is trimmed.
 - **`cover_emoji` is a short text input** (`maxLength` 8, since an emoji can be several
   codepoints), not a picker — a bundled emoji picker is a large dependency for a field every
   keyboard already has an input method for.
@@ -1042,7 +1047,8 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
   "update". A row carries **one Community sticker**, changing with its state: an own row reads
   Published, then To publish; a row added from Community reads From Community, then Update
   available; and a row whose publisher unpublished it, now the profile's own, reads
-  **Unpublished** until it is saved or this profile publishes it (`publisherUnpublished`). A
+  **Unpublished** until its release is acknowledged or this profile publishes it
+  (`publisherUnpublished`). A
   sticker's `tone` is `{hue, fill}` (DESIGN.md's *Sticker Rule*), drawn by
   `stickerClass` as `.stk` with one hue class and `.stk-fill`: a pill is filled only while it
   waits on you, until one action clears it — To publish and Update available (pink), To push
@@ -1050,8 +1056,10 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
 - **A row its publisher unpublished opens in its editor**, like any own row, since it no longer
   has a subscription. While it reads Unpublished, the form leads with one dim line, "Its
   publisher unpublished this. It’s yours to edit now." (`UnpublishedNotice`, passed to
-  `CatalogEditor` and `CollectionEditor` as `sharingNotice` by `useWorkspaceSharing`). Its next
-  save clears the mark (`publisher_unpublished`), so the line and the sticker go with it.
+  `CatalogEditor` and `CollectionEditor` as `sharingNotice` by `useWorkspaceSharing`). A save no
+  longer clears the mark (`publisher_unpublished`): only acknowledging the release does
+  (`POST .../acknowledge-release`), which the SPA doesn't call yet, so the line and the sticker
+  stay.
   - **Where they show:** the library rail shows a catalog's kind and the Community sticker
     only (`railStickers`) — never To push, which the pending count already covers, and no
     Collection sticker, which the rail's Collections sign already says. An editor's sign and the

@@ -122,7 +122,7 @@ func (p *rowParser) timestamp(s, field string) time.Time {
 }
 
 // scanCatalog reads one catalog row: the catalog columns (catalogColumns),
-// its recipe's type, provider and params among them and its sharing columns
+// its type, provider and params among them and its sharing columns
 // last, in the order every catalog SELECT in this package lists them,
 // followed by extraDests — destinations for any further columns the caller's
 // own query appended (see GetPublishedCatalogs' ordering columns).
@@ -136,7 +136,7 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 
 	dests := append([]any{
 		&idStr, &c.Type, &c.Name, &c.Provider, &c.Params, &ownerIDStr,
-		&collectionIDStr, &homeSortOrder, &showInHome, &c.RecipeHash, &subKey,
+		&collectionIDStr, &homeSortOrder, &showInHome, &subKey,
 		&c.PublisherUnpublished, &createdAtStr, &updatedAtStr,
 	}, sharing.dests()...)
 	if err := rows.Scan(append(dests, extraDests...)...); err != nil {
@@ -156,6 +156,7 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	c.HomeSortOrder = nullableInt(homeSortOrder)
 	c.ShowInHome = showsInHome(homeSortOrder, showInHome)
 	c.SubKey = subKey.String
+	c.RecipeHash = RecipeHash(c.Type, c.Provider, c.Params)
 	c.markChangedSincePublish()
 	return c, nil
 }

@@ -29,9 +29,9 @@ func TestFolderRefGenreRoundTrips(t *testing.T) {
 	}
 
 	saved, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Genres",
+		Title: "Genres", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Mixed", Catalogs: []FolderCatalogRef{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Mixed", Catalogs: []FolderCatalogRef{
 				{CatalogID: &catalog.ID, Genre: "  Western "},
 				{CatalogID: &other.ID},
 				{CatalogID: &catalog.ID, Genre: "War"},
@@ -70,8 +70,8 @@ func TestFolderRefsSerializeEmptyAsArray(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 
 	saved, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:   "Plain",
-		Folders: []FolderData{{Title: "Empty"}},
+		Title: "Plain", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Empty"}},
 	})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
@@ -106,8 +106,8 @@ func TestFolderRefGenreSurvivesDuplicateAndSubscribe(t *testing.T) {
 		t.Fatalf("create catalog: %v", err)
 	}
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Source",
-		Folders: []FolderData{{Title: "Mixed", Catalogs: []FolderCatalogRef{
+		Title: "Source", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Mixed", Catalogs: []FolderCatalogRef{
 			{CatalogID: &catalog.ID, Genre: "Western"},
 			{CatalogID: &catalog.ID, Genre: "War"},
 		}}},
@@ -165,11 +165,11 @@ func TestCopiedFolderRefsStayGroupedPerFolder(t *testing.T) {
 		for j, k := range order {
 			refs[j] = FolderCatalogRef{CatalogID: &ids[k], Genre: names[k]}
 		}
-		folders[i] = FolderData{Title: "Folder " + names[i], Catalogs: refs}
+		folders[i] = FolderData{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder " + names[i], Catalogs: refs}
 	}
 
 	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:   "Interleaved",
+		Title: "Interleaved", ViewMode: "TABBED_GRID",
 		Folders: folders,
 	})
 	if err != nil {
@@ -224,8 +224,8 @@ func TestFolderRefSameCatalogSameGenreIsInvalid(t *testing.T) {
 	}
 	for _, genres := range [][2]string{{"", ""}, {"War", " War"}} {
 		_, err = db.CreateUserCollection(ctx, owner, CollectionForm{
-			Title: "Repeat",
-			Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{
+			Title: "Repeat", ViewMode: "TABBED_GRID",
+			Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{
 				{CatalogID: &catalog.ID, Genre: genres[0]},
 				{CatalogID: &catalog.ID, Genre: genres[1]},
 			}}},
@@ -246,8 +246,8 @@ func TestFolderRefGenreTooLongIsInvalid(t *testing.T) {
 		t.Fatalf("create catalog: %v", err)
 	}
 	_, err = db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Too long",
-		Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{
+		Title: "Too long", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{
 			{CatalogID: &catalog.ID, Genre: strings.Repeat("x", maxGenreLen+1)},
 		}}},
 	})
@@ -276,8 +276,8 @@ func TestFolderNewRefKeyIsValidated(t *testing.T) {
 	}
 	for name, refs := range cases {
 		_, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-			Title:   "Staged",
-			Folders: []FolderData{{Title: "F", Catalogs: refs}},
+			Title: "Staged", ViewMode: "TABBED_GRID",
+			Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: refs}},
 		})
 		if !errors.Is(err, ErrInvalidInput) {
 			t.Errorf("%s: got %v, want ErrInvalidInput", name, err)

@@ -48,13 +48,13 @@ func newPushRecordFixture(t *testing.T) pushRecordFixture {
 	offHome := newTestCollection(t, db, owner, "Off home")
 	for id, folders := range map[uuid.UUID][]FolderData{
 		first: {
-			{Title: "A", Catalogs: CatalogRefs(folderOnly.ID, homeRow.ID)},
-			{Title: "B", Catalogs: CatalogRefs(folderOnly.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "A", Catalogs: CatalogRefs(folderOnly.ID, homeRow.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "B", Catalogs: CatalogRefs(folderOnly.ID)},
 		},
-		second:  {{Title: "C", Catalogs: CatalogRefs(scoped.ID)}},
-		offHome: {{Title: "D", Catalogs: CatalogRefs(offHomeOnly.ID)}},
+		second:  {{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "C", Catalogs: CatalogRefs(scoped.ID)}},
+		offHome: {{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "D", Catalogs: CatalogRefs(offHomeOnly.ID)}},
 	} {
-		if _, err := db.UpdateUserCollection(ctx, owner, id, CollectionForm{Title: "Saved", Folders: folders}); err != nil {
+		if _, err := db.UpdateUserCollection(ctx, owner, id, CollectionForm{Title: "Saved", ViewMode: "TABBED_GRID", Folders: folders}); err != nil {
 			t.Fatal(err)
 		}
 	}

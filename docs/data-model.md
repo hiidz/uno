@@ -22,7 +22,6 @@ erDiagram
   COLLECTIONS ||--o{ CATALOGS : scopes
   FOLDERS ||--o{ FOLDER_CATALOGS : contains
   CATALOGS ||--o{ FOLDER_CATALOGS : "referenced via"
-  RECIPES ||--o{ CATALOGS : "asked for by"
   CATALOGS |o--o| PUBLICATIONS : "published as"
   COLLECTIONS |o--o| PUBLICATIONS : "published as"
   PUBLICATIONS ||--o{ SUBSCRIPTIONS : "followed by"
@@ -56,13 +55,6 @@ erDiagram
     string created_at
   }
 
-  RECIPES {
-    string hash PK "sha256 hex of uno-recipe/1, type, provider and params"
-    string type "movie | series"
-    string provider "tmdb"
-    json params "canonical form"
-    string created_at
-  }
   PROFILES {
     uuid id PK
     string token UK
@@ -73,13 +65,15 @@ erDiagram
   CATALOGS {
     uuid id PK
     string name
-    string recipe_hash FK "its recipe: type, provider and params"
+    string type "movie | series"
+    string provider "tmdb"
+    json params "canonical form"
     uuid owner_id FK
     uuid collection_id FK "nullable — NULL means listed"
     int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
     bool show_in_home
     string sub_key "nullable — in a subscribed collection, its snapshot key"
-    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once saved"
+    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once its owner acknowledges the release"
     string created_at
     string updated_at
   }
@@ -88,12 +82,12 @@ erDiagram
     string title
     uuid owner_id FK
     bool pin_to_top "Pin, as last pushed; only push writes it"
-    string view_mode
+    string view_mode "TABBED_GRID | ROWS"
     bool show_all_tab
     string backdrop_image_url
     bool focus_glow_enabled "defaults to 1, matching Nuvio"
     int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
-    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once saved"
+    string unpublished_at "nullable — its publisher unpublished what it was added from; NULL once its owner acknowledges the release"
     string created_at
     string updated_at
   }
@@ -108,7 +102,7 @@ erDiagram
     uuid collection_id FK
     string title
     int sort_order
-    string tile_shape
+    string tile_shape "POSTER | LANDSCAPE | SQUARE; no default"
     bool hide_title
     string cover_emoji
     string cover_image_url
@@ -214,8 +208,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   waits for a push compares the held record with.
 - **Written only by push**, in `SavePush`'s transaction with the Home columns, after Nuvio
   accepted the push, replaced whole and stamped with `profiles.nuvio_profile_uuid` as it is then.
-  Nothing cascades into it from `catalogs` or `collections`, and it never points into `recipes`,
-  so deleting a row never loses what Nuvio holds.
+  Nothing cascades into it from `catalogs` or `collections`, and it holds every catalog's name,
+  type and params itself, so deleting a row never loses what Nuvio holds.
 - **Read by** the addon and by the builder's reads. `GetPublishedCatalogs` and `ServedCatalog`
   serve the manifest and each catalog from its `catalogs` and `home`, so Nuvio is served only
   what the last push put there; `PendingPush` compares all of it with what a push would send now
@@ -248,8 +242,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   catalogs already scoped to the collection being saved, and `applyCatalogEdits` writes them
   inside `UpdateUserCollection`'s transaction, after the collection row and before the folder
   rewrite and its orphan cleanup. Each edit's catalog must be owned by the caller and scoped to
-  this same collection, with the stored type and provider. An edit whose name and recipe
-  (`recipe_hash`) both match the row is skipped, so `updated_at` stays put. An edit never
+  this same collection, with the stored type and provider. An edit whose name and params
+  both match the row is skipped, so `updated_at` stays put. An edit never
   changes `collection_id`. `CreateUserCollection` refuses any edit,
   since a new collection has no scoped catalogs. So an edit made in the collection editor lands
   with the rest of the collection, and a discarded one never wrote anything.
@@ -277,23 +271,22 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   by that collection's folders `)`. This is also what catches a scoped catalog created via
   `POST .../catalogs` and abandoned before Save — it has no folder ref yet, so the next Save (or
   the collection's own deletion, by cascade) removes it.
-- **`catalogs.recipe_hash` names the catalog's recipe.** Its type, provider and params live in
-  `recipes`, one row per distinct recipe (see *Recipes* below). Every catalog read joins its
-  recipe in, so each catalog still carries `type` and `params` on the wire, and `recipe_hash`
-  never reaches it. The import check offers the caller's listed catalogs with the same one. A
-  copy shares its snapshot's recipe.
+- **A catalog holds its own recipe.** Its `type`, `provider` and `params` are columns of its
+  row (see *Recipes* below). Its recipe hash is computed from them when the row is read and is
+  never stored or put on the wire. The import check offers the caller's listed catalogs with the
+  same one. A copy holds its snapshot's recipe.
 - **Sharing is by publication.** A row is put in Community by publishing it as a frozen snapshot, and
   another profile follows it through a subscribed copy; see *Publications and subscriptions*
   below.
 - **`catalogs.id` is permanent once created** — never rename or recycle it. It is baked into
   `vault.ManifestID` and therefore into Nuvio's `catalogSources[].catalogId`.
-- **`recipes.params` is opaque `TEXT` at the schema level.** For `provider = 'tmdb'` there is an
+- **`catalogs.params` is opaque `TEXT` at the schema level.** For `provider = 'tmdb'` there is an
   app-level shape in `internal/provider` (`TMDBMovieParams` / `TMDBTVParams` on
   `TMDBCommonParams` + `BaseParams`), with `Validate()` covering cross-field rules, dispatched by
   `validateCatalogParams` from the create/update handlers. It crosses the wire as a JSON-encoded
   **string**, not a nested object, in its canonical form.
-- **A catalog's `type` is immutable once the row exists.** It is the type of the catalog's
-  recipe, and every write that repoints a catalog at another recipe keeps it. `UpdateUserCatalog`
+- **A catalog's `type` is immutable once the row exists.** Every write that rewrites a
+  catalog's params keeps it. `UpdateUserCatalog`
   reads the stored type in its own opening `SELECT` and rejects the write with
   `ErrInvalidInput` if the incoming form's `type` differs; a collection's catalog edit and a
   subscribed catalog's Update refuse a different type the same way, and a subscribed
@@ -308,8 +301,8 @@ One row per profile: what its last push put in Nuvio, as one JSON document
     transaction, all downstream cleanup via `ON DELETE CASCADE`, **allowed any time**, Home or
     not. Nuvio keeps what the last push put there, served from the push record (`push_records`,
     above), until the next push drops it, so a delete never leaves a Nuvio client with an empty
-    row or tile before it has synced. The record never points into `recipes` and nothing cascades
-    into it, so a deleted row's name, type and params are still there for the addon and for the
+    row or tile before it has synced. The record holds each catalog's recipe itself and nothing
+    cascades into it, so a deleted row's name, type and params are still there for the addon and for the
     list of what waits for a push, which names it as removed. A collection whose folders used a
     deleted listed catalog loses it from those folders by cascade, so one on Home shows as
     changed. Deleting a published row unpublishes it, and every copy another profile holds
@@ -397,17 +390,18 @@ One row per profile: what its last push put in Nuvio, as one JSON document
 - **A builder write or an import stores its input normalized, then validates it**
   (`CollectionForm.normalized` and `CatalogForm.normalized`, `internal/vault/validation.go`). Every
   text field the editors trim is trimmed: titles, catalog names (the names of new and edited
-  scoped catalogs included), the cover emoji and the media URLs. An empty `view_mode` or
-  `tile_shape` is stored as `TABBED_GRID` or `POSTER`, which is what every Nuvio client shows
-  for one (see "Push wire shape" below). So an untouched editor save writes back exactly what is
+  scoped catalogs included), the cover emoji and the media URLs. So an untouched editor save writes back exactly what is
   stored, and a published row reads as unchanged after one. A publish snapshots the values it
   reads, and a subscribe, duplicate, Update or Duplicate writes the values it reads, without
   normalizing them, so a subscribed copy snapshots exactly like its publication. Rows written before
-  normalization can still hold `''` or padding; Preview and the editor read an empty value the
-  way Nuvio does.
-- **`folders.tile_shape` defaults to `'LANDSCAPE'` at the schema level**, but every write sends
-  the column, so the default is unreachable in practice. Nuvio's apps read an absent key as a
-  poster tile (see "Push wire shape" below), which a Uno push never produces.
+  normalization can still hold padding.
+- **A view mode and a tile shape are required.** `view_mode` is `TABBED_GRID` or `ROWS`, and a
+  folder's `tile_shape` is `POSTER`, `LANDSCAPE` or `SQUARE`; anything else, empty or
+  `FOLLOW_LAYOUT` included, is a 400, never given a default. The same validators hold a bundle's
+  collections on import and a snapshot on publish, subscribe, duplicate and Update, so neither
+  carries one in. The schema has no default for `folders.tile_shape`, so an INSERT that leaves it
+  out fails. Schema version 9 rewrote every stored `FOLLOW_LAYOUT` or empty view mode as
+  `TABBED_GRID` and every empty tile shape as `POSTER`, what Nuvio shows for each.
 - **`catalogs.created_at`/`updated_at` and `collections.created_at`/`updated_at` are `TEXT`
   RFC3339 UTC**, generated in Go with `time.Now().UTC().Format(time.RFC3339)` and parsed back to
   `time.Time` in `internal/vault/scan.go`. Neither is on the builder API's wire: the builder reads
@@ -448,14 +442,20 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   `maxCoverEmojiLen` (32) a folder's `cover_emoji`; `maxGenreLen` (64) a folder ref's genre;
   `maxMediaURLLen` (2048) every media URL; `maxNewKeyLen` (128) an inline-`new` entry's client
   key (every length counts characters, as runes: `tooLong`, so a name in a script of multi-byte
-  characters fits as many of them as one in Latin, and the messages say "characters"); and `maxFoldersPerCollection`/`maxRefsPerFolder` (100 each) how many folders a collection
-  holds and how many catalog refs a folder holds. These are bounds against absurdity, not product
+  characters fits as many of them as one in Latin, and the messages say "characters"). These are bounds against absurdity, not product
   limits — each one sits well past anything the builder can produce — and they exist because
   `api.maxRequestBodyBytes` (1 MiB) is no substitute: 1 MiB is thousands of folders, and every one
   of these strings is stored, served from the public addon route, and pushed into Nuvio's
   collections blob as a full replace. `CatalogForm.Validate` and `CollectionForm.Validate` enforce
   them on save (an import, whose body limit is 4 MiB, is held to the same rules), a folder's inline `new` entries and the save's `catalog_edits` included, since
   either becomes a catalog row write in the same transaction.
+- **A collection holds at most 10 folders, and a folder at most 20 catalog refs**
+  (`maxFoldersPerCollection`, `maxRefsPerFolder`), a catalog split by genre counting once a
+  genre. These are product limits, which the builder holds its form to (`MAX_FOLDERS`,
+  `MAX_REFS_PER_FOLDER`). `CollectionForm.Validate` enforces them, so a save, an import, a
+  publish and a subscribe, duplicate or Update of a snapshot past them are refused. A collection
+  stored past them before they existed stays as it is: it is read, pushed and served, and its
+  next save is refused until it is trimmed under them.
 - **Empty lists serialize as `[]`, never `null`.** The row parsers in `internal/vault/scan.go`
   initialize their slices, and `jsonwire.OrEmpty[T]` (`internal/jsonwire`) covers the
   map-lookup, decoded-response and client-input spots that produce nested
@@ -473,9 +473,9 @@ One row per profile: what its last push put in Nuvio, as one JSON document
 
 ## Recipes
 
-**A recipe is what a catalog asks its provider for: its type, provider and params.** `recipes`
-holds each distinct recipe once, addressed by a hash of its content, and every catalog that
-asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes.go`).
+**A recipe is what a catalog asks its provider for: its type, provider and params.** They are
+columns of the catalog's own row, and two catalogs asking for the same thing hold the same
+three values, which hash alike (`internal/vault/recipes.go`).
 
 - **The canonical form** is per provider and type. `provider.CanonicalParams` decodes params as
   that recipe's params struct and encodes it again, then sorts the keys:
@@ -484,7 +484,7 @@ asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes
   - the result is compact, with numbers written the way Go writes them.
 
   Two encodings of one recipe give the same bytes, so the SPA's key order or a `0` it sends for
-  an empty field never makes a second recipe. `recipes.params` is always canonical, and the wire
+  an empty field never makes a second recipe. `catalogs.params` is always canonical, and the wire
   carries it back as each catalog's `params`. The editor's dirty check compares re-serialized
   form state, not the params string, so that needs nothing on the SPA side.
 - **Checked first, then made canonical.** `api.checkRecipe`, which every client-supplied recipe
@@ -494,29 +494,16 @@ asks for it points there through `catalogs.recipe_hash` (`internal/vault/recipes
   `with_networks` on a movie recipe, a 400 rather than silently dropped. The vault stores the
   params it is given.
 - **The hash.** `vault.RecipeHash` is sha256 hex over `uno-recipe/1`, the type, the provider and
-  the canonical params, separated by newlines. The vault computes it from the bytes it stores and
-  never takes one from a caller, so a hash never names content other than its own.
+  the canonical params, separated by newlines. It is never stored: a catalog's is computed from
+  its row when the row is read (`scanCatalog`), and never taken from a caller, so a hash never
+  names content other than its own.
   - `TestRecipeHashIsPinned` holds it to a literal.
-  - Changing it or the canonical form changes every stored `recipe_hash`, the params inside
-    every snapshot and the subscriptions' `subscribed_hash` with them, so it is a schema change.
-- **Stored with the write that uses it.** `ensureRecipe` inserts a recipe unless it is stored
-  already, in the same transaction as the catalog write that points at it:
-  - `insertCatalog`, which a catalog save, a subscribe or duplicate and a collection save's new
-    entries all go through;
-  - `UpdateUserCatalog`;
-  - a collection save's catalog edit;
-  - a subscribed catalog's Update.
-
-  A snapshot carries every recipe's params inline, so a copy never needs the publisher's recipe
-  row, which the publisher's later edits may have deleted.
-- **Deleted once unused.** Two triggers delete a recipe as soon as no catalog references it, in
-  the transaction of the change that left it unused. `recipes_drop_unused_on_delete` covers a
-  deleted catalog, cascades included: a collection's delete, and the orphan cleanup of a
-  collection save. `recipes_drop_unused_on_repoint` covers a catalog repointed at another
-  recipe. The `catalogs_by_recipe` index keeps their check cheap.
-- **Copies share.** A subscribe, a duplicate, an Update and a Duplicate write the recipe they copy,
-  which is the same recipe row whenever it is still stored. `changesNothing` and the import
-  check's matches compare `recipe_hash`.
+  - The import check's matches and import reuse compare it, so changing it or the canonical form
+    changes which catalogs match. The canonical form is also inside every snapshot and the
+    subscriptions' `subscribed_hash` with it, so changing that is a schema change.
+- **Copies hold their own.** A snapshot carries every recipe's params inline, and a subscribe, a
+  duplicate, an Update and a Duplicate write the type, provider and params they copy onto the
+  copy's row.
 
 ## Publications and subscriptions
 
@@ -576,9 +563,12 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
     and its pin, and with no subscription left it is an ordinary own row: saves reach it, and it
     can be published.
   - **The mark** is the row's `publisher_unpublished` (`unpublished_at IS NOT NULL`, read with the
-    row's own columns). A catalog save (`writeCatalog`) and a collection save
-    (`updateCollectionRow`) clear it, since a save is the subscriber having seen the row as theirs;
-    push, Update, Duplicate and import never set it.
+    row's own columns): released, not yet acknowledged. `ReleasedCopies`
+    (`GET /api/p/{i}/released`, `internal/vault/released.go`) lists a profile's marked rows,
+    oldest release first, for the builder to tell its owner once on each profile load (the SPA
+    doesn't call it yet). Only `AcknowledgeReleasedCatalog`/`AcknowledgeReleasedCollection`
+    (`POST .../acknowledge-release`) clear it; a save never does. Push, Update, Duplicate and import
+    never set it.
   - The publication's snapshot goes with it: `GetPublication`, a subscribe and an Update of it
     answer `ErrPublicationNotFound`.
 - **No collapse.** Two publications of the same content, a recipe two profiles both publish or
@@ -806,7 +796,7 @@ describing what a TMDB-backed catalog may ask for.
   instead. A collection recipe (`with_collection`) has no pages to pick from: `randomized` shuffles
   its film list instead of sorting it by release date.
 - **A second provider touches only the code that runs a recipe.**
-  - **Storage is provider-neutral.** `recipes` keys a recipe by its type, provider and params
+  - **Storage is provider-neutral.** A recipe's hash covers its type, provider and params
     together, so another provider's recipes never collide with TMDB's. Catalogs, links,
     bundles, Community and push carry the provider string without reading it.
   - **What runs a recipe is TMDB's alone.** There is no `Provider` interface, deliberately —
@@ -824,7 +814,7 @@ describing what a TMDB-backed catalog may ask for.
       `CatalogHandler` and `buildManifest` and the preview routes call the TMDB client
       directly;
     - its own editor in the SPA, whose catalog editor and `TMDBParams` type are TMDB's.
-  - `recipes.provider` is free text at the schema level (`TEXT`, no `CHECK`); the constraint is
+  - `catalogs.provider` is free text at the schema level (`TEXT`, no `CHECK`); the constraint is
     app-level only.
 
 ## Bundle format
@@ -854,7 +844,7 @@ Version 1:
 - **Two kinds of catalog list.** The top-level `catalogs` are listed catalogs. A collection's own
   `catalogs` are scoped to it; one that no ref uses is ignored on import.
 - **Never in the bundle:** row ids, `owner_id`, `pin_to_top`, `collection_id`, timestamps,
-  `home_sort_order`, `show_in_home`, `sub_key`, a publication or subscription, `recipe_hash` and
+  `home_sort_order`, `show_in_home`, `sub_key`, a publication or subscription, a recipe hash and
   anything from a push record. A publication's snapshot is built on the same form, with its
   own format name and stable keys (*Publications and subscriptions*, above).
 - **Export writes every field.** Booleans are plain bools, and an empty list is `[]`. `params` is
@@ -886,7 +876,7 @@ Version 1:
 - **Optional reuse.** `reuse` maps a bundle catalog key, top-level or a collection's own, to one
   of the importer's own *listed* catalogs; its refs then point at that row and no new row is
   written for it. The import check offers the listed catalogs whose recipe matches, and the vault
-  holds every reuse to that: the target's `recipe_hash` must equal the `RecipeHash` of the bundle
+  holds every reuse to that: the target's recipe must hash to the `RecipeHash` of the bundle
   catalog its key names (`checkReuseRecipes`, inside the import's transaction), so a hand-written
   `reuse` can't point a movie key at a series catalog or a catalog with other filters. A reuse
   target owned by someone else, or scoped to one of the importer's collections, or holding another

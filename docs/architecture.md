@@ -110,7 +110,7 @@ two layers differ.
 | The feature as a whole | sharing (`features/sharing`, `serveSharingCall`): a name, never a verb or status | never says "share" |
 | Browse tab | Community | Community |
 | Put it out | publish, publication, publisher | Publish…, Publish update…, "Published" |
-| Take it back, for good | unpublish; a subscriber's row then carries `publisher_unpublished` | Unpublish; that row reads "Unpublished" until it is saved |
+| Take it back, for good | unpublish; a subscriber's row is then released, carrying `publisher_unpublished` until they acknowledge it | Unpublish; that row reads "Unpublished" until the release is acknowledged |
 | Read-only copy that gets updates | subscribe, subscription, subscriber, subscribed copy | **Add**, ✓ Added, "Added by N", the **From Community** sticker |
 | Copy that's yours to edit | duplicate (`DuplicatePublication`, `DuplicateCollection`) | Duplicate |
 | Get the update | update | Update |
@@ -214,6 +214,14 @@ Route-semantics facts the client has to honour:
     Update, like an editor Save, waits for Push. It shows on Home as a change to push
     (`GET .../push/pending`, *Push*), as does an Update that changes what push sends for a
     collection copy on Home.
+  - `GET /api/p/{i}/released` (`ReleasedCopies`) answers the caller's rows released and not yet
+    acknowledged, oldest release first, as `[{kind, id, name}]`: copies whose publication ended,
+    by an unpublish or by its source's delete. It is there for the builder to read on each profile
+    load and tell the caller once; the SPA doesn't call it or acknowledge yet.
+    `POST .../catalogs/{id}/acknowledge-release` and `.../collections/{id}/acknowledge-release`
+    (`AcknowledgeReleasedCatalog`/`...Collection`, 200) clear one row's mark, marked or not, and answer the list still unacknowledged; another
+    profile's row is a 404. A save never clears the mark. No publisher is named: Community never
+    carries one, and the publication is gone by the time its copies are released.
 - **Publishing an owned row is a call on the row.**
   - `POST /api/p/{i}/catalogs/{id}/publish` and `.../collections/{id}/publish`
     (`PublishCatalog`/`PublishCollection`, 200 with the row and its `publication`) publish it or
@@ -225,8 +233,8 @@ Route-semantics facts the client has to honour:
     Community.
   - `.../unpublish` (`UnpublishCatalog`/`UnpublishCollection`, 200 with the row, its
     `publication` now `null`) deletes its publication, if any. It is one-way: every subscriber's
-    copy becomes that subscriber's own row, `publisher_unpublished` until its next save, and
-    publishing the row again is a new publication with no subscribers.
+    copy becomes that subscriber's own row, `publisher_unpublished` until they acknowledge the
+    release (below), and publishing the row again is a new publication with no subscribers.
   - `GET .../catalogs/{id}/changes-since-publish` and `.../collections/{id}/changes-since-publish`
     (`CatalogChangesSincePublish`/`CollectionChangesSincePublish`) answer what publishing an
     update would change: the row as saved against what it last published, in the same item list.
@@ -282,7 +290,7 @@ Route-semantics facts the client has to honour:
     (`importCheckOf`): what the bundle holds, in bundle order, for the import dialog to list, so
     the SPA never reads the bundle's format. `catalogs` are the top-level ones, each
     `{key, name, type, params, existing: [{id, name}]}` with params canonical; `existing` is every
-    one of the caller's listed catalogs whose recipe (`recipe_hash`) equals it, sorted by name,
+    one of the caller's listed catalogs whose recipe hash (`Catalog.RecipeHash`) equals it, sorted by name,
     then id, and `[]` when none does. `collections` are each
     `{title, folders, matched, catalogs}`: its folders' titles, whether its title, trimmed and in
     any case, is one of the caller's collections', and its own catalogs in the same shape. A

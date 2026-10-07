@@ -4,6 +4,7 @@ import { Popover } from 'radix-ui'
 import { Icon } from '@/components/Icon'
 import { typeLabel } from '@/features/library/recipe'
 import { hasFinePointer } from '@/lib/pointer'
+import { RefCapNote } from './FolderCap'
 import { filterRefOptions, type RefOption } from './refs'
 
 const NOTHING: ReadonlySet<string> = new Set()
@@ -26,10 +27,14 @@ const NOTHING: ReadonlySet<string> = new Set()
  *
  * New catalog names a new catalog for this folder; when the search matches
  * nothing, it carries the query as the name.
+ *
+ * Once the folder holds `MAX_REFS_PER_FOLDER` refs it is full: New catalog
+ * and every unticked catalog are off, and unticking still takes one out.
  */
 export function CatalogRefPicker({
   options,
   inFolder,
+  full,
   onAdd,
   onRemove,
   onNew,
@@ -37,6 +42,8 @@ export function CatalogRefPicker({
   options: RefOption[]
   /** Ids this folder already holds, under any genre: the ticked ones. */
   inFolder: ReadonlySet<string>
+  /** The folder holds `MAX_REFS_PER_FOLDER` refs: nothing more is added. */
+  full: boolean
   /** An unfiltered ref to `catalogID`, at the end of the folder. */
   onAdd(catalogID: string): void
   /** Every ref to `catalogID` taken out of the folder. */
@@ -68,7 +75,7 @@ export function CatalogRefPicker({
           onOpenAutoFocus={keepKeyboardShut}
           className="border-line-hi bg-raised-hi z-40 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-2 rounded-xl border p-3"
         >
-          <PickerBody options={options} inFolder={inFolder} onAdd={onAdd} onRemove={onRemove} onNew={startNew} />
+          <PickerBody options={options} inFolder={inFolder} full={full} onAdd={onAdd} onRemove={onRemove} onNew={startNew} />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -85,6 +92,7 @@ function keepKeyboardShut(event: Event) {
 interface PickerBodyProps {
   options: RefOption[]
   inFolder: ReadonlySet<string>
+  full: boolean
   onAdd(catalogID: string): void
   onRemove(catalogID: string): void
   onNew(name: string): void
@@ -92,7 +100,7 @@ interface PickerBodyProps {
 
 /** The search, New catalog and the ticks, holding one opening's query: it is
  *  mounted only while the dropdown is open. */
-function PickerBody({ options, inFolder, onAdd, onRemove, onNew }: PickerBodyProps) {
+function PickerBody({ options, inFolder, full, onAdd, onRemove, onNew }: PickerBodyProps) {
   const [query, setQuery] = useState('')
   const matches = useMemo(() => filterRefOptions(options, query, NOTHING), [options, query])
   const trimmed = query.trim()
@@ -112,9 +120,10 @@ function PickerBody({ options, inFolder, onAdd, onRemove, onNew }: PickerBodyPro
         aria-label="Search catalogs to add to this folder"
         className="field w-full min-w-0"
       />
-      <NewRow name={newName(trimmed, matches.length)} onNew={onNew} />
+      <RefCapNote full={full} />
+      <NewRow name={newName(trimmed, matches.length)} disabled={full} onNew={onNew} />
       <div className="bg-line-hi -mx-3 h-px" />
-      <PickerList matches={matches} hasOptions={options.length > 0} inFolder={inFolder} onToggle={addOrRemove} />
+      <PickerList matches={matches} hasOptions={options.length > 0} inFolder={inFolder} full={full} onToggle={addOrRemove} />
     </>
   )
 }
@@ -125,12 +134,13 @@ function newName(query: string, matchCount: number): string {
   return query
 }
 
-/** New catalog, as the list's first row. */
-function NewRow({ name, onNew }: { name: string; onNew(name: string): void }) {
+/** New catalog, as the list's first row, off while the folder is full. */
+function NewRow({ name, disabled, onNew }: { name: string; disabled: boolean; onNew(name: string): void }) {
   return (
     <button
       type="button"
       onClick={() => onNew(name)}
+      disabled={disabled}
       className="hover:bg-line flex items-center gap-2.5 rounded-lg px-2 py-2 text-left text-[14px] font-semibold pointer-coarse:min-h-11"
     >
       <Icon icon={Plus} size={16} className="text-collection shrink-0" />
@@ -148,12 +158,14 @@ interface PickerListProps {
   matches: RefOption[]
   hasOptions: boolean
   inFolder: ReadonlySet<string>
+  full: boolean
   onToggle(id: string): void
 }
 
 /** A tick row for each catalog the search matches, ticked when the folder
- *  holds it, or a line saying why there are none. */
-function PickerList({ matches, hasOptions, inFolder, onToggle }: PickerListProps) {
+ *  holds it, or a line saying why there are none. An unticked one is off
+ *  while the folder is full. */
+function PickerList({ matches, hasOptions, inFolder, full, onToggle }: PickerListProps) {
   if (matches.length === 0) return <p className="ed-note m-0 px-2 py-1">{emptyText(hasOptions)}</p>
   return (
     <ul className="m-0 flex max-h-64 list-none flex-col gap-0.5 overflow-y-auto p-0">
@@ -167,6 +179,7 @@ function PickerList({ matches, hasOptions, inFolder, onToggle }: PickerListProps
               type="checkbox"
               checked={inFolder.has(option.id)}
               onChange={() => onToggle(option.id)}
+              disabled={lockedOut(full, inFolder, option.id)}
               className="checkbox shrink-0"
             />
             <span className="min-w-0 flex-1 truncate">{option.name}</span>
@@ -176,6 +189,12 @@ function PickerList({ matches, hasOptions, inFolder, onToggle }: PickerListProps
       ))}
     </ul>
   )
+}
+
+/** Whether catalog `id` can't be ticked: the folder is full and doesn't hold
+ *  it. Unticking stays open. */
+function lockedOut(full: boolean, inFolder: ReadonlySet<string>, id: string): boolean {
+  return full && !inFolder.has(id)
 }
 
 function emptyText(hasOptions: boolean): string {

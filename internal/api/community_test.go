@@ -39,7 +39,7 @@ func newSharingFixture(t *testing.T) sharingFixture {
 	}
 	collection, err := f.db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{
 		Title: "Their Weekend", ViewMode: "TABBED_GRID",
-		Folders: []vault.FolderData{{Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
+		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestSharingRoutes(t *testing.T) {
 	catalogCopy := subscribedCatalog(t, x.f, x.theirCatalog)
 	withSubscribed, err := x.f.db.CreateUserCollection(t.Context(), x.f.caller.ID, vault.CollectionForm{
 		Title: "With a subscribed catalog", ViewMode: "ROWS",
-		Folders: []vault.FolderData{{Title: "F", Catalogs: vault.CatalogRefs(catalogCopy)}},
+		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: vault.CatalogRefs(catalogCopy)}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestSharingRoutes(t *testing.T) {
 	ownCollection := "/api/p/1/collections/" + x.ownCollection.String()
 	runSteps(t, x.f.s, []routeStep{
 		{name: "publish the subscribed copy", method: http.MethodPost, path: copyPath + "/publish", wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
-		{name: "save the subscribed collection", method: http.MethodPut, path: copyPath, body: `{"title":"Mine now"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
+		{name: "save the subscribed collection", method: http.MethodPut, path: copyPath, body: `{"title":"Mine now","view_mode":"TABBED_GRID"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "save the subscribed catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "only its publisher can change or publish it"},
 		{name: "the subscribed collection is unchanged", method: http.MethodGet, path: "/api/p/1/collections", wantStatus: http.StatusOK, wantBody: `"subscription":{"publication_id":"` + x.theirCollection.String()},
 		{name: "publish a collection with a subscribed catalog", method: http.MethodPost, path: "/api/p/1/collections/" + withSubscribed.ID.String() + "/publish", wantStatus: http.StatusOK, wantBody: `"publication":{"id":"`},
@@ -138,10 +138,14 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "the released catalog says its publisher unpublished it", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"subscription":null,"publisher_unpublished":true`},
 		{name: "update the released catalog", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
 		{name: "save the released catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusOK, wantBody: `"name":"Mine now"`},
-		{name: "the saved catalog is no longer marked", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"name":"Mine now","provider":"tmdb","params":"{}","collection_id":null`},
+		{name: "a save keeps the mark", method: http.MethodGet, path: "/api/p/1/catalogs", wantStatus: http.StatusOK, wantBody: `"subscription":null,"publisher_unpublished":true`},
+		{name: "the released catalog is listed", method: http.MethodGet, path: "/api/p/1/released", wantStatus: http.StatusOK, wantBody: `[{"kind":"catalog","id":"` + catalogCopy.String() + `","name":"Mine now"}]`},
+		{name: "acknowledge another profile's catalog", method: http.MethodPost, path: "/api/p/1/catalogs/" + x.theirCatalogSource.String() + "/acknowledge-release", wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
+		{name: "acknowledge the release", method: http.MethodPost, path: catalogPath + "/acknowledge-release", wantStatus: http.StatusOK, wantBody: `[]`},
+		{name: "nothing is released any more", method: http.MethodGet, path: "/api/p/1/released", wantStatus: http.StatusOK, wantBody: `[]`},
 	})
 	if strings.Contains(serve(t, x.f.s, http.MethodGet, "/api/p/1/catalogs", "", false).Body.String(), `"publisher_unpublished":true`) {
-		t.Error("a catalog is still marked unpublished after its save")
+		t.Error("a catalog is still marked unpublished once acknowledged")
 	}
 }
 

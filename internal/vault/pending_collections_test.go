@@ -15,7 +15,7 @@ func TestNewCollectionsAreUnpushed(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 	subscriber := newTestProfile(t, db, "subscriber")
 
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Source"})
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Source", ViewMode: "TABBED_GRID"})
 	subscribed := subscribe(t, db, subscriber, source.Publication.ID).Collection
 	duplicated, err := db.DuplicatePublication(ctx, subscriber, source.Publication.ID)
 	if err != nil {
@@ -75,14 +75,14 @@ func TestACollectionWaitsWhenWhatPushSendsDiffers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Night", Folders: []FolderData{{Title: "F", Catalogs: CatalogRefs(catalog.ID)}}})
+	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Night", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(catalog.ID)}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	folderID := c.Folders[0].ID
 	form := func(title, cover, genre string) CollectionForm {
-		return CollectionForm{Title: title, Folders: []FolderData{{
-			ID: &folderID, Title: "F", FolderArt: FolderArt{CoverImageURL: cover},
+		return CollectionForm{Title: title, ViewMode: "TABBED_GRID", Folders: []FolderData{{
+			ID: &folderID, Title: "F", FolderArt: FolderArt{TileShape: "POSTER", CoverImageURL: cover},
 			Catalogs: []FolderCatalogRef{{CatalogID: &catalog.ID, Genre: genre}},
 		}}}
 	}
@@ -129,7 +129,7 @@ func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Read"})
+	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Read", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	saveCollection(t, db, owner, c.ID, CollectionForm{Title: "Saved meanwhile"})
+	saveCollection(t, db, owner, c.ID, CollectionForm{Title: "Saved meanwhile", ViewMode: "TABBED_GRID"})
 	if err := db.SavePush(ctx, owner, record); err != nil {
 		t.Fatalf("SavePush: %v", err)
 	}
@@ -155,9 +155,9 @@ func TestEscapedTextDoesNotWaitForAPush(t *testing.T) {
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
 	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:            "Fish & <Chips>",
+		Title: "Fish & <Chips>", ViewMode: "TABBED_GRID",
 		BackdropImageURL: "https://images.weserv.nl/?url=image.tmdb.org/t/p/original/a.jpg&w=1280&output=webp",
-		Folders:          []FolderData{{Title: "A < B > C & D", FolderArt: FolderArt{CoverEmoji: "🎃"}}},
+		Folders:          []FolderData{{Title: "A < B > C & D", FolderArt: FolderArt{TileShape: "POSTER", CoverEmoji: "🎃"}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +174,7 @@ func TestOnHomeButNotInTheRecordWaitsForAPush(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Missing"})
+	c, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Missing", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,11 +195,11 @@ func TestPinToTopIsWrittenOnlyByPush(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner := newTestProfile(t, db, "owner")
-	a, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "A"})
+	a, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "A", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "B"})
+	b, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "B", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestPinToTopIsWrittenOnlyByPush(t *testing.T) {
 		t.Error("A right after the push: want nothing waiting, its stored pin being the one sent")
 	}
 
-	if saved, err := db.UpdateUserCollection(ctx, owner, a.ID, CollectionForm{Title: "A2"}); err != nil || !saved.PinToTop {
+	if saved, err := db.UpdateUserCollection(ctx, owner, a.ID, CollectionForm{Title: "A2", ViewMode: "TABBED_GRID"}); err != nil || !saved.PinToTop {
 		t.Fatalf("save = %v pinned %v; want the pin kept", err, saved.PinToTop)
 	}
 

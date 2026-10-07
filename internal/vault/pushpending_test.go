@@ -40,8 +40,8 @@ func newPendingFixture(t *testing.T) pendingFixture {
 	f.collection = newTestCollection(t, f.db, f.owner, "Pushed")
 	f.scoped = createScopedCatalog(t, f.db, f.owner, f.collection, listedCatalogForm("Scoped"))
 	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.collection, CollectionForm{
-		Title:   "Pushed",
-		Folders: []FolderData{{Title: "F", Catalogs: CatalogRefs(f.listed.ID, f.scoped.ID)}},
+		Title: "Pushed", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(f.listed.ID, f.scoped.ID)}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -125,8 +125,8 @@ func TestAFolderCatalogEditWaitsAsItsCollection(t *testing.T) {
 
 	f.rename(t, f.listed, "In a folder", "{}")
 	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.collection, CollectionForm{
-		Title:        "Pushed",
-		Folders:      []FolderData{{Title: "F", Catalogs: CatalogRefs(f.listed.ID, f.scoped.ID)}},
+		Title: "Pushed", ViewMode: "TABBED_GRID",
+		Folders:      []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(f.listed.ID, f.scoped.ID)}},
 		CatalogEdits: []ScopedCatalogEdit{{ID: f.scoped.ID, Type: "movie", Provider: "tmdb", Name: "Scoped", Params: f.changed}},
 	}); err != nil {
 		t.Fatal(err)

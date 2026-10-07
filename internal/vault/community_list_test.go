@@ -19,10 +19,10 @@ func TestListCommunity(t *testing.T) {
 	db := newTestDB(t)
 	owner, viewer := newTestProfile(t, db, "owner"), newTestProfile(t, db, "viewer")
 	movie := publishCatalog(t, db, owner, "Movie", `{"sort_by":"popularity.desc"}`)
-	publishCollection(t, db, owner, CollectionForm{Title: "Movie Night", Folders: []FolderData{
+	publishCollection(t, db, owner, CollectionForm{Title: "Movie Night", ViewMode: "TABBED_GRID", Folders: []FolderData{
 		{Title: "Ghosts", FolderArt: FolderArt{TileShape: "LANDSCAPE", CoverEmoji: "👻"},
 			Catalogs: []FolderCatalogRef{newScoped("k1", "Ghost Stories", `{"with_genres":"27"}`)}},
-		{Title: "Slashers", FolderArt: FolderArt{CoverImageURL: "https://image.tmdb.org/t/p/w500/a.jpg"},
+		{Title: "Slashers", FolderArt: FolderArt{TileShape: "POSTER", CoverImageURL: "https://image.tmdb.org/t/p/w500/a.jpg"},
 			Catalogs: []FolderCatalogRef{newScoped("k2", "Slashers", `{"with_genres":"53"}`)}},
 	}})
 	unpublished := publishCatalog(t, db, owner, "Unpublished", `{"sort_by":"revenue.desc"}`)
@@ -102,7 +102,7 @@ func TestGetPublication(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	owner, viewer := newTestProfile(t, db, "owner"), newTestProfile(t, db, "viewer")
-	source := publishCollection(t, db, owner, CollectionForm{Title: "Halloween", Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "Ghosts", "{}")}}}})
+	source := publishCollection(t, db, owner, CollectionForm{Title: "Halloween", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "Ghosts", "{}")}}}})
 	detail, err := db.GetPublication(ctx, viewer, source.Publication.ID)
 	if err != nil {
 		t.Fatal(err)

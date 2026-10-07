@@ -27,10 +27,12 @@ import { moveByOne, orderByKeys } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
 import { CollectionAppearance } from './CollectionAppearance'
 import { CollectionPreview } from './CollectionPreview'
+import { FolderCount } from './FolderCap'
 import { FolderDetail } from './FolderDetail'
 import { FolderTiles, FolderTreeDnd } from './FolderTree'
 import {
   DRAFT_ID_PREFIX,
+  MAX_FOLDERS,
   countErrors,
   folderLabel,
   folderUnit,
@@ -544,11 +546,17 @@ export function CollectionEditor({
             <div className="setting is-head">
               <h2 className="setting-label type-label">Folders</h2>
               <div className="setting-value flex justify-end">
-                <button type="button" className="btn-secondary btn-sm" onClick={addFolder}>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={addFolder}
+                  disabled={state.folders.length >= MAX_FOLDERS}
+                >
                   Add folder
                 </button>
               </div>
             </div>
+            <FolderCount count={state.folders.length} error={errors.folderCount} showError={showErrors} />
 
             {willDelete.length > 0 && (
               <StagedNote tone="danger" onUndo={undoRemoving}>

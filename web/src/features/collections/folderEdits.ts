@@ -170,10 +170,15 @@ function isStale(offered: string[] | undefined, genre: string): boolean {
   return !offered.includes(genre)
 }
 
-/** What the save bar names as needing fixing, in form order: "Title", then
- *  each folder's title and catalogs by its place ("folder 2’s title"). */
+/** What the save bar names as needing fixing, in form order: "Title" and
+ *  "Folders", then each folder's title and catalogs by its place ("folder 2’s
+ *  title"). */
 export function errorRoleLabels(errors: CollectionErrors, folders: FolderFormState[]): string[] {
-  return [...(errors.title ? ['Title'] : []), ...folders.flatMap((folder, index) => folderErrorLabels(errors.folders[folder.key], index))]
+  return [...ownErrorLabels(errors), ...folders.flatMap((folder, index) => folderErrorLabels(errors.folders[folder.key], index))]
+}
+
+function ownErrorLabels(errors: CollectionErrors): string[] {
+  return [...(errors.title ? ['Title'] : []), ...(errors.folderCount ? ['Folders'] : [])]
 }
 
 function folderErrorLabels(folderErrors: FolderErrors | undefined, index: number): string[] {

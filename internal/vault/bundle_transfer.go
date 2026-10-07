@@ -227,11 +227,12 @@ func checkReuseTargets(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, tar
 // another type or another filter. The targets are already known to exist.
 func checkReuseRecipes(ctx context.Context, tx *sql.Tx, targets []reuseTarget) error {
 	for _, t := range targets {
-		held, err := queryStrings(ctx, tx, "recipe hash", `SELECT recipe_hash FROM catalogs WHERE id = ?`, t.id.String())
-		if err != nil {
-			return err
+		var catalogType, catalogProvider, params string
+		if err := tx.QueryRowContext(ctx, `SELECT type, provider, params FROM catalogs WHERE id = ?`, t.id.String()).
+			Scan(&catalogType, &catalogProvider, &params); err != nil {
+			return fmt.Errorf("reading reuse catalog: %w", err)
 		}
-		if !slices.Equal(held, []string{t.hash}) {
+		if RecipeHash(catalogType, catalogProvider, params) != t.hash {
 			return fmt.Errorf("%w: reuse catalog key %q points at a catalog with a different recipe", ErrInvalidInput, t.key)
 		}
 	}

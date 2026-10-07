@@ -290,16 +290,12 @@ func catalogCopyProblem(c Catalog, want CatalogForm) error {
 	return want.Validate()
 }
 
-// writeCatalogCopy stores want's recipe, unless it is stored already, and
-// writes want's name and recipe over catalog id.
+// writeCatalogCopy writes want's name and params over catalog id, whose type
+// and provider want already matches (catalogCopyProblem).
 func writeCatalogCopy(ctx context.Context, tx *sql.Tx, id uuid.UUID, want CatalogForm) error {
 	nowStr := time.Now().UTC().Format(time.RFC3339)
-	hash, err := ensureRecipe(ctx, tx, want.Type, want.Provider, want.Params, nowStr)
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE catalogs SET name = ?, recipe_hash = ?, updated_at = ? WHERE id = ?`,
-		want.Name, hash, nowStr, id.String()); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE catalogs SET name = ?, params = ?, updated_at = ? WHERE id = ?`,
+		want.Name, want.Params, nowStr, id.String()); err != nil {
 		return fmt.Errorf("updating subscribed catalog: %w", err)
 	}
 	return nil

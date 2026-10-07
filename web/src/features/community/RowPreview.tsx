@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchCatalogPreview, queryKeys, type CommunityFolder, type CommunityItem, type SnapshotCatalog } from '@/api'
-import { normalizeTileShape } from '@/features/preview/model'
 import { TILE_ASPECT } from '@/features/preview/tiles'
 import { PREVIEW_QUERY_OPTIONS } from '@/features/preview/useRecipesTiles'
 import { firstPosters, shownFolders, STACK_SIZE } from './rowPreviewModel'
@@ -94,9 +93,8 @@ function FolderStrip({ folders, onOpen }: { folders: CommunityFolder[]; onOpen()
 }
 
 function FolderFace({ folder }: { folder: CommunityFolder }) {
-  const { shape } = normalizeTileShape(folder.tile_shape)
   return (
-    <span className="row-face" style={{ '--ratio': TILE_ASPECT[shape] } as CSSProperties}>
+    <span className="row-face" style={{ '--ratio': TILE_ASPECT[folder.tile_shape] } as CSSProperties}>
       <FolderLabel folder={folder} />
       {folder.cover_image_url.trim() && <img src={folder.cover_image_url} alt="" loading="lazy" decoding="async" />}
     </span>

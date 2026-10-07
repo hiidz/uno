@@ -20,7 +20,7 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 
 	folder := FolderData{
 		Title: "Folder",
-		FolderArt: FolderArt{
+		FolderArt: FolderArt{TileShape: "POSTER",
 			FocusGIFURL:     "https://example.com/focus.gif",
 			FocusGIFEnabled: true,
 			HeroBackdropURL: "https://example.com/backdrop.jpg",
@@ -30,7 +30,7 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 		Catalogs: CatalogRefs(listed.ID),
 	}
 	created, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:            "C",
+		Title: "C", ViewMode: "TABBED_GRID",
 		FocusGlowEnabled: true,
 		Folders:          []FolderData{folder},
 	})
@@ -47,7 +47,7 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 	folder.HeroVideoURL = ""
 	folder.TitleLogoURL = "https://example.com/logo2.png"
 	updated, err := db.UpdateUserCollection(ctx, owner, created.ID, CollectionForm{
-		Title:            "C",
+		Title: "C", ViewMode: "TABBED_GRID",
 		FocusGlowEnabled: false,
 		Folders:          []FolderData{folder},
 	})

@@ -16,19 +16,18 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 	return selectCatalogs(ctx, db.conn, where, args...)
 }
 
-// baseCatalogColumns are a catalog's own columns and its recipe's, the ones
-// scanCatalog reads first.
-const baseCatalogColumns = `c.id, r.type, c.name, r.provider, r.params, c.owner_id,
-	c.collection_id, c.home_sort_order, c.show_in_home, c.recipe_hash, c.sub_key,
+// baseCatalogColumns are a catalog's own columns, the ones scanCatalog reads
+// first.
+const baseCatalogColumns = `c.id, c.type, c.name, c.provider, c.params, c.owner_id,
+	c.collection_id, c.home_sort_order, c.show_in_home, c.sub_key,
 	c.unpublished_at IS NOT NULL, c.created_at, c.updated_at`
 
 // catalogColumns are the columns scanCatalog reads, in its order, from
 // catalogRows: the base columns, then the sharing state.
 const catalogColumns = baseCatalogColumns + `, ` + sharingColumns
 
-// leanCatalogColumns are the columns scanCatalog reads from
-// catalogsWithRecipes alone: the base columns, then NULL for the sharing
-// state, which scans as none.
+// leanCatalogColumns are the columns scanCatalog reads from catalogs alone:
+// the base columns, then NULL for the sharing state, which scans as none.
 const leanCatalogColumns = baseCatalogColumns + `, ` + noSharingColumns
 
 // sharingColumns are a row's sharing columns, which sharingScan reads: the
@@ -42,14 +41,10 @@ const sharingColumns = `p.id, p.content_hash,
 // the sharing tables.
 const noSharingColumns = `NULL, NULL, NULL, NULL`
 
-// catalogsWithRecipes is every catalog joined to its recipe, which holds its
-// type, provider and params.
-const catalogsWithRecipes = `catalogs c JOIN recipes r ON r.hash = c.recipe_hash`
-
-// catalogRows is catalogsWithRecipes with each catalog's publication and
-// subscription joined in: what a read of the owner's own catalogs selects
-// catalogColumns from.
-const catalogRows = catalogsWithRecipes + `
+// catalogRows is every catalog, as c, with its publication and subscription
+// joined in: what a read of the owner's own catalogs selects catalogColumns
+// from.
+const catalogRows = `catalogs c
 	LEFT JOIN publications p ON p.catalog_id = c.id
 	LEFT JOIN subscriptions s ON s.catalog_id = c.id
 	LEFT JOIN publications sp ON sp.id = s.publication_id`
@@ -58,8 +53,7 @@ const catalogRows = catalogsWithRecipes + `
 // WHERE clause and args, parsing the result rows, each with its sharing
 // state. where is built from this package's own literals — never from
 // client input, which reaches the query only as a bound arg — and names
-// every column through its table's alias, c for catalogs and r for recipes,
-// since the joined tables share column names.
+// every column through c, since the joined tables share column names.
 func selectCatalogs(ctx context.Context, q dbtx, where string, args ...any) ([]Catalog, error) {
 	return queryCatalogRows(ctx, q, `SELECT `+catalogColumns+` FROM `+catalogRows+` WHERE `+where, args...)
 }
@@ -68,7 +62,7 @@ func selectCatalogs(ctx context.Context, q dbtx, where string, args ...any) ([]C
 // saves the joins and the changed-since-publish hash: the read for push, the
 // addon and the catalogs of a collection tree, none of which shows it.
 func selectLeanCatalogs(ctx context.Context, q dbtx, where string, args ...any) ([]Catalog, error) {
-	return queryCatalogRows(ctx, q, `SELECT `+leanCatalogColumns+` FROM `+catalogsWithRecipes+` WHERE `+where, args...)
+	return queryCatalogRows(ctx, q, `SELECT `+leanCatalogColumns+` FROM catalogs c WHERE `+where, args...)
 }
 
 // queryCatalogRows runs query, built by selectCatalogs or
@@ -120,33 +114,22 @@ func compareByHomeSortOrder(a, b Catalog) int {
 	}
 }
 
-// insertCatalog writes c as a new catalogs row, storing its recipe first, and
-// returns c with its RecipeHash. It is the one catalog INSERT in this
-// package: a catalog save, a subscribe or duplicate of a catalog and a collection
-// save's New entries all go through it, each inside a transaction, so a
-// recipe it stores never outlives a failed insert. home_sort_order and
-// show_in_home are left to their column defaults, since no catalog is born
-// on the home screen. An empty SubKey is stored as NULL.
+// insertCatalog writes c as a new catalogs row and returns c with its
+// RecipeHash. It is the one catalog INSERT in this package: a catalog save, a
+// subscribe or duplicate of a catalog and a collection save's New entries all
+// go through it. home_sort_order and show_in_home are left to their column
+// defaults, since no catalog is born on the home screen. An empty SubKey is
+// stored as NULL.
 func insertCatalog(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) {
-	hash, err := ensureRecipe(ctx, tx, c.Type, c.Provider, c.Params, c.CreatedAt.Format(time.RFC3339))
-	if err != nil {
-		return Catalog{}, err
-	}
-	c.RecipeHash = hash
-	return c, insertCatalogRow(ctx, tx, c)
-}
-
-// insertCatalogRow writes c's catalogs row, pointing at the recipe
-// c.RecipeHash names; see insertCatalog.
-func insertCatalogRow(ctx context.Context, tx *sql.Tx, c Catalog) error {
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO catalogs (id, name, recipe_hash, owner_id, collection_id, sub_key, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID.String(), c.Name, c.RecipeHash, c.OwnerID.String(), nullableUUIDString(c.CollectionID),
+		INSERT INTO catalogs (id, name, type, provider, params, owner_id, collection_id, sub_key, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID.String(), c.Name, c.Type, c.Provider, c.Params, c.OwnerID.String(), nullableUUIDString(c.CollectionID),
 		nullableString(c.SubKey), c.CreatedAt.Format(time.RFC3339), c.UpdatedAt.Format(time.RFC3339)); err != nil {
-		return fmt.Errorf("inserting catalog: %w", err)
+		return Catalog{}, fmt.Errorf("inserting catalog: %w", err)
 	}
-	return nil
+	c.RecipeHash = RecipeHash(c.Type, c.Provider, c.Params)
+	return c, nil
 }
 
 // GetCatalogsByIDs batch-loads catalogs by id, no ownership check. It reads
@@ -239,20 +222,14 @@ func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.
 	return writeCatalog(ctx, tx, profileID, catalogID, input)
 }
 
-// writeCatalog stores input's recipe, unless it is stored already, and
-// writes input's name and recipe over catalogID; see UpdateUserCatalog. A
-// save is the subscriber having seen a catalog its publisher unpublished,
-// so it clears that mark.
+// writeCatalog writes input's name and params over catalogID; see
+// UpdateUserCatalog. Its type and provider never change (checkCatalogRewrite).
 func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
 	nowStr := time.Now().UTC().Format(time.RFC3339)
-	hash, err := ensureRecipe(ctx, tx, input.Type, input.Provider, input.Params, nowStr)
-	if err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE catalogs SET name = ?, recipe_hash = ?, unpublished_at = NULL, updated_at = ?
+		UPDATE catalogs SET name = ?, params = ?, updated_at = ?
 		WHERE id = ? AND owner_id = ?
-	`, input.Name, hash, nowStr, catalogID.String(), profileID.String()); err != nil {
+	`, input.Name, input.Params, nowStr, catalogID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating catalog: %w", err)
 	}
 	return nil
@@ -285,7 +262,7 @@ type storedCatalog struct {
 func loadCatalogForUpdate(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID) (storedCatalog, error) {
 	var s storedCatalog
 	err := tx.QueryRowContext(ctx, `
-		SELECT r.type, r.provider, c.collection_id FROM `+catalogsWithRecipes+` WHERE c.id = ? AND c.owner_id = ?
+		SELECT type, provider, collection_id FROM catalogs WHERE id = ? AND owner_id = ?
 	`, catalogID.String(), profileID.String()).Scan(&s.kind.catalogType, &s.kind.provider, &s.collectionID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):

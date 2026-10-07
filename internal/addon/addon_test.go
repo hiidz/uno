@@ -60,13 +60,13 @@ func TestBuildManifestFolderOnlyCatalogGetsGenreExtra(t *testing.T) {
 		t.Fatalf("create catalog: %v", err)
 	}
 
-	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "On TV"})
+	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "On TV", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
 	}
 	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, vault.CollectionForm{
-		Title:   "On TV",
-		Folders: []vault.FolderData{{Title: "Folder", Catalogs: vault.CatalogRefs(folderOnly.ID)}},
+		Title: "On TV", ViewMode: "TABBED_GRID",
+		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(folderOnly.ID)}},
 	}); err != nil {
 		t.Fatalf("saving collection: %v", err)
 	}
@@ -116,13 +116,13 @@ func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testi
 		t.Fatalf("create catalog: %v", err)
 	}
 
-	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "On TV"})
+	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "On TV", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
 	}
 	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, vault.CollectionForm{
-		Title:   "On TV",
-		Folders: []vault.FolderData{{Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
+		Title: "On TV", ViewMode: "TABBED_GRID",
+		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
 	}); err != nil {
 		t.Fatalf("saving collection: %v", err)
 	}
@@ -258,13 +258,13 @@ func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) 
 		t.Fatalf("create catalog: %v", err)
 	}
 
-	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "Off TV"})
+	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "Off TV", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
 	}
 	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, vault.CollectionForm{
-		Title:   "Off TV",
-		Folders: []vault.FolderData{{Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
+		Title: "Off TV", ViewMode: "TABBED_GRID",
+		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
 	}); err != nil {
 		t.Fatalf("saving collection: %v", err)
 	}

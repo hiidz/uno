@@ -25,17 +25,17 @@ func TestDuplicateCollection(t *testing.T) {
 		t.Fatalf("create listed catalog: %v", err)
 	}
 
-	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Source"})
+	source, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: "Source", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("create source collection: %v", err)
 	}
 	scoped := createScopedCatalog(t, db, owner, source.ID, listedCatalogForm("Scoped"))
 
 	source, err = db.UpdateUserCollection(ctx, owner, source.ID, CollectionForm{
-		Title: "Source",
+		Title: "Source", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Folder 1", Catalogs: CatalogRefs(listed.ID, scoped.ID)},
-			{Title: "Folder 2", Catalogs: CatalogRefs(scoped.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: CatalogRefs(listed.ID, scoped.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 2", Catalogs: CatalogRefs(scoped.ID)},
 		},
 	})
 	if err != nil {
@@ -118,7 +118,7 @@ func TestDuplicateCollectionNotFound(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 	other := newTestProfile(t, db, "other")
 
-	notMine, err := db.CreateUserCollection(ctx, other, CollectionForm{Title: "Not mine"})
+	notMine, err := db.CreateUserCollection(ctx, other, CollectionForm{Title: "Not mine", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("create other's collection: %v", err)
 	}

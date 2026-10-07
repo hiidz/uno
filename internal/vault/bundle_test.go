@@ -21,7 +21,6 @@ func bundleTestCatalog(name string, collectionID *uuid.UUID) Catalog {
 		Provider:     "tmdb",
 		Params:       `{"sort_by":"` + name + `"}`,
 		CollectionID: collectionID,
-		RecipeHash:   "fp-" + name,
 	}
 }
 
@@ -115,8 +114,8 @@ func TestExtractBundleScopeAllKeepsEveryCatalogInItsCollection(t *testing.T) {
 		if c.SourceID == nil || *c.SourceID != shared.ID {
 			t.Errorf("%s SourceID = %v, want %s", c.Key, c.SourceID, shared.ID)
 		}
-		if c.RecipeHash != shared.RecipeHash || string(c.Params) != shared.Params {
-			t.Errorf("%s recipe hash, params = %q, %s, want %q, %s", c.Key, c.RecipeHash, c.Params, shared.RecipeHash, shared.Params)
+		if string(c.Params) != shared.Params {
+			t.Errorf("%s params = %s, want %s", c.Key, c.Params, shared.Params)
 		}
 	}
 }
@@ -298,15 +297,15 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 		t.Fatalf("create listed catalog: %v", err)
 	}
 	onlyListed, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:   "Only listed",
-		Folders: []FolderData{{Title: "F", Catalogs: CatalogRefs(listed.ID)}},
+		Title: "Only listed", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(listed.ID)}},
 	})
 	if err != nil {
 		t.Fatalf("create collection referencing the listed catalog: %v", err)
 	}
 	withScoped, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "With scoped",
-		Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{{New: &NewScopedCatalog{
+		Title: "With scoped", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{{New: &NewScopedCatalog{
 			Key: "draft:scoped", Type: "movie", Name: "Scoped", Provider: "tmdb", Params: "{}",
 		}}}}},
 	})
@@ -322,8 +321,8 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 	}{
 		{"blank name", `UPDATE catalogs SET name = ? WHERE id = ?`, " "},
 		{"overlong name", `UPDATE catalogs SET name = ? WHERE id = ?`, strings.Repeat("n", maxNameLen+1)},
-		{"unknown type", `UPDATE recipes SET type = ? WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)`, "anime"},
-		{"unknown provider", `UPDATE recipes SET provider = ? WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)`, "mdblist"},
+		{"unknown type", `UPDATE catalogs SET type = ? WHERE id = ?`, "anime"},
+		{"unknown provider", `UPDATE catalogs SET provider = ? WHERE id = ?`, "mdblist"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			corrupt := func(id uuid.UUID, name string) {
@@ -332,13 +331,8 @@ func TestCopiesHoldCopiedCatalogsToTheCatalogRules(t *testing.T) {
 					t.Fatalf("writing the stale row: %v", err)
 				}
 				t.Cleanup(func() {
-					if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = ? WHERE id = ?`, name, id.String()); err != nil {
+					if _, err := db.conn.ExecContext(ctx, `UPDATE catalogs SET name = ?, type = 'movie', provider = 'tmdb' WHERE id = ?`, name, id.String()); err != nil {
 						t.Errorf("restoring the catalog row: %v", err)
-					}
-					if _, err := db.conn.ExecContext(ctx, `
-						UPDATE recipes SET type = 'movie', provider = 'tmdb' WHERE hash = (SELECT recipe_hash FROM catalogs WHERE id = ?)
-					`, id.String()); err != nil {
-						t.Errorf("restoring the recipe row: %v", err)
 					}
 				})
 			}
@@ -376,9 +370,9 @@ func TestCollectionFormSharedKeyComparesSubKey(t *testing.T) {
 		spec := func(subKey string) *NewScopedCatalog {
 			return &NewScopedCatalog{Key: "c1", Type: "movie", Name: "Shared", Provider: "tmdb", Params: "{}", SubKey: subKey}
 		}
-		return CollectionForm{Title: "C", Folders: []FolderData{
-			{Title: "F1", Catalogs: []FolderCatalogRef{{New: spec(a)}}},
-			{Title: "F2", Catalogs: []FolderCatalogRef{{New: spec(b)}}},
+		return CollectionForm{Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F1", Catalogs: []FolderCatalogRef{{New: spec(a)}}},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F2", Catalogs: []FolderCatalogRef{{New: spec(b)}}},
 		}}
 	}
 	if err := form("k", "k").Validate(); err != nil {

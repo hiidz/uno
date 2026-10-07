@@ -167,14 +167,13 @@ func createCollectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, fo
 }
 
 // updateCollectionRow writes the collection's own columns. pin_to_top is not
-// one of them: only push writes it. A save is the subscriber having seen a
-// collection its publisher unpublished, so it clears that mark. Returns
-// ErrCollectionNotFound if the row is no longer there.
+// one of them: only push writes it. Returns ErrCollectionNotFound if the row
+// is no longer there.
 func updateCollectionRow(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, input CollectionForm, nowStr string) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE collections
 		SET title = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, focus_glow_enabled = ?,
-		    unpublished_at = NULL, updated_at = ?
+		    updated_at = ?
 		WHERE id = ? AND owner_id = ?
 	`, input.Title, input.ViewMode, input.ShowAllTab, input.BackdropImageURL, input.FocusGlowEnabled, nowStr,
 		collectionID.String(), profileID.String())
@@ -227,18 +226,14 @@ func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 	return writeCatalogEdit(ctx, tx, profileID, e, nowStr)
 }
 
-// writeCatalogEdit stores e's recipe, unless it is stored already, and
-// writes e over its catalog; see applyCatalogEdit.
+// writeCatalogEdit writes e's name and params over its catalog; see
+// applyCatalogEdit.
 func writeCatalogEdit(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
-	hash, err := ensureRecipe(ctx, tx, e.Type, e.Provider, e.Params, nowStr)
-	if err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
-		SET name = ?, recipe_hash = ?, updated_at = ?
+		SET name = ?, params = ?, updated_at = ?
 		WHERE id = ? AND owner_id = ?
-	`, e.Name, hash, nowStr, e.ID.String(), profileID.String()); err != nil {
+	`, e.Name, e.Params, nowStr, e.ID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating edited catalog: %w", err)
 	}
 	return nil
@@ -247,7 +242,7 @@ func writeCatalogEdit(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, e Sc
 // storedRecipe is the part of a catalog row a ScopedCatalogEdit rewrites,
 // read back to tell a real edit from one that changes nothing.
 type storedRecipe struct {
-	name, recipeHash string
+	name, params string
 }
 
 // loadEditedCatalog reads the row e rewrites, confirming it is owned by
@@ -258,9 +253,9 @@ func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 	var s storedRecipe
 	var kind catalogKind
 	err := tx.QueryRowContext(ctx, `
-		SELECT r.type, r.provider, c.name, c.recipe_hash FROM `+catalogsWithRecipes+`
-		WHERE c.id = ? AND c.owner_id = ? AND c.collection_id = ?
-	`, e.ID.String(), profileID.String(), collectionID.String()).Scan(&kind.catalogType, &kind.provider, &s.name, &s.recipeHash)
+		SELECT type, provider, name, params FROM catalogs
+		WHERE id = ? AND owner_id = ? AND collection_id = ?
+	`, e.ID.String(), profileID.String(), collectionID.String()).Scan(&kind.catalogType, &kind.provider, &s.name, &s.params)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storedRecipe{}, fmt.Errorf("%w: catalog %s is not inside this collection", ErrInvalidInput, e.ID)
 	}
@@ -274,9 +269,10 @@ func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 }
 
 // changesNothing reports whether e would leave stored exactly as it is: the
-// same name and the same recipe.
+// same name and the same params; its type and provider already match
+// (loadEditedCatalog).
 func (e ScopedCatalogEdit) changesNothing(stored storedRecipe) bool {
-	return e.Name == stored.name && e.recipeHash() == stored.recipeHash
+	return e.Name == stored.name && e.Params == stored.params
 }
 
 // deleteOrphanedScopedCatalogs removes every catalog scoped to collectionID

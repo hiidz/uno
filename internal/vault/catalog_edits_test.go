@@ -16,8 +16,8 @@ func scopedCatalogInFolder(t *testing.T, db *DB, owner, collectionID uuid.UUID, 
 	ctx := context.Background()
 	catalog := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm(name))
 	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title:   "My Collection",
-		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(catalog.ID)}},
+		Title: "My Collection", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(catalog.ID)}},
 	})
 	if err != nil {
 		t.Fatalf("referencing scoped catalog %q: %v", name, err)
@@ -35,7 +35,7 @@ func editOf(c Catalog) ScopedCatalogEdit {
 func sameFolders(saved CollectionWithFolders) []FolderData {
 	folders := make([]FolderData, len(saved.Folders))
 	for i, f := range saved.Folders {
-		folders[i] = FolderData{ID: &f.ID, Title: f.Title, Catalogs: CatalogRefs(f.CatalogIDs()...)}
+		folders[i] = FolderData{FolderArt: FolderArt{TileShape: "POSTER"}, ID: &f.ID, Title: f.Title, Catalogs: CatalogRefs(f.CatalogIDs()...)}
 	}
 	return folders
 }
@@ -53,7 +53,7 @@ func TestUpdateUserCollectionAppliesCatalogEdits(t *testing.T) {
 	edit.Name = "After"
 	edit.Params = `{"sort_by":"popularity.desc"}`
 	got, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-		Title:        "Renamed",
+		Title: "Renamed", ViewMode: "TABBED_GRID",
 		Folders:      sameFolders(saved),
 		CatalogEdits: []ScopedCatalogEdit{edit},
 	})
@@ -71,7 +71,7 @@ func TestUpdateUserCollectionAppliesCatalogEdits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("querying edited catalog: %v", err)
 	}
-	if stored[0].RecipeHash != edit.recipeHash() || stored[0].CollectionID == nil {
+	if stored[0].RecipeHash != RecipeHash(edit.Type, edit.Provider, edit.Params) || stored[0].CollectionID == nil {
 		t.Fatalf("stored catalog = %+v, want the new recipe and still scoped", stored[0])
 	}
 }
@@ -118,7 +118,7 @@ func TestUpdateUserCollectionRefusedCatalogEditWritesNothing(t *testing.T) {
 				edits = []ScopedCatalogEdit{tt.bad}
 			}
 			_, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-				Title:        "Renamed",
+				Title: "Renamed", ViewMode: "TABBED_GRID",
 				Folders:      sameFolders(saved),
 				CatalogEdits: edits,
 			})
@@ -165,7 +165,7 @@ func TestUpdateUserCollectionSkipsNoOpCatalogEdit(t *testing.T) {
 	save := func(edit ScopedCatalogEdit) {
 		t.Helper()
 		if _, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
-			Title:        "My Collection",
+			Title: "My Collection", ViewMode: "TABBED_GRID",
 			Folders:      sameFolders(saved),
 			CatalogEdits: []ScopedCatalogEdit{edit},
 		}); err != nil {
@@ -194,7 +194,7 @@ func TestCreateUserCollectionRefusesCatalogEdits(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 
 	_, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title:        "New",
+		Title: "New", ViewMode: "TABBED_GRID",
 		CatalogEdits: []ScopedCatalogEdit{{ID: uuid.New(), Type: "movie", Provider: "tmdb", Name: "X", Params: "{}"}},
 	})
 	if !errors.Is(err, ErrInvalidInput) {

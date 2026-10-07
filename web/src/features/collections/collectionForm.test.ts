@@ -1,17 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Collection } from '@/api'
+import type { Collection, ViewMode } from '@/api'
 import { formFromCatalog, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
+  MAX_FOLDERS,
+  MAX_REFS_PER_FOLDER,
   appearanceSummary,
+  countErrors,
   emptyCollectionForm,
   formFromCollection,
   isSameCollection,
   newFolder,
   newRef,
+  ownErrors,
   toCollectionPayload,
   validateCollectionForm,
   withCatalogEdit,
+  VIEW_MODES,
   type CollectionFormState,
 } from './collectionForm'
 
@@ -35,6 +40,28 @@ describe('validateCollectionForm', () => {
     const form = formWith([newRef('c1', 'War'), newRef('c1', 'War')])
     const errors = Object.values(validateCollectionForm(form, accessible).folders)
     expect(errors[0]?.catalogIDs).toBe('This folder lists the same catalog with the same genre twice.')
+  })
+
+  it('names catalogs gone from the library before anything else', () => {
+    const many = Object.values(validateCollectionForm(formWith([newRef('gone'), newRef('gone')]), accessible).folders)
+    expect(many[0]?.catalogIDs).toBe('2 catalogs here are no longer available. Remove them to save.')
+    const one = Object.values(validateCollectionForm(formWith([newRef('gone')]), accessible).folders)
+    expect(one[0]?.catalogIDs).toBe('One catalog here is no longer available. Remove it to save.')
+  })
+
+  it('holds a folder to twenty refs and a collection to ten folders', () => {
+    const genres = (n: number) => Array.from({ length: n }, (_, i) => newRef('c1', `G${i}`))
+    expect(validateCollectionForm(formWith(genres(MAX_REFS_PER_FOLDER)), accessible).folders).toEqual({})
+    const over = Object.values(validateCollectionForm(formWith(genres(MAX_REFS_PER_FOLDER + 2)), accessible).folders)
+    expect(over[0]?.catalogIDs).toMatch(/at most 20 catalogs.*Remove 2 to save\.$/)
+
+    const folders = (n: number) => Array.from({ length: n }, () => ({ ...newFolder(), title: 'F' }))
+    const atCap = validateCollectionForm({ ...emptyCollectionForm(), title: 'C', folders: folders(MAX_FOLDERS) }, accessible)
+    expect(atCap.folderCount).toBeUndefined()
+    const errors = validateCollectionForm({ ...emptyCollectionForm(), title: '', folders: folders(MAX_FOLDERS + 1) }, accessible)
+    expect(errors.folderCount).toBe('A collection holds at most 10 folders. Remove 1 to save.')
+    expect(ownErrors(errors)).toEqual(['Give this collection a title.', errors.folderCount])
+    expect(countErrors(errors)).toBe(2)
   })
 })
 
@@ -100,24 +127,22 @@ describe('withCatalogEdit', () => {
 })
 
 describe('view mode', () => {
-  function stored(viewMode: string): Collection {
+  function stored(viewMode: ViewMode): Collection {
     return collection({ view_mode: viewMode })
   }
 
-  it('loads an empty or unknown view mode as Tabbed Grids, what Nuvio shows for one', () => {
-    for (const mode of ['', 'SIDEWAYS']) {
-      expect(formFromCollection(stored(mode)).viewMode).toBe('TABBED_GRID')
-    }
-  })
-
-  it('starts a new folder as Poster and loads an empty tile shape as Poster, what Nuvio shows for one', () => {
+  it('starts a new collection as Tabbed Grids and a new folder as Poster', () => {
+    expect(emptyCollectionForm().viewMode).toBe('TABBED_GRID')
     expect(newFolder().tileShape).toBe('POSTER')
-    const saved = collection({ view_mode: 'ROWS', folders: [folder({ tile_shape: '' })] })
-    expect(formFromCollection(saved).folders[0].tileShape).toBe('POSTER')
   })
 
-  it('saves each named view mode back as itself', () => {
-    for (const mode of ['FOLLOW_LAYOUT', 'TABBED_GRID', 'ROWS']) {
+  it('loads a stored tile shape as itself', () => {
+    const saved = collection({ view_mode: 'ROWS', folders: [folder({ tile_shape: 'SQUARE' })] })
+    expect(formFromCollection(saved).folders[0].tileShape).toBe('SQUARE')
+  })
+
+  it('saves each view mode back as itself', () => {
+    for (const mode of VIEW_MODES) {
       expect(toCollectionPayload(formFromCollection(stored(mode))).view_mode).toBe(mode)
     }
   })

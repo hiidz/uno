@@ -1,7 +1,6 @@
 package vault
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
@@ -96,9 +95,8 @@ func (in CatalogForm) Validate() error {
 }
 
 var validViewModes = map[string]bool{
-	"TABBED_GRID":   true,
-	"ROWS":          true,
-	"FOLLOW_LAYOUT": true,
+	"TABBED_GRID": true,
+	"ROWS":        true,
 }
 
 var validTileShapes = map[string]bool{
@@ -106,13 +104,6 @@ var validTileShapes = map[string]bool{
 	"LANDSCAPE": true,
 	"SQUARE":    true,
 }
-
-// The values stored for an empty view mode or tile shape: what every Nuvio
-// client shows for one.
-const (
-	defaultViewMode  = "TABBED_GRID"
-	defaultTileShape = "POSTER"
-)
 
 // normalized is in as a builder write or an import stores it: its name
 // trimmed. Normalizing before validating means an untouched save, which the
@@ -123,13 +114,11 @@ func (in CatalogForm) normalized() CatalogForm {
 }
 
 // normalized is in as a builder write or an import stores it: every text
-// field trimmed, including the names of its new catalogs and catalog edits,
-// and an empty view mode or tile shape replaced by its default. A copy or an
-// Update writes the stored values it read instead, so it hashes like its
-// original.
+// field trimmed, including the names of its new catalogs and catalog edits.
+// A copy or an Update writes the stored values it read instead, so it hashes
+// like its original.
 func (in CollectionForm) normalized() CollectionForm {
 	in.Title = strings.TrimSpace(in.Title)
-	in.ViewMode = cmp.Or(in.ViewMode, defaultViewMode)
 	in.BackdropImageURL = strings.TrimSpace(in.BackdropImageURL)
 	in.Folders = slices.Clone(in.Folders)
 	for i := range in.Folders {
@@ -150,7 +139,6 @@ func (fd FolderData) normalized() FolderData {
 	} {
 		*s = strings.TrimSpace(*s)
 	}
-	fd.TileShape = cmp.Or(fd.TileShape, defaultTileShape)
 	fd.Catalogs = slices.Clone(fd.Catalogs)
 	for i, ref := range fd.Catalogs {
 		if ref.New != nil {
@@ -173,11 +161,12 @@ const maxCoverEmojiLen = 32
 
 // maxFoldersPerCollection bounds how many folders one collection holds and
 // maxRefsPerFolder how many catalog refs one folder holds. A collection is
-// browsed with a remote, a folder tab at a time; both bounds sit well past a
-// home screen anyone can navigate.
+// browsed with a remote, a folder tab at a time. The builder holds a form to
+// the same two numbers; a stored collection past them stays readable, pushed
+// and served, but a save of it is refused until it is trimmed.
 const (
-	maxFoldersPerCollection = 100
-	maxRefsPerFolder        = 100
+	maxFoldersPerCollection = 10
+	maxRefsPerFolder        = 20
 )
 
 // maxMediaURLLen bounds every collection and folder media URL. These are
@@ -221,8 +210,8 @@ func collectionProblems(title, viewMode, backdropImageURL string, folders int) [
 		problems = append(problems, "title is required")
 	}
 	problems = appendProblem(problems, lengthProblem("title", title, maxNameLen))
-	if viewMode != "" && !validViewModes[viewMode] {
-		problems = append(problems, `view mode must be "TABBED_GRID", "ROWS", or "FOLLOW_LAYOUT"`)
+	if !validViewModes[viewMode] {
+		problems = append(problems, `view mode must be "TABBED_GRID" or "ROWS"`)
 	}
 	problems = appendProblem(problems, mediaURLProblem("backdrop image url", backdropImageURL))
 	if folders > maxFoldersPerCollection {
@@ -250,7 +239,7 @@ func folderProblems(index int, fd FolderData) []string {
 	} {
 		problems = appendProblem(problems, lengthProblem(fmt.Sprintf("folder %d: %s", index, f.name), f.value, f.limit))
 	}
-	if fd.TileShape != "" && !validTileShapes[fd.TileShape] {
+	if !validTileShapes[fd.TileShape] {
 		problems = append(problems, fmt.Sprintf(`folder %d: tile shape must be "POSTER", "LANDSCAPE", or "SQUARE"`, index))
 	}
 	for _, f := range []struct{ name, value string }{

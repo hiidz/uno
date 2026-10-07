@@ -84,7 +84,7 @@ func TestBundleValidateRules(t *testing.T) {
 		}, "a bundle holds at most 200 catalogs"},
 		{"too many collections", func(b *Bundle) {
 			for range maxBundleCollections {
-				b.Collections = append(b.Collections, BundleCollection{Title: "More"})
+				b.Collections = append(b.Collections, BundleCollection{Title: "More", ViewMode: "TABBED_GRID"})
 			}
 		}, "a bundle holds at most 50 collections"},
 	} {
@@ -125,7 +125,7 @@ func newExportFixture(t *testing.T) exportFixture {
 	f.c = createListed(t, db, f.owner, "C")
 	x, err := db.CreateUserCollection(ctx, f.owner, CollectionForm{
 		Title: "X", ViewMode: "ROWS",
-		Folders: []FolderData{{Title: "F", Catalogs: []FolderCatalogRef{
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{
 			{New: &NewScopedCatalog{Key: "s", Type: "movie", Name: f.scopedName, Provider: "tmdb", Params: `{"sort_by":"s"}`}},
 			{CatalogID: &f.c.ID, Genre: "Drama"},
 			{CatalogID: &f.a.ID},
@@ -135,7 +135,7 @@ func newExportFixture(t *testing.T) exportFixture {
 		t.Fatalf("create X: %v", err)
 	}
 	f.x = x
-	f.y, err = db.CreateUserCollection(ctx, f.owner, CollectionForm{Title: "Y"})
+	f.y, err = db.CreateUserCollection(ctx, f.owner, CollectionForm{Title: "Y", ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("create Y: %v", err)
 	}
@@ -484,7 +484,7 @@ func TestImportBundleFailsWhole(t *testing.T) {
 			b := readTestBundle(t)
 			second := b.Collections[0]
 			second.Catalogs = []BundleCatalog{}
-			second.Folders = []BundleFolder{{Title: "F", Refs: []BundleRef{{Catalog: "c2"}}}}
+			second.Folders = []BundleFolder{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Refs: []BundleRef{{Catalog: "c2"}}}}
 			second.ViewMode = "CAROUSEL"
 			b.Collections = append(b.Collections, second)
 			return b, nil
@@ -594,8 +594,8 @@ func TestImportBundleRollsBackWrittenRows(t *testing.T) {
 	}
 	b := readTestBundle(t)
 	b.Collections = append(b.Collections, BundleCollection{
-		Title: "Boom", Catalogs: []BundleCatalog{},
-		Folders: []BundleFolder{{Title: "F", Refs: []BundleRef{{Catalog: "c2"}}}},
+		Title: "Boom", ViewMode: "TABBED_GRID", Catalogs: []BundleCatalog{},
+		Folders: []BundleFolder{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Refs: []BundleRef{{Catalog: "c2"}}}},
 	})
 
 	if _, _, err := db.ImportBundle(ctx, importer, b, nil); err == nil || !strings.Contains(err.Error(), "boom") {

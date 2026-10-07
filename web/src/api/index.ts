@@ -85,6 +85,7 @@ export type {
   SnapshotFolder,
   SubscriptionState,
   TileShape,
+  ViewMode,
   TMDBKeyStatus,
   TMDBKind,
   TMDBParams,

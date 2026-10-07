@@ -3,8 +3,6 @@ import {
   folderRecipes,
   folderTabs,
   interleaveTiles,
-  normalizeTileShape,
-  normalizeViewMode,
   sourceLabel,
   type PreviewFolder,
   type PreviewSource,
@@ -20,7 +18,6 @@ function folderOf(sources: PreviewSource[]): PreviewFolder {
     title: 'Folder',
     hideTitle: false,
     tileShape: 'POSTER',
-    tileShapeAssumed: false,
     coverEmoji: '',
     coverImageUrl: '',
     sources,
@@ -29,22 +26,6 @@ function folderOf(sources: PreviewSource[]): PreviewFolder {
 }
 
 const tile = (tmdb_id: number) => ({ tmdb_id, title: `T${tmdb_id}`, year: '' })
-
-describe('normalizeTileShape', () => {
-  it('keeps a known shape and reads an empty one as an assumed poster', () => {
-    expect(normalizeTileShape('LANDSCAPE')).toEqual({ shape: 'LANDSCAPE', assumed: false })
-    expect(normalizeTileShape('')).toEqual({ shape: 'POSTER', assumed: true })
-  })
-})
-
-describe('normalizeViewMode', () => {
-  it('reads an empty or unknown mode as Tabbed Grids, and flags only Follow Layout as a guess', () => {
-    expect(normalizeViewMode('ROWS')).toEqual({ mode: 'ROWS', assumed: false })
-    expect(normalizeViewMode('')).toEqual({ mode: 'TABBED_GRID', assumed: false })
-    expect(normalizeViewMode('SIDEWAYS')).toEqual({ mode: 'TABBED_GRID', assumed: false })
-    expect(normalizeViewMode('FOLLOW_LAYOUT')).toEqual({ mode: 'FOLLOW_LAYOUT', assumed: true })
-  })
-})
 
 describe('sourceLabel', () => {
   it('names a source as Nuvio does, with the genre only when set', () => {

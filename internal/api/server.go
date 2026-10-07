@@ -99,6 +99,7 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/publish", s.requireProfileAuth(s.publishCatalog))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/unpublish", s.requireProfileAuth(s.unpublishCatalog))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/{catalogID}/changes-since-publish", s.requireProfileAuth(s.catalogChanges))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/acknowledge-release", s.requireProfileAuth(s.acknowledgeReleasedCatalog))
 
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections", s.requireProfileAuth(s.listUserCollections))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
@@ -108,6 +109,7 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/publish", s.requireProfileAuth(s.publishCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/unpublish", s.requireProfileAuth(s.unpublishCollection))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/{collectionID}/changes-since-publish", s.requireProfileAuth(s.collectionChanges))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/acknowledge-release", s.requireProfileAuth(s.acknowledgeReleasedCollection))
 
 	// Community: other profiles' live publications, by publication id.
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.listCommunity))
@@ -116,6 +118,9 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}/changes", s.requireProfileAuth(s.updateChanges))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/update", s.requireProfileAuth(s.updateSubscription))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/duplicate", s.requireProfileAuth(s.duplicatePublication))
+
+	// Released: the caller's rows whose publication ended, until acknowledged.
+	s.router.HandleFunc("GET /api/p/{profileIndex}/released", s.requireProfileAuth(s.listReleased))
 
 	s.router.HandleFunc("POST /api/p/{profileIndex}/export", s.requireProfileAuth(s.exportBundle))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/import/check", s.requireProfileAuth(s.checkImport))

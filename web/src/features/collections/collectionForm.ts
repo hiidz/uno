@@ -6,6 +6,7 @@ import type {
   Folder,
   FolderCatalogRef,
   TileShape,
+  ViewMode,
 } from '@/api'
 import {
   formFromCatalog,
@@ -13,14 +14,7 @@ import {
   toPayload as toCatalogPayload,
   type CatalogFormState,
 } from '@/features/catalogs/catalogForm'
-import {
-  normalizeTileShape,
-  normalizeViewMode,
-  type PreviewCollection,
-  type PreviewFolder,
-  type PreviewSource,
-  type ViewMode,
-} from '@/features/preview/model'
+import type { PreviewCollection, PreviewFolder, PreviewSource } from '@/features/preview/model'
 import type { RefOption } from './refs'
 
 /** Prefix marking a `FolderRefState.catalogID` as a client-only
@@ -60,10 +54,9 @@ export function isDraftCatalogID(id: string): boolean {
  */
 
 /** Ordered as the editor's choices list them, so the default reads first. */
-export const VIEW_MODES: ViewMode[] = ['FOLLOW_LAYOUT', 'TABBED_GRID', 'ROWS']
+export const VIEW_MODES: ViewMode[] = ['TABBED_GRID', 'ROWS']
 
 export const VIEW_MODE_LABELS: Record<ViewMode, string> = {
-  FOLLOW_LAYOUT: 'Follow layout',
   TABBED_GRID: 'Tabbed Grids',
   ROWS: 'Rows',
 }
@@ -191,7 +184,7 @@ export function newFolder(): FolderFormState {
 export function emptyCollectionForm(): CollectionFormState {
   return {
     title: '',
-    viewMode: 'FOLLOW_LAYOUT',
+    viewMode: 'TABBED_GRID',
     showAllTab: false,
     backdropImageURL: '',
     focusGlowEnabled: true,
@@ -205,10 +198,7 @@ function folderFromWire(folder: Folder): FolderFormState {
     key: nextFolderKey(),
     id: folder.id,
     title: folder.title,
-    // The server stores an empty tile shape or view mode as `POSTER` or
-    // `TABBED_GRID`, what every Nuvio client shows for one, so an empty or
-    // unknown value loads as that too.
-    tileShape: normalizeTileShape(folder.tile_shape).shape,
+    tileShape: folder.tile_shape,
     hideTitle: folder.hide_title,
     coverEmoji: folder.cover_emoji,
     coverImageURL: folder.cover_image_url,
@@ -234,7 +224,7 @@ function folderFromWire(folder: Folder): FolderFormState {
 export function formFromCollection(collection: Collection): CollectionFormState {
   return {
     title: collection.title,
-    viewMode: normalizeViewMode(collection.view_mode).mode,
+    viewMode: collection.view_mode,
     showAllTab: collection.show_all_tab,
     backdropImageURL: collection.backdrop_image_url,
     focusGlowEnabled: collection.focus_glow_enabled,
@@ -272,6 +262,12 @@ export function withCatalogEdit(
   return { ...state, catalogEdits }
 }
 
+/** The most folders a collection holds and refs a folder holds, the server's
+ *  `maxFoldersPerCollection` and `maxRefsPerFolder`. A collection stored past
+ *  either still loads; it saves once trimmed back under them. */
+export const MAX_FOLDERS = 10
+export const MAX_REFS_PER_FOLDER = 20
+
 export interface FolderErrors {
   title?: string
   catalogIDs?: string
@@ -279,13 +275,25 @@ export interface FolderErrors {
 
 export interface CollectionErrors {
   title?: string
+  /** Set while the collection holds more than `MAX_FOLDERS` folders. */
+  folderCount?: string
   /** Keyed by folder `key`, not `id` — a new folder has no id and still needs
    *  to be able to carry an error. */
   folders: Record<string, FolderErrors>
 }
 
+/** The collection's own errors, not its folders': its title and its folder
+ *  count. */
+export function ownErrors(errors: CollectionErrors): string[] {
+  const own: string[] = []
+  for (const error of [errors.title, errors.folderCount]) {
+    if (error !== undefined) own.push(error)
+  }
+  return own
+}
+
 export function countErrors(errors: CollectionErrors): number {
-  let n = errors.title ? 1 : 0
+  let n = ownErrors(errors).length
   for (const folder of Object.values(errors.folders)) {
     if (folder.title) n += 1
     if (folder.catalogIDs) n += 1
@@ -317,6 +325,7 @@ export function validateCollectionForm(
   const errors: CollectionErrors = { title: undefined, folders: {} }
 
   if (!state.title.trim()) errors.title = 'Give this collection a title.'
+  errors.folderCount = folderCountError(state.folders.length)
 
   for (const folder of state.folders) {
     const folderErrors: FolderErrors = {}
@@ -336,21 +345,38 @@ export function validateCollectionForm(
       folder.refs.some((other, j) => j < i && other.catalogID === ref.catalogID && other.genre === ref.genre),
     )
 
-    if (unavailable.length > 0) {
-      folderErrors.catalogIDs =
-        unavailable.length === 1
-          ? 'One catalog here is no longer available. Remove it to save.'
-          : `${unavailable.length} catalogs here are no longer available. Remove them to save.`
-    } else if (repeated.length > 0) {
-      folderErrors.catalogIDs = 'This folder lists the same catalog with the same genre twice.'
-    }
+    folderErrors.catalogIDs = refsError(unavailable.length, repeated.length, folder.refs.length)
 
-    if (folderErrors.title || folderErrors.catalogIDs) {
+    if (hasFolderErrors(folderErrors)) {
       errors.folders[folder.key] = folderErrors
     }
   }
 
   return errors
+}
+
+function hasFolderErrors(errors: FolderErrors): boolean {
+  return Boolean(errors.title || errors.catalogIDs)
+}
+
+/** Why a collection of `count` folders can't save, while it holds more than
+ *  `MAX_FOLDERS`. */
+function folderCountError(count: number): string | undefined {
+  if (count <= MAX_FOLDERS) return undefined
+  return `A collection holds at most ${MAX_FOLDERS} folders. Remove ${count - MAX_FOLDERS} to save.`
+}
+
+/** Why a folder's catalogs can't save, the first that applies: `unavailable`
+ *  of them gone from the library, `repeated` ones under the same genre twice,
+ *  or `total` refs past `MAX_REFS_PER_FOLDER`. */
+function refsError(unavailable: number, repeated: number, total: number): string | undefined {
+  if (unavailable === 1) return 'One catalog here is no longer available. Remove it to save.'
+  if (unavailable > 1) return `${unavailable} catalogs here are no longer available. Remove them to save.`
+  if (repeated > 0) return 'This folder lists the same catalog with the same genre twice.'
+  if (total > MAX_REFS_PER_FOLDER) {
+    return `A folder holds at most ${MAX_REFS_PER_FOLDER} catalogs, one split by genre counting once a genre. Remove ${total - MAX_REFS_PER_FOLDER} to save.`
+  }
+  return undefined
 }
 
 /** A folder's name for labels and announcements: its title, or its place in
@@ -459,11 +485,7 @@ export function previewFromForm(
   state: CollectionFormState,
   optionByID: ReadonlyMap<string, RefOption>,
 ): PreviewCollection {
-  const { mode, assumed } = normalizeViewMode(state.viewMode)
-
   const folders: PreviewFolder[] = state.folders.map((folder) => {
-    const tile = normalizeTileShape(folder.tileShape)
-
     const sources: PreviewSource[] = folder.refs.map((ref) => {
       const option = optionByID.get(ref.catalogID)
       return {
@@ -482,8 +504,7 @@ export function previewFromForm(
       id: folder.key,
       title: folder.title,
       hideTitle: folder.hideTitle,
-      tileShape: tile.shape,
-      tileShapeAssumed: tile.assumed,
+      tileShape: folder.tileShape,
       coverEmoji: folder.coverEmoji,
       coverImageUrl: folder.coverImageURL,
       sources,
@@ -498,8 +519,7 @@ export function previewFromForm(
     // Show first is Home's, pushed from there; this preview draws the
     // collection's own layout, which it doesn't change.
     pinned: false,
-    viewMode: mode,
-    viewModeAssumed: assumed,
+    viewMode: state.viewMode,
     showAllTab: state.showAllTab,
     folders,
     // The form is the description, so there is always something to draw.
@@ -508,8 +528,7 @@ export function previewFromForm(
 }
 
 /** What one folder entry is in Nuvio, by the collection's view mode: a tab in
- *  a tabbed folder page (`FOLLOW_LAYOUT` is drawn as tabs too), a row in a
- *  `ROWS` one. */
+ *  a `TABBED_GRID` folder page, a row in a `ROWS` one. */
 export type FolderUnit = 'tab' | 'row'
 
 export function folderUnit(viewMode: ViewMode): FolderUnit {

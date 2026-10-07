@@ -36,10 +36,10 @@ func TestGetPublishedCatalogs(t *testing.T) {
 	// plain UNION's row-level DISTINCT does not collapse them since the
 	// other scanned columns differ too; only the Go id-keyed dedupe does.
 	if _, err := db.UpdateUserCollection(ctx, owner, onTVCollection, CollectionForm{
-		Title: "On TV",
+		Title: "On TV", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
-			{Title: "Folder 1", Catalogs: CatalogRefs(onHome.ID, folderOnly.ID)},
-			{Title: "Folder 2", Catalogs: CatalogRefs(folderOnly.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: CatalogRefs(onHome.ID, folderOnly.ID)},
+			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 2", Catalogs: CatalogRefs(folderOnly.ID)},
 		},
 	}); err != nil {
 		t.Fatalf("saving on-TV collection: %v", err)
@@ -47,8 +47,8 @@ func TestGetPublishedCatalogs(t *testing.T) {
 
 	offTVCollection := newTestCollection(t, db, owner, "Off TV")
 	if _, err := db.UpdateUserCollection(ctx, owner, offTVCollection, CollectionForm{
-		Title:   "Off TV",
-		Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(offTV.ID)}},
+		Title: "Off TV", ViewMode: "TABBED_GRID",
+		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(offTV.ID)}},
 	}); err != nil {
 		t.Fatalf("saving off-TV collection: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestServedCatalog(t *testing.T) {
 	scoped := createScopedCatalog(t, db, owner, onHome, listedCatalogForm("Scoped"))
 	for id, refs := range map[uuid.UUID][]uuid.UUID{onHome: {inFolder.ID, scoped.ID}, offHome: {offHomeOnly.ID}} {
 		if _, err := db.UpdateUserCollection(ctx, owner, id, CollectionForm{
-			Title: "C", Folders: []FolderData{{Title: "Folder", Catalogs: CatalogRefs(refs...)}},
+			Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(refs...)}},
 		}); err != nil {
 			t.Fatal(err)
 		}

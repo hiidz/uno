@@ -64,7 +64,7 @@ describe('toPreviewCollection', () => {
     const saved = collection({
       folders: [
         folder({
-          tile_shape: '',
+          tile_shape: 'SQUARE',
           refs: [
             { catalog_id: 'a', genre: '' },
             { catalog_id: 'a', genre: 'Western' },
@@ -80,18 +80,11 @@ describe('toPreviewCollection', () => {
       ['gone::', null],
     ])
     expect(only.unresolved).toBe(1)
-    expect(only).toMatchObject({ tileShape: 'POSTER', tileShapeAssumed: true })
+    expect(only.tileShape).toBe('SQUARE')
   })
 
-  it('reads the view mode as Nuvio does', () => {
-    expect(toPreviewCollection('c', collection({ view_mode: '' }), catalogById)).toMatchObject({
-      viewMode: 'TABBED_GRID',
-      viewModeAssumed: false,
-    })
-    expect(toPreviewCollection('c', collection({ view_mode: 'FOLLOW_LAYOUT' }), catalogById)).toMatchObject({
-      viewMode: 'FOLLOW_LAYOUT',
-      viewModeAssumed: true,
-    })
+  it('carries the stored view mode', () => {
+    expect(toPreviewCollection('c', collection({ view_mode: 'ROWS' }), catalogById).viewMode).toBe('ROWS')
   })
 })
 

@@ -364,7 +364,7 @@ describe('CollectionEditor', () => {
     it('says tab for a tabbed collection, and flags a genre the recipe no longer allows', async () => {
       const split = {
         ...saved,
-        view_mode: 'TABBED_GRID',
+        view_mode: 'TABBED_GRID' as const,
         folders: [folder({ id: 'f1', title: 'Horror', refs: [{ catalog_id: 'c1', genre: 'Horror' }, { catalog_id: 'c1', genre: 'Western' }] })],
       }
       renderEditor({ initial: formFromCollection(split), initialCatalogs: library })
@@ -392,5 +392,29 @@ describe('CollectionEditor', () => {
         folders: [expect.objectContaining({ id: 'f2' }), expect.objectContaining({ id: 'f1' })],
       }),
     )
+  })
+
+  describe('the caps', () => {
+    it('stops Add folder at ten folders, and refuses to save a stored collection past them', () => {
+      const big = { ...saved, folders: Array.from({ length: 11 }, (_, i) => folder({ id: `f${i}`, title: `F${i}` })) }
+      const { onSave } = renderEditor({ initial: formFromCollection(big), initialCatalogs: library })
+      expect(screen.getByRole('button', { name: 'Add folder' })).toBeDisabled()
+      expect(screen.getByText('A collection holds at most 10 folders.')).toBeInTheDocument()
+      save()
+      expect(onSave).not.toHaveBeenCalled()
+      expect(screen.getByText('A collection holds at most 10 folders. Remove 1 to save.')).toBeInTheDocument()
+    })
+
+    it('turns off New catalog and every unticked catalog once a folder holds twenty', () => {
+      const refs = Array.from({ length: 20 }, (_, i) => ({ catalog_id: 'c1', genre: `G${i}` }))
+      const full = { ...saved, folders: [folder({ id: 'f1', title: 'Horror', refs })] }
+      renderEditor({ initial: formFromCollection(full), initialCatalogs: library })
+      fireEvent.click(screen.getByRole('button', { name: 'Add catalogs' }))
+      const dropdown = screen.getByRole('dialog', { name: 'Add catalogs to this folder' })
+      expect(within(dropdown).getByText(/This folder is full/)).toBeInTheDocument()
+      expect(within(dropdown).getByRole('button', { name: 'New catalog' })).toBeDisabled()
+      expect(within(dropdown).getByLabelText(/Noir/)).toBeDisabled()
+      expect(within(dropdown).getByLabelText(/Late Night/)).toBeEnabled()
+    })
   })
 })

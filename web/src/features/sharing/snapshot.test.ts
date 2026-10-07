@@ -87,7 +87,7 @@ describe('snapshotAsCollection', () => {
         format: 'uno-publication',
         version: 1,
         catalogs: null,
-        collection: { title: 'T', view_mode: '', show_all_tab: false, backdrop_image_url: '', focus_glow_enabled: false, folders: null },
+        collection: { title: 'T', view_mode: 'TABBED_GRID', show_all_tab: false, backdrop_image_url: '', focus_glow_enabled: false, folders: null },
       }),
     )
     expect(result).toMatchObject({ folders: [], catalogs: [] })
@@ -109,7 +109,7 @@ function emptyFolder() {
   return {
     key: '',
     title: '',
-    tile_shape: '' as const,
+    tile_shape: 'POSTER' as const,
     hide_title: false,
     cover_emoji: '',
     cover_image_url: '',

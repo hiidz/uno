@@ -50,7 +50,7 @@ func newBundleRouteFixture(t *testing.T) bundleRouteFixture {
 	f.a, f.aAgain, f.b, f.sCopy = listed("A", f.popular), listed("A again", f.popular), listed("B", f.rated), listed("S copy", f.rich)
 	f.x, err = db.CreateUserCollection(ctx, caller.ID, vault.CollectionForm{
 		Title: "X", ViewMode: "ROWS",
-		Folders: []vault.FolderData{{Title: "F", Catalogs: []vault.FolderCatalogRef{
+		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []vault.FolderCatalogRef{
 			{New: &vault.NewScopedCatalog{Key: "s", Type: "movie", Name: "S", Provider: "tmdb", Params: f.rich}},
 			{CatalogID: &f.b.ID},
 		}}},
@@ -192,7 +192,7 @@ func TestBundleRoutes(t *testing.T) {
 // any case; any other title matches nothing.
 func TestImportCheckMatchesCollectionsByTitle(t *testing.T) {
 	own := []vault.CollectionWithFolders{{Collection: vault.Collection{Title: "Halloween"}}}
-	b := vault.Bundle{Collections: []vault.BundleCollection{{Title: "Cosy nights"}, {Title: "  HALLOWEEN "}}}
+	b := vault.Bundle{Collections: []vault.BundleCollection{{Title: "Cosy nights", ViewMode: "TABBED_GRID"}, {Title: "  HALLOWEEN ", ViewMode: "TABBED_GRID"}}}
 	check := importCheckOf(b, nil, own)
 	got := []bool{check.Collections[0].Matched, check.Collections[1].Matched}
 	if !slices.Equal(got, []bool{false, true}) {

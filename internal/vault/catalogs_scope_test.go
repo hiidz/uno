@@ -21,7 +21,7 @@ func newTestProfile(t *testing.T, db *DB, nuvioUserID string) uuid.UUID {
 
 func newTestCollection(t *testing.T, db *DB, ownerID uuid.UUID, title string) uuid.UUID {
 	t.Helper()
-	c, err := db.CreateUserCollection(context.Background(), ownerID, CollectionForm{Title: title})
+	c, err := db.CreateUserCollection(context.Background(), ownerID, CollectionForm{Title: title, ViewMode: "TABBED_GRID"})
 	if err != nil {
 		t.Fatalf("creating collection %q: %v", title, err)
 	}
