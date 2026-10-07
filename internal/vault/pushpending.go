@@ -7,9 +7,7 @@ package vault
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -45,18 +43,21 @@ type PendingChange struct {
 // PendingPush is what a push of profileID's Home, as the Home columns hold it,
 // would change in Nuvio: catalog rows first, then collections, each as
 // pendingDiff orders them. Both sides are read in one snapshot.
-func (db *DB) PendingPush(ctx context.Context, profileID uuid.UUID) ([]PendingChange, error) {
-	tx, err := db.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("starting transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }() // read-only; never committed
+func (db *DB) PendingPush(ctx context.Context, profileID uuid.UUID) (changes []PendingChange, err error) {
+	err = db.inReadTx(ctx, func(q dbtx) (err error) {
+		changes, err = pendingPush(ctx, q, profileID)
+		return err
+	})
+	return changes, err
+}
 
-	held, _, err := heldRecord(ctx, tx, profileID)
+// pendingPush is PendingPush through q.
+func pendingPush(ctx context.Context, q dbtx, profileID uuid.UUID) ([]PendingChange, error) {
+	held, _, err := heldRecord(ctx, q, profileID)
 	if err != nil {
 		return nil, err
 	}
-	now, err := StoredPushRecord(ctx, tx, profileID)
+	now, err := StoredPushRecord(ctx, q, profileID)
 	if err != nil {
 		return nil, err
 	}

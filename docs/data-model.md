@@ -7,7 +7,10 @@ on, and creates the schema in it when it is empty.
 Every write transaction begins `IMMEDIATE` (`_txlock=immediate`), taking the write lock up front
 and waiting out `busy_timeout` for it: a deferred one that reads before it writes, as most writes
 do, would fail at once with `SQLITE_BUSY` once another write committed. A read-only
-transaction (`sql.TxOptions{ReadOnly: true}`, `PendingPush`) still begins deferred.
+transaction (`sql.TxOptions{ReadOnly: true}`, `inReadTx`) still begins deferred, and every query
+in it sees the one snapshot its first took. A read that assembles a tree or compares tables runs in
+one: `GetLibrary`, `GetUserCollections`, `GetCollectionsByIDs`, `PendingPush` and `BuildPushRecord`,
+so a save landing meanwhile can't leave a folder naming a catalog the pushed record lacks.
 
 **Schema version.** `PRAGMA user_version` is the schema version, `schemaVersion` in `db.go`.
 `InitDB` reads it in one transaction. At `0`, an empty file, it creates the schema and sets the
@@ -39,8 +42,6 @@ erDiagram
     string title
     json snapshot "format uno-publication, version 1"
     string content_hash "sha256 hex of snapshot"
-    int catalog_count
-    int folder_count
     int subscriber_count
     string published_at
     string updated_at
@@ -578,7 +579,8 @@ rows, which Update brings up to a newer snapshot. `internal/vault/publications.g
   against TMDB when their rows were saved, so a subscribe makes no TMDB call. `subscriptions` is unique on
   `(subscriber_id, publication_id)`, so a second subscribe is `ErrConflict`, and deleting the copy
   deletes its subscription by cascade. `subscriber_count` is kept by the
-  `subscriptions_count_*` triggers.
+  `subscriptions_count_*` triggers. `subscriptions_by_publication` finds a publication's
+  subscribers for the cascade that deletes them and for the release trigger.
 - **Only Update writes a subscribed copy.** A catalog save and a collection save, which is where
   a catalog inside it would be created, are `ErrInvalidInput` (`refuseSubscribedCopy`, run in the
   write's transaction ahead of the write, over the caller's own subscriptions): the copy keeps

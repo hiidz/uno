@@ -70,9 +70,14 @@ type PushedCatalog struct {
 // puts in Nuvio now. Push calls it before contacting Nuvio, so an id the
 // selection may not hold — not profileID's own, or a catalog that isn't
 // listed — is refused here (inSelectionOrder), not by the local write after
-// Nuvio took the push.
-func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, home PushedHome) (PushRecord, error) {
-	return buildPushRecord(ctx, db.conn, profileID, home)
+// Nuvio took the push. Every row is read in one snapshot, so a save landing
+// meanwhile can't leave a folder naming a catalog the record lacks.
+func (db *DB) BuildPushRecord(ctx context.Context, profileID uuid.UUID, home PushedHome) (record PushRecord, err error) {
+	err = db.inReadTx(ctx, func(q dbtx) (err error) {
+		record, err = buildPushRecord(ctx, q, profileID, home)
+		return err
+	})
+	return record, err
 }
 
 // StoredPushRecord is what a push of profileID's Home as push last stored it

@@ -1,5 +1,5 @@
 // Command server wires up config, vault, TMDB, and Nuvio into an api.Server
-// and starts listening; `server migrate --db <path>` runs the v9→v10
+// and starts listening; `server migrate --db <path>` runs the v10→v11
 // migration instead (migrate.go).
 package main
 

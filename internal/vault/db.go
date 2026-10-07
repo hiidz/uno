@@ -16,7 +16,7 @@ var schema string
 
 // schemaVersion is the PRAGMA user_version a database holding schema.sql's
 // schema carries.
-const schemaVersion = 10
+const schemaVersion = 11
 
 // DB is a handle to Uno's SQLite database.
 type DB struct {
@@ -75,6 +75,18 @@ func (db *DB) ensureSchema(ctx context.Context) error {
 		}
 		return nil
 	})
+}
+
+// inReadTx runs read inside one read-only transaction, so every query it makes
+// sees the one snapshot the first of them took. A read that assembles a tree
+// or compares several tables goes through it; a single query doesn't need to.
+func (db *DB) inReadTx(ctx context.Context, read func(q dbtx) error) error {
+	tx, err := db.conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("starting read transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // read-only; never committed
+	return read(tx)
 }
 
 // inTx runs write inside one transaction, committing only when it succeeds.

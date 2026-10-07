@@ -101,6 +101,11 @@ CREATE UNIQUE INDEX publications_by_catalog ON publications (catalog_id) WHERE c
 
 CREATE UNIQUE INDEX publications_by_collection ON publications (collection_id) WHERE collection_id IS NOT NULL;
 
+-- Community's two orders, read a page at a time: newest first, and by title.
+CREATE INDEX publications_by_kind_newest ON publications (kind, published_at, id);
+
+CREATE INDEX publications_by_kind_title ON publications (kind, title COLLATE NOCASE, id);
+
 CREATE TABLE subscriptions (
     id             TEXT PRIMARY KEY,
     subscriber_id  TEXT NOT NULL REFERENCES profiles(id),

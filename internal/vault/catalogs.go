@@ -81,7 +81,12 @@ func queryCatalogRows(ctx context.Context, q dbtx, query string, args ...any) ([
 // scoped to a collection are excluded; they're reached through the owning
 // collection's own response instead.
 func (db *DB) GetUserCatalogs(ctx context.Context, profileID uuid.UUID) ([]Catalog, error) {
-	return db.queryCatalogs(ctx, "c.owner_id = ? AND c.collection_id IS NULL", profileID.String())
+	return userCatalogs(ctx, db.conn, profileID)
+}
+
+// userCatalogs is GetUserCatalogs through q.
+func userCatalogs(ctx context.Context, q dbtx, profileID uuid.UUID) ([]Catalog, error) {
+	return selectCatalogs(ctx, q, "c.owner_id = ? AND c.collection_id IS NULL", profileID.String())
 }
 
 // ownCatalog reads catalog id, which must be owned by profileID

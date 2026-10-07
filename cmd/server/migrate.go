@@ -1,8 +1,10 @@
-// The v9→v10 migration, `uno migrate --db <path>`: run once against a vault at
-// schema version 9, then deleted. Version 10 adds the two indexes Community
-// pages through. In one transaction it creates them as schema.sql writes them,
-// stamps version 10, and checks that the database's tables, indexes and
-// triggers are a fresh v10 database's. No row changes.
+// The v10→v11 migration, `uno migrate --db <path>`: run once against a vault at
+// schema version 10, then deleted. Version 11 adds the index a publication's
+// subscribers are read by and drops publications.catalog_count and
+// folder_count, which nothing reads. In one transaction it applies both as
+// schema.sql writes them, stamps version 11, and checks that the database's
+// tables, columns, indexes and triggers are a fresh v11 database's. No row is
+// rewritten.
 
 package main
 
@@ -20,11 +22,12 @@ import (
 	"github.com/hiidz/uno/internal/vault"
 )
 
-// addIndexes is the migration's DDL, each index exactly as schema.sql writes it.
-const addIndexes = `
-CREATE INDEX publications_by_kind_newest ON publications (kind, published_at, id);
-CREATE INDEX publications_by_kind_title ON publications (kind, title COLLATE NOCASE, id);
-PRAGMA user_version = 10;
+// changes is the migration's DDL, each statement as schema.sql has it.
+const changes = `
+CREATE INDEX subscriptions_by_publication ON subscriptions (publication_id);
+ALTER TABLE publications DROP COLUMN catalog_count;
+ALTER TABLE publications DROP COLUMN folder_count;
+PRAGMA user_version = 11;
 `
 
 // runMigrate is the migrate subcommand: it parses args and migrates the
@@ -32,7 +35,7 @@ PRAGMA user_version = 10;
 func runMigrate(ctx context.Context, args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	flags.SetOutput(out)
-	path := flags.String("db", "", "path to the vault.db to migrate from schema version 9 to 10")
+	path := flags.String("db", "", "path to the vault.db to migrate from schema version 10 to 11")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -42,17 +45,18 @@ func runMigrate(ctx context.Context, args []string, out io.Writer) error {
 	if _, err := os.Stat(*path); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	if err := migrateToV10(ctx, *path); err != nil {
+	if err := migrateToV11(ctx, *path); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(out, "migrated %s to schema version 10: added publications_by_kind_newest and publications_by_kind_title\n", *path)
+	_, err := fmt.Fprintf(out, "migrated %s to schema version 11: added subscriptions_by_publication, dropped publications.catalog_count and folder_count\n", *path)
 	return err
 }
 
-// migrateToV10 migrates the v9 database at path to v10 in one transaction,
-// committing only once the structure matches a fresh v10 database's.
-func migrateToV10(ctx context.Context, path string) error {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+// migrateToV11 migrates the v10 database at path to v11 in one transaction,
+// committing only once the structure matches a fresh v11 database's. The
+// transaction takes the write lock when it begins, as the vault's own do.
+func migrateToV11(ctx context.Context, path string) error {
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_txlock=immediate")
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", path, err)
 	}
@@ -71,18 +75,18 @@ func migrateToV10(ctx context.Context, path string) error {
 	return nil
 }
 
-// migrateTx refuses a database not at version 9, adds the indexes and stamps
-// version 10 through tx, then checks the structure.
+// migrateTx refuses a database not at version 10, applies the changes and
+// stamps version 11 through tx, then checks the structure.
 func migrateTx(ctx context.Context, tx *sql.Tx) error {
 	var version int
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return fmt.Errorf("reading schema version: %w", err)
 	}
-	if version != 9 {
-		return fmt.Errorf("the database is at schema version %d; migrate only runs on version 9", version)
+	if version != 10 {
+		return fmt.Errorf("the database is at schema version %d; migrate only runs on version 10", version)
 	}
-	if _, err := tx.ExecContext(ctx, addIndexes); err != nil {
-		return fmt.Errorf("adding indexes: %w", err)
+	if _, err := tx.ExecContext(ctx, changes); err != nil {
+		return fmt.Errorf("applying the changes: %w", err)
 	}
 	return requireFreshStructure(ctx, tx)
 }
@@ -92,7 +96,7 @@ type querier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-// requireFreshStructure refuses unless the structure tx sees is a fresh v10
+// requireFreshStructure refuses unless the structure tx sees is a fresh v11
 // database's, made by vault.InitDB in a temporary directory.
 func requireFreshStructure(ctx context.Context, tx *sql.Tx) error {
 	want, err := freshStructure(ctx)
@@ -104,12 +108,12 @@ func requireFreshStructure(ctx context.Context, tx *sql.Tx) error {
 		return err
 	}
 	if !slices.Equal(got, want) {
-		return fmt.Errorf("refusing to migrate: the structure differs from a fresh v10 database:\nhas  %q\nwant %q", got, want)
+		return fmt.Errorf("refusing to migrate: the structure differs from a fresh v11 database:\nhas  %q\nwant %q", got, want)
 	}
 	return nil
 }
 
-// freshStructure is the structure of a fresh v10 database.
+// freshStructure is the structure of a fresh v11 database.
 func freshStructure(ctx context.Context) ([]string, error) {
 	dir, err := os.MkdirTemp("", "uno-migrate-")
 	if err != nil {
@@ -132,15 +136,25 @@ func freshStructure(ctx context.Context) ([]string, error) {
 	return structureOf(ctx, db)
 }
 
-// structureOf is every table, index and trigger in a database, each as its
-// kind, name and table, sorted by name, with the SQL of the two indexes the
-// migration writes. Other rows' SQL is left out: a table an earlier migration
-// rebuilt and renamed stores its CREATE text in another form.
+// structureQuery lists every table, index and trigger in a database as its
+// kind, name and table, then every column of every table in order with its
+// type, nullability, default and primary-key place; the one index the
+// migration writes also carries its SQL. Other rows' SQL is left out: a table
+// whose column was dropped stores its CREATE text in another form.
+const structureQuery = `
+	SELECT type || ' ' || name || ' on ' || tbl_name
+	       || CASE WHEN name = 'subscriptions_by_publication' THEN ': ' || sql ELSE '' END
+	FROM sqlite_master WHERE name NOT LIKE 'sqlite\_%' ESCAPE '\'
+	UNION ALL
+	SELECT 'column ' || m.name || ' ' || c.cid || ' ' || c.name || ' ' || c.type
+	       || ' notnull=' || c."notnull" || ' default=' || coalesce(c.dflt_value, 'NULL') || ' pk=' || c.pk
+	FROM sqlite_master m, pragma_table_xinfo(m.name) c
+	WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite\_%' ESCAPE '\'
+	ORDER BY 1`
+
+// structureOf is the structure structureQuery lists for a database, sorted.
 func structureOf(ctx context.Context, q querier) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `
-		SELECT type || ' ' || name || ' on ' || tbl_name
-		       || CASE WHEN name LIKE 'publications\_by\_kind\_%' ESCAPE '\' THEN ': ' || sql ELSE '' END
-		FROM sqlite_master WHERE name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name`)
+	rows, err := q.QueryContext(ctx, structureQuery)
 	if err != nil {
 		return nil, fmt.Errorf("reading the structure: %w", err)
 	}

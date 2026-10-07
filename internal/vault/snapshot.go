@@ -141,14 +141,6 @@ func decodeSnapshot(raw string) (Snapshot, error) {
 	return s, nil
 }
 
-// folderCount is how many folders s holds.
-func (s Snapshot) folderCount() int {
-	if s.Collection == nil {
-		return 0
-	}
-	return len(s.Collection.Folders)
-}
-
 // bundleCollection is s's collection in bundle form: its catalogs as the
 // collection's own, and its folders without their keys. Only a collection
 // snapshot has one.

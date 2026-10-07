@@ -159,10 +159,10 @@ func insertPublication(ctx context.Context, tx *sql.Tx, p publication, now strin
 	catalogID, collectionID := sourceColumns(p.kind, p.sourceID)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO publications (id, publisher_id, kind, catalog_id, collection_id, title, snapshot, content_hash,
-		                          catalog_count, folder_count, published_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                          published_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, p.id.String(), p.publisherID.String(), p.kind, catalogID, collectionID, p.title, p.raw, p.contentHash,
-		len(p.snapshot.Catalogs), p.snapshot.folderCount(), now, now); err != nil {
+		now, now); err != nil {
 		return fmt.Errorf("inserting publication: %w", err)
 	}
 	return nil
@@ -173,11 +173,9 @@ func insertPublication(ctx context.Context, tx *sql.Tx, p publication, now strin
 func updatePublication(ctx context.Context, tx *sql.Tx, p publication, now string) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE publications
-		SET title = ?, snapshot = ?, content_hash = ?,
-		    catalog_count = ?, folder_count = ?, updated_at = ?
+		SET title = ?, snapshot = ?, content_hash = ?, updated_at = ?
 		WHERE id = ?
-	`, p.title, p.raw, p.contentHash,
-		len(p.snapshot.Catalogs), p.snapshot.folderCount(), now, p.id.String()); err != nil {
+	`, p.title, p.raw, p.contentHash, now, p.id.String()); err != nil {
 		return fmt.Errorf("updating publication: %w", err)
 	}
 	return nil

@@ -171,24 +171,24 @@ A schema change edits `schema.sql` and bumps `schemaVersion`.
 
 **Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 
-**`uno migrate --db <path>`** moves a version 9 vault to version 10. It is a one-off, deleted once
-prod has run it (`cmd/server/migrate.go`). It refuses any version but 9. In one transaction it
-creates Community's two indexes, `publications_by_kind_newest` and `publications_by_kind_title`,
-as `schema.sql` declares them, stamps version 10, and checks that the tables, indexes and
-triggers match a fresh v10 database. No row changes. Any refusal or failure leaves the file as it
-was.
+**`uno migrate --db <path>`** moves a version 10 vault to version 11. It is a one-off, deleted once
+prod has run it (`cmd/server/migrate.go`). It refuses any version but 10. In one transaction it
+creates `subscriptions_by_publication`, which a publication's cascade and release trigger read its
+subscribers through, drops `publications.catalog_count` and `folder_count`, which nothing read,
+stamps version 11, and checks that the tables, columns, indexes and triggers match a fresh v11
+database. No row is rewritten. Any refusal or failure leaves the file as it was.
 
 On the deployed volume, with the image distroless and `ENTRYPOINT ["/app/uno"]`:
 
 1. `docker compose stop uno`, then back up `/data` (`docker compose cp uno:/data ./uno-data-backup`),
    which holds `vault.db` and its `-wal` and `-shm` files.
-2. `docker tag uno uno:pre-v10`, so the v9 image survives the build.
+2. `docker tag uno uno:pre-v11`, so the v10 image survives the build.
 3. Build or deploy the new image.
 4. `docker compose run --rm uno migrate --db /data/vault.db`.
 5. `docker compose up -d`.
 
-The new binary refuses a version 9 vault until it is migrated. If the migration refuses, the vault
-is still at version 9: `docker tag uno:pre-v10 uno && docker compose up -d --no-build` runs the
+The new binary refuses a version 10 vault until it is migrated. If the migration refuses, the vault
+is still at version 10: `docker tag uno:pre-v11 uno && docker compose up -d --no-build` runs the
 old image again.
 
 **The deployed `uno-data` volume** holds real data, so never `docker compose down -v` it.

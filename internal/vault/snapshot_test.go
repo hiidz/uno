@@ -71,8 +71,8 @@ func TestCollectionSnapshotShape(t *testing.T) {
 		t.Errorf("folder keys = %s, %s", s.Collection.Folders[0].Key, s.Collection.Folders[1].Key)
 	}
 	assertStrings(t, "first folder's refs", bundleFolderRefs(s.Collection.Folders[0].BundleFolder), []string{key(fixedID(2)) + "/", key(fixedID(3)) + "/Horror"})
-	if s.folderCount() != 2 {
-		t.Errorf("folders %d; want 2", s.folderCount())
+	if len(s.Collection.Folders) != 2 {
+		t.Errorf("folders %d; want 2", len(s.Collection.Folders))
 	}
 
 	raw, _, err := s.encode()
@@ -95,14 +95,14 @@ func TestCollectionSnapshotShape(t *testing.T) {
 
 // An empty collection's snapshot has no folders and an empty catalog list,
 // and a catalog's has no folders.
-func TestSnapshotFolderCount(t *testing.T) {
+func TestEmptySnapshots(t *testing.T) {
 	c := fixedTree().Catalogs[1]
 	empty := CollectionWithFolders{Collection: Collection{ID: fixedID(1), Title: "Empty"}}
-	if got := collectionSnapshot(fixedID(9), empty); got.folderCount() != 0 || got.Catalogs == nil {
+	if got := collectionSnapshot(fixedID(9), empty); len(got.Collection.Folders) != 0 || got.Catalogs == nil {
 		t.Errorf("empty collection snapshot = %+v, want no folders and an empty catalog list", got)
 	}
-	if got := catalogSnapshot(fixedID(9), c).folderCount(); got != 0 {
-		t.Errorf("catalog snapshot folders = %d, want 0", got)
+	if got := catalogSnapshot(fixedID(9), c); got.Collection != nil {
+		t.Errorf("catalog snapshot collection = %+v, want none", got.Collection)
 	}
 }
 

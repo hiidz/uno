@@ -87,8 +87,6 @@ CREATE TABLE publications (
     title            TEXT    NOT NULL,
     snapshot         TEXT    NOT NULL,            -- JSON, format uno-publication
     content_hash     TEXT    NOT NULL,            -- sha256 hex of snapshot
-    catalog_count    INTEGER NOT NULL,
-    folder_count     INTEGER NOT NULL,
     subscriber_count INTEGER NOT NULL DEFAULT 0,
     published_at     TEXT    NOT NULL,            -- RFC3339 UTC, when first published
     updated_at       TEXT    NOT NULL,            -- RFC3339 UTC
@@ -121,6 +119,10 @@ CREATE TABLE subscriptions (
 CREATE UNIQUE INDEX subscriptions_by_catalog ON subscriptions (catalog_id) WHERE catalog_id IS NOT NULL;
 
 CREATE UNIQUE INDEX subscriptions_by_collection ON subscriptions (collection_id) WHERE collection_id IS NOT NULL;
+
+-- A publication's subscribers: what deleting the publication (or the catalog
+-- or collection it publishes) cascades through, and its release trigger reads.
+CREATE INDEX subscriptions_by_publication ON subscriptions (publication_id);
 
 -- Ending a publication, by unpublishing it or by deleting its source, releases
 -- its subscribers ahead of the cascade that deletes their subscriptions: each

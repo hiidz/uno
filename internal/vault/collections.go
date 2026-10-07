@@ -13,11 +13,6 @@ import (
 	"github.com/hiidz/uno/internal/jsonwire"
 )
 
-// queryCollections is selectCollections against the pool.
-func (db *DB) queryCollections(ctx context.Context, where string, args ...any) ([]Collection, error) {
-	return selectCollections(ctx, db.conn, where, args...)
-}
-
 // collectionRows is every collection, as col, with its publication and
 // subscription joined in, which sharingColumns reads.
 const collectionRows = `collections col
@@ -59,28 +54,46 @@ func queryCollectionRows(ctx context.Context, q dbtx, query string, args ...any)
 }
 
 // GetUserCollections returns the collections owned by profileID, each with
-// its folders assembled.
-func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) ([]CollectionWithFolders, error) {
-	collections, err := db.queryCollections(ctx, "col.owner_id = ?", profileID.String())
+// its folders assembled, all read in one snapshot.
+func (db *DB) GetUserCollections(ctx context.Context, profileID uuid.UUID) (trees []CollectionWithFolders, err error) {
+	err = db.inReadTx(ctx, func(q dbtx) (err error) {
+		trees, err = userCollections(ctx, q, profileID)
+		return err
+	})
+	return trees, err
+}
+
+// userCollections is GetUserCollections through q.
+func userCollections(ctx context.Context, q dbtx, profileID uuid.UUID) ([]CollectionWithFolders, error) {
+	collections, err := selectCollections(ctx, q, "col.owner_id = ?", profileID.String())
 	if err != nil {
 		return nil, err
 	}
-	return assembleCollectionTree(ctx, db.conn, collections, catalogsByIDs)
+	return assembleCollectionTree(ctx, q, collections, catalogsByIDs)
 }
 
 // GetCollectionsByIDs batch-loads collections (with folders) by id, no
-// ownership check and no ordering guarantee. Mirrors
-// internal/vault/catalogs.go's GetCatalogsByIDs, and like it reads no sharing
-// state.
-func (db *DB) GetCollectionsByIDs(ctx context.Context, ids []uuid.UUID) ([]CollectionWithFolders, error) {
+// ownership check and no ordering guarantee, all read in one snapshot.
+// Mirrors internal/vault/catalogs.go's GetCatalogsByIDs, and like it reads no
+// sharing state.
+func (db *DB) GetCollectionsByIDs(ctx context.Context, ids []uuid.UUID) (trees []CollectionWithFolders, err error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	collections, err := selectLeanCollections(ctx, db.conn, "col.id IN (SELECT value FROM json_each(?))", idsJSON(ids))
+	err = db.inReadTx(ctx, func(q dbtx) (err error) {
+		trees, err = collectionsByIDs(ctx, q, ids)
+		return err
+	})
+	return trees, err
+}
+
+// collectionsByIDs is GetCollectionsByIDs through q.
+func collectionsByIDs(ctx context.Context, q dbtx, ids []uuid.UUID) ([]CollectionWithFolders, error) {
+	collections, err := selectLeanCollections(ctx, q, "col.id IN (SELECT value FROM json_each(?))", idsJSON(ids))
 	if err != nil {
 		return nil, err
 	}
-	return assembleCollectionTree(ctx, db.conn, collections, leanCatalogsByIDs)
+	return assembleCollectionTree(ctx, q, collections, leanCatalogsByIDs)
 }
 
 // GetOwnedCollectionIDs lists just the IDs of collections this profile owns,
