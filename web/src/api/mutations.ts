@@ -1,5 +1,5 @@
 import { sendJSON } from './http'
-import type { Catalog, CatalogType, Collection, CommunityCopy, TileShape, TMDBKeyStatus } from './types'
+import type { Catalog, CatalogType, Collection, CommunityCopy, FolderLook, TMDBKeyStatus } from './types'
 
 /** Publishes a listed catalog as it is saved now, or publishes its update —
  *  `POST .../catalogs/{id}/publish`. An update keeps the publication's id;
@@ -131,18 +131,9 @@ export type FolderCatalogRef = (
  * rejects the repeat as a 400. The same catalog in two *different* folders is
  * fine and is a supported thing to want.
  */
-interface FolderPayload {
+type FolderPayload = FolderLook & {
   id?: string
   title: string
-  tile_shape: TileShape | ''
-  hide_title: boolean
-  cover_emoji: string
-  cover_image_url: string
-  focus_gif_url: string
-  focus_gif_enabled: boolean
-  hero_backdrop_url: string
-  hero_video_url: string
-  title_logo_url: string
   catalogs: FolderCatalogRef[]
 }
 

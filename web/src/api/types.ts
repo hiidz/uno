@@ -65,9 +65,10 @@ export interface SubscriptionState {
 
 export type TileShape = 'POSTER' | 'LANDSCAPE' | 'SQUARE'
 
-export interface Folder {
-  id: string
-  title: string
+/** How a folder looks: everything it holds but its identity, title and refs.
+ *  The wire shape of `vault.FolderArt`, shared by the saved folder, a
+ *  snapshot's folder and the save payload. */
+export interface FolderLook {
   tile_shape: TileShape | ''
   hide_title: boolean
   cover_emoji: string
@@ -80,6 +81,11 @@ export interface Folder {
   hero_backdrop_url: string
   hero_video_url: string
   title_logo_url: string
+}
+
+export type Folder = FolderLook & {
+  id: string
+  title: string
   /** Ordered. One catalog can appear more than once, under different genres. */
   refs: FolderRef[] | null
 }
@@ -92,17 +98,22 @@ interface FolderRef {
   genre: string
 }
 
-export interface Collection {
-  id: string
-  title: string
-  /** Show first, as last pushed: only Push writes it, from Home's pending
-   *  selection (`HomeEntry.pinToTop`). */
-  pin_to_top: boolean
+/** A collection's own settings, as a saved collection and a snapshot's
+ *  collection both carry them. */
+interface CollectionSettings {
   view_mode: string
   show_all_tab: boolean
   backdrop_image_url: string
   /** Nuvio's focus glow on this collection's home-screen folder cards. */
   focus_glow_enabled: boolean
+}
+
+export type Collection = CollectionSettings & {
+  id: string
+  title: string
+  /** Show first, as last pushed: only Push writes it, from Home's pending
+   *  selection (`HomeEntry.pinToTop`). */
+  pin_to_top: boolean
   /** Its place on Home, numbered with the catalogs there; absent when it
    *  isn't on Home. */
   home_position?: number
@@ -149,27 +160,14 @@ interface SnapshotRef {
   genre: string
 }
 
-export interface SnapshotFolder {
+export type SnapshotFolder = FolderLook & {
   key: string
   title: string
-  tile_shape: TileShape | ''
-  hide_title: boolean
-  cover_emoji: string
-  cover_image_url: string
-  focus_gif_url: string
-  focus_gif_enabled: boolean
-  hero_backdrop_url: string
-  hero_video_url: string
-  title_logo_url: string
   refs: SnapshotRef[] | null
 }
 
-interface SnapshotCollection {
+type SnapshotCollection = CollectionSettings & {
   title: string
-  view_mode: string
-  show_all_tab: boolean
-  backdrop_image_url: string
-  focus_glow_enabled: boolean
   folders: SnapshotFolder[] | null
 }
 

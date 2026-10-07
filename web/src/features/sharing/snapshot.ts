@@ -55,18 +55,10 @@ export function snapshotAsCollection(detail: PublicationDetail): Collection | nu
 }
 
 function asFolder(folder: SnapshotFolder): NonNullable<Collection['folders']>[number] {
+  const { key, refs, ...look } = folder
   return {
-    id: folder.key,
-    title: folder.title,
-    tile_shape: folder.tile_shape,
-    hide_title: folder.hide_title,
-    cover_emoji: folder.cover_emoji,
-    cover_image_url: folder.cover_image_url,
-    focus_gif_url: folder.focus_gif_url,
-    focus_gif_enabled: folder.focus_gif_enabled,
-    hero_backdrop_url: folder.hero_backdrop_url,
-    hero_video_url: folder.hero_video_url,
-    title_logo_url: folder.title_logo_url,
-    refs: (folder.refs ?? []).map((ref) => ({ catalog_id: ref.catalog, genre: ref.genre })),
+    ...look,
+    id: key,
+    refs: (refs ?? []).map((ref) => ({ catalog_id: ref.catalog, genre: ref.genre })),
   }
 }
