@@ -41,7 +41,7 @@ var validCatalogTypes = map[string]bool{
 // provider stored here would bypass api.validateCatalogParams' params check
 // entirely (that function only validates when provider == "tmdb"), and
 // provider is not inert like endpoint — it round-trips into
-// addon.ManifestID and Nuvio's catalogSources[].catalogId.
+// the addon manifest (vault.ManifestID) and Nuvio's catalogSources[].catalogId.
 var validProviders = map[string]bool{
 	"tmdb": true,
 }

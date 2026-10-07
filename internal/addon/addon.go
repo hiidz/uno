@@ -157,12 +157,6 @@ type manifestHints struct {
 	Configurable bool `json:"configurable"`
 }
 
-// ManifestID is the manifest-facing id for one catalog, vault.ManifestID:
-// the same string a pushed collection names it by in catalogSources[].catalogId.
-func ManifestID(c vault.Catalog) string {
-	return vault.ManifestID(c)
-}
-
 // buildManifest builds Stremio's manifest catalog list. Every catalog
 // declares "skip" (pagination) as an extra and an explicit showInHome, plus
 // a "genre" extra over genreNames(catalog) — see genreExtra.
@@ -175,7 +169,7 @@ func buildManifest(selection []vault.Catalog, genreNames func(vault.Catalog) []s
 		}
 		catalogs[i] = manifestCatalog{
 			Type:       sc.Type,
-			ID:         ManifestID(sc),
+			ID:         vault.ManifestID(sc),
 			Name:       sc.Name,
 			PageSize:   catalogPageSize,
 			Extra:      extra,
@@ -272,7 +266,7 @@ func (s *Server) ConfigureHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) genreNames(ctx context.Context, sc vault.Catalog) []string {
 	genres, err := s.provider.GenreExtraOptions(ctx, sc.Type, sc.Params)
 	if err != nil {
-		logTMDBFailure("genre options for catalog "+strconv.Quote(ManifestID(sc)), err)
+		logTMDBFailure("genre options for catalog "+strconv.Quote(vault.ManifestID(sc)), err)
 		return nil
 	}
 	names := make([]string, len(genres))
@@ -289,7 +283,7 @@ type catalogResponse struct {
 }
 
 // parseManifestID splits a manifest id back into the provider and catalog id
-// ManifestID joined, reporting false for anything ManifestID can't have
+// vault.ManifestID joined, reporting false for anything it can't have
 // written.
 func parseManifestID(manifestID string) (string, uuid.UUID, bool) {
 	catalogProvider, rawID, ok := strings.Cut(manifestID, "-")

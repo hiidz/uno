@@ -22,7 +22,7 @@ const AddonID = "hiidz.uno.catalog"
 // catalogSources[].catalogId — see the "Push wire shape" section of
 // docs/data-model.md and the sample in
 // docs/api/samples/collections-basic.json. The addon's manifest and the push
-// both use it (addon.ManifestID).
+// both use it.
 func ManifestID(c Catalog) string {
 	return c.Provider + "-" + c.ID.String()
 }

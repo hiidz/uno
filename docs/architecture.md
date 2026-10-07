@@ -54,9 +54,8 @@ id.
 
 **`vault.ManifestID(c)` is `c.Provider + "-" + c.ID.String()`** — the same literal string that
 round-trips as Nuvio's `catalogSources[].catalogId`. Whatever string Uno's manifest uses for a
-catalog id must be the same string in a pushed source entry: the manifest goes through
-`addon.ManifestID`, which delegates to it, and the push payload calls it directly, and it has to
-stay that way. Both live in the vault because the vault builds the push payload and `addon`
+catalog id must be the same string in a pushed source entry: the manifest and the push payload
+both call `vault.ManifestID` directly, and it has to stay that way. Both live in the vault because the vault builds the push payload and `addon`
 imports the vault, not the other way round.
 
 ## Server construction

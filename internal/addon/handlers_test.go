@@ -177,8 +177,8 @@ func TestManifestHandler(t *testing.T) {
 				}
 				return
 			}
-			if len(m.Catalogs) != 1 || m.Catalogs[0].ID != ManifestID(f.onHome) || !m.Catalogs[0].ShowInHome {
-				t.Fatalf("catalogs = %+v, want only %q on home", m.Catalogs, ManifestID(f.onHome))
+			if len(m.Catalogs) != 1 || m.Catalogs[0].ID != vault.ManifestID(f.onHome) || !m.Catalogs[0].ShowInHome {
+				t.Fatalf("catalogs = %+v, want only %q on home", m.Catalogs, vault.ManifestID(f.onHome))
 			}
 			var genres []string
 			for _, e := range m.Catalogs[0].Extra {
@@ -208,7 +208,7 @@ func TestConfigureHandler(t *testing.T) {
 // TestCatalogHandler covers the catalog route. It serves a catalog the
 // token's profile has on the TV. Its own catalog off the TV or deleted,
 // another profile's catalog, live or deleted, a type or provider the catalog
-// doesn't have, and an id ManifestID can't have written are the same 404 as
+// doesn't have, and an id vault.ManifestID can't have written are the same 404 as
 // one that doesn't exist, and are never fetched. A TMDB failure is a 502.
 // tmdbSparse serves three discover pages of twenty films, a fifth of them
 // without an IMDB id, so each page leaves sixteen titles once those are
@@ -247,7 +247,7 @@ func TestCatalogHandlerServesTheTitlesAfterSkip(t *testing.T) {
 
 	var all []string
 	for _, tc := range []struct{ skip, want int }{{0, 20}, {20, 20}, {40, 8}, {48, 0}} {
-		w := f.get(t, "/u/"+f.owner.Token+"/catalog/movie/"+ManifestID(f.onHome)+"/skip="+strconv.Itoa(tc.skip)+".json")
+		w := f.get(t, "/u/"+f.owner.Token+"/catalog/movie/"+vault.ManifestID(f.onHome)+"/skip="+strconv.Itoa(tc.skip)+".json")
 		if w.Code != http.StatusOK {
 			t.Fatalf("skip=%d: status %d (%s)", tc.skip, w.Code, w.Body.String())
 		}
@@ -299,7 +299,7 @@ func TestRandomizedRecipe(t *testing.T) {
 func TestCatalogHandler(t *testing.T) {
 	f := newHandlerFixture(t)
 	path := func(token, catalogType string, c vault.Catalog) string {
-		return "/u/" + token + "/catalog/" + catalogType + "/" + ManifestID(c) + ".json"
+		return "/u/" + token + "/catalog/" + catalogType + "/" + vault.ManifestID(c) + ".json"
 	}
 
 	tests := []struct {
@@ -360,7 +360,7 @@ func TestHandlersVaultFailure(t *testing.T) {
 
 	for _, path := range []string{
 		ManifestPath(f.owner.Token),
-		"/u/" + f.owner.Token + "/catalog/movie/" + ManifestID(f.onHome) + ".json",
+		"/u/" + f.owner.Token + "/catalog/movie/" + vault.ManifestID(f.onHome) + ".json",
 	} {
 		if w := f.get(t, path); w.Code != http.StatusInternalServerError {
 			t.Errorf("GET %s: status = %d, want %d", path, w.Code, http.StatusInternalServerError)
@@ -421,10 +421,10 @@ func TestAddonServesWhatTheLastPushLeft(t *testing.T) {
 		tmdbUp(w, r)
 	})
 	manifest := "/u/" + f.owner.Token + "/manifest.json"
-	route := "/u/" + f.owner.Token + "/catalog/movie/" + ManifestID(f.onHome) + ".json"
+	route := "/u/" + f.owner.Token + "/catalog/movie/" + vault.ManifestID(f.onHome) + ".json"
 	wantServed := func(step string, listed bool, status int) {
 		t.Helper()
-		if body := f.get(t, manifest).Body.String(); strings.Contains(body, ManifestID(f.onHome)) != listed {
+		if body := f.get(t, manifest).Body.String(); strings.Contains(body, vault.ManifestID(f.onHome)) != listed {
 			t.Errorf("%s: manifest lists the catalog = %v, want %v (%s)", step, !listed, listed, body)
 		}
 		if w := f.get(t, route); w.Code != status {

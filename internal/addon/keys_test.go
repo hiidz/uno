@@ -14,6 +14,7 @@ import (
 
 	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/tmdbkey"
+	"github.com/hiidz/uno/internal/vault"
 )
 
 const ownerKey = "0123456789abcdef0123456789abcdef"
@@ -75,12 +76,12 @@ func TestAddonUsesTheOwnersKey(t *testing.T) {
 		mux.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
 		return w.Code
 	}
-	theirs := "/u/" + f.other.Token + "/catalog/movie/" + ManifestID(f.theirs) + ".json"
+	theirs := "/u/" + f.other.Token + "/catalog/movie/" + vault.ManifestID(f.theirs) + ".json"
 
 	if code := get(theirs); code != http.StatusBadGateway || len(keys()) != 0 {
 		t.Fatalf("a keyless owner's catalog = %d after %d TMDB calls; want 502 after none", code, len(keys()))
 	}
-	if code := get("/u/" + f.owner.Token + "/catalog/movie/" + ManifestID(f.onHome) + ".json"); code != http.StatusOK {
+	if code := get("/u/" + f.owner.Token + "/catalog/movie/" + vault.ManifestID(f.onHome) + ".json"); code != http.StatusOK {
 		t.Fatalf("the owner's catalog = %d, want 200", code)
 	}
 	if code := get("/u/" + f.owner.Token + "/manifest.json"); code != http.StatusOK {

@@ -81,7 +81,7 @@ func TestBuildManifestFolderOnlyCatalogGetsGenreExtra(t *testing.T) {
 	m := buildManifest(selection, actionComedy)
 	var mc *manifestCatalog
 	for i := range m.Catalogs {
-		if m.Catalogs[i].ID == ManifestID(folderOnly) {
+		if m.Catalogs[i].ID == vault.ManifestID(folderOnly) {
 			mc = &m.Catalogs[i]
 		}
 	}
@@ -138,7 +138,7 @@ func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testi
 	var count int
 	var mc manifestCatalog
 	for _, c := range m.Catalogs {
-		if c.ID == ManifestID(catalog) {
+		if c.ID == vault.ManifestID(catalog) {
 			count++
 			mc = c
 		}
@@ -277,7 +277,7 @@ func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) 
 
 	m := buildManifest(selection, actionComedy)
 	for _, c := range m.Catalogs {
-		if c.ID == ManifestID(catalog) {
+		if c.ID == vault.ManifestID(catalog) {
 			t.Fatalf("catalog in a folder of an off-TV collection appeared in the manifest: %+v", c)
 		}
 	}
@@ -315,7 +315,7 @@ func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
 	// out rather than derived from maxCatalogPage, so raising that constant
 	// past TMDB's limit fails here.
 	const skipPastLastPage = 10000
-	path := "/u/" + owner.Token + "/catalog/movie/" + ManifestID(catalog) +
+	path := "/u/" + owner.Token + "/catalog/movie/" + vault.ManifestID(catalog) +
 		"/skip=" + strconv.Itoa(skipPastLastPage) + ".json"
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
