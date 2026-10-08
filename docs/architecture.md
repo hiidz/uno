@@ -74,4 +74,4 @@ Profiles on the same server can **publish** catalogs and collections to Communit
 
 ## API
 
-[`api/openapi.yaml`](api/openapi.yaml) lists every route. A Go test (`TestOpenAPISpecMatchesRoutes`) fails if the spec and the routes in `server.go` disagree. Nuvio's own API reference is in [`api/nuvio-v1.3.md`](api/nuvio-v1.3.md).
+[`api/openapi.yaml`](api/openapi.yaml) lists every route. A Go test (`TestOpenAPISpecMatchesRoutes`) fails if the spec and the routes in `server.go` disagree.
