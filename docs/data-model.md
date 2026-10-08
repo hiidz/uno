@@ -665,7 +665,8 @@ describing what a TMDB-backed catalog may ask for.
   `with_networks`). Movie has
   `primary_release_date_*` and `released_within_days`; series has `first_air_date_*` and
   `aired_within_days` — a different axis, since a 2015 show still matches "aired in the last 30
-  days". `with_collection` is one TMDB collection id (e.g. `10`, Star Wars), movie only.
+  days". A rolling window counts back from today's UTC date (`daysAgo`), and the editor shows
+  the same UTC date (`formatWindowStart`). `with_collection` is one TMDB collection id (e.g. `10`, Star Wars), movie only.
   `with_networks` is a comma (AND) or pipe (OR) separated list of TMDB network ids (e.g.
   `213|49`, Netflix or HBO), series only: `/discover/movie` has no network filter. It has no
   `without_networks` partner, because `/discover/tv` accepts that param and ignores it (the same

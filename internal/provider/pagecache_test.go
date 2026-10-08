@@ -46,7 +46,7 @@ func TestFetchCatalogPageIsCachedByRequest(t *testing.T) {
 	ctx := t.Context()
 	fetch := func(genre string, page int) []Meta {
 		t.Helper()
-		metas, err := c.FetchCatalogPage(ctx, "movie", `{"sort_by":"popularity.desc"}`, genre, page)
+		metas, err := metasOf(c.FetchCatalogPage(ctx, "movie", `{"sort_by":"popularity.desc"}`, genre, page))
 		if err != nil || len(metas) != 1 {
 			t.Fatalf("FetchCatalogPage = %v, %v; want one meta", metas, err)
 		}
@@ -85,16 +85,16 @@ func TestPageCacheSharesAFetchInFlight(t *testing.T) {
 	c := newPageCache(time.Minute, 10)
 	release := make(chan struct{})
 	var calls atomic.Int32
-	fetch := func(ctx context.Context) ([]Meta, bool, error) {
+	fetch := func(ctx context.Context) (CatalogPage, bool, error) {
 		calls.Add(1)
 		<-release
-		return []Meta{{ID: "tt1"}}, true, ctx.Err()
+		return CatalogPage{Metas: []Meta{{ID: "tt1"}}}, true, ctx.Err()
 	}
 
 	gone, leave := context.WithCancel(t.Context())
 	leftEarly := make(chan error, 1)
 	go func() {
-		_, err := c.load(gone, "k", fetch)
+		_, err := metasOf(c.load(gone, "k", fetch))
 		leftEarly <- err
 	}()
 
@@ -102,7 +102,7 @@ func TestPageCacheSharesAFetchInFlight(t *testing.T) {
 	results := make([][]Meta, 5)
 	for i := range results {
 		wg.Go(func() {
-			metas, err := c.load(t.Context(), "k", fetch)
+			metas, err := metasOf(c.load(t.Context(), "k", fetch))
 			if err != nil {
 				t.Errorf("load: %v", err)
 			}
@@ -121,7 +121,7 @@ func TestPageCacheSharesAFetchInFlight(t *testing.T) {
 			t.Errorf("caller %d got %v, want the shared page", i, metas)
 		}
 	}
-	if metas, err := c.load(t.Context(), "k", fetch); err != nil || len(metas) != 1 {
+	if metas, err := metasOf(c.load(t.Context(), "k", fetch)); err != nil || len(metas) != 1 {
 		t.Errorf("load after the fetch = %v, %v; want the cached page", metas, err)
 	}
 	if got := calls.Load(); got != 1 {
@@ -135,22 +135,22 @@ func TestPageCacheSharesAFetchInFlight(t *testing.T) {
 // keeps is then served from the cache.
 func TestPageCacheKeepsOnlyAKeptSuccess(t *testing.T) {
 	for name, first := range map[string]pageFetcher{
-		"failure": func(context.Context) ([]Meta, bool, error) { return nil, false, errors.New("TMDB down") },
-		"panic":   func(context.Context) ([]Meta, bool, error) { panic("boom") },
-		"not kept": func(context.Context) ([]Meta, bool, error) {
-			return []Meta{{ID: "tt0"}}, false, nil
+		"failure": func(context.Context) (CatalogPage, bool, error) { return CatalogPage{}, false, errors.New("TMDB down") },
+		"panic":   func(context.Context) (CatalogPage, bool, error) { panic("boom") },
+		"not kept": func(context.Context) (CatalogPage, bool, error) {
+			return CatalogPage{Metas: []Meta{{ID: "tt0"}}}, false, nil
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := newPageCache(time.Minute, 10)
 			var calls atomic.Int32
-			fetch := func(ctx context.Context) ([]Meta, bool, error) {
+			fetch := func(ctx context.Context) (CatalogPage, bool, error) {
 				if calls.Add(1) == 1 {
 					return first(ctx)
 				}
-				return []Meta{{ID: "tt1"}}, true, nil
+				return CatalogPage{Metas: []Meta{{ID: "tt1"}}}, true, nil
 			}
-			firstMetas, firstErr := c.load(t.Context(), "k", fetch)
+			firstMetas, firstErr := metasOf(c.load(t.Context(), "k", fetch))
 			if name == "not kept" && (firstErr != nil || len(firstMetas) != 1) {
 				t.Fatalf("first load = %v, %v; want the page, served but not kept", firstMetas, firstErr)
 			}
@@ -158,7 +158,7 @@ func TestPageCacheKeepsOnlyAKeptSuccess(t *testing.T) {
 				t.Fatal("first load succeeded, want the fetch's error")
 			}
 			for range 2 {
-				if metas, err := c.load(t.Context(), "k", fetch); err != nil || len(metas) != 1 || metas[0].ID != "tt1" {
+				if metas, err := metasOf(c.load(t.Context(), "k", fetch)); err != nil || len(metas) != 1 || metas[0].ID != "tt1" {
 					t.Fatalf("later load = %v, %v; want the kept page", metas, err)
 				}
 			}
@@ -189,7 +189,7 @@ func TestFetchCatalogPageDoesNotCacheAPageWithoutGenres(t *testing.T) {
 	c.baseURL = srv.URL
 
 	for range 2 {
-		if metas, err := c.FetchCatalogPage(t.Context(), "movie", `{}`, "", 1); err != nil || len(metas) != 1 || metas[0].Genres != nil {
+		if metas, err := metasOf(c.FetchCatalogPage(t.Context(), "movie", `{}`, "", 1)); err != nil || len(metas) != 1 || metas[0].Genres != nil {
 			t.Fatalf("FetchCatalogPage = %v, %v; want one meta without genres", metas, err)
 		}
 	}
@@ -203,7 +203,7 @@ func TestFetchCatalogPageDoesNotCacheAPageWithoutGenres(t *testing.T) {
 func TestPageCacheExpiresAndEvicts(t *testing.T) {
 	c := newPageCache(time.Minute, 2)
 	t0 := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
-	page := []Meta{{ID: "tt1"}}
+	page := CatalogPage{Metas: []Meta{{ID: "tt1"}}}
 
 	c.store("a", page, t0)
 	if _, ok := c.fresh("a", t0.Add(time.Minute)); !ok {

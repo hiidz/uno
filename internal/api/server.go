@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/hiidz/uno/internal/addon"
 	"github.com/hiidz/uno/internal/httpx"
@@ -36,6 +37,9 @@ type Server struct {
 	// keys gives each request its account's own TMDB key, nil on a server
 	// with one shared key.
 	keys *tmdbkey.Keys
+	// pushLocks holds each profile's push lock (lockPush), a profile id
+	// mapped to a chan struct{} with room for one.
+	pushLocks sync.Map
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

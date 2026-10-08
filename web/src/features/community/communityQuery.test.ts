@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { communityFolder, communityItem } from '@/test/fixtures'
 import {
   DEFAULT_FILTERS,
@@ -83,5 +83,16 @@ describe('row words', () => {
     expect(ago(65)).toBe('2 months ago')
     expect(ago(362)).toBe('11 months ago')
     expect(ago(800)).toBe('2 years ago')
+  })
+  it('counts whole days across a daylight-saving change', () => {
+    vi.stubEnv('TZ', 'Europe/London')
+    try {
+      // Clocks went forward on 29 March 2026: local midnight on the 28th is 47 hours before the 30th's.
+      const now = new Date(2026, 2, 30, 12)
+      expect(relativeDay(new Date(2026, 2, 28, 9).toISOString(), now)).toBe('2 days ago')
+      expect(relativeDay(new Date(2026, 2, 23, 9).toISOString(), now)).toBe('last week')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -81,8 +82,8 @@ func (body pushRequest) selection() (vault.PushedHome, error) {
 
 // pushResult is push's JSON answer once its body has decoded: Success, the
 // marker the SPA tells it from any other body by, true only on a 200. Flat by
-// design — success or failure, not partial-progress flags — since
-// push's ordering (validate → Nuvio → local write) and its undo of what Nuvio
+// design â€” success or failure, not partial-progress flags â€” since
+// push's ordering (validate â†’ Nuvio â†’ local write) and its undo of what Nuvio
 // already took guarantee an ordinary failure means nothing changed.
 // UndoFailed marks the one case that guarantee doesn't cover: an undo that
 // failed too (undoPush). Refused names why push turned the selection away
@@ -119,16 +120,54 @@ const (
 // several sequential Nuvio HTTP calls, and with the undo of what Nuvio already
 // took (sendPush) means an ordinary failure leaves nothing written on either
 // side.
+//
+// One push runs at a time per profile (lockPush): two interleaved pushes
+// would each full-replace Nuvio's lists step by step, and one's undo would
+// put back what the other replaced.
 func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	profile, _ := profileFrom(ctx)        // guaranteed by requireProfile
-	accessToken, _ := nuvioTokenFrom(ctx) // guaranteed by requireNuvioAuth
+	profile, _ := profileFrom(ctx) // guaranteed by requireProfile
 
 	var body pushRequest
 	if !decodeJSON(w, r, &body) {
 		return
 	}
+
+	unlock, err := s.lockPush(ctx, profile.ID)
+	if err != nil {
+		log.Printf("push: waiting for the profile's push in flight: %v", err)
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, pushResult{})
+		return
+	}
+	defer unlock()
+	s.pushLocked(ctx, w, profile, body)
+}
+
+// pushLockWait bounds how long a push waits for the same profile's push in
+// flight. It, the live-profile read, pushStepsBudget and pushSettleBudget
+// together stay under the server's 60s WriteTimeout, so the SPA always hears
+// how a push ended.
+const pushLockWait = 5 * time.Second
+
+// lockPush takes profileID's push lock, waiting up to pushLockWait for a push
+// already in flight, and returns its release.
+func (s *Server) lockPush(ctx context.Context, profileID uuid.UUID) (unlock func(), err error) {
+	held, _ := s.pushLocks.LoadOrStore(profileID, make(chan struct{}, 1))
+	lock := held.(chan struct{})
+	wait, cancel := context.WithTimeout(ctx, pushLockWait)
+	defer cancel()
+	select {
+	case lock <- struct{}{}:
+		return func() { <-lock }, nil
+	case <-wait.Done():
+		return nil, wait.Err()
+	}
+}
+
+// pushLocked is push once it holds the profile's push lock.
+func (s *Server) pushLocked(ctx context.Context, w http.ResponseWriter, profile vault.Profile, body pushRequest) {
+	accessToken, _ := nuvioTokenFrom(ctx) // guaranteed by requireNuvioAuth
 
 	record, err := s.pushRecord(ctx, profile.ID, body)
 	if err != nil {
@@ -224,30 +263,49 @@ func (s *Server) liveProfile(ctx context.Context, accessToken string, profile va
 //
 // A failure after Nuvio took part of the push puts back what it took, each
 // as it was pulled, newest first (undoPush).
+//
+// The push runs detached from ctx's cancellation: a client that drops
+// mid-push would otherwise cancel the undo and the local commit with it,
+// leaving Nuvio holding part of the push. The steps run within
+// pushStepsBudget, and the local commit or the undo within its own
+// pushSettleBudget, so a step that runs out of time still leaves the undo
+// time of its own.
 func (s *Server) sendPush(ctx context.Context, accessToken string, profile vault.Profile, record vault.PushRecord) (int, pushResult) {
+	ctx = context.WithoutCancel(ctx)
+	stepsCtx, cancelSteps := context.WithTimeout(ctx, pushStepsBudget)
+	defer cancelSteps()
 	run := &pushRun{
-		s: s, ctx: ctx, accessToken: accessToken, slot: profile.NuvioProfileIndex, profileID: profile.ID,
+		s: s, ctx: stepsCtx, accessToken: accessToken, slot: profile.NuvioProfileIndex, profileID: profile.ID,
 		manifestURL: s.siteBaseURL + addon.ManifestPath(profile.Token), record: record,
 	}
 	var reverts []pushRevert
 	for _, step := range []pushStep{run.prepareHomeOrder, run.pushAddons, run.pushCollections, run.pushHomeOrder} {
 		revert, err := step()
 		if err != nil {
-			return failedPush(err, reverts...)
+			return failedPush(ctx, err, reverts...)
 		}
 		reverts = slices.Insert(reverts, 0, revert)
 	}
 
-	if err := s.vault.SavePush(ctx, profile.ID, record); err != nil {
+	settleCtx, cancelSettle := context.WithTimeout(ctx, pushSettleBudget)
+	defer cancelSettle()
+	if err := s.vault.SavePush(settleCtx, profile.ID, record); err != nil {
 		log.Printf("push: local commit failed after nuvio succeeded, reverting: %v", err)
-		return undoPush(http.StatusInternalServerError, reverts...)
+		return undoPush(settleCtx, http.StatusInternalServerError, reverts...)
 	}
 	return http.StatusOK, pushResult{Success: true}
 }
 
+// pushStepsBudget bounds a push's steps against Nuvio; pushSettleBudget bounds
+// what follows them, the local commit or the undo (see pushLockWait).
+const (
+	pushStepsBudget  = 25 * time.Second
+	pushSettleBudget = 15 * time.Second
+)
+
 // pushRevert puts back what one step of a push wrote to Nuvio, as it was
 // pulled.
-type pushRevert func() error
+type pushRevert func(ctx context.Context) error
 
 // pushStep is one step of a push: it returns how to put back what it wrote
 // to Nuvio, which a later step's failure runs.
@@ -290,7 +348,7 @@ func (r *pushRun) prepareHomeOrder() (pushRevert, error) {
 }
 
 // nothingToRevert is the revert of a step that wrote nothing.
-func nothingToRevert() error { return nil }
+func nothingToRevert(context.Context) error { return nil }
 
 // pushAddons is the addons step (Server.pushAddons).
 func (r *pushRun) pushAddons() (pushRevert, error) {
@@ -298,7 +356,7 @@ func (r *pushRun) pushAddons() (pushRevert, error) {
 	if err != nil {
 		return nil, fmt.Errorf("addons push: %w", err)
 	}
-	return func() error { return r.s.nuvio.PushAddons(r.ctx, r.accessToken, r.slot, pulled) }, nil
+	return func(ctx context.Context) error { return r.s.nuvio.PushAddons(ctx, r.accessToken, r.slot, pulled) }, nil
 }
 
 // pushCollections is the collections step (Server.pushCollections).
@@ -307,7 +365,9 @@ func (r *pushRun) pushCollections() (pushRevert, error) {
 	if err != nil {
 		return nil, fmt.Errorf("collections push: %w", err)
 	}
-	return func() error { return r.s.nuvio.PushCollections(r.ctx, r.accessToken, r.slot, pulled) }, nil
+	return func(ctx context.Context) error {
+		return r.s.nuvio.PushCollections(ctx, r.accessToken, r.slot, pulled)
+	}, nil
 }
 
 // pushHomeOrder is the home-order step: the list prepareHomeOrder built. Its
@@ -317,16 +377,20 @@ func (r *pushRun) pushHomeOrder() (pushRevert, error) {
 	if err := r.s.nuvio.PushHomeOrder(r.ctx, r.accessToken, r.slot, r.homeOrder); err != nil {
 		return nil, fmt.Errorf("home order push: %w", err)
 	}
-	return func() error { return r.s.nuvio.PushHomeOrder(r.ctx, r.accessToken, r.slot, r.pulledHomeOrder) }, nil
+	return func(ctx context.Context) error {
+		return r.s.nuvio.PushHomeOrder(ctx, r.accessToken, r.slot, r.pulledHomeOrder)
+	}, nil
 }
 
 // failedPush answers a push whose step failed with err, after running
-// reverts, what the steps before it wrote. A home-order list push couldn't
-// read is a refusal the SPA has words for: it fails the first step, before
-// anything reached Nuvio.
-func failedPush(err error, reverts ...pushRevert) (int, pushResult) {
+// reverts, what the steps before it wrote, within pushSettleBudget of ctx. A
+// home-order list push couldn't read is a refusal the SPA has words for: it
+// fails the first step, before anything reached Nuvio.
+func failedPush(ctx context.Context, err error, reverts ...pushRevert) (int, pushResult) {
 	log.Printf("push: %v", err)
-	status, result := undoPush(nuvioErrorStatus(err), reverts...)
+	settleCtx, cancel := context.WithTimeout(ctx, pushSettleBudget)
+	defer cancel()
+	status, result := undoPush(settleCtx, nuvioErrorStatus(err), reverts...)
 	if errors.Is(err, errHomeOrderUnreadable) {
 		result.Refused = refusedHomeOrderUnreadable
 	}
@@ -334,13 +398,13 @@ func failedPush(err error, reverts ...pushRevert) (int, pushResult) {
 }
 
 // undoPush runs every revert of a failed push and answers it with status. A
-// revert that fails too — two independent failures back to back — leaves
+// revert that fails too â€” two independent failures back to back â€” leaves
 // Nuvio holding part of the push, which the answer says with a 500 and
 // UndoFailed.
-func undoPush(status int, reverts ...pushRevert) (int, pushResult) {
+func undoPush(ctx context.Context, status int, reverts ...pushRevert) (int, pushResult) {
 	undone := true
 	for _, revert := range reverts {
-		if err := revert(); err != nil {
+		if err := revert(ctx); err != nil {
 			log.Printf("push: compensating revert also failed: %v", err)
 			undone = false
 		}
@@ -367,7 +431,7 @@ func (s *Server) pushRecord(ctx context.Context, profileID uuid.UUID, body pushR
 
 // pushAddons runs the addons read-modify-write cycle: pull the profile's
 // current addons, merge Uno's own entry into that list (mergeAddon), and push
-// the complete merged list back — omitting any existing addon would delete
+// the complete merged list back â€” omitting any existing addon would delete
 // it. Returns the pulled list, which a failed push puts back.
 // Has no dependency on the pending selection, so it's unaffected by push's
 // Nuvio-first ordering.
@@ -440,7 +504,7 @@ type pulledCollection struct {
 // client), so the merge has to touch only what Uno manages and leave
 // everything else byte-for-byte untouched:
 //
-//  1. Pull the current blob as raw JSON per element — never decoded into a
+//  1. Pull the current blob as raw JSON per element â€” never decoded into a
 //     generic map, which would round-trip numbers through float64 and
 //     silently corrupt any collection Uno doesn't own.
 //  2. Drop every pulled entry in managed: owned by this profile, or sent by

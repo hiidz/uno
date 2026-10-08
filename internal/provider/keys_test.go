@@ -207,17 +207,17 @@ func TestPageCacheRetriesAnothersKeyProblem(t *testing.T) {
 	c := newPageCache(time.Minute, 10)
 	release := make(chan struct{})
 	var calls atomic.Int32
-	fetch := func(ctx context.Context) ([]Meta, bool, error) {
+	fetch := func(ctx context.Context) (CatalogPage, bool, error) {
 		if calls.Add(1) == 1 {
 			<-release
-			return nil, false, ErrKeyRejected
+			return CatalogPage{}, false, ErrKeyRejected
 		}
-		return []Meta{{ID: "tt1"}}, true, nil
+		return CatalogPage{Metas: []Meta{{ID: "tt1"}}}, true, nil
 	}
 
 	started := make(chan error, 1)
 	go func() {
-		_, err := c.load(t.Context(), "k", fetch)
+		_, err := metasOf(c.load(t.Context(), "k", fetch))
 		started <- err
 	}()
 	for calls.Load() == 0 {
@@ -225,7 +225,7 @@ func TestPageCacheRetriesAnothersKeyProblem(t *testing.T) {
 	}
 	waited := make(chan []Meta, 1)
 	go func() {
-		metas, err := c.load(t.Context(), "k", fetch)
+		metas, err := metasOf(c.load(t.Context(), "k", fetch))
 		if err != nil {
 			t.Errorf("the waiter: %v, want its own fetch's page", err)
 		}
@@ -252,14 +252,14 @@ func TestPageCacheWaitsOutEveryOtherKeyProblem(t *testing.T) {
 	first, second := &pageFetch{done: make(chan struct{})}, &pageFetch{done: make(chan struct{})}
 	c.inFlight["k"] = first // another caller's fetch, as lookupOrStart files it
 	var own atomic.Int32
-	fetch := func(context.Context) ([]Meta, bool, error) {
+	fetch := func(context.Context) (CatalogPage, bool, error) {
 		own.Add(1)
-		return []Meta{{ID: "tt1"}}, true, nil
+		return CatalogPage{Metas: []Meta{{ID: "tt1"}}}, true, nil
 	}
 
 	got := make(chan []Meta, 1)
 	go func() {
-		metas, err := c.load(t.Context(), "k", fetch)
+		metas, err := metasOf(c.load(t.Context(), "k", fetch))
 		if err != nil {
 			t.Errorf("load: %v, want its own fetch's page", err)
 		}

@@ -110,6 +110,14 @@ func catalogEndpoint(catalogType string) (string, error) {
 	return endpoint, nil
 }
 
+// CatalogPage is one page of a catalog's Stremio-shaped metas, and whether
+// TMDB has pages past it. A page can hold no metas and still have more: every
+// title on it may have lacked an IMDB id (resolveMetas).
+type CatalogPage struct {
+	Metas []Meta
+	More  bool
+}
+
 // FetchCatalogPage runs a stored catalog's recipe against TMDB and returns
 // one page of Stremio-shaped metas. catalogType ("movie"/"series") selects
 // both the TMDB discover path (via catalogEndpoint) and which params shape
@@ -125,28 +133,28 @@ func catalogEndpoint(catalogType string) (string, error) {
 // for TMDB's total_pages up front.
 //
 // A collection recipe skips discover (see collectionItems): page 1 is the
-// whole collection and every later page is empty.
+// whole collection and every later page is empty, so no page has more.
 //
 // A discover page is served from the client's page cache (pageCache), keyed
 // by its discover request once the genre pick and the page, random or not,
 // are in it, so profiles showing the same recipe share one fetch.
-func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJSON, genre string, page int) ([]Meta, error) {
+func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJSON, genre string, page int) (CatalogPage, error) {
 	endpoint, err := catalogEndpoint(catalogType)
 	if err != nil {
-		return nil, err
+		return CatalogPage{}, err
 	}
 
 	p, err := DecodeParams(catalogType, paramsJSON)
 	if err != nil {
-		return nil, err
+		return CatalogPage{}, err
 	}
 	if metas, ok, err := c.collectionPage(ctx, p, catalogType, paramsJSON, genre, page); ok {
-		return metas, err
+		return CatalogPage{Metas: metas}, err
 	}
 
 	query := p.DiscoverQuery()
 	if err := c.applyGenrePick(ctx, query, catalogType, paramsJSON, genre); err != nil {
-		return nil, err
+		return CatalogPage{}, err
 	}
 	d := discoverPage{client: c, catalogType: catalogType, endpoint: endpoint, query: query}
 	d.pick(page, p.IsRandomized())
@@ -199,28 +207,27 @@ func (d discoverPage) key() string {
 // cache holds under key. A page served without genres, because the genre
 // list failed to load, is not kept: the cache would share it with every
 // profile showing the recipe.
-func (d discoverPage) fetch(ctx context.Context) ([]Meta, bool, error) {
-	items, err := d.results(ctx)
+func (d discoverPage) fetch(ctx context.Context) (CatalogPage, bool, error) {
+	resp, err := d.results(ctx)
 	if err != nil {
-		return nil, false, err
+		return CatalogPage{}, false, err
 	}
 	names := d.client.genreNames(ctx, d.catalogType)
-	metas, err := d.client.resolveMetas(ctx, d.catalogType, items, names)
-	return metas, names != nil, err
+	metas, err := d.client.resolveMetas(ctx, d.catalogType, resp.Results, names)
+	page, _ := strconv.Atoi(d.query.Get("page"))
+	return CatalogPage{Metas: metas, More: page < resp.TotalPages}, names != nil, err
 }
 
-// results is the request's discover items, from page 1 when a random pick
-// that falls back comes back empty. The addon path serves one page as
-// Stremio metas and has no notion of "how many total", so the count TMDB
-// hands back alongside the page goes unused here.
-func (d discoverPage) results(ctx context.Context) ([]tmdbDiscoverItem, error) {
+// results is the request's discover answer, from page 1 when a random pick
+// that falls back comes back empty. TMDB's total_pages in it tells the addon
+// whether the catalog runs past this page.
+func (d discoverPage) results(ctx context.Context) (tmdbDiscoverResponse, error) {
 	resp, err := d.client.discover(ctx, d.endpoint, d.query)
 	if err != nil || !d.fallback || len(resp.Results) > 0 {
-		return resp.Results, err
+		return resp, err
 	}
 	d.query.Set("page", "1")
-	resp, err = d.client.discover(ctx, d.endpoint, d.query)
-	return resp.Results, err
+	return d.client.discover(ctx, d.endpoint, d.query)
 }
 
 // genreNames maps TMDB genre ids to names for catalogType. Genres are

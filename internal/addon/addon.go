@@ -312,9 +312,9 @@ func (s *Server) catalogPage(ctx context.Context, catalogType, params, genre str
 	if page > maxCatalogPage {
 		return []provider.Meta{}, nil
 	}
-	metas, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
-	if err != nil || metas != nil {
-		return metas, err
+	fetched, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
+	if err != nil || fetched.Metas != nil {
+		return fetched.Metas, err
 	}
 	return []provider.Meta{}, nil
 }
@@ -339,23 +339,22 @@ func (s *Server) catalogWindow(ctx context.Context, catalogType, params, genre s
 // walkWindow is catalogWindow for a recipe with a fixed order: it walks the
 // catalog's pages from page 1, each from the provider's page cache once a
 // client has scrolled past it, until it holds catalogPageSize titles past
-// skip, the catalog runs out, or it has walked twice as many pages as full
-// ones would take, which bounds a cold request deep into a sparse recipe.
+// skip, TMDB has no page past the one walked, or it has walked twice as many
+// pages as full ones would take, which bounds a cold request deep into a
+// sparse recipe. A page left with no titles, every one lacking an IMDB id, is
+// walked past rather than read as the end.
 func (s *Server) walkWindow(ctx context.Context, catalogType, params, genre string, skip int) ([]provider.Meta, error) {
 	window := []provider.Meta{}
 	seen := 0
 	lastPage := min(2*(skip/catalogPageSize+1), maxCatalogPage)
 	for page := 1; page <= lastPage; page++ {
-		metas, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
+		fetched, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
 		if err != nil {
 			return nil, err
 		}
-		if len(metas) == 0 {
-			break
-		}
-		window = append(window, titlesFrom(metas, skip-seen)...)
-		seen += len(metas)
-		if len(window) >= catalogPageSize {
+		window = append(window, titlesFrom(fetched.Metas, skip-seen)...)
+		seen += len(fetched.Metas)
+		if !fetched.More || len(window) >= catalogPageSize {
 			break
 		}
 	}

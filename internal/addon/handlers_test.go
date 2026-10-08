@@ -276,6 +276,44 @@ func TestCatalogHandlerServesTheTitlesAfterSkip(t *testing.T) {
 	}
 }
 
+// A TMDB page whose every title lacks an IMDB id leaves no titles, but TMDB
+// has pages past it, so the walk goes on to them rather than ending the
+// catalog there.
+func TestCatalogHandlerWalksPastAPageWithNoTitlesLeft(t *testing.T) {
+	f := newHandlerFixture(t)
+	fakeTMDB(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/3/discover/"):
+			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+			var results []string
+			for i := 0; page <= 3 && i < 20; i++ {
+				results = append(results, fmt.Sprintf(`{"id":%d,"title":"Film"}`, page*100+i))
+			}
+			fmt.Fprintf(w, `{"results":[%s],"total_results":60,"total_pages":3}`, strings.Join(results, ","))
+		case strings.HasSuffix(r.URL.Path, "/external_ids"):
+			id, _ := strconv.Atoi(strings.Split(r.URL.Path, "/")[3])
+			if id/100 == 2 {
+				fmt.Fprint(w, `{"imdb_id":null}`)
+				return
+			}
+			fmt.Fprintf(w, `{"imdb_id":"tt%d"}`, id)
+		case strings.HasPrefix(r.URL.Path, "/3/genre/"):
+			fmt.Fprint(w, `{"genres":[]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	w := f.get(t, "/u/"+f.owner.Token+"/catalog/movie/"+vault.ManifestID(f.onHome)+"/skip=20.json")
+	var got catalogResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("status %d: %v", w.Code, err)
+	}
+	if len(got.Metas) != 20 || got.Metas[0].ID != "tt300" {
+		t.Fatalf("skip=20 served %d titles starting %v, want page 3's twenty", len(got.Metas), got.Metas)
+	}
+}
+
 // titlesFrom is a page from a title on: all of it from before its start,
 // none from past its end.
 func TestTitlesFrom(t *testing.T) {

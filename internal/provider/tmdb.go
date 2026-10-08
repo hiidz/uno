@@ -41,12 +41,14 @@ type TMDBClient struct {
 	exportsURL string
 
 	// imdbCache holds tmdbID->IMDB-id lookups, keyed "movie:123"/"tv:456".
-	// An id pairing never changes once TMDB has it, so an entry never
+	// An id pairing never changes once TMDB has it, so a found id never
 	// expires — the cache just saves repeat external_ids round trips across
-	// catalog requests. It is filled from the public addon route, so it is
-	// capped at maxIMDBCacheEntries and emptied whole once it fills.
+	// catalog requests. TMDB adds ids to new titles later, so an empty one
+	// is served for missingIMDBIDTTL only. It is filled from the public addon
+	// route, so it is capped at maxIMDBCacheEntries and emptied whole once it
+	// fills.
 	imdbMu    sync.RWMutex
-	imdbCache map[string]string
+	imdbCache map[string]imdbEntry
 
 	// The lookup lists TMDB publishes, each cached by its own method: see
 	// Genres, Languages, Countries, WatchRegions, WatchProviders and
@@ -110,6 +112,18 @@ const maxCollectionPartsEntries = 1_000
 // call to re-derive, which is not worth an eviction policy.
 const maxIMDBCacheEntries = 100_000
 
+// missingIMDBIDTTL is how long TMDB having no IMDB id for a title is served
+// from imdbCache. TMDB adds the id to new and upcoming titles later, and a
+// title without one is left off every catalog until it is asked again.
+const missingIMDBIDTTL = 24 * time.Hour
+
+// imdbEntry is one imdbCache lookup: the IMDB id, empty when TMDB had none,
+// and when it was looked up.
+type imdbEntry struct {
+	id     string
+	looked time.Time
+}
+
 // watchProviderTTL bounds how long a cached watch-provider list is served.
 // Unlike the ISO tables beside it, this one moves: services launch in and
 // leave markets, and without an expiry a long-running process would reject
@@ -127,7 +141,7 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		apiKey:     apiKey,
 		baseURL:    tmdbBaseURL,
 		exportsURL: tmdbExportsURL,
-		imdbCache:  make(map[string]string),
+		imdbCache:  make(map[string]imdbEntry),
 
 		genres:         newMemo(0, slices.Clone[[]Genre]),
 		languages:      newMemo(0, slices.Clone[[]Language]),
@@ -283,29 +297,40 @@ func searchEntities[T any](ctx context.Context, c *TMDBClient, path, query strin
 
 // imdbID resolves one TMDB id to an IMDB id, consulting the client's cache
 // first. A successful lookup is cached even when TMDB has no imdb_id for the
-// item (empty string) — that fact doesn't change either, so repeat requests
-// for the same title shouldn't keep re-asking. A failed request is not
-// cached: a transient error shouldn't be remembered as "no id".
+// item (empty string), for missingIMDBIDTTL, so repeat requests for the same
+// title don't keep re-asking while TMDB still has none. A failed request is
+// not cached: a transient error shouldn't be remembered as "no id".
 func (c *TMDBClient) imdbID(ctx context.Context, mediaType string, tmdbID int) (string, error) {
 	key := mediaType + ":" + strconv.Itoa(tmdbID)
-
-	c.imdbMu.RLock()
-	cached, ok := c.imdbCache[key]
-	c.imdbMu.RUnlock()
-	if ok {
-		return cached, nil
+	if id, ok := c.cachedIMDBID(key, time.Now()); ok {
+		return id, nil
 	}
 
 	var out tmdbExternalIDs
 	if err := c.get(ctx, fmt.Sprintf("/%s/%d/external_ids", mediaType, tmdbID), nil, &out); err != nil {
 		return "", err
 	}
-
-	c.imdbMu.Lock()
-	if len(c.imdbCache) >= maxIMDBCacheEntries {
-		c.imdbCache = make(map[string]string)
-	}
-	c.imdbCache[key] = out.IMDBID
-	c.imdbMu.Unlock()
+	c.cacheIMDBID(key, imdbEntry{id: out.IMDBID, looked: time.Now()})
 	return out.IMDBID, nil
+}
+
+// cachedIMDBID is key's cached IMDB id at now: a found one for good, an empty
+// one until missingIMDBIDTTL after its lookup.
+func (c *TMDBClient) cachedIMDBID(key string, now time.Time) (string, bool) {
+	c.imdbMu.RLock()
+	entry, ok := c.imdbCache[key]
+	c.imdbMu.RUnlock()
+	fresh := entry.id != "" || now.Sub(entry.looked) < missingIMDBIDTTL
+	return entry.id, ok && fresh
+}
+
+// cacheIMDBID caches entry under key, first emptying the cache when it holds
+// maxIMDBCacheEntries.
+func (c *TMDBClient) cacheIMDBID(key string, entry imdbEntry) {
+	c.imdbMu.Lock()
+	defer c.imdbMu.Unlock()
+	if len(c.imdbCache) >= maxIMDBCacheEntries {
+		c.imdbCache = make(map[string]imdbEntry)
+	}
+	c.imdbCache[key] = entry
 }

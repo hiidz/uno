@@ -176,8 +176,10 @@ func applyGenreExtra(q url.Values, genreID int) {
 	q.Set("with_genres", existing+","+id)
 }
 
+// daysAgo is the UTC date days before today, so a rolling window doesn't
+// move with the server's time zone.
 func daysAgo(days int) string {
-	return time.Now().AddDate(0, 0, -days).Format("2006-01-02")
+	return time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
 }
 
 func setIf(q url.Values, key, val string) {

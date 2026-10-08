@@ -11,6 +11,7 @@ import { EntryPage } from '@/components/EntryPage'
 import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
+import { ProfilesRetry } from './ProfilesRetry'
 
 /** How the picker shows a failed profile call. A 403 there is this server
  *  refusing the signed-in Nuvio account, which only its access policy answers:
@@ -199,6 +200,7 @@ export function ProfilePicker() {
           <span>{error}</span>
         </p>
       )}
+      <ProfilesRetry failed={profiles.isError} refused={failure.refused} onRetry={profiles.refetch} />
 
       <div>
         {profiles.isPending && (

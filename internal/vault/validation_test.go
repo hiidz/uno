@@ -505,6 +505,24 @@ func TestLengthBoundsCountCharacters(t *testing.T) {
 	}
 }
 
+// A save naming one existing folder twice is refused rather than writing
+// both entries to one row; new folders, which carry no id, never collide.
+func TestCollectionFormRefusesARepeatedFolderID(t *testing.T) {
+	folder := func(id *uuid.UUID) FolderData {
+		return FolderData{ID: id, Title: "F", FolderArt: FolderArt{TileShape: "POSTER"}}
+	}
+	id, other := uuid.New(), uuid.New()
+	repeated := CollectionForm{Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{folder(&id), folder(&other), folder(&id)}}
+	err := repeated.Validate()
+	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "folder 2 repeats an earlier folder's id") {
+		t.Errorf("Validate = %v, want ErrInvalidInput naming folder 2", err)
+	}
+	distinct := CollectionForm{Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{folder(&id), folder(nil), folder(nil)}}
+	if err := distinct.Validate(); err != nil {
+		t.Errorf("distinct ids and new folders: Validate = %v, want nil", err)
+	}
+}
+
 // A bundle catalog key counts characters too, like every other length.
 func TestBundleKeyLengthCountsCharacters(t *testing.T) {
 	if problem := bundleKeyProblem("", strings.Repeat("字", maxBundleKeyLen), map[string]bool{}); problem != "" {

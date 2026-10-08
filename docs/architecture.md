@@ -393,7 +393,9 @@ same page again, a scroll that loads nothing new, and a row whose pages ran down
 would end, since the clients give up after three pages with nothing new. So the route walks the
 recipe's pages from page 1 (`walkWindow`), each from the page cache once a client has scrolled
 past it, and serves the twenty titles after the first `skip`, fewer only where the catalog ends.
-The walk stops at twice as many pages as full ones would take, which bounds a cold request deep
+The catalog ends where TMDB's `total_pages` says it does (`provider.CatalogPage.More`), not at a
+page left with no titles: every title on a page can lack an IMDB id while the pages after it have
+some. The walk stops at twice as many pages as full ones would take, which bounds a cold request deep
 into a sparse recipe. A randomized recipe has no order to walk, so it keeps serving the one random
 page it picks.
 
@@ -430,7 +432,8 @@ entry. A page whose genre list failed to load is served without `genres` but not
 isn't shared. A panic in a fetch, which runs outside any handler's recover, becomes that fetch's
 error (`recoverFetch`). A collection recipe's page isn't cached: its films are memoized already (below).
 The TMDB-id→IMDB-id cache on `TMDBClient`
-(a pairing never changes once resolved, so an entry never expires; the map is capped at
+(a pairing never changes once resolved, so a found id never expires, while TMDB having no id
+for a title is served for `missingIMDBIDTTL`, 24h, since TMDB adds ids to new titles later; the map is capped at
 `maxIMDBCacheEntries` and emptied whole once it fills, because the public addon route can add one
 entry per title TMDB has) and the lookup-list memos beside it
 (`internal/provider/cache.go`: genres, languages, countries, watch regions and certifications for
@@ -1072,6 +1075,19 @@ none, which every Nuvio app reads as no saved order), the collections blob, then
 — restoring Nuvio to its prior state. If a compensating push *also* fails — two independent
 failures back to back — the response sets `undo_failed` and the user gets distinct copy. Retry
 is always safe: every local write is diff-replace and every Nuvio push is upsert/full-replace.
+
+**A push runs to its end once it reaches Nuvio, and one at a time per profile.** `sendPush` runs
+detached from the request's cancellation, so a client that drops mid-push (a closed tab, a
+suspended phone browser) doesn't cancel the undo or the local commit and leave Nuvio holding part
+of the push. Its steps run within `pushStepsBudget` (25s), and the local commit or the undo within
+its own `pushSettleBudget` (15s), so a step that runs out of time still leaves the undo time to
+run. With `pushLockWait` (5s) and the 10s live-profile read before them, a push answers inside the
+server's 60s `WriteTimeout`, so the SPA hears how it ended rather than reporting it unknown. A
+per-profile lock (`lockPush`) runs one push at a time: two interleaved pushes would each
+full-replace Nuvio's lists step by step, and one's undo would put back what the other replaced. A
+push that waits out `pushLockWait` behind another is a 503, which the SPA reports as an ordinary
+failure. Nothing checks that a push was built from the latest one: a tab holding a Home baseline
+from before another tab's push sends its own full list over it.
 
 **Lost updates, accepted.** A change made in Nuvio between push's pull and its push of the same
 resource — a collection edited or Home reordered in a Nuvio app — gets clobbered. The window is

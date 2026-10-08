@@ -114,11 +114,27 @@ export function sumLanguage(code: string | undefined, languages: Language[]): st
   return `In ${name}`
 }
 
-/** The date the server's rolling window would produce for `days` as of today. */
+/** The date the server's rolling window would produce for `days` as of today.
+ *  The server counts back from today's UTC date, so this does too. */
 export function formatWindowStart(days: number): string {
   const start = new Date()
-  start.setDate(start.getDate() - days)
-  return start.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+  start.setUTCDate(start.getUTCDate() - days)
+  return start.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+/** How a rolling window matches: a movie's release, or any episode of a series
+ *  aired in it (`air_date`), not its first. */
+function rollingVerb(type: CatalogType): string {
+  if (type === 'movie') return 'released'
+  return 'aired'
+}
+
+/** A rolling window's line. Upcoming counts from the server's window start,
+ *  yesterday, as the editor shows it. */
+function rollingLine(type: CatalogType, days: number): string {
+  if (days !== UPCOMING_DAYS) return `${rollingVerb(type)} since ${formatWindowStart(days)}, updated daily`
+  const verb = type === 'movie' ? 'released' : 'airing'
+  return `${verb} from ${formatWindowStart(days)} on, updated daily`
 }
 
 function recentLabel(days: number): string {
@@ -138,18 +154,17 @@ export function sumDate(
 ): string {
   const verb = type === 'movie' ? 'Released' : 'First aired'
   if (mode === 'any') return ANY_TIME
-  if (mode === 'fixed') {
-    if (gte && lte) return `${verb} ${fmtShortDate(gte)} to ${fmtShortDate(lte)}`
-    if (gte) return `${verb} from ${fmtShortDate(gte)}`
-    if (lte) return `${verb} up to ${fmtShortDate(lte)}`
-    return `${verb} — no dates chosen yet`
-  }
-  if (!days) return `${verb} recently — no window chosen yet`
-  const line =
-    days === UPCOMING_DAYS
-      ? `${type === 'movie' ? 'released' : 'airing'} from today on, updated daily`
-      : `${verb.toLowerCase()} since ${formatWindowStart(days)}, updated daily`
-  return `${capitalize(recentLabel(days))} · ${line}`
+  if (mode === 'fixed') return fixedLine(verb, gte, lte)
+  if (!days) return `${capitalize(rollingVerb(type))} recently — no window chosen yet`
+  return `${capitalize(recentLabel(days))} · ${rollingLine(type, days)}`
+}
+
+/** A fixed window's line, from whichever of its dates are picked. */
+function fixedLine(verb: string, gte: string | undefined, lte: string | undefined): string {
+  if (gte && lte) return `${verb} ${fmtShortDate(gte)} to ${fmtShortDate(lte)}`
+  if (gte) return `${verb} from ${fmtShortDate(gte)}`
+  if (lte) return `${verb} up to ${fmtShortDate(lte)}`
+  return `${verb} — no dates chosen yet`
 }
 
 /** A picked date is a calendar day with no zone, which `new Date` reads as UTC

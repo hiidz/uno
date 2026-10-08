@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -756,6 +757,63 @@ func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	if got := fake.pushCollectionsCalls[1]; len(got) != 1 || string(got[0]) != string(foreign) {
 		t.Errorf("second push sent %s, want only the foreign collection", got)
 	}
+}
+
+// A client that drops once Nuvio has taken the push doesn't cut the push in
+// half: the local commit still lands, and the push answers success.
+func TestPush_FinishesAfterTheClientDrops(t *testing.T) {
+	db := newTestVaultDB(t)
+	profile, err := db.ResolveOrCreateProfile(t.Context(), "user-drop", 1, "nuvio-uuid-drop")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+	coll := createPushableCollection(t, t.Context(), db, profile.ID, "Mine")
+	reqCtx, drop := context.WithCancel(withNuvioToken(withProfile(t.Context(), profile), "token"))
+	defer drop()
+	fake := &fakeNuvio{
+		profiles:          liveAs(profile),
+		onPushCollections: func(int, []json.RawMessage) { drop() },
+	}
+	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
+
+	w := httptest.NewRecorder()
+	s.push(w, newPushRequest(t, reqCtx, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}})))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", w.Code, w.Body.String())
+	}
+	if sel := homeCollections(t, db, profile.ID); len(sel) != 1 || sel[0].ID != coll.ID {
+		t.Fatalf("selection = %v, want the pushed collection committed", sel)
+	}
+}
+
+// One push runs at a time per profile: a second waits for the first's lock,
+// and gives up when its request ends first. Another profile's push doesn't
+// wait.
+func TestLockPush(t *testing.T) {
+	s := &Server{}
+	mine, other := uuid.New(), uuid.New()
+	unlock, err := s.lockPush(t.Context(), mine)
+	if err != nil {
+		t.Fatalf("first lock: %v", err)
+	}
+
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := s.lockPush(gone, mine); !errors.Is(err, context.Canceled) {
+		t.Fatalf("second lock while held = %v, want context.Canceled", err)
+	}
+	unlockOther, err := s.lockPush(t.Context(), other)
+	if err != nil {
+		t.Fatalf("another profile's lock while mine is held: %v", err)
+	}
+	unlockOther()
+
+	unlock()
+	unlock, err = s.lockPush(t.Context(), mine)
+	if err != nil {
+		t.Fatalf("lock after release: %v", err)
+	}
+	unlock()
 }
 
 // A selection naming a catalog the profile doesn't own is a 400, before Nuvio

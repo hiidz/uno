@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeCatalogTMDB serves one discover page with a single item, its
@@ -41,12 +42,43 @@ func fakeCatalogTMDB(t *testing.T, item string, genreListStatus int) *TMDBClient
 	return c
 }
 
+// A found IMDB id is cached for good. TMDB having none is cached only for
+// missingIMDBIDTTL, since TMDB adds ids to new titles later.
+func TestCachedIMDBIDExpiresOnlyAMissingID(t *testing.T) {
+	c := NewTMDBClient("key")
+	t0 := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	c.cacheIMDBID("movie:1", imdbEntry{id: "tt1", looked: t0})
+	c.cacheIMDBID("movie:2", imdbEntry{looked: t0})
+	later := t0.Add(missingIMDBIDTTL)
+
+	for _, tc := range []struct {
+		key    string
+		at     time.Time
+		wantID string
+		wantOK bool
+	}{
+		{"movie:1", later, "tt1", true},
+		{"movie:2", t0.Add(time.Hour), "", true},
+		{"movie:2", later, "", false},
+		{"movie:3", t0, "", false},
+	} {
+		if id, ok := c.cachedIMDBID(tc.key, tc.at); id != tc.wantID || ok != tc.wantOK {
+			t.Errorf("cachedIMDBID(%s, %v) = %q, %v; want %q, %v", tc.key, tc.at, id, ok, tc.wantID, tc.wantOK)
+		}
+	}
+}
+
+// metasOf is a page fetch's metas, for a test that checks only those.
+func metasOf(page CatalogPage, err error) ([]Meta, error) {
+	return page.Metas, err
+}
+
 func TestFetchCatalogPageMapsDiscoverFields(t *testing.T) {
 	c := fakeCatalogTMDB(t, `{"id":155,"title":"The Dark Knight","overview":"o",
 		"poster_path":"/p.jpg","backdrop_path":"/b.jpg","genre_ids":[80,28,9999],
 		"release_date":"2008-07-16"}`, http.StatusOK)
 
-	metas, err := c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1)
+	metas, err := metasOf(c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +102,7 @@ func TestFetchCatalogPageServesWithoutGenresWhenGenreListFails(t *testing.T) {
 	c := fakeCatalogTMDB(t, `{"id":155,"title":"t","genre_ids":[28],"release_date":""}`,
 		http.StatusInternalServerError)
 
-	metas, err := c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1)
+	metas, err := metasOf(c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +138,7 @@ func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
 			c.baseURL = srv.URL
 
 			params := `{"with_companies":"420|2","with_keywords":"9715,180547","without_companies":"9993","without_keywords":"849,12","with_networks":"213|49"}`
-			if _, err := c.FetchCatalogPage(t.Context(), tc.catalogType, params, "", 1); err != nil {
+			if _, err := metasOf(c.FetchCatalogPage(t.Context(), tc.catalogType, params, "", 1)); err != nil {
 				t.Fatal(err)
 			}
 
@@ -175,7 +207,7 @@ func TestFetchCatalogPageRandomizedFallsBackToPageOne(t *testing.T) {
 	c, requested := fakeRandomizedTMDB(t, 1, http.StatusOK)
 
 	for range 20 {
-		metas, err := c.FetchCatalogPage(context.Background(), "movie", `{"randomized":true}`, "", 1)
+		metas, err := metasOf(c.FetchCatalogPage(context.Background(), "movie", `{"randomized":true}`, "", 1))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,7 +231,7 @@ func TestFetchCatalogPageRandomizedFallsBackToPageOne(t *testing.T) {
 func TestFetchCatalogPageRandomizedKeepsAPopulatedPick(t *testing.T) {
 	c, requested := fakeRandomizedTMDB(t, maxRandomPage, http.StatusOK)
 
-	if _, err := c.FetchCatalogPage(context.Background(), "movie", `{"randomized":true}`, "", 1); err != nil {
+	if _, err := metasOf(c.FetchCatalogPage(context.Background(), "movie", `{"randomized":true}`, "", 1)); err != nil {
 		t.Fatal(err)
 	}
 	if pages := requested(); len(pages) != 1 {
@@ -213,7 +245,7 @@ func TestFetchCatalogPageRandomizedKeepsAPopulatedPick(t *testing.T) {
 func TestFetchCatalogPageFailsWhenExternalIDsFail(t *testing.T) {
 	c, _ := fakeRandomizedTMDB(t, 1, http.StatusInternalServerError)
 
-	metas, err := c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1)
+	metas, err := metasOf(c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1))
 	if err == nil {
 		t.Fatalf("got %d metas and no error, want an error", len(metas))
 	}
@@ -225,7 +257,7 @@ func TestFetchCatalogPageFailsWhenExternalIDsFail(t *testing.T) {
 func TestFetchCatalogPageDropsItemsTMDBHasNoExternalIDsFor(t *testing.T) {
 	c, _ := fakeRandomizedTMDB(t, 1, http.StatusNotFound)
 
-	metas, err := c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1)
+	metas, err := metasOf(c.FetchCatalogPage(context.Background(), "movie", `{}`, "", 1))
 	if err != nil {
 		t.Fatal(err)
 	}

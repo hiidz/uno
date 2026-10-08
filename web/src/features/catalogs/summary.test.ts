@@ -120,10 +120,37 @@ describe('sumDate', () => {
     expect(sumDate('movie', 'rolling', undefined, undefined, 45)).toBe(`Last 45 days · ${since(45)}`)
   })
 
-  it('reads the one-day window as upcoming', () => {
-    expect(sumDate('series', 'rolling', undefined, undefined, 1)).toBe(
-      'Upcoming · airing from today on, updated daily',
+  it('says a series window matches any episode aired, not the first', () => {
+    expect(sumDate('series', 'rolling', undefined, undefined, 30)).toBe(
+      `Last 30 days · aired since ${formatWindowStart(30)}, updated daily`,
     )
+    expect(sumDate('series', 'rolling', undefined, undefined, undefined)).toBe(
+      'Aired recently — no window chosen yet',
+    )
+  })
+
+  it('reads the one-day window as upcoming, from the date the server asks for', () => {
+    expect(sumDate('series', 'rolling', undefined, undefined, 1)).toBe(
+      `Upcoming · airing from ${formatWindowStart(1)} on, updated daily`,
+    )
+  })
+
+  it('counts a window back from the UTC date, as the server does', () => {
+    vi.useFakeTimers({ now: new Date('2026-10-08T23:30:00Z') })
+    vi.stubEnv('TZ', 'Asia/Singapore')
+    try {
+      // 07:30 on the 9th in Singapore, the 8th in UTC, so a day back is the 7th.
+      const seventh = new Date('2026-10-07T12:00:00Z').toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
+      expect(formatWindowStart(1)).toBe(seventh)
+    } finally {
+      vi.unstubAllEnvs()
+      vi.useRealTimers()
+    }
   })
 
   it('says when no window is chosen', () => {

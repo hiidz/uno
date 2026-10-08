@@ -88,9 +88,11 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const RELATIVE = new Intl.RelativeTimeFormat('en-GB', { numeric: 'auto' })
 
 /** How long ago `iso` was, in whole days, weeks, months or years: "today",
- *  "yesterday", "3 days ago", "2 weeks ago". */
+ *  "yesterday", "3 days ago", "2 weeks ago". Two local midnights across a
+ *  daylight-saving change are an hour off a whole number of days, so the gap
+ *  is rounded. */
 export function relativeDay(iso: string, now: Date): string {
-  const days = Math.max(0, Math.floor((startOfDay(now) - startOfDay(new Date(iso))) / DAY_MS))
+  const days = Math.max(0, Math.round((startOfDay(now) - startOfDay(new Date(iso))) / DAY_MS))
   if (days < 7) return RELATIVE.format(-days, 'day')
   if (days < 30) return RELATIVE.format(-Math.floor(days / 7), 'week')
   if (days < 365) return RELATIVE.format(-Math.min(11, Math.floor(days / 30)), 'month')

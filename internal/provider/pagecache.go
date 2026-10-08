@@ -42,21 +42,21 @@ type pageCache struct {
 }
 
 // pageFetcher fetches one page, reporting whether the cache should keep it.
-type pageFetcher func(context.Context) (metas []Meta, keep bool, err error)
+type pageFetcher func(context.Context) (page CatalogPage, keep bool, err error)
 
 // pageEntry is one cached page and the instant it stops being served.
 type pageEntry struct {
 	key     string
-	metas   []Meta
+	page    CatalogPage
 	expires time.Time
 }
 
-// pageFetch is one fetch in flight. metas and err are set before done
-// closes, and never after.
+// pageFetch is one fetch in flight. page and err are set before done closes,
+// and never after.
 type pageFetch struct {
-	done  chan struct{}
-	metas []Meta
-	err   error
+	done chan struct{}
+	page CatalogPage
+	err  error
 }
 
 func newPageCache(ttl time.Duration, maxEntries int) *pageCache {
@@ -77,37 +77,37 @@ func newPageCache(ttl time.Duration, maxEntries int) *pageCache {
 // waited on another's fetch and got that caller's key problem (IsKeyError)
 // tries again, until it gets another answer or the fetch it waits on is its
 // own: another caller with a key problem may have started the next one.
-func (c *pageCache) load(ctx context.Context, key string, fetch pageFetcher) ([]Meta, error) {
+func (c *pageCache) load(ctx context.Context, key string, fetch pageFetcher) (CatalogPage, error) {
 	for {
-		metas, waited, err := c.loadOnce(ctx, key, fetch)
+		page, waited, err := c.loadOnce(ctx, key, fetch)
 		if !waited || !IsKeyError(err) {
-			return metas, err
+			return page, err
 		}
 	}
 }
 
 // loadOnce is one try at load, reporting whether it waited on a fetch
 // another caller started.
-func (c *pageCache) loadOnce(ctx context.Context, key string, fetch pageFetcher) ([]Meta, bool, error) {
-	metas, f, started := c.lookupOrStart(ctx, key, fetch)
+func (c *pageCache) loadOnce(ctx context.Context, key string, fetch pageFetcher) (CatalogPage, bool, error) {
+	page, f, started := c.lookupOrStart(ctx, key, fetch)
 	if f == nil {
-		return metas, false, nil
+		return page, false, nil
 	}
 	select {
 	case <-f.done:
-		return cloneMetas(f.metas), !started, f.err
+		return clonePage(f.page), !started, f.err
 	case <-ctx.Done():
-		return nil, !started, ctx.Err()
+		return CatalogPage{}, !started, ctx.Err()
 	}
 }
 
 // lookupOrStart returns a copy of key's fresh page, or else the fetch to
 // wait for, starting one when none is in flight, and whether it started it.
-func (c *pageCache) lookupOrStart(ctx context.Context, key string, fetch pageFetcher) ([]Meta, *pageFetch, bool) {
+func (c *pageCache) lookupOrStart(ctx context.Context, key string, fetch pageFetcher) (CatalogPage, *pageFetch, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if metas, ok := c.fresh(key, time.Now()); ok {
-		return cloneMetas(metas), nil, false
+	if page, ok := c.fresh(key, time.Now()); ok {
+		return clonePage(page), nil, false
 	}
 	f, ok := c.inFlight[key]
 	if !ok {
@@ -115,7 +115,7 @@ func (c *pageCache) lookupOrStart(ctx context.Context, key string, fetch pageFet
 		c.inFlight[key] = f
 		go c.run(ctx, key, f, fetch)
 	}
-	return nil, f, !ok
+	return CatalogPage{}, f, !ok
 }
 
 // run is f's fetch, on a context that keeps ctx's values but not its
@@ -129,7 +129,7 @@ func (c *pageCache) run(ctx context.Context, key string, f *pageFetch, fetch pag
 
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), catalogPageFetchTimeout)
 	defer cancel()
-	f.metas, keep, f.err = fetch(fetchCtx)
+	f.page, keep, f.err = fetch(fetchCtx)
 }
 
 // recoverFetch turns a panic in f's fetch into f's error. It must be
@@ -137,7 +137,7 @@ func (c *pageCache) run(ctx context.Context, key string, f *pageFetch, fetch pag
 func recoverFetch(f *pageFetch) {
 	if rec := recover(); rec != nil {
 		log.Printf("provider: catalog page fetch panicked: %v", rec)
-		f.metas, f.err = nil, fmt.Errorf("provider: catalog page fetch panicked: %v", rec)
+		f.page, f.err = CatalogPage{}, fmt.Errorf("provider: catalog page fetch panicked: %v", rec)
 	}
 }
 
@@ -147,7 +147,7 @@ func (c *pageCache) finish(key string, f *pageFetch, keep *bool) {
 	c.mu.Lock()
 	delete(c.inFlight, key)
 	if f.err == nil && *keep {
-		c.store(key, f.metas, time.Now())
+		c.store(key, f.page, time.Now())
 	}
 	c.mu.Unlock()
 	close(f.done)
@@ -156,28 +156,28 @@ func (c *pageCache) finish(key string, f *pageFetch, keep *bool) {
 // fresh returns key's page when it is cached and unexpired at now, marking
 // it most recently used, and drops it when it has expired. The caller holds
 // c.mu.
-func (c *pageCache) fresh(key string, now time.Time) ([]Meta, bool) {
+func (c *pageCache) fresh(key string, now time.Time) (CatalogPage, bool) {
 	el, ok := c.entries[key]
 	if !ok {
-		return nil, false
+		return CatalogPage{}, false
 	}
 	entry := el.Value.(*pageEntry)
 	if now.After(entry.expires) {
 		c.order.Remove(el)
 		delete(c.entries, key)
-		return nil, false
+		return CatalogPage{}, false
 	}
 	c.order.MoveToFront(el)
-	return entry.metas, true
+	return entry.page, true
 }
 
-// store caches metas under key from now, as the most recently used entry,
+// store caches page under key from now, as the most recently used entry,
 // then evicts the least recently used past c.max. The caller holds c.mu.
-func (c *pageCache) store(key string, metas []Meta, now time.Time) {
+func (c *pageCache) store(key string, page CatalogPage, now time.Time) {
 	if el, ok := c.entries[key]; ok {
 		c.order.Remove(el)
 	}
-	c.entries[key] = c.order.PushFront(&pageEntry{key: key, metas: metas, expires: now.Add(c.ttl)})
+	c.entries[key] = c.order.PushFront(&pageEntry{key: key, page: page, expires: now.Add(c.ttl)})
 	for c.order.Len() > c.max {
 		oldest := c.order.Back()
 		c.order.Remove(oldest)
@@ -185,12 +185,12 @@ func (c *pageCache) store(key string, metas []Meta, now time.Time) {
 	}
 }
 
-// cloneMetas copies a page down to each meta's genre list, so no caller can
+// clonePage copies a page down to each meta's genre list, so no caller can
 // reach the cached copy.
-func cloneMetas(metas []Meta) []Meta {
-	out := slices.Clone(metas)
-	for i := range out {
-		out[i].Genres = slices.Clone(out[i].Genres)
+func clonePage(page CatalogPage) CatalogPage {
+	out := CatalogPage{Metas: slices.Clone(page.Metas), More: page.More}
+	for i := range out.Metas {
+		out.Metas[i].Genres = slices.Clone(out.Metas[i].Genres)
 	}
 	return out
 }

@@ -295,8 +295,8 @@ type folderNewRefKey struct {
 
 // Validate checks that in has a title and, for it and every folder, only
 // recognized enum values, names and ref genres within their length bounds,
-// folder and ref counts within theirs, no catalog repeated under the same
-// genre within a folder, New entries that share a Key sharing one spec, and
+// folder and ref counts within theirs, no existing folder named twice, no
+// catalog repeated under the same genre within a folder, New entries that share a Key sharing one spec, and
 // catalog edits that pass a catalog save's own checks with no catalog edited
 // twice, returning an ErrInvalidInput-wrapped error listing every problem
 // found.
@@ -354,12 +354,31 @@ func (in CollectionForm) Validate() error {
 		}
 	}
 
+	problems = append(problems, folderIDProblems(in.Folders)...)
 	problems = append(problems, catalogEditProblems(in.CatalogEdits)...)
 
 	if len(problems) == 0 {
 		return nil
 	}
 	return fmt.Errorf("%w: %s", ErrInvalidInput, strings.Join(problems, "; "))
+}
+
+// folderIDProblems lists each folder that names an existing folder an
+// earlier one already names: the save would write both to one row, the later
+// one's content over the earlier's.
+func folderIDProblems(folders []FolderData) []string {
+	var problems []string
+	seen := map[uuid.UUID]bool{}
+	for i, f := range folders {
+		if f.ID == nil {
+			continue
+		}
+		if seen[*f.ID] {
+			problems = append(problems, fmt.Sprintf("folder %d repeats an earlier folder's id", i))
+		}
+		seen[*f.ID] = true
+	}
+	return problems
 }
 
 // validateCreate is Validate plus the one rule that only applies to a

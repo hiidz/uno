@@ -92,7 +92,7 @@ func TestFetchCatalogPageCollection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, hits := fakeCollectionTMDB(t)
-			metas, err := c.FetchCatalogPage(t.Context(), "movie", params, tc.genre, tc.page)
+			metas, err := metasOf(c.FetchCatalogPage(t.Context(), "movie", params, tc.genre, tc.page))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,7 +110,7 @@ func TestFetchCatalogPageCollection(t *testing.T) {
 // same films, in whatever order.
 func TestFetchCatalogPageCollectionRandomized(t *testing.T) {
 	c, hits := fakeCollectionTMDB(t)
-	metas, err := c.FetchCatalogPage(t.Context(), "movie", `{"with_collection":"10","randomized":true}`, "", 1)
+	metas, err := metasOf(c.FetchCatalogPage(t.Context(), "movie", `{"with_collection":"10","randomized":true}`, "", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestPreviewCatalogCollection(t *testing.T) {
 func TestCollectionPartsAreMemoized(t *testing.T) {
 	c, hits := fakeCollectionTMDB(t)
 	for range 2 {
-		if _, err := c.FetchCatalogPage(t.Context(), "movie", `{"with_collection":"10"}`, "", 1); err != nil {
+		if _, err := metasOf(c.FetchCatalogPage(t.Context(), "movie", `{"with_collection":"10"}`, "", 1)); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, _, err := c.PreviewCatalog(t.Context(), "movie", `{"with_collection":"10","randomized":true}`, "Action"); err != nil {
