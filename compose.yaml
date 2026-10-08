@@ -1,12 +1,8 @@
 services:
   uno:
-    build:
-      context: .
-      # Baked into the SPA at build time, from the same root .env the server reads.
-      args:
-        NUVIO_BASE_URL: ${NUVIO_BASE_URL:-https://api.nuvio.tv}
-        NUVIO_PUBLISHABLE_KEY: ${NUVIO_PUBLISHABLE_KEY}
-    image: uno
+    # Pin UNO_TAG to a release (e.g. v1.2.0) in .env to upgrade deliberately:
+    # a release that changes the database schema says so in its notes.
+    image: ghcr.io/hiidz/uno:${UNO_TAG:-latest}
     restart: unless-stopped
     # Longer than the server's 60s shutdown drain (shutdownGracePeriod in
     # cmd/uno/main.go), so a push in flight finishes before the SIGKILL.
@@ -16,14 +12,13 @@ services:
       # Overrides whatever VAULT_DB is set to in .env — the vault has to
       # live on the mounted volume below to survive a container recreate.
       VAULT_DB: /data/vault.db
+    # Loopback only: put an HTTPS reverse proxy in front. Docker-published
+    # ports bypass host firewalls such as UFW, so a bare "8123:8123" would
+    # expose plain HTTP on every interface. Assumes PORT=8123 in .env.
+    ports:
+      - "127.0.0.1:8123:8123"
     volumes:
       - uno-data:/data
-    networks:
-      - edge
-
-networks:
-  edge:
-    external: true
 
 volumes:
   uno-data:

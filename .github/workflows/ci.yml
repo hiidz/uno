@@ -48,9 +48,4 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
-        # The build only type-checks and bundles; vite.config.ts needs these
-        # set, not valid.
-        env:
-          VITE_NUVIO_BASE_URL: https://api.nuvio.tv
-          VITE_NUVIO_PUBLISHABLE_KEY: ci-placeholder
       - run: npm test

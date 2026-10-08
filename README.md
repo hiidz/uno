@@ -43,6 +43,21 @@ port and proxies API and addon requests to a Go server running locally on `http:
 so you can edit the frontend without rebuilding it into the Go binary, and edit the backend
 without restarting Vite.
 
+## Deploying
+
+Each release publishes an image to `ghcr.io/hiidz/uno` for amd64 and arm64.
+
+```
+cp .env.example .env   # fill in SITE_BASE_URL, NUVIO_PUBLISHABLE_KEY, TMDB_API_KEY
+docker compose up -d
+```
+
+Uno listens on `127.0.0.1:8123` over plain HTTP. Put an HTTPS reverse proxy in front and set
+`SITE_BASE_URL` to its public URL, since Nuvio fetches the addon from there. The publishable key
+is on [Nuvio's docs](https://nuvio.tv/docs#publishable-key). Pin `UNO_TAG` in `.env` to choose a
+release, and upgrade with `docker compose pull && docker compose up -d`. [`docs/configuration.md`](docs/configuration.md) covers proxies on a Docker network,
+building the image yourself, and running without Docker.
+
 ## Checks
 
 ```

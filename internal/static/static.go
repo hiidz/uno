@@ -4,6 +4,7 @@
 package static
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -17,20 +18,36 @@ import (
 // favicon.svg — keep their names across builds and must not be.
 const assetsPrefix = "/assets/"
 
+// configPath is the script index.html loads before the app, carrying the
+// server's runtime settings the SPA needs. It is answered here, never from
+// fsys, so one image serves whatever Nuvio backend and key its environment
+// names.
+const configPath = "/config.js"
+
 // Handler serves fsys as a single-page app: any request that doesn't
 // resolve to a real file is rewritten to "/" so the SPA's own router
-// handles it. Every response carries the Content-Security-Policy built by
-// contentSecurityPolicy, with nuvioBaseURL's origin as the one
-// cross-origin endpoint the SPA may call.
-func Handler(fsys fs.FS, nuvioBaseURL string) (http.Handler, error) {
+// handles it, and configPath is answered with configScript. Every response
+// carries the Content-Security-Policy built by contentSecurityPolicy, with
+// nuvioBaseURL's origin as the one cross-origin endpoint the SPA may call.
+func Handler(fsys fs.FS, nuvioBaseURL, nuvioPublishableKey string) (http.Handler, error) {
 	u, err := url.Parse(nuvioBaseURL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return nil, fmt.Errorf("static: Nuvio base URL %q is not an absolute URL", nuvioBaseURL)
 	}
 	csp := contentSecurityPolicy(u.Scheme + "://" + u.Host)
+	script := configScript(nuvioBaseURL, nuvioPublishableKey)
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+configPath, func(w http.ResponseWriter, _ *http.Request) {
+		h := w.Header()
+		h.Set("Content-Type", "text/javascript; charset=utf-8")
+		h.Set("Cache-Control", "no-cache")
+		h.Set("Content-Security-Policy", csp)
+		h.Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(script)
+	})
 	fileServer := http.FileServerFS(fsys)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "" {
 			path = "."
@@ -43,7 +60,20 @@ func Handler(fsys fs.FS, nuvioBaseURL string) (http.Handler, error) {
 		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Content-Type-Options", "nosniff")
 		fileServer.ServeHTTP(w, r)
-	}), nil
+	})
+	return mux, nil
+}
+
+// configScript is the body of configPath: the Nuvio settings the SPA's
+// auth client reads from window.__UNO_CONFIG__. The publishable key is
+// public by design (https://nuvio.tv/docs#publishable-key).
+func configScript(nuvioBaseURL, nuvioPublishableKey string) []byte {
+	// A struct of two strings always marshals.
+	body, _ := json.Marshal(struct {
+		NuvioBaseURL        string `json:"nuvioBaseURL"`
+		NuvioPublishableKey string `json:"nuvioPublishableKey"`
+	}{nuvioBaseURL, nuvioPublishableKey})
+	return []byte("window.__UNO_CONFIG__ = " + string(body) + ";\n")
 }
 
 // contentSecurityPolicy confines the SPA to its own origin, so a script

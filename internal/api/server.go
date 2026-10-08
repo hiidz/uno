@@ -29,8 +29,9 @@ type Server struct {
 	verifier     TokenVerifier
 	nuvio        NuvioClient
 	addon        *addon.Server
-	siteBaseURL  string
-	nuvioBaseURL string
+	siteBaseURL         string
+	nuvioBaseURL        string
+	nuvioPublishableKey string
 	// admission is the access policy's allowlist, nil when every account is
 	// admitted.
 	admission *admission
@@ -80,8 +81,9 @@ func New(d Deps) (*Server, error) {
 		verifier:     d.Verifier,
 		nuvio:        d.Nuvio,
 		addon:        addonServer,
-		siteBaseURL:  d.SiteBaseURL,
-		nuvioBaseURL: d.NuvioBaseURL,
+		siteBaseURL:         d.SiteBaseURL,
+		nuvioBaseURL:        d.NuvioBaseURL,
+		nuvioPublishableKey: d.NuvioPublishableKey,
 		admission:    d.Access.admission(),
 		keys:         d.Keys,
 	}
@@ -171,7 +173,7 @@ func (s *Server) routes() error {
 	if err != nil {
 		return fmt.Errorf("api: opening embedded web/dist: %w", err)
 	}
-	spa, err := static.Handler(distFS, s.nuvioBaseURL)
+	spa, err := static.Handler(distFS, s.nuvioBaseURL, s.nuvioPublishableKey)
 	if err != nil {
 		return fmt.Errorf("api: building static handler: %w", err)
 	}

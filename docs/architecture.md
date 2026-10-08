@@ -161,7 +161,7 @@ answers `ok`, and `GET /api/config` says the server's TMDB key mode (*TMDB keys*
 
 Route registration is in `internal/api/server.go`. A path under `/api/` that no registered route
 serves, whatever its method, is a 404 (`apiNotFound`). Everything else not matching a registered
-route falls through to the embedded SPA (`static.Gzip(static.Handler(distFS))`); Go's `ServeMux`
+route falls through to the embedded SPA (`static.Gzip(static.Handler(distFS, …))`, which also answers `/config.js` — *Static serving*); Go's `ServeMux`
 matches the most specific registered pattern first.
 
 `docs/api/openapi.yaml` (OpenAPI 3.1) describes every registered route: request and response
@@ -815,6 +815,12 @@ to a real file is rewritten to `/` so React Router handles it. Cache-Control spl
 hashed output: everything under `/assets/` is `public, max-age=31536000, immutable`; everything
 else (`index.html`, icons) is `no-cache`, because caching the shell would strand clients on a
 page referencing asset hashes a new build no longer has.
+
+`/config.js` is never read from the build. `index.html` loads it as a classic script before the
+app, and the handler answers it from the server's own `NUVIO_BASE_URL` and
+`NUVIO_PUBLISHABLE_KEY` as `window.__UNO_CONFIG__`, `no-cache`, which the auth client
+(`web/src/auth/client.ts`) reads at each call. The SPA build carries no configuration, so one
+image serves any Nuvio backend. `vite dev` proxies the path to the Go server.
 
 Every SPA response also carries `X-Content-Type-Options: nosniff` and a
 `Content-Security-Policy`, built in `contentSecurityPolicy` (`internal/static/static.go`). The

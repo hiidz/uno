@@ -7,8 +7,8 @@ import { FieldError } from '@/components/fields'
 import { NuvioAuthError, loginWithBypassToken, useAuth } from '@/auth'
 
 // Gated on import.meta.env.DEV so the whole bypass branch is statically dead
-// in a production build. Must equal the server's DEV_AUTH_BYPASS_TOKEN — see
-// web/.env.example.
+// in a production build. The Vite dev server sets it from
+// DEV_AUTH_BYPASS_TOKEN in the repo-root .env (web/vite.config.ts).
 const devBypassToken: string | undefined = import.meta.env.DEV
   ? import.meta.env.VITE_DEV_AUTH_BYPASS_TOKEN
   : undefined

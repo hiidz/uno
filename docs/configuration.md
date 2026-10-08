@@ -10,11 +10,11 @@ environment. See `.env.example`.
 | `TMDB_KEY_MODE` | no | `shared` | How the server reaches TMDB: `shared` (one key for every account) or `per-account` (each Nuvio account enters its own) — see *TMDB key modes* |
 | `TMDB_API_KEY` | in `shared` mode — startup fails if empty; must be unset in `per-account` | none | The key every account shares. Not public — every TMDB call is server-side for this reason |
 | `UNO_SECRET` | in `per-account` mode | none | 32 random bytes, base64 (`openssl rand -base64 32`): the AES-256 key each account's TMDB key is sealed under. Ignored in `shared` mode |
-| `NUVIO_PUBLISHABLE_KEY` | **yes** — startup fails if empty | none | `apikey` header on Nuvio REST/RPC calls. Public by design; it is printed in Nuvio's own public docs and intended for embedding in client apps. Not a service credential |
+| `NUVIO_PUBLISHABLE_KEY` | **yes** — startup fails if empty | none | `apikey` header on Nuvio REST/RPC calls, the server's and the SPA's (it reaches the SPA through `/config.js`). Public by design; it is printed in Nuvio's own public docs (https://nuvio.tv/docs#publishable-key) and intended for embedding in client apps. Not a service credential |
 | `SITE_BASE_URL` | **yes** — startup fails if empty | none | Base for the absolute manifest URL handed to clients and pushed into Nuvio — see below |
 | `VAULT_DB` | no | `vault.db` | Path to the SQLite file |
 | `PORT` | no | `8123` | Listen port (plain HTTP, no TLS) |
-| `NUVIO_BASE_URL` | no | `https://api.nuvio.tv` | Base for JWKS discovery and all REST/RPC calls. Its origin is also the only cross-origin `connect-src` in the SPA's Content-Security-Policy, so it must match the `VITE_NUVIO_BASE_URL` the frontend was built with. If they differ, the browser blocks login |
+| `NUVIO_BASE_URL` | no | `https://api.nuvio.tv` | Base for JWKS discovery and all REST/RPC calls, the server's and the SPA's login and refresh (through `/config.js`). Its origin is also the only cross-origin `connect-src` in the SPA's Content-Security-Policy |
 | `DEV_AUTH_BYPASS_TOKEN` | no | empty (bypass off) | **Local development only**, at least 32 characters — see below |
 | `UNO_ACCESS` | no | `open` | Who may sign in: `open` (any Nuvio account) or `allowlist` — see *Access* |
 | `UNO_ALLOWED_EMAILS` | with `allowlist` | empty | Comma-separated email addresses of the Nuvio accounts admitted under `allowlist` |
@@ -123,14 +123,13 @@ any other slot — `requireProfile` accepts 1–6 — fails instead of falling b
 hand-made call can't read or overwrite the wrong profile's store. Any other token verifies and
 routes normally.
 
-Driving the SPA with it takes a second entry: Vite reads env files from `web/` only and exposes
-only `VITE_`-prefixed vars, so the root `.env` is invisible to the frontend. Set
-`VITE_DEV_AUTH_BYPASS_TOKEN` in `web/.env` (see `web/.env.example`) to the **same value** as the
-root `.env`'s `DEV_AUTH_BYPASS_TOKEN`, and `/login` grows a "Dev bypass login" button that signs
-in as the fake account — the whole authenticated UI is then drivable with no Nuvio credentials.
-The button only exists in a dev build (`import.meta.env.DEV`). Nothing checks that the two values
-match: a mismatch is rejected as an ordinary 401, which surfaces only as a redirect back to
-`/login` with no hint that the token is the cause.
+The Vite dev server reads the same `DEV_AUTH_BYPASS_TOKEN` from the root `.env`
+(`web/vite.config.ts`) and hands it to the SPA, so `/login` grows a "Dev bypass login" button that
+signs in as the fake account — the whole authenticated UI is then drivable with no Nuvio
+credentials. Only `vite dev` reads it: `vite build`, in any mode, never inlines the token, and the
+button only exists in a dev build (`import.meta.env.DEV`). A Vite dev server started before the
+token changed still holds the old one; its login is rejected as an ordinary 401, which surfaces
+only as a redirect back to `/login`.
 
 What the bypass reaches, and what it does not:
 
@@ -151,28 +150,78 @@ What the bypass reaches, and what it does not:
 > `api.LogDevBypassEnabled` prints a loud banner at startup so it can never be active unnoticed,
 > and a token shorter than 32 characters stops the start (`devBypassProblem`,
 > `internal/config/config.go`), so a guessable one like `dev` can't be set at all. Make one with
-> `openssl rand -hex 16`, and put the same value in `web/.env`.
+> `openssl rand -hex 16`.
 
 ## Deployment
 
-Docker, joining an existing external `edge` network on the target VPS — matching every other
-service already running there rather than being the one bare-`systemd` outlier.
+Each `v*` tag publishes an image to `ghcr.io/hiidz/uno` (`.github/workflows/release.yml`) for
+`linux/amd64` and `linux/arm64`, tagged with its version, its `major.minor`, and `latest`. The
+image holds no configuration: the server reads everything from its environment at startup, and
+hands the SPA the Nuvio base URL and publishable key through `/config.js`, so one image serves
+any Nuvio backend and survives a key rotation with a restart.
 
-- **Frontend build env** — the SPA bakes in `VITE_NUVIO_BASE_URL` and
-  `VITE_NUVIO_PUBLISHABLE_KEY` at build time, and `vite.config.ts` refuses to start or build
-  without them (tests excepted). Locally they come from `web/.env` (see `web/.env.example`). In
-  Docker, `compose.yaml` passes the root `.env`'s `NUVIO_BASE_URL` and `NUVIO_PUBLISHABLE_KEY`
-  as build args, so a single `.env` feeds both sides.
-- **`Dockerfile`** — multi-stage: `node:22-alpine` (`npm ci && npm run build` → `web/dist`) →
-  `golang:1.26-alpine` (`COPY --from=frontend-build`, `CGO_ENABLED=0 go build`) →
-  `distroless/static-debian12`, running as `nonroot` (uid 65532).
-- **`compose.yaml`** — external `edge` network, **no `ports:` mapping** (nothing binds to the
-  host or needs a firewall rule; ingress reaches the container over `edge` by compose service
-  name, resolved via Docker's embedded DNS), `env_file: .env`, named volume `uno-data` at
-  `/data`, with `VAULT_DB=/data/vault.db` set directly in `compose.yaml` so it survives a
-  container recreate regardless of what `.env` says, and `stop_grace_period: 70s`, longer than
-  the server's 60s shutdown drain (`shutdownGracePeriod`, `cmd/uno/main.go`), so a push in
-  flight finishes instead of being killed by Docker's default 10s SIGKILL.
+Nuvio fetches the addon from `SITE_BASE_URL`, so a deployment needs a public HTTPS URL; Uno
+itself speaks plain HTTP and expects a reverse proxy in front.
+
+### Docker Compose
+
+```
+cp .env.example .env   # fill in SITE_BASE_URL, NUVIO_PUBLISHABLE_KEY, TMDB_API_KEY
+docker compose up -d
+```
+
+`compose.yaml` sets:
+
+- `image: ghcr.io/hiidz/uno:${UNO_TAG:-latest}`. Set `UNO_TAG` in `.env` to pin a release. A
+  database at another schema version stops the start (see *Database lifecycle*), so upgrade one
+  release at a time and read release notes for schema changes. `docker compose up -d` alone never
+  re-pulls a tag already on the host; upgrade with `docker compose pull && docker compose up -d`.
+- `127.0.0.1:8123:8123`: loopback only, for a reverse proxy on the same host. Docker-published
+  ports bypass host firewalls such as UFW, so publishing on every interface would expose plain
+  HTTP. The mapping assumes `PORT=8123`.
+- `env_file: .env`, with `VAULT_DB=/data/vault.db` set in `compose.yaml` itself so the vault
+  lives on the named volume `uno-data` at `/data` whatever `.env` says.
+- `stop_grace_period: 70s`, longer than the server's 60s shutdown drain (`shutdownGracePeriod`,
+  `cmd/uno/main.go`), so a push in flight finishes instead of being killed by Docker's default
+  10s SIGKILL.
+
+The volume is named `<project>_uno-data`, and the project name is the directory's. Moving the
+compose files to another directory, or adding a top-level `name:`, points at a new empty volume.
+
+### Behind a reverse proxy on a Docker network
+
+A proxy running in Docker reaches Uno by service name over a shared network, with no host port.
+Compose merges a `compose.override.yaml` beside `compose.yaml` automatically; it is gitignored
+for exactly this:
+
+```yaml
+services:
+  uno:
+    ports: !reset []   # Docker Compose 2.24 or later
+    networks: [edge]   # the proxy's network
+networks:
+  edge:
+    external: true
+```
+
+`docker compose config` shows the merged result: check it has no `ports` before starting.
+
+### Building the image yourself
+
+```
+docker build -t ghcr.io/hiidz/uno:local .
+```
+
+then `UNO_TAG=local` in `.env`. The `Dockerfile` is multi-stage: `node:22-alpine`
+(`npm ci && npm run build` → `web/dist`) → `golang:1.26-alpine` (`CGO_ENABLED=0 go build`,
+cross-compiled for the target platform) → `distroless/static-debian12`, running as `nonroot`
+(uid 65532).
+
+### Without Docker
+
+Build as in the README (`npm run build` in `web/`, then `go build ./cmd/uno`), set the variables
+above in the environment or a `.env` beside the binary, and point `VAULT_DB` at persistent
+storage.
 
 > **Volume ownership trap.** Docker creates a fresh named volume owned by `root`, but the final
 > image runs as `nonroot` (uid 65532), so `vault.InitDB` fails with

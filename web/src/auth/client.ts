@@ -1,8 +1,11 @@
 // Talks directly to Nuvio's auth endpoints — never through Uno's own API.
-// Both values come from web/.env; vite.config.ts refuses to start or build
-// without them.
-const NUVIO_BASE_URL: string = import.meta.env.VITE_NUVIO_BASE_URL
-const NUVIO_PUBLISHABLE_KEY: string = import.meta.env.VITE_NUVIO_PUBLISHABLE_KEY
+// The server's /config.js, which index.html loads before the app, sets the
+// base URL and publishable key from its environment.
+declare global {
+  interface Window {
+    __UNO_CONFIG__: { nuvioBaseURL: string; nuvioPublishableKey: string }
+  }
+}
 
 export interface NuvioUser {
   id: string
@@ -41,11 +44,12 @@ async function tokenRequest(
   grantType: 'password' | 'refresh_token',
   body: Record<string, string>,
 ): Promise<NuvioTokenResponse> {
-  const res = await fetch(`${NUVIO_BASE_URL}/auth/v1/token?grant_type=${grantType}`, {
+  const { nuvioBaseURL, nuvioPublishableKey } = window.__UNO_CONFIG__
+  const res = await fetch(`${nuvioBaseURL}/auth/v1/token?grant_type=${grantType}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      apikey: NUVIO_PUBLISHABLE_KEY,
+      apikey: nuvioPublishableKey,
     },
     body: JSON.stringify(body),
   })
@@ -69,11 +73,12 @@ export function refreshWithToken(refreshToken: string): Promise<NuvioTokenRespon
 // default revokes every session the account holds, which would sign it out of
 // Nuvio on every device.
 export async function signOut(accessToken: string): Promise<void> {
-  await fetch(`${NUVIO_BASE_URL}/auth/v1/logout?scope=local`, {
+  const { nuvioBaseURL, nuvioPublishableKey } = window.__UNO_CONFIG__
+  await fetch(`${nuvioBaseURL}/auth/v1/logout?scope=local`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      apikey: NUVIO_PUBLISHABLE_KEY,
+      apikey: nuvioPublishableKey,
     },
   })
 }

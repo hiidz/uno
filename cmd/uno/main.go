@@ -122,14 +122,15 @@ func apiDeps(cfg config.Config, db *vault.DB) (api.Deps, error) {
 	}
 	nuvioClient := nuvio.NewClient(cfg.NuvioBaseURL, cfg.NuvioPublishableKey)
 	deps := api.Deps{
-		Vault:        db,
-		Provider:     provider.NewTMDBClient(cfg.TMDBAPIKey),
-		Verifier:     nuvioClient,
-		Nuvio:        nuvioClient,
-		SiteBaseURL:  cfg.SiteBaseURL,
-		NuvioBaseURL: cfg.NuvioBaseURL,
-		Access:       api.Access{Allowlist: cfg.Access.Allowlist, Emails: cfg.Access.Emails},
-		Keys:         keys,
+		Vault:               db,
+		Provider:            provider.NewTMDBClient(cfg.TMDBAPIKey),
+		Verifier:            nuvioClient,
+		Nuvio:               nuvioClient,
+		SiteBaseURL:         cfg.SiteBaseURL,
+		NuvioBaseURL:        cfg.NuvioBaseURL,
+		NuvioPublishableKey: cfg.NuvioPublishableKey,
+		Access:              api.Access{Allowlist: cfg.Access.Allowlist, Emails: cfg.Access.Emails},
+		Keys:                keys,
 	}
 	if cfg.DevAuthBypassToken != "" {
 		api.LogDevBypassEnabled()

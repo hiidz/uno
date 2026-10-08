@@ -90,7 +90,8 @@ Entirely frontend code. Uno's Go side never mints, refreshes, or stores a Nuvio 
   change made in another tab or on another device shows without a reload; the account-wide
   lookups kept with `staleTime: Infinity` never go stale and are not refetched.
 - **Dev bypass** — in a dev build only, `/login` renders a "Dev bypass login" button when
-  `VITE_DEV_AUTH_BYPASS_TOKEN` is set in `web/.env`. `loginWithBypassToken` (`session.ts`) builds
+  `DEV_AUTH_BYPASS_TOKEN` is set in the repo-root `.env`, which the Vite dev server alone reads
+  (`vite.config.ts`). `loginWithBypassToken` (`session.ts`) builds
   a synthetic session holding that token as its access token and applies it directly, with no
   Nuvio round trip; the server accepts it via `DEV_AUTH_BYPASS_TOKEN` (see
   `docs/configuration.md`). The session carries no refresh token, so it is neither persisted nor

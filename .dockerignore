@@ -17,9 +17,9 @@ uno
 *.db-wal
 *.bak
 
-# Secrets, at any depth: web/.env holds the dev auth bypass token. compose reads
-# the root .env on the host via env_file, and the frontend build gets its
-# values as build args, so neither file belongs in the build context.
+# Secrets, at any depth. The server reads its .env at runtime (compose's
+# env_file), and the image bakes in no configuration, so no .env belongs in
+# the build context.
 **/.env
 **/.env.local
 
@@ -28,4 +28,5 @@ uno
 .gitignore
 .dockerignore
 compose.yaml
+compose.override.yaml
 README.md

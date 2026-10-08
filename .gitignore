@@ -21,6 +21,9 @@ lcov.info
 .env
 .env.local
 
+# A server's own compose additions (docs/configuration.md, Deployment)
+compose.override.yaml
+
 # Editor/OS
 .vscode/
 .idea/

@@ -51,10 +51,12 @@ type Deps struct {
 	Verifier    TokenVerifier
 	Nuvio       NuvioClient
 	SiteBaseURL string
-	// NuvioBaseURL is the Nuvio origin the SPA's Content-Security-Policy
-	// lets it call, since login and refresh go from the browser straight to
-	// Nuvio. It must match the VITE_NUVIO_BASE_URL the SPA was built with.
-	NuvioBaseURL string
+	// NuvioBaseURL and NuvioPublishableKey reach the SPA through /config.js,
+	// since login and refresh go from the browser straight to Nuvio. The base
+	// URL's origin is also the one cross-origin endpoint the SPA's
+	// Content-Security-Policy lets it call.
+	NuvioBaseURL        string
+	NuvioPublishableKey string
 	// Access says which Nuvio accounts may use the builder API; the zero
 	// value admits every account.
 	Access Access
