@@ -123,6 +123,9 @@ two layers differ.
   **From Community** everywhere (its sticker, its view, the Publish dialog) and is never called a
   copy.
 - An own row's editor setting holding Publish and Unpublish is labelled **Community**.
+- An update reaches a subscribed copy only when its subscriber takes it with Update. Nothing
+  applies one automatically: a publisher never changes what a subscriber's Nuvio shows without
+  that subscriber accepting the change, however often the publisher updates.
 - Where pushed content shows up is always **Nuvio**, never "TV".
 
 ## HTTP surface
