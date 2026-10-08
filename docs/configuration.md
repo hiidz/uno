@@ -232,6 +232,21 @@ storage.
 > created without that ownership has to be dropped with `docker compose down -v`, not merely
 > rebuilt.
 
+## Releasing
+
+A push to `main` runs CI only. An image is built only for a version tag, so a release is a tag:
+
+1. Pick the next version: the last number for fixes (`v0.1.0` → `v0.1.1`), the middle one for
+   features (`v0.2.0`). A `-rc.N` suffix (`v0.2.0-rc.1`) makes a prerelease, for trying a build
+   before it becomes a release.
+2. Tag the commit and push the tag: `git tag v0.1.1 && git push origin v0.1.1`, or on GitHub,
+   **Releases → Draft a new release** with a new tag. The release notes say when a release
+   changes the database schema.
+3. **Actions → Release** builds and publishes `ghcr.io/hiidz/uno:0.1.1` (the tag without its
+   `v`), `:0.1`, and `:latest`.
+4. On a server: `docker compose pull && docker compose up -d`, with `UNO_TAG` set to the new
+   version or unset to follow `latest`.
+
 ## Database lifecycle
 
 The schema is `internal/vault/schema.sql`, embedded in the binary. On every start `vault.InitDB`
