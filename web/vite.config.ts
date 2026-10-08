@@ -2,10 +2,23 @@
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, type UserConfig } from 'vite'
+
+const requiredEnv = ['VITE_NUVIO_BASE_URL', 'VITE_NUVIO_PUBLISHABLE_KEY']
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  if (mode !== 'test') {
+    const env = loadEnv(mode, import.meta.dirname, 'VITE_')
+    const missing = requiredEnv.filter((name) => !env[name])
+    if (missing.length > 0) {
+      throw new Error(`missing ${missing.join(', ')}; see web/.env.example`)
+    }
+  }
+  return config
+})
+
+const config: UserConfig = {
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -28,4 +41,4 @@ export default defineConfig({
       exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
     },
   },
-})
+}

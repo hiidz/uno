@@ -14,7 +14,7 @@ environment. See `.env.example`.
 | `SITE_BASE_URL` | **yes** — startup fails if empty | none | Base for the absolute manifest URL handed to clients and pushed into Nuvio — see below |
 | `VAULT_DB` | no | `vault.db` | Path to the SQLite file |
 | `PORT` | no | `8123` | Listen port (plain HTTP, no TLS) |
-| `NUVIO_BASE_URL` | no | `https://api.nuvio.tv` | Base for JWKS discovery and all REST/RPC calls. Its origin is also the only cross-origin `connect-src` in the SPA's Content-Security-Policy, so it must match the `VITE_NUVIO_BASE_URL` the frontend was built with (same default). If they differ, the browser blocks login |
+| `NUVIO_BASE_URL` | no | `https://api.nuvio.tv` | Base for JWKS discovery and all REST/RPC calls. Its origin is also the only cross-origin `connect-src` in the SPA's Content-Security-Policy, so it must match the `VITE_NUVIO_BASE_URL` the frontend was built with. If they differ, the browser blocks login |
 | `DEV_AUTH_BYPASS_TOKEN` | no | empty (bypass off) | **Local development only** — see below |
 | `UNO_ACCESS` | no | `open` | Who may sign in: `open` (any Nuvio account) or `allowlist` — see *Access* |
 | `UNO_ALLOWED_EMAILS` | with `allowlist` | empty | Comma-separated email addresses of the Nuvio accounts admitted under `allowlist` |
@@ -138,6 +138,11 @@ What the bypass reaches, and what it does not:
 Docker, joining an existing external `edge` network on the target VPS — matching every other
 service already running there rather than being the one bare-`systemd` outlier.
 
+- **Frontend build env** — the SPA bakes in `VITE_NUVIO_BASE_URL` and
+  `VITE_NUVIO_PUBLISHABLE_KEY` at build time, and `vite.config.ts` refuses to start or build
+  without them (tests excepted). Locally they come from `web/.env` (see `web/.env.example`). In
+  Docker, `compose.yaml` passes the root `.env`'s `NUVIO_BASE_URL` and `NUVIO_PUBLISHABLE_KEY`
+  as build args, so a single `.env` feeds both sides.
 - **`Dockerfile`** — multi-stage: `node:22-alpine` (`npm ci && npm run build` → `web/dist`) →
   `golang:1.26-alpine` (`COPY --from=frontend-build`, `CGO_ENABLED=0 go build`) →
   `distroless/static-debian12`, running as `nonroot` (uid 65532).

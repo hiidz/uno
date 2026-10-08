@@ -1,10 +1,8 @@
 // Talks directly to Nuvio's auth endpoints — never through Uno's own API.
-// The base URL falls back to the Go side's NUVIO_BASE_URL default
-// (internal/config/config.go), and the publishable key to Nuvio's own public
-// one (https://nuvio.tv/docs#publishable-key), so dev needs no env vars here.
-const NUVIO_BASE_URL: string = import.meta.env.VITE_NUVIO_BASE_URL ?? 'https://api.nuvio.tv'
-const NUVIO_PUBLISHABLE_KEY: string =
-  import.meta.env.VITE_NUVIO_PUBLISHABLE_KEY ?? 'sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN'
+// Both values come from web/.env; vite.config.ts refuses to start or build
+// without them.
+const NUVIO_BASE_URL: string = import.meta.env.VITE_NUVIO_BASE_URL
+const NUVIO_PUBLISHABLE_KEY: string = import.meta.env.VITE_NUVIO_PUBLISHABLE_KEY
 
 export interface NuvioUser {
   id: string

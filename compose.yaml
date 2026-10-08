@@ -1,6 +1,11 @@
 services:
   uno:
-    build: .
+    build:
+      context: .
+      # Baked into the SPA at build time, from the same root .env the server reads.
+      args:
+        NUVIO_BASE_URL: ${NUVIO_BASE_URL:-https://api.nuvio.tv}
+        NUVIO_PUBLISHABLE_KEY: ${NUVIO_PUBLISHABLE_KEY}
     image: uno
     restart: unless-stopped
     # Longer than the server's 60s shutdown drain (shutdownGracePeriod in

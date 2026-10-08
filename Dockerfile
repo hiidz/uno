@@ -4,7 +4,9 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
-RUN npm run build
+ARG NUVIO_BASE_URL
+ARG NUVIO_PUBLISHABLE_KEY
+RUN VITE_NUVIO_BASE_URL="$NUVIO_BASE_URL" VITE_NUVIO_PUBLISHABLE_KEY="$NUVIO_PUBLISHABLE_KEY" npm run build
 
 # --- go build ---
 FROM golang:1.26-alpine AS go-build
