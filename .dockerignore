@@ -17,9 +17,11 @@ uno
 *.db-wal
 *.bak
 
-# Secrets. compose reads .env on the host via env_file, not from the image.
-.env
-.env.local
+# Secrets, at any depth: web/.env holds the dev auth bypass token. compose reads
+# the root .env on the host via env_file, and the frontend build gets its
+# values as build args, so neither file belongs in the build context.
+**/.env
+**/.env.local
 
 # Not part of the build
 .git
