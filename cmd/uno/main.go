@@ -27,9 +27,9 @@ import (
 // flight. It matches the server's WriteTimeout below, the longest a handler
 // can hold a request, so a push — a multi-step, non-atomic sequence against
 // Nuvio that leaves a profile in the state pushResult.UndoFailed reports if
-// it is cut in half — gets the whole span it is allowed. A container runtime
-// that sends SIGKILL sooner (10s after SIGTERM, for `docker stop`) cuts the
-// drain shorter.
+// it is cut in half — gets the whole span it is allowed. The runtime has to
+// wait longer than this before its SIGKILL: Docker's default is 10s after
+// SIGTERM, so compose.yaml sets stop_grace_period to 70s.
 const shutdownGracePeriod = 60 * time.Second
 
 func main() {

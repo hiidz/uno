@@ -145,7 +145,9 @@ service already running there rather than being the one bare-`systemd` outlier.
   host or needs a firewall rule; ingress reaches the container over `edge` by compose service
   name, resolved via Docker's embedded DNS), `env_file: .env`, named volume `uno-data` at
   `/data`, with `VAULT_DB=/data/vault.db` set directly in `compose.yaml` so it survives a
-  container recreate regardless of what `.env` says.
+  container recreate regardless of what `.env` says, and `stop_grace_period: 70s`, longer than
+  the server's 60s shutdown drain (`shutdownGracePeriod`, `cmd/uno/main.go`), so a push in
+  flight finishes instead of being killed by Docker's default 10s SIGKILL.
 
 > **Volume ownership trap.** Docker creates a fresh named volume owned by `root`, but the final
 > image runs as `nonroot` (uid 65532), so `vault.InitDB` fails with

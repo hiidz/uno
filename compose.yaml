@@ -3,6 +3,9 @@ services:
     build: .
     image: uno
     restart: unless-stopped
+    # Longer than the server's 60s shutdown drain (shutdownGracePeriod in
+    # cmd/uno/main.go), so a push in flight finishes before the SIGKILL.
+    stop_grace_period: 70s
     env_file: .env
     environment:
       # Overrides whatever VAULT_DB is set to in .env — the vault has to
