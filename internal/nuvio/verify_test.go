@@ -10,6 +10,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -189,6 +191,125 @@ func TestFetchKeysSkipsUnusableKeys(t *testing.T) {
 	}
 	if !cached.Equal(&priv.PublicKey) {
 		t.Error("cached key is not the key the JWKS published")
+	}
+}
+
+// countingJWKS serves keys at the JWKS path, counting every request, and
+// answers 503 while failing is set.
+type countingJWKS struct {
+	srv     *httptest.Server
+	hits    atomic.Int32
+	failing atomic.Bool
+}
+
+func newCountingJWKS(t *testing.T, keys []testJWK) *countingJWKS {
+	t.Helper()
+	inner := jwksServer(t, keys)
+	c := &countingJWKS{}
+	c.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c.hits.Add(1)
+		if c.failing.Load() {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		inner.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(c.srv.Close)
+	return c
+}
+
+// tokenWithKid is a token signed by priv whose header names kid; resolveKey
+// reads nothing else of it.
+func tokenWithKid(t *testing.T, priv *ecdsa.PrivateKey, kid string) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{"sub": "u"})
+	token.Header["kid"] = kid
+	signed, err := token.SignedString(priv)
+	if err != nil {
+		t.Fatalf("signing token: %v", err)
+	}
+	return signed
+}
+
+// TestConcurrentCacheMissesShareOneFetch: callers that miss the cache at once
+// make one JWKS request between them, and each gets the key it fetched, or
+// ErrInvalidToken for a kid the JWKS doesn't have.
+func TestConcurrentCacheMissesShareOneFetch(t *testing.T) {
+	priv := keyForScalar(t, 13)
+	x, y := jwkCoords(t, &priv.PublicKey)
+	jwks := newCountingJWKS(t, []testJWK{{Kid: "kid-1", Kty: "EC", Crv: "P-256", X: x, Y: y}})
+	v := NewVerifier(jwks.srv.URL)
+
+	known, unknown := tokenWithKid(t, priv, "kid-1"), tokenWithKid(t, priv, "kid-unknown")
+	var wg sync.WaitGroup
+	errs := make([]error, 20)
+	for i := range errs {
+		token := known
+		if i%2 == 1 {
+			token = unknown
+		}
+		wg.Go(func() { _, errs[i] = v.resolveKey(context.Background(), token) })
+	}
+	wg.Wait()
+
+	if got := jwks.hits.Load(); got != 1 {
+		t.Errorf("JWKS fetched %d times, want 1", got)
+	}
+	for i, err := range errs {
+		if i%2 == 0 && err != nil {
+			t.Errorf("known kid, caller %d: %v, want the key", i, err)
+		}
+		if i%2 == 1 && !errors.Is(err, ErrInvalidToken) {
+			t.Errorf("unknown kid, caller %d: %v, want ErrInvalidToken", i, err)
+		}
+	}
+}
+
+// TestFailedFetchWaitsOutTheInterval: a failed JWKS fetch is answered as
+// ErrJWKSUnavailable to every caller until minRefetchInterval has passed,
+// with no further request, and the first miss after it fetches again.
+func TestFailedFetchWaitsOutTheInterval(t *testing.T) {
+	priv := keyForScalar(t, 17)
+	x, y := jwkCoords(t, &priv.PublicKey)
+	jwks := newCountingJWKS(t, []testJWK{{Kid: "kid-1", Kty: "EC", Crv: "P-256", X: x, Y: y}})
+	jwks.failing.Store(true)
+	v := NewVerifier(jwks.srv.URL)
+	token := tokenWithKid(t, priv, "kid-1")
+
+	for i := range 3 {
+		if _, err := v.resolveKey(context.Background(), token); !errors.Is(err, ErrJWKSUnavailable) {
+			t.Fatalf("call %d during the outage: %v, want ErrJWKSUnavailable", i, err)
+		}
+	}
+	if got := jwks.hits.Load(); got != 1 {
+		t.Errorf("JWKS fetched %d times during the outage, want 1", got)
+	}
+
+	jwks.failing.Store(false)
+	v.fetchMu.Lock()
+	v.fetched = time.Now().Add(-minRefetchInterval)
+	v.fetchMu.Unlock()
+	if _, err := v.resolveKey(context.Background(), token); err != nil {
+		t.Fatalf("after the interval: %v, want the key", err)
+	}
+	if got := jwks.hits.Load(); got != 2 {
+		t.Errorf("JWKS fetched %d times in all, want 2", got)
+	}
+}
+
+// TestFetchOutlivesItsCallersCancellation: a caller whose context is already
+// done still gets a completed fetch, so its cancellation can't fail the fetch
+// for the callers sharing it.
+func TestFetchOutlivesItsCallersCancellation(t *testing.T) {
+	priv := keyForScalar(t, 19)
+	x, y := jwkCoords(t, &priv.PublicKey)
+	jwks := newCountingJWKS(t, []testJWK{{Kid: "kid-1", Kty: "EC", Crv: "P-256", X: x, Y: y}})
+	v := NewVerifier(jwks.srv.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := v.resolveKey(ctx, tokenWithKid(t, priv, "kid-1")); err != nil {
+		t.Fatalf("resolveKey with a cancelled context: %v, want the key", err)
 	}
 }
 

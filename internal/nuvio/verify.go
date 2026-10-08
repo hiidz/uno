@@ -26,8 +26,9 @@ var (
 )
 
 // minRefetchInterval bounds how often Verify will hit the JWKS endpoint
-// again for a kid it doesn't recognize, so a burst of tokens carrying a
-// bogus kid can't trigger a fetch per request.
+// again for a kid it doesn't recognize, whether the last fetch succeeded or
+// failed, so a burst of tokens carrying a bogus kid, or a JWKS outage, can't
+// trigger a fetch per request.
 const minRefetchInterval = 5 * time.Second
 
 // p256CoordBytes is the fixed width of a P-256 coordinate, and so half of an
@@ -42,7 +43,14 @@ type Verifier struct {
 	http    *http.Client
 	mu      sync.RWMutex
 	keys    map[string]*ecdsa.PublicKey // kid -> public key
-	fetched time.Time
+
+	// fetchMu holds one JWKS fetch at a time: callers that miss the cache
+	// together wait for the one fetch and share its outcome. It guards
+	// fetched, the last fetch's start, and fetchErr, its error (nil on
+	// success).
+	fetchMu  sync.Mutex
+	fetched  time.Time
+	fetchErr error
 }
 
 // NewVerifier builds a Verifier that fetches and caches signing keys from
@@ -111,39 +119,48 @@ func (v *Verifier) claimsProblem(claims jwt.MapClaims) string {
 }
 
 // resolveKey extracts kid from tokenString's header and returns the
-// matching public key, refetching the JWKS at most once per
-// minRefetchInterval when the kid isn't cached.
+// matching public key, refetching the JWKS (refreshKeys) when the kid isn't
+// cached.
 func (v *Verifier) resolveKey(ctx context.Context, tokenString string) (*ecdsa.PublicKey, error) {
 	kid, err := extractKid(tokenString)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
-
-	v.mu.RLock()
-	key, ok := v.keys[kid]
-	lastFetch := v.fetched
-	v.mu.RUnlock()
-	if ok {
+	if key, ok := v.cachedKey(kid); ok {
 		return key, nil
 	}
-
-	if time.Since(lastFetch) < minRefetchInterval {
-		// We just refetched and this kid still wasn't in it — don't
-		// refetch again for a repeat offender within the window.
-		return nil, ErrInvalidToken
-	}
-
-	if err := v.fetchKeys(ctx); err != nil {
+	if err := v.refreshKeys(ctx); err != nil {
 		return nil, err
 	}
-
-	v.mu.RLock()
-	key, ok = v.keys[kid]
-	v.mu.RUnlock()
-	if !ok {
-		return nil, ErrInvalidToken
+	if key, ok := v.cachedKey(kid); ok {
+		return key, nil
 	}
-	return key, nil
+	return nil, ErrInvalidToken
+}
+
+// cachedKey is the cached public key for kid, if there is one.
+func (v *Verifier) cachedKey(kid string) (*ecdsa.PublicKey, bool) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	key, ok := v.keys[kid]
+	return key, ok
+}
+
+// refreshKeys fetches the JWKS, unless a fetch started within
+// minRefetchInterval, in which case it answers with that fetch's error.
+// A caller that arrives while a fetch is in flight waits for it, so
+// concurrent cache misses make one request between them. The fetch runs
+// detached from ctx's cancellation: one caller giving up would otherwise fail
+// it for every caller sharing it, for the whole interval.
+func (v *Verifier) refreshKeys(ctx context.Context) error {
+	v.fetchMu.Lock()
+	defer v.fetchMu.Unlock()
+	if time.Since(v.fetched) < minRefetchInterval {
+		return v.fetchErr
+	}
+	v.fetched = time.Now()
+	v.fetchErr = v.fetchKeys(context.WithoutCancel(ctx))
+	return v.fetchErr
 }
 
 // extractKid reads the kid header without verifying the signature — we
@@ -180,39 +197,46 @@ func (v *Verifier) fetchKeys(ctx context.Context) error {
 	}
 
 	var body struct {
-		Keys []struct {
-			Kid string `json:"kid"`
-			Kty string `json:"kty"`
-			Crv string `json:"crv"`
-			X   string `json:"x"`
-			Y   string `json:"y"`
-		} `json:"keys"`
+		Keys []jwk `json:"keys"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&body); err != nil {
 		return fmt.Errorf("%w: %w", ErrJWKSUnavailable, err)
 	}
 
-	keys := make(map[string]*ecdsa.PublicKey, len(body.Keys))
-	for _, k := range body.Keys {
+	keys := usableKeys(body.Keys)
+	v.mu.Lock()
+	v.keys = keys
+	v.mu.Unlock()
+
+	return nil
+}
+
+// jwk is one key of a JWKS, the members of it this package reads.
+type jwk struct {
+	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	Crv string `json:"crv"`
+	X   string `json:"x"`
+	Y   string `json:"y"`
+}
+
+// usableKeys is the P-256 keys among set, by kid. One unusable key doesn't
+// sink the whole JWKS: it is logged and skipped, and the rest of the set
+// still verifies the tokens signed with it.
+func usableKeys(set []jwk) map[string]*ecdsa.PublicKey {
+	keys := make(map[string]*ecdsa.PublicKey, len(set))
+	for _, k := range set {
 		if k.Kty != "EC" || k.Crv != "P-256" {
 			continue // not a key shape we know how to handle
 		}
 		key, err := parseP256JWK(k.X, k.Y)
 		if err != nil {
-			// One unusable key doesn't sink the whole JWKS: the rest of the
-			// set still verifies the tokens signed with it.
 			log.Printf("nuvio: skipping JWKS key %q: %v", k.Kid, err)
 			continue
 		}
 		keys[k.Kid] = key
 	}
-
-	v.mu.Lock()
-	v.keys = keys
-	v.fetched = time.Now()
-	v.mu.Unlock()
-
-	return nil
+	return keys
 }
 
 // parseP256JWK builds a P-256 public key from a JWK's base64url-encoded "x"
