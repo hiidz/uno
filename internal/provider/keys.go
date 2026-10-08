@@ -53,6 +53,12 @@ func WithCaller(ctx context.Context, caller string) context.Context {
 	return context.WithValue(ctx, callerKey{}, caller)
 }
 
+// CallerFrom is the caller ctx names (WithCaller), and whether it names one.
+func CallerFrom(ctx context.Context) (string, bool) {
+	caller, ok := ctx.Value(callerKey{}).(string)
+	return caller, ok
+}
+
 // apiKey is the key one TMDB call goes out with; own when it is an account's
 // rather than the client's shared one.
 type apiKey struct {
@@ -174,7 +180,7 @@ func (k *keyLimiters) sweep(now time.Time) {
 // then for key's own when it is an account's, then for the process-wide one
 // every call shares.
 func (c *TMDBClient) waitTurn(ctx context.Context, key apiKey) error {
-	if caller, ok := ctx.Value(callerKey{}).(string); ok {
+	if caller, ok := CallerFrom(ctx); ok {
 		if err := c.callerLimiters.wait(ctx, caller); err != nil {
 			return err
 		}

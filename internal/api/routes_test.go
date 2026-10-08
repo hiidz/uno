@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -648,5 +649,38 @@ func TestSelectingAnotherAccountsProfileSaysNothingOfIt(t *testing.T) {
 	if other.Code != http.StatusBadRequest || other.Body.String() != missing.Body.String() {
 		t.Errorf("another account's profile = %d %q, an absent index = %d %q; want the same answer",
 			other.Code, other.Body.String(), missing.Code, missing.Body.String())
+	}
+}
+
+// TestRoutesNameTheirTMDBCaller pins that a signed-in route pacing its TMDB
+// calls names the account as their caller.
+func TestRoutesNameTheirTMDBCaller(t *testing.T) {
+	f := newRouteFixture(t)
+	var (
+		mu      sync.Mutex
+		callers []string
+	)
+	fakeTMDB(t, func(w http.ResponseWriter, r *http.Request) {
+		caller, _ := provider.CallerFrom(r.Context())
+		mu.Lock()
+		callers = append(callers, caller)
+		mu.Unlock()
+		tmdbUp(w, r)
+	})
+	f.s.provider = provider.NewTMDBClient("key")
+
+	w := serve(t, f.s, http.MethodPost, "/api/catalogs/preview", `{"type":"movie","params":"{}"}`, false)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(callers) == 0 {
+		t.Fatal("TMDB was never called")
+	}
+	for i, got := range callers {
+		if got != "account:test-sub" {
+			t.Errorf("TMDB request %d made for caller %q, want %q", i, got, "account:test-sub")
+		}
 	}
 }

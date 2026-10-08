@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -581,4 +582,55 @@ func TestAddonServesWhatTheLastPushLeft(t *testing.T) {
 
 	savePush(t, f.db, f.owner.ID, vault.PushedHome{})
 	wantServed("after the next push", false, http.StatusNotFound)
+}
+
+// callerRecorder is a fakeTMDB handler that answers with tmdbUp and records
+// the pacing caller each TMDB request's context names. It never fails the
+// test itself: the catalog route's requests arrive on other goroutines.
+type callerRecorder struct {
+	mu      sync.Mutex
+	callers []string
+}
+
+func (c *callerRecorder) handle(w http.ResponseWriter, r *http.Request) {
+	caller, _ := provider.CallerFrom(r.Context())
+	c.mu.Lock()
+	c.callers = append(c.callers, caller)
+	c.mu.Unlock()
+	tmdbUp(w, r)
+}
+
+// requireAll fails unless there was at least one TMDB request and every one
+// was made for want.
+func (c *callerRecorder) requireAll(t *testing.T, want string) {
+	t.Helper()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.callers) == 0 {
+		t.Fatal("TMDB was never called")
+	}
+	for i, got := range c.callers {
+		if got != want {
+			t.Errorf("TMDB request %d made for caller %q, want %q", i, got, want)
+		}
+	}
+}
+
+// TestRoutesNameTheirTMDBCaller pins that the manifest and catalog routes
+// pace their TMDB calls for the addon token in the path.
+func TestRoutesNameTheirTMDBCaller(t *testing.T) {
+	f := newHandlerFixture(t)
+	for _, tc := range []struct{ name, path string }{
+		{"manifest", ManifestPath(f.owner.Token)},
+		{"catalog", "/u/" + f.owner.Token + "/catalog/movie/" + vault.ManifestID(f.onHome) + "/skip=0.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var rec callerRecorder
+			fakeTMDB(t, rec.handle)
+			if w := f.get(t, tc.path); w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
+			}
+			rec.requireAll(t, "token:"+f.owner.Token)
+		})
+	}
 }
