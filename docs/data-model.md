@@ -103,7 +103,7 @@ erDiagram
     string updated_at
   }
   PUSH_RECORDS {
-    uuid profile_id PK_FK
+    uuid profile_id PK, FK
     string nuvio_profile_uuid "the Nuvio profile it was pushed to"
     json record "vault.PushRecord: what the last push sent"
     string pushed_at
@@ -125,10 +125,10 @@ erDiagram
     string sub_key "nullable — in a subscribed collection, its snapshot key"
   }
   FOLDER_CATALOGS {
-    uuid folder_id PK_FK
-    uuid catalog_id PK_FK
+    uuid folder_id PK, FK
+    uuid catalog_id PK, FK
+    string genre PK "'' means unfiltered"
     int sort_order
-    string genre "'' means unfiltered"
   }
 ```
 
@@ -580,7 +580,7 @@ rules marked *Not built yet* are decided and land before the release.
 
   A new provider adds no column and no key to any of them. `catalogs.provider` is free text at
   the schema level (`TEXT`, no `CHECK`); the constraint is app-level only. Nuvio's own
-  `sources[].provider` (`"addon"` in `docs/api/samples/`) is the kind of folder source and is
+  `sources[].provider` (`"addon"` for an addon catalog) is the kind of folder source and is
   unrelated: every catalog Uno pushes is an `"addon"` source, whatever its provider.
 - **Names.** A provider name is lowercase letters and digits with no hyphen, since
   `parseManifestID` (`internal/addon/addon.go`) splits a manifest id at its first `-`, and it is
@@ -1034,8 +1034,7 @@ Version 1:
 convention from every other Nuvio surface (RPC params and REST table rows are snake_case) *and*
 from Uno's own Builder API. Push therefore has dedicated types in `internal/vault/pushpayload.go`
 (`PushCollection`, `PushFolder`, `CatalogSource`) built by `CollectionWithFolders.PushPayload`;
-**never `json.Marshal` a `vault.CollectionWithFolders` into this payload.** `wire_test.go` beside
-it checks every key they write against the samples. A dangling catalog ref (an id the tree's
+**never `json.Marshal` a `vault.CollectionWithFolders` into this payload.** A dangling catalog ref (an id the tree's
 catalogs lack) is skipped rather than failing the whole push. `pinToTop` comes from the push's own
 selection entry for the collection (`applySelection`, `internal/vault/pushrecord.go`), not from
 the stored row, which push then brings up to it.
@@ -1070,14 +1069,13 @@ throw empties the whole blob it was reading, which the TV then ignores, keeping 
 NuvioDesktop and nuvio-web fall back to `catalogSources` when `sources` is empty, so a folder
 carrying both would be empty on the TV alone. **Confirmed against a real Nuvio profile:** a
 collection Uno has pushed round-trips its folder sources under `catalogSources`. A collection
-built or re-saved in a Nuvio app writes `sources` — the two sample files below use it. Push's
+built or re-saved in a Nuvio app writes `sources`. Push's
 merge (`pushCollections`, `internal/api/push.go`) reads only a pulled collection's `id`, so the
 key doesn't matter there.
 
-**The real `sources[]` entry is wider than what Uno emits.** The entries in
-`docs/api/samples/collections-basic.json` carry five keys — `addonId`, `catalogId`, `type`,
-`genre`, `provider`. The entries in `docs/api/samples/collections-extended.json` carry thirteen: those five
-plus `filters`, `mediaType`, `sortBy`, `sortHow`, `title`, `tmdbId`, `tmdbSourceType`,
+**The real `sources[]` entry is wider than what Uno emits.** In collections pulled from real
+Nuvio profiles, the simplest entries carry five keys — `addonId`, `catalogId`, `type`, `genre`,
+`provider` — and the widest carry thirteen: those five plus `filters`, `mediaType`, `sortBy`, `sortHow`, `title`, `tmdbId`, `tmdbSourceType`,
 `traktListId`. So a Nuvio folder can source content from TMDB directly and from Trakt lists, not
 only from an installed addon's catalog, and can sort and filter per reference. Uno emits only the
 addon-catalog form (`PushPayload` → `vault.CatalogSource`: `addonId`, `type`,

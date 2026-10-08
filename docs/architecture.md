@@ -495,8 +495,8 @@ regions.
 `resolveMetas` bounds the per-page `/external_ids` fan-out at 8 concurrent lookups. A title TMDB
 has no IMDB id for is dropped from the page; a lookup that *fails* fails the whole page, so the
 502 goes to the client instead of a short row the page cache would keep. `releaseInfo`
-is year-only (`YYYY`), Stremio's own convention, matching the Cinemeta sample in
-`docs/api/samples/catalog-response.json`. `meta.id` is the IMDB id (`tt...`), which is why
+is year-only (`YYYY`), Stremio's own convention, matching Cinemeta's catalog responses.
+`meta.id` is the IMDB id (`tt...`), which is why
 per-item `external_ids` resolution exists at all.
 
 Every other `Meta` field comes from the discover response itself, with no further per-item call:

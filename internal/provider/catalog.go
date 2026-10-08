@@ -358,9 +358,8 @@ func releasedTimestamp(date string) string {
 }
 
 // releaseYear trims TMDB's full "YYYY-MM-DD" date down to just the year —
-// Stremio's own convention for releaseInfo (per the real Cinemeta catalog
-// response in docs/api/samples/catalog-response.json:
-// "releaseInfo":"2008", not the full date).
+// Stremio's own convention for releaseInfo (Cinemeta's catalog responses
+// carry "releaseInfo":"2008", not the full date).
 func releaseYear(date string) string {
 	if len(date) < 4 {
 		return ""

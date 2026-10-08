@@ -49,8 +49,8 @@ const (
 	maxServedTitles = 500
 
 	// catalogCacheMaxAge/catalogStaleRevalidate are the catalog response's
-	// cacheMaxAge/staleRevalidate, the same values (3h / 1h) as the real
-	// sample in docs/api/samples/catalog-response.json. They are hints the
+	// cacheMaxAge/staleRevalidate, the same values (3h / 1h) as Cinemeta's
+	// catalog responses. They are hints the
 	// Stremio addon SDK turns into a Cache-Control header; no Nuvio app reads
 	// them from the body, and Uno sends no such header, so Nuvio's apps fetch
 	// every catalog page afresh. The provider's page cache is what saves TMDB
