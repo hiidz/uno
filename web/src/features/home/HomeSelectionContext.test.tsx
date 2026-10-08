@@ -29,6 +29,7 @@ const LOADED: Library = {
   languages: [],
   countryNames: new Map(),
   pending: [],
+  homeRevision: 3,
   isLoading: false,
   error: null,
   loaded: true,
@@ -100,11 +101,24 @@ describe('HomeSelectionProvider', () => {
     const sent = result.current.snapshot()
     act(() => result.current.addCatalog('c'))
 
-    act(() => result.current.markPushed(sent))
+    act(() => result.current.markPushed(sent, 4))
     expect(result.current.changes.map((c) => c.text)).toEqual(['Added “Charlie”, 2nd on your home screen'])
 
-    act(() => result.current.markPushed(result.current.snapshot()))
+    act(() => result.current.markPushed(result.current.snapshot(), 5))
     expect(result.current.isDirty).toBe(false)
+  })
+
+  it('holds the home revision it hydrated with through edits and refetches, moving it only with a push', async () => {
+    const { result, rerender } = await renderLoaded()
+    expect(result.current.homeRevision).toBe(3)
+
+    act(() => result.current.removeCatalog('a'))
+    library.current = { ...LOADED, homeRevision: 9 }
+    rerender()
+    expect(result.current.homeRevision).toBe(3)
+
+    act(() => result.current.markPushed(result.current.snapshot(), 4))
+    expect(result.current.homeRevision).toBe(4)
   })
 
   it('counts a saved but unpushed change as pending, but not as dirty', async () => {

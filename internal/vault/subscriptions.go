@@ -296,7 +296,7 @@ func catalogCopyProblem(c Catalog, want CatalogForm) error {
 // and provider want already matches (catalogCopyProblem).
 func writeCatalogCopy(ctx context.Context, tx *sql.Tx, id uuid.UUID, want CatalogForm) error {
 	nowStr := utcTimestamp(time.Now())
-	if _, err := tx.ExecContext(ctx, `UPDATE catalogs SET name = ?, params = ?, updated_at = ? WHERE id = ?`,
+	if _, err := tx.ExecContext(ctx, `UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
 		want.Name, want.Params, nowStr, id.String()); err != nil {
 		return fmt.Errorf("updating subscribed catalog: %w", err)
 	}

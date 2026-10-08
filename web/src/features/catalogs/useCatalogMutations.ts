@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createCatalog, deleteCatalog, duplicateCatalog, invalidateProfileLists, updateCatalog } from '@/api'
-import type { CatalogPayload } from '@/api'
+import type { CatalogPayload, CatalogSave } from '@/api'
 
 /**
  * Catalog writes, with the invalidation they imply.
@@ -42,7 +42,7 @@ export function useCatalogMutations(profileIndex: number) {
   })
 
   const update = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: CatalogPayload }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: CatalogSave }) =>
       updateCatalog(profileIndex, id, payload),
     onSuccess: invalidate,
   })

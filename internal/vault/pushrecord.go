@@ -231,17 +231,20 @@ func reachableCatalogs(listed []Catalog, trees []CollectionWithFolders) []Pushed
 // it carries, in one transaction: the local half of push, run only after
 // Nuvio accepted what record holds (internal/api/push.go). record is what
 // push built before contacting Nuvio, never the rows as they stand now, so a
-// save landing during the push still shows as waiting for the next one.
-func (db *DB) SavePush(ctx context.Context, profileID uuid.UUID, record PushRecord) error {
-	return db.inTx(ctx, func(tx *sql.Tx) error {
+// save landing during the push still shows as waiting for the next one. It
+// raises profileID's home_revision and returns the new one (writePushedHome).
+func (db *DB) SavePush(ctx context.Context, profileID uuid.UUID, record PushRecord) (revision int64, err error) {
+	err = db.inTx(ctx, func(tx *sql.Tx) (err error) {
 		if err := saveCatalogSelectionTx(ctx, tx, profileID, record.Home.Catalogs); err != nil {
 			return err
 		}
 		if err := saveCollectionSelectionTx(ctx, tx, profileID, record.Home.Collections); err != nil {
 			return err
 		}
-		return WritePushRecord(ctx, tx, profileID, record)
+		revision, err = writePushedHome(ctx, tx, profileID, record)
+		return err
 	})
+	return revision, err
 }
 
 // WritePushRecord replaces profileID's push record with record through tx,

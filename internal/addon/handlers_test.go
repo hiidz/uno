@@ -562,7 +562,7 @@ func TestAddonServesWhatTheLastPushLeft(t *testing.T) {
 
 	edited := listedCatalogForm("Edited")
 	edited.Params = `{"sort_by":"vote_average.desc"}`
-	if _, err := f.db.UpdateUserCatalog(ctx, f.owner.ID, f.onHome.ID, edited); err != nil {
+	if _, err := f.db.UpdateUserCatalog(ctx, f.owner.ID, f.onHome.ID, f.onHome.Revision, edited); err != nil {
 		t.Fatal(err)
 	}
 	wantServed("after an edit", true, http.StatusOK)

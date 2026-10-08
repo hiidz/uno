@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ProfileNotSelectedError, RateLimitedError, pushSelection, queryKeys } from '@/api'
-import type { PushRefusal, PushResult } from '@/api'
+import type { PushFailure, PushRefusal } from '@/api'
 import { toPushPayload } from '@/features/home/pending'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 
@@ -64,7 +64,7 @@ function thrownOutcome(err: unknown): PushOutcome {
 /** What a push that came back unsuccessful is reported as: undo-failed when
  *  Nuvio was left holding part of it, the refusal when the server turned it
  *  away for one the builder has words for, failed otherwise. */
-function failedOutcome(result: PushResult): PushOutcome {
+function failedOutcome(result: PushFailure): PushOutcome {
   if (result.undo_failed) return { kind: 'undo-failed' }
   if (result.refused) return { kind: REFUSAL_OUTCOME[result.refused] ?? 'failed' }
   return { kind: 'failed' }
@@ -108,9 +108,9 @@ export function usePush(profileIndex: number): Push {
 
     void (async () => {
       try {
-        const result = await pushSelection(profileIndex, toPushPayload(sent))
+        const result = await pushSelection(profileIndex, toPushPayload(sent, home.homeRevision))
         if (result.success) {
-          home.markPushed(sent)
+          home.markPushed(sent, result.home_revision)
           // Push rewrote every owned row's place on Home, and what waited for
           // it is in Nuvio now, so the library is stale. The owned rows'
           // `home_position` and `pin_to_top` feed the delete dialog and

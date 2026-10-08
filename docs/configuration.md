@@ -29,8 +29,9 @@ goes out with `TMDB_API_KEY`.
 
 **`per-account`**: there is no shared key. Each Nuvio account enters its own TMDB API key on the
 profile picker, which holds the profiles until one is saved. The server checks a key with one TMDB
-call before storing it, and stores it AES-GCM sealed under `UNO_SECRET`, bound to the account id,
-beside its last four characters (`docs/data-model.md` → `accounts`). A key is never returned,
+call before storing it, and stores it AES-GCM sealed under `UNO_SECRET`, bound to its provider and
+account (`uno-account-key/1\0{provider}\0{account}`), beside its last four characters
+(`docs/data-model.md` → `account_keys`). A key is never returned,
 never logged, and only ever sent to TMDB. The builder uses the signed-in account's key; the addon
 routes use the key of the account that owns the token's profile. Startup fails on an unknown mode,
 on `shared` without `TMDB_API_KEY`, and on `per-account` with `TMDB_API_KEY` set (which would
@@ -194,6 +195,30 @@ reads `PRAGMA user_version` in one `BEGIN IMMEDIATE` transaction:
   serving.
 
 A schema change edits `schema.sql` and bumps `schemaVersion`.
+
+**`uno migrate --db <path>`** moves a version 11 vault to version 12. It is a one-off, deleted once
+prod has run it (`cmd/uno/migrate.go`). It refuses any version but 11. In one transaction, which
+takes the write lock when it begins, it adds `catalogs.revision`, `collections.revision` and
+`profiles.home_revision` (each `INTEGER NOT NULL DEFAULT 1`, so every row starts at 1), creates
+`account_keys`, drops `accounts`, stamps version 12, and checks that the tables, columns, indexes
+and triggers match a fresh v12 database, `account_keys`' SQL included. No other row is touched.
+The TMDB keys `accounts` held are dropped, not carried over: each was sealed bound to its account
+alone, which a v12 key no longer opens under, so the migration needs no `UNO_SECRET`. A server in
+`shared` mode holds none; on a `per-account` server each owner enters the key again on the picker.
+Any refusal or failure leaves the file as it was.
+
+On the deployed volume, with the image distroless and `ENTRYPOINT ["/app/uno"]`:
+
+1. `docker compose stop uno`, then back up `/data` (`docker compose cp uno:/data ./uno-data-backup`),
+   which holds `vault.db` and its `-wal` and `-shm` files.
+2. `docker tag uno uno:pre-v12`, so the v11 image survives the build.
+3. Build or deploy the new image.
+4. `docker compose run --rm uno migrate --db /data/vault.db`.
+5. `docker compose up -d`.
+
+The new binary refuses a version 11 vault until it is migrated. If the migration refuses, the vault
+is still at version 11: `docker tag uno:pre-v12 uno && docker compose up -d --no-build` runs the
+old image again.
 
 **Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 

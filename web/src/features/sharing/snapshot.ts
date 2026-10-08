@@ -15,6 +15,7 @@ export function asCatalog(catalog: SnapshotCatalog): Catalog {
     collection_id: null,
     home_position: null,
     show_in_home: false,
+    revision: 0,
     publication: null,
     subscription: null,
   }
@@ -43,6 +44,7 @@ export function snapshotAsCollection(detail: PublicationDetail): Collection | nu
     title: snapshot.title,
     pin_to_top: false,
     home_position: null,
+    revision: 0,
     view_mode: snapshot.view_mode,
     show_all_tab: snapshot.show_all_tab,
     backdrop_image_url: snapshot.backdrop_image_url,

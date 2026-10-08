@@ -255,7 +255,7 @@ func TestCatalogRoutes(t *testing.T) {
 		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: `no recipes for provider "mdblist"`},
 		{name: "create with a broken recipe", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"tmdb","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest},
 		{name: "create with no name", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest},
-		{name: "update", method: http.MethodPut, path: mine, body: valid, wantStatus: http.StatusOK, wantBody: `"name":"Renamed"`},
+		{name: "update", method: http.MethodPut, path: mine, body: `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{\"sort_by\":\"popularity.desc\"}","revision":1}`, wantStatus: http.StatusOK, wantBody: `"name":"Renamed"`},
 		{name: "update with a path id that isn't a uuid", method: http.MethodPut, path: "/api/p/1/catalogs/nope", body: valid, wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
 		{name: "update with a broken recipe", method: http.MethodPut, path: mine, body: `{"type":"movie","name":"X","provider":"tmdb","params":"{"}`, wantStatus: http.StatusBadRequest},
 		{name: "update another profile's catalog", method: http.MethodPut, path: theirs, body: valid, wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
@@ -290,12 +290,13 @@ func TestCollectionRoutes(t *testing.T) {
 			}}}}},
 		}))
 	}
-	referencing := func(id uuid.UUID) string {
-		return string(mustJSON(t, vault.CollectionForm{
+	refs := func(id uuid.UUID) vault.CollectionForm {
+		return vault.CollectionForm{
 			Title: "Refs", ViewMode: "ROWS",
 			Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: vault.CatalogRefs(id)}},
-		}))
+		}
 	}
+	referencing := func(id uuid.UUID) string { return string(mustJSON(t, refs(id))) }
 
 	runSteps(t, f.s, []routeStep{
 		{name: "list", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
@@ -304,7 +305,7 @@ func TestCollectionRoutes(t *testing.T) {
 		{name: "create with a broken scoped recipe", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(`{"sort_by":"bogus.desc"}`), wantStatus: http.StatusBadRequest},
 		{name: "create referencing another profile's private catalog", method: http.MethodPost, path: "/api/p/1/collections", body: referencing(f.theirs.ID), wantStatus: http.StatusBadRequest},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/collections", body: `[`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
-		{name: "update", method: http.MethodPut, path: mine, body: referencing(f.mine.ID), wantStatus: http.StatusOK, wantBody: `"title":"Refs"`},
+		{name: "update", method: http.MethodPut, path: mine, body: string(mustJSON(t, collectionSave{CollectionForm: refs(f.mine.ID), Revision: f.mineColl.Revision})), wantStatus: http.StatusOK, wantBody: `"title":"Refs"`},
 		{name: "update with a path id that isn't a uuid", method: http.MethodPut, path: "/api/p/1/collections/nope", body: referencing(f.mine.ID), wantStatus: http.StatusBadRequest, wantBody: "invalid collection id"},
 		{name: "update another profile's collection", method: http.MethodPut, path: theirs, body: referencing(f.mine.ID), wantStatus: http.StatusNotFound, wantBody: "collection not found"},
 		{name: "duplicate", method: http.MethodPost, path: mine + "/duplicate", wantStatus: http.StatusCreated},
@@ -325,7 +326,7 @@ func TestDeleteRoutesAllowWhatNuvioHolds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.db.SavePush(t.Context(), f.caller.ID, record); err != nil {
+	if _, err := f.db.SavePush(t.Context(), f.caller.ID, record); err != nil {
 		t.Fatal(err)
 	}
 	runSteps(t, f.s, []routeStep{

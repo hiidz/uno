@@ -177,8 +177,16 @@ func createPushableCollection(t *testing.T, ctx context.Context, db *vault.DB, p
 	return coll
 }
 
-func newPushRequest(t *testing.T, ctx context.Context, body pushRequest) *http.Request {
+// newPushRequest is a push of body built from the Home as it stands: its
+// home_revision is the one db holds now for the profile ctx carries.
+func newPushRequest(t *testing.T, ctx context.Context, db *vault.DB, body pushRequest) *http.Request {
 	t.Helper()
+	profile, _ := profileFrom(ctx)
+	revision, err := db.HomeRevision(ctx, profile.ID)
+	if err != nil {
+		t.Fatalf("reading the home revision: %v", err)
+	}
+	body.HomeRevision = revision
 	raw, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshaling request body: %v", err)
@@ -211,7 +219,7 @@ func TestPush_NuvioUnreachable(t *testing.T) {
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
 	reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
-	req := newPushRequest(t, reqCtx, pushRequest{})
+	req := newPushRequest(t, reqCtx, db, pushRequest{})
 	w := httptest.NewRecorder()
 
 	s.push(w, req)
@@ -274,7 +282,7 @@ func TestPush_OnePushRejected(t *testing.T) {
 			s := &Server{vault: db, nuvio: tc.fake, siteBaseURL: "http://example.com"}
 
 			reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
-			req := newPushRequest(t, reqCtx, pushRequest{})
+			req := newPushRequest(t, reqCtx, db, pushRequest{})
 			w := httptest.NewRecorder()
 
 			s.push(w, req)
@@ -353,7 +361,7 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
 			reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
-			req := newPushRequest(t, reqCtx, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}}))
+			req := newPushRequest(t, reqCtx, db, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}}))
 			w := httptest.NewRecorder()
 
 			s.push(w, req)
@@ -432,7 +440,7 @@ func TestPush_KeepsCollectionsMadeInNuvioFromUnoCatalogs(t *testing.T) {
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
 			reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
-			req := newPushRequest(t, reqCtx, pushRequest{})
+			req := newPushRequest(t, reqCtx, db, pushRequest{})
 			w := httptest.NewRecorder()
 
 			s.push(w, req)
@@ -523,13 +531,13 @@ func TestPush_MergesUnoIntoExistingAddons(t *testing.T) {
 			fake := &fakeNuvio{profiles: liveAs(profile), addons: tc.existing(manifestURL)}
 			s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 			w := httptest.NewRecorder()
-			s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushRequest{}))
+			s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), db, pushRequest{}))
 
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
 			}
-			if body := strings.TrimSpace(w.Body.String()); body != `{"success":true}` {
-				t.Fatalf("body = %s, want {\"success\":true}", body)
+			if body := strings.TrimSpace(w.Body.String()); body != `{"success":true,"home_revision":2}` {
+				t.Fatalf("body = %s, want {\"success\":true,\"home_revision\":2}", body)
 			}
 			if len(fake.pushAddonsCalls) != 1 {
 				t.Fatalf("PushAddons calls = %d, want 1", len(fake.pushAddonsCalls))
@@ -581,7 +589,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	fake := &fakeNuvio{profiles: liveAs(profile), pullCollections: []json.RawMessage{staleSelected, foreign, staleDeselected}}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: selected.ID}}})))
+	s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), db, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: selected.ID}}})))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d (body %q)", w.Code, http.StatusOK, w.Body.String())
@@ -610,7 +618,7 @@ func TestPush_MergesCollectionsIntoPulledBlob(t *testing.T) {
 	if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 0 {
 		t.Errorf("pending right after the push = %+v, %v; want nothing: push stores the record of what it sent", pending, err)
 	}
-	if _, err := db.UpdateUserCollection(ctx, profile.ID, selected.ID, vault.CollectionForm{Title: "Renamed", ViewMode: "TABBED_GRID"}); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, profile.ID, selected.ID, selected.Revision, vault.CollectionForm{Title: "Renamed", ViewMode: "TABBED_GRID"}); err != nil {
 		t.Fatal(err)
 	}
 	if pending, err := db.PendingPush(ctx, profile.ID); err != nil || len(pending) != 1 || pending[0].ID != selected.ID || pending[0].Change != vault.PendingChanged {
@@ -635,7 +643,7 @@ func TestPush_RefusesABodyInAnotherShape(t *testing.T) {
 	onHome := createPushableCollection(t, ctx, db, profile.ID, "On Home")
 	s := &Server{vault: db, nuvio: &fakeNuvio{profiles: liveAs(profile)}, siteBaseURL: "https://uno.example"}
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, ctx, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: onHome.ID}}})))
+	s.push(w, newPushRequest(t, ctx, db, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: onHome.ID}}})))
 	if w.Code != http.StatusOK {
 		t.Fatalf("first push = %d (%s), want 200", w.Code, w.Body.String())
 	}
@@ -678,7 +686,7 @@ func TestPush_SendsAndStoresTheSelectionsPin(t *testing.T) {
 		fake := &fakeNuvio{profiles: liveAs(profile)}
 		s.nuvio = fake
 		w := httptest.NewRecorder()
-		s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushOf(vault.PushedHome{Collections: entries})))
+		s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), db, pushOf(vault.PushedHome{Collections: entries})))
 		if w.Code != http.StatusOK || len(fake.pushCollectionsCalls) != 1 {
 			t.Fatalf("status = %d, PushCollections calls = %d; want 200 and 1 (body %q)", w.Code, len(fake.pushCollectionsCalls), w.Body.String())
 		}
@@ -740,7 +748,7 @@ func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	reqCtx := withNuvioToken(withProfile(ctx, profile), "token")
 
 	first := vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: gone.ID}}}
-	s.push(httptest.NewRecorder(), newPushRequest(t, reqCtx, pushOf(first)))
+	s.push(httptest.NewRecorder(), newPushRequest(t, reqCtx, db, pushOf(first)))
 	if got := fake.pushCollectionsCalls[0]; len(got) != 2 {
 		t.Fatalf("first push sent %d collections, want the foreign one and Gone", len(got))
 	}
@@ -750,7 +758,7 @@ func TestPush_DropsADeletedCollectionTheLastPushSent(t *testing.T) {
 	}
 	fake.pullCollections = fake.pushCollectionsCalls[0]
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, reqCtx, pushRequest{}))
+	s.push(w, newPushRequest(t, reqCtx, db, pushRequest{}))
 	if w.Code != http.StatusOK {
 		t.Fatalf("second push status = %d, want 200 (%s)", w.Code, w.Body.String())
 	}
@@ -777,7 +785,7 @@ func TestPush_FinishesAfterTheClientDrops(t *testing.T) {
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, reqCtx, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}})))
+	s.push(w, newPushRequest(t, reqCtx, db, pushOf(vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: coll.ID}}})))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (%s)", w.Code, w.Body.String())
 	}
@@ -830,7 +838,7 @@ func TestPush_TurnsAwayACatalogItDoesNotOwn(t *testing.T) {
 	fake := &fakeNuvio{}
 	s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
 	w := httptest.NewRecorder()
-	s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), pushOf(foreign)))
+	s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), db, pushOf(foreign)))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 (%s)", w.Code, w.Body.String())
 	}
@@ -885,7 +893,7 @@ func TestPush_RefusesBeforeNuvio(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &Server{vault: db, nuvio: tc.fake, siteBaseURL: "http://example.com"}
 			w := httptest.NewRecorder()
-			s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), tc.body))
+			s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), db, tc.body))
 			if w.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (%s)", w.Code, tc.wantStatus, w.Body.String())
 			}

@@ -118,6 +118,20 @@ func catalogBody(name string) string {
 	return fmt.Sprintf(`{"type":"movie","name":%q,"provider":"tmdb","params":"{\"sort_by\":\"popularity.desc\"}"}`, name)
 }
 
+// save saves catalog id as name, built from the revision the account's
+// library shows it at, as an editor opened now would, and expects want.
+func (a *account) save(id, name string, want int) {
+	a.t.Helper()
+	var revision int64
+	for _, c := range a.library().Catalogs {
+		if c.ID == id {
+			revision = c.Revision
+		}
+	}
+	body := fmt.Sprintf(`{"type":"movie","name":%q,"provider":"tmdb","params":"{\"sort_by\":\"popularity.desc\"}","revision":%d}`, name, revision)
+	a.do(http.MethodPut, "/api/p/1/catalogs/"+id, body, want)
+}
+
 // createCatalog makes a catalog in the account's slot 1 and returns its id.
 func (a *account) createCatalog(name string) string {
 	a.t.Helper()
@@ -130,6 +144,7 @@ func (a *account) createCatalog(name string) string {
 type libraryCatalog struct {
 	ID           string
 	Name         string
+	Revision     int64
 	Publication  *struct{ ID string }
 	Subscription *struct {
 		PublicationID   string `json:"publication_id"`
@@ -138,8 +153,9 @@ type libraryCatalog struct {
 }
 
 type libraryView struct {
-	Catalogs []libraryCatalog
-	Pending  []struct{ Kind, ID, Name, Change string }
+	Catalogs     []libraryCatalog
+	Pending      []struct{ Kind, ID, Name, Change string }
+	HomeRevision int64 `json:"home_revision"`
 }
 
 func (a *account) library() libraryView {
@@ -148,14 +164,15 @@ func (a *account) library() libraryView {
 }
 
 // push sends the whole Home as the given catalog ids, each shown on Home, and
-// expects it to succeed.
+// expects it to succeed, built from the Home its library shows now.
 func (a *account) push(catalogIDs ...string) {
 	a.t.Helper()
 	rows := make([]string, len(catalogIDs))
 	for i, id := range catalogIDs {
 		rows[i] = fmt.Sprintf(`{"catalog_id":%q,"show_in_home":true}`, id)
 	}
-	w := a.do(http.MethodPost, "/api/p/1/push", `{"rows":[`+strings.Join(rows, ",")+`]}`, http.StatusOK)
+	body := fmt.Sprintf(`{"rows":[%s],"home_revision":%d}`, strings.Join(rows, ","), a.library().HomeRevision)
+	w := a.do(http.MethodPost, "/api/p/1/push", body, http.StatusOK)
 	if r := decodeAs[pushResult](a.t, w); !r.Success {
 		a.t.Fatalf("push = %+v, want success", r)
 	}
@@ -222,7 +239,7 @@ func TestFlow_BuildPushServe(t *testing.T) {
 		t.Fatalf("pending after a push = %+v, want none", lib.Pending)
 	}
 
-	alice.do(http.MethodPut, "/api/p/1/catalogs/"+id, catalogBody("Crime Renamed"), http.StatusOK)
+	alice.save(id, "Crime Renamed", http.StatusOK)
 	if got := alice.manifest(manifestPath).Catalogs; len(got) != 1 || got[0].Name != "Crime Classics" {
 		t.Fatalf("manifest after a Save before a push lists %+v, want the pushed name", got)
 	}
@@ -276,14 +293,14 @@ func TestFlow_PublishSubscribeUpdate(t *testing.T) {
 
 	copyID := decodeAs[struct{ Catalog libraryCatalog }](t, bob.do(http.MethodPost, pub+"/subscribe", "", http.StatusCreated)).Catalog.ID
 	bob.do(http.MethodPost, pub+"/subscribe", "", http.StatusConflict)
-	bob.do(http.MethodPut, "/api/p/1/catalogs/"+copyID, catalogBody("Mine now"), http.StatusBadRequest)
+	bob.save(copyID, "Mine now", http.StatusBadRequest)
 	bob.do(http.MethodPut, "/api/p/1/catalogs/"+id, catalogBody("Not mine"), http.StatusNotFound)
 	if lib := bob.library(); len(lib.Catalogs) != 1 || lib.Catalogs[0].Name != "Heist Films" ||
 		lib.Catalogs[0].Subscription == nil || lib.Catalogs[0].Subscription.UpdateAvailable {
 		t.Fatalf("subscriber's library = %+v, want the copy, up to date", lib.Catalogs)
 	}
 
-	alice.do(http.MethodPut, "/api/p/1/catalogs/"+id, catalogBody("Heist Films 2"), http.StatusOK)
+	alice.save(id, "Heist Films 2", http.StatusOK)
 	bob.do(http.MethodGet, pub+"/changes", "", http.StatusOK)
 	if lib := bob.library(); lib.Catalogs[0].Subscription.UpdateAvailable {
 		t.Fatal("the subscriber was told of an update before the publisher published it")
@@ -303,7 +320,7 @@ func TestFlow_PublishSubscribeUpdate(t *testing.T) {
 
 	alice.do(http.MethodPost, "/api/p/1/catalogs/"+id+"/unpublish", "", http.StatusOK)
 	bob.do(http.MethodPost, pub+"/update", "", http.StatusNotFound)
-	bob.do(http.MethodPut, "/api/p/1/catalogs/"+copyID, catalogBody("Mine now"), http.StatusOK)
+	bob.save(copyID, "Mine now", http.StatusOK)
 	if lib := bob.library(); len(lib.Catalogs) != 1 || lib.Catalogs[0].Name != "Mine now" || lib.Catalogs[0].Subscription != nil {
 		t.Fatalf("subscriber's library after unpublish = %+v, want their own renamed copy", lib.Catalogs)
 	}

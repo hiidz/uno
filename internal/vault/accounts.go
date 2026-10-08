@@ -1,6 +1,6 @@
-// Accounts: the TMDB key a Nuvio account saves for a server in per-account
-// key mode. The vault stores the key only sealed; sealing and opening it is
-// internal/tmdbkey's.
+// Account keys: the key a Nuvio account saves for a provider on a server in
+// per-account key mode, one per account and provider. The vault stores a key
+// only sealed; sealing and opening it is internal/tmdbkey's.
 
 package vault
 
@@ -12,72 +12,74 @@ import (
 	"time"
 )
 
-// ErrNoAccountKey is an account that has saved no TMDB key.
-var ErrNoAccountKey = errors.New("vault: the account has no TMDB key")
+// ErrNoAccountKey is an account that has saved no key for the provider.
+var ErrNoAccountKey = errors.New("vault: the account has no key for the provider")
 
-// AccountKey is an account's stored TMDB key: sealed, and its last four
-// characters, which are all its owner is ever shown of it.
+// AccountKey is an account's stored key for a provider: sealed, and its last
+// four characters, which are all its owner is ever shown of it.
 type AccountKey struct {
 	Sealed []byte
 	Last4  string
 }
 
-// SetAccountKey stores account's sealed TMDB key and its last four
-// characters, replacing any it had.
-func (db *DB) SetAccountKey(ctx context.Context, account string, key AccountKey) error {
+// SetAccountKey stores account's sealed key for provider and its last four
+// characters, replacing any it had for that provider.
+func (db *DB) SetAccountKey(ctx context.Context, account, provider string, key AccountKey) error {
 	if _, err := db.conn.ExecContext(ctx, `
-		INSERT INTO accounts (nuvio_user_id, tmdb_key_ciphertext, tmdb_key_last4, updated_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (nuvio_user_id) DO UPDATE SET
-			tmdb_key_ciphertext = excluded.tmdb_key_ciphertext,
-			tmdb_key_last4      = excluded.tmdb_key_last4,
-			updated_at          = excluded.updated_at
-	`, account, key.Sealed, key.Last4, utcTimestamp(time.Now())); err != nil {
-		return fmt.Errorf("storing the TMDB key: %w", err)
+		INSERT INTO account_keys (nuvio_user_id, provider, key_ciphertext, key_last4, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (nuvio_user_id, provider) DO UPDATE SET
+			key_ciphertext = excluded.key_ciphertext,
+			key_last4      = excluded.key_last4,
+			updated_at     = excluded.updated_at
+	`, account, provider, key.Sealed, key.Last4, utcTimestamp(time.Now())); err != nil {
+		return fmt.Errorf("storing the %s key: %w", provider, err)
 	}
 	return nil
 }
 
-// AccountKey returns account's stored TMDB key, or ErrNoAccountKey.
-func (db *DB) AccountKey(ctx context.Context, account string) (AccountKey, error) {
+// AccountKey returns account's stored key for provider, or ErrNoAccountKey.
+func (db *DB) AccountKey(ctx context.Context, account, provider string) (AccountKey, error) {
 	var key AccountKey
 	err := db.conn.QueryRowContext(ctx, `
-		SELECT tmdb_key_ciphertext, tmdb_key_last4 FROM accounts WHERE nuvio_user_id = ?
-	`, account).Scan(&key.Sealed, &key.Last4)
+		SELECT key_ciphertext, key_last4 FROM account_keys WHERE nuvio_user_id = ? AND provider = ?
+	`, account, provider).Scan(&key.Sealed, &key.Last4)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AccountKey{}, ErrNoAccountKey
 	}
 	if err != nil {
-		return AccountKey{}, fmt.Errorf("reading the TMDB key: %w", err)
+		return AccountKey{}, fmt.Errorf("reading the %s key: %w", provider, err)
 	}
 	return key, nil
 }
 
-// DeleteAccountKey removes account's stored TMDB key. Removing a key that
-// isn't there is not an error.
-func (db *DB) DeleteAccountKey(ctx context.Context, account string) error {
-	if _, err := db.conn.ExecContext(ctx, `DELETE FROM accounts WHERE nuvio_user_id = ?`, account); err != nil {
-		return fmt.Errorf("removing the TMDB key: %w", err)
+// DeleteAccountKey removes account's stored key for provider. Removing a key
+// that isn't there is not an error.
+func (db *DB) DeleteAccountKey(ctx context.Context, account, provider string) error {
+	if _, err := db.conn.ExecContext(ctx, `
+		DELETE FROM account_keys WHERE nuvio_user_id = ? AND provider = ?
+	`, account, provider); err != nil {
+		return fmt.Errorf("removing the %s key: %w", provider, err)
 	}
 	return nil
 }
 
 // AccountKeyByToken returns the Nuvio account that owns the profile whose
-// token it is, with that account's sealed TMDB key, nil when it has saved
-// none. An unknown token is ErrProfileNotFound.
-func (db *DB) AccountKeyByToken(ctx context.Context, token string) (string, []byte, error) {
+// token it is, with that account's sealed key for provider, nil when it has
+// saved none. An unknown token is ErrProfileNotFound.
+func (db *DB) AccountKeyByToken(ctx context.Context, token, provider string) (string, []byte, error) {
 	var account string
 	var sealed []byte
 	err := db.conn.QueryRowContext(ctx, `
-		SELECT p.nuvio_user_id, a.tmdb_key_ciphertext
-		FROM profiles p LEFT JOIN accounts a ON a.nuvio_user_id = p.nuvio_user_id
+		SELECT p.nuvio_user_id, a.key_ciphertext
+		FROM profiles p LEFT JOIN account_keys a ON a.nuvio_user_id = p.nuvio_user_id AND a.provider = ?
 		WHERE p.token = ?
-	`, token).Scan(&account, &sealed)
+	`, provider, token).Scan(&account, &sealed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil, ErrProfileNotFound
 	}
 	if err != nil {
-		return "", nil, fmt.Errorf("reading the owner's TMDB key: %w", err)
+		return "", nil, fmt.Errorf("reading the owner's %s key: %w", provider, err)
 	}
 	return account, sealed, nil
 }

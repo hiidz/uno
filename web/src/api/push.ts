@@ -5,10 +5,12 @@ import { ApiError, sendJSON } from './http'
  *
  * The body carries the whole pending Home as one ordered list of rows, each a
  * catalog or a collection, matching Go's `pushRequest`: a row's place in the
- * list is its place on Home.
+ * list is its place on Home. `home_revision` is the one the Home was built
+ * from; a push from one another push has raised since is refused.
  */
 export interface PushRequest {
   rows: PushRow[]
+  home_revision: number
 }
 
 /** One row of the pending Home: a catalog with whether it gets a home row, or
@@ -28,10 +30,18 @@ type PushRow =
  * to report. `undo_failed` marks the one case that guarantee doesn't cover —
  * putting back what Nuvio took failed too. `refused` names why the server
  * turned the push away before contacting Nuvio, when it is one the builder has
- * words for.
+ * words for. A success answers the `home_revision` the push raised the Home
+ * to, which the tab's next push carries.
  */
-export interface PushResult {
-  success: boolean
+export type PushResult = PushSuccess | PushFailure
+
+export interface PushSuccess {
+  success: true
+  home_revision: number
+}
+
+export interface PushFailure {
+  success: false
   undo_failed?: boolean
   refused?: PushRefusal
 }

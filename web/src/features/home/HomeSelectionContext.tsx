@@ -70,13 +70,19 @@ export interface HomeSelection extends HomeEdits {
    *  `markPushed` can name what it is acknowledging. */
   snapshot: () => HomeState
 
+  /** The `home_revision` this tab's Home is built from, which Push sends: the
+   *  library's at hydration, then each push's answer. A refetch never moves
+   *  it, as it never moves the baseline. */
+  homeRevision: number
+
   /**
-   * Advance the baseline to the state a push just persisted. Takes the pushed
-   * state rather than reading `current`, because the user can keep editing
-   * while a push is in flight — acknowledging "whatever is current now" would
-   * silently swallow those edits and report them as already live.
+   * Advance the baseline to the state a push just persisted, and the Home's
+   * revision to the one the push answered. Takes the pushed state rather than
+   * reading `current`, because the user can keep editing while a push is in
+   * flight — acknowledging "whatever is current now" would silently swallow
+   * those edits and report them as already live.
    */
-  markPushed: (pushed: HomeState) => void
+  markPushed: (pushed: HomeState, homeRevision: number) => void
 
   hasCatalog: (id: string) => boolean
   hasCollection: (id: string) => boolean
@@ -125,11 +131,15 @@ export function HomeSelectionProvider({
   // not move the baseline under the user and silently change the diff.
   const [current, setCurrent] = useState<HomeState | null>(null)
   const [baseline, setBaseline] = useState<HomeState>(EMPTY_HOME)
+  // The revision the baseline is at, held apart from it: every edit rebuilds
+  // `HomeState`, and only hydration and a push move this.
+  const [homeRevision, setHomeRevision] = useState(0)
 
   if (current === null && library.loaded) {
     const hydrated = hydrateHome(library.catalogs, library.collections)
     setBaseline(hydrated)
     setCurrent(hydrated)
+    setHomeRevision(library.homeRevision)
   }
 
   const collectionById = useMemo(() => byId(library.collections), [library.collections])
@@ -237,7 +247,11 @@ export function HomeSelectionProvider({
         isDirty: unsavedCount > 0,
 
         snapshot: () => state,
-        markPushed: (pushed) => setBaseline(pushed),
+        homeRevision,
+        markPushed: (pushed, revision) => {
+          setBaseline(pushed)
+          setHomeRevision(revision)
+        },
 
         hasCatalog: (id) => catalogEntries(state).some((c) => c.id === id),
         hasCollection: (id) => collectionEntries(state).some((c) => c.id === id),
@@ -248,6 +262,7 @@ export function HomeSelectionProvider({
     [
       current,
       state,
+      homeRevision,
       library.isLoading,
       library.error,
       library.genres,

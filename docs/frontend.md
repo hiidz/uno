@@ -543,6 +543,15 @@ Other decisions worth keeping:
   `collectionID` is form state only: `toPayload` leaves it out, since a catalog's `PUT` never
   changes its scope, and `isSameCatalog` compares the payload alone. The nested editor's Save
   reads Done, since it only stages the edit.
+- **A save carries the revision the editor opened at.** `formFromCatalog` copies the row's
+  `revision` into the form, so `target.initial` holds it from the moment the editor opens, and
+  `Workspace` sends it with the payload (`CatalogSave`); a create sends none. It is never read
+  from the live library row a refetch moves: a save from a catalog another tab saved since is
+  refused with a `409` "Error saving.", which the editor shows where it shows any save error.
+  Nothing refetches or touches the cache, and nothing words it as a change elsewhere; the user
+  refreshes the page. Reopening a row right after this tab's own save, before the library has
+  refetched, seeds the old revision and is refused too, correctly: the form then holds the
+  pre-save content.
 
 ## Home pane — List view
 
@@ -554,6 +563,10 @@ Client state only, nothing writes until Push.
 
 - **The baseline is snapshotted at hydration, not read live from the query cache.** A background
   refetch must not move the baseline under the user and silently change the diff.
+- **Home's revision is its own state beside the baseline** (`homeRevision`). Every edit rebuilds
+  `HomeState` as `{rows}`, so the revision isn't part of it: hydration sets it from the
+  library's `home_revision`, and only `markPushed(sent, newRevision)` moves it after, or the
+  tab's own next push would be refused. A refetch never does.
 - **Every Home row is a library row.** The rows come from the library, and a row the library
   drops is pruned from the pending state and the baseline at once (`withoutDeleted`), so no row
   is ever drawn without its library row.
@@ -1006,6 +1019,11 @@ button.
   fetched. The back arrow and Escape return to the row — Escape is stopped inside the panel so it
   never reaches the editor's own Escape-to-close — and there is no history entry.
 
+- **A save carries the collection's revision the editor opened at**, as a catalog save does
+  (`formFromCollection` copies it into `target.initial`; `Workspace` sends it as
+  `CollectionSave`). `catalog_edits` carry none: the collection's revision guards the catalogs
+  scoped to it. A refused save shows "Error saving." where any save error shows.
+
 ## Sharing
 
 What an owner publishes is a **publication**: a snapshot of the row as it was saved when it was
@@ -1290,7 +1308,8 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
 
 **Two failure states, not four:**
 
-- **Ordinary failure** (bad input, Nuvio unreachable, either push rejected) — *nothing changed*,
+- **Ordinary failure** (bad input, Nuvio unreachable, either push rejected, or a Home another tab
+  has pushed since) — *nothing changed*,
   full stop, catalog selection included. One generic message: "Push failed — nothing changed.
   Your edits are still here; try again." True for every ordinary failure mode because of the
   backend ordering.
@@ -1336,7 +1355,10 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
   `PullCollections`→`PushCollections` cycles can clobber each other.
 - **`markPushed` takes the pushed state, not `current`.** The user can keep editing while a push
   is in flight; advancing the baseline to "whatever is current now" would silently swallow those
-  edits and report them as already live.
+  edits and report them as already live. It takes the `home_revision` the push answered too,
+  which the tab's next push sends (`toPushPayload(sent, homeRevision)`). A push from a tab whose
+  Home another tab has pushed since is a `409` with a plain `{success: false}`, the ordinary
+  failure: nothing refetches, and the user refreshes the page.
 - **The library is invalidated on success.** Push rewrites every owned row's
   `home_position` and `show_in_home` and a collection's `pin_to_top`, which Home hydrates from,
   an added collection starts its pin from, and the delete dialog reads. With `staleTime: 30_000`,

@@ -89,6 +89,16 @@ func (s *Server) createUserCollection(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, collection)
 }
 
+// collectionSave is a collection PUT's body: the form, and the revision of
+// the collection the editor's form was built from. An absent revision
+// decodes as 0, which no row is at, so the save is refused as stale. Its
+// catalog edits carry none: the collection's revision guards the catalogs
+// scoped to it.
+type collectionSave struct {
+	vault.CollectionForm
+	Revision int64 `json:"revision"`
+}
+
 func (s *Server) updateUserCollection(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
@@ -97,17 +107,17 @@ func (s *Server) updateUserCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input vault.CollectionForm
+	var input collectionSave
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 
-	if err := s.validateInlineCatalogs(r.Context(), &input); err != nil {
+	if err := s.validateInlineCatalogs(r.Context(), &input.CollectionForm); err != nil {
 		writeVaultError(w, "updateUserCollection", err, nil, "", "failed to update collection")
 		return
 	}
 
-	collection, err := s.vault.UpdateUserCollection(r.Context(), profileID, collectionID, input)
+	collection, err := s.vault.UpdateUserCollection(r.Context(), profileID, collectionID, input.Revision, input.CollectionForm)
 	if err != nil {
 		writeVaultError(w, "updateUserCollection", err, vault.ErrCollectionNotFound, "collection not found", "failed to update collection")
 		return

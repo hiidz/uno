@@ -54,6 +54,9 @@ export interface CatalogFormState {
    *  sent: a catalog's scope is set when it is created and is not part of a
    *  `PUT`. */
   collectionID: string | null
+  /** The revision of the row the form was built from (`formFromCatalog`),
+   *  which the editor's save sends; 0 for a form no row built. Never edited. */
+  revision: number
 }
 
 /** TMDB's complete `sort_by` enum per discover endpoint. Mirrors
@@ -115,7 +118,7 @@ export function serializeSortBy(field: string, direction: 'asc' | 'desc'): strin
 }
 
 export function emptyForm(type: CatalogType = 'movie', collectionID: string | null = null): CatalogFormState {
-  return { name: '', type, dateMode: 'any', sourceMode: 'filters', params: {}, collectionID }
+  return { name: '', type, dateMode: 'any', sourceMode: 'filters', params: {}, collectionID, revision: 0 }
 }
 
 function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
@@ -138,6 +141,7 @@ export function formFromCatalog(catalog: Catalog): CatalogFormState {
     sourceMode: catalog.type === 'movie' && params.with_collection ? 'collection' : 'filters',
     params,
     collectionID: catalog.collection_id,
+    revision: catalog.revision,
   }
 }
 

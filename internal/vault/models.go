@@ -45,6 +45,10 @@ type Catalog struct {
 	// Discover only. A read sets it only while HomeSortOrder is non-nil, so it
 	// is false for every catalog off Home.
 	ShowInHome bool `json:"show_in_home"`
+	// Revision rises by one with each content write to the row, from 1 when it
+	// is made. A catalog editor's save carries the revision it was built from,
+	// and a save from any other is refused (UpdateUserCatalog).
+	Revision int64 `json:"revision"`
 	// RecipeHash is this catalog's recipe's hash (see RecipeHash), which
 	// every catalog with the same recipe shares, computed when the row is
 	// read; never on the wire.
@@ -97,6 +101,10 @@ type Collection struct {
 	// screen, one numbering shared with the catalogs there; nil means it isn't
 	// on Home. On the wire as home_position, null when off Home.
 	HomeSortOrder *int `json:"home_position"`
+	// Revision rises by one with each content write to the row, from 1 when it
+	// is made. A collection editor's save carries the revision it was built
+	// from, and a save from any other is refused (UpdateUserCollection).
+	Revision int64 `json:"revision"`
 	// Publication is this collection's own publication, and Subscription the
 	// publication it is a subscribed copy of; each is nil when there is none.
 	Publication  *PublicationState  `json:"publication"`

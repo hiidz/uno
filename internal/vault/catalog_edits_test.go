@@ -15,7 +15,7 @@ func scopedCatalogInFolder(t *testing.T, db *DB, owner, collectionID uuid.UUID, 
 	t.Helper()
 	ctx := context.Background()
 	catalog := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm(name))
-	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(catalog.ID)}},
 	})
@@ -52,7 +52,7 @@ func TestUpdateUserCollectionAppliesCatalogEdits(t *testing.T) {
 	edit := editOf(catalog)
 	edit.Name = "After"
 	edit.Params = `{"sort_by":"popularity.desc"}`
-	got, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	got, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "Renamed", ViewMode: "TABBED_GRID",
 		Folders:      sameFolders(saved),
 		CatalogEdits: []ScopedCatalogEdit{edit},
@@ -117,7 +117,7 @@ func TestUpdateUserCollectionRefusedCatalogEditWritesNothing(t *testing.T) {
 			if tt.bad.ID == catalog.ID {
 				edits = []ScopedCatalogEdit{tt.bad}
 			}
-			_, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+			_, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 				Title: "Renamed", ViewMode: "TABBED_GRID",
 				Folders:      sameFolders(saved),
 				CatalogEdits: edits,
@@ -164,7 +164,7 @@ func TestUpdateUserCollectionSkipsNoOpCatalogEdit(t *testing.T) {
 	}
 	save := func(edit ScopedCatalogEdit) {
 		t.Helper()
-		if _, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+		if _, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 			Title: "My Collection", ViewMode: "TABBED_GRID",
 			Folders:      sameFolders(saved),
 			CatalogEdits: []ScopedCatalogEdit{edit},

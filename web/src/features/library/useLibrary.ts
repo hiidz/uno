@@ -9,7 +9,7 @@ import {
   ProfileNotSelectedError,
   queryKeys,
 } from '@/api'
-import type { Catalog, CertificationsByCountry, Collection, Folder, Genre, Language, PendingChange } from '@/api'
+import type { Catalog, CertificationsByCountry, Collection, Folder, Genre, Language, LibraryData, PendingChange } from '@/api'
 import { buildCountryLookup, type CountryLookup } from '@/features/catalogs/countries'
 import { buildGenreLookup, type GenreLookup } from './recipe'
 
@@ -67,6 +67,9 @@ export interface Library {
   /** What a push of the stored Home would change in Nuvio; `undefined` until
    *  the library loads. */
   pending: PendingChange[] | undefined
+  /** The `home_revision` a push of the stored Home carries; 0 until the
+   *  library loads. */
+  homeRevision: number
   isLoading: boolean
   /** Only set while the library has no rows to show — see `error` below. */
   error: Error | null
@@ -172,6 +175,7 @@ export function useLibrary(profileIndex: number): Library {
     languages,
     countryNames,
     pending: owned.data?.pending,
+    homeRevision: homeRevisionOf(owned.data),
     isLoading: owned.isPending,
     // A failed background refetch keeps the rows it already had, so only a
     // query with nothing to show counts as failed. A profile-not-selected 404
@@ -183,4 +187,10 @@ export function useLibrary(profileIndex: number): Library {
     loaded: owned.data !== undefined,
     refetch: () => void owned.refetch(),
   }
+}
+
+/** The `home_revision` `data` carries, 0 before the library has loaded. */
+function homeRevisionOf(data: LibraryData | undefined): number {
+  if (data === undefined) return 0
+  return data.home_revision
 }

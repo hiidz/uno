@@ -20,11 +20,14 @@ import (
 )
 
 // pushRequest is POST /api/p/{i}/push's body: the full pending home screen
-// as one ordered list of rows. The Home selection is only ever written here,
-// in one transaction, after Nuvio has accepted the push. See the "HTTP
-// surface" section of docs/architecture.md.
+// as one ordered list of rows, and the home_revision the tab's Home was built
+// from. An absent home_revision decodes as 0, which no profile is at, so the
+// push is refused as stale. The Home selection is only ever written here, in
+// one transaction, after Nuvio has accepted the push. See the "HTTP surface"
+// section of docs/architecture.md.
 type pushRequest struct {
-	Rows []pushRow `json:"rows"`
+	Rows         []pushRow `json:"rows"`
+	HomeRevision int64     `json:"home_revision"`
 }
 
 // pushRow is one row of the pending Home, in Home order: a catalog, with
@@ -88,10 +91,13 @@ func (body pushRequest) selection() (vault.PushedHome, error) {
 // UndoFailed marks the one case that guarantee doesn't cover: an undo that
 // failed too (undoPush). Refused names why push turned the selection away
 // before contacting Nuvio, when the SPA has words of its own for it.
+// HomeRevision, on a success only, is the profile's home_revision the push
+// raised it to: what the tab's next push is built from.
 type pushResult struct {
-	Success    bool   `json:"success"`
-	UndoFailed bool   `json:"undo_failed,omitempty"`
-	Refused    string `json:"refused,omitempty"`
+	Success      bool   `json:"success"`
+	UndoFailed   bool   `json:"undo_failed,omitempty"`
+	Refused      string `json:"refused,omitempty"`
+	HomeRevision int64  `json:"home_revision,omitempty"`
 }
 
 // The pushResult.Refused values.
@@ -191,11 +197,40 @@ func (s *Server) pushLocked(ctx context.Context, w http.ResponseWriter, profile 
 		return
 	}
 
-	if s.refusePush(ctx, w, accessToken, profile, record) {
+	if s.refusePushFrom(ctx, w, accessToken, profile, body.HomeRevision, record) {
 		return
 	}
 	status, result := s.sendPush(ctx, accessToken, profile, record)
 	httpx.WriteJSON(w, status, result)
+}
+
+// refusePushFrom is refusePush for a push built from homeRevision: a Home
+// another push has changed since (refuseStaleHome) is refused first.
+func (s *Server) refusePushFrom(ctx context.Context, w http.ResponseWriter, accessToken string, profile vault.Profile, homeRevision int64, record vault.PushRecord) bool {
+	if s.refuseStaleHome(ctx, w, profile.ID, homeRevision) {
+		return true
+	}
+	return s.refusePush(ctx, w, accessToken, profile, record)
+}
+
+// refuseStaleHome answers a push built from homeRevision when profileID's
+// home_revision is another now, and reports whether it did: a 409 with no
+// Refused value, before anything reaches Nuvio. It reads the revision from
+// the vault while push holds the profile's push lock, never from the profile
+// requireProfile loaded before it, so two tabs pushing from one Home can't
+// both pass: only push raises it, one push at a time.
+func (s *Server) refuseStaleHome(ctx context.Context, w http.ResponseWriter, profileID uuid.UUID, homeRevision int64) bool {
+	current, err := s.vault.HomeRevision(ctx, profileID)
+	switch {
+	case err != nil:
+		log.Printf("push: reading the home revision: %v", err)
+		httpx.WriteJSON(w, http.StatusInternalServerError, pushResult{})
+	case current != homeRevision:
+		httpx.WriteJSON(w, http.StatusConflict, pushResult{})
+	default:
+		return false
+	}
+	return true
 }
 
 // refusePush answers a push that can't go ahead as it stands, and reports
@@ -314,11 +349,12 @@ func (s *Server) sendPush(ctx context.Context, accessToken string, profile vault
 
 	settleCtx, cancelSettle := context.WithTimeout(ctx, pushSettleBudget)
 	defer cancelSettle()
-	if err := s.vault.SavePush(settleCtx, profile.ID, record); err != nil {
+	homeRevision, err := s.vault.SavePush(settleCtx, profile.ID, record)
+	if err != nil {
 		log.Printf("push: local commit failed after nuvio succeeded, reverting: %v", err)
 		return undoPush(settleCtx, http.StatusInternalServerError, reverts...)
 	}
-	return http.StatusOK, pushResult{Success: true}
+	return http.StatusOK, pushResult{Success: true, HomeRevision: homeRevision}
 }
 
 // pushStepsBudget bounds a push's steps against Nuvio; pushSettleBudget bounds

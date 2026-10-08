@@ -10,6 +10,7 @@ import (
 
 	"github.com/hiidz/uno/internal/httpx"
 	"github.com/hiidz/uno/internal/provider"
+	"github.com/hiidz/uno/internal/tmdbkey"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -70,7 +71,7 @@ func (s *Server) requireNuvioAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		ctx := withNuvioUserID(r.Context(), claims.Sub)
 		ctx = withNuvioToken(ctx, token)
-		ctx = provider.WithKeySource(ctx, s.keys.ForAccount(ctx, claims.Sub))
+		ctx = provider.WithKeySource(ctx, s.keys.ForAccount(ctx, tmdbkey.Provider, claims.Sub))
 		ctx = provider.WithCaller(ctx, "account:"+claims.Sub)
 		next(w, r.WithContext(ctx))
 	}

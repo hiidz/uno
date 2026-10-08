@@ -46,7 +46,7 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 	folder.FocusGIFEnabled = false
 	folder.HeroVideoURL = ""
 	folder.TitleLogoURL = "https://example.com/logo2.png"
-	updated, err := db.UpdateUserCollection(ctx, owner, created.ID, CollectionForm{
+	updated, err := db.UpdateUserCollection(ctx, owner, created.ID, collectionRevision(t, db, created.ID), CollectionForm{
 		Title: "C", ViewMode: "TABBED_GRID",
 		FocusGlowEnabled: false,
 		Folders:          []FolderData{folder},

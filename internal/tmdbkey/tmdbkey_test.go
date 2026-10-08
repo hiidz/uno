@@ -21,21 +21,22 @@ func testBox(t *testing.T, fill byte) *Box {
 	return b
 }
 
-// A sealed key opens for its account under the same secret, and for no
-// other account, under no other secret, and not once tampered with.
+// A sealed key opens for its provider and account under the same secret,
+// and for no other provider or account, under no other secret, and not once
+// tampered with.
 func TestBoxRoundTrip(t *testing.T) {
 	b := testBox(t, 1)
-	sealed, err := b.Seal("acct", "0123456789abcdef0123456789abcdef")
+	sealed, err := b.Seal(Provider, "acct", "0123456789abcdef0123456789abcdef")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(sealed, []byte("0123456789abcdef")) {
 		t.Fatal("the sealed key holds the key")
 	}
-	if key, err := b.Open("acct", sealed); err != nil || key != "0123456789abcdef0123456789abcdef" {
+	if key, err := b.Open(Provider, "acct", sealed); err != nil || key != "0123456789abcdef0123456789abcdef" {
 		t.Fatalf("Open = %q, %v; want the key", key, err)
 	}
-	again, _ := b.Seal("acct", "0123456789abcdef0123456789abcdef")
+	again, _ := b.Seal(Provider, "acct", "0123456789abcdef0123456789abcdef")
 	if bytes.Equal(again, sealed) {
 		t.Error("sealing twice gave the same bytes; want a fresh nonce each time")
 	}
@@ -43,10 +44,11 @@ func TestBoxRoundTrip(t *testing.T) {
 	tampered := bytes.Clone(sealed)
 	tampered[len(tampered)-1] ^= 1
 	for name, open := range map[string]func() (string, error){
-		"another account": func() (string, error) { return b.Open("other", sealed) },
-		"another secret":  func() (string, error) { return testBox(t, 2).Open("acct", sealed) },
-		"tampered":        func() (string, error) { return b.Open("acct", tampered) },
-		"too short":       func() (string, error) { return b.Open("acct", sealed[:4]) },
+		"another account":  func() (string, error) { return b.Open(Provider, "other", sealed) },
+		"another provider": func() (string, error) { return b.Open("imdb", "acct", sealed) },
+		"another secret":   func() (string, error) { return testBox(t, 2).Open(Provider, "acct", sealed) },
+		"tampered":         func() (string, error) { return b.Open(Provider, "acct", tampered) },
+		"too short":        func() (string, error) { return b.Open(Provider, "acct", sealed[:4]) },
 	} {
 		if key, err := open(); err == nil {
 			t.Errorf("%s: opened as %q, want a failure", name, key)
@@ -107,42 +109,42 @@ func TestKeysSources(t *testing.T) {
 	const key = "0123456789abcdef0123456789abcdef"
 
 	for name, src := range map[string]provider.KeySource{
-		"account": keys.ForAccount(ctx, "acct"),
-		"token":   keys.ForToken(ctx, profile.Token),
-		"sealed":  keys.Sealed("acct", nil),
+		"account": keys.ForAccount(ctx, Provider, "acct"),
+		"token":   keys.ForToken(ctx, Provider, profile.Token),
+		"sealed":  keys.Sealed(Provider, "acct", nil),
 	} {
 		if _, err := src(); !errors.Is(err, provider.ErrNoKey) {
 			t.Errorf("%s before a key: %v, want ErrNoKey", name, err)
 		}
 	}
 
-	stored, err := keys.Seal("acct", key)
+	stored, err := keys.Seal(Provider, "acct", key)
 	if err != nil || stored.Last4 != "cdef" {
 		t.Fatalf("Seal = %+v, %v; want last4 cdef", stored, err)
 	}
-	if err := db.SetAccountKey(ctx, "acct", stored); err != nil {
+	if err := db.SetAccountKey(ctx, "acct", Provider, stored); err != nil {
 		t.Fatal(err)
 	}
 	for name, src := range map[string]provider.KeySource{
-		"account": keys.ForAccount(ctx, "acct"),
-		"token":   keys.ForToken(ctx, profile.Token),
-		"sealed":  keys.Sealed("acct", stored.Sealed),
+		"account": keys.ForAccount(ctx, Provider, "acct"),
+		"token":   keys.ForToken(ctx, Provider, profile.Token),
+		"sealed":  keys.Sealed(Provider, "acct", stored.Sealed),
 	} {
 		if got, err := src(); err != nil || got != key {
 			t.Errorf("%s with a key = %q, %v; want the key", name, got, err)
 		}
 	}
 
-	if _, err := keys.ForToken(ctx, "no-such-token")(); !errors.Is(err, vault.ErrProfileNotFound) {
+	if _, err := keys.ForToken(ctx, Provider, "no-such-token")(); !errors.Is(err, vault.ErrProfileNotFound) {
 		t.Errorf("unknown token: %v, want ErrProfileNotFound", err)
 	}
 	rekeyed := New(testBox(t, 2), db)
-	if _, err := rekeyed.ForAccount(ctx, "acct")(); !errors.Is(err, provider.ErrKeyRejected) || strings.Contains(err.Error(), key) {
+	if _, err := rekeyed.ForAccount(ctx, Provider, "acct")(); !errors.Is(err, provider.ErrKeyRejected) || strings.Contains(err.Error(), key) {
 		t.Errorf("under another secret: %v, want ErrKeyRejected without the key", err)
 	}
 
 	var shared *Keys
-	if shared.ForAccount(ctx, "acct") != nil || shared.ForToken(ctx, "t") != nil || shared.Sealed("acct", nil) != nil {
+	if shared.ForAccount(ctx, Provider, "acct") != nil || shared.ForToken(ctx, Provider, "t") != nil || shared.Sealed(Provider, "acct", nil) != nil {
 		t.Error("nil Keys gave a source; want nil, the shared key's")
 	}
 }

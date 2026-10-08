@@ -28,8 +28,8 @@ const isShown = (entry: HomeEntry) => entry.kind === 'catalog' && entry.showInHo
 const ids = (entries: { id: string }[]) => entries.map((entry) => entry.id)
 
 describe('toPushPayload', () => {
-  it('sends every row in Home order, a catalog with its home flag and a collection with its Show first', () => {
-    expect(toPushPayload({ rows: [shown('b'), after('y'), discover('a'), first('x'), shown('c')] })).toEqual({
+  it('sends every row in Home order, a catalog with its home flag and a collection with its Show first, and the revision the Home was built from', () => {
+    expect(toPushPayload({ rows: [shown('b'), after('y'), discover('a'), first('x'), shown('c')] }, 7)).toEqual({
       rows: [
         { catalog_id: 'b', show_in_home: true },
         { collection_id: 'y', pin_to_top: false },
@@ -37,11 +37,12 @@ describe('toPushPayload', () => {
         { collection_id: 'x', pin_to_top: true },
         { catalog_id: 'c', show_in_home: true },
       ],
+      home_revision: 7,
     })
   })
 
   it('sends an empty list for an empty Home, never omitting it', () => {
-    expect(toPushPayload({ rows: [] })).toEqual({ rows: [] })
+    expect(toPushPayload({ rows: [] }, 1)).toEqual({ rows: [], home_revision: 1 })
   })
 })
 

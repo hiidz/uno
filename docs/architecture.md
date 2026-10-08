@@ -209,9 +209,10 @@ silent auto-provision.
 Route-semantics facts the client has to honour:
 
 - **The library is one read: `GET /api/p/{i}/library`** (`getLibrary`,
-  `internal/api/library.go`) answers `{catalogs, collections, pending}`: the listed catalogs
-  (`GetUserCatalogs`), the collections with their folders and catalogs (`GetUserCollections`),
-  and what a push would change in Nuvio (`PendingPush`, below). The builder's lists have no
+  `internal/api/library.go`) answers `{catalogs, collections, pending, home_revision}`: the listed
+  catalogs (`GetUserCatalogs`), the collections with their folders and catalogs
+  (`GetUserCollections`), what a push would change in Nuvio (`PendingPush`, below), and the
+  `home_revision` the next push is built from (*Push*). The builder's lists have no
   other GET: the catalog and collection routes keep their writes, and `push/pending` is gone.
   It is unpaged, so a profile is capped at 200 listed catalogs and 50 collections
   (`internal/vault/limits.go`). Every path that adds a row checks it inside its own transaction:
@@ -219,8 +220,19 @@ Route-semantics facts the client has to honour:
   Duplicate and an import, which is refused whole. The refusal is a 400 (`ErrInvalidInput`). A
   collection's scoped catalogs don't count, and a profile already past a cap still reads, pushes,
   saves and deletes.
-  The three reads are separate vault calls, so a write landing between them can show in one part
-  and not another until the next read.
+  `GetLibrary` reads all four in one snapshot, so the pending list describes the very rows the
+  lists hold, and the `home_revision` the Home positions they carry.
+- **A save carries the revision it was built from.** Every catalog and collection row carries
+  `revision`, which each content write raises by one in its own transaction (`docs/data-model.md`
+  → *Revisions*). `PUT /api/p/{i}/catalogs/{id}` and `.../collections/{id}` take the form plus
+  the `revision` the editor opened at (`catalogSave`, `collectionSave`); a save at any other is
+  refused with `409 {"error": "Error saving."}`, writing nothing (`vault.ErrStale`, checked
+  inside the write's transaction by `writeCatalogAt` and `updateCollectionTxAt`). An absent
+  `revision` decodes as 0, which no row is at, so a tab loaded before revisions existed is refused
+  rather than overwriting. A collection's revision guards the catalogs scoped to it too: only its
+  save and an Update of a collection copy write them, and `catalog_edits` carry none. Update
+  writes a copy with no revision to check. A `DELETE` takes none: a delete from a stale tab still
+  deletes.
 - **The Home selection is read from the library and written only by push.** Each owned row
   carries its place on Home as `home_position`, with a catalog's `show_in_home` and a
   collection's `pin_to_top`; a row whose `home_position` is `null` is off Home. The whole pending
@@ -614,11 +626,14 @@ no key, and each call's comes from its context (`provider.WithKeySource`):
   changed) is treated as rejected, since its owner fixes it the same way. The builder answers
   both key problems `422` with fixed words (`keyFailures`): a status nothing else in the API
   answers, so the SPA can tell it apart — not `401` (the SPA refreshes and retries), `403` (the
-  access refusal) or `409` (Already added). The addon routes answer `502`, as for any
+  access refusal) or `409` (Already added, or a stale save). The addon routes answer `502`, as for any
   upstream failure, but log a key problem as the profile owner's key, apart from TMDB failing
   (`logTMDBFailure`): a keyless owner's TV asks for every row on every load.
-- **Storage.** `internal/tmdbkey` seals a key with AES-256-GCM under `UNO_SECRET`, bound to the
-  account id as additional data (`Box`), for `accounts` (`docs/data-model.md`). A key is never
+- **Storage.** `internal/tmdbkey` seals a key with AES-256-GCM under `UNO_SECRET`, bound to its
+  provider and account by `uno-account-key/1\0{provider}\0{account}` as additional data
+  (`Box`), so a sealed key copied to another provider's or another account's row doesn't open. It
+  is stored in `account_keys`, one row per account and provider (`docs/data-model.md`), and every
+  read names its provider (`tmdbkey.Provider` for the TMDB keys). A key is never
   returned, never logged, and only ever sent to TMDB: a failed request's error drops its URL,
   which holds `api_key`, before anything wraps or logs it (`withoutURL`).
 - **Routes.** `GET /api/config` (no sign-in) says the mode. `GET`, `PUT` and `DELETE
@@ -785,7 +800,9 @@ same way wherever it is judged. `validateCatalogParams` wraps a rejected recipe 
 `defaultMsg`, which would blame Uno for a TMDB outage). `clientErrors`, a `clientFailure` table
 read by `clientFailureOf`, maps the errors the caller can act on: a key problem → `422` in fixed
 words (`keyFailures`, *TMDB keys*), then the vault errors, each answered with its own message:
-`ErrInvalidInput` → `400`, `ErrConflict` → `409` (a second subscribe). Preview and
+`ErrInvalidInput` → `400`, `ErrConflict` → `409` (a second subscribe). `ErrStale` → `409` with the fixed
+`"Error saving."` and no `code`: an editor's save built from a row another write has changed since
+(*HTTP surface*). Preview and
 genre-options classify what TMDB answers after validation the same way (`previewErrors`). The `403` of the access policy comes from
 the middleware, before any handler (*Access*). `writeNuvioError`
 delegates to `nuvioErrorStatus` so push's answers and the others classify Nuvio
@@ -956,7 +973,8 @@ self-host build `39ea2bd` (2026-10-03).
 ### Push
 
 `POST /api/p/{profileIndex}/push` (`internal/api/push.go`). Body is the full pending Home as one
-ordered list, `{rows: [{catalog_id, show_in_home} | {collection_id, pin_to_top}]}`: a row's place
+ordered list and the `home_revision` it was built from,
+`{rows: [{catalog_id, show_in_home} | {collection_id, pin_to_top}], home_revision}`: a row's place
 in `rows` is its place on Home, which push stores as its `home_sort_order` (`pushRequest.selection`,
 which turns the list into the vault's Home selection, `vault.PushedHome`, each entry with its
 `Position`). A row naming neither a catalog nor a collection, or both, is a 400, and so is a row
@@ -969,9 +987,10 @@ is part of the selection, not of a collection save: push builds each collection 
 its entry's pin and stores that pin in its local write, which is the only place `pin_to_top` is
 written. A collection push leaves off Home keeps its last pin. Response, past auth and
 profile resolution and once the body has decoded, is JSON and deliberately flat:
-`{success, undo_failed?, refused?}` — no partial-progress flags, because the
+`{success, undo_failed?, refused?, home_revision?}` — no partial-progress flags, because the
 ordering below and the undo of what Nuvio already took guarantee an ordinary failure means
-nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has words for:
+nothing changed at all. A success answers the `home_revision` the push raised the profile to,
+which the tab's next push carries. `refused` names a refusal of step 2 or 3 the SPA has words for:
 `empty_collection`, `shares_addons`, `profile_changed`, `home_order_unreadable` or
 `too_many_catalogs`.
 
@@ -981,7 +1000,14 @@ nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has wor
    profile may not put on Home: not its own, or a catalog scoped to a collection. *Load-bearing,
    not a fail-fast nicety* — with the write moved to the end, this is the only check standing
    between the request body and a third-party API call.
-2. `refusePush` — turn the push away before any write reaches Nuvio when:
+2. `refusePushFrom` — turn the push away before any write reaches Nuvio when (the first case
+   `refuseStaleHome`'s, the rest `refusePush`'s):
+   - the Home it was built from is stale: the body's `home_revision` isn't the profile's now
+     (`refuseStaleHome`, `409` with a plain `{success: false}` and no `refused` value, so the SPA
+     shows its generic failure). It is read from the vault after `lockPush` is taken, never from
+     the profile `requireProfile` loaded before it: only push raises it (`SavePush`), one push at
+     a time per profile, so two tabs pushing from one Home can't both pass. An absent
+     `home_revision` decodes as 0, which no profile is at;
    - a collection it sends has no folders (`400`, `refused: empty_collection`): Nuvio's phone and
      desktop apps leave one off Home, and Nuvio TV has no guard against one;
    - the record gives Nuvio more than 1,000 catalogs, those on Home and those its collections'
@@ -1015,8 +1041,9 @@ nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has wor
 5. `pushCollections` — pull, merge, push (detail below).
 6. `pushHomeOrder` — push the list step 3 merged. Its rows name the addon's catalogs and the
    collections steps 4 and 5 put there.
-7. One local transaction writing both selections and the push record, committing at the very
-   end.
+7. One local transaction writing both selections and the push record and raising the profile's
+   `home_revision` (`SavePush`, `writePushedHome`), committing at the very end. The new revision
+   is what a success answers.
 
 `sendPush` runs steps 3–6 as one list of `pushStep`s on a `pushRun`, each returning how to put
 back what it wrote.
@@ -1136,8 +1163,8 @@ server's 60s `WriteTimeout`, so the SPA hears how it ended rather than reporting
 per-profile lock (`lockPush`) runs one push at a time: two interleaved pushes would each
 full-replace Nuvio's lists step by step, and one's undo would put back what the other replaced. A
 push that waits out `pushLockWait` behind another is a 503, which the SPA reports as an ordinary
-failure. Nothing checks that a push was built from the latest one: a tab holding a Home baseline
-from before another tab's push sends its own full list over it.
+failure. A tab holding a Home baseline from before another tab's push is refused at step 2
+(`refuseStaleHome`) rather than sending its own full list over it; the user refreshes the page.
 
 **Lost updates, accepted.** A change made in Nuvio between push's pull and its push of the same
 resource — a collection edited or Home reordered in a Nuvio app — gets clobbered. The window is

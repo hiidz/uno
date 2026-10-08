@@ -241,7 +241,7 @@ func TestDuplicateCollectionBoundsTheSuffixedTitle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("duplicate a title with room for the suffix: %v", err)
 	}
-	if _, err := db.UpdateUserCollection(ctx, owner, copied.ID, CollectionForm{
+	if _, err := db.UpdateUserCollection(ctx, owner, copied.ID, collectionRevision(t, db, copied.ID), CollectionForm{
 		Title: copied.Title, ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1"}},
 	}); err != nil {
@@ -367,7 +367,7 @@ func TestBuilderWritesStoreNormalizedValues(t *testing.T) {
 	if listed.Name != "Listed" || reloadCatalog(t, db, listed.ID).Name != "Listed" {
 		t.Errorf("created catalog name = %q, want it trimmed", listed.Name)
 	}
-	renamed, err := db.UpdateUserCatalog(ctx, owner, listed.ID, listedCatalogForm(" Renamed "))
+	renamed, err := db.UpdateUserCatalog(ctx, owner, listed.ID, catalogRevision(t, db, listed.ID), listedCatalogForm(" Renamed "))
 	if err != nil {
 		t.Fatalf("UpdateUserCatalog: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestBuilderWritesStoreNormalizedValues(t *testing.T) {
 	form := paddedForm(FolderCatalogRef{CatalogID: &listed.ID}, FolderCatalogRef{CatalogID: &edited.ID})
 	form.Folders[0].ID = &stored.Folders[0].ID
 	form.CatalogEdits = []ScopedCatalogEdit{{ID: edited.ID, Type: edited.Type, Provider: edited.Provider, Name: " Scoped 2 ", Params: edited.Params}}
-	updated, err := db.UpdateUserCollection(ctx, owner, created.ID, form)
+	updated, err := db.UpdateUserCollection(ctx, owner, created.ID, collectionRevision(t, db, created.ID), form)
 	if err != nil {
 		t.Fatalf("UpdateUserCollection: %v", err)
 	}
@@ -611,11 +611,11 @@ func TestOverCapCollectionStaysReadable(t *testing.T) {
 		t.Errorf("a push record with the over-cap collection = %v, want it built", err)
 	}
 	saved := saveFormOf(stored)
-	if _, err := db.UpdateUserCollection(ctx, owner, created.ID, saved); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "holds more than 20 catalogs") {
+	if _, err := db.UpdateUserCollection(ctx, owner, created.ID, collectionRevision(t, db, created.ID), saved); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "holds more than 20 catalogs") {
 		t.Errorf("save of the over-cap collection = %v, want refused", err)
 	}
 	saved.Folders[0].Catalogs = saved.Folders[0].Catalogs[:maxRefsPerFolder]
-	if _, err := db.UpdateUserCollection(ctx, owner, created.ID, saved); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, owner, created.ID, collectionRevision(t, db, created.ID), saved); err != nil {
 		t.Errorf("save once trimmed = %v, want it saved", err)
 	}
 }

@@ -143,6 +143,10 @@ export interface CollectionFormState {
   /** Keyed by catalog id. An edit that would leave its catalog as saved is
    *  removed rather than kept, so undoing one leaves the form clean. */
   catalogEdits: Record<string, CatalogEditState>
+  /** The revision of the collection the form was built from
+   *  (`formFromCollection`), which the editor's save sends; 0 for a form no
+   *  row built. Never edited. */
+  revision: number
 }
 
 let folderKeySeq = 0
@@ -195,6 +199,7 @@ export function emptyCollectionForm(): CollectionFormState {
     focusGlowEnabled: true,
     folders: [],
     catalogEdits: {},
+    revision: 0,
   }
 }
 
@@ -235,6 +240,7 @@ export function formFromCollection(collection: Collection): CollectionFormState 
     focusGlowEnabled: collection.focus_glow_enabled,
     folders: (collection.folders ?? []).map(groupedFolderFromWire),
     catalogEdits: {},
+    revision: collection.revision,
   }
 }
 

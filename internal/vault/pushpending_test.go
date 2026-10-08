@@ -39,7 +39,7 @@ func newPendingFixture(t *testing.T) pendingFixture {
 	f.listed = create("In a folder", "{}")
 	f.collection = newTestCollection(t, f.db, f.owner, "Pushed")
 	f.scoped = createScopedCatalog(t, f.db, f.owner, f.collection, listedCatalogForm("Scoped"))
-	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.collection, CollectionForm{
+	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.collection, collectionRevision(t, f.db, f.collection), CollectionForm{
 		Title: "Pushed", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(f.listed.ID, f.scoped.ID)}},
 	}); err != nil {
@@ -63,7 +63,7 @@ func (f pendingFixture) rename(t *testing.T, c Catalog, name, params string) {
 	t.Helper()
 	form := listedCatalogForm(name)
 	form.Params = params
-	if _, err := f.db.UpdateUserCatalog(context.Background(), f.owner, c.ID, form); err != nil {
+	if _, err := f.db.UpdateUserCatalog(context.Background(), f.owner, c.ID, catalogRevision(t, f.db, c.ID), form); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -124,7 +124,7 @@ func TestAFolderCatalogEditWaitsAsItsCollection(t *testing.T) {
 	wantPending(t, f.pending(t), want)
 
 	f.rename(t, f.listed, "In a folder", "{}")
-	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.collection, CollectionForm{
+	if _, err := f.db.UpdateUserCollection(ctx, f.owner, f.collection, collectionRevision(t, f.db, f.collection), CollectionForm{
 		Title: "Pushed", ViewMode: "TABBED_GRID",
 		Folders:      []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: CatalogRefs(f.listed.ID, f.scoped.ID)}},
 		CatalogEdits: []ScopedCatalogEdit{{ID: f.scoped.ID, Type: "movie", Provider: "tmdb", Name: "Scoped", Params: f.changed}},
@@ -177,7 +177,7 @@ func TestAddonReadsHoldUntilThePush(t *testing.T) {
 	f.rename(t, f.home, "Edited", f.changed)
 	form := listedCatalogForm("From Community, updated")
 	form.Params = f.changed
-	if _, err := f.db.UpdateUserCatalog(ctx, publisher, source.ID, form); err != nil {
+	if _, err := f.db.UpdateUserCatalog(ctx, publisher, source.ID, catalogRevision(t, f.db, source.ID), form); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.db.PublishCatalog(ctx, publisher, source.ID); err != nil {

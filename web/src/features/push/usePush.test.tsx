@@ -26,6 +26,7 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 const home = vi.hoisted(() => ({
   ready: true,
   state: null as unknown as HomeState,
+  homeRevision: 5,
   snapshot: vi.fn(),
   markPushed: vi.fn(),
 }))
@@ -76,7 +77,7 @@ describe('usePush', () => {
     expect(api.pushSelection).not.toHaveBeenCalled()
   })
 
-  it('sends the selection as it was when pressed, and acknowledges only that', async () => {
+  it('sends the selection as it was when pressed with its home revision, and acknowledges only that with the revision the push answered', async () => {
     const answer = deferred<PushResult>()
     api.pushSelection.mockReturnValue(answer.promise)
     const cached = [queryKeys.library(4)]
@@ -84,14 +85,14 @@ describe('usePush', () => {
     const { result } = renderPush()
 
     act(() => result.current.push())
-    expect(api.pushSelection).toHaveBeenCalledWith(4, toPushPayload(PUSHED))
+    expect(api.pushSelection).toHaveBeenCalledWith(4, toPushPayload(PUSHED, 5))
     expect(result.current.pushing).toBe(true)
 
     // An edit made while the push is in flight.
     home.state = { rows: PUSHED.rows.slice(0, 1) }
 
-    await act(async () => answer.resolve({ success: true }))
-    expect(home.markPushed).toHaveBeenCalledWith(PUSHED)
+    await act(async () => answer.resolve({ success: true, home_revision: 6 }))
+    expect(home.markPushed).toHaveBeenCalledWith(PUSHED, 6)
     expect(result.current.pushing).toBe(false)
     expect(result.current.outcome).toEqual({ kind: 'success' })
     for (const queryKey of cached) {
@@ -110,8 +111,8 @@ describe('usePush', () => {
     })
     expect(api.pushSelection).toHaveBeenCalledTimes(1)
 
-    await act(async () => answer.resolve({ success: true }))
-    api.pushSelection.mockResolvedValueOnce({ success: true })
+    await act(async () => answer.resolve({ success: true, home_revision: 6 }))
+    api.pushSelection.mockResolvedValueOnce({ success: true, home_revision: 7 })
     await act(async () => result.current.push())
     expect(api.pushSelection).toHaveBeenCalledTimes(2)
   })

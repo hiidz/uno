@@ -26,6 +26,9 @@ var (
 	// second subscription to one publication. Its message is safe to show the
 	// client.
 	ErrConflict = errors.New("conflict")
+	// ErrStale is an editor's save built from a row a later write has
+	// changed since: the revision it carries isn't the row's now.
+	ErrStale = errors.New("stale revision")
 )
 
 var validCatalogTypes = map[string]bool{

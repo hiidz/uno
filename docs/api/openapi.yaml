@@ -304,9 +304,10 @@ paths:
       description: |
         Everything the builder shows for a profile in one read: its listed
         catalogs (none scoped to a collection), its collections with their
-        folders and catalogs, and the rows a push of the stored Home would
-        change in Nuvio. Unpushed Home edits live in the builder and are not
-        in it. It is not paged: a profile holds at most 200 listed catalogs and
+        folders and catalogs, the rows a push of the stored Home would change
+        in Nuvio, and the `home_revision` a push of that Home carries, all
+        read in one snapshot. Unpushed Home edits live in the builder and are
+        not in it. It is not paged: a profile holds at most 200 listed catalogs and
         50 collections, and a write that would add past either is a `400`.
       responses:
         "200":
@@ -362,13 +363,15 @@ paths:
       description: |
         Rewrites a listed catalog. A catalog scoped to a collection is saved
         through its collection's `catalog_edits` instead. An update never
-        changes a catalog's scope.
+        changes a catalog's scope. The body carries the `revision` the editor
+        opened at; a save at any other, or with none, is a 409 and writes
+        nothing.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CatalogForm"
+              $ref: "#/components/schemas/CatalogSave"
       responses:
         "200":
           description: Saved.
@@ -380,6 +383,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StaleSave" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
@@ -526,13 +530,16 @@ paths:
       description: |
         Rewrites the collection, its folders and, through `catalog_edits`, its
         scoped catalogs in one transaction. A subscribed copy can't be saved
-        (400). Every inline recipe is checked against TMDB first.
+        (400). Every inline recipe is checked against TMDB first. The body
+        carries the `revision` the editor opened at, which also guards the
+        scoped catalogs; a save at any other, or with none, is a 409 and
+        writes nothing.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CollectionForm"
+              $ref: "#/components/schemas/CollectionSave"
       responses:
         "200":
           description: Saved.
@@ -544,6 +551,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/StaleSave" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/TMDBUnavailable" }
@@ -972,7 +980,9 @@ paths:
         Writes Uno's addon, its collections and the home-order list into the
         Nuvio profile, then stores the Home selection and what was sent. The
         body is the whole pending Home as one ordered list; a row's place is
-        its position. Decoded strictly: an unknown field is a 400.
+        its position. It carries the `home_revision` that Home was built
+        from, and a success answers the one the push raised it to. Decoded
+        strictly: an unknown field is a 400.
 
         Past auth, profile resolution and body decoding, every answer is a
         `PushResult`. An ordinary failure leaves nothing changed on either
@@ -1010,9 +1020,11 @@ paths:
         "404": { $ref: "#/components/responses/ProfileNotFound" }
         "409":
           description: |
-            The Nuvio slot is empty now or holds another Nuvio profile
-            (`refused: profile_changed`), or the Nuvio profile uses profile 1's
-            addons (`refused: shares_addons`).
+            The Home was built from a `home_revision` another push has raised
+            since, or carries none (no `refused` value), the Nuvio slot is
+            empty now or holds another Nuvio profile (`refused:
+            profile_changed`), or the Nuvio profile uses profile 1's addons
+            (`refused: shares_addons`). Nothing reached Nuvio.
           content:
             application/json:
               schema:
@@ -1565,6 +1577,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    StaleSave:
+      description: The save was built from a revision of the row another write has changed since, or carries none. Nothing was written; the words are always `Error saving.`, with no `code`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     PublicationGone:
       description: The publication isn't live in Community any more. A slot with no Uno profile answers `ProfileNotFound` instead.
       content:
@@ -1740,7 +1758,7 @@ components:
 
     Catalog:
       type: object
-      required: [id, type, name, provider, params, collection_id, home_position, show_in_home, publication, subscription]
+      required: [id, type, name, provider, params, collection_id, home_position, show_in_home, revision, publication, subscription]
       properties:
         id: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/CatalogType" }
@@ -1757,6 +1775,9 @@ components:
         show_in_home:
           type: boolean
           description: On Home with a home row of its own; false for Discover only, and for every catalog off Home. Written only by push.
+        revision:
+          type: integer
+          description: Rises by one with each save or Update of the row, from 1. A catalog save carries the one its editor opened at.
         publication:
           oneOf:
             - $ref: "#/components/schemas/PublicationState"
@@ -1773,6 +1794,16 @@ components:
         name: { type: string }
         provider: { $ref: "#/components/schemas/Provider" }
         params: { $ref: "#/components/schemas/RecipeParamsString" }
+    CatalogSave:
+      description: A catalog editor's save.
+      allOf:
+        - $ref: "#/components/schemas/CatalogForm"
+        - type: object
+          required: [revision]
+          properties:
+            revision:
+              type: integer
+              description: The catalog's revision when the editor opened. Any other is a 409; an absent one reads as 0, which no row is at.
 
     ViewMode:
       type: string
@@ -1821,7 +1852,7 @@ components:
 
     Collection:
       type: object
-      required: [id, title, pin_to_top, home_position, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, publication, subscription, folders, catalogs]
+      required: [id, title, pin_to_top, home_position, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, revision, publication, subscription, folders, catalogs]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
@@ -1833,6 +1864,9 @@ components:
         home_position:
           type: [integer, "null"]
           description: Its place on Home, one numbering shared with catalogs; null when not on Home.
+        revision:
+          type: integer
+          description: Rises by one with each save or Update of the row, from 1. A collection save carries the one its editor opened at.
         publication:
           oneOf:
             - $ref: "#/components/schemas/PublicationState"
@@ -1870,6 +1904,16 @@ components:
           description: Update only. Rewrites catalogs already scoped to this collection, in the same transaction.
           items:
             $ref: "#/components/schemas/ScopedCatalogEdit"
+    CollectionSave:
+      description: A collection editor's save.
+      allOf:
+        - $ref: "#/components/schemas/CollectionForm"
+        - type: object
+          required: [revision]
+          properties:
+            revision:
+              type: integer
+              description: The collection's revision when the editor opened, which also guards its scoped catalogs. Any other is a 409; an absent one reads as 0, which no row is at.
     FolderForm:
       allOf:
         - $ref: "#/components/schemas/FolderArt"
@@ -2165,13 +2209,16 @@ components:
     PushRequest:
       type: object
       additionalProperties: false
-      required: [rows]
+      required: [rows, home_revision]
       properties:
         rows:
           type: array
           description: The whole pending Home, in order.
           items:
             $ref: "#/components/schemas/PushRow"
+        home_revision:
+          type: integer
+          description: The library's home_revision the Home was built from, or the one the tab's last push answered. Any other is a 409; an absent one reads as 0.
     PushRow:
       type: object
       additionalProperties: false
@@ -2213,9 +2260,12 @@ components:
           type: string
           enum: [empty_collection, shares_addons, profile_changed, home_order_unreadable, too_many_catalogs]
           description: Why push turned the Home away before writing anything to Nuvio.
+        home_revision:
+          type: integer
+          description: On a success only, the profile's home_revision the push raised it to, which the tab's next push carries.
     Library:
       type: object
-      required: [catalogs, collections, pending]
+      required: [catalogs, collections, pending, home_revision]
       properties:
         catalogs:
           type: array
@@ -2227,6 +2277,9 @@ components:
           type: array
           description: Catalog rows first, then collections.
           items: { $ref: "#/components/schemas/PendingChange" }
+        home_revision:
+          type: integer
+          description: What a push of the stored Home carries, read in the snapshot the rows' home_position are read in.
     PendingChange:
       type: object
       required: [kind, id, name, change]

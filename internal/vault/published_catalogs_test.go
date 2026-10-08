@@ -35,7 +35,7 @@ func TestGetPublishedCatalogs(t *testing.T) {
 	// branch 2 of the union emits two rows for it (different o2/o3), and
 	// plain UNION's row-level DISTINCT does not collapse them since the
 	// other scanned columns differ too; only the Go id-keyed dedupe does.
-	if _, err := db.UpdateUserCollection(ctx, owner, onTVCollection, CollectionForm{
+	if _, err := db.UpdateUserCollection(ctx, owner, onTVCollection, collectionRevision(t, db, onTVCollection), CollectionForm{
 		Title: "On TV", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: CatalogRefs(onHome.ID, folderOnly.ID)},
@@ -46,7 +46,7 @@ func TestGetPublishedCatalogs(t *testing.T) {
 	}
 
 	offTVCollection := newTestCollection(t, db, owner, "Off TV")
-	if _, err := db.UpdateUserCollection(ctx, owner, offTVCollection, CollectionForm{
+	if _, err := db.UpdateUserCollection(ctx, owner, offTVCollection, collectionRevision(t, db, offTVCollection), CollectionForm{
 		Title: "Off TV", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(offTV.ID)}},
 	}); err != nil {
@@ -129,7 +129,7 @@ func TestServedCatalog(t *testing.T) {
 	onHome, offHome := newTestCollection(t, db, owner, "On home"), newTestCollection(t, db, owner, "Off home")
 	scoped := createScopedCatalog(t, db, owner, onHome, listedCatalogForm("Scoped"))
 	for id, refs := range map[uuid.UUID][]uuid.UUID{onHome: {inFolder.ID, scoped.ID}, offHome: {offHomeOnly.ID}} {
-		if _, err := db.UpdateUserCollection(ctx, owner, id, CollectionForm{
+		if _, err := db.UpdateUserCollection(ctx, owner, id, collectionRevision(t, db, id), CollectionForm{
 			Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(refs...)}},
 		}); err != nil {
 			t.Fatal(err)

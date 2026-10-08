@@ -104,7 +104,7 @@ func savePush(t *testing.T, db *DB, profileID uuid.UUID, home PushedHome) {
 	if err != nil {
 		t.Fatalf("BuildPushRecord: %v", err)
 	}
-	if err := db.SavePush(context.Background(), profileID, record); err != nil {
+	if _, err := db.SavePush(context.Background(), profileID, record); err != nil {
 		t.Fatalf("SavePush: %v", err)
 	}
 }

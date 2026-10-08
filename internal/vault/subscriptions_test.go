@@ -197,7 +197,7 @@ func TestSavingASubscribedCatalogIsRefused(t *testing.T) {
 	pubID := publishCatalog(t, db, owner, "Popular", "{}").Publication.ID
 	copied := subscribe(t, db, subscriber, pubID).Catalog
 
-	if _, err := db.UpdateUserCatalog(ctx, subscriber, copied.ID, listedCatalogForm("Renamed")); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.UpdateUserCatalog(ctx, subscriber, copied.ID, catalogRevision(t, db, copied.ID), listedCatalogForm("Renamed")); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("save a subscribed catalog = %v, want ErrInvalidInput", err)
 	}
 	if after := reloadCatalog(t, db, copied.ID); after.Name != copied.Name || after.Subscription == nil {
@@ -206,7 +206,7 @@ func TestSavingASubscribedCatalogIsRefused(t *testing.T) {
 	if got := subscriberCount(t, db, owner, pubID); got != 1 {
 		t.Errorf("subscriber count after the refused save = %d, want 1", got)
 	}
-	if _, err := db.UpdateUserCatalog(ctx, owner, copied.ID, listedCatalogForm("Renamed")); !errors.Is(err, ErrCatalogNotFound) {
+	if _, err := db.UpdateUserCatalog(ctx, owner, copied.ID, catalogRevision(t, db, copied.ID), listedCatalogForm("Renamed")); !errors.Is(err, ErrCatalogNotFound) {
 		t.Errorf("save someone else's subscribed catalog = %v, want ErrCatalogNotFound", err)
 	}
 }
@@ -223,13 +223,13 @@ func TestWritingASubscribedCollectionIsRefused(t *testing.T) {
 		"a save": func(copied CollectionWithFolders) error {
 			form := saveFormOf(copied)
 			form.Title = "Renamed"
-			return second(db.UpdateUserCollection(ctx, subscriber, copied.ID, form))
+			return second(db.UpdateUserCollection(ctx, subscriber, copied.ID, collectionRevision(t, db, copied.ID), form))
 		},
 		"a save editing its catalog": func(copied CollectionWithFolders) error {
 			form := saveFormOf(copied)
 			s := catalogNamed(t, copied, "S")
 			form.CatalogEdits = []ScopedCatalogEdit{{ID: s.ID, Type: s.Type, Provider: s.Provider, Name: "Renamed S", Params: s.Params}}
-			return second(db.UpdateUserCollection(ctx, subscriber, copied.ID, form))
+			return second(db.UpdateUserCollection(ctx, subscriber, copied.ID, collectionRevision(t, db, copied.ID), form))
 		},
 	}
 	for name, write := range writes {
@@ -252,7 +252,7 @@ func TestWritingASubscribedCollectionIsRefused(t *testing.T) {
 	}
 
 	theirs := *subscribe(t, db, subscriber, publishCollection(t, db, owner, CollectionForm{Title: "Theirs", ViewMode: "TABBED_GRID"}).Publication.ID).Collection
-	if err := second(db.UpdateUserCollection(ctx, owner, theirs.ID, saveFormOf(theirs))); !errors.Is(err, ErrCollectionNotFound) {
+	if err := second(db.UpdateUserCollection(ctx, owner, theirs.ID, collectionRevision(t, db, theirs.ID), saveFormOf(theirs))); !errors.Is(err, ErrCollectionNotFound) {
 		t.Errorf("save of someone else's subscribed collection = %v, want ErrCollectionNotFound", err)
 	}
 
@@ -279,12 +279,12 @@ func TestRefusedSaveLeavesCopiesUpdatingByKey(t *testing.T) {
 
 	edit := saveFormOf(mine)
 	edit.Title = "Mine now"
-	if _, err := db.UpdateUserCollection(ctx, first, mine.ID, edit); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.UpdateUserCollection(ctx, first, mine.ID, collectionRevision(t, db, mine.ID), edit); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("save the first copy = %v, want ErrInvalidInput", err)
 	}
 	reordered := saveFormOf(source)
 	reordered.Folders = []FolderData{reordered.Folders[1], reordered.Folders[0]}
-	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, reordered); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, collectionRevision(t, db, source.ID), reordered); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.PublishCollection(ctx, owner, source.ID); err != nil {
@@ -347,7 +347,7 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 
 	listedForm := listedCatalogForm("Listed")
 	listedForm.Params = `{"sort_by":"revenue.desc"}`
-	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, listedForm); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, catalogRevision(t, db, listed.ID), listedForm); err != nil {
 		t.Fatal(err)
 	}
 	s1 := catalogNamed(t, source, "S1")
@@ -356,7 +356,7 @@ func TestUpdateSubscriptionByKey(t *testing.T) {
 	edit.Folders[0].Catalogs[0].Genre = "Western"
 	edit.Folders[1].Title = "A2"
 	edit.CatalogEdits = []ScopedCatalogEdit{{ID: s1.ID, Type: "movie", Provider: "tmdb", Name: "S1b", Params: s1.Params}}
-	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, edit); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, collectionRevision(t, db, source.ID), edit); err != nil {
 		t.Fatalf("publisher's edit: %v", err)
 	}
 	republished, err := db.PublishCollection(ctx, owner, source.ID)
@@ -439,7 +439,7 @@ func TestUpdateSubscribedCatalog(t *testing.T) {
 
 	form := listedCatalogForm("Top Grossing")
 	form.Params = `{"sort_by":"revenue.desc"}`
-	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, form); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, catalogRevision(t, db, source.ID), form); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.PublishCatalog(ctx, owner, source.ID); err != nil {
@@ -543,7 +543,7 @@ func TestDuplicatePublication(t *testing.T) {
 	if c.Subscription != nil || c.Title != "Shared (copy)" || c.Folders[0].SubKey != "" || c.Catalogs[0].SubKey != "" {
 		t.Errorf("duplicate = %+v, want Shared (copy) with no subscription and no sub_keys", c)
 	}
-	if _, err := db.UpdateUserCollection(ctx, duplicator, c.ID, saveFormOf(c)); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, duplicator, c.ID, collectionRevision(t, db, c.ID), saveFormOf(c)); err != nil {
 		t.Errorf("save a duplicate = %v, want nil", err)
 	}
 	if detail, _ := db.GetPublication(ctx, owner, source.Publication.ID); detail.SubscriberCount != 0 {

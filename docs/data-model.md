@@ -15,7 +15,9 @@ so a save landing meanwhile can't leave a folder naming a catalog the pushed rec
 **Schema version.** `PRAGMA user_version` is the schema version, `schemaVersion` in `db.go`.
 `InitDB` reads it in one transaction. At `0`, an empty file, it creates the schema and sets the
 version in that same transaction; at `schemaVersion` it does nothing; any other version fails the
-start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`.
+start, naming both. A schema change edits `schema.sql` and bumps `schemaVersion`. A database
+at the version before moves up only through a one-off `uno migrate` (`docs/configuration.md` →
+*Database lifecycle*), deleted once prod has run it.
 
 ```mermaid
 erDiagram
@@ -30,7 +32,7 @@ erDiagram
   PUBLICATIONS ||--o{ SUBSCRIPTIONS : "followed by"
   SUBSCRIPTIONS |o--|| CATALOGS : "copy"
   SUBSCRIPTIONS |o--|| COLLECTIONS : "copy"
-  ACCOUNTS ||..o{ PROFILES : "keys every profile of"
+  ACCOUNT_KEYS ||..o{ PROFILES : "keys every profile of"
   PROFILES ||--o| PUSH_RECORDS : "last pushed"
 
   PUBLICATIONS {
@@ -62,6 +64,7 @@ erDiagram
     string nuvio_user_id
     int nuvio_profile_index
     string nuvio_profile_uuid
+    int home_revision "raised by each push; the Home a push is built from"
   }
   CATALOGS {
     uuid id PK
@@ -76,6 +79,7 @@ erDiagram
     string sub_key "nullable — in a subscribed collection, its snapshot key"
     string created_at
     string updated_at
+    int revision "raised by each content write"
   }
   COLLECTIONS {
     uuid id PK
@@ -88,6 +92,14 @@ erDiagram
     bool focus_glow_enabled "defaults to 1, matching Nuvio"
     int home_sort_order "nullable — place on Home, one numbering with the other table; NULL means not on Home"
     string created_at
+    string updated_at
+    int revision "raised by each content write"
+  }
+  ACCOUNT_KEYS {
+    string nuvio_user_id PK "as profiles.nuvio_user_id"
+    string provider PK "as catalogs.provider"
+    blob key_ciphertext "nonce || AES-GCM sealed key"
+    string key_last4
     string updated_at
   }
   PUSH_RECORDS {
@@ -129,6 +141,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     nuvio_user_id       TEXT    NOT NULL,        -- Nuvio auth.users.id (the account)
     nuvio_profile_index INTEGER NOT NULL,        -- Nuvio profile slot, 1..6
     nuvio_profile_uuid  TEXT    NOT NULL,        -- Nuvio profile row's own id
+    home_revision       INTEGER NOT NULL DEFAULT 1, -- raised by each push
 
     UNIQUE (nuvio_user_id, nuvio_profile_index),
     CHECK  (nuvio_profile_index BETWEEN 1 AND 6)
@@ -155,30 +168,41 @@ waits for a push.
 `profiles.token` has exactly one job: identifying a profile in the public addon URLs. It is not a
 write credential.
 
-## `accounts`
+`profiles.home_revision` is the Home a push is built from (*Revisions*).
+
+## `account_keys`
 
 ```sql
-CREATE TABLE accounts (
-    nuvio_user_id       TEXT PRIMARY KEY,  -- Nuvio auth.users.id, as profiles.nuvio_user_id
-    tmdb_key_ciphertext BLOB NOT NULL,     -- nonce || AES-GCM sealed key
-    tmdb_key_last4      TEXT NOT NULL,     -- the key's last four characters, shown to its owner
-    updated_at          TEXT NOT NULL
+CREATE TABLE account_keys (
+    nuvio_user_id  TEXT NOT NULL, -- Nuvio auth.users.id, as profiles.nuvio_user_id
+    provider       TEXT NOT NULL, -- the provider the key is for, as catalogs.provider
+    key_ciphertext BLOB NOT NULL, -- nonce || AES-GCM sealed key
+    key_last4      TEXT NOT NULL, -- the key's last four characters, shown to its owner
+    updated_at     TEXT NOT NULL,
+    PRIMARY KEY (nuvio_user_id, provider)
 );
 ```
 
-One row per Nuvio account that has saved its own TMDB key, on a server in per-account key mode
-(`docs/configuration.md` → *TMDB key modes*). It belongs to the account, not a profile: every
-profile of the account uses it, in the builder and on the addon routes. There is no foreign key to
-`profiles`, whose `nuvio_user_id` is not unique; a row outlives the account's profiles until its
-owner removes the key.
+One row per Nuvio account and provider whose key the account has saved, on a server in
+per-account key mode (`docs/configuration.md` → *TMDB key modes*); TMDB is the one provider with
+a key today. It belongs to the account, not a profile: every profile of the account uses it, in
+the builder and on the addon routes. There is no foreign key to `profiles`, whose
+`nuvio_user_id` is not unique; a row outlives the account's profiles until its owner removes the
+key.
 
 - **Sealed, never in the clear.** `internal/tmdbkey` seals the key with AES-256-GCM under
-  `UNO_SECRET`, with the account id as additional data, so a ciphertext copied to another row
-  doesn't open. The vault stores and returns the sealed bytes only (`SetAccountKey`,
-  `AccountKey`, `AccountKeyByToken`, `DeleteAccountKey`, and `ServedCatalog`'s join).
-- **`tmdb_key_last4`** is all its owner is ever shown of the key.
-- **Replace and remove.** Saving again replaces the row; removing deletes it. A server that loses
-  `UNO_SECRET` can't open any row, and each owner enters the key again.
+  `UNO_SECRET`, with `uno-account-key/1\0{provider}\0{account}` as additional data, so a
+  ciphertext copied to another provider's or another account's row doesn't open. The vault
+  stores and returns the sealed bytes only (`SetAccountKey`, `AccountKey`,
+  `AccountKeyByToken`, `DeleteAccountKey`, and `ServedCatalog`'s join).
+- **Every read names its provider.** Each query and join matches `provider = ?` as well as the
+  account: `AccountKeyByToken`'s and `ServedCatalog`'s joins put it in the join's `ON`, by the
+  provider asked for and by the served catalog's provider, so an account with keys for two
+  providers never fans a join out, and one with no key still reads as the account with none.
+- **`key_last4`** is all its owner is ever shown of the key.
+- **Replace and remove.** Saving again replaces the account's row for that provider; removing
+  deletes it. A server that loses `UNO_SECRET` can't open any row, and each owner enters the key
+  again.
 - **Shared mode** neither reads nor writes the table; rows stay, unused.
 
 ## `push_records`
@@ -218,6 +242,41 @@ One row per profile: what its last push put in Nuvio, as one JSON document
   a Nuvio profile the slot no longer has, so it counts as none: Nuvio holds nothing, the addon
   serves an empty manifest and no catalog, everything on Home waits for a push, and the next push
   replaces the record. A profile that never pushed has no record either.
+
+## Revisions
+
+**A save and a push carry what they were built from, and one built from a row changed since is
+refused.** A catalog or collection editor's `PUT` replaces the whole form, and a push replaces
+the whole Home, so without a check the later of two tabs would win silently.
+`internal/vault/revisions.go`.
+
+- **`catalogs.revision` and `collections.revision`** start at 1 and rise by one on every
+  content write, in the write's own statement: a catalog save (`writeCatalog`), a collection
+  save (`updateCollectionRow`) and each scoped catalog its `catalog_edits` change
+  (`writeCatalogEdit`; an edit that changes nothing is skipped and raises nothing), and an
+  Update rewriting a subscribed copy (a collection copy through `updateCollectionRow`, a catalog
+  copy through `writeCatalogCopy`). A save that changes nothing still writes, and raises it.
+  Inserts (create, import, subscribe, Duplicate) take the default 1. Push's Home columns
+  (`home_sort_order`, `show_in_home`, `pin_to_top`), publish and unpublish (the release
+  trigger included), picking a profile again, and the cascade of a catalog delete out of a
+  folder raise nothing, so an editor open across a push is never refused for a change it doesn't
+  show. A collection editor holding a ref to a catalog deleted since is refused anyway, by
+  `validateFolderRefs`.
+- **Only an editor's save is checked**, inside its write transaction: `updateCatalogTx` writes
+  through `writeCatalogAt` and `saveCollectionTx` through `updateCollectionTxAt`, each
+  refusing a revision other than the row's with `ErrStale` before writing anything
+  (`refuseStale`). A row the caller doesn't own passes the check, so the write after it answers
+  its own not-found. `updateCollectionTx`, which Update shares with a form built from a
+  snapshot, checks nothing.
+- **A collection's revision guards its scoped catalogs.** A scoped catalog is written only by its
+  collection's save and by an Update of a collection copy, both of which rewrite the collection
+  row, so `catalog_edits` carry no revision; a scoped catalog's own rises but is never checked.
+- **`profiles.home_revision`** is push's baseline, starting at 1 and raised only by `SavePush`
+  in its transaction (`writePushedHome`), which returns the new one. `GetLibrary` reads it in
+  the snapshot it reads both lists' `home_position` in (`pendingAndHomeRevision`), and push
+  reads it again (`HomeRevision`) while it holds the profile's push lock (`docs/architecture.md`
+  → *Push*). `push_records` can't serve: it has no row before a first push and stops counting
+  after a slot is reused.
 
 ## Key rules
 
@@ -595,12 +654,12 @@ rules marked *Not built yet* are decided and land before the release.
   provider, read through `json_each` the way the search reads catalog names.
 - **Bundles stay version 1.** An import holding a catalog whose provider the server doesn't run
   is refused whole, every such catalog listed in the one 400, as with any invalid catalog.
-- **Account keys** (*Not built yet*). `accounts` holds one TMDB key per account. It becomes one
-  row per account and provider — `account_keys`: `nuvio_user_id`, `provider`, the sealed key, its
-  last four, `updated_at` — with the key sealed under both as additional data, so a key copied
-  to another provider's row doesn't open. This is a schema change, shipped in the same schema
-  version as the release's other schema changes, today's rows moving across as
-  `provider = 'tmdb'`. `/api/account/tmdb-key` stays; another provider's key route is additive.
+- **Account keys.** `account_keys` holds one key per account and provider (`account_keys`,
+  above), sealed under both as additional data, so a key copied to another provider's row
+  doesn't open. Schema version 12 replaced `accounts` with it, dropping the TMDB keys `accounts`
+  held rather than re-sealing them: an owner on a per-account server enters the key again.
+  `/api/account/tmdb-key` reads and writes the `tmdb` row; another provider's key route is
+  additive.
 
 ## Publications and subscriptions
 

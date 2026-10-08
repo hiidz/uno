@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"net/http"
 	"strings"
 	"sync"
@@ -139,7 +141,7 @@ func TestTMDBKeyRoutes(t *testing.T) {
 	if got := status(); got != `{"set":true,"last4":"cdef"}` {
 		t.Errorf("after saving = %s", got)
 	}
-	stored, err := db.AccountKey(t.Context(), "test-sub")
+	stored, err := db.AccountKey(t.Context(), "test-sub", tmdbkey.Provider)
 	if err != nil || bytes.Contains(stored.Sealed, []byte(goodKey)) {
 		t.Errorf("stored = %v, %v; want it sealed", stored, err)
 	}
@@ -161,7 +163,7 @@ func TestTMDBKeyCheckWhileTMDBIsDown(t *testing.T) {
 	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "Nothing was saved") {
 		t.Errorf("PUT while TMDB is down = %d %q", w.Code, w.Body.String())
 	}
-	if _, err := db.AccountKey(t.Context(), "test-sub"); err == nil {
+	if _, err := db.AccountKey(t.Context(), "test-sub", tmdbkey.Provider); err == nil {
 		t.Error("a key was saved")
 	}
 }
@@ -216,11 +218,11 @@ func TestBuilderUsesTheAccountsKey(t *testing.T) {
 		}
 	}
 
-	stored, err := newPerAccountServer(t, db).keys.Seal("test-sub", "ffffffffffffffffffffffffffffffff")
+	stored, err := newPerAccountServer(t, db).keys.Seal(tmdbkey.Provider, "test-sub", "ffffffffffffffffffffffffffffffff")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetAccountKey(t.Context(), "test-sub", stored); err != nil {
+	if err := db.SetAccountKey(t.Context(), "test-sub", tmdbkey.Provider, stored); err != nil {
 		t.Fatal(err)
 	}
 	check(newPerAccountServer(t, db), http.StatusUnprocessableEntity, "TMDB didn't accept your key")
@@ -239,5 +241,53 @@ func TestSharedKeyRejectedIsUpstream(t *testing.T) {
 	w := serve(t, s, http.MethodPost, "/api/catalogs/preview", `{"type":"movie","params":"{}"}`, false)
 	if w.Code != http.StatusBadGateway || answerText(w) != "failed to reach TMDB" {
 		t.Errorf("preview with a refused shared key = %d %q, want a 502 saying TMDB can't be reached", w.Code, w.Body.String())
+	}
+}
+
+// sealedUnder is key sealed under newPerAccountServer's secret with label as
+// its additional data, sealed by hand so the label is pinned here and not
+// taken from tmdbkey.
+func sealedUnder(t *testing.T, label, key string) []byte {
+	t.Helper()
+	block, err := aes.NewCipher(bytes.Repeat([]byte{9}, tmdbkey.SecretSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := make([]byte, aead.NonceSize())
+	return aead.Seal(nonce, nonce, []byte(key), []byte(label))
+}
+
+// An account's key opens under uno-account-key/1, its provider and its
+// account; one sealed for another provider's or another account's row, or
+// under the label before it, is refused as TMDB refusing it.
+func TestAccountKeyLabel(t *testing.T) {
+	for _, tc := range []struct {
+		name, label string
+		code        int
+	}{
+		{"its own row", "uno-account-key/1\x00tmdb\x00test-sub", http.StatusOK},
+		{"another provider's row", "uno-account-key/1\x00imdb\x00test-sub", http.StatusUnprocessableEntity},
+		{"another account's row", "uno-account-key/1\x00tmdb\x00other-sub", http.StatusUnprocessableEntity},
+		{"the label before", "uno-tmdb-key/1\x00test-sub", http.StatusUnprocessableEntity},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newTestVaultDB(t)
+			sent := keyedTMDB(t)
+			key := vault.AccountKey{Sealed: sealedUnder(t, tc.label, goodKey), Last4: "cdef"}
+			if err := db.SetAccountKey(t.Context(), "test-sub", tmdbkey.Provider, key); err != nil {
+				t.Fatal(err)
+			}
+			w := serve(t, newPerAccountServer(t, db), http.MethodGet, "/api/genres/movie", "", false)
+			if w.Code != tc.code {
+				t.Errorf("GET /api/genres/movie = %d %s, want %d", w.Code, w.Body.String(), tc.code)
+			}
+			if got := strings.Join(sent(), ","); (tc.code == http.StatusOK) != (got == goodKey) {
+				t.Errorf("keys sent to TMDB = %q", got)
+			}
+		})
 	}
 }

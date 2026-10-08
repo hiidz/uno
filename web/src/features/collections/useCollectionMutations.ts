@@ -6,7 +6,7 @@ import {
   invalidateProfileLists,
   updateCollection,
 } from '@/api'
-import type { CollectionPayload } from '@/api'
+import type { CollectionPayload, CollectionSave } from '@/api'
 
 /**
  * Collection writes, with the invalidation they imply.
@@ -31,7 +31,7 @@ export function useCollectionMutations(profileIndex: number) {
   })
 
   const update = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: CollectionPayload }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: CollectionSave }) =>
       updateCollection(profileIndex, id, payload),
     onSuccess: invalidate,
   })

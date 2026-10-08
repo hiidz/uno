@@ -52,7 +52,7 @@ func (s *Server) perAccountKeys(next http.HandlerFunc) http.HandlerFunc {
 // has saved a key, and its last four characters.
 func (s *Server) getTMDBKey(w http.ResponseWriter, r *http.Request) {
 	sub, _ := nuvioUserIDFrom(r.Context()) // guaranteed by requireNuvioAuth
-	key, err := s.vault.AccountKey(r.Context(), sub)
+	key, err := s.vault.AccountKey(r.Context(), sub, tmdbkey.Provider)
 	if errors.Is(err, vault.ErrNoAccountKey) {
 		httpx.WriteJSON(w, http.StatusOK, tmdbKeyStatus{})
 		return
@@ -115,11 +115,11 @@ func writeKeyCheckError(w http.ResponseWriter, err error) {
 // storeTMDBKey seals key for the signed-in account and saves it.
 func (s *Server) storeTMDBKey(ctx context.Context, key string) (tmdbKeyStatus, error) {
 	sub, _ := nuvioUserIDFrom(ctx) // guaranteed by requireNuvioAuth
-	stored, err := s.keys.Seal(sub, key)
+	stored, err := s.keys.Seal(tmdbkey.Provider, sub, key)
 	if err != nil {
 		return tmdbKeyStatus{}, err
 	}
-	if err := s.vault.SetAccountKey(ctx, sub, stored); err != nil {
+	if err := s.vault.SetAccountKey(ctx, sub, tmdbkey.Provider, stored); err != nil {
 		return tmdbKeyStatus{}, err
 	}
 	return tmdbKeyStatus{Set: true, Last4: stored.Last4}, nil
@@ -129,7 +129,7 @@ func (s *Server) storeTMDBKey(ctx context.Context, key string) (tmdbKeyStatus, e
 // key is removed, if it had one.
 func (s *Server) deleteTMDBKey(w http.ResponseWriter, r *http.Request) {
 	sub, _ := nuvioUserIDFrom(r.Context()) // guaranteed by requireNuvioAuth
-	if err := s.vault.DeleteAccountKey(r.Context(), sub); err != nil {
+	if err := s.vault.DeleteAccountKey(r.Context(), sub, tmdbkey.Provider); err != nil {
 		serverError(w, "deleteTMDBKey", err, "failed to remove your TMDB key")
 		return
 	}

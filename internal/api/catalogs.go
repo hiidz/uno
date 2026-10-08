@@ -46,6 +46,14 @@ func (s *Server) duplicateUserCatalog(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, catalog)
 }
 
+// catalogSave is a catalog PUT's body: the form, and the revision of the
+// catalog the editor's form was built from. An absent revision decodes as 0,
+// which no row is at, so the save is refused as stale.
+type catalogSave struct {
+	vault.CatalogForm
+	Revision int64 `json:"revision"`
+}
+
 func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 	profileID, _ := profileIDFrom(r.Context()) // guaranteed by requireProfile
 
@@ -54,7 +62,7 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input vault.CatalogForm
+	var input catalogSave
 	if !decodeJSON(w, r, &input) {
 		return
 	}
@@ -66,7 +74,7 @@ func (s *Server) updateUserCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Params = params
 
-	catalog, err := s.vault.UpdateUserCatalog(r.Context(), profileID, catalogID, input)
+	catalog, err := s.vault.UpdateUserCatalog(r.Context(), profileID, catalogID, input.Revision, input.CatalogForm)
 	if err != nil {
 		writeVaultError(w, "updateUserCatalog", err, vault.ErrCatalogNotFound, "catalog not found", "failed to update catalog")
 		return

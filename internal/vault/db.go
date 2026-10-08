@@ -16,7 +16,7 @@ var schema string
 
 // schemaVersion is the PRAGMA user_version a database holding schema.sql's
 // schema carries.
-const schemaVersion = 11
+const schemaVersion = 12
 
 // DB is a handle to Uno's SQLite database.
 type DB struct {

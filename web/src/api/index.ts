@@ -21,12 +21,14 @@ export {
 } from './mutations'
 export type {
   CatalogPayload,
+  CatalogSave,
   CollectionPayload,
+  CollectionSave,
   FolderCatalogRef,
 } from './mutations'
 export { checkImport, exportBundle, importBundle } from './bundle'
 export { pushSelection } from './push'
-export type { PushRefusal, PushRequest, PushResult } from './push'
+export type { PushFailure, PushRefusal, PushRequest, PushResult } from './push'
 export { invalidateProfileLists, queryKeys } from './keys'
 export {
   fetchLibrary,

@@ -12,6 +12,7 @@ const body: PushRequest = {
     { collection_id: 'col1', pin_to_top: true },
     { catalog_id: 'c1', show_in_home: true },
   ],
+  home_revision: 3,
 }
 
 beforeEach(() => {
@@ -19,9 +20,9 @@ beforeEach(() => {
 })
 
 describe('pushSelection', () => {
-  it('posts the whole selection to the profile push route', async () => {
-    fetchMock.mockResolvedValueOnce(Response.json({ success: true }))
-    await expect(pushSelection(2, body)).resolves.toEqual({ success: true })
+  it('posts the whole selection and its home revision to the profile push route', async () => {
+    fetchMock.mockResolvedValueOnce(Response.json({ success: true, home_revision: 4 }))
+    await expect(pushSelection(2, body)).resolves.toEqual({ success: true, home_revision: 4 })
     expect(fetchMock).toHaveBeenCalledWith('/api/p/2/push', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify(body),

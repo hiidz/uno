@@ -36,6 +36,10 @@ export interface Catalog {
   /** On Home with a home row of its own; `false` for Discover only, and for
    *  every catalog off Home. Written only by Push. */
   show_in_home: boolean
+  /** Rises by one with each save or Update of the row. An editor's save
+   *  carries the one it was opened at, and is refused if the row has moved
+   *  on since. */
+  revision: number
   /** This catalog's own publication; `null` while it isn't published. Only
    *  the owner's own reads carry it. */
   publication: PublicationState | null
@@ -123,6 +127,8 @@ export type Collection = CollectionSettings & {
   /** Its place on Home, numbered with the catalogs there; `null` when it
    *  isn't on Home. */
   home_position: number | null
+  /** As on `Catalog`: an editor's save carries the one it was opened at. */
+  revision: number
   /** As on `Catalog`. A subscribed collection's catalogs are all scoped to
    *  it, so they carry no subscription of their own. */
   publication: PublicationState | null
@@ -147,12 +153,14 @@ export interface PendingChange {
   change: 'added' | 'changed' | 'removed'
 }
 
-/** `GET /api/p/{i}/library`: the profile's listed catalogs, its collections, and
- *  what a push of the stored Home would change in Nuvio. */
+/** `GET /api/p/{i}/library`: the profile's listed catalogs, its collections,
+ *  what a push of the stored Home would change in Nuvio, and the
+ *  `home_revision` a push from that Home carries. */
 export interface LibraryData {
   catalogs: Catalog[]
   collections: Collection[]
   pending: PendingChange[]
+  home_revision: number
 }
 
 /** One catalog of a snapshot or a diff, in the bundle form: named by a `key`

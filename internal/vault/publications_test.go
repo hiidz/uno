@@ -35,7 +35,7 @@ func TestPublishAndRepublishCatalog(t *testing.T) {
 
 	form := listedCatalogForm("Renamed")
 	form.Params = `{"sort_by":"popularity.desc"}`
-	renamed, err := db.UpdateUserCatalog(ctx, owner, c.ID, form)
+	renamed, err := db.UpdateUserCatalog(ctx, owner, c.ID, catalogRevision(t, db, c.ID), form)
 	if err != nil {
 		t.Fatalf("UpdateUserCatalog: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestUnpublishReleasesSubscribers(t *testing.T) {
 
 	form := listedCatalogForm("Mine now")
 	form.Params = released.Params
-	saved, err := db.UpdateUserCatalog(ctx, subscriber, released.ID, form)
+	saved, err := db.UpdateUserCatalog(ctx, subscriber, released.ID, catalogRevision(t, db, released.ID), form)
 	if err != nil {
 		t.Fatalf("save of the released copy: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestUnpublishCollection(t *testing.T) {
 		t.Errorf("released copy's keys = folder %q, catalog %q; want none", f.SubKey, c.SubKey)
 	}
 
-	if _, err := db.UpdateUserCollection(ctx, subscriber, copied.ID, saveFormOf(released)); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, subscriber, copied.ID, collectionRevision(t, db, copied.ID), saveFormOf(released)); err != nil {
 		t.Fatalf("save of the released copy: %v", err)
 	}
 }

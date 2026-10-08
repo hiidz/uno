@@ -125,10 +125,10 @@ func TestCapsLeaveSavesAndScopedCatalogsAlone(t *testing.T) {
 	fillCatalogs(t, db, profile, 1)
 
 	own, _ := db.GetUserCatalogs(ctx, profile)
-	if _, err := db.UpdateUserCatalog(ctx, profile, own[0].ID, listedCatalogForm("Renamed")); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, profile, own[0].ID, catalogRevision(t, db, own[0].ID), listedCatalogForm("Renamed")); err != nil {
 		t.Errorf("save of a catalog at the cap = %v, want it saved", err)
 	}
-	if _, err := db.UpdateUserCollection(ctx, profile, collection.ID, saveFormOf(mustOwnCollection(t, db, profile, collection.ID))); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, profile, collection.ID, collectionRevision(t, db, collection.ID), saveFormOf(mustOwnCollection(t, db, profile, collection.ID))); err != nil {
 		t.Errorf("save of a collection with a scoped catalog at the cap = %v, want it saved", err)
 	}
 }

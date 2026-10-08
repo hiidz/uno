@@ -70,6 +70,11 @@ export interface CatalogPayload {
   params: string
 }
 
+/** A catalog editor's save: the form, and the `revision` of the catalog the
+ *  editor was opened at. A save from another revision is refused with a
+ *  409. */
+export type CatalogSave = CatalogPayload & { revision: number }
+
 export const CATALOG_PROVIDER = 'tmdb'
 
 export function createCatalog(profileIndex: number, body: CatalogPayload): Promise<Catalog> {
@@ -93,7 +98,7 @@ export function duplicateCatalog(profileIndex: number, catalogID: string): Promi
 export function updateCatalog(
   profileIndex: number,
   catalogID: string,
-  body: CatalogPayload,
+  body: CatalogSave,
 ): Promise<Catalog> {
   return sendJSON<Catalog>('PUT', `/api/p/${profileIndex}/catalogs/${catalogID}`, body)
 }
@@ -178,6 +183,12 @@ export interface CollectionPayload {
   catalog_edits: ScopedCatalogEdit[]
 }
 
+/** A collection editor's save: the payload, and the `revision` of the
+ *  collection the editor was opened at, which also guards the catalogs scoped
+ *  to it — `catalog_edits` carry none. A save from another revision is refused
+ *  with a 409. */
+export type CollectionSave = CollectionPayload & { revision: number }
+
 export function createCollection(
   profileIndex: number,
   body: CollectionPayload,
@@ -209,7 +220,7 @@ export function duplicateCollection(
 export function updateCollection(
   profileIndex: number,
   collectionID: string,
-  body: CollectionPayload,
+  body: CollectionSave,
 ): Promise<Collection> {
   return sendJSON<Collection>('PUT', `/api/p/${profileIndex}/collections/${collectionID}`, body)
 }

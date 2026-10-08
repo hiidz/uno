@@ -23,7 +23,7 @@ const collectionRows = `collections col
 // collectionColumns are a collection's own columns, the ones scanCollection
 // reads before the sharing state.
 const collectionColumns = `col.id, col.title, col.owner_id, col.pin_to_top, col.view_mode, col.show_all_tab, col.backdrop_image_url,
-	col.focus_glow_enabled, col.home_sort_order, col.created_at, col.updated_at`
+	col.focus_glow_enabled, col.home_sort_order, col.created_at, col.updated_at, col.revision`
 
 // selectCollections runs a SELECT over collectionRows through q with the
 // given WHERE clause and args, parsing the result rows, each with its
@@ -161,6 +161,7 @@ func createCollectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, fo
 		FocusGlowEnabled: form.FocusGlowEnabled,
 		CreatedAt:        now,
 		UpdatedAt:        now,
+		Revision:         1,
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -179,14 +180,14 @@ func createCollectionTx(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, fo
 	return CollectionWithFolders{Collection: c, Folders: folders}, allCatalogIDs, nil
 }
 
-// updateCollectionRow writes the collection's own columns. pin_to_top is not
-// one of them: only push writes it. Returns ErrCollectionNotFound if the row
-// is no longer there.
+// updateCollectionRow writes the collection's own columns, raising its
+// revision. pin_to_top is not one of them: only push writes it. Returns
+// ErrCollectionNotFound if the row is no longer there.
 func updateCollectionRow(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, input CollectionForm, nowStr string) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE collections
 		SET title = ?, view_mode = ?, show_all_tab = ?, backdrop_image_url = ?, focus_glow_enabled = ?,
-		    updated_at = ?
+		    updated_at = ?, revision = revision + 1
 		WHERE id = ? AND owner_id = ?
 	`, input.Title, input.ViewMode, input.ShowAllTab, input.BackdropImageURL, input.FocusGlowEnabled, nowStr,
 		collectionID.String(), profileID.String())
@@ -239,12 +240,12 @@ func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 	return writeCatalogEdit(ctx, tx, profileID, e, nowStr)
 }
 
-// writeCatalogEdit writes e's name and params over its catalog; see
-// applyCatalogEdit.
+// writeCatalogEdit writes e's name and params over its catalog, raising its
+// revision; see applyCatalogEdit.
 func writeCatalogEdit(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
-		SET name = ?, params = ?, updated_at = ?
+		SET name = ?, params = ?, updated_at = ?, revision = revision + 1
 		WHERE id = ? AND owner_id = ?
 	`, e.Name, e.Params, nowStr, e.ID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating edited catalog: %w", err)
@@ -322,16 +323,17 @@ func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID
 
 // UpdateUserCollection validates input and replaces the collection
 // identified by collectionID (title, settings, and its full folder set),
-// provided it's owned by profileID (ErrCollectionNotFound otherwise).
-// A subscribed copy is ErrInvalidInput (refuseSubscribedCopy): only Update
-// writes one.
-func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID, input CollectionForm) (CollectionWithFolders, error) {
+// provided it's owned by profileID (ErrCollectionNotFound otherwise) and
+// still at revision, the one the editor's form was built from (ErrStale
+// otherwise). A subscribed copy is ErrInvalidInput (refuseSubscribedCopy):
+// only Update writes one.
+func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID, revision int64, input CollectionForm) (CollectionWithFolders, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return CollectionWithFolders{}, err
 	}
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
-		return saveCollectionTx(ctx, tx, profileID, collectionID, input)
+		return saveCollectionTx(ctx, tx, profileID, collectionID, revision, input)
 	})
 	if err != nil {
 		return CollectionWithFolders{}, err
@@ -340,15 +342,15 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 }
 
 // saveCollectionTx is UpdateUserCollection's write, inside tx: a collection
-// that is not a subscribed copy of profileID's has input written over it
-// through the update core, whose first write answers ErrCollectionNotFound
-// for a collection profileID doesn't own. Update shares the core without the
-// refusal.
-func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, input CollectionForm) error {
+// that is not a subscribed copy of profileID's, and is still at revision, has
+// input written over it through the update core, whose first write answers
+// ErrCollectionNotFound for a collection profileID doesn't own. Update shares
+// the core without either refusal.
+func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, revision int64, input CollectionForm) error {
 	if err := refuseSubscribedCopy(ctx, tx, profileID, kindCollection, collectionID); err != nil {
 		return err
 	}
-	return updateCollectionTx(ctx, tx, profileID, collectionID, input, utcTimestamp(time.Now()))
+	return updateCollectionTxAt(ctx, tx, profileID, collectionID, revision, input, utcTimestamp(time.Now()))
 }
 
 // DeleteUserCollection deletes the collection identified by collectionID,

@@ -132,10 +132,12 @@ var keyFailures = []clientFailure{
 // the caller with: a key problem (keyFailures), then 400 for
 // vault.ErrInvalidInput and 409 for vault.ErrConflict, each in the error's own
 // words — safe, since every such message is built from validation or state
-// text, never a lower-level detail.
+// text, never a lower-level detail — and 409 for vault.ErrStale, an editor's
+// save built from a row another write has changed since, in fixed words.
 var clientErrors = slices.Concat(keyFailures, []clientFailure{
 	{vault.ErrInvalidInput, http.StatusBadRequest, ""},
 	{vault.ErrConflict, http.StatusConflict, ""},
+	{vault.ErrStale, http.StatusConflict, "Error saving."},
 })
 
 // The codes of the errors the SPA acts on by kind rather than by status

@@ -57,7 +57,7 @@ func waitsForPush(t *testing.T, db *DB, profileID, id uuid.UUID) bool {
 // test on an error.
 func saveCollection(t *testing.T, db *DB, profileID, id uuid.UUID, form CollectionForm) CollectionWithFolders {
 	t.Helper()
-	saved, err := db.UpdateUserCollection(context.Background(), profileID, id, form)
+	saved, err := db.UpdateUserCollection(context.Background(), profileID, id, collectionRevision(t, db, id), form)
 	if err != nil {
 		t.Fatalf("UpdateUserCollection: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestASaveDuringAPushLeavesItPending(t *testing.T) {
 	}
 
 	saveCollection(t, db, owner, c.ID, CollectionForm{Title: "Saved meanwhile", ViewMode: "TABBED_GRID"})
-	if err := db.SavePush(ctx, owner, record); err != nil {
+	if _, err := db.SavePush(ctx, owner, record); err != nil {
 		t.Fatalf("SavePush: %v", err)
 	}
 	if !waitsForPush(t, db, owner, c.ID) {
@@ -178,7 +178,7 @@ func TestOnHomeButNotInTheRecordWaitsForAPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SavePush(ctx, owner, PushRecord{Home: PushedHome{
+	if _, err := db.SavePush(ctx, owner, PushRecord{Home: PushedHome{
 		Collections: []SelectedCollectionInput{{CollectionID: c.ID}},
 	}}); err != nil {
 		t.Fatalf("SavePush: %v", err)
@@ -212,7 +212,7 @@ func TestPinToTopIsWrittenOnlyByPush(t *testing.T) {
 		t.Error("A right after the push: want nothing waiting, its stored pin being the one sent")
 	}
 
-	if saved, err := db.UpdateUserCollection(ctx, owner, a.ID, CollectionForm{Title: "A2", ViewMode: "TABBED_GRID"}); err != nil || !saved.PinToTop {
+	if saved, err := db.UpdateUserCollection(ctx, owner, a.ID, collectionRevision(t, db, a.ID), CollectionForm{Title: "A2", ViewMode: "TABBED_GRID"}); err != nil || !saved.PinToTop {
 		t.Fatalf("save = %v pinned %v; want the pin kept", err, saved.PinToTop)
 	}
 

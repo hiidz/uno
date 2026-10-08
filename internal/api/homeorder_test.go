@@ -456,7 +456,7 @@ func (f pushHomeOrderFixture) push(t *testing.T) (*httptest.ResponseRecorder, pu
 	t.Helper()
 	reqCtx := withNuvioToken(withProfile(t.Context(), f.profile), "token")
 	w := httptest.NewRecorder()
-	f.s.push(w, newPushRequest(t, reqCtx, f.body))
+	f.s.push(w, newPushRequest(t, reqCtx, f.db, f.body))
 	return w, decodePushResult(t, w)
 }
 

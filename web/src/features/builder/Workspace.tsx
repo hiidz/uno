@@ -247,15 +247,18 @@ export function Workspace({
     })
   }
 
-  function saveCatalog(id: string, state: CatalogFormState) {
-    catalogMutations.update.mutate({ id, payload: toPayload(state) }, { onSuccess: closeAfterSave })
+  // `revision` is the one the editor was opened at (`target.initial`), never
+  // the live row's: a save built from a row changed since is refused.
+  function saveCatalog(id: string, revision: number, state: CatalogFormState) {
+    catalogMutations.update.mutate({ id, payload: { ...toPayload(state), revision } }, { onSuccess: closeAfterSave })
   }
 
   // `payload` already resolved every draft catalog into an inline `new`
   // spec inside `CollectionEditor` itself, which is the one place that has
-  // `localCatalogs` to resolve them against — see its own `save`.
-  function saveCollection(id: string, payload: CollectionPayload) {
-    collectionMutations.update.mutate({ id, payload }, { onSuccess: closeAfterSave })
+  // `localCatalogs` to resolve them against — see its own `save`. `revision`
+  // is the one the editor was opened at, as for a catalog.
+  function saveCollection(id: string, revision: number, payload: CollectionPayload) {
+    collectionMutations.update.mutate({ id, payload: { ...payload, revision } }, { onSuccess: closeAfterSave })
   }
 
   function confirmDeleteCatalog(catalog: LibraryCatalog) {
@@ -645,7 +648,7 @@ export function Workspace({
                 // Duplicate, which can run while this editor is open.
                 saving={catalogMutations.update.isPending}
                 serverError={catalogMutations.update.error?.message ?? null}
-                onSave={(state) => saveCatalog(target.id, state)}
+                onSave={(state) => saveCatalog(target.id, target.initial.revision, state)}
                 onRequestClose={close}
                 onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
                 onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
@@ -662,7 +665,7 @@ export function Workspace({
                 // Only `update`, for the same reason as the catalog editor's.
                 saving={collectionMutations.update.isPending}
                 serverError={collectionMutations.update.error?.message ?? null}
-                onSave={(payload) => saveCollection(target.id, payload)}
+                onSave={(payload) => saveCollection(target.id, target.initial.revision, payload)}
                 onRequestClose={close}
                 onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
                 onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}

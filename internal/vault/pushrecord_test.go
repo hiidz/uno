@@ -54,7 +54,7 @@ func newPushRecordFixture(t *testing.T) pushRecordFixture {
 		second:  {{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "C", Catalogs: CatalogRefs(scoped.ID)}},
 		offHome: {{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "D", Catalogs: CatalogRefs(offHomeOnly.ID)}},
 	} {
-		if _, err := db.UpdateUserCollection(ctx, owner, id, CollectionForm{Title: "Saved", ViewMode: "TABBED_GRID", Folders: folders}); err != nil {
+		if _, err := db.UpdateUserCollection(ctx, owner, id, collectionRevision(t, db, id), CollectionForm{Title: "Saved", ViewMode: "TABBED_GRID", Folders: folders}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -214,7 +214,7 @@ func TestStoredPushRecordRebuildsTheLastPush(t *testing.T) {
 func TestPushRecordRefusals(t *testing.T) {
 	ctx := context.Background()
 	f := newPushRecordFixture(t)
-	if err := f.db.SavePush(ctx, uuid.New(), PushRecord{}); !errors.Is(err, ErrInvalidInput) {
+	if _, err := f.db.SavePush(ctx, uuid.New(), PushRecord{}); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("SavePush for an unknown profile = %v, want ErrInvalidInput", err)
 	}
 	other := newTestProfile(t, f.db, "other")

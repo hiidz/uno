@@ -137,7 +137,7 @@ func scanCatalog(rows *sql.Rows, extraDests ...any) (Catalog, error) {
 	dests := append([]any{
 		&idStr, &c.Type, &c.Name, &c.Provider, &c.Params, &ownerIDStr,
 		&collectionIDStr, &homeSortOrder, &showInHome, &subKey,
-		&createdAtStr, &updatedAtStr,
+		&createdAtStr, &updatedAtStr, &c.Revision,
 	}, sharing.dests()...)
 	if err := rows.Scan(append(dests, extraDests...)...); err != nil {
 		return Catalog{}, fmt.Errorf("scanning catalog row: %w", err)
@@ -239,7 +239,7 @@ func scanCollection(rows *sql.Rows) (Collection, error) {
 
 	if err := rows.Scan(append([]any{&idStr, &c.Title, &ownerIDStr,
 		&pinToTop, &c.ViewMode, &showAllTab, &c.BackdropImageURL, &focusGlowEnabled,
-		&homeSortOrder, &createdAtStr, &updatedAtStr}, sharing.dests()...)...); err != nil {
+		&homeSortOrder, &createdAtStr, &updatedAtStr, &c.Revision}, sharing.dests()...)...); err != nil {
 		return Collection{}, fmt.Errorf("scanning collection row: %w", err)
 	}
 

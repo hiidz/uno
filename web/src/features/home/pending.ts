@@ -89,11 +89,12 @@ function placedCollection(c: Collection): PlacedEntry[] {
 }
 
 /**
- * The wire shape Push sends. A row's place in `rows` *is* its position on
- * Home, which is why this is a straight positional map and never sorts.
+ * The wire shape Push sends: `state`, built from the Home at `homeRevision`.
+ * A row's place in `rows` *is* its position on Home, which is why this is a
+ * straight positional map and never sorts.
  */
-export function toPushPayload(state: HomeState): PushRequest {
-  return { rows: state.rows.map(toPushRow) }
+export function toPushPayload(state: HomeState, homeRevision: number): PushRequest {
+  return { rows: state.rows.map(toPushRow), home_revision: homeRevision }
 }
 
 function toPushRow(entry: HomeEntry): PushRequest['rows'][number] {

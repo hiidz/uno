@@ -32,10 +32,11 @@ func (db *DB) GetPublishedCatalogs(ctx context.Context, profileID uuid.UUID) ([]
 	return record.selectedCatalogs(), nil
 }
 
-// ServedCatalog is what an addon catalog route serves: a catalog's params,
-// and the Nuvio account that owns its profile with that account's sealed TMDB
-// key, nil when the account has saved none.
+// ServedCatalog is what an addon catalog route serves: a catalog's provider and
+// params, and the Nuvio account that owns its profile with that account's
+// sealed key for the provider, nil when the account has saved none.
 type ServedCatalog struct {
+	Provider  string
 	Params    string
 	Account   string
 	SealedKey []byte
@@ -45,20 +46,20 @@ type ServedCatalog struct {
 // with catalogType and catalogProvider, in the push record of the profile whose
 // token it is — the manifest's set checked for this one catalog, params as the
 // last push left them. It comes with the profile owner's account and sealed
-// key, read live. It is the route's one lookup and its access check: a
-// catalog the last push didn't put in Nuvio, another profile's catalog, an
-// unknown token, a profile Nuvio holds nothing for and a type or provider the
-// catalog doesn't have are all ErrCatalogNotFound.
+// key for catalogProvider, read live. It is the route's one lookup and its
+// access check: a catalog the last push didn't put in Nuvio, another
+// profile's catalog, an unknown token, a profile Nuvio holds nothing for and a
+// type or provider the catalog doesn't have are all ErrCatalogNotFound.
 func (db *DB) ServedCatalog(ctx context.Context, token string, catalogID uuid.UUID, catalogType, catalogProvider string) (ServedCatalog, error) {
 	var served ServedCatalog
 	var raw sql.NullString
 	err := db.conn.QueryRowContext(ctx, `
-		SELECT p.nuvio_user_id, a.tmdb_key_ciphertext, pr.record
+		SELECT p.nuvio_user_id, a.key_ciphertext, pr.record
 		FROM profiles p
-		LEFT JOIN accounts a ON a.nuvio_user_id = p.nuvio_user_id
+		LEFT JOIN account_keys a ON a.nuvio_user_id = p.nuvio_user_id AND a.provider = ?
 		LEFT JOIN push_records pr ON pr.profile_id = p.id AND pr.nuvio_profile_uuid = p.nuvio_profile_uuid
 		WHERE p.token = ?
-	`, token).Scan(&served.Account, &served.SealedKey, &raw)
+	`, catalogProvider, token).Scan(&served.Account, &served.SealedKey, &raw)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && !raw.Valid) {
 		return ServedCatalog{}, ErrCatalogNotFound
 	}
@@ -74,6 +75,7 @@ func (db *DB) ServedCatalog(ctx context.Context, token string, catalogID uuid.UU
 	}
 	for _, c := range held.Catalogs {
 		if c.ID == catalogID && c.Type == catalogType && c.Provider == catalogProvider {
+			served.Provider = c.Provider
 			served.Params = string(c.Params)
 			return served, nil
 		}

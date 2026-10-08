@@ -116,7 +116,7 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "changes since publish of another profile's collection", method: http.MethodGet, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/changes-since-publish", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
 		{name: "publish my catalog", method: http.MethodPost, path: ownCatalog + "/publish", wantStatus: http.StatusOK, wantBody: `"changed_since_publish":false`},
 		{name: "changes since publish of my catalog", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
-		{name: "change my catalog", method: http.MethodPut, path: ownCatalog, body: `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusOK},
+		{name: "change my catalog", method: http.MethodPut, path: ownCatalog, body: `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{}","revision":1}`, wantStatus: http.StatusOK},
 		{name: "changes since publish after a rename", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `"op":"changed","kind":"catalog","aspect":"recipe","name":"Renamed","was":"Mine"`},
 		{name: "unpublish my catalog", method: http.MethodPost, path: ownCatalog + "/unpublish", wantStatus: http.StatusOK, wantBody: `"publication":null`},
 		{name: "changes since publish of an unpublished catalog", method: http.MethodGet, path: ownCatalog + "/changes-since-publish", wantStatus: http.StatusOK, wantBody: `[]`},
@@ -141,7 +141,7 @@ func TestSharingRoutes(t *testing.T) {
 	}
 	runSteps(t, x.f.s, []routeStep{
 		{name: "update the released catalog", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
-		{name: "save the released catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusOK, wantBody: `"name":"Mine now"`},
+		{name: "save the released catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}","revision":1}`, wantStatus: http.StatusOK, wantBody: `"name":"Mine now"`},
 	})
 }
 

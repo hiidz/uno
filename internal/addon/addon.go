@@ -247,7 +247,7 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 
 	// A cold genre list is fetched with the profile owner's own TMDB key, on
 	// a server where each account brings one, and paced for the token.
-	ctx := provider.WithKeySource(tokenCaller(r.Context(), token), s.keys.ForToken(r.Context(), token))
+	ctx := provider.WithKeySource(tokenCaller(r.Context(), token), s.keys.ForToken(r.Context(), tmdbkey.Provider, token))
 	m := buildManifest(selection, func(sc vault.Catalog) []string {
 		return s.genreNames(ctx, sc)
 	})
@@ -432,7 +432,7 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 
 	// TMDB is reached with the owner's own key, on a server where each
 	// account brings one, and paced for the token.
-	ctx := provider.WithKeySource(tokenCaller(r.Context(), r.PathValue("token")), s.keys.Sealed(served.Account, served.SealedKey))
+	ctx := provider.WithKeySource(tokenCaller(r.Context(), r.PathValue("token")), s.keys.Sealed(served.Provider, served.Account, served.SealedKey))
 	metas, err := s.catalogWindow(ctx, catalogType, served.Params, genre, skip)
 	if err != nil {
 		// manifestID comes from the request path, so it is quoted: an

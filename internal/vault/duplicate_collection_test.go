@@ -31,7 +31,7 @@ func TestDuplicateCollection(t *testing.T) {
 	}
 	scoped := createScopedCatalog(t, db, owner, source.ID, listedCatalogForm("Scoped"))
 
-	source, err = db.UpdateUserCollection(ctx, owner, source.ID, CollectionForm{
+	source, err = db.UpdateUserCollection(ctx, owner, source.ID, collectionRevision(t, db, source.ID), CollectionForm{
 		Title: "Source", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: CatalogRefs(listed.ID, scoped.ID)},

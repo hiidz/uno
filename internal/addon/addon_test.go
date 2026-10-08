@@ -34,7 +34,7 @@ func savePush(t *testing.T, db *vault.DB, profileID uuid.UUID, home vault.Pushed
 	if err != nil {
 		t.Fatalf("BuildPushRecord: %v", err)
 	}
-	if err := db.SavePush(context.Background(), profileID, record); err != nil {
+	if _, err := db.SavePush(context.Background(), profileID, record); err != nil {
 		t.Fatalf("SavePush: %v", err)
 	}
 }
@@ -64,7 +64,7 @@ func TestBuildManifestFolderOnlyCatalogGetsGenreExtra(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
 	}
-	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, vault.CollectionForm{
+	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, collection.Revision, vault.CollectionForm{
 		Title: "On TV", ViewMode: "TABBED_GRID",
 		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(folderOnly.ID)}},
 	}); err != nil {
@@ -120,7 +120,7 @@ func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testi
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
 	}
-	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, vault.CollectionForm{
+	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, collection.Revision, vault.CollectionForm{
 		Title: "On TV", ViewMode: "TABBED_GRID",
 		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
 	}); err != nil {
@@ -262,7 +262,7 @@ func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) 
 	if err != nil {
 		t.Fatalf("create collection: %v", err)
 	}
-	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, vault.CollectionForm{
+	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, collection.Revision, vault.CollectionForm{
 		Title: "Off TV", ViewMode: "TABBED_GRID",
 		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
 	}); err != nil {

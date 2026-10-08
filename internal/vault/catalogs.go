@@ -20,7 +20,7 @@ func (db *DB) queryCatalogs(ctx context.Context, where string, args ...any) ([]C
 // first.
 const baseCatalogColumns = `c.id, c.type, c.name, c.provider, c.params, c.owner_id,
 	c.collection_id, c.home_sort_order, c.show_in_home, c.sub_key,
-	c.created_at, c.updated_at`
+	c.created_at, c.updated_at, c.revision`
 
 // catalogColumns are the columns scanCatalog reads, in its order, from
 // catalogRows: the base columns, then the sharing state.
@@ -120,12 +120,13 @@ func compareByHomeSortOrder(a, b Catalog) int {
 }
 
 // insertCatalog writes c as a new catalogs row and returns c with its
-// RecipeHash. It is the one catalog INSERT in this package: a catalog save, a
-// subscribe or duplicate of a catalog and a collection save's New entries all
-// go through it. home_sort_order and show_in_home are left to their column
-// defaults, since no catalog is born on the home screen. An empty SubKey is
-// stored as NULL. A listed catalog (no CollectionID) is refused once its owner
-// holds maxListedCatalogsPerProfile.
+// RecipeHash and the revision a new row starts at, 1. It is the one catalog
+// INSERT in this package: a catalog save, a subscribe or duplicate of a
+// catalog and a collection save's New entries all go through it.
+// home_sort_order and show_in_home are left to their column defaults, since
+// no catalog is born on the home screen. An empty SubKey is stored as NULL. A
+// listed catalog (no CollectionID) is refused once its owner holds
+// maxListedCatalogsPerProfile.
 func insertCatalog(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) {
 	if err := checkCatalogAdd(ctx, tx, c); err != nil {
 		return Catalog{}, err
@@ -143,6 +144,7 @@ func insertCatalogRow(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, erro
 		return Catalog{}, fmt.Errorf("inserting catalog: %w", err)
 	}
 	c.RecipeHash = RecipeHash(c.Type, c.Provider, c.Params)
+	c.Revision = 1
 	return c, nil
 }
 
@@ -223,17 +225,19 @@ func (db *DB) DuplicateCatalog(ctx context.Context, profileID, catalogID uuid.UU
 }
 
 // UpdateUserCatalog validates input and updates the listed catalog
-// identified by catalogID, provided it's owned by profileID. Returns
+// identified by catalogID, provided it's owned by profileID and still at
+// revision, the one the editor's form was built from. Returns
 // ErrCatalogNotFound if no such row exists (including one owned by another
-// profile), and ErrInvalidInput for a catalog inside a collection
-// (checkCatalogRewrite) and for a subscribed copy (refuseSubscribedCopy).
-func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, input CatalogForm) (Catalog, error) {
+// profile), ErrInvalidInput for a catalog inside a collection
+// (checkCatalogRewrite) and for a subscribed copy (refuseSubscribedCopy), and
+// ErrStale for a catalog at another revision.
+func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, revision int64, input CatalogForm) (Catalog, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
 	}
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
-		return updateCatalogTx(ctx, tx, profileID, catalogID, input)
+		return updateCatalogTx(ctx, tx, profileID, catalogID, revision, input)
 	})
 	if err != nil {
 		return Catalog{}, err
@@ -242,7 +246,7 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 }
 
 // updateCatalogTx is UpdateUserCatalog's write, inside tx.
-func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
+func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, revision int64, input CatalogForm) error {
 	stored, err := loadCatalogForUpdate(ctx, tx, profileID, catalogID)
 	if err != nil {
 		return err
@@ -253,15 +257,16 @@ func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.
 	if err := checkCatalogRewrite(stored, input); err != nil {
 		return err
 	}
-	return writeCatalog(ctx, tx, profileID, catalogID, input)
+	return writeCatalogAt(ctx, tx, profileID, catalogID, revision, input)
 }
 
-// writeCatalog writes input's name and params over catalogID; see
-// UpdateUserCatalog. Its type and provider never change (checkCatalogRewrite).
+// writeCatalog writes input's name and params over catalogID, raising its
+// revision; see UpdateUserCatalog. Its type and provider never change
+// (checkCatalogRewrite).
 func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
 	nowStr := utcTimestamp(time.Now())
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE catalogs SET name = ?, params = ?, updated_at = ?
+		UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1
 		WHERE id = ? AND owner_id = ?
 	`, input.Name, input.Params, nowStr, catalogID.String(), profileID.String()); err != nil {
 		return fmt.Errorf("updating catalog: %w", err)

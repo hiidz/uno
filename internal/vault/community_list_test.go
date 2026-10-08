@@ -88,7 +88,7 @@ func TestListCommunitySubscriptionFlags(t *testing.T) {
 	if item := row(); !item.Subscribed || item.UpdateAvailable || item.SubscriberCount != 2 {
 		t.Errorf("after subscribing: subscribed %v, update %v, count %d; want subscribed, no update, 2", item.Subscribed, item.UpdateAvailable, item.SubscriberCount)
 	}
-	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, listedCatalogForm("Renamed")); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, catalogRevision(t, db, source.ID), listedCatalogForm("Renamed")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.PublishCatalog(ctx, owner, source.ID); err != nil {

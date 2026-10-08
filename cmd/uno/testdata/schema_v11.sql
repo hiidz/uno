@@ -6,7 +6,6 @@ CREATE TABLE profiles (
     nuvio_user_id       TEXT    NOT NULL,         -- Nuvio auth.users.id (the account)
     nuvio_profile_index INTEGER NOT NULL,         -- Nuvio profile slot, 1..6
     nuvio_profile_uuid  TEXT    NOT NULL,         -- Nuvio profile row's own id; detects slot reuse
-    home_revision       INTEGER NOT NULL DEFAULT 1, -- raised by each push: the Home a push is built from
 
     UNIQUE (nuvio_user_id, nuvio_profile_index),
     CHECK  (nuvio_profile_index BETWEEN 1 AND 6)
@@ -52,8 +51,7 @@ CREATE TABLE "collections" (
     focus_glow_enabled INTEGER NOT NULL DEFAULT 1,
     home_sort_order    INTEGER,                    -- place on Home, numbered with catalogs.home_sort_order; NULL = not on Home
     created_at         TEXT    NOT NULL,           -- RFC3339 UTC
-    updated_at         TEXT    NOT NULL,           -- RFC3339 UTC
-    revision           INTEGER NOT NULL DEFAULT 1  -- raised by each content write: the row a save is built from
+    updated_at         TEXT    NOT NULL            -- RFC3339 UTC
 );
 
 CREATE INDEX collections_by_owner ON collections (owner_id);
@@ -71,7 +69,6 @@ CREATE TABLE catalogs (
     sub_key         TEXT,                        -- in a subscribed collection: its key in the snapshot
     created_at      TEXT    NOT NULL,            -- RFC3339 UTC
     updated_at      TEXT    NOT NULL,            -- RFC3339 UTC
-    revision        INTEGER NOT NULL DEFAULT 1,  -- raised by each content write: the row a save is built from
     CHECK (collection_id IS NULL OR home_sort_order IS NULL)
 );
 
@@ -146,14 +143,11 @@ BEGIN
     UPDATE publications SET subscriber_count = subscriber_count - 1 WHERE id = OLD.publication_id;
 END;
 
--- The key an account brings for a provider, on a server in per-account key mode.
-CREATE TABLE account_keys (
-    nuvio_user_id  TEXT NOT NULL, -- Nuvio auth.users.id, as profiles.nuvio_user_id
-    provider       TEXT NOT NULL, -- the provider the key is for, as catalogs.provider
-    key_ciphertext BLOB NOT NULL, -- nonce || AES-GCM sealed key
-    key_last4      TEXT NOT NULL, -- the key's last four characters, shown to its owner
-    updated_at     TEXT NOT NULL,
-    PRIMARY KEY (nuvio_user_id, provider)
+CREATE TABLE accounts (
+    nuvio_user_id       TEXT PRIMARY KEY,  -- Nuvio auth.users.id, as profiles.nuvio_user_id
+    tmdb_key_ciphertext BLOB NOT NULL,     -- nonce || AES-GCM sealed key
+    tmdb_key_last4      TEXT NOT NULL,     -- the key's last four characters, shown to its owner
+    updated_at          TEXT NOT NULL
 );
 
 CREATE INDEX folder_catalogs_by_catalog ON folder_catalogs (catalog_id);

@@ -23,7 +23,7 @@ func TestUpdateUserCollectionRejectsFolderRefToAnotherOwnersPublicCatalog(t *tes
 		t.Fatalf("create other's public catalog: %v", err)
 	}
 
-	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	_, err = db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(othersCatalog.ID)}},
 	})
@@ -44,7 +44,7 @@ func TestUpdateUserCollectionRejectsFolderRefToCatalogScopedElsewhere(t *testing
 
 	scoped := createScopedCatalog(t, db, owner, collectionA, listedCatalogForm("Scoped to A"))
 
-	_, err := db.UpdateUserCollection(ctx, owner, collectionB, CollectionForm{
+	_, err := db.UpdateUserCollection(ctx, owner, collectionB, collectionRevision(t, db, collectionB), CollectionForm{
 		Title: "B", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(scoped.ID)}},
 	})
@@ -87,7 +87,7 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
 	// Referenced by two folders in the same collection.
-	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: CatalogRefs(scoped.ID)},
@@ -100,7 +100,7 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 	folder1ID := saved.Folders[0].ID
 
 	// Drop the ref from folder 2, keep folder 1 — the catalog must survive.
-	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	_, err = db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{FolderArt: FolderArt{TileShape: "POSTER"}, ID: &folder1ID, Title: "Folder 1", Catalogs: CatalogRefs(scoped.ID)},
@@ -118,7 +118,7 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 	}
 
 	// Drop the last ref — the catalog must now be GC'd.
-	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	_, err = db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, ID: &folder1ID, Title: "Folder 1", Catalogs: nil}},
 	})
@@ -145,7 +145,7 @@ func TestUpdateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 	owner := newTestProfile(t, db, "owner")
 	collectionID := newTestCollection(t, db, owner, "My Collection")
 
-	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: []FolderCatalogRef{
@@ -217,7 +217,7 @@ func TestUpdateUserCollectionRollsBackNewCatalogOnLaterFolderFailure(t *testing.
 		t.Fatalf("create listed catalog: %v", err)
 	}
 
-	_, err = db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	_, err = db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: []FolderCatalogRef{
@@ -256,7 +256,7 @@ func TestUpdateUserCollectionResponseIncludesScopedCatalogs(t *testing.T) {
 
 	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
-	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: CatalogRefs(listed.ID, scoped.ID)}},
 	})
@@ -308,7 +308,7 @@ func TestUpdateUserCollectionResolvesSharedNewKeyToOneCatalog(t *testing.T) {
 		return FolderCatalogRef{New: &spec, Genre: genre}
 	}
 
-	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, CollectionForm{
+	saved, err := db.UpdateUserCollection(ctx, owner, collectionID, collectionRevision(t, db, collectionID), CollectionForm{
 		Title: "My Collection", ViewMode: "TABBED_GRID",
 		Folders: []FolderData{
 			{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1", Catalogs: []FolderCatalogRef{

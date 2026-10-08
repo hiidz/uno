@@ -90,7 +90,7 @@ func TestUpdateAndDeleteUserCatalogRefuseScoped(t *testing.T) {
 	collectionID := newTestCollection(t, db, owner, "My Collection")
 	scoped := createScopedCatalog(t, db, owner, collectionID, listedCatalogForm("Scoped"))
 
-	if _, err := db.UpdateUserCatalog(ctx, owner, scoped.ID, listedCatalogForm("Scoped")); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.UpdateUserCatalog(ctx, owner, scoped.ID, catalogRevision(t, db, scoped.ID), listedCatalogForm("Scoped")); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("PUT on a scoped catalog = %v, want ErrInvalidInput", err)
 	}
 	if err := db.DeleteUserCatalog(ctx, owner, scoped.ID); !errors.Is(err, ErrInvalidInput) {
@@ -125,11 +125,11 @@ func TestUpdateUserCatalogRejectsTypeChange(t *testing.T) {
 
 	form := listedCatalogForm("Catalog")
 	form.Type = "series"
-	if _, err := db.UpdateUserCatalog(ctx, owner, c.ID, form); !errors.Is(err, ErrInvalidInput) {
+	if _, err := db.UpdateUserCatalog(ctx, owner, c.ID, catalogRevision(t, db, c.ID), form); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("update with changed type: got %v, want ErrInvalidInput", err)
 	}
 
-	unchanged, err := db.UpdateUserCatalog(ctx, owner, c.ID, listedCatalogForm("Catalog"))
+	unchanged, err := db.UpdateUserCatalog(ctx, owner, c.ID, catalogRevision(t, db, c.ID), listedCatalogForm("Catalog"))
 	if err != nil {
 		t.Fatalf("update with unchanged type: %v", err)
 	}

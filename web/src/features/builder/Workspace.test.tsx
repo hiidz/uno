@@ -49,11 +49,25 @@ function mutation() {
   }
 }
 
+/** Every input an update mutation was called with, in order. */
+const saves = vi.hoisted(() => ({ inputs: [] as unknown[] }))
+
+/** An update whose `mutate` records its input in `saves` and succeeds at once. */
+function recordedUpdate() {
+  return {
+    ...mutation(),
+    mutate(input: unknown, options?: { onSuccess?: (result: unknown) => void }) {
+      saves.inputs.push(input)
+      options?.onSuccess?.({})
+    },
+  }
+}
+
 vi.mock('@/features/catalogs/useCatalogMutations', () => ({
-  useCatalogMutations: () => ({ create: mutation(), duplicate: mutation(), update: mutation(), remove: mutation() }),
+  useCatalogMutations: () => ({ create: mutation(), duplicate: mutation(), update: recordedUpdate(), remove: mutation() }),
 }))
 vi.mock('@/features/collections/useCollectionMutations', () => ({
-  useCollectionMutations: () => ({ create: mutation(), update: mutation(), remove: mutation(), duplicate: mutation() }),
+  useCollectionMutations: () => ({ create: mutation(), update: recordedUpdate(), remove: mutation(), duplicate: mutation() }),
 }))
 vi.mock('@/features/push/usePushWaiting', () => ({ usePushWaiting: () => new Set() }))
 vi.mock('@/features/sharing/useWorkspaceSharing', () => ({
@@ -103,16 +117,22 @@ vi.mock('@/features/library/LibrarySection', () => ({
 }))
 
 interface EditorProps {
-  onRequestClose: () => void
+  initial: unknown
+  onSave(value: unknown): void
+  onRequestClose(): void
   onDelete?: () => void
 }
 
-function FakeEditor({ onRequestClose, onDelete }: EditorProps) {
+/** An editor whose Save hands back the form it opened with, less its
+ *  revision, as a collection editor's payload carries none: what a catalog
+ *  editor saves, and as much of a collection payload as Workspace reads. */
+function FakeEditor({ initial, onSave, onRequestClose, onDelete }: EditorProps) {
   return (
     <main>
       <h1 tabIndex={-1} data-landing>
         Editor
       </h1>
+      <button onClick={() => onSave({ ...(initial as object), revision: undefined })}>Save row</button>
       <button onClick={onRequestClose}>Close editor</button>
       <button onClick={onDelete}>Delete row</button>
     </main>
@@ -124,6 +144,7 @@ vi.mock('@/features/collections/CollectionEditor', () => ({ CollectionEditor: Fa
 
 beforeEach(() => {
   rows.catalogs = [catalog({ id: 'c1', name: 'Noir' })]
+  saves.inputs = []
   rows.collections = [collection({ id: 'k1', title: 'Night shift' })]
   window.history.replaceState({ idx: 1 }, '')
 })
@@ -210,5 +231,33 @@ describe('Workspace import', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import' }))
     fireEvent.click(screen.getByRole('button', { name: 'Finish import' }))
     expect(screen.getByText('Imported 2 catalogs and 1 collection')).toBeInTheDocument()
+  })
+})
+
+describe('Workspace saves', () => {
+  it('sends the revision each editor opened at, not the one a refetch brings', () => {
+    rows.catalogs = [catalog({ id: 'c1', name: 'Noir', revision: 4 })]
+    rows.collections = [collection({ id: 'k1', title: 'Night shift', revision: 2 })]
+    const { rerender } = render(
+      <EditorGuardProvider>
+        <Workspace profileIndex={1} onOpenPublication={() => {}} />
+      </EditorGuardProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open Noir' }))
+    rows.catalogs = [catalog({ id: 'c1', name: 'Noir', revision: 5 })]
+    rerender(
+      <EditorGuardProvider>
+        <Workspace profileIndex={1} onOpenPublication={() => {}} />
+      </EditorGuardProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Save row' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Night shift' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save row' }))
+
+    expect(saves.inputs).toEqual([
+      { id: 'c1', payload: expect.objectContaining({ name: 'Noir', revision: 4 }) },
+      { id: 'k1', payload: expect.objectContaining({ title: 'Night shift', revision: 2 }) },
+    ])
   })
 })

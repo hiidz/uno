@@ -24,9 +24,14 @@ import (
 // AES-256 key.
 const SecretSize = 32
 
-// Box seals and opens TMDB keys with AES-256-GCM under the server's secret.
-// Each sealed key is bound to its account, so a sealed key moved to another
-// account's row doesn't open.
+// Provider is the provider the keys this package holds are for, as
+// catalogs.provider names it: the account_keys row a key is stored in, and
+// part of what the key is sealed bound to.
+const Provider = "tmdb"
+
+// Box seals and opens keys with AES-256-GCM under the server's secret. Each
+// sealed key is bound to its provider and account, so a sealed key moved to
+// another provider's or account's row doesn't open.
 type Box struct {
 	aead cipher.AEAD
 }
@@ -47,28 +52,31 @@ func NewBox(secret []byte) (*Box, error) {
 	return &Box{aead: aead}, nil
 }
 
-// boundTo is the additional data that binds a sealed key to account.
-func boundTo(account string) []byte {
-	return []byte("uno-tmdb-key/1\x00" + account)
+// boundTo is the additional data that binds a sealed key to keyProvider and
+// account.
+func boundTo(keyProvider, account string) []byte {
+	return []byte("uno-account-key/1\x00" + keyProvider + "\x00" + account)
 }
 
-// Seal is key sealed for account: a random nonce, then the ciphertext.
-func (b *Box) Seal(account, key string) ([]byte, error) {
+// Seal is key sealed for account's keyProvider row: a random nonce, then the
+// ciphertext.
+func (b *Box) Seal(keyProvider, account, key string) ([]byte, error) {
 	nonce := make([]byte, b.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, fmt.Errorf("tmdbkey: drawing a nonce: %w", err)
 	}
-	return b.aead.Seal(nonce, nonce, []byte(key), boundTo(account)), nil
+	return b.aead.Seal(nonce, nonce, []byte(key), boundTo(keyProvider, account)), nil
 }
 
-// Open is the key sealed holds for account. It fails for a key sealed under
-// another secret or for another account, and for anything tampered with.
-func (b *Box) Open(account string, sealed []byte) (string, error) {
+// Open is the key sealed holds for account's keyProvider row. It fails for a
+// key sealed under another secret or for another provider or account, and for
+// anything tampered with.
+func (b *Box) Open(keyProvider, account string, sealed []byte) (string, error) {
 	n := b.aead.NonceSize()
 	if len(sealed) < n {
 		return "", errors.New("tmdbkey: the sealed key is too short")
 	}
-	key, err := b.aead.Open(nil, sealed[:n], sealed[n:], boundTo(account))
+	key, err := b.aead.Open(nil, sealed[:n], sealed[n:], boundTo(keyProvider, account))
 	if err != nil {
 		return "", fmt.Errorf("tmdbkey: opening the key: %w", err)
 	}
@@ -100,9 +108,10 @@ func Clean(key string) (string, error) {
 	return "", ErrNotAPIKey
 }
 
-// Keys gives requests the TMDB key of the account they are for. A nil *Keys
-// is a server with one shared key: every source it gives is nil, which
-// provider.WithKeySource ignores, so callers never ask which mode they run in.
+// Keys gives requests the key of the account they are for, for a provider.
+// A nil *Keys is a server with one shared key: every source it gives is nil,
+// which provider.WithKeySource ignores, so callers never ask which mode they
+// run in.
 type Keys struct {
 	box   *Box
 	vault *vault.DB
@@ -113,67 +122,67 @@ func New(box *Box, v *vault.DB) *Keys {
 	return &Keys{box: box, vault: v}
 }
 
-// Seal is key sealed for account, as the vault stores it, with its last four
-// characters.
-func (k *Keys) Seal(account, key string) (vault.AccountKey, error) {
-	sealed, err := k.box.Seal(account, key)
+// Seal is key sealed for account's keyProvider row, as the vault stores it,
+// with its last four characters.
+func (k *Keys) Seal(keyProvider, account, key string) (vault.AccountKey, error) {
+	sealed, err := k.box.Seal(keyProvider, account, key)
 	if err != nil {
 		return vault.AccountKey{}, err
 	}
 	return vault.AccountKey{Sealed: sealed, Last4: key[max(len(key)-4, 0):]}, nil
 }
 
-// ForAccount is the key source of a request signed in as account.
-func (k *Keys) ForAccount(ctx context.Context, account string) provider.KeySource {
+// ForAccount is the keyProvider key source of a request signed in as account.
+func (k *Keys) ForAccount(ctx context.Context, keyProvider, account string) provider.KeySource {
 	if k == nil {
 		return nil
 	}
 	ctx = context.WithoutCancel(ctx) // a shared page fetch outlives its request
 	return func() (string, error) {
-		stored, err := k.vault.AccountKey(ctx, account)
+		stored, err := k.vault.AccountKey(ctx, account, keyProvider)
 		if errors.Is(err, vault.ErrNoAccountKey) {
 			return "", provider.ErrNoKey
 		}
 		if err != nil {
 			return "", err
 		}
-		return k.open(account, stored.Sealed)
+		return k.open(keyProvider, account, stored.Sealed)
 	}
 }
 
-// ForToken is the key source of a request for the profile whose addon token
-// it is: its owner's key.
-func (k *Keys) ForToken(ctx context.Context, token string) provider.KeySource {
+// ForToken is the keyProvider key source of a request for the profile whose
+// addon token it is: its owner's key.
+func (k *Keys) ForToken(ctx context.Context, keyProvider, token string) provider.KeySource {
 	if k == nil {
 		return nil
 	}
 	ctx = context.WithoutCancel(ctx)
 	return func() (string, error) {
-		account, sealed, err := k.vault.AccountKeyByToken(ctx, token)
+		account, sealed, err := k.vault.AccountKeyByToken(ctx, token, keyProvider)
 		if err != nil {
 			return "", err
 		}
-		return k.open(account, sealed)
+		return k.open(keyProvider, account, sealed)
 	}
 }
 
-// Sealed is the key source of a request for account whose sealed key is
-// already read, nil when it has none.
-func (k *Keys) Sealed(account string, sealed []byte) provider.KeySource {
+// Sealed is the key source of a request for account whose sealed keyProvider
+// key is already read, nil when it has none.
+func (k *Keys) Sealed(keyProvider, account string, sealed []byte) provider.KeySource {
 	if k == nil {
 		return nil
 	}
-	return func() (string, error) { return k.open(account, sealed) }
+	return func() (string, error) { return k.open(keyProvider, account, sealed) }
 }
 
-// open is account's key from sealed: ErrNoKey when there is none, and a key
-// that doesn't open (the server's secret changed) is a rejected one, which its
-// owner fixes the same way, by entering it again.
-func (k *Keys) open(account string, sealed []byte) (string, error) {
+// open is account's keyProvider key from sealed: ErrNoKey when there is none,
+// and a key that doesn't open (the server's secret changed) is a rejected one,
+// which its owner fixes the same way, by entering it again.
+func (k *Keys) open(keyProvider, account string, sealed []byte) (string, error) {
 	if sealed == nil {
 		return "", provider.ErrNoKey
 	}
-	key, err := k.box.Open(account, sealed)
+	key, err := k.box.Open(keyProvider, account, sealed)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", provider.ErrKeyRejected, err)
 	}

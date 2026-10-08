@@ -35,11 +35,11 @@ func TestUpdateChangesForACollectionCopy(t *testing.T) {
 	form.Folders[0].Title = "Family"
 	form.Folders[0].Catalogs = form.Folders[0].Catalogs[:1]
 	form.Folders = append(form.Folders, FolderData{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "C", Catalogs: []FolderCatalogRef{newScoped("n", "Fresh", `{"with_genres":"35"}`)}})
-	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, form); err != nil {
+	if _, err := db.UpdateUserCollection(ctx, owner, source.ID, collectionRevision(t, db, source.ID), form); err != nil {
 		t.Fatal(err)
 	}
 	renamed := listedCatalogForm("Listed too")
-	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, renamed); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, catalogRevision(t, db, listed.ID), renamed); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.PublishCollection(ctx, owner, source.ID); err != nil {
@@ -76,7 +76,7 @@ func TestUpdateChangesForACatalogCopy(t *testing.T) {
 
 	form := listedCatalogForm("Popular")
 	form.Params = `{"sort_by":"vote_average.desc"}`
-	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, form); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, catalogRevision(t, db, source.ID), form); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.PublishCatalog(ctx, owner, source.ID); err != nil {
@@ -141,7 +141,7 @@ func TestCollectionChangesSincePublish(t *testing.T) {
 
 	edited := listedCatalogForm("Listed")
 	edited.Params = `{"sort_by":"vote_average.desc"}`
-	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, edited); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, catalogRevision(t, db, listed.ID), edited); err != nil {
 		t.Fatal(err)
 	}
 	changes, err := db.CollectionChangesSincePublish(ctx, owner, created.ID)
@@ -150,12 +150,12 @@ func TestCollectionChangesSincePublish(t *testing.T) {
 	}
 	assertStrings(t, "an edited library catalog", labels(changes), []string{"changed catalog/recipe Listed +recipe"})
 
-	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, listedCatalogForm("Listed")); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, catalogRevision(t, db, listed.ID), listedCatalogForm("Listed")); err != nil {
 		t.Fatal(err)
 	}
 	empty("the edit undone")
 
-	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, edited); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, listed.ID, catalogRevision(t, db, listed.ID), edited); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.PublishCollection(ctx, owner, created.ID); err != nil {
@@ -175,7 +175,7 @@ func TestCatalogChangesSincePublish(t *testing.T) {
 	if changes, err := db.CatalogChangesSincePublish(ctx, owner, source.ID); err != nil || changes == nil || len(changes) != 0 {
 		t.Errorf("as published: changes = %q, %v; want an empty list", labels(changes), err)
 	}
-	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, listedCatalogForm("Popular now")); err != nil {
+	if _, err := db.UpdateUserCatalog(ctx, owner, source.ID, catalogRevision(t, db, source.ID), listedCatalogForm("Popular now")); err != nil {
 		t.Fatal(err)
 	}
 	changes, err := db.CatalogChangesSincePublish(ctx, owner, source.ID)
