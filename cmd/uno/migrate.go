@@ -1,5 +1,9 @@
-// The v11→v12 migration, `uno migrate --db <path>`: run once against a vault at
-// schema version 11, then deleted. Version 12 adds the revisions a save and a
+// The v11→v12 migration, `uno migrate --db <path>`: run once against prod's
+// vault at schema version 11, then deleted. Prod took version 11 before the
+// release mark left it, so its vault still holds catalogs.unpublished_at,
+// collections.unpublished_at and the release trigger that sets them; the
+// migration drops both columns and writes the trigger as schema.sql has it, and
+// a v11 vault without those columns is refused. Version 12 adds the revisions a save and a
 // push are checked against, catalogs.revision, collections.revision and
 // profiles.home_revision, each 1 for every row, and replaces accounts with
 // account_keys, one sealed key per account and provider. The keys accounts
@@ -25,8 +29,20 @@ import (
 	"github.com/hiidz/uno/internal/vault"
 )
 
-// changes is the migration's DDL, each statement as schema.sql has it.
+// changes is the migration's DDL, each statement as schema.sql has it. The
+// release trigger is dropped first, since it names the columns dropped after
+// it, and each drop comes before the add that takes the column's place.
 const changes = `
+DROP TRIGGER publications_release_subscribers;
+ALTER TABLE catalogs DROP COLUMN unpublished_at;
+ALTER TABLE collections DROP COLUMN unpublished_at;
+CREATE TRIGGER publications_release_subscribers BEFORE DELETE ON publications
+BEGIN
+    UPDATE catalogs SET sub_key = NULL
+    WHERE collection_id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
+    UPDATE folders SET sub_key = NULL
+    WHERE collection_id IN (SELECT collection_id FROM subscriptions WHERE publication_id = OLD.id);
+END;
 ALTER TABLE profiles ADD COLUMN home_revision INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE catalogs ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE collections ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
@@ -60,7 +76,7 @@ func runMigrate(ctx context.Context, args []string, out io.Writer) error {
 	if err := migrateToV12(ctx, *path); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(out, "migrated %s to schema version 12: added the revision columns, replaced accounts with account_keys (no key carried over)\n", *path)
+	_, err := fmt.Fprintf(out, "migrated %s to schema version 12: dropped the release mark, added the revision columns, replaced accounts with account_keys (no key carried over)\n", *path)
 	return err
 }
 
@@ -150,13 +166,13 @@ func freshStructure(ctx context.Context) ([]string, error) {
 
 // structureQuery lists every table, index and trigger in a database as its
 // kind, name and table, then every column of every table in order with its
-// type, nullability, default and primary-key place; the table the migration
-// creates also carries its SQL, so its constraints are compared too. Other
-// rows' SQL is left out: a table a column was added to stores its CREATE text
-// in another form.
+// type, nullability, default and primary-key place; the table and the trigger
+// the migration creates also carry their SQL, so the table's constraints and
+// the trigger's body are compared too. Other rows' SQL is left out: a table a
+// column was added to or dropped from stores its CREATE text in another form.
 const structureQuery = `
 	SELECT type || ' ' || name || ' on ' || tbl_name
-	       || CASE WHEN name IN ('account_keys') THEN ': ' || sql ELSE '' END
+	       || CASE WHEN name IN ('account_keys', 'publications_release_subscribers') THEN ': ' || sql ELSE '' END
 	FROM sqlite_master WHERE name NOT LIKE 'sqlite\_%' ESCAPE '\'
 	UNION ALL
 	SELECT 'column ' || m.name || ' ' || c.cid || ' ' || c.name || ' ' || c.type

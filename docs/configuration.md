@@ -197,11 +197,16 @@ reads `PRAGMA user_version` in one `BEGIN IMMEDIATE` transaction:
 A schema change edits `schema.sql` and bumps `schemaVersion`.
 
 **`uno migrate --db <path>`** moves a version 11 vault to version 12. It is a one-off, deleted once
-prod has run it (`cmd/uno/migrate.go`). It refuses any version but 11. In one transaction, which
-takes the write lock when it begins, it adds `catalogs.revision`, `collections.revision` and
+prod has run it (`cmd/uno/migrate.go`). It refuses any version but 11. Prod took version 11
+before the release mark left the schema, so its vault still holds `catalogs.unpublished_at`,
+`collections.unpublished_at` and the release trigger that sets them, and the migration expects
+exactly that: a version 11 vault without them is refused. In one transaction, which takes the write
+lock when it begins, it drops the release trigger and both `unpublished_at` columns and writes the
+trigger as `schema.sql` has it, adds `catalogs.revision`, `collections.revision` and
 `profiles.home_revision` (each `INTEGER NOT NULL DEFAULT 1`, so every row starts at 1), creates
 `account_keys`, drops `accounts`, stamps version 12, and checks that the tables, columns, indexes
-and triggers match a fresh v12 database, `account_keys`' SQL included. No other row is touched.
+and triggers match a fresh v12 database, the SQL of `account_keys` and of the trigger included. No
+other row is touched.
 The TMDB keys `accounts` held are dropped, not carried over: each was sealed bound to its account
 alone, which a v12 key no longer opens under, so the migration needs no `UNO_SECRET`. A server in
 `shared` mode holds none; on a `per-account` server each owner enters the key again on the picker.

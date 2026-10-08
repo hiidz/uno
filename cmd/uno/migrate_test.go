@@ -14,8 +14,22 @@ import (
 	"github.com/hiidz/uno/internal/vault"
 )
 
+// schemaV11 is prod's version 11: schema.sql as it was when prod took
+// version 11, still holding the release mark (unpublished_at) and the release
+// trigger that sets it.
+//
 //go:embed testdata/schema_v11.sql
 var schemaV11 string
+
+// schemaV11Fresh is the version 11 schema.sql made once the release mark was
+// gone, which the migration refuses.
+//
+//go:embed testdata/schema_v11_fresh.sql
+var schemaV11Fresh string
+
+// releaseMark sets the release mark on the subscriber's copy, as prod's
+// release trigger did when a publication ended.
+const releaseMark = `UPDATE catalogs SET unpublished_at = '2026-01-02T00:00:00Z' WHERE id = 'c2';`
 
 // v11Rows is a row in every table: two profiles, a collection with a folder
 // holding a catalog scoped to it, a listed catalog published and its
@@ -45,9 +59,9 @@ var v11Tables = map[string]int{
 	"publications": 1, "subscriptions": 1, "push_records": 1,
 }
 
-// newV11Database is a database at a new path, made from the v11 schema plus
-// extra, holding v11Rows and stamped version.
-func newV11Database(t *testing.T, extra string, version int) string {
+// newV11Database is a database at a new path, made from schema plus extra,
+// holding v11Rows and stamped version.
+func newV11Database(t *testing.T, schema, extra string, version int) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "vault.db")
 	raw, err := sql.Open("sqlite", "file:"+path)
@@ -55,7 +69,7 @@ func newV11Database(t *testing.T, extra string, version int) string {
 		t.Fatal(err)
 	}
 	defer func() { _ = raw.Close() }()
-	if _, err := raw.Exec(schemaV11 + "\n" + v11Rows + extra + fmt.Sprintf("\nPRAGMA user_version = %d;", version)); err != nil {
+	if _, err := raw.Exec(schema + "\n" + v11Rows + extra + fmt.Sprintf("\nPRAGMA user_version = %d;", version)); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -92,12 +106,13 @@ func structureAt(t *testing.T, path string) []string {
 	return lines
 }
 
-// A v11 database migrates to one this build opens, with a fresh v12
-// database's structure, every row of every other table kept, every revision 1
-// and no account key; a second run is refused.
+// Prod's v11 database migrates to one this build opens, with a fresh v12
+// database's structure, the release mark and its trigger gone, every row of
+// every other table kept, every revision 1 and no account key; ending a
+// publication then runs the new release trigger, and a second run is refused.
 func TestMigrateToV12(t *testing.T) {
 	ctx := context.Background()
-	path := newV11Database(t, "", 11)
+	path := newV11Database(t, schemaV11, releaseMark, 11)
 	var out bytes.Buffer
 	if err := runCommand(ctx, []string{"migrate", "--db", path}, &out); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -118,15 +133,18 @@ func TestMigrateToV12(t *testing.T) {
 		}
 	}
 	for query, want := range map[string]int{
-		`SELECT user_version FROM pragma_user_version`:                                    12,
-		`SELECT count(*) FROM catalogs WHERE revision = 1`:                                3,
-		`SELECT count(*) FROM collections WHERE revision = 1`:                             1,
-		`SELECT count(*) FROM profiles WHERE home_revision = 1`:                           2,
-		`SELECT count(*) FROM account_keys`:                                               0,
-		`SELECT count(*) FROM sqlite_master WHERE name = 'accounts'`:                      0,
-		`SELECT subscriber_count FROM publications`:                                       1,
-		`SELECT count(*) FROM pragma_foreign_key_check`:                                   0,
-		`SELECT count(*) FROM sqlite_master WHERE name = 'subscriptions_count_on_insert'`: 1,
+		`SELECT user_version FROM pragma_user_version`:                                        12,
+		`SELECT count(*) FROM catalogs WHERE revision = 1`:                                    3,
+		`SELECT count(*) FROM collections WHERE revision = 1`:                                 1,
+		`SELECT count(*) FROM profiles WHERE home_revision = 1`:                               2,
+		`SELECT count(*) FROM account_keys`:                                                   0,
+		`SELECT count(*) FROM sqlite_master WHERE name = 'accounts'`:                          0,
+		`SELECT subscriber_count FROM publications`:                                           1,
+		`SELECT count(*) FROM pragma_foreign_key_check`:                                       0,
+		`SELECT count(*) FROM sqlite_master WHERE name = 'subscriptions_count_on_insert'`:     1,
+		`SELECT count(*) FROM pragma_table_info('catalogs') WHERE name = 'unpublished_at'`:    0,
+		`SELECT count(*) FROM pragma_table_info('collections') WHERE name = 'unpublished_at'`: 0,
+		`SELECT count(*) FROM sqlite_master WHERE sql LIKE '%unpublished_at%'`:                0,
 	} {
 		if got := count(t, path, query); got != want {
 			t.Errorf("%s = %d, want %d", query, got, want)
@@ -139,13 +157,33 @@ func TestMigrateToV12(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
+	endPublication(t, path)
+	if got := count(t, path, `SELECT count(*) FROM subscriptions`); got != 0 {
+		t.Errorf("subscriptions after the publication ended = %d, want 0", got)
+	}
 	if err := runMigrate(ctx, []string{"--db", path}, &out); err == nil || !strings.Contains(err.Error(), "version 12") {
 		t.Errorf("a second migrate = %v, want it refused at version 12", err)
 	}
 }
 
-// A database at any version but 11, or whose structure isn't a v11 one's, is
-// refused and left byte for byte as it was.
+// endPublication deletes the publication v11Rows holds, as unpublishing does,
+// with foreign keys on as the vault runs: the release trigger and the cascade
+// to its subscription run.
+func endPublication(t *testing.T, path string) {
+	t.Helper()
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(on)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = raw.Close() }()
+	if _, err := raw.Exec(`DELETE FROM publications WHERE id = 'pub1'`); err != nil {
+		t.Fatalf("ending the publication: %v", err)
+	}
+}
+
+// A database at any version but 11, or whose structure isn't prod's v11, is
+// refused and left byte for byte as it was: a v11 without the release mark
+// fails as the migration drops it.
 func TestMigrateRefusesAndLeavesTheFile(t *testing.T) {
 	ctx := context.Background()
 	fresh := filepath.Join(t.TempDir(), "fresh.db")
@@ -159,9 +197,10 @@ func TestMigrateRefusesAndLeavesTheFile(t *testing.T) {
 	for _, tc := range []struct {
 		name, path, refusal string
 	}{
-		{"version 10", newV11Database(t, "", 10), "schema version 10"},
+		{"version 10", newV11Database(t, schemaV11, "", 10), "schema version 10"},
 		{"version 12", fresh, "schema version 12"},
-		{"another structure", newV11Database(t, "CREATE INDEX stray ON catalogs (name);", 11), "differs from a fresh v12"},
+		{"a v11 without the release mark", newV11Database(t, schemaV11Fresh, "", 11), "applying the changes"},
+		{"another structure", newV11Database(t, schemaV11, "CREATE INDEX stray ON catalogs (name);", 11), "differs from a fresh v12"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before, err := os.ReadFile(tc.path)
