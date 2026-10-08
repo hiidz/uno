@@ -172,7 +172,7 @@ docker compose up -d
 
 `compose.yaml` sets:
 
-- `image: ghcr.io/hiidz/uno:${UNO_TAG:-latest}`. Set `UNO_TAG` in `.env` to pin a release. A
+- `image: ghcr.io/hiidz/uno:${UNO_TAG:-latest}`. Set `UNO_TAG` in `.env` to pin a release, without its `v` (`1.2.0` for `v1.2.0`). A
   database at another schema version stops the start (see *Database lifecycle*), so upgrade one
   release at a time and read release notes for schema changes. `docker compose up -d` alone never
   re-pulls a tag already on the host; upgrade with `docker compose pull && docker compose up -d`.

@@ -1,6 +1,6 @@
 services:
   uno:
-    # Pin UNO_TAG to a release (e.g. v1.2.0) in .env to upgrade deliberately:
+    # Pin UNO_TAG to a release (e.g. 1.2.0 for git tag v1.2.0) in .env to upgrade deliberately:
     # a release that changes the database schema says so in its notes.
     image: ghcr.io/hiidz/uno:${UNO_TAG:-latest}
     restart: unless-stopped
