@@ -503,6 +503,105 @@ three values, which hash alike (`internal/vault/recipes.go`).
   duplicate, an Update and a Duplicate write the type, provider and params they copy onto the
   copy's row.
 
+## Providers
+
+**A provider is the service a catalog's recipe runs against.** `tmdb` is the only one Uno runs;
+IMDb, MyAnimeList and Letterboxd are the planned next. This section
+is the shape a second provider is added behind with no schema or wire change after release. The
+rules marked *Not built yet* are decided and land before the release.
+
+- **Storage is already provider-neutral.** `catalogs.provider` holds each catalog's provider, and
+  everything that carries a recipe carries it:
+  - bundle v1 and the publication snapshot v1, on every catalog (`BundleCatalog.provider`);
+  - the recipe hash, which covers type, provider and params, so two providers' recipes never
+    collide;
+  - the push record's catalogs;
+  - the manifest id, `{provider}-{catalog uuid}` (`vault.ManifestID`), which Nuvio holds as
+    `catalogSources[].catalogId`.
+
+  A new provider adds no column and no key to any of them. `catalogs.provider` is free text at
+  the schema level (`TEXT`, no `CHECK`); the constraint is app-level only. Nuvio's own
+  `sources[].provider` (`"addon"` in `docs/api/samples/`) is the kind of folder source and is
+  unrelated: every catalog Uno pushes is an `"addon"` source, whatever its provider.
+- **Names.** A provider name is lowercase letters and digits with no hyphen, since
+  `parseManifestID` (`internal/addon/addon.go`) splits a manifest id at its first `-`, and it is
+  never one of the builder API's own first path segments under `/api/` (`p`, `config`,
+  `account`, `profiles`, `catalogs` and the rest), since a provider's lookups sit at
+  `/api/{provider}/`. A name is
+  permanent once a catalog uses it, because Nuvio holds manifest ids that start with it. There is
+  one name per service (`tmdb`, `imdb`, `mal`, `letterboxd`); the kinds of recipe within one
+  service are params, the way a TMDB collection is a movie recipe with `with_collection`.
+- **A provider's params only grow.** Each provider has its own params type and canonical form
+  (*Recipes*). Once a release has stored a provider's recipes:
+  - a new optional field is additive: the canonical form drops zero values, so a recipe that
+    doesn't set it keeps its bytes, its hash, its snapshots and its bundle entries;
+  - renaming or removing a field, or changing what one means, is a breaking change and is not
+    made. A field that has to work differently is a new field beside the old one.
+- **A field the provider doesn't declare is refused** (*Not built yet*). Every recipe a client
+  sends — a catalog save, a collection save's new entries and catalog edits, a preview, genre
+  options, each catalog of an import — is a 400 naming any params key its provider's type
+  doesn't declare. Today `DecodeParams` is a plain `json.Unmarshal` and the canonical form drops
+  such a key, so a bundle from a newer instance, using a field an older one lacks, would import
+  there as a broader recipe than its author built. Stored params are canonical and hold no such
+  key, and the SPA sends only its type's fields (`recipeParams`,
+  `web/src/features/catalogs/catalogForm.ts`).
+- **Types.** A catalog's type is `movie` or `series` whatever its provider, and each provider
+  accepts one or both. The anime addons Nuvio users run take `series` and `movie` as well as
+  their own `anime`.
+- **Items resolve to IMDb ids.** A provider gives each title it finds as its IMDb id (`tt…`) and
+  leaves out a title with none, as TMDB's `resolveMetas` does. Uno serves catalogs only
+  (`resources: ["catalog"]`, `idPrefixes: ["tt"]`): Nuvio picks the addon for a title's details
+  and its streams by the id's prefix, from the profile's other addons, and `tt` is the id every
+  setup reads — Cinemeta, AIOMetadata and Torrentio alike. Whether a provider may fall back to
+  its own id for a title with no IMDb id is decided with the first provider that needs it:
+  `kitsu:`, for anime, gets details from the Kitsu addon and AIOMetadata and streams from
+  Torrentio, but nothing from Cinemeta. Item ids are stored nowhere, so either answer is code,
+  and widening `idPrefixes` is additive. Read at TMDB Discover+ `1b32de6` (`tt`, else `tmdb:`,
+  `kitsu:` or `mal:`, with its own `meta` resource behind them), AIOMetadata `52b1d36`, NuvioTV
+  `e374881` (`MetaRepositoryImpl`, `PlaybackAvailability`) and NuvioMobile `7be1b56`
+  (`MetaDetailsRepository`).
+- **The catalog's provider picks the code that runs it** (*Not built yet*).
+  - The addon's catalog route by the prefix of the manifest id Nuvio asks for. `ServedCatalog`
+    already matches that prefix against the push record's catalog; `CatalogHandler` then calls
+    the TMDB client whatever it is.
+  - Preview and genre options by the `provider` the request carries (*Builder API*, below).
+  - A builder write or an import by the form's `provider`.
+
+  One registry maps each provider name to its code, and `validProviders`
+  (`internal/vault/validation.go`) is read from it, so the two can't name different providers.
+  Today they are separate, and the API's recipe check is TMDB's alone: `validateCatalogParams`
+  (`internal/api/provider.go`) takes no provider and judges every recipe as TMDB's, and only
+  `CanonicalParams`, through `decodeRecipe`, refuses another provider, after it. `DecodeParams`
+  maps a catalog type to TMDB's params only, and the addon's `CatalogHandler` and
+  `buildManifest` and the preview routes call the TMDB client directly. The Go interface
+  a provider implements — fetch a page, preview, genre options, validate, canonical form — is
+  written with the second provider, which shows what it has to abstract over. Each provider also
+  needs its own editor in the SPA, whose catalog editor and `TMDBParams` type are TMDB's.
+- **Builder API** (*Not built yet*). The SPA built into the same binary is its only caller, so
+  none of these strands an instance:
+  - `POST /api/catalogs/preview` and `POST /api/catalogs/genre-options` require `provider`.
+  - A preview item carries `id`, the provider's own id for the title as a string, and `url`, the
+    title's page on the provider, built by the server, in place of `tmdb_id`. Tiles
+    de-duplicate on provider and `id`.
+  - TMDB's lookup routes (genres, certifications, languages, countries, watch providers and
+    regions, and company, keyword, collection and network search and by-id) move under
+    `/api/tmdb/`, and each provider's own lookups sit under `/api/{provider}/`.
+  - `GET /api/config` lists the providers the server runs (`providers`), so the SPA offers
+    only those.
+  - `docs/api/openapi.yaml`'s `Provider` is an enum of the providers Uno runs.
+- **Community.** A snapshot carries each catalog's provider, so publishing, adding and updating
+  another provider's catalog need no change. *Not built yet:* the Community list takes an
+  optional `provider`: a publication matches when any catalog in its snapshot uses that
+  provider, read through `json_each` the way the search reads catalog names.
+- **Bundles stay version 1.** An import holding a catalog whose provider the server doesn't run
+  is refused whole, every such catalog listed in the one 400, as with any invalid catalog.
+- **Account keys** (*Not built yet*). `accounts` holds one TMDB key per account. It becomes one
+  row per account and provider — `account_keys`: `nuvio_user_id`, `provider`, the sealed key, its
+  last four, `updated_at` — with the key sealed under both as additional data, so a key copied
+  to another provider's row doesn't open. This is a schema change, shipped in the same schema
+  version as the release's other schema changes, today's rows moving across as
+  `provider = 'tmdb'`. `/api/account/tmdb-key` stays; another provider's key route is additive.
+
 ## Publications and subscriptions
 
 **A row is put in Community by publishing it, and followed by subscribing to it.** Publishing
@@ -795,27 +894,7 @@ describing what a TMDB-backed catalog may ask for.
   honestly in UI ("shuffle"), not "true random". Preview always asks page 1 and returns the flag
   instead. A collection recipe (`with_collection`) has no pages to pick from: `randomized` shuffles
   its film list instead of sorting it by release date.
-- **A second provider touches only the code that runs a recipe.**
-  - **Storage is provider-neutral.** A recipe's hash covers its type, provider and params
-    together, so another provider's recipes never collide with TMDB's. Catalogs, links,
-    bundles, Community and push carry the provider string without reading it.
-  - **What runs a recipe is TMDB's alone.** There is no `Provider` interface, deliberately —
-    deferred until a second provider is real enough to show what it should abstract over.
-  - **A new provider needs:**
-    - its name in `validProviders` (`vault.CatalogForm.Validate()`,
-      `internal/vault/validation.go`) *and* past the provider check at the top of
-      `validateCatalogParams` (`internal/api/provider.go`). Miss either and its rows are
-      silently rejected everywhere. The `api` check is the one that actually parses `params`,
-      so it must reject early rather than rely on the vault check alone;
-    - its own params type and canonical form, reached by provider in `provider.decodeRecipe`,
-      which `CanonicalParams` goes through. `DecodeParams` maps a catalog type to TMDB's params
-      struct only;
-    - its own way to fetch a page, preview a recipe and offer genre options. The addon's
-      `CatalogHandler` and `buildManifest` and the preview routes call the TMDB client
-      directly;
-    - its own editor in the SPA, whose catalog editor and `TMDBParams` type are TMDB's.
-  - `catalogs.provider` is free text at the schema level (`TEXT`, no `CHECK`); the constraint is
-    app-level only.
+- **Everything here is TMDB's.** How a second provider is added is in *Providers*, above.
 
 ## Bundle format
 
