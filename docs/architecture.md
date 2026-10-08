@@ -64,7 +64,7 @@ imports the vault, not the other way round.
 Verifier, Nuvio, SiteBaseURL, NuvioBaseURL, Access, Keys}` (`internal/api/deps.go`); a zero `Access` admits every
 account, and a nil `Keys` is a server with one shared TMDB key (*TMDB keys*). `cmd/uno`'s
 `apiDeps` builds them from the config. `Verifier` (`TokenVerifier`, one method)
-and `Nuvio` (`NuvioClient`, five methods) are narrow *consumer-side* interfaces over
+and `Nuvio` (`NuvioClient`, eight methods) are narrow *consumer-side* interfaces over
 `*nuvio.Client`'s method set, not the concrete type — the seam that makes `requireNuvioAuth` and
 `listProfiles` testable against a fake. Compile-time assertions in `deps.go` turn a signature
 drift in `internal/nuvio` into a build error in `internal/api` rather than a surprise at the call

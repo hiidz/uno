@@ -43,8 +43,8 @@ var (
 
 // Deps is New's constructor argument: every dependency the Server needs,
 // named rather than positional. Verifier and Nuvio are typically the same
-// *nuvio.Client value — see cmd/uno/main.go for why passing a second,
-// independently constructed Verifier would be wrong.
+// *nuvio.Client value — see docs/architecture.md (Server construction) for
+// why passing a second, independently constructed Verifier would be wrong.
 type Deps struct {
 	Vault       *vault.DB
 	Provider    *provider.TMDBClient
