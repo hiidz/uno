@@ -23,12 +23,12 @@ import (
 // Server is Uno's HTTP handler: the authenticated JSON API plus the public
 // addon and SPA routes registered in routes().
 type Server struct {
-	vault        *vault.DB
-	router       *http.ServeMux
-	provider     *provider.TMDBClient
-	verifier     TokenVerifier
-	nuvio        NuvioClient
-	addon        *addon.Server
+	vault               *vault.DB
+	router              *http.ServeMux
+	provider            *provider.TMDBClient
+	verifier            TokenVerifier
+	nuvio               NuvioClient
+	addon               *addon.Server
 	siteBaseURL         string
 	nuvioBaseURL        string
 	nuvioPublishableKey string
@@ -76,17 +76,17 @@ func New(d Deps) (*Server, error) {
 	}
 
 	s := &Server{
-		vault:        d.Vault,
-		router:       http.NewServeMux(),
-		provider:     d.Provider,
-		verifier:     d.Verifier,
-		nuvio:        d.Nuvio,
-		addon:        addonServer,
+		vault:               d.Vault,
+		router:              http.NewServeMux(),
+		provider:            d.Provider,
+		verifier:            d.Verifier,
+		nuvio:               d.Nuvio,
+		addon:               addonServer,
 		siteBaseURL:         d.SiteBaseURL,
 		nuvioBaseURL:        d.NuvioBaseURL,
 		nuvioPublishableKey: d.NuvioPublishableKey,
-		admission:    d.Access.admission(),
-		keys:         d.Keys,
+		admission:           d.Access.admission(),
+		keys:                d.Keys,
 	}
 	if err := s.routes(); err != nil {
 		return nil, err
