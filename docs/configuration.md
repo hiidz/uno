@@ -194,36 +194,9 @@ reads `PRAGMA user_version` in one `BEGIN IMMEDIATE` transaction:
 - at any other version the start fails, naming both versions, and the server exits without
   serving.
 
-A schema change edits `schema.sql` and bumps `schemaVersion`.
-
-**`uno migrate --db <path>`** moves a version 11 vault to version 12. It is a one-off, deleted once
-prod has run it (`cmd/uno/migrate.go`). It refuses any version but 11. Prod took version 11
-before the release mark left the schema, so its vault still holds `catalogs.unpublished_at`,
-`collections.unpublished_at` and the release trigger that sets them, and the migration expects
-exactly that: a version 11 vault without them is refused. In one transaction, which takes the write
-lock when it begins, it drops the release trigger and both `unpublished_at` columns and writes the
-trigger as `schema.sql` has it, adds `catalogs.revision`, `collections.revision` and
-`profiles.home_revision` (each `INTEGER NOT NULL DEFAULT 1`, so every row starts at 1), creates
-`account_keys`, drops `accounts`, stamps version 12, and checks that the tables, columns, indexes
-and triggers match a fresh v12 database, the SQL of `account_keys` and of the trigger included. No
-other row is touched.
-The TMDB keys `accounts` held are dropped, not carried over: each was sealed bound to its account
-alone, which a v12 key no longer opens under, so the migration needs no `UNO_SECRET`. A server in
-`shared` mode holds none; on a `per-account` server each owner enters the key again on the picker.
-Any refusal or failure leaves the file as it was.
-
-On the deployed volume, with the image distroless and `ENTRYPOINT ["/app/uno"]`:
-
-1. `docker compose stop uno`, then back up `/data` (`docker compose cp uno:/data ./uno-data-backup`),
-   which holds `vault.db` and its `-wal` and `-shm` files.
-2. `docker tag uno uno:pre-v12`, so the v11 image survives the build.
-3. Build or deploy the new image.
-4. `docker compose run --rm uno migrate --db /data/vault.db`.
-5. `docker compose up -d`.
-
-The new binary refuses a version 11 vault until it is migrated. If the migration refuses, the vault
-is still at version 11: `docker tag uno:pre-v12 uno && docker compose up -d --no-build` runs the
-old image again.
+A schema change edits `schema.sql` and bumps `schemaVersion`. When a database at the previous
+version has to keep its rows, the change ships with a one-off `uno migrate --db <path>` subcommand
+(`cmd/uno/migrate.go`) that is deleted once prod has run it; none exists now.
 
 **Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 
