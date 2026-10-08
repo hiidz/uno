@@ -1,77 +1,48 @@
 openapi: 3.1.0
 info:
-  title: Uno
+  title: Uno HTTP API
   version: "1"
   description: |
-    Uno's HTTP surface: the builder API under `/api`, which the SPA calls, and
-    the public Stremio-protocol addon under `/u/{token}`, which Nuvio calls.
-    Everything else on the server is the embedded SPA and is not described
-    here.
+    Every route the Uno server registers: the builder API under `/api`, which
+    the web app uses, and the public Stremio addon routes under `/u/{token}`,
+    which Nuvio's apps read.
 
-    **Errors.** Every error under `/api`, an unknown path included, is JSON
-    (`Error`): `error` holds one line of words and, for an error the builder
-    acts on by kind, `code` names it (`ProfileNotFound`). Push is the one
-    exception: past auth, profile resolution and body decoding it answers
-    `PushResult` whether it succeeds or fails. The addon under `/u/{token}`
-    answers errors in plain text (`text/plain; charset=utf-8`), which its
-    clients don't read.
+    `TestOpenAPISpecMatchesRoutes` (internal/api/openapi_test.go) checks that
+    every method and path here reaches a registered route, and that every
+    registered route is here. It doesn't check request or response shapes.
+    Those are written from the handlers' Go structs.
 
-    **Request bodies.** Every body is decoded strictly: a field the request
-    doesn't have, at any depth, is a 400 naming it (`invalid request body:
-    unknown field "name"`). The default limit is 1 MiB, past which the answer
-    is 413.
+    Every error from a route under `/api` is a JSON `Error` body. The addon
+    routes answer errors in plain text.
 
-    **Auth.** Every `/api` operation except `GET /api/health` and
-    `GET /api/config` takes a Nuvio access token as `Authorization: Bearer`.
-    Any of them can answer 401 (missing, malformed, invalid or expired
-    token), 403 (an account the server's allowlist doesn't list) or 502
-    (`auth service unavailable`: Nuvio's signing keys couldn't be fetched).
-    Any operation can answer 500 for a failure of Uno's own.
+    Request bodies are decoded strictly: an unknown field is a `400` that names
+    it, and a body over 1 MiB (4 MiB for import) is a `413`.
 
-    **Profiles.** Routes under `/api/p/{profileIndex}` act on the caller's
-    Uno profile for that Nuvio profile slot (1–6), created by
-    `POST /api/profiles/select`. A slot with no Uno profile is a 404.
-
-    **TMDB keys.** On a server in per-account key mode (`GET /api/config`),
-    an operation that reaches TMDB answers 422 when the account has saved no
-    TMDB key or TMDB refuses it.
-
-    **Recipes.** A catalog's `params` is its TMDB recipe as a JSON-encoded
-    string (`RecipeParams`); a bundle or snapshot catalog carries the same
-    recipe as a JSON object. Every recipe a client sends is checked against
-    TMDB before anything is written, and stored in canonical form. Field
-    rules: `docs/data-model.md`, *Recipe params (TMDB)*.
-
-    Routes and methods here are kept equal to the server's route table by
-    `TestOpenAPISpecMatchesRoutes` (`internal/api/openapi_test.go`).
+    `/config.js` is served by the web app handler, outside this route table.
+  license:
+    name: MIT
 servers:
-  - url: /
+  - url: http://localhost:8123
+    description: Local server
 tags:
   - name: server
-    description: Unauthenticated server facts.
+    description: Health and server settings. No sign-in.
   - name: profiles
-    description: The caller's Nuvio profiles and the Uno profile for one.
-  - name: account
-    description: The caller's own TMDB key, on a per-account key server.
-  - name: recipes
-    description: Running a recipe against TMDB without saving it.
-  - name: catalogs
-    description: The profile's catalogs.
-  - name: collections
-    description: The profile's collections.
-  - name: publishing
-    description: Publishing the profile's own catalogs and collections to Community.
-  - name: community
-    description: Other profiles' publications, and adding them.
+    description: The signed-in account's Nuvio profiles.
+  - name: library
+    description: A profile's catalogs and collections.
+  - name: sharing
+    description: Publishing, Community, and added copies.
   - name: bundles
-    description: Export and import of catalogs and collections as a bundle file.
+    description: Export and import.
   - name: push
-    description: Writing the profile's Home into Nuvio.
+    description: Writing a profile's home screen into Nuvio.
   - name: tmdb
-    description: TMDB vocabulary for the recipe editor.
+    description: TMDB lookups and recipe previews.
+  - name: account
+    description: The account's own TMDB key, in per-account key mode.
   - name: addon
-    description: The public Stremio-protocol addon Nuvio reads.
-
+    description: The public Stremio addon protocol. No sign-in.
 security:
   - nuvioBearer: []
 
@@ -79,13 +50,12 @@ paths:
   /api/health:
     get:
       tags: [server]
-      operationId: health
       summary: Liveness probe
-      description: Reads nothing, so it answers while the vault or Nuvio is down.
+      description: Reads nothing, so it answers even when the database or Nuvio is unreachable.
       security: []
       responses:
         "200":
-          description: The server is up.
+          description: The server is running.
           content:
             text/plain:
               schema:
@@ -95,12 +65,11 @@ paths:
   /api/config:
     get:
       tags: [server]
-      operationId: getConfig
-      summary: How the server is set up
+      summary: The server's TMDB key mode
       security: []
       responses:
         "200":
-          description: The server's TMDB key mode.
+          description: How this server reaches TMDB.
           content:
             application/json:
               schema:
@@ -109,30 +78,28 @@ paths:
   /api/profiles:
     get:
       tags: [profiles]
-      operationId: listProfiles
-      summary: The caller's Nuvio profiles
-      description: Nuvio's profile list, each with the picture Nuvio's apps show for it.
+      summary: List the account's Nuvio profiles
       responses:
         "200":
-          description: Every profile on the caller's Nuvio account.
+          description: The profiles, as Nuvio lists them, with each one's avatar image.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/PickerProfile"
+                  $ref: "#/components/schemas/NuvioProfile"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "502": { $ref: "#/components/responses/NuvioUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/profiles/select:
     post:
       tags: [profiles]
-      operationId: selectProfile
-      summary: Pick a Nuvio profile to build for
+      summary: Pick a profile
       description: |
-        Matches `profile_index` against the caller's live Nuvio profiles and
-        resolves the Uno profile for that slot, creating it on first pick.
+        Checks the slot against the account's live Nuvio profiles, then finds
+        or creates the Uno profile for it. Returns the profile's addon manifest URL.
       requestBody:
         required: true
         content:
@@ -140,175 +107,42 @@ paths:
             schema:
               type: object
               required: [profile_index]
+              additionalProperties: false
               properties:
                 profile_index:
                   type: integer
+                  minimum: 1
+                  maximum: 6
       responses:
         "200":
-          description: The Uno profile, with its addon manifest URL.
+          description: The profile's manifest URL.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SelectedProfile"
+                type: object
+                required: [manifest_url]
+                properties:
+                  manifest_url:
+                    type: string
+                    format: uri
+                    examples: ["https://uno.example.com/u/abc123/manifest.json"]
         "400":
-          description: The body doesn't decode, or the caller's Nuvio account has no profile at that index.
+          description: Bad body, or the account has no profile at that index.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+              schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
-        "502": { $ref: "#/components/responses/NuvioUnavailable" }
-
-  /api/account/tmdb-key:
-    get:
-      tags: [account]
-      operationId: getTMDBKey
-      summary: Whether the caller has saved a TMDB key
-      responses:
-        "200":
-          description: The key's status; the key itself is never returned.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TMDBKeyStatus"
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/SharedKeyMode" }
-    put:
-      tags: [account]
-      operationId: putTMDBKey
-      summary: Save the caller's TMDB key
-      description: |
-        Saves the key, replacing any saved one, once it has the shape of a
-        TMDB API key and TMDB accepts it. Nothing is saved otherwise.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [key]
-              properties:
-                key:
-                  type: string
-                  description: A TMDB API Key (32 characters, 0–9 and a–f), not a Read Access Token.
-      responses:
-        "200":
-          description: Saved.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TMDBKeyStatus"
-        "400":
-          description: The key isn't shaped like a TMDB API key, or TMDB refused it.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/SharedKeyMode" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
-    delete:
-      tags: [account]
-      operationId: deleteTMDBKey
-      summary: Remove the caller's TMDB key
-      responses:
-        "204":
-          description: Removed, or there was none.
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/SharedKeyMode" }
-
-  /api/catalogs/preview:
-    post:
-      tags: [recipes]
-      operationId: previewCatalog
-      summary: Run a recipe against TMDB
-      description: |
-        Returns the first page of titles a recipe finds, saving nothing. The
-        provider is always `tmdb`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [type, params]
-              properties:
-                type:
-                  $ref: "#/components/schemas/CatalogType"
-                params:
-                  $ref: "#/components/schemas/RecipeParamsString"
-                genre:
-                  type: string
-                  description: A genre name from the recipe's genre options, narrowing the preview.
-      responses:
-        "200":
-          description: The first page of titles.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Preview"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
-        "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
-
-  /api/catalogs/genre-options:
-    post:
-      tags: [recipes]
-      operationId: catalogGenreOptions
-      summary: The genres a recipe can be narrowed by
-      description: The same list the manifest advertises as the catalog's genre extra.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [type, params]
-              properties:
-                type:
-                  $ref: "#/components/schemas/CatalogType"
-                params:
-                  $ref: "#/components/schemas/RecipeParamsString"
-      responses:
-        "200":
-          description: The genre options.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Genre"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
-        "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/p/{profileIndex}/library:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     get:
-      tags: [catalogs]
-      operationId: getLibrary
-      summary: The profile's own catalogs and collections, and what a push would change
-      description: |
-        Everything the builder shows for a profile in one read: its listed
-        catalogs (none scoped to a collection), its collections with their
-        folders and catalogs, the rows a push of the stored Home would change
-        in Nuvio, and the `home_revision` a push of that Home carries, all
-        read in one snapshot. Unpushed Home edits live in the builder and are
-        not in it. It is not paged: a profile holds at most 200 listed catalogs and
-        50 collections, and a write that would add past either is a `400`.
+      tags: [library]
+      summary: Load the profile's library
+      description: Listed catalogs, collections with folders, what a push would change, and the Home revision. Read in one snapshot.
       responses:
         "200":
           description: The library.
@@ -316,21 +150,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Library"
-        "400": { $ref: "#/components/responses/BadProfileIndex" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/catalogs:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     post:
-      tags: [catalogs]
-      operationId: createUserCatalog
-      summary: Create a catalog
-      description: |
-        Creates a listed catalog. A catalog scoped to a collection is created
-        only by that collection's save, as a folder's `new` entry.
+      tags: [library]
+      summary: Create a listed catalog
+      description: Checks the recipe (against TMDB where needed) and stores its params in canonical form.
       requestBody:
         required: true
         content:
@@ -339,33 +171,27 @@ paths:
               $ref: "#/components/schemas/CatalogForm"
       responses:
         "201":
-          description: Created.
+          description: The new catalog.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Catalog"
+              schema: { $ref: "#/components/schemas/Catalog" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CatalogID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/catalogID"
     put:
-      tags: [catalogs]
-      operationId: updateUserCatalog
-      summary: Save a catalog
-      description: |
-        Rewrites a listed catalog. A catalog scoped to a collection is saved
-        through its collection's `catalog_edits` instead. An update never
-        changes a catalog's scope. The body carries the `revision` the editor
-        opened at; a save at any other, or with none, is a 409 and writes
-        nothing.
+      tags: [library]
+      summary: Save a listed catalog
+      description: Refused with 409 when `revision` isn't the row's current revision.
       requestBody:
         required: true
         content:
@@ -374,24 +200,22 @@ paths:
               $ref: "#/components/schemas/CatalogSave"
       responses:
         "200":
-          description: Saved.
+          description: The saved catalog.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Catalog"
+              schema: { $ref: "#/components/schemas/Catalog" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/StaleSave" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
     delete:
-      tags: [catalogs]
-      operationId: deleteUserCatalog
+      tags: [library]
       summary: Delete a catalog
-      description: Allowed on a catalog on Home; Nuvio keeps its row until the next push.
       responses:
         "204":
           description: Deleted.
@@ -399,105 +223,99 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}/duplicate:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CatalogID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/catalogID"
     post:
-      tags: [catalogs]
-      operationId: duplicateUserCatalog
-      summary: Duplicate one of the profile's own listed catalogs
-      description: |
-        Writes a listed copy named "<name> (copy)", the name cut short to fit
-        200 characters. The stored recipe is checked by the form validators
-        only, with no TMDB call.
+      tags: [library]
+      summary: Duplicate a catalog
+      description: Creates an independent listed copy, its name suffixed " (copy)".
       responses:
         "201":
           description: The copy.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Catalog"
+              schema: { $ref: "#/components/schemas/Catalog" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}/publish:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CatalogID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/catalogID"
     post:
-      tags: [publishing]
-      operationId: publishCatalog
-      summary: Publish a listed catalog, or publish its update
+      tags: [sharing]
+      summary: Publish a catalog
+      description: Publishes the catalog's current content, or replaces the snapshot of its existing publication.
       responses:
         "200":
-          description: Published; the catalog with its publication.
+          description: The catalog, with its publication.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Catalog"
+              schema: { $ref: "#/components/schemas/Catalog" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}/unpublish:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CatalogID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/catalogID"
     post:
-      tags: [publishing]
-      operationId: unpublishCatalog
+      tags: [sharing]
       summary: Unpublish a catalog
-      description: |
-        Deletes its publication. One-way: subscribers keep their copies as
-        their own, and publishing again starts a new publication.
+      description: Ends the publication. Subscribers keep their copies as their own.
       responses:
         "200":
-          description: Unpublished; the catalog without a publication.
+          description: The catalog, with no publication.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Catalog"
+              schema: { $ref: "#/components/schemas/Catalog" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/catalogs/{catalogID}/changes-since-publish:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CatalogID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/catalogID"
     get:
-      tags: [publishing]
-      operationId: catalogChangesSincePublish
+      tags: [sharing]
       summary: What publishing the catalog again would change
-      description: The saved catalog against its last snapshot; `[]` if it was never published.
       responses:
         "200":
-          description: The changes.
+          description: The changes, removed first, then added, then changed.
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/SnapshotChange"
+                items: { $ref: "#/components/schemas/SnapshotChange" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/collections:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     post:
-      tags: [collections]
-      operationId: createUserCollection
+      tags: [library]
       summary: Create a collection
-      description: Every inline new catalog's recipe is checked against TMDB first.
+      description: Folder entries may create new catalogs scoped to the collection, in the same transaction.
       requestBody:
         required: true
         content:
@@ -506,34 +324,31 @@ paths:
               $ref: "#/components/schemas/CollectionForm"
       responses:
         "201":
-          description: Created.
+          description: The new collection.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Collection"
+              schema: { $ref: "#/components/schemas/Collection" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/p/{profileIndex}/collections/{collectionID}:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CollectionID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/collectionID"
     put:
-      tags: [collections]
-      operationId: updateUserCollection
+      tags: [library]
       summary: Save a collection
       description: |
-        Rewrites the collection, its folders and, through `catalog_edits`, its
-        scoped catalogs in one transaction. A subscribed copy can't be saved
-        (400). Every inline recipe is checked against TMDB first. The body
-        carries the `revision` the editor opened at, which also guards the
-        scoped catalogs; a save at any other, or with none, is a 409 and
-        writes nothing.
+        Replaces the collection's fields and folders. `catalog_edits` rewrites
+        catalogs already scoped to it. Refused with 409 when `revision` isn't
+        the row's current revision.
       requestBody:
         required: true
         content:
@@ -542,24 +357,23 @@ paths:
               $ref: "#/components/schemas/CollectionSave"
       responses:
         "200":
-          description: Saved.
+          description: The saved collection.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Collection"
+              schema: { $ref: "#/components/schemas/Collection" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/StaleSave" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
     delete:
-      tags: [collections]
-      operationId: deleteUserCollection
+      tags: [library]
       summary: Delete a collection
-      description: Allowed on a collection on Home; Nuvio keeps it until the next push.
+      description: Its folders and scoped catalogs are deleted with it.
       responses:
         "204":
           description: Deleted.
@@ -567,87 +381,76 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/collections/{collectionID}/duplicate:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CollectionID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/collectionID"
     post:
-      tags: [collections]
-      operationId: duplicateUserCollection
-      summary: Duplicate one of the profile's own collections
-      description: |
-        Copies the whole tree, scoped catalogs included, in one transaction.
-        The title gets a " (copy)" suffix, cut short to fit 200 characters.
+      tags: [library]
+      summary: Duplicate a collection
+      description: Creates an independent copy, with copies of its scoped catalogs.
       responses:
         "201":
           description: The copy.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Collection"
+              schema: { $ref: "#/components/schemas/Collection" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/collections/{collectionID}/publish:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CollectionID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/collectionID"
     post:
-      tags: [publishing]
-      operationId: publishCollection
-      summary: Publish a collection, or publish its update
-      description: |
-        A subscribed copy is refused; a collection using catalogs added from
-        Community is not.
+      tags: [sharing]
+      summary: Publish a collection
       responses:
         "200":
-          description: Published; the collection with its publication.
+          description: The collection, with its publication.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Collection"
+              schema: { $ref: "#/components/schemas/Collection" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/collections/{collectionID}/unpublish:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CollectionID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/collectionID"
     post:
-      tags: [publishing]
-      operationId: unpublishCollection
+      tags: [sharing]
       summary: Unpublish a collection
-      description: |
-        Deletes its publication. One-way: subscribers keep their copies as
-        their own, and publishing again starts a new publication.
       responses:
         "200":
-          description: Unpublished; the collection without a publication.
+          description: The collection, with no publication.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Collection"
+              schema: { $ref: "#/components/schemas/Collection" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/collections/{collectionID}/changes-since-publish:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/CollectionID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/collectionID"
     get:
-      tags: [publishing]
-      operationId: collectionChangesSincePublish
+      tags: [sharing]
       summary: What publishing the collection again would change
-      description: |
-        The saved collection tree, its catalogs included, against its last
-        snapshot; `[]` if it was never published.
       responses:
         "200":
           description: The changes.
@@ -655,93 +458,96 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/SnapshotChange"
+                items: { $ref: "#/components/schemas/SnapshotChange" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/community:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     get:
-      tags: [community]
-      operationId: listCommunity
-      summary: Other profiles' live publications, a page at a time
-      description: |
-        One page of 50 publications of one kind, in one order, filtered by
-        the search. The next page is read with this page's `next_cursor`
-        and the same kind and sort; a cursor made for another sort is a 400.
+      tags: [sharing]
+      summary: One page of Community
+      description: Other profiles' live publications on this server, 50 to a page.
       parameters:
         - name: kind
           in: query
           required: true
-          schema:
-            type: string
-            enum: [catalog, collection]
+          schema: { type: string, enum: [catalog, collection] }
         - name: sort
           in: query
           required: true
-          description: By title, folding ASCII case, or newest first; ties go by id.
-          schema:
-            type: string
-            enum: [name, newest]
+          schema: { type: string, enum: [newest, name] }
         - name: q
           in: query
-          description: |
-            Words that must each be in the title or one of the catalog
-            names, folding ASCII case. At most 200 characters and 8 distinct
-            words.
-          schema:
-            type: string
-            maxLength: 200
+          description: Words that must each appear in the title or a catalog's name. At most 200 characters and 8 words.
+          schema: { type: string }
         - name: cursor
           in: query
-          description: The previous page's `next_cursor`; omitted, the first page.
-          schema:
-            type: string
+          description: The previous page's `next_cursor`.
+          schema: { type: string }
       responses:
         "200":
           description: The page.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/CommunityPage"
+              schema: { $ref: "#/components/schemas/CommunityPage" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/community/{publicationID}:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/PublicationID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/publicationID"
     get:
-      tags: [community]
-      operationId: getPublication
+      tags: [sharing]
       summary: One publication with its snapshot
       responses:
         "200":
           description: The publication.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/PublicationDetail"
+              schema: { $ref: "#/components/schemas/PublicationDetail" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/PublicationGone" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/p/{profileIndex}/community/{publicationID}/subscribe:
+    parameters:
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/publicationID"
+    post:
+      tags: [sharing]
+      summary: Add a publication
+      description: Creates a linked copy in the caller's library.
+      responses:
+        "201":
+          description: The copy.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommunityCopy" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/community/{publicationID}/changes:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/PublicationID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/publicationID"
     get:
-      tags: [community]
-      operationId: updateChanges
-      summary: What Update would change in the caller's added copy
-      description: The caller's copy against the publication's current snapshot.
+      tags: [sharing]
+      summary: What Update would change in the caller's copy
       responses:
         "200":
           description: The changes.
@@ -749,204 +555,148 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/SnapshotChange"
+                items: { $ref: "#/components/schemas/SnapshotChange" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404":
-          description: The caller doesn't subscribe to it, or it is no longer live.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/p/{profileIndex}/community/{publicationID}/subscribe:
-    parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/PublicationID"
-    post:
-      tags: [community]
-      operationId: subscribe
-      summary: Add a publication
-      description: Writes a subscribed copy into the caller's profile. No TMDB call.
-      responses:
-        "201":
-          description: The subscribed copy.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CommunityCopy"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/PublicationGone" }
-        "409":
-          description: Already added.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/community/{publicationID}/update:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/PublicationID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/publicationID"
     post:
-      tags: [community]
-      operationId: updateSubscription
-      summary: Update the caller's added copy to the publication's latest
-      description: Overwrites the subscribed copy, pairing its rows by stable key.
+      tags: [sharing]
+      summary: Update the caller's copy
+      description: Rewrites the copy from the publication's current snapshot.
       responses:
         "200":
           description: The updated copy.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/CommunityCopy"
+              schema: { $ref: "#/components/schemas/CommunityCopy" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/PublicationGone" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/community/{publicationID}/duplicate:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
-      - $ref: "#/components/parameters/PublicationID"
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/publicationID"
     post:
-      tags: [community]
-      operationId: duplicatePublication
+      tags: [sharing]
       summary: Duplicate a publication
-      description: |
-        Writes an editable copy into the caller's profile, with no subscription.
-        The copy's name or title gets a " (copy)" suffix, cut short to fit 200
-        characters.
+      description: Creates an independent copy with no link to the publication.
       responses:
         "201":
           description: The copy.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/CommunityCopy"
+              schema: { $ref: "#/components/schemas/CommunityCopy" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/PublicationGone" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/export:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     post:
       tags: [bundles]
-      operationId: exportBundle
       summary: Export catalogs and collections as a bundle
-      description: Only the profile's own ids.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 catalog_ids:
                   type: array
                   description: Listed catalogs to export.
-                  items:
-                    type: string
-                    format: uuid
+                  items: { type: string, format: uuid }
                 collection_ids:
                   type: array
-                  description: Collections to export, each with its scoped catalogs.
-                  items:
-                    type: string
-                    format: uuid
+                  items: { type: string, format: uuid }
       responses:
         "200":
           description: The bundle.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Bundle"
+              schema: { $ref: "#/components/schemas/Bundle" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/p/{profileIndex}/import/check:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     post:
       tags: [bundles]
-      operationId: checkImport
       summary: Check a bundle before importing it
-      description: |
-        Validates the bundle and every recipe in it, writes nothing, and
-        answers what it holds, each catalog with the caller's listed catalogs
-        of the same recipe. The body is decoded strictly (an unknown field is
-        a 400 naming it) and capped at 4 MiB.
+      description: Validates the bundle and reports what each item matches in the caller's library. Writes nothing.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              additionalProperties: false
               required: [bundle]
+              additionalProperties: false
               properties:
-                bundle:
-                  $ref: "#/components/schemas/Bundle"
+                bundle: { $ref: "#/components/schemas/Bundle" }
       responses:
         "200":
           description: What the bundle holds.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/ImportCheck"
+              schema: { $ref: "#/components/schemas/ImportCheck" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/p/{profileIndex}/import:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     post:
       tags: [bundles]
-      operationId: importBundle
       summary: Import a bundle
-      description: |
-        Checks everything afresh, then writes the new rows, all or nothing.
-        Strict decoding and the 4 MiB cap as for the check.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              additionalProperties: false
               required: [bundle]
+              additionalProperties: false
               properties:
-                bundle:
-                  $ref: "#/components/schemas/Bundle"
+                bundle: { $ref: "#/components/schemas/Bundle" }
                 reuse:
                   type: object
-                  description: Bundle catalog key → one of the caller's listed catalogs to use instead of importing it. The catalog must hold the same recipe as the bundle catalog it stands in for, else the import is a 400.
-                  additionalProperties:
-                    type: string
-                    format: uuid
+                  description: Bundle catalog keys to point at one of the caller's existing listed catalogs instead of importing.
+                  additionalProperties: { type: string, format: uuid }
                 skip_collections:
                   type: array
-                  description: Positions of the bundle's collections to leave out, each with its own catalogs.
-                  items:
-                    type: integer
-                    minimum: 0
+                  description: Positions of bundle collections to leave out, with their own catalogs.
+                  items: { type: integer, minimum: 0 }
       responses:
         "201":
-          description: The new rows; a reused catalog is not among them.
+          description: The new listed catalogs and collections. Reused catalogs aren't included.
           content:
             application/json:
               schema:
@@ -955,60 +705,44 @@ paths:
                 properties:
                   catalogs:
                     type: array
-                    items:
-                      $ref: "#/components/schemas/Catalog"
+                    items: { $ref: "#/components/schemas/Catalog" }
                   collections:
                     type: array
-                    items:
-                      $ref: "#/components/schemas/Collection"
+                    items: { $ref: "#/components/schemas/Collection" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/p/{profileIndex}/push:
     parameters:
-      - $ref: "#/components/parameters/ProfileIndex"
+      - $ref: "#/components/parameters/profileIndex"
     post:
       tags: [push]
-      operationId: push
-      summary: Push the profile's Home into Nuvio
+      summary: Push the home screen to Nuvio
       description: |
-        Writes Uno's addon, its collections and the home-order list into the
-        Nuvio profile, then stores the Home selection and what was sent. The
-        body is the whole pending Home as one ordered list; a row's place is
-        its position. It carries the `home_revision` that Home was built
-        from, and a success answers the one the push raised it to. Decoded
-        strictly: an unknown field is a 400.
-
-        Past auth, profile resolution and body decoding, every answer is a
-        `PushResult`. An ordinary failure leaves nothing changed on either
-        side: what Nuvio already took is put back. `undo_failed` marks the
-        one case where putting it back failed too.
+        Writes the addon, the collections and the home-order list into the
+        profile's Nuvio profile, then stores the new Home and the push record.
+        If any Nuvio step fails, the earlier ones are put back. Once the body
+        decodes, every answer is a `PushResult`, whatever its status.
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: "#/components/schemas/PushRequest"
+            schema: { $ref: "#/components/schemas/PushRequest" }
       responses:
         "200":
           description: Pushed.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/PushResult"
+              schema: { $ref: "#/components/schemas/PushResult" }
         "400":
-          description: |
-            The body doesn't decode (`Error`), a row names an id the profile
-            can't push, names neither or both of a catalog and a collection, or
-            names a catalog or collection an earlier row already names, a
-            collection on Home has no folders (`refused: empty_collection`), or
-            Home would give Nuvio more than 1,000 catalogs, counting those its
-            collections' folders use (`refused: too_many_catalogs`).
+          description: Bad body (an `Error`), a bad row list, or `refused` is `empty_collection` or `too_many_catalogs`.
           content:
             application/json:
               schema:
@@ -1019,39 +753,77 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/ProfileNotFound" }
         "409":
-          description: |
-            The Home was built from a `home_revision` another push has raised
-            since, or carries none (no `refused` value), the Nuvio slot is
-            empty now or holds another Nuvio profile (`refused:
-            profile_changed`), or the Nuvio profile uses profile 1's addons
-            (`refused: shares_addons`). Nothing reached Nuvio.
+          description: Home changed since `home_revision` (no `refused`), or `refused` is `profile_changed` or `shares_addons`.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/PushResult"
-        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+              schema: { $ref: "#/components/schemas/PushResult" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "500":
-          description: A failure of Uno's own, or (`undo_failed`) Nuvio is left holding part of the push.
+          description: Failed on Uno's side. `undo_failed` is true when putting back Nuvio's lists failed too.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/PushResult"
+              schema: { $ref: "#/components/schemas/PushResult" }
         "502":
-          description: |
-            A Nuvio call failed. `refused: home_order_unreadable` when Nuvio's
-            home-order list couldn't be read, before anything was written.
+          description: Nuvio failed. `refused` is `home_order_unreadable` when its home-order list couldn't be read.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/PushResult"
+              schema: { $ref: "#/components/schemas/PushResult" }
+        "503":
+          description: Another push of this profile didn't finish within 5 seconds.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushResult" }
 
-  /api/genres/{type}:
-    parameters:
-      - $ref: "#/components/parameters/TypePath"
-    get:
+  /api/catalogs/preview:
+    post:
       tags: [tmdb]
-      operationId: listGenres
-      summary: TMDB's genres for a catalog type
+      summary: Preview a recipe
+      description: Runs a recipe against TMDB and returns one page of tiles. Saves nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, params]
+              additionalProperties: false
+              properties:
+                type: { $ref: "#/components/schemas/CatalogType" }
+                params:
+                  type: string
+                  description: The recipe params, as a JSON-encoded string.
+                genre:
+                  type: string
+                  description: A genre name from the recipe's genre options.
+      responses:
+        "200":
+          description: One page of tiles.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogPreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/KeyProblem" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/catalogs/genre-options:
+    post:
+      tags: [tmdb]
+      summary: The genres a recipe can be narrowed by
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, params]
+              additionalProperties: false
+              properties:
+                type: { $ref: "#/components/schemas/CatalogType" }
+                params: { type: string }
       responses:
         "200":
           description: The genres.
@@ -1059,71 +831,61 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Genre"
+                items: { $ref: "#/components/schemas/Genre" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/KeyProblem" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/genres/{type}:
+    parameters:
+      - $ref: "#/components/parameters/catalogType"
+    get:
+      tags: [tmdb]
+      summary: TMDB genres for a catalog type
+      responses:
+        "200":
+          description: The genres.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Genre" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/certifications/{type}:
     parameters:
-      - $ref: "#/components/parameters/TypePath"
+      - $ref: "#/components/parameters/catalogType"
     get:
       tags: [tmdb]
-      operationId: listCertifications
-      summary: TMDB's certifications for a catalog type, by country
+      summary: Age ratings by country
       responses:
         "200":
-          description: Country code → that country's certifications.
+          description: Each country's rating scale, keyed by ISO 3166-1 code.
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties:
                   type: array
-                  items:
-                    $ref: "#/components/schemas/Certification"
+                  items: { $ref: "#/components/schemas/Certification" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
-
-  /api/watch-providers/{type}:
-    parameters:
-      - $ref: "#/components/parameters/TypePath"
-    get:
-      tags: [tmdb]
-      operationId: listWatchProviders
-      summary: TMDB's streaming services for a catalog type
-      parameters:
-        - name: watch_region
-          in: query
-          description: An ISO 3166-1 watch region; omitted, every service TMDB knows.
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The streaming services.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/WatchProvider"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/languages:
     get:
       tags: [tmdb]
-      operationId: listLanguages
-      summary: TMDB's languages
+      summary: TMDB's language table
       responses:
         "200":
           description: The languages.
@@ -1131,18 +893,16 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Language"
+                items: { $ref: "#/components/schemas/Language" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/countries:
     get:
       tags: [tmdb]
-      operationId: listCountries
-      summary: TMDB's countries
+      summary: TMDB's country table
       responses:
         "200":
           description: The countries.
@@ -1150,45 +910,68 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Country"
+                items: { $ref: "#/components/schemas/Country" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/watch-regions:
+  /api/watch-providers/{type}:
+    parameters:
+      - $ref: "#/components/parameters/catalogType"
     get:
       tags: [tmdb]
-      operationId: listWatchRegions
-      summary: TMDB's watch regions
+      summary: Streaming services
+      parameters:
+        - name: watch_region
+          in: query
+          description: ISO 3166-1 code. Without it, every service TMDB knows.
+          schema: { type: string }
       responses:
         "200":
-          description: The watch regions.
+          description: The services.
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Country"
+                items: { $ref: "#/components/schemas/WatchProvider" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/watch-regions:
+    get:
+      tags: [tmdb]
+      summary: Countries TMDB has streaming data for
+      responses:
+        "200":
+          description: The regions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WatchRegion" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/KeyProblem" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/companies/search:
     get:
       tags: [tmdb]
-      operationId: searchCompanies
-      summary: Search TMDB's companies
-      description: TMDB's first page of matches, each with its title count for the catalog type.
+      summary: Search production companies
       parameters:
-        - $ref: "#/components/parameters/SearchQuery"
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
         - name: type
           in: query
           required: true
-          schema:
-            $ref: "#/components/schemas/CatalogType"
+          description: The catalog type each result's title count is for.
+          schema: { $ref: "#/components/schemas/CatalogType" }
       responses:
         "200":
           description: The matches.
@@ -1196,43 +979,41 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/TitledMatch"
+                items: { $ref: "#/components/schemas/CompanyMatch" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/companies/{id}:
     parameters:
-      - $ref: "#/components/parameters/TMDBID"
+      - $ref: "#/components/parameters/tmdbID"
     get:
       tags: [tmdb]
-      operationId: getCompany
-      summary: One TMDB company
+      summary: Name one company id
       responses:
         "200":
           description: The company.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Named"
+              schema: { $ref: "#/components/schemas/NamedID" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotOnTMDB" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/keywords/search:
     get:
       tags: [tmdb]
-      operationId: searchKeywords
-      summary: Search TMDB's keywords
-      description: TMDB's first page of matches.
+      summary: Search keywords
       parameters:
-        - $ref: "#/components/parameters/SearchQuery"
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
       responses:
         "200":
           description: The matches.
@@ -1240,43 +1021,42 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Named"
+                items: { $ref: "#/components/schemas/NamedID" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/keywords/{id}:
     parameters:
-      - $ref: "#/components/parameters/TMDBID"
+      - $ref: "#/components/parameters/tmdbID"
     get:
       tags: [tmdb]
-      operationId: getKeyword
-      summary: One TMDB keyword
+      summary: Name one keyword id
       responses:
         "200":
           description: The keyword.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Named"
+              schema: { $ref: "#/components/schemas/NamedID" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotOnTMDB" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/collections/search:
     get:
       tags: [tmdb]
-      operationId: searchCollections
-      summary: Search TMDB's collections
-      description: TMDB's movie collections (e.g. a film series), not Uno collections; first page of matches.
+      summary: Search TMDB collections
+      description: TMDB's film collections, such as a film series. Not Uno collections.
       parameters:
-        - $ref: "#/components/parameters/SearchQuery"
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
       responses:
         "200":
           description: The matches.
@@ -1284,45 +1064,41 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/Named"
+                items: { $ref: "#/components/schemas/NamedID" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/collections/{id}:
     parameters:
-      - $ref: "#/components/parameters/TMDBID"
+      - $ref: "#/components/parameters/tmdbID"
     get:
       tags: [tmdb]
-      operationId: getCollection
-      summary: One TMDB collection
+      summary: Name one TMDB collection id
       responses:
         "200":
           description: The collection.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Named"
+              schema: { $ref: "#/components/schemas/NamedID" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotOnTMDB" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/networks/search:
     get:
       tags: [tmdb]
-      operationId: searchNetworks
       summary: Search TV networks
-      description: |
-        TMDB has no network search: this matches TMDB's daily network export,
-        then counts each match's series. Networks filter series only.
       parameters:
-        - $ref: "#/components/parameters/SearchQuery"
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
       responses:
         "200":
           description: The matches.
@@ -1330,123 +1106,174 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  $ref: "#/components/schemas/TitledMatch"
+                items: { $ref: "#/components/schemas/NetworkMatch" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
 
   /api/networks/{id}:
     parameters:
-      - $ref: "#/components/parameters/TMDBID"
+      - $ref: "#/components/parameters/tmdbID"
     get:
       tags: [tmdb]
-      operationId: getNetwork
-      summary: One TV network
+      summary: Name one network id
       responses:
         "200":
           description: The network.
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/Network"
+              schema: { $ref: "#/components/schemas/Network" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotOnTMDB" }
         "422": { $ref: "#/components/responses/KeyProblem" }
-        "502": { $ref: "#/components/responses/TMDBUnavailable" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/account/tmdb-key:
+    get:
+      tags: [account]
+      summary: Whether the account has saved a TMDB key
+      description: Per-account key mode only; a 404 on a server with a shared key.
+      responses:
+        "200":
+          description: The key's status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TMDBKeyStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      tags: [account]
+      summary: Save the account's TMDB key
+      description: Checks the key with one TMDB call, then stores it encrypted. Nothing is saved if the check fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              additionalProperties: false
+              properties:
+                key:
+                  type: string
+                  description: A TMDB API key (v3).
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TMDBKeyStatus" }
+        "400":
+          description: Not shaped like a TMDB key, or TMDB didn't accept it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { $ref: "#/components/responses/Upstream" }
+    delete:
+      tags: [account]
+      summary: Remove the account's TMDB key
+      responses:
+        "204":
+          description: Removed, or there was none.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /u/{token}/manifest.json:
     parameters:
-      - $ref: "#/components/parameters/AddonToken"
+      - $ref: "#/components/parameters/token"
     get:
       tags: [addon]
-      operationId: addonManifest
       summary: The profile's addon manifest
-      description: |
-        Stremio addon protocol. Lists the catalogs the profile's last push put
-        in Nuvio. Public and CORS-open (`Access-Control-Allow-Origin: *`).
+      description: Lists the catalogs the profile's last push put in Nuvio.
       security: []
       responses:
         "200":
           description: The manifest.
+          headers:
+            Access-Control-Allow-Origin: { $ref: "#/components/headers/CORS" }
           content:
             application/json:
-              schema:
-                $ref: "#/components/schemas/AddonManifest"
+              schema: { $ref: "#/components/schemas/Manifest" }
         "404":
-          description: No profile has this token.
-          content:
-            text/plain:
-              schema:
-                type: string
-
-  /u/{token}/configure:
-    parameters:
-      - $ref: "#/components/parameters/AddonToken"
-    get:
-      tags: [addon]
-      operationId: addonConfigure
-      summary: The addon's Configure action
-      description: Nuvio's addon managers open this; it sends the browser to the builder.
-      security: []
-      responses:
-        "302":
-          description: Redirect to the builder's profile picker.
-          headers:
-            Location:
-              schema:
-                type: string
-                const: /profiles
+          description: Unknown token.
+        "500":
+          description: Database failure (plain text).
 
   /u/{token}/catalog/{type}/{id}.json:
     parameters:
-      - $ref: "#/components/parameters/AddonToken"
-      - $ref: "#/components/parameters/AddonCatalogType"
-      - $ref: "#/components/parameters/AddonCatalogID"
+      - $ref: "#/components/parameters/token"
+      - $ref: "#/components/parameters/catalogType"
+      - $ref: "#/components/parameters/manifestCatalogID"
     get:
       tags: [addon]
-      operationId: addonCatalog
-      summary: The first page of one catalog
-      description: |
-        Stremio addon protocol: twenty titles. Serves only a catalog the
-        manifest lists. Public and CORS-open.
+      summary: First page of a catalog
       security: []
       responses:
-        "200": { $ref: "#/components/responses/AddonCatalogPage" }
-        "404": { $ref: "#/components/responses/AddonCatalogNotServed" }
-        "502": { $ref: "#/components/responses/AddonUpstream" }
+        "200": { $ref: "#/components/responses/CatalogPage" }
+        "404":
+          description: The catalog isn't in the token's last push.
+        "500":
+          description: Database failure (plain text).
+        "502":
+          description: TMDB failure (plain text).
 
   /u/{token}/catalog/{type}/{id}/{extra}.json:
     parameters:
-      - $ref: "#/components/parameters/AddonToken"
-      - $ref: "#/components/parameters/AddonCatalogType"
-      - $ref: "#/components/parameters/AddonCatalogID"
+      - $ref: "#/components/parameters/token"
+      - $ref: "#/components/parameters/catalogType"
+      - $ref: "#/components/parameters/manifestCatalogID"
       - name: extra
         in: path
         required: true
         description: |
-          Stremio extra props as a URL-encoded query string in one path
-          segment: `skip` (titles the client already holds) and `genre` (a
-          name from the catalog's genre extra), e.g. `genre=Action&skip=20`.
-          A catalog ends at 500 titles: a `skip` of 500 or more answers an
-          empty page.
-        schema:
-          type: string
-        example: skip=20
+          Stremio extra props, form-encoded: `skip` (titles the client already
+          holds) and `genre` (a name from the manifest's genre options), such as
+          `genre=Action&skip=20`.
+        schema: { type: string }
+        examples:
+          skip:
+            value: skip=20
     get:
       tags: [addon]
-      operationId: addonCatalogExtra
-      summary: A later page or genre of one catalog
-      description: As the first page, from `skip` on, narrowed to `genre`.
+      summary: A catalog page from an offset, optionally narrowed by genre
+      description: Up to 20 titles from `skip`. A `skip` of 500 or more is an empty page.
       security: []
       responses:
-        "200": { $ref: "#/components/responses/AddonCatalogPage" }
-        "404": { $ref: "#/components/responses/AddonCatalogNotServed" }
-        "502": { $ref: "#/components/responses/AddonUpstream" }
+        "200": { $ref: "#/components/responses/CatalogPage" }
+        "404":
+          description: The catalog isn't in the token's last push.
+        "500":
+          description: Database failure (plain text).
+        "502":
+          description: TMDB failure (plain text).
+
+  /u/{token}/configure:
+    parameters:
+      - $ref: "#/components/parameters/token"
+    get:
+      tags: [addon]
+      summary: The addon's Configure action
+      description: Redirects to the builder's profile picker. The token isn't looked up.
+      security: []
+      responses:
+        "302":
+          description: Redirect to `/profiles`.
+          headers:
+            Location:
+              schema: { type: string, const: /profiles }
 
 components:
   securitySchemes:
@@ -1454,247 +1281,135 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: A Nuvio access token, verified against Nuvio's signing keys.
+      description: |
+        A Nuvio access token, from Nuvio's auth API. Uno verifies it against
+        Nuvio's JWKS, then checks the account against the server's access policy.
 
   parameters:
-    ProfileIndex:
+    profileIndex:
       name: profileIndex
       in: path
       required: true
-      description: The Nuvio profile slot.
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 6
-    CatalogID:
+      description: The Nuvio profile slot, picked first with `POST /api/profiles/select`.
+      schema: { type: integer, minimum: 1, maximum: 6 }
+    catalogID:
       name: catalogID
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
-    CollectionID:
+      schema: { type: string, format: uuid }
+    collectionID:
       name: collectionID
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
-    PublicationID:
+      schema: { type: string, format: uuid }
+    publicationID:
       name: publicationID
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
-    TypePath:
+      schema: { type: string, format: uuid }
+    catalogType:
       name: type
       in: path
       required: true
-      schema:
-        $ref: "#/components/schemas/CatalogType"
-    TMDBID:
+      schema: { $ref: "#/components/schemas/CatalogType" }
+    tmdbID:
       name: id
       in: path
       required: true
       description: A TMDB id.
-      schema:
-        type: integer
-    SearchQuery:
-      name: q
-      in: query
-      required: true
-      description: The search text; blank is a 400.
-      schema:
-        type: string
-        minLength: 1
-    AddonToken:
+      schema: { type: integer }
+    token:
       name: token
       in: path
       required: true
-      description: The profile's addon token, from its manifest URL.
-      schema:
-        type: string
-    AddonCatalogType:
-      name: type
-      in: path
-      required: true
-      schema:
-        $ref: "#/components/schemas/CatalogType"
-    AddonCatalogID:
+      description: The profile's addon token.
+      schema: { type: string }
+    manifestCatalogID:
       name: id
       in: path
       required: true
-      description: The catalog's manifest id, `{provider}-{catalog uuid}`.
-      schema:
-        type: string
-        example: tmdb-3f2b8a52-0f4e-4a43-9a0e-6c1d2b7f9e10
+      description: The catalog's manifest id, `tmdb-{catalog uuid}`.
+      schema: { type: string }
+
+  headers:
+    CORS:
+      schema: { type: string, const: "*" }
 
   responses:
     BadRequest:
-      description: The request is malformed or refused in words the caller can act on.
+      description: Bad input. The message says what.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    BadProfileIndex:
-      description: The profile index isn't 1–6.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
+          schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
-      description: Missing, malformed, invalid or expired bearer token.
+      description: Missing, malformed, invalid or expired token.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
+          schema: { $ref: "#/components/schemas/Error" }
     Forbidden:
-      description: The server's allowlist doesn't list this Nuvio account.
+      description: The access policy doesn't admit this account.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
+          schema: { $ref: "#/components/schemas/Error" }
     ProfileNotFound:
-      description: >-
-        The caller has no Uno profile in this slot. `code` is `profile_not_found`,
-        which the builder tells apart from a route's own 404 by.
+      description: The profile slot was never picked. `code` is `profile_not_found`.
       content:
         application/json:
-          schema:
-            type: object
-            required: [error, code]
-            properties:
-              error:
-                type: string
-                const: profile not found
-              code:
-                type: string
-                const: profile_not_found
+          schema: { $ref: "#/components/schemas/Error" }
     NotFound:
-      description: No such row in this profile. A slot with no Uno profile answers `ProfileNotFound` instead.
+      description: The row doesn't exist or isn't the caller's, or the slot was never picked (`code` `profile_not_found`).
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    StaleSave:
-      description: The save was built from a revision of the row another write has changed since, or carries none. Nothing was written; the words are always `Error saving.`, with no `code`.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    PublicationGone:
-      description: The publication isn't live in Community any more. A slot with no Uno profile answers `ProfileNotFound` instead.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
+          schema: { $ref: "#/components/schemas/Error" }
     NotOnTMDB:
-      description: TMDB has no such id.
+      description: TMDB has nothing with that id.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    SharedKeyMode:
-      description: The server shares one TMDB key; accounts have none of their own.
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The row changed since the editor loaded it (`Error saving.`), or the request conflicts with the row's state.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    PayloadTooLarge:
-      description: The body is over its cap (1 MiB; 4 MiB for the import routes).
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: The request body is over its limit.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
+          schema: { $ref: "#/components/schemas/Error" }
     KeyProblem:
-      description: Per-account key server only. The account has no TMDB key yet, or TMDB doesn't accept it.
+      description: Per-account key mode only. The account has no TMDB key yet, or TMDB rejected it.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    TMDBUnavailable:
-      description: TMDB couldn't be reached, or the auth service is unavailable.
+          schema: { $ref: "#/components/schemas/Error" }
+    ServerError:
+      description: Uno failed. The message says what, never why.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    NuvioUnavailable:
-      description: A Nuvio call failed, or the auth service is unavailable.
+          schema: { $ref: "#/components/schemas/Error" }
+    Upstream:
+      description: TMDB, Nuvio or Nuvio's JWKS couldn't be reached or failed.
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    AddonCatalogPage:
-      description: Up to twenty titles.
+          schema: { $ref: "#/components/schemas/Error" }
+    CatalogPage:
+      description: One page of titles.
+      headers:
+        Access-Control-Allow-Origin: { $ref: "#/components/headers/CORS" }
       content:
         application/json:
-          schema:
-            $ref: "#/components/schemas/AddonCatalogResponse"
-    AddonCatalogNotServed:
-      description: The token's profile has no such catalog on Nuvio.
-      content:
-        text/plain:
-          schema:
-            type: string
-    AddonUpstream:
-      description: TMDB couldn't be reached.
-      content:
-        text/plain:
-          schema:
-            type: string
+          schema: { $ref: "#/components/schemas/CatalogResponse" }
 
   schemas:
-    CatalogType:
-      type: string
-      enum: [movie, series]
-    Provider:
-      type: string
-      const: tmdb
-
-    RecipeParams:
+    Error:
       type: object
-      description: |
-        A TMDB recipe. Which fields apply depends on the catalog type; a field
-        the type doesn't know is refused. Rules: `docs/data-model.md`,
-        *Recipe params (TMDB)*.
+      required: [error]
       properties:
-        randomized: { type: boolean }
-        sort_by: { type: string }
-        with_genres: { type: string, description: "TMDB genre ids, comma (AND) or pipe (OR) separated." }
-        without_genres: { type: string }
-        with_original_language: { type: string }
-        vote_average_gte: { type: number }
-        vote_average_lte: { type: number }
-        vote_count_gte: { type: integer }
-        vote_count_lte: { type: integer }
-        with_runtime_gte: { type: integer }
-        with_runtime_lte: { type: integer }
-        with_watch_providers: { type: string, description: Requires watch_region. }
-        watch_region: { type: string }
-        with_companies: { type: string }
-        without_companies: { type: string }
-        with_keywords: { type: string }
-        without_keywords: { type: string }
-        certification: { type: string }
-        certification_gte: { type: string }
-        certification_lte: { type: string }
-        certification_country: { type: string, description: Requires any certification field. }
-        primary_release_date_gte: { type: string, format: date, description: movie only. }
-        primary_release_date_lte: { type: string, format: date, description: movie only. }
-        released_within_days: { type: integer, description: "movie only; excludes the primary_release_date fields." }
-        with_collection: { type: string, description: "movie only; a TMDB collection id. Excludes every other field but randomized." }
-        first_air_date_gte: { type: string, format: date, description: series only. }
-        first_air_date_lte: { type: string, format: date, description: series only. }
-        aired_within_days: { type: integer, description: "series only; excludes the first_air_date fields." }
-        with_networks: { type: string, description: series only. }
-    RecipeParamsString:
-      type: string
-      description: A `RecipeParams` object, JSON-encoded.
-      contentMediaType: application/json
-      contentSchema:
-        $ref: "#/components/schemas/RecipeParams"
-      example: '{"sort_by":"popularity.desc","with_genres":"28"}'
+        error:
+          type: string
+        code:
+          type: string
+          description: Set for errors the web app handles by kind.
+          enum: [profile_not_found]
 
     ServerConfig:
       type: object
@@ -1703,54 +1418,71 @@ components:
         tmdb_key_mode:
           type: string
           enum: [shared, per-account]
-          description: Whether every account shares one TMDB key or brings its own.
 
     TMDBKeyStatus:
       type: object
       required: [set]
       properties:
-        set:
-          type: boolean
+        set: { type: boolean }
         last4:
           type: string
-          description: The saved key's last four characters; absent when none is saved.
+          description: The saved key's last four characters. Absent when `set` is false.
 
-    PickerProfile:
+    NuvioProfile:
       type: object
-      description: One Nuvio profile as Nuvio lists it, plus the picture Nuvio's apps show.
-      required: [id, user_id, profile_index, name, uses_primary_addons, avatar_color_hex, avatar_id, avatar_url, pin_enabled, avatar_image_url]
       properties:
-        id: { type: string, description: Nuvio's profile id. }
+        id: { type: string }
         user_id: { type: string }
-        profile_index: { type: integer }
+        profile_index: { type: integer, minimum: 1, maximum: 6 }
         name: { type: string }
         uses_primary_addons:
           type: boolean
-          description: The profile uses profile 1's addons; push refuses it.
+          description: The profile uses profile 1's addons. Push refuses such a profile.
         avatar_color_hex: { type: string }
         avatar_id: { type: string }
         avatar_url: { type: string }
         pin_enabled: { type: boolean }
         avatar_image_url:
           type: string
-          description: Its own upload, else its built-in avatar's image; "" when it shows its colour.
+          description: The picture Nuvio's apps show for the profile, or "" when they show its colour.
 
-    SelectedProfile:
+    CatalogType:
+      type: string
+      enum: [movie, series]
+
+    CatalogForm:
       type: object
-      required: [manifest_url]
+      required: [type, name, provider, params]
+      additionalProperties: false
       properties:
-        manifest_url: { type: string, format: uri, description: The profile's addon manifest URL. }
+        type: { $ref: "#/components/schemas/CatalogType" }
+        name: { type: string, maxLength: 200 }
+        provider: { type: string, const: tmdb }
+        params:
+          type: string
+          maxLength: 8192
+          description: The recipe params as a JSON-encoded string. See docs/data-model.md, Recipes.
+          examples: ['{"sort_by":"popularity.desc","with_genres":"878"}']
+
+    CatalogSave:
+      allOf:
+        - $ref: "#/components/schemas/CatalogForm"
+        - type: object
+          required: [revision]
+          properties:
+            revision:
+              type: integer
+              description: The revision the editor's form was built from.
 
     PublicationState:
-      type: object
-      description: The row's own publication.
+      type: [object, "null"]
       required: [id, changed_since_publish]
       properties:
         id: { type: string, format: uuid }
         changed_since_publish: { type: boolean }
+
     SubscriptionState:
-      type: object
-      description: The publication this row is a subscribed copy of.
+      type: [object, "null"]
       required: [publication_id, update_available]
       properties:
         publication_id: { type: string, format: uuid }
@@ -1763,84 +1495,45 @@ components:
         id: { type: string, format: uuid }
         type: { $ref: "#/components/schemas/CatalogType" }
         name: { type: string }
-        provider: { $ref: "#/components/schemas/Provider" }
-        params: { $ref: "#/components/schemas/RecipeParamsString" }
+        provider: { type: string, const: tmdb }
+        params:
+          type: string
+          description: Canonical recipe params, as a JSON-encoded string.
         collection_id:
           type: [string, "null"]
           format: uuid
-          description: The collection this catalog is scoped to; null for a listed catalog.
+          description: The collection this catalog is scoped to, or null for a listed catalog.
         home_position:
           type: [integer, "null"]
-          description: Its place on Home, one numbering shared with collections; null when not on Home.
+          description: Place on Home, shared with collections. Null when not on Home.
         show_in_home:
           type: boolean
-          description: On Home with a home row of its own; false for Discover only, and for every catalog off Home. Written only by push.
-        revision:
-          type: integer
-          description: Rises by one with each save or Update of the row, from 1. A catalog save carries the one its editor opened at.
-        publication:
-          oneOf:
-            - $ref: "#/components/schemas/PublicationState"
-            - type: "null"
-        subscription:
-          oneOf:
-            - $ref: "#/components/schemas/SubscriptionState"
-            - type: "null"
-    CatalogForm:
-      type: object
-      required: [type, name, provider, params]
-      properties:
-        type: { $ref: "#/components/schemas/CatalogType" }
-        name: { type: string }
-        provider: { $ref: "#/components/schemas/Provider" }
-        params: { $ref: "#/components/schemas/RecipeParamsString" }
-    CatalogSave:
-      description: A catalog editor's save.
-      allOf:
-        - $ref: "#/components/schemas/CatalogForm"
-        - type: object
-          required: [revision]
-          properties:
-            revision:
-              type: integer
-              description: The catalog's revision when the editor opened. Any other is a 409; an absent one reads as 0, which no row is at.
+          description: On Home with a home row (true), or only in Discover (false).
+        revision: { type: integer }
+        publication: { $ref: "#/components/schemas/PublicationState" }
+        subscription: { $ref: "#/components/schemas/SubscriptionState" }
+
+    TileShape:
+      type: string
+      enum: [POSTER, LANDSCAPE, SQUARE]
 
     ViewMode:
       type: string
       enum: [TABBED_GRID, ROWS]
-      description: Required; empty or any other value is a 400.
-    TileShape:
-      type: string
-      enum: [POSTER, LANDSCAPE, SQUARE]
-      description: Required; empty or any other value is a 400.
 
     FolderArt:
       type: object
-      description: A folder's tile and hero media.
       properties:
-        title: { type: string }
         tile_shape: { $ref: "#/components/schemas/TileShape" }
         hide_title: { type: boolean }
-        cover_emoji: { type: string }
-        cover_image_url: { type: string }
-        focus_gif_url: { type: string, description: "Played over the tile while focused, when focus_gif_enabled." }
+        cover_emoji: { type: string, maxLength: 32 }
+        cover_image_url: { type: string, maxLength: 2048 }
+        focus_gif_url: { type: string, maxLength: 2048 }
         focus_gif_enabled: { type: boolean }
-        hero_backdrop_url: { type: string }
-        hero_video_url: { type: string }
-        title_logo_url: { type: string }
+        hero_backdrop_url: { type: string, maxLength: 2048 }
+        hero_video_url: { type: string, maxLength: 2048 }
+        title_logo_url: { type: string, maxLength: 2048 }
 
-    Folder:
-      allOf:
-        - $ref: "#/components/schemas/FolderArt"
-        - type: object
-          required: [id, title, tile_shape, hide_title, cover_emoji, cover_image_url, focus_gif_url, focus_gif_enabled, hero_backdrop_url, hero_video_url, title_logo_url, refs]
-          properties:
-            id: { type: string, format: uuid }
-            refs:
-              type: array
-              description: The folder's catalogs, in order.
-              items:
-                $ref: "#/components/schemas/FolderRef"
     FolderRef:
       type: object
       required: [catalog_id, genre]
@@ -1848,245 +1541,219 @@ components:
         catalog_id: { type: string, format: uuid }
         genre:
           type: string
-          description: The genre this catalog is narrowed to in this folder; "" for none.
+          description: The genre this reference is narrowed to, or "" for unfiltered.
+
+    Folder:
+      allOf:
+        - $ref: "#/components/schemas/FolderArt"
+        - type: object
+          required: [id, title, refs]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            refs:
+              type: array
+              items: { $ref: "#/components/schemas/FolderRef" }
 
     Collection:
       type: object
-      required: [id, title, pin_to_top, home_position, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, revision, publication, subscription, folders, catalogs]
+      description: A collection with its folders, and every catalog those folders reference.
+      required: [id, title, pin_to_top, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, home_position, revision, publication, subscription, folders, catalogs]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
-        pin_to_top: { type: boolean, description: Nuvio shows it first; written only by push. }
+        pin_to_top: { type: boolean }
         view_mode: { $ref: "#/components/schemas/ViewMode" }
         show_all_tab: { type: boolean }
         backdrop_image_url: { type: string }
         focus_glow_enabled: { type: boolean }
-        home_position:
-          type: [integer, "null"]
-          description: Its place on Home, one numbering shared with catalogs; null when not on Home.
-        revision:
-          type: integer
-          description: Rises by one with each save or Update of the row, from 1. A collection save carries the one its editor opened at.
-        publication:
-          oneOf:
-            - $ref: "#/components/schemas/PublicationState"
-            - type: "null"
-        subscription:
-          oneOf:
-            - $ref: "#/components/schemas/SubscriptionState"
-            - type: "null"
+        home_position: { type: [integer, "null"] }
+        revision: { type: integer }
+        publication: { $ref: "#/components/schemas/PublicationState" }
+        subscription: { $ref: "#/components/schemas/SubscriptionState" }
         folders:
           type: array
-          items:
-            $ref: "#/components/schemas/Folder"
+          items: { $ref: "#/components/schemas/Folder" }
         catalogs:
           type: array
-          description: The catalogs scoped to this collection.
-          items:
-            $ref: "#/components/schemas/Catalog"
+          items: { $ref: "#/components/schemas/Catalog" }
+
+    NewScopedCatalog:
+      type: object
+      required: [key, type, name, provider, params]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          description: The client's handle for one new catalog, unique within the save. Entries with the same key share one catalog.
+        type: { $ref: "#/components/schemas/CatalogType" }
+        name: { type: string }
+        provider: { type: string, const: tmdb }
+        params: { type: string }
+
+    FolderCatalogRef:
+      type: object
+      description: Exactly one of `catalog_id` or `new`.
+      additionalProperties: false
+      properties:
+        catalog_id: { type: string, format: uuid }
+        new: { $ref: "#/components/schemas/NewScopedCatalog" }
+        genre: { type: string, maxLength: 64 }
+
+    FolderData:
+      allOf:
+        - $ref: "#/components/schemas/FolderArt"
+        - type: object
+          required: [title, catalogs]
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: An existing folder's id. Omit for a new folder.
+            title: { type: string, maxLength: 200 }
+            catalogs:
+              type: array
+              description: In order.
+              items: { $ref: "#/components/schemas/FolderCatalogRef" }
+
+    ScopedCatalogEdit:
+      type: object
+      required: [id, type, provider, name, params]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/CatalogType" }
+        provider: { type: string, const: tmdb }
+        name: { type: string }
+        params: { type: string }
 
     CollectionForm:
       type: object
-      required: [title, view_mode]
+      required: [title, view_mode, folders]
       properties:
-        title: { type: string }
+        title: { type: string, maxLength: 200 }
         view_mode: { $ref: "#/components/schemas/ViewMode" }
         show_all_tab: { type: boolean }
-        backdrop_image_url: { type: string }
+        backdrop_image_url: { type: string, maxLength: 2048 }
         focus_glow_enabled: { type: boolean }
         folders:
           type: array
-          maxItems: 10
-          items:
-            $ref: "#/components/schemas/FolderForm"
+          items: { $ref: "#/components/schemas/FolderData" }
         catalog_edits:
           type: array
-          description: Update only. Rewrites catalogs already scoped to this collection, in the same transaction.
-          items:
-            $ref: "#/components/schemas/ScopedCatalogEdit"
+          description: Update only. New names and recipes for catalogs already scoped to this collection.
+          items: { $ref: "#/components/schemas/ScopedCatalogEdit" }
+
     CollectionSave:
-      description: A collection editor's save.
       allOf:
         - $ref: "#/components/schemas/CollectionForm"
         - type: object
           required: [revision]
           properties:
-            revision:
-              type: integer
-              description: The collection's revision when the editor opened, which also guards its scoped catalogs. Any other is a 409; an absent one reads as 0, which no row is at.
-    FolderForm:
-      allOf:
-        - $ref: "#/components/schemas/FolderArt"
-        - type: object
-          required: [title, tile_shape]
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: An existing folder's id; absent for a new folder.
-            catalogs:
-              type: array
-              maxItems: 20
-              description: The folder's catalogs, in order.
-              items:
-                $ref: "#/components/schemas/FolderCatalogRef"
-    FolderCatalogRef:
+            revision: { type: integer }
+
+    PendingChange:
       type: object
-      description: An existing catalog by id, or a new catalog scoped to the collection.
-      oneOf:
-        - required: [catalog_id]
-        - required: [new]
+      required: [kind, id, name, change]
       properties:
-        catalog_id: { type: string, format: uuid }
-        new: { $ref: "#/components/schemas/NewScopedCatalog" }
-        genre: { type: string }
-    NewScopedCatalog:
-      type: object
-      required: [key, type, name, provider, params]
-      properties:
-        key:
-          type: string
-          description: The client's handle for one staged catalog; every `new` with the same key in one save is the one catalog. Never stored.
-        type: { $ref: "#/components/schemas/CatalogType" }
-        name: { type: string }
-        provider: { $ref: "#/components/schemas/Provider" }
-        params: { $ref: "#/components/schemas/RecipeParamsString" }
-    ScopedCatalogEdit:
-      type: object
-      required: [id, type, provider, name, params]
-      properties:
+        kind: { type: string, enum: [catalog, collection] }
         id: { type: string, format: uuid }
-        type: { $ref: "#/components/schemas/CatalogType" }
-        provider: { $ref: "#/components/schemas/Provider" }
         name: { type: string }
-        params: { $ref: "#/components/schemas/RecipeParamsString" }
+        change: { type: string, enum: [added, changed, removed] }
 
-    Preview:
+    Library:
       type: object
-      required: [randomized, items, total_results]
+      required: [catalogs, collections, pending, home_revision]
       properties:
-        randomized:
-          type: boolean
-          description: The recipe shuffles, so page 1 won't match what Nuvio shows.
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/PreviewItem"
-        total_results:
-          type: integer
-          description: TMDB's count of matches across every page.
-    PreviewItem:
-      type: object
-      required: [tmdb_id, title, year, poster]
-      properties:
-        tmdb_id: { type: integer }
-        title: { type: string }
-        year: { type: string }
-        poster: { type: string }
-
-    BundleCatalog:
-      type: object
-      required: [key, name, type, provider, params]
-      properties:
-        key: { type: string, description: Unique across the bundle or snapshot. }
-        name: { type: string }
-        type: { $ref: "#/components/schemas/CatalogType" }
-        provider: { $ref: "#/components/schemas/Provider" }
-        params: { $ref: "#/components/schemas/RecipeParams" }
-    BundleRef:
-      type: object
-      required: [catalog, genre]
-      properties:
-        catalog: { type: string, description: A catalog's key. }
-        genre: { type: string }
-    BundleFolder:
-      allOf:
-        - $ref: "#/components/schemas/FolderArt"
-        - type: object
-          required: [refs]
-          properties:
-            refs:
-              type: array
-              items:
-                $ref: "#/components/schemas/BundleRef"
-    BundleCollection:
-      type: object
-      required: [title, catalogs, folders]
-      properties:
-        title: { type: string }
-        view_mode: { $ref: "#/components/schemas/ViewMode" }
-        show_all_tab: { type: boolean }
-        backdrop_image_url: { type: string }
-        focus_glow_enabled: { type: boolean }
-        catalogs:
-          type: array
-          description: The catalogs scoped to this collection.
-          items:
-            $ref: "#/components/schemas/BundleCatalog"
-        folders:
-          type: array
-          items:
-            $ref: "#/components/schemas/BundleFolder"
-    Bundle:
-      type: object
-      description: Catalogs and collections with every row id replaced by a key. Format rules in `docs/data-model.md`, *Bundle format*.
-      required: [format, version, catalogs, collections]
-      properties:
-        format: { type: string, const: uno }
-        version: { type: integer, const: 1 }
         catalogs:
           type: array
           description: Listed catalogs.
-          items:
-            $ref: "#/components/schemas/BundleCatalog"
+          items: { $ref: "#/components/schemas/Catalog" }
         collections:
           type: array
-          items:
-            $ref: "#/components/schemas/BundleCollection"
+          items: { $ref: "#/components/schemas/Collection" }
+        pending:
+          type: array
+          description: What a push of the stored Home would change in Nuvio.
+          items: { $ref: "#/components/schemas/PendingChange" }
+        home_revision:
+          type: integer
+          description: Send it with the next push.
 
-    ImportCheck:
+    PushRow:
       type: object
-      required: [catalogs, collections]
+      description: One Home row. Exactly one of `catalog_id` or `collection_id`.
+      additionalProperties: false
       properties:
-        catalogs:
-          type: array
-          items:
-            $ref: "#/components/schemas/CheckCatalog"
-        collections:
-          type: array
-          items:
-            type: object
-            required: [title, folders, matched, catalogs]
-            properties:
-              title: { type: string }
-              folders:
-                type: array
-                description: Folder titles, in order.
-                items: { type: string }
-              matched:
-                type: boolean
-                description: One of the caller's collections has this title, trimmed and in any case.
-              catalogs:
-                type: array
-                items:
-                  $ref: "#/components/schemas/CheckCatalog"
-    CheckCatalog:
+        catalog_id: { type: string, format: uuid }
+        show_in_home:
+          type: boolean
+          description: For a catalog. False puts it in Discover only.
+        collection_id: { type: string, format: uuid }
+        pin_to_top:
+          type: boolean
+          description: For a collection. Nuvio shows it first.
+
+    PushRequest:
       type: object
-      required: [key, name, type, params, existing]
+      required: [rows, home_revision]
+      additionalProperties: false
       properties:
-        key: { type: string }
-        name: { type: string }
-        type: { $ref: "#/components/schemas/CatalogType" }
-        params: { $ref: "#/components/schemas/RecipeParamsString" }
-        existing:
+        rows:
           type: array
-          description: The caller's listed catalogs with the same recipe, by name then id; what `reuse` may name.
-          items:
-            type: object
-            required: [id, name]
-            properties:
-              id: { type: string, format: uuid }
-              name: { type: string }
+          description: The whole home screen, in order. Each row at most once.
+          items: { $ref: "#/components/schemas/PushRow" }
+        home_revision: { type: integer }
+
+    PushResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          description: True only on a 200.
+        undo_failed:
+          type: boolean
+          description: Putting back Nuvio's lists after a failure failed too.
+        refused:
+          type: string
+          enum: [empty_collection, too_many_catalogs, profile_changed, shares_addons, home_order_unreadable]
+        home_revision:
+          type: integer
+          description: On success, the profile's new home revision.
+
+    CommunityFolder:
+      type: object
+      properties:
+        title: { type: string }
+        tile_shape: { $ref: "#/components/schemas/TileShape" }
+        cover_emoji: { type: string }
+        cover_image_url: { type: string }
+
+    CommunityItem:
+      type: object
+      required: [id, kind, title, subscriber_count, published_at, updated_at, subscribed, update_available]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [catalog, collection] }
+        title: { type: string }
+        subscriber_count: { type: integer }
+        published_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        subscribed:
+          type: boolean
+          description: The caller has added it.
+        update_available: { type: boolean }
+        catalog_names:
+          type: array
+          items: { type: string }
+        folders:
+          type: array
+          items: { $ref: "#/components/schemas/CommunityFolder" }
+        catalog:
+          oneOf:
+            - $ref: "#/components/schemas/BundleCatalog"
+            - type: "null"
 
     CommunityPage:
       type: object
@@ -2097,63 +1764,28 @@ components:
           items: { $ref: "#/components/schemas/CommunityItem" }
         next_cursor:
           type: [string, "null"]
-          description: Reads the next page; null on the last page.
-    CommunityItem:
-      type: object
-      description: One publication as Community lists it. Its publisher is never on the wire.
-      required: [id, kind, title, subscriber_count, published_at, updated_at, subscribed, update_available, catalog_names, folders, catalog]
-      properties:
-        id: { type: string, format: uuid }
-        kind:
-          type: string
-          enum: [catalog, collection]
-        title: { type: string }
-        subscriber_count: { type: integer }
-        published_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        subscribed: { type: boolean }
-        update_available: { type: boolean }
-        catalog_names:
-          type: array
-          items: { type: string }
-        folders:
-          type: array
-          description: A collection's folders in order, as their tiles show them.
-          items:
-            type: object
-            required: [title, tile_shape, cover_emoji, cover_image_url]
-            properties:
-              title: { type: string }
-              tile_shape: { $ref: "#/components/schemas/TileShape" }
-              cover_emoji: { type: string }
-              cover_image_url: { type: string }
-        catalog:
-          description: A catalog publication's recipe; null for a collection.
-          oneOf:
-            - $ref: "#/components/schemas/BundleCatalog"
-            - type: "null"
-    PublicationDetail:
+          description: Null on the last page.
+
+    SnapshotFolder:
       allOf:
-        - $ref: "#/components/schemas/CommunityItem"
+        - $ref: "#/components/schemas/BundleFolder"
         - type: object
-          required: [snapshot]
+          required: [key]
           properties:
-            snapshot:
-              $ref: "#/components/schemas/Snapshot"
+            key: { type: string }
+
     Snapshot:
       type: object
-      description: What a publication holds. A catalog publication holds one catalog and no collection.
       required: [format, version, catalogs]
       properties:
-        format: { type: string, const: uno-publication }
-        version: { type: integer, const: 1 }
+        format: { type: string }
+        version: { type: integer }
         catalogs:
           type: array
-          items:
-            $ref: "#/components/schemas/BundleCatalog"
+          items: { $ref: "#/components/schemas/BundleCatalog" }
         collection:
           type: object
-          required: [title, view_mode, show_all_tab, backdrop_image_url, focus_glow_enabled, folders]
+          description: Present for a collection publication.
           properties:
             title: { type: string }
             view_mode: { $ref: "#/components/schemas/ViewMode" }
@@ -2162,263 +1794,309 @@ components:
             focus_glow_enabled: { type: boolean }
             folders:
               type: array
-              items:
-                allOf:
-                  - $ref: "#/components/schemas/BundleFolder"
-                  - type: object
-                    required: [key]
-                    properties:
-                      key: { type: string }
+              items: { $ref: "#/components/schemas/SnapshotFolder" }
+
+    PublicationDetail:
+      allOf:
+        - $ref: "#/components/schemas/CommunityItem"
+        - type: object
+          required: [snapshot]
+          properties:
+            snapshot: { $ref: "#/components/schemas/Snapshot" }
+
     CommunityCopy:
       type: object
-      description: The row an add, Update or Duplicate wrote; `catalog` or `collection` by `kind`.
       required: [kind]
       properties:
-        kind:
-          type: string
-          enum: [catalog, collection]
+        kind: { type: string, enum: [catalog, collection] }
         catalog: { $ref: "#/components/schemas/Catalog" }
         collection: { $ref: "#/components/schemas/Collection" }
 
     SnapshotChange:
       type: object
-      description: |
-        One difference between two snapshots. Removed items come first, then
-        added, then changed. Semantics: `SnapshotChange` in
-        `internal/vault/snapshot_diff.go`.
       required: [op, kind]
       properties:
-        op:
-          type: string
-          enum: [removed, added, changed]
-        kind:
-          type: string
-          enum: [collection, folder, catalog]
+        op: { type: string, enum: [removed, added, changed] }
+        kind: { type: string, enum: [collection, folder, catalog] }
         aspect:
           type: string
           enum: [name, recipe, settings, art, order, catalog_order]
         name: { type: string }
-        was: { type: string, description: "The earlier name, when it changed." }
-        folder: { type: string, description: The folder a catalog is added to or removed from. }
+        was: { type: string }
+        folder: { type: string }
         genre: { type: string }
-        key: { type: string, description: Snapshot key of the folder or catalog the item is about. }
+        key: { type: string }
         folder_key: { type: string }
         catalog: { $ref: "#/components/schemas/BundleCatalog" }
         was_catalog: { $ref: "#/components/schemas/BundleCatalog" }
 
-    PushRequest:
+    BundleCatalog:
       type: object
+      required: [key, name, type, provider, params]
       additionalProperties: false
-      required: [rows, home_revision]
       properties:
-        rows:
+        key: { type: string, maxLength: 64 }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/CatalogType" }
+        provider: { type: string, const: tmdb }
+        params:
+          type: object
+          description: The recipe params as a JSON object (not a string).
+
+    BundleRef:
+      type: object
+      required: [catalog, genre]
+      properties:
+        catalog:
+          type: string
+          description: A catalog key in the bundle.
+        genre: { type: string }
+
+    BundleFolder:
+      allOf:
+        - $ref: "#/components/schemas/FolderArt"
+        - type: object
+          required: [title, refs]
+          properties:
+            title: { type: string }
+            refs:
+              type: array
+              items: { $ref: "#/components/schemas/BundleRef" }
+
+    BundleCollection:
+      type: object
+      required: [title, view_mode, catalogs, folders]
+      properties:
+        title: { type: string }
+        view_mode: { $ref: "#/components/schemas/ViewMode" }
+        show_all_tab: { type: boolean }
+        backdrop_image_url: { type: string }
+        focus_glow_enabled: { type: boolean }
+        catalogs:
           type: array
-          description: The whole pending Home, in order.
+          description: Catalogs scoped to this collection.
+          items: { $ref: "#/components/schemas/BundleCatalog" }
+        folders:
+          type: array
+          items: { $ref: "#/components/schemas/BundleFolder" }
+
+    Bundle:
+      type: object
+      required: [format, version, catalogs, collections]
+      properties:
+        format: { type: string, const: uno }
+        version: { type: integer, const: 1 }
+        catalogs:
+          type: array
+          maxItems: 200
+          description: Listed catalogs.
+          items: { $ref: "#/components/schemas/BundleCatalog" }
+        collections:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/BundleCollection" }
+
+    CheckCatalog:
+      type: object
+      required: [key, name, type, params, existing]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/CatalogType" }
+        params:
+          type: string
+          description: Canonical params, as a JSON-encoded string.
+        existing:
+          type: array
+          description: The caller's listed catalogs with the same recipe, which the import may reuse.
           items:
-            $ref: "#/components/schemas/PushRow"
-        home_revision:
-          type: integer
-          description: The library's home_revision the Home was built from, or the one the tab's last push answered. Any other is a 409; an absent one reads as 0.
-    PushRow:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+
+    ImportCheck:
       type: object
-      additionalProperties: false
-      description: One Home row; names exactly one catalog or one collection.
-      oneOf:
-        - required: [catalog_id]
-        - required: [collection_id]
-      properties:
-        catalog_id: { type: string, format: uuid }
-        show_in_home:
-          type: boolean
-          description: Catalog rows only; false is Discover only.
-        collection_id: { type: string, format: uuid }
-        pin_to_top:
-          type: boolean
-          description: Collection rows only; Nuvio shows it first.
-    Error:
-      type: object
-      description: The answer to every failed request under `/api` but push's own.
-      required: [error]
-      properties:
-        error:
-          type: string
-          description: One line of words, for a person to read.
-        code:
-          type: string
-          description: A stable name for an error the builder acts on by kind rather than by status; absent when there is none.
-    PushResult:
-      type: object
-      required: [success]
-      properties:
-        success:
-          type: boolean
-          description: True only on a 200. The marker that tells this body from any other; an ordinary failure carries nothing else.
-        undo_failed:
-          type: boolean
-          description: What Nuvio took couldn't be put back; Nuvio holds part of the push.
-        refused:
-          type: string
-          enum: [empty_collection, shares_addons, profile_changed, home_order_unreadable, too_many_catalogs]
-          description: Why push turned the Home away before writing anything to Nuvio.
-        home_revision:
-          type: integer
-          description: On a success only, the profile's home_revision the push raised it to, which the tab's next push carries.
-    Library:
-      type: object
-      required: [catalogs, collections, pending, home_revision]
+      required: [catalogs, collections]
       properties:
         catalogs:
           type: array
-          items: { $ref: "#/components/schemas/Catalog" }
+          items: { $ref: "#/components/schemas/CheckCatalog" }
         collections:
           type: array
-          items: { $ref: "#/components/schemas/Collection" }
-        pending:
-          type: array
-          description: Catalog rows first, then collections.
-          items: { $ref: "#/components/schemas/PendingChange" }
-        home_revision:
-          type: integer
-          description: What a push of the stored Home carries, read in the snapshot the rows' home_position are read in.
-    PendingChange:
+          items:
+            type: object
+            required: [title, folders, matched, catalogs]
+            properties:
+              title: { type: string }
+              folders:
+                type: array
+                description: Folder titles.
+                items: { type: string }
+              matched:
+                type: boolean
+                description: One of the caller's collections has the same title, ignoring case.
+              catalogs:
+                type: array
+                items: { $ref: "#/components/schemas/CheckCatalog" }
+
+    PreviewItem:
       type: object
-      required: [kind, id, name, change]
       properties:
-        kind:
-          type: string
-          enum: [catalog, collection]
-        id: { type: string, format: uuid }
-        name:
-          type: string
-          description: As a push would send it, or as the last push left it for a removed row.
-        change:
-          type: string
-          enum: [added, changed, removed]
+        tmdb_id: { type: integer }
+        title: { type: string }
+        year: { type: string }
+        poster: { type: string }
+
+    CatalogPreview:
+      type: object
+      required: [randomized, items, total_results]
+      properties:
+        randomized:
+          type: boolean
+          description: The recipe shuffles, so Nuvio shows a different page.
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PreviewItem" }
+        total_results:
+          type: integer
+          description: TMDB's count of matches across every page.
 
     Genre:
       type: object
-      required: [id, name]
       properties:
         id: { type: integer }
         name: { type: string }
-    Named:
+
+    Certification:
       type: object
-      required: [id, name]
+      properties:
+        certification: { type: string }
+        meaning: { type: string }
+        order:
+          type: integer
+          description: The rating's rank on its country's scale, lowest first.
+
+    Language:
+      type: object
+      properties:
+        iso_639_1: { type: string }
+        english_name: { type: string }
+        name: { type: string }
+
+    Country:
+      type: object
+      properties:
+        iso_3166_1: { type: string }
+        english_name: { type: string }
+        native_name: { type: string }
+
+    WatchProvider:
+      type: object
+      properties:
+        provider_id: { type: integer }
+        provider_name: { type: string }
+        display_priority: { type: integer }
+        logo_path: { type: string }
+
+    WatchRegion:
+      type: object
+      properties:
+        iso_3166_1: { type: string }
+        english_name: { type: string }
+        native_name: { type: string }
+
+    NamedID:
+      type: object
+      description: A TMDB company, keyword or collection.
       properties:
         id: { type: integer }
         name: { type: string }
-    TitledMatch:
+
+    CompanyMatch:
       type: object
-      required: [id, name, origin_country, title_count]
       properties:
         id: { type: integer }
         name: { type: string }
         origin_country: { type: string }
         title_count:
           type: integer
-          description: How many titles of the requested type it has (series, for a network).
+          description: Titles of the searched catalog type.
+
     Network:
       type: object
-      required: [id, name, origin_country]
       properties:
         id: { type: integer }
         name: { type: string }
         origin_country: { type: string }
-    Language:
-      type: object
-      required: [iso_639_1, english_name, name]
-      properties:
-        iso_639_1: { type: string }
-        english_name: { type: string }
-        name: { type: string }
-    Country:
-      type: object
-      required: [iso_3166_1, english_name, native_name]
-      properties:
-        iso_3166_1: { type: string }
-        english_name: { type: string }
-        native_name: { type: string }
-    WatchProvider:
-      type: object
-      required: [provider_id, provider_name, display_priority, logo_path]
-      properties:
-        provider_id: { type: integer }
-        provider_name: { type: string }
-        display_priority: { type: integer }
-        logo_path: { type: string }
-    Certification:
-      type: object
-      required: [certification, meaning, order]
-      properties:
-        certification: { type: string }
-        meaning: { type: string }
-        order: { type: integer }
 
-    AddonManifest:
+    NetworkMatch:
+      allOf:
+        - $ref: "#/components/schemas/Network"
+        - type: object
+          properties:
+            title_count: { type: integer }
+
+    Manifest:
       type: object
-      required: [id, version, name, description, types, resources, idPrefixes, catalogs, behaviorHints]
+      description: A Stremio addon manifest.
       properties:
         id: { type: string, const: hiidz.uno.catalog }
         version: { type: string }
-        name: { type: string }
+        name: { type: string, const: Uno Catalog }
         description: { type: string }
-        logo: { type: string, format: uri }
+        logo:
+          type: string
+          description: "`{SITE_BASE_URL}/logo.png`"
         types:
           type: array
           items: { type: string }
+          examples: [[movie, series]]
         resources:
           type: array
           items: { type: string }
+          examples: [[catalog]]
         idPrefixes:
           type: array
           items: { type: string }
+          examples: [[tt]]
         catalogs:
           type: array
           items:
             type: object
-            required: [type, id, name, showInHome]
             properties:
               type: { $ref: "#/components/schemas/CatalogType" }
-              id: { type: string, description: "The manifest id, `{provider}-{catalog uuid}`." }
+              id:
+                type: string
+                description: "`tmdb-{catalog uuid}`"
               name: { type: string }
-              pageSize: { type: integer }
+              pageSize: { type: integer, const: 20 }
+              showInHome: { type: boolean }
               extra:
                 type: array
                 items:
                   type: object
-                  required: [name]
                   properties:
-                    name:
-                      type: string
-                      enum: [skip, genre]
+                    name: { type: string, enum: [skip, genre] }
                     isRequired: { type: boolean }
                     options:
                       type: array
                       items: { type: string }
                     optionsLimit: { type: integer }
-              showInHome:
-                type: boolean
-                description: Always present; Nuvio TV reads an absent one as true.
         behaviorHints:
           type: object
-          required: [configurable]
           properties:
             configurable: { type: boolean }
-    AddonCatalogResponse:
+
+    Meta:
       type: object
-      required: [metas, cacheMaxAge, staleRevalidate]
-      properties:
-        metas:
-          type: array
-          items:
-            $ref: "#/components/schemas/AddonMeta"
-        cacheMaxAge: { type: integer, description: Seconds. }
-        staleRevalidate: { type: integer, description: Seconds. }
-    AddonMeta:
-      type: object
+      description: A Stremio meta preview.
       required: [id, type, name]
       properties:
-        id: { type: string }
+        id:
+          type: string
+          description: The title's IMDb id.
         type: { $ref: "#/components/schemas/CatalogType" }
         name: { type: string }
         poster: { type: string }
@@ -2429,3 +2107,13 @@ components:
         genres:
           type: array
           items: { type: string }
+
+    CatalogResponse:
+      type: object
+      required: [metas, cacheMaxAge, staleRevalidate]
+      properties:
+        metas:
+          type: array
+          items: { $ref: "#/components/schemas/Meta" }
+        cacheMaxAge: { type: integer, const: 10800 }
+        staleRevalidate: { type: integer, const: 3600 }

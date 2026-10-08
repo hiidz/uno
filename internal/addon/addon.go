@@ -25,7 +25,6 @@ import (
 // ID stays constant across every profile — identity in the addon protocol
 // comes from the URL path (/u/{token}/...), never from this id. It is
 // vault.AddonID, which every pushed source carries too.
-// See docs/architecture.md.
 const (
 	ID = vault.AddonID
 	// Name is also the display name Nuvio's own UI shows for this addon —
@@ -106,9 +105,7 @@ func New(v *vault.DB, p *provider.TMDBClient, keys *tmdbkey.Keys, siteBaseURL st
 
 // Public wraps a handler on the public, unauthenticated addon surface:
 // recovers panics (nothing else on this path can, since it's deliberately
-// outside requireNuvioAuth) and opens CORS — see the "Addon server —
-// public, unauthenticated, CORS-open, cacheable" section of
-// docs/architecture.md.
+// outside requireNuvioAuth) and opens CORS.
 func (s *Server) Public(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

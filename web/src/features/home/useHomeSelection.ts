@@ -3,6 +3,9 @@ import { HomeEditsContext, HomeSelectionContext } from './HomeSelectionContext'
 import type { HomeEdits, HomeSelection } from './HomeSelectionContext'
 import { buildHomePreview, type HomeScreenPreview } from './preview'
 
+/** The pending Home: its rows, what a push would change, and the
+ *  `home_revision` the next push sends. Throws outside a
+ *  `HomeSelectionProvider`. */
 export function useHomeSelection(): HomeSelection {
   const value = use(HomeSelectionContext)
   if (value === null) {
@@ -11,6 +14,8 @@ export function useHomeSelection(): HomeSelection {
   return value
 }
 
+/** The actions that edit the pending Home (add, remove, reorder, toggle).
+ *  Throws outside a `HomeSelectionProvider`. */
 export function useHomeEdits(): HomeEdits {
   const value = use(HomeEditsContext)
   if (value === null) {

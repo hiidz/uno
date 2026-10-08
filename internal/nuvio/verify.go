@@ -17,6 +17,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// The errors Verify returns: ErrInvalidToken for a token that fails any check
+// (signature, claims, expiry), the caller's fault, and ErrJWKSUnavailable when
+// Nuvio's signing keys can't be fetched, upstream's.
 var (
 	ErrInvalidToken    = errors.New("nuvio: invalid or expired token")
 	ErrJWKSUnavailable = errors.New("nuvio: could not fetch signing keys")

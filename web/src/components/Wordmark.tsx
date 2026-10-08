@@ -1,5 +1,5 @@
 /**
- * The Uno wordmark, drawn from `docs/img/logo-wordmark.svg`'s own outlines
+ * The Uno wordmark, drawn from the logo's own outlines
  * and filled with the current text colour. Size it by height; the width
  * follows the mark's own proportions.
  */

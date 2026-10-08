@@ -115,6 +115,9 @@ export function libraryQuery(profileIndex: number) {
   return { queryKey: queryKeys.library(profileIndex), queryFn: () => fetchLibrary(profileIndex) }
 }
 
+/** The profile's library (`libraryQuery`) with the TMDB lookup tables the
+ *  builder renders it with: genres, certifications, languages and country
+ *  names. Each lookup is empty until its query lands. */
 export function useLibrary(profileIndex: number): Library {
   const owned = useQuery(libraryQuery(profileIndex))
 

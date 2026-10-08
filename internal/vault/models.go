@@ -220,7 +220,7 @@ type FolderData struct {
 // transaction of the collection write that carries it — so discarding the
 // edit instead of saving leaves nothing behind. A subscribe or a duplicate
 // of a publication, or a Duplicate of a whole collection, writes its scoped catalog copies as New
-// entries too. See docs/frontend.md's "Three sources for a folder's catalog".
+// entries too.
 //
 // Genre narrows this one reference to a genre, by name: pushed as the folder
 // source's "genre", which Nuvio sends back as the catalog's genre extra.

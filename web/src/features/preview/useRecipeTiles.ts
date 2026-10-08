@@ -48,6 +48,9 @@ interface Requested {
   params: string
 }
 
+/** The catalog editor's on-demand preview of one recipe. Nothing is fetched
+ *  until `run`; after that, `isStale` says when the form has moved on from the
+ *  recipe the tiles on screen came from. */
 export function useRecipeTiles(type: CatalogType, params: string): RecipePreview {
   const [requested, setRequested] = useState<Requested | null>(null)
 

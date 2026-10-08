@@ -116,6 +116,9 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   return await res.json()
 }
 
+/** GETs `path` through `apiFetch` and returns its JSON body, or `null` for a
+ *  `204`. A failed answer throws the `ApiError` (or subclass) `failure`
+ *  builds. */
 export async function getJSON<T>(path: string): Promise<T> {
   return (await request(path)) as T
 }

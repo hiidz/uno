@@ -53,6 +53,8 @@ export function tilesFrom(result: {
   }
 }
 
+/** Preview tiles for many recipes at once, fetched as soon as they're asked
+ *  for. Recipes with the same type, params and genre share one query. */
 export function useRecipesTiles(
   recipes: readonly TileRecipe[],
 ): ReadonlyMap<string, CatalogTiles> {

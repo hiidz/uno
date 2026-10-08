@@ -38,8 +38,7 @@ var validCatalogTypes = map[string]bool{
 
 // validProviders is the set of providers Uno can actually validate params
 // for. Only "tmdb" exists — a deliberate "futureproofing, not
-// implemented" state, see the "Recipe params (TMDB)" section of
-// docs/data-model.md — but the check still
+// implemented" state — but the check still
 // matters now, not just once a second provider is real: an unrecognized
 // provider stored here would have params no validator has judged, and
 // provider is not inert like endpoint — it round-trips into

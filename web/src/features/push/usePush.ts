@@ -80,6 +80,10 @@ export interface Push {
   dismiss: () => void
 }
 
+/** Pushes the pending Home to Nuvio, one push at a time, and reports how it
+ *  ended. On success it marks what was sent as pushed and refetches the
+ *  library. A profile that was never selected sends the user back to
+ *  `/profiles`. */
 export function usePush(profileIndex: number): Push {
   const home = useHomeSelection()
   const navigate = useNavigate()

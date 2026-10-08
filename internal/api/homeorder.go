@@ -2,8 +2,7 @@ package api
 
 // The home-order merge: Nuvio's home-order list, the one Nuvio TV, mobile
 // and desktop order a profile's home screen rows by, with Uno's rows as one
-// block in the order of the push and every other row in its order around it. See the
-// "Push" and "Nuvio integration" sections of docs/architecture.md.
+// block in the order of the push and every other row in its order around it.
 
 import (
 	"encoding/json"

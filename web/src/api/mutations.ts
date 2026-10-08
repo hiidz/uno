@@ -22,6 +22,8 @@ export function publishCollection(profileIndex: number, collectionID: string): P
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/publish`)
 }
 
+/** `unpublishCatalog` for a collection — `POST .../collections/{id}/unpublish`.
+ *  Copies other profiles subscribed to become their own. */
 export function unpublishCollection(profileIndex: number, collectionID: string): Promise<Collection> {
   return sendJSON<Collection>('POST', `/api/p/${profileIndex}/collections/${collectionID}/unpublish`)
 }
@@ -75,8 +77,13 @@ export interface CatalogPayload {
  *  409. */
 export type CatalogSave = CatalogPayload & { revision: number }
 
+/** The only catalog provider the server accepts, sent as every catalog's
+ *  `provider`. */
 export const CATALOG_PROVIDER = 'tmdb'
 
+/** Creates a listed catalog — `POST .../catalogs`. The server checks the
+ *  recipe and answers with its params in canonical form; a recipe it refuses
+ *  is a 400, and TMDB unreachable while checking it is a 502. */
 export function createCatalog(profileIndex: number, body: CatalogPayload): Promise<Catalog> {
   return sendJSON<Catalog>('POST', `/api/p/${profileIndex}/catalogs`, body)
 }
@@ -189,6 +196,9 @@ export interface CollectionPayload {
  *  with a 409. */
 export type CollectionSave = CollectionPayload & { revision: number }
 
+/** Creates a collection with its folders — `POST .../collections` — and, in
+ *  the same transaction, every catalog its folders' `new` entries describe.
+ *  Answers with the whole tree. */
 export function createCollection(
   profileIndex: number,
   body: CollectionPayload,

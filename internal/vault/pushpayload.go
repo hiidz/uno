@@ -19,8 +19,7 @@ const AddonID = "hiidz.uno.catalog"
 
 // ManifestID is the manifest-facing id for one catalog: provider-prefixed so
 // it's the same string that round-trips as Nuvio's collections
-// catalogSources[].catalogId — see the "Push wire shape" section of
-// docs/data-model.md. The addon's manifest and the push both use it.
+// catalogSources[].catalogId. The addon's manifest and the push both use it.
 func ManifestID(c Catalog) string {
 	return c.Provider + "-" + c.ID.String()
 }

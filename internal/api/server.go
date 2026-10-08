@@ -43,6 +43,7 @@ type Server struct {
 	pushLocks sync.Map
 }
 
+// ServeHTTP dispatches r through the route table routes() builds.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }

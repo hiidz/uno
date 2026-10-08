@@ -23,8 +23,7 @@ import (
 // as one ordered list of rows, and the home_revision the tab's Home was built
 // from. An absent home_revision decodes as 0, which no profile is at, so the
 // push is refused as stale. The Home selection is only ever written here, in
-// one transaction, after Nuvio has accepted the push. See the "HTTP surface"
-// section of docs/architecture.md.
+// one transaction, after Nuvio has accepted the push.
 type pushRequest struct {
 	Rows         []pushRow `json:"rows"`
 	HomeRevision int64     `json:"home_revision"`
@@ -85,8 +84,8 @@ func (body pushRequest) selection() (vault.PushedHome, error) {
 
 // pushResult is push's JSON answer once its body has decoded: Success, the
 // marker the SPA tells it from any other body by, true only on a 200. Flat by
-// design â€” success or failure, not partial-progress flags â€” since
-// push's ordering (validate â†’ Nuvio â†’ local write) and its undo of what Nuvio
+// design — success or failure, not partial-progress flags — since
+// push's ordering (validate → Nuvio → local write) and its undo of what Nuvio
 // already took guarantee an ordinary failure means nothing changed.
 // UndoFailed marks the one case that guarantee doesn't cover: an undo that
 // failed too (undoPush). Refused names why push turned the selection away
@@ -459,7 +458,7 @@ func failedPush(ctx context.Context, err error, reverts ...pushRevert) (int, pus
 }
 
 // undoPush runs every revert of a failed push and answers it with status. A
-// revert that fails too â€” two independent failures back to back â€” leaves
+// revert that fails too — two independent failures back to back — leaves
 // Nuvio holding part of the push, which the answer says with a 500 and
 // UndoFailed.
 func undoPush(ctx context.Context, status int, reverts ...pushRevert) (int, pushResult) {
@@ -492,7 +491,7 @@ func (s *Server) pushRecord(ctx context.Context, profileID uuid.UUID, body pushR
 
 // pushAddons runs the addons read-modify-write cycle: pull the profile's
 // current addons, merge Uno's own entry into that list (mergeAddon), and push
-// the complete merged list back â€” omitting any existing addon would delete
+// the complete merged list back — omitting any existing addon would delete
 // it. Returns the pulled list, which a failed push puts back.
 // Has no dependency on the pending selection, so it's unaffected by push's
 // Nuvio-first ordering.
@@ -565,7 +564,7 @@ type pulledCollection struct {
 // client), so the merge has to touch only what Uno manages and leave
 // everything else byte-for-byte untouched:
 //
-//  1. Pull the current blob as raw JSON per element â€” never decoded into a
+//  1. Pull the current blob as raw JSON per element — never decoded into a
 //     generic map, which would round-trip numbers through float64 and
 //     silently corrupt any collection Uno doesn't own.
 //  2. Drop every pulled entry in managed: owned by this profile, or sent by
