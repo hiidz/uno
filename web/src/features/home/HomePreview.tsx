@@ -290,7 +290,7 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
   return (
     <section className="border-line flex flex-col gap-2 border-t pt-4">
       <div className="flex items-baseline gap-3">
-        <span className="type-label">Not on home</span>
+        <span className="type-label">Only in Discover</span>
       </div>
       <div className="flex flex-col gap-1">
         {rows.map((row) => (

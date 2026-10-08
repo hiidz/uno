@@ -493,7 +493,7 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
   return (
     <section className="flex flex-col gap-2">
       <div className="border-line-hi border-b pb-2.5">
-        <h2 className="text-ink m-0 text-[16px] font-bold">Not on home</h2>
+        <h2 className="text-ink m-0 text-[16px] font-bold">Only in Discover</h2>
       </div>
       <ul className="flex flex-col">
         {rows.map((row) => (

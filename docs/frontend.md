@@ -572,7 +572,7 @@ Client state only, nothing writes until Push.
   silently relocate to the array's tail and register as a phantom pending change.
 - **`show_in_home` toggles whether the catalog gets a home row** — off keeps it in Discover only,
   via a required `genre` extra `buildManifest` adds to that catalog's manifest entry. Off-catalogs
-  render outside the numbered bands entirely, in their own "Not on home" tray (no drag, no
+  render outside the numbered bands entirely, in their own "Only in Discover" tray (no drag, no
   ordinal — they have no place in Nuvio's order); the flip itself is a row's ⋯ menu
   ("Move to Discover" / the tray's "Move to home"), not a dedicated toggle control.
 - **Pin (`pin_to_top`) is a pending edit here, like Home or Discover**, and nowhere else:
@@ -1071,7 +1071,7 @@ live in `web/src/features/sharing/`, and `Workspace.tsx` reaches them through on
     only (`railStickers`) — never To push, which the pending count already covers, and no
     Collection sticker, which the rail's Collections sign already says. An editor's sign and the
     From Community view's sign show every flag (`rowStickers`, and `viewStickers` for the view).
-    The Home pane's rows, the "Not on home" tray's included, show the kind and To push alone
+    The Home pane's rows, the "Only in Discover" tray's included, show the kind and To push alone
     (`homeStickers`). Below `sm` the sign hides its
     stickers, so `EditorShell` heads the body with them.
   - **The kind wears its region's hue** wherever it shows: Movies and Series tangerine

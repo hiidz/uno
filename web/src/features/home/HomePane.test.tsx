@@ -89,7 +89,7 @@ describe('HomePane', () => {
   it('flags a row that is only on Discover too, beside its kind', () => {
     const tray = catalog({ id: 'c4', name: 'Discover only', publication: live })
     mount({ catalogs: [{ catalog: tray, showInHome: false }], waiting: ['c4'] })
-    const section = screen.getByRole('heading', { name: 'Not on home' }).closest('section')!
+    const section = screen.getByRole('heading', { name: 'Only in Discover' }).closest('section')!
     expect(within(section).getByText('Discover only')).toBeInTheDocument()
     expect(flagsOf('Discover only')).toEqual(['Movies', 'To push'])
   })
