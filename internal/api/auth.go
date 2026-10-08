@@ -58,8 +58,9 @@ func profileIDFrom(ctx context.Context) (uuid.UUID, bool) {
 // JWKS, checks its account against the access policy (authenticate), and
 // attaches the account ID (sub) and the token to the request context, with
 // the account's own TMDB key for any TMDB call the request makes (on a server
-// where each account brings one; read only if TMDB is reached). On
-// failure it responds directly and never calls next.
+// where each account brings one; read only if TMDB is reached) and the account
+// as the caller those calls are paced for (provider.WithCaller). On failure it
+// responds directly and never calls next.
 func (s *Server) requireNuvioAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, claims, refusal := s.authenticate(r)
@@ -70,6 +71,7 @@ func (s *Server) requireNuvioAuth(next http.HandlerFunc) http.HandlerFunc {
 		ctx := withNuvioUserID(r.Context(), claims.Sub)
 		ctx = withNuvioToken(ctx, token)
 		ctx = provider.WithKeySource(ctx, s.keys.ForAccount(ctx, claims.Sub))
+		ctx = provider.WithCaller(ctx, "account:"+claims.Sub)
 		next(w, r.WithContext(ctx))
 	}
 }

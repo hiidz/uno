@@ -204,6 +204,7 @@ const HEADLINE: Record<PushOutcomeKind, string> = {
   'shares-addons': "This profile uses profile 1's addons in Nuvio — nothing changed.",
   'profile-changed': 'This profile changed in Nuvio — nothing changed.',
   'home-order-unreadable': "Couldn't read this profile's home order in Nuvio — nothing changed.",
+  'too-many-catalogs': 'Home has too many catalogs for one push — nothing changed.',
 }
 
 const DETAIL: Record<PushOutcomeKind, string> = {
@@ -220,6 +221,8 @@ const DETAIL: Record<PushOutcomeKind, string> = {
     'It was deleted or replaced in Nuvio since you opened it. Your edits are still here; pick the profile again to push.',
   'home-order-unreadable':
     'Your edits are still here. Reordering Home once in a Nuvio app saves a fresh order; then push again.',
+  'too-many-catalogs':
+    'A push can give Nuvio up to 1,000 catalogs, counting every one inside your collections. Take some rows off Home, then push.',
 }
 
 type PushOutcomeKind = NonNullable<Push['outcome']>['kind']

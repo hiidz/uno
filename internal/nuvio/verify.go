@@ -63,32 +63,48 @@ func (v *Verifier) Verify(ctx context.Context, tokenString string) (Claims, erro
 	claims := jwt.MapClaims{}
 	_, err = jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
 		return key, nil
-	}, jwt.WithValidMethods([]string{"ES256"}))
+	}, jwt.WithValidMethods([]string{"ES256"}), jwt.WithAudience(signedInAudience))
 	if err != nil {
 		return Claims{}, fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
-
-	iss, _ := claims.GetIssuer()
-	wantIss := v.baseURL + "/auth/v1"
-	if iss != wantIss {
-		return Claims{}, fmt.Errorf("%w: unexpected issuer %q", ErrInvalidToken, iss)
+	if problem := v.claimsProblem(claims); problem != "" {
+		return Claims{}, fmt.Errorf("%w: %s", ErrInvalidToken, problem)
 	}
 
-	sub, err := claims.GetSubject()
-	if err != nil || sub == "" {
-		return Claims{}, fmt.Errorf("%w: missing subject", ErrInvalidToken)
-	}
-
-	expTime, err := claims.GetExpirationTime()
-	if err != nil || expTime == nil {
-		return Claims{}, fmt.Errorf("%w: missing expiry", ErrInvalidToken)
-	}
-
+	sub, _ := claims.GetSubject()
 	// Supabase writes the account's email address into every token it signs;
 	// one without it reads as "".
 	email, _ := claims["email"].(string)
 
 	return Claims{Sub: sub, Email: email}, nil
+}
+
+// signedInAudience is the aud Nuvio's auth server gives the tokens of
+// accounts that have signed in (GoTrue's JWT_AUD).
+const signedInAudience = "authenticated"
+
+// claimsProblem is why claims, already checked for signature, expiry and
+// audience, are no sign-in of a Nuvio account, or "" when nothing is: an
+// issuer other than v's Nuvio, no subject or expiry, or an anonymous
+// sign-in. Nuvio lets anyone sign in anonymously, with no email or password;
+// Uno's own login never does, so only a script would bring such a token, and
+// each would be a fresh account.
+func (v *Verifier) claimsProblem(claims jwt.MapClaims) string {
+	iss, _ := claims.GetIssuer()
+	sub, _ := claims.GetSubject()
+	exp, _ := claims.GetExpirationTime()
+	anonymous, _ := claims["is_anonymous"].(bool)
+	switch {
+	case iss != v.baseURL+"/auth/v1":
+		return fmt.Sprintf("unexpected issuer %q", iss)
+	case sub == "":
+		return "missing subject"
+	case exp == nil:
+		return "missing expiry"
+	case anonymous:
+		return "an anonymous sign-in"
+	}
+	return ""
 }
 
 // resolveKey extracts kid from tokenString's header and returns the

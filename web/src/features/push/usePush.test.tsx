@@ -136,6 +136,7 @@ describe('usePush', () => {
     ['shares_addons', 'shares-addons'],
     ['profile_changed', 'profile-changed'],
     ['home_order_unreadable', 'home-order-unreadable'],
+    ['too_many_catalogs', 'too-many-catalogs'],
   ] as const)('reports a push the server refused as %s in its own words', async (refused, kind) => {
     api.pushSelection.mockResolvedValue({ success: false, refused })
     const { result } = renderPush()

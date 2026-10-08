@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -81,16 +82,32 @@ func jwksServer(t *testing.T, keys []testJWK) *httptest.Server {
 
 // TestVerifyES256TokenAgainstJWKS is the whole auth path: a JWKS published in
 // Nuvio's shape, a token signed with the matching private key, and the claims
-// Verify hands back.
+// Verify hands back, or why it refuses a token signed with that key that is
+// no sign-in of a Nuvio account.
 func TestVerifyES256TokenAgainstJWKS(t *testing.T) {
 	priv := keyForScalar(t, 7)
 	x, y := jwkCoords(t, &priv.PublicKey)
 	srv := jwksServer(t, []testJWK{{Kid: "kid-1", Kty: "EC", Crv: "P-256", X: x, Y: y}})
 
+	// sign signs claims with a signed-in account's issuer, expiry and
+	// audience wherever claims doesn't set them; a claim set to nil is left
+	// out.
 	sign := func(claims jwt.MapClaims) string {
 		t.Helper()
-		claims["iss"] = srv.URL + "/auth/v1"
-		claims["exp"] = jwt.NewNumericDate(time.Now().Add(time.Hour))
+		for name, value := range map[string]any{
+			"iss": srv.URL + "/auth/v1",
+			"exp": jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			"aud": "authenticated",
+		} {
+			if _, set := claims[name]; !set {
+				claims[name] = value
+			}
+		}
+		for name, value := range claims {
+			if value == nil {
+				delete(claims, name)
+			}
+		}
 		token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 		token.Header["kid"] = "kid-1"
 		signed, err := token.SignedString(priv)
@@ -110,6 +127,24 @@ func TestVerifyES256TokenAgainstJWKS(t *testing.T) {
 	}
 	if claims, err := v.Verify(context.Background(), sign(jwt.MapClaims{"sub": "nuvio-user-2"})); err != nil || claims.Email != "" {
 		t.Errorf("a token without an email = %+v, %v; want it verified with no email", claims, err)
+	}
+	if _, err := v.Verify(context.Background(), sign(jwt.MapClaims{"sub": "nuvio-user-3", "aud": []string{"authenticated"}, "is_anonymous": false})); err != nil {
+		t.Errorf("a signed-in account's token with aud as a list: %v, want it verified", err)
+	}
+
+	// Every token here is signed with the right key; each is still no
+	// sign-in of a Nuvio account.
+	for name, claims := range map[string]jwt.MapClaims{
+		"another issuer":       {"sub": "u", "iss": "https://elsewhere.example/auth/v1"},
+		"no subject":           {"sub": nil},
+		"no expiry":            {"sub": "u", "exp": nil},
+		"an anonymous sign-in": {"sub": "u", "is_anonymous": true},
+		"another audience":     {"sub": "u", "aud": "anon"},
+		"no audience":          {"sub": "u", "aud": nil},
+	} {
+		if _, err := v.Verify(context.Background(), sign(claims)); !errors.Is(err, ErrInvalidToken) {
+			t.Errorf("%s: %v, want ErrInvalidToken", name, err)
+		}
 	}
 
 	cached, ok := v.keys["kid-1"]

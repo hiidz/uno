@@ -38,9 +38,15 @@ export interface PushResult {
 
 /** A collection on Home has no folders, the Nuvio profile uses profile 1's
  *  addons, the profile's Nuvio slot is empty or holds another Nuvio profile
- *  now, or Nuvio's home-order list for the profile couldn't be read — the
- *  `refused…` values in `internal/api/push.go`. */
-export type PushRefusal = 'empty_collection' | 'shares_addons' | 'profile_changed' | 'home_order_unreadable'
+ *  now, Nuvio's home-order list for the profile couldn't be read, or Home
+ *  would give Nuvio more catalogs than a push may — the `refused…` values in
+ *  `internal/api/push.go`. */
+export type PushRefusal =
+  | 'empty_collection'
+  | 'shares_addons'
+  | 'profile_changed'
+  | 'home_order_unreadable'
+  | 'too_many_catalogs'
 
 function isPushResult(value: unknown): value is PushResult {
   return typeof value === 'object' && value !== null && typeof (value as PushResult).success === 'boolean'

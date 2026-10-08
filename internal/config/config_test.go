@@ -53,7 +53,7 @@ func TestLoadOverrides(t *testing.T) {
 		"VAULT_DB":              "/data/vault.db",
 		"PORT":                  "9000",
 		"NUVIO_BASE_URL":        "https://nuvio.example",
-		"DEV_AUTH_BYPASS_TOKEN": "dev-secret",
+		"DEV_AUTH_BYPASS_TOKEN": devBypassToken,
 		"UNO_ACCESS":            "allowlist",
 		"UNO_ALLOWED_EMAILS":    " Someone@Example.com, ,other+tag@example.org ",
 	}
@@ -71,11 +71,34 @@ func TestLoadOverrides(t *testing.T) {
 		NuvioBaseURL:        "https://nuvio.example",
 		NuvioPublishableKey: "publishable-key",
 		SiteBaseURL:         "https://uno.example",
-		DevAuthBypassToken:  "dev-secret",
+		DevAuthBypassToken:  devBypassToken,
 		Access:              Access{Allowlist: true, Emails: []string{"someone@example.com", "other+tag@example.org"}},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("cfg = %+v\nwant  %+v", cfg, want)
+	}
+}
+
+// devBypassToken is a DEV_AUTH_BYPASS_TOKEN of the shortest length Load takes.
+const devBypassToken = "0123456789abcdef0123456789abcdef"
+
+// A DEV_AUTH_BYPASS_TOKEN short enough to guess stops the start; one of the
+// shortest length taken, or none, doesn't.
+func TestLoadRefusesAShortDevBypassToken(t *testing.T) {
+	for token, refused := range map[string]bool{
+		"":                  false,
+		"dev":               true,
+		devBypassToken[:31]: true,
+		devBypassToken:      false,
+	} {
+		vars := map[string]string{"DEV_AUTH_BYPASS_TOKEN": token}
+		maps.Copy(vars, required)
+		setEnv(t, vars)
+
+		_, err := Load()
+		if got := err != nil && strings.Contains(err.Error(), "DEV_AUTH_BYPASS_TOKEN is shorter than 32"); got != refused || (!refused && err != nil) {
+			t.Errorf("a %d-character token: err = %v, want refused %t", len(token), err, refused)
+		}
 	}
 }
 

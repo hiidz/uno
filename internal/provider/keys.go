@@ -42,6 +42,17 @@ func WithKeySource(ctx context.Context, src KeySource) context.Context {
 	return context.WithValue(ctx, keySourceKey{}, KeySource(sync.OnceValues(src)))
 }
 
+type callerKey struct{}
+
+// WithCaller is ctx naming who its TMDB calls are made for: a signed-in
+// account, or the addon token a public request carries. Every call made with
+// it waits on that caller's own limiter before the process-wide one, so no
+// one caller takes the whole of the server's TMDB budget, whichever key the
+// calls use.
+func WithCaller(ctx context.Context, caller string) context.Context {
+	return context.WithValue(ctx, callerKey{}, caller)
+}
+
 // apiKey is the key one TMDB call goes out with; own when it is an account's
 // rather than the client's shared one.
 type apiKey struct {
@@ -92,12 +103,21 @@ const (
 	perKeyRequestBurst      = 40
 )
 
+// perCallerRequestsPerSecond and perCallerRequestBurst pace the calls made for
+// one caller (WithCaller): the share of the server's budget an account's own
+// key gets.
+const (
+	perCallerRequestsPerSecond = perKeyRequestsPerSecond
+	perCallerRequestBurst      = perKeyRequestBurst
+)
+
 // keyLimiterSweep is how often keyLimiters drops the limiters of keys that
 // have gone quiet.
 const keyLimiterSweep = time.Minute
 
-// keyLimiters holds one limiter per account key, keyed by the key's SHA-256 so
-// the map holds no key.
+// keyLimiters holds one limiter per name, an account key or a caller
+// (WithCaller), keyed by the name's SHA-256 so the map holds neither a key nor
+// an addon token.
 type keyLimiters struct {
 	mu    sync.Mutex
 	rate  float64
@@ -150,9 +170,15 @@ func (k *keyLimiters) sweep(now time.Time) {
 	}
 }
 
-// waitTurn waits for key's own limiter when it is an account's, then for the
-// process-wide one every call shares.
+// waitTurn waits for the caller's limiter when ctx names one (WithCaller),
+// then for key's own when it is an account's, then for the process-wide one
+// every call shares.
 func (c *TMDBClient) waitTurn(ctx context.Context, key apiKey) error {
+	if caller, ok := ctx.Value(callerKey{}).(string); ok {
+		if err := c.callerLimiters.wait(ctx, caller); err != nil {
+			return err
+		}
+	}
 	if key.own {
 		if err := c.keyLimiters.wait(ctx, key.value); err != nil {
 			return err

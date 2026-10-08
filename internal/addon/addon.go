@@ -40,10 +40,13 @@ const (
 	// (catalogWindow).
 	catalogPageSize = 20
 
-	// maxCatalogPage is TMDB's own ceiling on discover pagination: it rejects
-	// any page above this one. A skip that lands past it is answered with an
-	// empty page instead of a request TMDB refuses.
-	maxCatalogPage = 500
+	// maxServedTitles is how deep a catalog row goes: a skip at or past it is
+	// the catalog's end, an empty page served with no TMDB call. The catalog
+	// route walks a recipe's pages from page 1 (walkWindow), each one TMDB
+	// hasn't been asked for lately a discover call and up to twenty IMDB id
+	// lookups, and the route is public, so this is what bounds one request's
+	// cost: at most twice 25 pages.
+	maxServedTitles = 500
 
 	// catalogCacheMaxAge/catalogStaleRevalidate are the catalog response's
 	// cacheMaxAge/staleRevalidate, the same values (3h / 1h) as the real
@@ -243,13 +246,20 @@ func (s *Server) ManifestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A cold genre list is fetched with the profile owner's own TMDB key, on
-	// a server where each account brings one.
-	ctx := provider.WithKeySource(r.Context(), s.keys.ForToken(r.Context(), token))
+	// a server where each account brings one, and paced for the token.
+	ctx := provider.WithKeySource(tokenCaller(r.Context(), token), s.keys.ForToken(r.Context(), token))
 	m := buildManifest(selection, func(sc vault.Catalog) []string {
 		return s.genreNames(ctx, sc)
 	})
 	m.Logo = s.logoURL
 	httpx.WriteJSON(w, http.StatusOK, m)
+}
+
+// tokenCaller is ctx naming the addon token as the caller its TMDB calls are
+// paced for (provider.WithCaller), so one token's requests can't take the
+// whole of the server's TMDB budget.
+func tokenCaller(ctx context.Context, token string) context.Context {
+	return provider.WithCaller(ctx, "token:"+token)
 }
 
 // ConfigureHandler serves ConfigurePathPattern, which Nuvio's addon managers
@@ -305,13 +315,9 @@ func (s *Server) served(ctx context.Context, token, catalogType, manifestID stri
 	return s.vault.ServedCatalog(ctx, token, catalogID, catalogType, catalogProvider)
 }
 
-// catalogPage is one page of metas, empty and fetched from nowhere past
-// TMDB's pagination ceiling. It is never nil: {"metas":null} is not a valid
-// empty catalog.
+// catalogPage is one page of metas. It is never nil: {"metas":null} is not a
+// valid empty catalog.
 func (s *Server) catalogPage(ctx context.Context, catalogType, params, genre string, page int) ([]provider.Meta, error) {
-	if page > maxCatalogPage {
-		return []provider.Meta{}, nil
-	}
 	fetched, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
 	if err != nil || fetched.Metas != nil {
 		return fetched.Metas, err
@@ -325,13 +331,14 @@ func (s *Server) catalogPage(ctx context.Context, catalogType, params, genre str
 // TMDB page holds fewer than catalogPageSize of them whenever a title without
 // an IMDB id was dropped (provider.resolveMetas), so the window can start
 // partway into a page and run on into the next: walkWindow finds it from page
-// 1. A randomized recipe has no order to walk, and a skip past TMDB's
-// pagination ceiling nothing to find, so both keep the one page skip lands
-// on.
+// 1. The catalog ends at maxServedTitles. A randomized recipe has no order
+// to walk, so it keeps the one random page it picks.
 func (s *Server) catalogWindow(ctx context.Context, catalogType, params, genre string, skip int) ([]provider.Meta, error) {
-	page := skip/catalogPageSize + 1
-	if page > maxCatalogPage || randomizedRecipe(catalogType, params) {
-		return s.catalogPage(ctx, catalogType, params, genre, page)
+	if skip >= maxServedTitles {
+		return []provider.Meta{}, nil
+	}
+	if randomizedRecipe(catalogType, params) {
+		return s.catalogPage(ctx, catalogType, params, genre, skip/catalogPageSize+1)
 	}
 	return s.walkWindow(ctx, catalogType, params, genre, skip)
 }
@@ -339,14 +346,16 @@ func (s *Server) catalogWindow(ctx context.Context, catalogType, params, genre s
 // walkWindow is catalogWindow for a recipe with a fixed order: it walks the
 // catalog's pages from page 1, each from the provider's page cache once a
 // client has scrolled past it, until it holds catalogPageSize titles past
-// skip, TMDB has no page past the one walked, or it has walked twice as many
-// pages as full ones would take, which bounds a cold request deep into a
-// sparse recipe. A page left with no titles, every one lacking an IMDB id, is
-// walked past rather than read as the end.
+// skip (fewer where maxServedTitles comes first), TMDB has no page past the
+// one walked, or it has walked twice as many pages as full ones would take,
+// which bounds a cold request into a sparse recipe. A page left with no
+// titles, every one lacking an IMDB id, is walked past rather than read as
+// the end.
 func (s *Server) walkWindow(ctx context.Context, catalogType, params, genre string, skip int) ([]provider.Meta, error) {
 	window := []provider.Meta{}
 	seen := 0
-	lastPage := min(2*(skip/catalogPageSize+1), maxCatalogPage)
+	want := min(catalogPageSize, maxServedTitles-skip)
+	lastPage := 2 * (skip/catalogPageSize + 1)
 	for page := 1; page <= lastPage; page++ {
 		fetched, err := s.provider.FetchCatalogPage(ctx, catalogType, params, genre, page)
 		if err != nil {
@@ -354,11 +363,11 @@ func (s *Server) walkWindow(ctx context.Context, catalogType, params, genre stri
 		}
 		window = append(window, titlesFrom(fetched.Metas, skip-seen)...)
 		seen += len(fetched.Metas)
-		if !fetched.More || len(window) >= catalogPageSize {
+		if !fetched.More || len(window) >= want {
 			break
 		}
 	}
-	return window[:min(len(window), catalogPageSize)], nil
+	return window[:min(len(window), want)], nil
 }
 
 // titlesFrom is page from its from-th title on: all of it when from is
@@ -422,8 +431,8 @@ func (s *Server) CatalogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TMDB is reached with the owner's own key, on a server where each
-	// account brings one.
-	ctx := provider.WithKeySource(r.Context(), s.keys.Sealed(served.Account, served.SealedKey))
+	// account brings one, and paced for the token.
+	ctx := provider.WithKeySource(tokenCaller(r.Context(), r.PathValue("token")), s.keys.Sealed(served.Account, served.SealedKey))
 	metas, err := s.catalogWindow(ctx, catalogType, served.Params, genre, skip)
 	if err != nil {
 		// manifestID comes from the request path, so it is quoted: an

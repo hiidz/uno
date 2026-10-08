@@ -1308,8 +1308,11 @@ through fake stages ("Saving…", "Installing addon…") would be fabricated.
   and the words send the user back to pick the profile again, rather than the builder navigating
   away and losing them. `refused: home_order_unreadable` is `home-order-unreadable` ("Couldn't
   read this profile's home order in Nuvio — nothing changed."): push stopped before writing
-  anything to Nuvio, and the detail line says a reorder in a Nuvio app saves a fresh list. A
-  refusal value the builder has no words for reads as the generic failure.
+  anything to Nuvio, and the detail line says a reorder in a Nuvio app saves a fresh list.
+  `refused: too_many_catalogs` is `too-many-catalogs` ("Home has too many catalogs for one push —
+  nothing changed."): the detail line says a push can give Nuvio up to 1,000 catalogs, counting
+  every one inside a collection. Nothing blocks it before sending, since no real Home comes near.
+  A refusal value the builder has no words for reads as the generic failure.
 - **A 429 is an ordinary failure in its own words** (`RateLimitedError`, outcome `rate-limited`):
   Uno's server answers none, but a proxy in front of it could, and one would have turned the
   push away before running it, so nothing changed. Copy: "Too many pushes

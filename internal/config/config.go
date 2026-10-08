@@ -60,7 +60,7 @@ func Load() (Config, error) {
 
 	tmdb, tmdbErr := loadTMDB()
 	access, accessErr := loadAccess()
-	if err := errors.Join(requireSet(cfg), tmdbErr, accessErr); err != nil {
+	if err := errors.Join(requireSet(cfg), devBypassProblem(cfg.DevAuthBypassToken), tmdbErr, accessErr); err != nil {
 		return Config{}, err
 	}
 	cfg.TMDBAPIKey, cfg.PerAccountKeys, cfg.Secret = tmdb.apiKey, tmdb.perAccount, tmdb.secret
@@ -80,6 +80,21 @@ func requireSet(cfg Config) error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required environment variable(s): %v", missing)
+	}
+	return nil
+}
+
+// minDevBypassTokenLen is the shortest DEV_AUTH_BYPASS_TOKEN Load takes. The
+// token signs anyone who presents it in as the bypass's fake account, which
+// the allowlist admits, so one short enough to guess is a way in for anyone
+// who can reach the server.
+const minDevBypassTokenLen = 32
+
+// devBypassProblem refuses a DEV_AUTH_BYPASS_TOKEN that is set and shorter
+// than minDevBypassTokenLen.
+func devBypassProblem(token string) error {
+	if token != "" && len(token) < minDevBypassTokenLen {
+		return fmt.Errorf("DEV_AUTH_BYPASS_TOKEN is shorter than %d characters; use a random one (openssl rand -hex 16) or leave it empty", minDevBypassTokenLen)
 	}
 	return nil
 }

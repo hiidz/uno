@@ -91,6 +91,10 @@ type TMDBClient struct {
 	// keyLimiters paces the calls made with each account's own key, under
 	// limiter: see waitTurn.
 	keyLimiters *keyLimiters
+
+	// callerLimiters paces the calls made for each caller, under limiter: see
+	// WithCaller and waitTurn.
+	callerLimiters *keyLimiters
 }
 
 // maxEntityCacheEntries bounds each memo keyed by an id a caller supplies:
@@ -161,6 +165,8 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		pages:       newPageCache(catalogPageTTL, maxCatalogPageEntries),
 		limiter:     newLimiter(tmdbRequestsPerSecond, tmdbRequestBurst),
 		keyLimiters: newKeyLimiters(perKeyRequestsPerSecond, perKeyRequestBurst),
+
+		callerLimiters: newKeyLimiters(perCallerRequestsPerSecond, perCallerRequestBurst),
 	}
 }
 

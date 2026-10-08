@@ -15,7 +15,7 @@ environment. See `.env.example`.
 | `VAULT_DB` | no | `vault.db` | Path to the SQLite file |
 | `PORT` | no | `8123` | Listen port (plain HTTP, no TLS) |
 | `NUVIO_BASE_URL` | no | `https://api.nuvio.tv` | Base for JWKS discovery and all REST/RPC calls. Its origin is also the only cross-origin `connect-src` in the SPA's Content-Security-Policy, so it must match the `VITE_NUVIO_BASE_URL` the frontend was built with. If they differ, the browser blocks login |
-| `DEV_AUTH_BYPASS_TOKEN` | no | empty (bypass off) | **Local development only** — see below |
+| `DEV_AUTH_BYPASS_TOKEN` | no | empty (bypass off) | **Local development only**, at least 32 characters — see below |
 | `UNO_ACCESS` | no | `open` | Who may sign in: `open` (any Nuvio account) or `allowlist` — see *Access* |
 | `UNO_ALLOWED_EMAILS` | with `allowlist` | empty | Comma-separated email addresses of the Nuvio accounts admitted under `allowlist` |
 
@@ -65,6 +65,22 @@ nobody. The server compares each entry with the `email` claim of the account's t
 Supabase writes into every token. After an account changes its email, the old address keeps
 matching until the token refreshes, within the hour. The dev bypass account has no email, and is
 admitted by its id when the bypass is on.
+
+> **Add an address only once its owner has a Nuvio account.** Nuvio doesn't verify the address
+> an account signs up with: api.nuvio.tv confirms every new sign-up on the spot
+> (`mailer_autoconfirm` in its `/auth/v1/settings`, read 2026-10-08), and so does the Nuvio
+> self-host build by default (`ENABLE_EMAIL_AUTOCONFIRM=true`). An address can belong to only one
+> Nuvio account, so a listed address that already has one is safe. A listed address that has
+> none yet, a friend who hasn't signed up or a typo, is admitted for whoever registers it first.
+
+**An open server has no moderation.** Under `open` any account can publish to Community, and
+every account browsing it sees the titles, catalog names and cover images. Only a publication's
+publisher can unpublish it (`vault.UnpublishCatalog`, `UnpublishCollection`). The operator's one
+way to take one down is the same delete by hand, with the server stopped:
+`PRAGMA foreign_keys = ON; DELETE FROM publications WHERE id = '<publication id>';`. The pragma
+matters: the `sqlite3` shell starts with foreign keys off, and without it the publication's
+subscriptions outlive it. With it, the schema does what an unpublish does: subscribers keep their
+copies as their own.
 
 ### The `SITE_BASE_URL` hazard
 
@@ -130,8 +146,11 @@ What the bypass reaches, and what it does not:
 
 > **Never set `DEV_AUTH_BYPASS_TOKEN` on a deployed server.** It is a full auth bypass: anyone
 > who knows the token holds the fake account, and it is the one env var whose presence changes
-> who a request is. It is off by default (empty), and `api.LogDevBypassEnabled` prints a loud
-> banner at startup so it can never be active unnoticed.
+> who a request is, and the allowlist admits its account. It is off by default (empty),
+> `api.LogDevBypassEnabled` prints a loud banner at startup so it can never be active unnoticed,
+> and a token shorter than 32 characters stops the start (`devBypassProblem`,
+> `internal/config/config.go`), so a guessable one like `dev` can't be set at all. Make one with
+> `openssl rand -hex 16`, and put the same value in `web/.env`.
 
 ## Deployment
 

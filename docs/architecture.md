@@ -90,6 +90,15 @@ the decision to abort startup lives in `cmd/uno/main.go`, the only place that ca
 Every authenticated request carries its own bearer token; identity is the verified `sub` claim,
 nothing else.
 
+**A server's operator is trusted with its users' Nuvio accounts.** The bearer token each builder
+request carries is the user's own Nuvio access token, and Uno forwards it to Nuvio for profiles
+and push (`internal/nuvio/client.go`, `do`). Nuvio has no narrower kind of token, so that one
+token can make any Nuvio call the account can, deleting profiles or reading watch history
+included, until it expires within the hour. The server also serves the page that takes the
+Nuvio password. Uno keeps no token past its request, but whoever runs the server, or changes its
+code, could. A user should sign in only to a server whose operator they would trust with their
+Nuvio account.
+
 Direct auth is viable because Nuvio's JWKS endpoint (`/auth/v1/.well-known/jwks.json`) serves a
 live **ES256 (P-256)** asymmetric key, so verification is local, cached, and costs zero network
 round trips per request. On symmetric HS256 signing the JWKS response would be empty and the only
@@ -97,7 +106,12 @@ options would be a `GET /auth/v1/user` round trip per request, or a proxy design
 credentials.
 
 `profiles.token` is a capability URL for a public, read-only surface. Acceptable in browser
-memory; never log it or place it in a URL the user might share.
+memory; never log it or place it in a URL the user might share. Nothing changes a profile's
+token once it is made, so one that leaks, from a manifest URL pasted somewhere or a reverse
+proxy's access log, stays usable: its holder reads the profile's served catalogs and makes public
+requests paced as that token (*Rate limit*), on its owner's TMDB key in per-account mode. The
+remedy is a hand edit of `profiles.token` followed by a push, which replaces the old addon entry
+in Nuvio (`mergeAddon`).
 
 ## Sharing vocabulary
 
@@ -126,6 +140,15 @@ two layers differ.
 - An update reaches a subscribed copy only when its subscriber takes it with Update. Nothing
   applies one automatically: a publisher never changes what a subscriber's Nuvio shows without
   that subscriber accepting the change, however often the publisher updates.
+- **Media travel by address, not by content.** A collection's and its folders' image, GIF and
+  video fields are web addresses the publisher typed (any `http` or `https` host,
+  `mediaURLProblem`), and Uno stores and pushes the address alone. So the guarantee above covers
+  the address, not the picture: whoever runs that host can change what it serves at any time. The
+  host also sees every device that fetches it: a browser scrolling Community fetches each folder's
+  cover as it renders (`RowPreview.tsx`), before anyone presses Add, and an added collection's
+  media are fetched by every Nuvio device that shows it. A publisher who controls the host learns
+  the viewers' IP addresses and browsers, though Community never names a publisher to its viewers.
+  Which hosts Community should show covers from is not decided yet.
 - Where pushed content shows up is always **Nuvio**, never "TV".
 
 ## HTTP surface
@@ -382,10 +405,15 @@ with its own home row (Discover-only rows included), or one a folder of a pushed
 references, with the params the push left. The lookup is also the access check: an unknown token,
 another profile's catalog, a catalog the last push didn't put in Nuvio and a type or provider the
 catalog doesn't have all return **404**, so a leaked or guessed catalog UUID can't pull data
-through a profile it doesn't belong to, nor a catalog the profile hasn't pushed. A `skip` landing
-past TMDB's own pagination ceiling (`maxCatalogPage`, page 500) answers **200 with an empty
-`metas`** and makes no TMDB call: an empty page past the end is the honest answer, and TMDB would
-refuse the request anyway.
+through a profile it doesn't belong to, nor a catalog the profile hasn't pushed.
+
+**A catalog row ends at 500 titles** (`maxServedTitles`): a `skip` of 500 or more answers **200
+with an empty `metas`** and makes no TMDB call, the end of the catalog as a client reads it. The
+route is public and walks a recipe's pages from page 1 (below), so without the bound one request
+for a deep `skip` would cost TMDB up to 500 discover calls and their IMDB id lookups, around
+10,000 calls, and push every other profile's pages out of the page cache. At 500 titles a cold
+request walks at most 50 pages. No one scrolls a Nuvio row that far, and TMDB's own ceiling, page
+500, lies well past it.
 
 **`skip` is a count of titles, and a page is the next twenty** (`catalogWindow`). Nuvio's apps
 and Stremio send `skip` as the number of titles they already hold, and a TMDB page holds fewer
@@ -395,7 +423,8 @@ Tamil recipes on 2026-10-03. Serving TMDB page `skip/20+1` would hand a client t
 same page again, a scroll that loads nothing new, and a row whose pages ran down to six or fewer
 would end, since the clients give up after three pages with nothing new. So the route walks the
 recipe's pages from page 1 (`walkWindow`), each from the page cache once a client has scrolled
-past it, and serves the twenty titles after the first `skip`, fewer only where the catalog ends.
+past it, and serves the twenty titles after the first `skip`, fewer only where the catalog ends
+or the 500th title comes first.
 The catalog ends where TMDB's `total_pages` says it does (`provider.CatalogPage.More`), not at a
 page left with no titles: every title on a page can lack an IMDB id while the pages after it have
 some. The walk stops at twice as many pages as full ones would take, which bounds a cold request deep
@@ -545,12 +574,18 @@ lookups and previews and every catalog page. A request waits for a token, or giv
 context ends. A **429** pauses the whole bucket for the answer's `Retry-After` (seconds or an HTTP
 date, 1 s when missing, capped at 10 s so a waiting page fetch can still finish inside its
 30 s timeout), then the request goes once more and that answer
-stands. The network export download (`files.tmdb.org`, not the API) doesn't go through it. A
-call made with an account's own key (*TMDB keys*) first waits on that key's own bucket (a token
-taken under the map's lock, so the once-a-minute sweep of refilled buckets can't split a key
-across two), 20 a
-second with a burst of 40 (`perKeyRequestsPerSecond`, `keyLimiters`), so one account can't take
-the whole budget; the shared key waits on the process-wide bucket alone.
+stands. The network export download (`files.tmdb.org`, not the API) doesn't go through it.
+
+Ahead of the process-wide bucket, each call waits on its **caller's** own bucket, 20 a second with
+a burst of 40 (`perCallerRequestsPerSecond`, `callerLimiters`), in either key mode, so no one
+caller can take the whole budget and leave every other profile's rows waiting. The caller is the
+signed-in account on the builder routes (`requireNuvioAuth`, `provider.WithCaller`) and the addon
+token on the `/u/` routes (`tokenCaller`). A shared page fetch is paced as the caller that started
+it. A call made with an account's own key (*TMDB keys*) also waits on that key's own bucket, at
+the same rate (`perKeyRequestsPerSecond`, `keyLimiters`), so an account's tokens together can't
+spend its key faster than that. Both kinds of bucket live in one `keyLimiters` each, filed by the
+SHA-256 of the key or caller so the map holds neither, a token taken under the map's lock so the
+once-a-minute sweep of refilled buckets can't split one across two.
 
 **One process.** The page cache, the memos and the limiter live in memory, so they assume one
 server process. A second instance would need shared ones.
@@ -804,7 +839,12 @@ when anything here disagrees with it. The facts Uno's integration leans on:
   not public, which is why every TMDB call is server-side.
 - **Access tokens are JWTs with `expires_in: 3600`.** `internal/nuvio/verify.go` accepts **ES256**
   signatures only, over **P-256** JWKS keys, and requires `iss` to equal the configured base URL
-  plus `/auth/v1` and `sub` to be non-empty. It does not inspect any other claim.
+  plus `/auth/v1`, `sub` to be non-empty, an `exp`, and `aud` to be `authenticated`, the audience
+  Nuvio's auth server gives signed-in accounts. It refuses an anonymous sign-in
+  (`is_anonymous: true`, `claimsProblem`) as an invalid token: Nuvio lets anyone sign in
+  anonymously, with no email or password (api.nuvio.tv's `/auth/v1/settings` has
+  `anonymous_users` on, read 2026-10-08), Uno's login never does, and each such token would be a
+  fresh account. Beyond these it reads only `email`, for the allowlist (*Access*).
 - **Refresh tokens rotate.** `grant_type=refresh_token` returns a *new* refresh token as well as
   a new access token; the old one is burned. The frontend owns this loop entirely.
 - **Profiles are numbered slots, 1–6**, unique per user. `p_profile_id` on every scoped call is
@@ -932,7 +972,8 @@ profile resolution and once the body has decoded, is JSON and deliberately flat:
 `{success, undo_failed?, refused?}` — no partial-progress flags, because the
 ordering below and the undo of what Nuvio already took guarantee an ordinary failure means
 nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has words for:
-`empty_collection`, `shares_addons`, `profile_changed` or `home_order_unreadable`.
+`empty_collection`, `shares_addons`, `profile_changed`, `home_order_unreadable` or
+`too_many_catalogs`.
 
 **Ordering is Nuvio-first, local-write-last**, and this is load-bearing in two independent ways:
 
@@ -943,6 +984,12 @@ nothing changed at all. `refused` names a refusal of step 2 or 3 the SPA has wor
 2. `refusePush` — turn the push away before any write reaches Nuvio when:
    - a collection it sends has no folders (`400`, `refused: empty_collection`): Nuvio's phone and
      desktop apps leave one off Home, and Nuvio TV has no guard against one;
+   - the record gives Nuvio more than 1,000 catalogs, those on Home and those its collections'
+     folders use (`400`, `refused: too_many_catalogs`, `maxPushedCatalogs`, `recordRefusal`). Only
+     listed catalogs count toward a profile's 200, so its collections can hold thousands of their
+     own, and the public addon serves every catalog the record holds: the manifest lists them all,
+     uncompressed, and each catalog request decodes the whole record. The bound keeps one push
+     from turning a small public request into a large answer;
    - the profile's Nuvio slot, read live with `ListProfiles`, is empty or holds a Nuvio profile
      other than the one the profile was selected as (`409`, `refused: profile_changed`; picking
      the profile again stamps the slot's Nuvio profile afresh). Pushing there would hand Uno's

@@ -107,7 +107,18 @@ const (
 	// refusedHomeOrderUnreadable: Nuvio's home-order list for the profile
 	// couldn't be read (errHomeOrderUnreadable).
 	refusedHomeOrderUnreadable = "home_order_unreadable"
+	// refusedTooManyCatalogs: the selection gives Nuvio more than
+	// maxPushedCatalogs catalogs.
+	refusedTooManyCatalogs = "too_many_catalogs"
 )
+
+// maxPushedCatalogs bounds the catalogs one push gives Nuvio: those on Home
+// and those its collections' folders use. Only listed catalogs count toward
+// a profile's own limit, so a profile's collections can hold thousands, and
+// the public addon serves every one the push record holds: the manifest lists
+// them all, and each catalog request reads the whole record. This is five
+// times the listed-catalog limit, far past any real Home.
+const maxPushedCatalogs = 1_000
 
 // push serves POST /api/p/{profileIndex}/push: an explicit, user-triggered
 // sync of this profile's manifest URL and collections into Nuvio, carrying
@@ -191,6 +202,7 @@ func (s *Server) pushLocked(ctx context.Context, w http.ResponseWriter, profile 
 // whether it did, before anything reaches Nuvio:
 //   - a collection on Home with no folders: Nuvio's phone and desktop apps
 //     leave one off Home, and Nuvio TV has no guard against one;
+//   - more than maxPushedCatalogs catalogs for Nuvio (recordRefusal);
 //   - a Nuvio profile slot that is empty now, or holds a Nuvio profile other
 //     than the one this profile was selected as. Pushing there would leave
 //     Uno's addon and collections to whoever takes the slot next; picking
@@ -198,8 +210,8 @@ func (s *Server) pushLocked(ctx context.Context, w http.ResponseWriter, profile 
 //   - a Nuvio profile that uses profile 1's addons: no Nuvio app reads its
 //     own addon list, so the push would land where nothing shows it.
 func (s *Server) refusePush(ctx context.Context, w http.ResponseWriter, accessToken string, profile vault.Profile, record vault.PushRecord) bool {
-	if hasEmptyCollection(record) {
-		httpx.WriteJSON(w, http.StatusBadRequest, pushResult{Refused: refusedEmptyCollection})
+	if refused := recordRefusal(record); refused != "" {
+		httpx.WriteJSON(w, http.StatusBadRequest, pushResult{Refused: refused})
 		return true
 	}
 	live, found, err := s.liveProfile(ctx, accessToken, profile)
@@ -215,6 +227,19 @@ func (s *Server) refusePush(ctx context.Context, w http.ResponseWriter, accessTo
 		return false
 	}
 	return true
+}
+
+// recordRefusal is why record itself can't be pushed, as a pushResult.Refused
+// value, or "" when nothing in it stops the push: a collection with no
+// folders, or more than maxPushedCatalogs catalogs for Nuvio.
+func recordRefusal(record vault.PushRecord) string {
+	switch {
+	case hasEmptyCollection(record):
+		return refusedEmptyCollection
+	case len(record.Catalogs) > maxPushedCatalogs:
+		return refusedTooManyCatalogs
+	}
+	return ""
 }
 
 // hasEmptyCollection reports whether record sends a collection with no

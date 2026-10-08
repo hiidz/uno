@@ -39,6 +39,10 @@ type PushOutcome =
   /** The server turned the push away before writing to Nuvio: it couldn't
    *  read Nuvio's home-order list for the profile. Nothing changed. */
   | { kind: 'home-order-unreadable' }
+  /** The server turned the push away before contacting Nuvio: Home, with
+   *  every catalog its collections' folders use, comes to more catalogs than
+   *  one push may give Nuvio. Nothing changed. */
+  | { kind: 'too-many-catalogs' }
 
 /** Each refusal the server can answer, as the outcome the builder words it
  *  with. */
@@ -47,6 +51,7 @@ const REFUSAL_OUTCOME: Record<PushRefusal, PushOutcome['kind']> = {
   shares_addons: 'shares-addons',
   profile_changed: 'profile-changed',
   home_order_unreadable: 'home-order-unreadable',
+  too_many_catalogs: 'too-many-catalogs',
 }
 
 /** What a push that threw is reported as: one the server turned away for

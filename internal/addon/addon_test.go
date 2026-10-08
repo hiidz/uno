@@ -283,10 +283,10 @@ func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) 
 	}
 }
 
-// A skip past TMDB's pagination ceiling is answered with an empty page and no
-// TMDB call: the provider here is built with a throwaway key, so any call at
-// all would surface as a 502.
-func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
+// A skip at the depth a catalog row ends is answered with an empty page and
+// no TMDB call: the provider here is built with a throwaway key, so any call
+// at all would surface as a 502.
+func TestCatalogHandlerSkipAtServedDepthServesAnEmptyPage(t *testing.T) {
 	ctx := context.Background()
 	db := newTestVault(t)
 
@@ -311,12 +311,11 @@ func TestCatalogHandlerSkipPastTMDBCeilingServesAnEmptyPage(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", s.CatalogHandler)
 
-	// 10000/20 + 1 = page 501, the first page TMDB itself refuses. Spelled
-	// out rather than derived from maxCatalogPage, so raising that constant
-	// past TMDB's limit fails here.
-	const skipPastLastPage = 10000
+	// Spelled out rather than derived from maxServedTitles, so a change to
+	// how deep the public route walks fails here.
+	const skipAtServedDepth = 500
 	path := "/u/" + owner.Token + "/catalog/movie/" + vault.ManifestID(catalog) +
-		"/skip=" + strconv.Itoa(skipPastLastPage) + ".json"
+		"/skip=" + strconv.Itoa(skipAtServedDepth) + ".json"
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 

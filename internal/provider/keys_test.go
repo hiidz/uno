@@ -174,6 +174,51 @@ func TestAccountKeysArePacedOnTheirOwn(t *testing.T) {
 	}
 }
 
+// Calls made for a caller wait on that caller's own limiter as well as the
+// shared one, on the shared key too; another caller isn't held by it.
+func TestCallersArePacedOnTheirOwn(t *testing.T) {
+	c, _ := keyedTMDB(t, "shared", "shared")
+	c.callerLimiters = newKeyLimiters(50, 1)
+	var out struct{}
+	a := WithCaller(t.Context(), "account:a")
+	start := time.Now()
+	for range 6 {
+		if err := c.get(a, "/x", nil, &out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if elapsed := time.Since(start); elapsed < 90*time.Millisecond {
+		t.Errorf("six calls for one caller took %v, want them paced at 50/s", elapsed)
+	}
+	start = time.Now()
+	if err := c.get(WithCaller(t.Context(), "token:b"), "/x", nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 15*time.Millisecond {
+		t.Errorf("another caller's first call took %v, want it not held by the first caller's pacing", elapsed)
+	}
+}
+
+// A call whose context ends while it waits for its caller's turn fails with
+// that, and never reaches TMDB.
+func TestCallerWaitEndsWithItsContext(t *testing.T) {
+	c, keys := keyedTMDB(t, "shared", "shared")
+	c.callerLimiters = newKeyLimiters(0.01, 1) // a token every 100 s
+	var out struct{}
+	caller := WithCaller(t.Context(), "account:a")
+	if err := c.get(caller, "/x", nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(caller, 20*time.Millisecond)
+	defer cancel()
+	if err := c.get(ctx, "/x", nil, &out); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a call past its caller's budget: %v, want its context's deadline", err)
+	}
+	if n := len(keys()); n != 1 {
+		t.Errorf("TMDB saw %d calls, want only the first", n)
+	}
+}
+
 // Each key spends from its own bucket, kept by the key's hash; the sweep, at
 // most once a minute, drops the buckets that have refilled and keeps the rest.
 func TestKeyLimiters(t *testing.T) {

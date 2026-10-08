@@ -314,6 +314,95 @@ func TestCatalogHandlerWalksPastAPageWithNoTitlesLeft(t *testing.T) {
 	}
 }
 
+// A window that would run past the depth a catalog row ends at stops there:
+// a client holding 490 titles of a catalog TMDB has a hundred full pages of
+// gets the last ten before the end, and no page past the one holding them is
+// fetched. Every page reuses the same twenty TMDB ids, so the IMDB id cache
+// answers all but the first page's lookups and the walk stays inside the
+// rate limiter's burst; the titles' names tell the pages apart.
+func TestCatalogHandlerStopsAtServedDepth(t *testing.T) {
+	f := newHandlerFixture(t)
+	var lastPage atomic.Int32
+	fakeTMDB(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/3/discover/"):
+			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+			lastPage.Store(max(lastPage.Load(), int32(page)))
+			var results []string
+			for i := range 20 {
+				results = append(results, fmt.Sprintf(`{"id":%d,"title":"Film %d"}`, i+1, page*100+i))
+			}
+			fmt.Fprintf(w, `{"results":[%s],"total_results":2000,"total_pages":100}`, strings.Join(results, ","))
+		case strings.HasSuffix(r.URL.Path, "/external_ids"):
+			fmt.Fprintf(w, `{"imdb_id":"tt%s"}`, strings.Split(r.URL.Path, "/")[3])
+		case strings.HasPrefix(r.URL.Path, "/3/genre/"):
+			fmt.Fprint(w, `{"genres":[]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	w := f.get(t, "/u/"+f.owner.Token+"/catalog/movie/"+vault.ManifestID(f.onHome)+"/skip=490.json")
+	var got catalogResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("status %d: %v", w.Code, err)
+	}
+	if len(got.Metas) != 10 || got.Metas[0].Name != "Film 2510" || got.Metas[9].Name != "Film 2519" {
+		t.Fatalf("skip=490 served %d titles %v, want page 25's last ten", len(got.Metas), got.Metas)
+	}
+	if n := lastPage.Load(); n != 25 {
+		t.Errorf("walked to page %d, want 25", n)
+	}
+}
+
+// A randomized recipe has no order to walk: whatever the skip, the route
+// serves the one random page it picks, with one discover call.
+func TestCatalogHandlerServesARandomizedRecipesOnePage(t *testing.T) {
+	f := newHandlerFixture(t)
+	ctx := t.Context()
+	owner, err := f.db.ResolveOrCreateProfile(ctx, "shuffler", 1, "nuvio-profile-shuffler")
+	if err != nil {
+		t.Fatalf("creating profile: %v", err)
+	}
+	form := listedCatalogForm("Shuffled")
+	form.Params = `{"randomized":true}`
+	catalog, err := f.db.CreateUserCatalog(ctx, owner.ID, form)
+	if err != nil {
+		t.Fatalf("creating catalog: %v", err)
+	}
+	savePush(t, f.db, owner.ID, vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}})
+
+	var discovers atomic.Int32
+	var picked atomic.Int32
+	fakeTMDB(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/3/discover/"):
+			discovers.Add(1)
+			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+			picked.Store(int32(page))
+			fmt.Fprintf(w, `{"results":[{"id":%d,"title":"Film %d"}],"total_results":20,"total_pages":20}`, page, page)
+		case strings.HasSuffix(r.URL.Path, "/external_ids"):
+			fmt.Fprintf(w, `{"imdb_id":"tt%s"}`, strings.Split(r.URL.Path, "/")[3])
+		case strings.HasPrefix(r.URL.Path, "/3/genre/"):
+			fmt.Fprint(w, `{"genres":[]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	w := f.get(t, "/u/"+owner.Token+"/catalog/movie/"+vault.ManifestID(catalog)+"/skip=40.json")
+	var got catalogResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("status %d: %v", w.Code, err)
+	}
+	if want := "Film " + strconv.Itoa(int(picked.Load())); len(got.Metas) != 1 || got.Metas[0].Name != want {
+		t.Fatalf("served %v, want the one random page's %q", got.Metas, want)
+	}
+	if n := discovers.Load(); n != 1 {
+		t.Errorf("%d discover calls, want 1", n)
+	}
+}
+
 // titlesFrom is a page from a title on: all of it from before its start,
 // none from past its end.
 func TestTitlesFrom(t *testing.T) {

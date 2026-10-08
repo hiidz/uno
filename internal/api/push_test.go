@@ -899,6 +899,19 @@ func TestPush_RefusesBeforeNuvio(t *testing.T) {
 	}
 }
 
+// A record giving Nuvio more catalogs than maxPushedCatalogs is refused
+// before Nuvio is contacted; one at the limit goes ahead.
+func TestRecordRefusalCountsTheCatalogsForNuvio(t *testing.T) {
+	record := vault.PushRecord{Catalogs: make([]vault.PushedCatalog, maxPushedCatalogs)}
+	if got := recordRefusal(record); got != "" {
+		t.Errorf("%d catalogs: refused %q, want none", len(record.Catalogs), got)
+	}
+	record.Catalogs = append(record.Catalogs, vault.PushedCatalog{})
+	if got := recordRefusal(record); got != refusedTooManyCatalogs {
+		t.Errorf("%d catalogs: refused %q, want %q", len(record.Catalogs), got, refusedTooManyCatalogs)
+	}
+}
+
 // pushOf is a push body putting home's catalogs, then its collections, on
 // Home, each in the order given.
 func pushOf(home vault.PushedHome) pushRequest {

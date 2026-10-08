@@ -995,8 +995,10 @@ paths:
           description: |
             The body doesn't decode (`Error`), a row names an id the profile
             can't push, names neither or both of a catalog and a collection, or
-            names a catalog or collection an earlier row already names, or a
-            collection on Home has no folders (`refused: empty_collection`).
+            names a catalog or collection an earlier row already names, a
+            collection on Home has no folders (`refused: empty_collection`), or
+            Home would give Nuvio more than 1,000 catalogs, counting those its
+            collections' folders use (`refused: too_many_catalogs`).
           content:
             application/json:
               schema:
@@ -1418,7 +1420,8 @@ paths:
           Stremio extra props as a URL-encoded query string in one path
           segment: `skip` (titles the client already holds) and `genre` (a
           name from the catalog's genre extra), e.g. `genre=Action&skip=20`.
-          A `skip` past TMDB's page-500 ceiling answers an empty page.
+          A catalog ends at 500 titles: a `skip` of 500 or more answers an
+          empty page.
         schema:
           type: string
         example: skip=20
@@ -2208,7 +2211,7 @@ components:
           description: What Nuvio took couldn't be put back; Nuvio holds part of the push.
         refused:
           type: string
-          enum: [empty_collection, shares_addons, profile_changed, home_order_unreadable]
+          enum: [empty_collection, shares_addons, profile_changed, home_order_unreadable, too_many_catalogs]
           description: Why push turned the Home away before writing anything to Nuvio.
     Library:
       type: object
