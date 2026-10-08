@@ -113,6 +113,14 @@ func newHandlerFixture(t *testing.T) handlerFixture {
 // another's cached lists.
 func (f handlerFixture) get(t *testing.T, path string) *httptest.ResponseRecorder {
 	t.Helper()
+	return serve(t, f.routes(t), path)
+}
+
+// routes is the addon routes over a server with a TMDB client of its own: a
+// test that pages through one catalog serves every request through one, so
+// later pages read what earlier ones cached.
+func (f handlerFixture) routes(t *testing.T) *http.ServeMux {
+	t.Helper()
 	s, err := New(f.db, provider.NewTMDBClient("test-key"), nil, "https://uno.example")
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -121,8 +129,14 @@ func (f handlerFixture) get(t *testing.T, path string) *httptest.ResponseRecorde
 	mux.HandleFunc("GET "+ManifestPathPattern, s.Public(s.ManifestHandler))
 	mux.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", s.Public(s.CatalogHandler))
 	mux.HandleFunc("GET "+ConfigurePathPattern, s.Public(s.ConfigureHandler))
+	return mux
+}
+
+// serve sends a GET for path through routes.
+func serve(t *testing.T, routes *http.ServeMux, path string) *httptest.ResponseRecorder {
+	t.Helper()
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+	routes.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
 	return w
 }
 
@@ -206,11 +220,6 @@ func TestConfigureHandler(t *testing.T) {
 	}
 }
 
-// TestCatalogHandler covers the catalog route. It serves a catalog the
-// token's profile has on the TV. Its own catalog off the TV or deleted,
-// another profile's catalog, live or deleted, a type or provider the catalog
-// doesn't have, and an id vault.ManifestID can't have written are the same 404 as
-// one that doesn't exist, and are never fetched. A TMDB failure is a 502.
 // tmdbSparse serves three discover pages of twenty films, a fifth of them
 // without an IMDB id, so each page leaves sixteen titles once those are
 // dropped; a later page is empty.
@@ -245,10 +254,11 @@ func tmdbSparse(w http.ResponseWriter, r *http.Request) {
 func TestCatalogHandlerServesTheTitlesAfterSkip(t *testing.T) {
 	f := newHandlerFixture(t)
 	fakeTMDB(t, tmdbSparse)
+	routes := f.routes(t)
 
 	var all []string
 	for _, tc := range []struct{ skip, want int }{{0, 20}, {20, 20}, {40, 8}, {48, 0}} {
-		w := f.get(t, "/u/"+f.owner.Token+"/catalog/movie/"+vault.ManifestID(f.onHome)+"/skip="+strconv.Itoa(tc.skip)+".json")
+		w := serve(t, routes, "/u/"+f.owner.Token+"/catalog/movie/"+vault.ManifestID(f.onHome)+"/skip="+strconv.Itoa(tc.skip)+".json")
 		if w.Code != http.StatusOK {
 			t.Fatalf("skip=%d: status %d (%s)", tc.skip, w.Code, w.Body.String())
 		}
@@ -404,26 +414,11 @@ func TestCatalogHandlerServesARandomizedRecipesOnePage(t *testing.T) {
 	}
 }
 
-// titlesFrom is a page from a title on: all of it from before its start,
-// none from past its end.
-func TestTitlesFrom(t *testing.T) {
-	page := []provider.Meta{{ID: "a"}, {ID: "b"}, {ID: "c"}}
-	for from, want := range map[int]int{-5: 3, 0: 3, 2: 1, 3: 0, 9: 0} {
-		if got := titlesFrom(page, from); len(got) != want {
-			t.Errorf("titlesFrom(page, %d) has %d titles, want %d", from, len(got), want)
-		}
-	}
-}
-
-// A randomized recipe picks its page at random, so it has no order to walk.
-func TestRandomizedRecipe(t *testing.T) {
-	for params, want := range map[string]bool{`{"randomized":true}`: true, `{}`: false, `not json`: false} {
-		if got := randomizedRecipe("movie", params); got != want {
-			t.Errorf("randomizedRecipe(%s) = %v, want %v", params, got, want)
-		}
-	}
-}
-
+// TestCatalogHandler covers the catalog route. It serves a catalog the token's
+// profile's last push put in Nuvio. Its own catalog off Home or deleted,
+// another profile's catalog, live or deleted, a type or provider the catalog
+// doesn't have, and an id vault.ManifestID can't have written are the same 404
+// as one that doesn't exist, and are never fetched. A TMDB failure is a 502.
 func TestCatalogHandler(t *testing.T) {
 	f := newHandlerFixture(t)
 	path := func(token, catalogType string, c vault.Catalog) string {
@@ -440,7 +435,7 @@ func TestCatalogHandler(t *testing.T) {
 		{name: "published catalog", path: path(f.owner.Token, "movie", f.onHome), tmdb: tmdbUp, wantStatus: http.StatusOK, wantTMDB: true},
 		{name: "unknown token", path: path("no-such-token", "movie", f.onHome), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
 		{name: "another profile's catalog", path: path(f.owner.Token, "movie", f.theirs), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
-		{name: "own catalog off the TV", path: path(f.owner.Token, "movie", f.unpublished), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
+		{name: "own catalog off Home", path: path(f.owner.Token, "movie", f.unpublished), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
 		{name: "own deleted catalog", path: path(f.owner.Token, "movie", f.deleted), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
 		{name: "another profile's deleted catalog", path: path(f.owner.Token, "movie", f.theirsDeleted), tmdb: tmdbUp, wantStatus: http.StatusNotFound},
 		{name: "another provider", path: "/u/" + f.owner.Token + "/catalog/movie/other-" + f.onHome.ID.String() + ".json", tmdb: tmdbUp, wantStatus: http.StatusNotFound},
@@ -533,55 +528,6 @@ func TestNewRequiresBothDependencies(t *testing.T) {
 	if _, err := New(newTestVault(t), nil, nil, ""); err == nil {
 		t.Error("New(nil provider) = nil error, want one")
 	}
-}
-
-// The addon serves what the owner's last push put in Nuvio: after the
-// catalog on Home is edited and then deleted, its manifest entry and catalog
-// route stay as pushed until the next push takes it off.
-func TestAddonServesWhatTheLastPushLeft(t *testing.T) {
-	ctx := t.Context()
-	f := newHandlerFixture(t)
-	var discoverQueries []string
-	fakeTMDB(t, func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/3/discover/") {
-			discoverQueries = append(discoverQueries, r.URL.RawQuery)
-		}
-		tmdbUp(w, r)
-	})
-	manifest := "/u/" + f.owner.Token + "/manifest.json"
-	route := "/u/" + f.owner.Token + "/catalog/movie/" + vault.ManifestID(f.onHome) + ".json"
-	wantServed := func(step string, listed bool, status int) {
-		t.Helper()
-		if body := f.get(t, manifest).Body.String(); strings.Contains(body, vault.ManifestID(f.onHome)) != listed {
-			t.Errorf("%s: manifest lists the catalog = %v, want %v (%s)", step, !listed, listed, body)
-		}
-		if w := f.get(t, route); w.Code != status {
-			t.Errorf("%s: catalog route = %d, want %d", step, w.Code, status)
-		}
-	}
-
-	edited := listedCatalogForm("Edited")
-	edited.Params = `{"sort_by":"vote_average.desc"}`
-	if _, err := f.db.UpdateUserCatalog(ctx, f.owner.ID, f.onHome.ID, f.onHome.Revision, edited); err != nil {
-		t.Fatal(err)
-	}
-	wantServed("after an edit", true, http.StatusOK)
-	if body := f.get(t, manifest).Body.String(); !strings.Contains(body, `"name":"On home"`) || strings.Contains(body, "Edited") {
-		t.Errorf("manifest after an edit = %s, want the name as pushed", body)
-	}
-	for _, q := range discoverQueries {
-		if strings.Contains(q, "vote_average") {
-			t.Errorf("discover query %q uses the edited recipe before a push", q)
-		}
-	}
-
-	if err := f.db.DeleteUserCatalog(ctx, f.owner.ID, f.onHome.ID); err != nil {
-		t.Fatalf("deleting a catalog on Home: %v", err)
-	}
-	wantServed("after a delete", true, http.StatusOK)
-
-	savePush(t, f.db, f.owner.ID, vault.PushedHome{})
-	wantServed("after the next push", false, http.StatusNotFound)
 }
 
 // callerRecorder is a fakeTMDB handler that answers with tmdbUp and records

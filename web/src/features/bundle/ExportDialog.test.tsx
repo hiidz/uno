@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { catalog, collection } from '@/test/fixtures'
 import { ExportDialog } from './ExportDialog'
@@ -44,10 +44,12 @@ beforeEach(() => {
 
 afterEach(() => {
   setClipboard(undefined)
+  vi.useRealTimers()
 })
 
 describe('ExportDialog', () => {
   it('copies the pretty JSON of the ticked ids, stays open, and reads Copied', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     const writeText = vi.fn().mockResolvedValue(undefined)
     setClipboard({ writeText })
     const { onClose } = renderDialog()
@@ -61,11 +63,12 @@ describe('ExportDialog', () => {
       collection_ids: ['k1'],
     })
     expect(writeText).toHaveBeenCalledWith(bundleText(BUNDLE))
-      expect(onClose).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 
     // The label reverts on its own.
-    expect(await screen.findByRole('button', { name: 'Copy JSON' }, { timeout: 3000 })).toBeEnabled()
+    act(() => vi.advanceTimersByTime(2000))
+    expect(screen.getByRole('button', { name: 'Copy JSON' })).toBeEnabled()
   })
 
   it('shows the export text in a read-only box when the copy fails, and stays open', async () => {

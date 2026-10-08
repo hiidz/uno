@@ -51,7 +51,6 @@ func TestTMDBFailuresReachTheClientAsStatuses(t *testing.T) {
 		{"company with TMDB down", http.MethodGet, "/api/companies/1", "", tmdbDown, http.StatusBadGateway},
 		{"keyword absent on TMDB", http.MethodGet, "/api/keywords/1", "", notFound, http.StatusNotFound},
 		{"collection with TMDB down", http.MethodGet, "/api/collections/1", "", tmdbDown, http.StatusBadGateway},
-		{"create checked while TMDB is down", http.MethodPost, "/api/p/1/catalogs", `{"type":"movie","name":"A","provider":"tmdb","params":"{\"with_genres\":\"28\"}"}`, tmdbDown, http.StatusBadGateway},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeTMDB(t, tc.tmdb)

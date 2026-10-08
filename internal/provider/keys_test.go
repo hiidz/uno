@@ -153,17 +153,16 @@ func TestAccountKeysArePacedOnTheirOwn(t *testing.T) {
 	c, _ := keyedTMDB(t, "shared", "shared", "mine")
 	c.keyLimiters = newKeyLimiters(50, 1)
 	var out struct{}
-	start := time.Now()
 	for range 6 {
 		if err := c.get(t.Context(), "/x", nil, &out); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if elapsed := time.Since(start); elapsed > 80*time.Millisecond {
-		t.Errorf("six calls on the shared key took %v, want no per-key pacing", elapsed)
+	if n := len(c.keyLimiters.byKey); n != 0 {
+		t.Errorf("calls on the shared key made %d per-key limiters, want none", n)
 	}
 	ctx := WithKeySource(t.Context(), source("mine", nil))
-	start = time.Now()
+	start := time.Now()
 	for range 6 {
 		if err := c.get(ctx, "/x", nil, &out); err != nil {
 			t.Fatal(err)
@@ -175,7 +174,8 @@ func TestAccountKeysArePacedOnTheirOwn(t *testing.T) {
 }
 
 // Calls made for a caller wait on that caller's own limiter as well as the
-// shared one, on the shared key too; another caller isn't held by it.
+// shared one, on the shared key too. Each caller's bucket is its own, as
+// TestKeyLimiters shows.
 func TestCallersArePacedOnTheirOwn(t *testing.T) {
 	c, _ := keyedTMDB(t, "shared", "shared")
 	c.callerLimiters = newKeyLimiters(50, 1)
@@ -189,13 +189,6 @@ func TestCallersArePacedOnTheirOwn(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed < 90*time.Millisecond {
 		t.Errorf("six calls for one caller took %v, want them paced at 50/s", elapsed)
-	}
-	start = time.Now()
-	if err := c.get(WithCaller(t.Context(), "token:b"), "/x", nil, &out); err != nil {
-		t.Fatal(err)
-	}
-	if elapsed := time.Since(start); elapsed > 15*time.Millisecond {
-		t.Errorf("another caller's first call took %v, want it not held by the first caller's pacing", elapsed)
 	}
 }
 

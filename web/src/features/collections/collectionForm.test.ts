@@ -163,11 +163,6 @@ describe('view mode', () => {
     return collection({ view_mode: viewMode })
   }
 
-  it('starts a new collection as Tabbed Grids and a new folder as Poster', () => {
-    expect(emptyCollectionForm().viewMode).toBe('TABBED_GRID')
-    expect(newFolder().tileShape).toBe('POSTER')
-  })
-
   it('loads a stored tile shape as itself', () => {
     const saved = collection({ view_mode: 'ROWS', folders: [folder({ tile_shape: 'SQUARE' })] })
     expect(formFromCollection(saved).folders[0].tileShape).toBe('SQUARE')

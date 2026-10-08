@@ -310,10 +310,9 @@ func TestPush_OnePushRejected(t *testing.T) {
 	}
 }
 
-// When both Nuvio pushes succeed but the local commit that follows fails,
-// push must attempt a compensating revert of the collections push and the
-// addons push — and report whether that revert itself succeeded, via
-// UndoFailed.
+// When Nuvio takes every push but the local commit that follows fails, push
+// reverts the collections, addons and home-order pushes to what it pulled, and
+// reports whether that revert itself succeeded, via UndoFailed.
 func TestPush_CompensatingRevert(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -341,9 +340,11 @@ func TestPush_CompensatingRevert(t *testing.T) {
 				t.Fatalf("marshaling prior raw entry: %v", err)
 			}
 
+			pulledHomeOrder := homeList(otherRow("top", 0))
 			fake := &fakeNuvio{
 				profiles:            liveAs(profile),
 				pullCollections:     []json.RawMessage{priorRaw},
+				homeOrder:           pulledHomeOrder,
 				pushCollectionsErrs: []error{nil, tc.revertErr},
 				// Simulate the collection being deleted (e.g. by a concurrent
 				// request) in the window between Nuvio accepting the
@@ -394,10 +395,8 @@ func TestPush_CompensatingRevert(t *testing.T) {
 			if len(fake.pushAddonsCalls) != 2 || len(fake.pushAddonsCalls[1]) != 0 {
 				t.Fatalf("PushAddons calls = %+v, want the push, then the pulled (empty) list put back", fake.pushAddonsCalls)
 			}
-			// No list was pulled, so the revert pushes none, which the client
-			// sends as {}: no saved order.
-			if len(fake.pushHomeOrderCalls) != 2 || fake.pushHomeOrderCalls[1] != nil {
-				t.Fatalf("PushHomeOrder calls = %s, want the push, then no list put back", fake.pushHomeOrderCalls)
+			if len(fake.pushHomeOrderCalls) != 2 || !bytes.Equal(fake.pushHomeOrderCalls[1], pulledHomeOrder) {
+				t.Fatalf("PushHomeOrder calls = %s, want the push, then %s put back as pulled", fake.pushHomeOrderCalls, pulledHomeOrder)
 			}
 		})
 	}

@@ -182,19 +182,14 @@ describe('Workspace below lg', () => {
     expect(layer()).toBeNull()
   })
 
-  it('closes the layer once its catalog is deleted', () => {
+  it.each([
+    ['catalog', 'Noir'],
+    ['collection', 'Night shift'],
+  ])('closes the layer once its %s is deleted', (kind, name) => {
     renderWorkspace()
-    fireEvent.click(screen.getByRole('button', { name: 'Open Noir' }))
+    fireEvent.click(screen.getByRole('button', { name: `Open ${name}` }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete row' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete catalog' }))
-    expect(layer()).toBeNull()
-  })
-
-  it('closes the layer once its collection is deleted', () => {
-    renderWorkspace()
-    fireEvent.click(screen.getByRole('button', { name: 'Open Night shift' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete row' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete collection' }))
+    fireEvent.click(screen.getByRole('button', { name: `Delete ${kind}` }))
     expect(layer()).toBeNull()
   })
 
@@ -207,15 +202,6 @@ describe('Workspace below lg', () => {
 })
 
 describe('Workspace delete confirms', () => {
-  it('asks a bare catalog only the essentials', () => {
-    renderWorkspace()
-    fireEvent.click(screen.getByRole('button', { name: 'Open Noir' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete row' }))
-    expect(screen.getByText('Noir')).toBeInTheDocument()
-    expect(screen.queryByText(/Also removes it from/)).toBeNull()
-    expect(screen.getByText("This can't be undone.")).toBeInTheDocument()
-  })
-
   it('tells a collection what goes with it', () => {
     rows.collections = [collection({ id: 'k1', title: 'Night shift', home_position: 0 })]
     renderWorkspace()

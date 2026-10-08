@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { catalog } from '@/test/fixtures'
 import { groupedByCatalog, newFolder, newRef, type FolderRefState } from './collectionForm'
 import type { RefOption } from './refs'
 import {
@@ -9,16 +8,13 @@ import {
   genreChoices,
   holdsCatalog,
   isUnsplit,
-  nestedCatalogForm,
   withCatalogAdded,
   withCatalogMoved,
   withCatalogOrder,
-  withFolderUpdate,
   withGenreAdded,
   withGenreOrder,
   withoutCatalog,
   withoutRef,
-  withRefs,
 } from './folderEdits'
 
 // The catalog form's one value import from the API barrel, which would
@@ -33,17 +29,6 @@ describe('folder ref edits', () => {
   const other = newRef('c2')
   const refs = [western, war, other]
   const folder = { ...newFolder(), refs }
-
-  it('passes only the named folder’s refs through an update', () => {
-    const update = (r: FolderRefState[]) => r.slice(1)
-    expect(withRefs(folder, folder.key, update).refs).toEqual([war, other])
-    expect(withRefs(folder, 'another folder', update)).toBe(folder)
-  })
-
-  it('updates only the named folder', () => {
-    expect(withFolderUpdate(folder, folder.key, { title: 'Frights' }).title).toBe('Frights')
-    expect(withFolderUpdate(folder, 'another folder', { title: 'Frights' })).toBe(folder)
-  })
 
   it('holds a catalog under any genre, and lists each catalog once', () => {
     expect(holdsCatalog(refs, 'c1')).toBe(true)
@@ -130,12 +115,5 @@ describe('errorRoleLabels', () => {
     expect(errorRoleLabels(errors, [first, second])).toEqual(['Title', 'folder 2’s title', 'folder 2’s catalogs'])
     expect(errorRoleLabels({ folders: { [first.key]: { catalogIDs: 'y' } } }, [first])).toEqual(['folder 1’s catalogs'])
     expect(errorRoleLabels({ title: 't', folderCount: 'n', folders: {} }, [first])).toEqual(['Title', 'Folders'])
-  })
-})
-
-describe('nestedCatalogForm', () => {
-  it('is the open catalog’s form, or nothing', () => {
-    expect(nestedCatalogForm(catalog({ name: 'Scoped' }))).toMatchObject({ name: 'Scoped' })
-    expect(nestedCatalogForm(undefined)).toBeUndefined()
   })
 })

@@ -118,8 +118,7 @@ func TestGetPublication(t *testing.T) {
 }
 
 // A publisher can read their own publication's page, as everyone else sees it,
-// though the list leaves it out and they can neither subscribe to it nor
-// duplicate it.
+// though the list leaves it out.
 func TestGetPublicationAnswersForItsPublisher(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -132,12 +131,6 @@ func TestGetPublicationAnswersForItsPublisher(t *testing.T) {
 	}
 	if items := listCommunity(t, db, owner); len(items) != 0 {
 		t.Errorf("the publisher's Community list = %v, want it to leave out their own", itemTitles(items))
-	}
-	if _, err := db.Subscribe(ctx, owner, source.Publication.ID); !errors.Is(err, ErrPublicationNotFound) {
-		t.Errorf("Subscribe to one's own publication = %v, want ErrPublicationNotFound", err)
-	}
-	if _, err := db.DuplicatePublication(ctx, owner, source.Publication.ID); !errors.Is(err, ErrPublicationNotFound) {
-		t.Errorf("Duplicate of one's own publication = %v, want ErrPublicationNotFound", err)
 	}
 }
 

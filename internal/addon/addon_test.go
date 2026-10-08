@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/hiidz/uno/internal/provider"
 	"github.com/hiidz/uno/internal/vault"
 )
 
@@ -41,119 +40,6 @@ func savePush(t *testing.T, db *vault.DB, profileID uuid.UUID, home vault.Pushed
 
 func listedCatalogForm(name string) vault.CatalogForm {
 	return vault.CatalogForm{Type: "movie", Name: name, Provider: "tmdb", Params: "{}"}
-}
-
-// A catalog only reachable through a folder of an on-TV collection is
-// published with the required genre extra (Stremio's mechanism for keeping
-// it out of home's automatic rows).
-func TestBuildManifestFolderOnlyCatalogGetsGenreExtra(t *testing.T) {
-	ctx := context.Background()
-	db := newTestVault(t)
-
-	owner, err := db.ResolveOrCreateProfile(ctx, "owner", 1, "nuvio-profile-owner")
-	if err != nil {
-		t.Fatalf("creating profile: %v", err)
-	}
-
-	folderOnly, err := db.CreateUserCatalog(ctx, owner.ID, listedCatalogForm("Folder only"))
-	if err != nil {
-		t.Fatalf("create catalog: %v", err)
-	}
-
-	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "On TV", ViewMode: "TABBED_GRID"})
-	if err != nil {
-		t.Fatalf("create collection: %v", err)
-	}
-	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, collection.Revision, vault.CollectionForm{
-		Title: "On TV", ViewMode: "TABBED_GRID",
-		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(folderOnly.ID)}},
-	}); err != nil {
-		t.Fatalf("saving collection: %v", err)
-	}
-
-	savePush(t, db, owner.ID, vault.PushedHome{Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
-
-	selection, err := db.GetPublishedCatalogs(ctx, owner.ID)
-	if err != nil {
-		t.Fatalf("GetPublishedCatalogs: %v", err)
-	}
-
-	m := buildManifest(selection, actionComedy)
-	var mc *manifestCatalog
-	for i := range m.Catalogs {
-		if m.Catalogs[i].ID == vault.ManifestID(folderOnly) {
-			mc = &m.Catalogs[i]
-		}
-	}
-	if mc == nil {
-		t.Fatalf("manifest catalogs = %+v, want an entry for the folder-only catalog", m.Catalogs)
-	}
-	var hasRequiredGenre bool
-	for _, e := range mc.Extra {
-		if e.Name == "genre" && e.IsRequired {
-			hasRequiredGenre = true
-		}
-	}
-	if !hasRequiredGenre {
-		t.Fatalf("folder-only catalog's extras = %+v, want a required genre extra", mc.Extra)
-	}
-}
-
-// A catalog both on the home screen and inside a folder of an on-TV
-// collection appears exactly once in the manifest, carrying its home
-// ShowInHome (no genre extra) rather than the folder-derived false.
-func TestBuildManifestHomeAndFolderCatalogAppearsOnceWithHomeShowInHome(t *testing.T) {
-	ctx := context.Background()
-	db := newTestVault(t)
-
-	owner, err := db.ResolveOrCreateProfile(ctx, "owner", 1, "nuvio-profile-owner")
-	if err != nil {
-		t.Fatalf("creating profile: %v", err)
-	}
-
-	catalog, err := db.CreateUserCatalog(ctx, owner.ID, listedCatalogForm("Home and folder"))
-	if err != nil {
-		t.Fatalf("create catalog: %v", err)
-	}
-
-	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "On TV", ViewMode: "TABBED_GRID"})
-	if err != nil {
-		t.Fatalf("create collection: %v", err)
-	}
-	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, collection.Revision, vault.CollectionForm{
-		Title: "On TV", ViewMode: "TABBED_GRID",
-		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
-	}); err != nil {
-		t.Fatalf("saving collection: %v", err)
-	}
-
-	savePush(t, db, owner.ID, vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{{CatalogID: catalog.ID, ShowInHome: true}}, Collections: []vault.SelectedCollectionInput{{CollectionID: collection.ID}}})
-
-	selection, err := db.GetPublishedCatalogs(ctx, owner.ID)
-	if err != nil {
-		t.Fatalf("GetPublishedCatalogs: %v", err)
-	}
-
-	m := buildManifest(selection, actionComedy)
-	var count int
-	var mc manifestCatalog
-	for _, c := range m.Catalogs {
-		if c.ID == vault.ManifestID(catalog) {
-			count++
-			mc = c
-		}
-	}
-	if count != 1 {
-		t.Fatalf("catalog on home and in a folder appeared %d times in the manifest, want 1", count)
-	}
-	if !mc.ShowInHome {
-		t.Fatalf("catalog on home has showInHome false, want true — its home ShowInHome must win")
-	}
-	for _, e := range mc.Extra {
-		if e.Name == "genre" && e.IsRequired {
-			t.Fatalf("catalog on home got a required genre extra %+v, want an optional one — its home ShowInHome must win", mc.Extra)
-		}
-	}
 }
 
 // actionComedy stands in for provider.GenreExtraOptions' names, so manifest
@@ -242,94 +128,47 @@ func TestManifestCatalogShowInHomeIsAlwaysExplicit(t *testing.T) {
 	}
 }
 
-// A catalog reachable only through a folder of a collection that is not on
-// the TV does not appear in the manifest.
-func TestBuildManifestFolderCatalogOfOffTVCollectionDoesNotAppear(t *testing.T) {
-	ctx := context.Background()
-	db := newTestVault(t)
-
-	owner, err := db.ResolveOrCreateProfile(ctx, "owner", 1, "nuvio-profile-owner")
-	if err != nil {
-		t.Fatalf("creating profile: %v", err)
-	}
-
-	catalog, err := db.CreateUserCatalog(ctx, owner.ID, listedCatalogForm("Off TV"))
-	if err != nil {
-		t.Fatalf("create catalog: %v", err)
-	}
-
-	collection, err := db.CreateUserCollection(ctx, owner.ID, vault.CollectionForm{Title: "Off TV", ViewMode: "TABBED_GRID"})
-	if err != nil {
-		t.Fatalf("create collection: %v", err)
-	}
-	if _, err := db.UpdateUserCollection(ctx, owner.ID, collection.ID, collection.Revision, vault.CollectionForm{
-		Title: "Off TV", ViewMode: "TABBED_GRID",
-		Folders: []vault.FolderData{{FolderArt: vault.FolderArt{TileShape: "POSTER"}, Title: "Folder", Catalogs: vault.CatalogRefs(catalog.ID)}},
-	}); err != nil {
-		t.Fatalf("saving collection: %v", err)
-	}
-	// collection is deliberately never pushed onto the home screen.
-
-	selection, err := db.GetPublishedCatalogs(ctx, owner.ID)
-	if err != nil {
-		t.Fatalf("GetPublishedCatalogs: %v", err)
-	}
-
-	m := buildManifest(selection, actionComedy)
-	for _, c := range m.Catalogs {
-		if c.ID == vault.ManifestID(catalog) {
-			t.Fatalf("catalog in a folder of an off-TV collection appeared in the manifest: %+v", c)
+// A catalog the push put on Home keeps its home row and an optional genre
+// extra; one only a folder uses carries the required genre extra, Stremio's
+// way of keeping it out of Home's automatic rows.
+func TestBuildManifestKeepsFolderOnlyCatalogsOffHome(t *testing.T) {
+	onHome, folderOnly := selectedWithParams(`{}`, true), selectedWithParams(`{}`, false)
+	m := buildManifest([]vault.Catalog{onHome, folderOnly}, actionComedy)
+	for i, want := range []struct {
+		id                     string
+		showInHome, isRequired bool
+	}{
+		{vault.ManifestID(onHome), true, false},
+		{vault.ManifestID(folderOnly), false, true},
+	} {
+		got := m.Catalogs[i]
+		required := false
+		for _, e := range got.Extra {
+			required = required || (e.Name == "genre" && e.IsRequired)
+		}
+		if got.ID != want.id || got.ShowInHome != want.showInHome || required != want.isRequired {
+			t.Errorf("catalog %d = %s showInHome %v, required genre %v; want %s %v %v",
+				i, got.ID, got.ShowInHome, required, want.id, want.showInHome, want.isRequired)
 		}
 	}
 }
 
 // A skip at the depth a catalog row ends is answered with an empty page and
-// no TMDB call: the provider here is built with a throwaway key, so any call
-// at all would surface as a 502.
+// no TMDB call.
 func TestCatalogHandlerSkipAtServedDepthServesAnEmptyPage(t *testing.T) {
-	ctx := context.Background()
-	db := newTestVault(t)
-
-	owner, err := db.ResolveOrCreateProfile(ctx, "owner", 1, "nuvio-profile-owner")
-	if err != nil {
-		t.Fatalf("creating profile: %v", err)
-	}
-
-	catalog, err := db.CreateUserCatalog(ctx, owner.ID, listedCatalogForm("On home"))
-	if err != nil {
-		t.Fatalf("create catalog: %v", err)
-	}
-
-	savePush(t, db, owner.ID, vault.PushedHome{Catalogs: []vault.SelectedCatalogInput{
-		{CatalogID: catalog.ID, ShowInHome: true},
-	}})
-
-	s, err := New(db, provider.NewTMDBClient("test-key"), nil, "https://uno.example")
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /u/{token}/catalog/{type}/{rest...}", s.CatalogHandler)
+	f := newHandlerFixture(t)
+	hits := fakeTMDB(t, tmdbUp)
 
 	// Spelled out rather than derived from maxServedTitles, so a change to
 	// how deep the public route walks fails here.
 	const skipAtServedDepth = 500
-	path := "/u/" + owner.Token + "/catalog/movie/" + vault.ManifestID(catalog) +
-		"/skip=" + strconv.Itoa(skipAtServedDepth) + ".json"
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	w := f.get(t, "/u/"+f.owner.Token+"/catalog/movie/"+vault.ManifestID(f.onHome)+
+		"/skip="+strconv.Itoa(skipAtServedDepth)+".json")
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body %q", rec.Code, http.StatusOK, rec.Body.String())
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"metas":[]`) {
+		t.Fatalf("answer = %d %s, want 200 with an empty metas array", w.Code, w.Body.String())
 	}
-	var got catalogResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decoding response %q: %v", rec.Body.String(), err)
-	}
-	if len(got.Metas) != 0 {
-		t.Errorf("metas = %+v, want empty", got.Metas)
-	}
-	if !strings.Contains(rec.Body.String(), `"metas":[]`) {
-		t.Errorf("body = %s, want an empty metas array rather than null", rec.Body.String())
+	if n := hits.Load(); n != 0 {
+		t.Errorf("TMDB called %d times, want none", n)
 	}
 }

@@ -3,6 +3,7 @@ package vault
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -198,7 +199,7 @@ func TestAddonReadsHoldUntilThePush(t *testing.T) {
 	for i, p := range published {
 		names[i] = p.Name
 	}
-	if want := []string{"On Home", "From Community", "In a folder", "Scoped"}; !equalStrings(names, want) {
+	if want := []string{"On Home", "From Community", "In a folder", "Scoped"}; !slices.Equal(names, want) {
 		t.Errorf("manifest lists %v, want what the last push left, %v", names, want)
 	}
 	for _, c := range []struct {
@@ -220,18 +221,6 @@ func TestAddonReadsHoldUntilThePush(t *testing.T) {
 	if _, err := f.db.ServedCatalog(ctx, token, f.listed.ID, "movie", "tmdb"); !errors.Is(err, ErrCatalogNotFound) {
 		t.Errorf("after the push the deleted catalog = %v, want ErrCatalogNotFound", err)
 	}
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // A slot reused by a new Nuvio profile leaves the record describing a profile

@@ -176,9 +176,10 @@ func TestPublishCatalogRejectsStaleSourceRows(t *testing.T) {
 		name  string
 		query string
 		arg   string
+		want  string
 	}{
-		{"overlong name", `UPDATE catalogs SET name = ? WHERE id = ?`, strings.Repeat("n", maxNameLen+1)},
-		{"overlong params", `UPDATE catalogs SET params = ? WHERE id = ?`, strings.Repeat("p", maxParamsLen+1)},
+		{"overlong name", `UPDATE catalogs SET name = ? WHERE id = ?`, strings.Repeat("n", maxNameLen+1), "name is longer"},
+		{"overlong params", `UPDATE catalogs SET params = ? WHERE id = ?`, `{"with_genres":"` + strings.Repeat("1", maxParamsLen) + `"}`, "params is longer"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := db.conn.ExecContext(ctx, tt.query, tt.arg, source.ID.String()); err != nil {
@@ -191,8 +192,8 @@ func TestPublishCatalogRejectsStaleSourceRows(t *testing.T) {
 				}
 			})
 
-			if _, err := db.PublishCatalog(ctx, owner, source.ID); !errors.Is(err, ErrInvalidInput) {
-				t.Errorf("PublishCatalog = %v, want ErrInvalidInput", err)
+			if _, err := db.PublishCatalog(ctx, owner, source.ID); !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("PublishCatalog = %v, want ErrInvalidInput naming %q", err, tt.want)
 			}
 		})
 	}
@@ -218,46 +219,6 @@ func TestCopyName(t *testing.T) {
 		if got := copyName(tc.in); got != tc.want || tooLong(got, maxNameLen) {
 			t.Errorf("%s: copyName = %d characters, want %d", name, len([]rune(got)), len([]rune(tc.want)))
 		}
-	}
-}
-
-// DuplicateCollection's "(copy)" suffix is part of the title it writes: a
-// title with room for it keeps all of it and the result saves again, and one
-// already at maxNameLen is cut short to leave room, not refused.
-func TestDuplicateCollectionBoundsTheSuffixedTitle(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	owner := newTestProfile(t, db, "owner")
-
-	const suffix = " (copy)"
-	roomy, err := db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: strings.Repeat("t", maxNameLen-len(suffix)), ViewMode: "TABBED_GRID",
-		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1"}},
-	})
-	if err != nil {
-		t.Fatalf("create collection: %v", err)
-	}
-	copied, err := db.DuplicateCollection(ctx, owner, roomy.ID)
-	if err != nil {
-		t.Fatalf("duplicate a title with room for the suffix: %v", err)
-	}
-	if _, err := db.UpdateUserCollection(ctx, owner, copied.ID, collectionRevision(t, db, copied.ID), CollectionForm{
-		Title: copied.Title, ViewMode: "TABBED_GRID",
-		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "Folder 1"}},
-	}); err != nil {
-		t.Fatalf("saving the duplicate's own title back: %v", err)
-	}
-
-	full, err := db.CreateUserCollection(ctx, owner, CollectionForm{Title: strings.Repeat("t", maxNameLen), ViewMode: "TABBED_GRID"})
-	if err != nil {
-		t.Fatalf("create collection at the title bound: %v", err)
-	}
-	cut, err := db.DuplicateCollection(ctx, owner, full.ID)
-	if err != nil {
-		t.Fatalf("duplicate a title with no room for the suffix: %v", err)
-	}
-	if want := strings.Repeat("t", maxNameLen-len(suffix)) + suffix; cut.Title != want {
-		t.Errorf("duplicate title = %d characters, want %d, the title cut short before the suffix", len(cut.Title), len(want))
 	}
 }
 

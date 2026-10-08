@@ -6,9 +6,7 @@ import {
   collectionEntries,
   hydrateHome,
   moveInBand,
-  moveWithinBand,
   reorderBand,
-  reorderWithinBand,
   toPushPayload,
   toggleShowInHome,
   togglePinToTop,
@@ -17,14 +15,12 @@ import {
   withoutRow,
   type HomeCatalogEntry,
   type HomeCollectionEntry,
-  type HomeEntry,
 } from './pending'
 
 const shown = (id: string): HomeCatalogEntry => ({ kind: 'catalog', id, showInHome: true })
 const discover = (id: string): HomeCatalogEntry => ({ kind: 'catalog', id, showInHome: false })
 const first = (id: string): HomeCollectionEntry => ({ kind: 'collection', id, pinToTop: true })
 const after = (id: string): HomeCollectionEntry => ({ kind: 'collection', id, pinToTop: false })
-const isShown = (entry: HomeEntry) => entry.kind === 'catalog' && entry.showInHome
 const ids = (entries: { id: string }[]) => entries.map((entry) => entry.id)
 
 describe('toPushPayload', () => {
@@ -79,32 +75,6 @@ describe('bands and kinds', () => {
   })
 })
 
-describe('reorderWithinBand', () => {
-  it('reorders the band and leaves the rest in their order after it', () => {
-    const entries = [shown('a'), discover('d1'), shown('b'), discover('d2')]
-    expect(ids(reorderWithinBand(entries, isShown, ['b', 'a']))).toEqual(['b', 'a', 'd1', 'd2'])
-  })
-})
-
-describe('moveWithinBand', () => {
-  const entries = [shown('a'), discover('d1'), shown('b'), shown('c')]
-
-  it('swaps with the neighbour in the same band, stepping over the other band', () => {
-    expect(ids(moveWithinBand(entries, isShown, 'b', -1))).toEqual(['b', 'a', 'c', 'd1'])
-    expect(ids(moveWithinBand(entries, isShown, 'a', 1))).toEqual(['b', 'a', 'c', 'd1'])
-  })
-
-  it('returns the same list at either edge of the band', () => {
-    expect(moveWithinBand(entries, isShown, 'a', -1)).toBe(entries)
-    expect(moveWithinBand(entries, isShown, 'c', 1)).toBe(entries)
-  })
-
-  it('returns the same list for an id outside the band', () => {
-    expect(moveWithinBand(entries, isShown, 'd1', 1)).toBe(entries)
-    expect(moveWithinBand(entries, isShown, 'zz', 1)).toBe(entries)
-  })
-})
-
 describe('the bands', () => {
   const rows = [first('p1'), shown('a'), after('u1'), first('p2'), discover('d'), after('u2')]
 
@@ -123,6 +93,9 @@ describe('the bands', () => {
   it('moves a row within its own band only, across kinds', () => {
     const moved = moveInBand(rows, 'u1', -1)
     expect(ids(moved.filter((r) => bandOf(r) === 'home'))).toEqual(['u1', 'a', 'u2'])
+    const overOthers = moveInBand(rows, 'u2', -1)
+    expect(ids(overOthers.filter((r) => bandOf(r) === 'home'))).toEqual(['a', 'u2', 'u1'])
+    expect(ids(overOthers.filter((r) => bandOf(r) !== 'home'))).toEqual(['p1', 'p2', 'd'])
     expect(moveInBand(rows, 'p1', -1)).toBe(rows)
     expect(moveInBand(rows, 'zz', 1)).toBe(rows)
   })

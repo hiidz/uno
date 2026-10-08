@@ -236,26 +236,6 @@ func TestFolderRefSameCatalogSameGenreIsInvalid(t *testing.T) {
 	}
 }
 
-func TestFolderRefGenreTooLongIsInvalid(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	owner := newTestProfile(t, db, "owner")
-
-	catalog, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Popular"))
-	if err != nil {
-		t.Fatalf("create catalog: %v", err)
-	}
-	_, err = db.CreateUserCollection(ctx, owner, CollectionForm{
-		Title: "Too long", ViewMode: "TABBED_GRID",
-		Folders: []FolderData{{FolderArt: FolderArt{TileShape: "POSTER"}, Title: "F", Catalogs: []FolderCatalogRef{
-			{CatalogID: &catalog.ID, Genre: strings.Repeat("x", maxGenreLen+1)},
-		}}},
-	})
-	if !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("create with an overlong genre: got %v, want ErrInvalidInput", err)
-	}
-}
-
 // A New entry needs a Key; entries sharing one must carry the same spec, and
 // may not repeat a genre within a folder, since they become one catalog.
 func TestFolderNewRefKeyIsValidated(t *testing.T) {

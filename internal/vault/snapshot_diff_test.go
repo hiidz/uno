@@ -75,7 +75,9 @@ func assertChanges(t *testing.T, from, to Snapshot, want ...string) {
 // Removals come first, then additions, then changes, each in folder order: a
 // folder lost whole is one item followed by the catalogs it held that nothing
 // else holds, a folder kept names the catalogs it lost, and a folder gained
-// is the same read the other way.
+// is the same read the other way. Each item names what it is about by
+// snapshot key: a folder's own key, a catalog's, and for a catalog added to or
+// removed from a folder, that folder's; a collection's own items name nothing.
 func TestDiffListsRemovalsThenAdditionsThenChanges(t *testing.T) {
 	from := testCollectionSnapshot("Weekend",
 		[]SnapshotFolder{
@@ -83,20 +85,30 @@ func TestDiffListsRemovalsThenAdditionsThenChanges(t *testing.T) {
 			testFolder("fb", "Kids", ref("c3", ""), ref("c1", "")),
 		},
 		testCatalog("c1", "Alien", `{"a":1}`), testCatalog("c2", "Retro", `{"a":2}`), testCatalog("c3", "Cars", `{"a":3}`))
-	to := testCollectionSnapshot("Weekend",
+	to := testCollectionSnapshot("Long weekend",
 		[]SnapshotFolder{
-			testFolder("fa", "80s", ref("c1", "")),
+			testFolder("fa", "Eighties", ref("c1", "")),
 			testFolder("fc", "Classics", ref("c4", ""), ref("c1", "")),
 		},
 		testCatalog("c1", "Alien", `{"a":9}`), testCatalog("c4", "Heat", `{"a":4}`))
 
-	assertChanges(t, from, to,
-		"removed catalog Retro @80s",
-		"removed folder Kids",
-		"removed catalog Cars @Kids",
-		"added folder Classics",
-		"added catalog Heat @Classics",
-		"changed catalog/recipe Alien +recipe")
+	var got []string
+	for _, c := range diffSnapshots(from, to) {
+		got = append(got, label(c)+" key="+c.Key+" folder_key="+c.FolderKey)
+	}
+	want := []string{
+		"removed catalog Retro @80s key=c2 folder_key=fa",
+		"removed folder Kids key=fb folder_key=",
+		"removed catalog Cars @Kids key=c3 folder_key=fb",
+		"added folder Classics key=fc folder_key=",
+		"added catalog Heat @Classics key=c4 folder_key=fc",
+		"changed collection/name Long weekend (was Weekend) key= folder_key=",
+		"changed folder/name Eighties (was 80s) key=fa folder_key=",
+		"changed catalog/recipe Alien +recipe key=c1 folder_key=",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("changes:\n got  %q\n want %q", got, want)
+	}
 }
 
 // A catalog moved from one folder to another, both kept, is removed from the
@@ -238,40 +250,4 @@ func TestDiffComparesParamsAsEncoded(t *testing.T) {
 	assertChanges(t,
 		Snapshot{Catalogs: []BundleCatalog{a}},
 		Snapshot{Catalogs: []BundleCatalog{b}})
-}
-
-// Each item names what it is about by snapshot key: a folder's own key, a
-// catalog's, and for a catalog added to or removed from a folder, that
-// folder's; a collection's own items name nothing.
-func TestDiffKeysEachItem(t *testing.T) {
-	from := testCollectionSnapshot("Old",
-		[]SnapshotFolder{
-			testFolder("fa", "80s", ref("c1", ""), ref("c2", "")),
-			testFolder("fb", "Kids", ref("c3", "")),
-		},
-		testCatalog("c1", "Alien", `{"a":1}`), testCatalog("c2", "Retro", `{"a":2}`), testCatalog("c3", "Cars", `{"a":3}`))
-	to := testCollectionSnapshot("New",
-		[]SnapshotFolder{
-			testFolder("fc", "Classics", ref("c4", "")),
-			testFolder("fa", "Eighties", ref("c1", "")),
-		},
-		testCatalog("c1", "Alien II", `{"a":9}`), testCatalog("c4", "Heat", `{"a":4}`))
-
-	var got []string
-	for _, c := range diffSnapshots(from, to) {
-		got = append(got, label(c)+" key="+c.Key+" folder_key="+c.FolderKey)
-	}
-	want := []string{
-		"removed catalog Retro @80s key=c2 folder_key=fa",
-		"removed folder Kids key=fb folder_key=",
-		"removed catalog Cars @Kids key=c3 folder_key=fb",
-		"added folder Classics key=fc folder_key=",
-		"added catalog Heat @Classics key=c4 folder_key=fc",
-		"changed collection/name New (was Old) key= folder_key=",
-		"changed folder/name Eighties (was 80s) key=fa folder_key=",
-		"changed catalog/recipe Alien II (was Alien) +recipe key=c1 folder_key=",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("keyed changes:\n got  %q\n want %q", got, want)
-	}
 }

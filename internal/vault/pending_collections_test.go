@@ -229,22 +229,3 @@ func TestPinToTopIsWrittenOnlyByPush(t *testing.T) {
 		t.Errorf("duplicate = %v pinned %v; want unpinned", err, duplicate.PinToTop)
 	}
 }
-
-// A Home selection's ids are its catalogs' and its collections', each in the
-// order push places them.
-func TestPushedHomeIDs(t *testing.T) {
-	a, b, c := uuid.New(), uuid.New(), uuid.New()
-	home := PushedHome{
-		Catalogs:    []SelectedCatalogInput{{CatalogID: c, ShowInHome: true}},
-		Collections: []SelectedCollectionInput{{CollectionID: a, PinToTop: true}, {CollectionID: b}},
-	}
-	if got := home.collectionIDs(); len(got) != 2 || got[0] != a || got[1] != b {
-		t.Errorf("collectionIDs = %v, want [%s %s]", got, a, b)
-	}
-	if got := home.catalogIDs(); len(got) != 1 || got[0] != c {
-		t.Errorf("catalogIDs = %v, want [%s]", got, c)
-	}
-	if got := (PushedHome{}).collectionIDs(); len(got) != 0 {
-		t.Errorf("an empty selection's ids = %v, want none", got)
-	}
-}

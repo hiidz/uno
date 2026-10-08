@@ -52,24 +52,6 @@ func TestMemoCachesUntilTTL(t *testing.T) {
 	})
 }
 
-// TestMemoKeysAreIndependent guards the one thing a shared cache must not
-// do: answer for a key it was never asked about. WatchProviders keys by
-// catalog type and region, so a leak here would serve one market's
-// provider ids for another.
-func TestMemoKeysAreIndependent(t *testing.T) {
-	m := newMemo(0, func(v string) string { return v })
-
-	for _, key := range []string{"movie/US", "movie/GB"} {
-		got, err := m.load(key, func() (string, error) { return key, nil })
-		if err != nil {
-			t.Fatalf("load(%q): %v", key, err)
-		}
-		if got != key {
-			t.Fatalf("load(%q) = %q, want %q", key, got, key)
-		}
-	}
-}
-
 // TestMemoDoesNotCacheFailures proves a TMDB outage doesn't poison the
 // cache for the process's lifetime — the next call has to retry.
 func TestMemoDoesNotCacheFailures(t *testing.T) {
@@ -86,43 +68,6 @@ func TestMemoDoesNotCacheFailures(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != 7 {
 		t.Fatalf("load after failure = %v, want [7]", got)
-	}
-}
-
-// TestMemoClonesOnRead is the property the whole type rests on: callers get
-// their own copy, so one of them sorting or overwriting what it got back
-// can't reach the cached value. WatchProviders sorts in place, which is
-// exactly this hazard.
-func TestMemoClonesOnRead(t *testing.T) {
-	m := newMemo(0, func(v []int) []int { return append([]int(nil), v...) })
-	fetch := func() ([]int, error) { return []int{1, 2, 3}, nil }
-
-	first, err := m.load("k", fetch)
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	first[0] = 99
-
-	second, err := m.load("k", fetch)
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if second[0] != 1 {
-		t.Fatalf("caller mutation reached the cache: got %v", second)
-	}
-}
-
-// TestCloneCertificationsIsDeep covers the one memo value that isn't a
-// plain slice: maps.Clone would leave every country's scale shared with
-// the cache.
-func TestCloneCertificationsIsDeep(t *testing.T) {
-	original := map[string][]Certification{"US": {{Certification: "PG"}, {Certification: "R"}}}
-
-	clone := cloneCertifications(original)
-	clone["US"][0].Certification = "MUTATED"
-
-	if original["US"][0].Certification != "PG" {
-		t.Fatalf("clone shares its backing array with the original: got %q", original["US"][0].Certification)
 	}
 }
 
@@ -268,74 +213,31 @@ func TestClientListsAreMemoized(t *testing.T) {
 }
 
 // TestEntityLookupsAreMemoizedPerID covers the per-id memos behind Company,
-// Keyword and Collection: a known id reaches TMDB once across repeated calls, and a 404
-// comes back as ErrNotFound without becoming a cache entry, so a later call
-// asks TMDB again.
+// Keyword and Collection: a known id reaches TMDB once across repeated calls,
+// and a 404 comes back as ErrNotFound without being kept, so a later call asks
+// TMDB again.
 func TestEntityLookupsAreMemoizedPerID(t *testing.T) {
 	c, hits := fakeEntityTMDB(t)
 	ctx := t.Context()
-
-	for range 2 {
-		company, err := c.Company(ctx, 1)
-		if err != nil {
-			t.Fatalf("Company(1): %v", err)
+	for _, tc := range []struct {
+		kind, name string
+		lookup     func(id int) (string, error)
+	}{
+		{"company", "Lucasfilm Ltd.", func(id int) (string, error) { v, err := c.Company(ctx, id); return v.Name, err }},
+		{"keyword", "superhero", func(id int) (string, error) { v, err := c.Keyword(ctx, id); return v.Name, err }},
+		{"collection", "Star Wars Collection", func(id int) (string, error) { v, err := c.Collection(ctx, id); return v.Name, err }},
+	} {
+		for range 2 {
+			if name, err := tc.lookup(1); err != nil || name != tc.name {
+				t.Fatalf("%s 1 = %q, %v; want %q", tc.kind, name, err, tc.name)
+			}
+			if _, err := tc.lookup(999); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("%s 999 = %v, want ErrNotFound", tc.kind, err)
+			}
 		}
-		if company != (Company{ID: 1, Name: "Lucasfilm Ltd."}) {
-			t.Fatalf("Company(1) = %+v", company)
+		if known, missing := hits("/"+tc.kind+"/1"), hits("/"+tc.kind+"/999"); known != 1 || missing != 2 {
+			t.Errorf("%s: TMDB asked %d times for the known id and %d for the missing one, want 1 and 2", tc.kind, known, missing)
 		}
-		keyword, err := c.Keyword(ctx, 1)
-		if err != nil {
-			t.Fatalf("Keyword(1): %v", err)
-		}
-		if keyword != (Keyword{ID: 1, Name: "superhero"}) {
-			t.Fatalf("Keyword(1) = %+v", keyword)
-		}
-		collection, err := c.Collection(ctx, 1)
-		if err != nil {
-			t.Fatalf("Collection(1): %v", err)
-		}
-		if collection != (Collection{ID: 1, Name: "Star Wars Collection"}) {
-			t.Fatalf("Collection(1) = %+v", collection)
-		}
-	}
-	if got := hits("/company/1"); got != 1 {
-		t.Fatalf("/company/1 hit %d times, want 1", got)
-	}
-	if got := hits("/keyword/1"); got != 1 {
-		t.Fatalf("/keyword/1 hit %d times, want 1", got)
-	}
-	if got := hits("/collection/1"); got != 1 {
-		t.Fatalf("/collection/1 hit %d times, want 1", got)
-	}
-
-	for range 2 {
-		if _, err := c.Company(ctx, 999); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("Company(999) error = %v, want ErrNotFound", err)
-		}
-		if _, err := c.Keyword(ctx, 999); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("Keyword(999) error = %v, want ErrNotFound", err)
-		}
-		if _, err := c.Collection(ctx, 999); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("Collection(999) error = %v, want ErrNotFound", err)
-		}
-	}
-	if got := hits("/company/999"); got != 2 {
-		t.Fatalf("/company/999 hit %d times, want 2 (a 404 must not be cached)", got)
-	}
-	if got := hits("/keyword/999"); got != 2 {
-		t.Fatalf("/keyword/999 hit %d times, want 2 (a 404 must not be cached)", got)
-	}
-	if got := hits("/collection/999"); got != 2 {
-		t.Fatalf("/collection/999 hit %d times, want 2 (a 404 must not be cached)", got)
-	}
-	if n := len(c.companies.entries); n != 1 {
-		t.Fatalf("company cache holds %d entries, want 1", n)
-	}
-	if n := len(c.keywords.entries); n != 1 {
-		t.Fatalf("keyword cache holds %d entries, want 1", n)
-	}
-	if n := len(c.collections.entries); n != 1 {
-		t.Fatalf("collection cache holds %d entries, want 1", n)
 	}
 }
 

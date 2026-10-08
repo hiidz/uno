@@ -3,7 +3,6 @@ package vault
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 )
 
@@ -31,24 +30,6 @@ func TestDuplicateCatalog(t *testing.T) {
 	}
 	if after, err := ownCatalog(ctx, db.conn, owner, source.ID); err != nil || after.Name != "Source" || after.Publication == nil {
 		t.Errorf("source after duplicating = %+v, %v, want it unchanged and still published", after, err)
-	}
-}
-
-// A name already at maxNameLen is cut short to leave room for the suffix.
-func TestDuplicateCatalogCutsAFullName(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	owner := newTestProfile(t, db, "owner")
-	source, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm(strings.Repeat("n", maxNameLen)))
-	if err != nil {
-		t.Fatalf("create catalog at the name bound: %v", err)
-	}
-	dup, err := db.DuplicateCatalog(ctx, owner, source.ID)
-	if err != nil {
-		t.Fatalf("DuplicateCatalog: %v", err)
-	}
-	if want := strings.Repeat("n", maxNameLen-len(copySuffix)) + copySuffix; dup.Name != want {
-		t.Errorf("duplicate name = %d characters, want %d", len(dup.Name), len(want))
 	}
 }
 

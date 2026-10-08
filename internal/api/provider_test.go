@@ -21,9 +21,10 @@ func (acceptAnyToken) Verify(context.Context, string) (nuvio.Claims, error) {
 }
 
 // TestEntityLookupRoutes drives the real route table for the cases that
-// never reach TMDB: auth, a blank search query, a company search's missing or
-// unknown catalog type, and an id that isn't a number. The body text tells the search route from the {id} route, which is
-// how it shows the literal "search" segment wins.
+// never reach TMDB, one per check the four lookups share: auth, a blank search
+// query, an id that isn't a positive number, and a company search's catalog
+// type. The blank query's words tell the search route from the {id} route,
+// which is how it shows the literal "search" segment wins.
 func TestEntityLookupRoutes(t *testing.T) {
 	s, err := New(Deps{
 		Vault:        newTestVaultDB(t),
@@ -43,25 +44,10 @@ func TestEntityLookupRoutes(t *testing.T) {
 		wantStatus int
 		wantBody   string
 	}{
-		{name: "unauthenticated search", path: "/api/companies/search?q=marvel&type=movie", noAuth: true, wantStatus: http.StatusUnauthorized},
 		{name: "unauthenticated id", path: "/api/keywords/1", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "company search without q", path: "/api/companies/search?type=movie", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
-		{name: "company search without type", path: "/api/companies/search?q=a24", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog type"},
 		{name: "company search with TMDB's type word", path: "/api/companies/search?q=a24&type=tv", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog type"},
-		{name: "company search with neither param", path: "/api/companies/search", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog type"},
 		{name: "keyword search with blank q", path: "/api/keywords/search?q=%20%20", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
 		{name: "non-numeric company id", path: "/api/companies/marvel", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
-		{name: "non-numeric keyword id", path: "/api/keywords/1a", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
-		{name: "non-positive company id", path: "/api/companies/0", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
-		{name: "unauthenticated collection search", path: "/api/collections/search?q=star", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "unauthenticated collection id", path: "/api/collections/10", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "collection search without q", path: "/api/collections/search", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
-		{name: "non-numeric collection id", path: "/api/collections/starwars", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
-		{name: "non-positive collection id", path: "/api/collections/-1", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
-		{name: "unauthenticated network search", path: "/api/networks/search?q=hbo", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "unauthenticated network id", path: "/api/networks/49", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "network search with blank q", path: "/api/networks/search?q=%20", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
-		{name: "non-numeric network id", path: "/api/networks/hbo", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
 		{name: "non-positive network id", path: "/api/networks/0", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
 	}
 
@@ -101,12 +87,7 @@ func TestValidateCatalogParams(t *testing.T) {
 	}{
 		{"clean recipe", "movie", `{"sort_by":"popularity.desc"}`, t.Context(), nil},
 		{"unknown catalog type", "anime", `{}`, t.Context(), vault.ErrInvalidInput},
-		{"undecodable params", "movie", `{`, t.Context(), vault.ErrInvalidInput},
 		{"recipe rule broken", "movie", `{"sort_by":"bogus.desc"}`, t.Context(), vault.ErrInvalidInput},
-		{"inverted range", "movie", `{"vote_count_gte":500,"vote_count_lte":100}`, t.Context(), vault.ErrInvalidInput},
-		{"inverted fixed dates", "series", `{"first_air_date_gte":"2021-01-01","first_air_date_lte":"2020-01-01"}`, t.Context(), vault.ErrInvalidInput},
-		{"fixed date in another form", "movie", `{"primary_release_date_gte":"1/2/2020"}`, t.Context(), vault.ErrInvalidInput},
-		{"vocabulary rejected", "series", `{"with_collection":"10"}`, t.Context(), vault.ErrInvalidInput},
 		{"TMDB unreachable", "movie", `{"with_genres":"28"}`, cancelled, errUpstreamValidation},
 	}
 

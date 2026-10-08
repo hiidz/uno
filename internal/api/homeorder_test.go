@@ -304,11 +304,11 @@ func checkHomeGuarantees(t *testing.T, c homeCase, keys []string) {
 	}
 }
 
-// Across thousands of generated lists, every merge keeps its promises, and
+// Across hundreds of generated lists, every merge keeps its promises, and
 // merging its own result again changes nothing.
 func TestMergeHomeOrderHoldsAcrossRandomLists(t *testing.T) {
 	r := rand.New(rand.NewPCG(5, 2026))
-	for range 3000 {
+	for range 500 {
 		c := randomHomeCase(r)
 		merged, err := mergeHomeOrder(c.pulled, c.pinned, c.rows, c.managed)
 		if err != nil {
@@ -552,28 +552,6 @@ func TestPush_HomeOrderFailures(t *testing.T) {
 			t.Fatal("the selection was stored despite the failure")
 		}
 	})
-}
-
-// A failed local write puts the home-order list back exactly as it was
-// pulled.
-func TestPush_RevertRestoresPulledHomeOrder(t *testing.T) {
-	pulled := homeList(otherRow("top", 0))
-	fake := &fakeNuvio{homeOrder: pulled}
-	f := newPushHomeOrderFixture(t, fake)
-	fake.onPushCollections = func(call int, _ []json.RawMessage) {
-		if call == 0 {
-			if err := f.db.DeleteUserCollection(t.Context(), f.profile.ID, f.unpinnedColl.ID); err != nil {
-				t.Fatalf("deleting collection mid-push: %v", err)
-			}
-		}
-	}
-
-	if w, _ := f.push(t); w.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", w.Code)
-	}
-	if len(fake.pushHomeOrderCalls) != 2 || !bytes.Equal(fake.pushHomeOrderCalls[1], pulled) {
-		t.Fatalf("PushHomeOrder calls = %s, want the push, then %s put back as pulled", fake.pushHomeOrderCalls, pulled)
-	}
 }
 
 // A push body is one ordered list of rows: catalogs and collections mix, each

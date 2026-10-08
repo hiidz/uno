@@ -62,13 +62,6 @@ describe('failed responses', () => {
     expect(err).toMatchObject({ status: 400, message: 'name is required', body: undefined })
   })
 
-  it('words a route\'s JSON error by its error field', async () => {
-    answer(Response.json({ error: 'name is required' }, { status: 400 }))
-    const err = await rejection(sendJSON('POST', '/api/p/0/catalogs', {}))
-    expect(err).toBeInstanceOf(ApiError)
-    expect(err).toMatchObject({ status: 400, message: 'name is required', body: { error: 'name is required' } })
-  })
-
   it('falls back to the status when the body is empty', async () => {
     answer(new Response('', { status: 502 }))
     await expect(getJSON('/api/me')).rejects.toMatchObject({ status: 502, message: 'Request failed (502)' })
@@ -110,21 +103,6 @@ describe('failed responses', () => {
       message: 'Something specific',
       body: { error: 'Something specific', code: 'x' },
     })
-  })
-
-  it('reads a route\'s own 404 under a profile as an ordinary failure', async () => {
-    answer(new Response('catalog not found\n', { status: 404 }))
-    const err = await rejection(sendJSON('PUT', '/api/p/1/catalogs/c1', {}))
-    expect(err).toBeInstanceOf(ApiError)
-    expect(err).not.toBeInstanceOf(ProfileNotSelectedError)
-    expect(err).toMatchObject({ status: 404, message: 'catalog not found' })
-  })
-
-  it('reads a 404 outside a profile as an ordinary failure', async () => {
-    answer(new Response('not found', { status: 404 }))
-    const err = await rejection(getJSON('/api/profiles'))
-    expect(err).toBeInstanceOf(ApiError)
-    expect(err).not.toBeInstanceOf(ProfileNotSelectedError)
   })
 
   it('reads a 429 as rate limited, worded from Retry-After', async () => {

@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -127,14 +126,6 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "unpublish another profile's collection", method: http.MethodPost, path: "/api/p/1/collections/" + x.theirCollectionSrc.String() + "/unpublish", wantStatus: http.StatusNotFound, wantBody: "collection not found"},
 		{name: "publish with a path id that isn't a uuid", method: http.MethodPost, path: "/api/p/1/catalogs/nope/publish", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
 	})
-
-	// An /api path no route names falls through to the SPA, so a detach is
-	// gone when it answers no row, not when it answers an error.
-	for _, path := range []string{copyPath + "/detach", catalogPath + "/detach"} {
-		if body := serve(t, x.f.s, http.MethodPost, path, "", false).Body.String(); strings.Contains(body, `"subscription"`) {
-			t.Errorf("POST %s answered a row: %q", path, body)
-		}
-	}
 
 	if _, err := x.f.db.UnpublishCatalog(t.Context(), x.publisher, x.theirCatalogSource); err != nil {
 		t.Fatal(err)

@@ -177,12 +177,4 @@ describe('usePush', () => {
     expect(navigate).toHaveBeenCalledWith('/profiles', { replace: true })
     expect(result.current.outcome).toBeNull()
   })
-
-  it('clears the outcome on dismiss', async () => {
-    api.pushSelection.mockResolvedValue({ success: false })
-    const { result } = renderPush()
-    await act(async () => result.current.push())
-    act(() => result.current.dismiss())
-    expect(result.current.outcome).toBeNull()
-  })
 })

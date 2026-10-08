@@ -135,9 +135,7 @@ func TestUpdateUserCollectionGCsOrphanedScopedCatalogs(t *testing.T) {
 }
 
 // A folder ref's New entry creates a fresh catalog scoped to this
-// collection, atomically with the folder write that references it — the
-// whole point of deferring "copy into this collection"/"new inside this
-// collection" until Save (see FolderCatalogRef's doc comment).
+// collection, in the same save as the folder write that references it.
 func TestUpdateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -201,10 +199,7 @@ func TestCreateUserCollectionCreatesScopedCatalogFromNewRef(t *testing.T) {
 // save: if a later folder in the same payload fails (here, a duplicate
 // catalog_id within one folder — a PRIMARY KEY violation, per FolderPayload's
 // doc comment), the whole transaction rolls back, and an earlier folder's
-// New catalog is rolled back with it rather than left as an orphan. This is
-// the case that matters: before this change, "copy"/"new inside this
-// collection" POSTed immediately and independently of the collection's own
-// save, so an abandoned edit could leave exactly this kind of orphan behind.
+// New catalog is rolled back with it rather than left as an orphan.
 func TestUpdateUserCollectionRollsBackNewCatalogOnLaterFolderFailure(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)

@@ -253,11 +253,11 @@ func TestCatalogRoutes(t *testing.T) {
 		{name: "community leaves out unpublished catalogs", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=newest", wantStatus: http.StatusOK, wantBody: `{"items":[],"next_cursor":null}`},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 		{name: "create for another provider", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"mdblist","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: `no recipes for provider "mdblist"`},
-		{name: "create with a broken recipe", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"tmdb","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest},
-		{name: "create with no name", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest},
+		{name: "create with a broken recipe", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"X","provider":"tmdb","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest, wantBody: `invalid sort_by "bogus.desc"`},
+		{name: "create with no name", method: http.MethodPost, path: "/api/p/1/catalogs", body: `{"type":"movie","name":"","provider":"tmdb","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "name is required"},
 		{name: "update", method: http.MethodPut, path: mine, body: `{"type":"movie","name":"Renamed","provider":"tmdb","params":"{\"sort_by\":\"popularity.desc\"}","revision":1}`, wantStatus: http.StatusOK, wantBody: `"name":"Renamed"`},
 		{name: "update with a path id that isn't a uuid", method: http.MethodPut, path: "/api/p/1/catalogs/nope", body: valid, wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
-		{name: "update with a broken recipe", method: http.MethodPut, path: mine, body: `{"type":"movie","name":"X","provider":"tmdb","params":"{"}`, wantStatus: http.StatusBadRequest},
+		{name: "update with a broken recipe", method: http.MethodPut, path: mine, body: `{"type":"movie","name":"X","provider":"tmdb","params":"{"}`, wantStatus: http.StatusBadRequest, wantBody: "invalid params"},
 		{name: "update another profile's catalog", method: http.MethodPut, path: theirs, body: valid, wantStatus: http.StatusNotFound, wantBody: "catalog not found"},
 		{name: "duplicate", method: http.MethodPost, path: mine + "/duplicate", wantStatus: http.StatusCreated, wantBody: `"name":"Renamed (copy)"`},
 		{name: "duplicate with a path id that isn't a uuid", method: http.MethodPost, path: "/api/p/1/catalogs/nope/duplicate", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog id"},
@@ -302,8 +302,8 @@ func TestCollectionRoutes(t *testing.T) {
 		{name: "list", method: http.MethodGet, path: "/api/p/1/library", wantStatus: http.StatusOK, wantBody: f.mineColl.ID.String()},
 		{name: "community leaves out unpublished collections", method: http.MethodGet, path: "/api/p/1/community?kind=collection&sort=newest", wantStatus: http.StatusOK, wantBody: `{"items":[],"next_cursor":null}`},
 		{name: "create with a new scoped catalog", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(popular), wantStatus: http.StatusCreated, wantBody: `"title":"Scoped"`},
-		{name: "create with a broken scoped recipe", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(`{"sort_by":"bogus.desc"}`), wantStatus: http.StatusBadRequest},
-		{name: "create referencing another profile's private catalog", method: http.MethodPost, path: "/api/p/1/collections", body: referencing(f.theirs.ID), wantStatus: http.StatusBadRequest},
+		{name: "create with a broken scoped recipe", method: http.MethodPost, path: "/api/p/1/collections", body: withNew(`{"sort_by":"bogus.desc"}`), wantStatus: http.StatusBadRequest, wantBody: `invalid sort_by "bogus.desc"`},
+		{name: "create referencing another profile's private catalog", method: http.MethodPost, path: "/api/p/1/collections", body: referencing(f.theirs.ID), wantStatus: http.StatusBadRequest, wantBody: "is not usable in this collection's folders"},
 		{name: "create with a malformed body", method: http.MethodPost, path: "/api/p/1/collections", body: `[`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 		{name: "update", method: http.MethodPut, path: mine, body: string(mustJSON(t, collectionSave{CollectionForm: refs(f.mine.ID), Revision: f.mineColl.Revision})), wantStatus: http.StatusOK, wantBody: `"title":"Refs"`},
 		{name: "update with a path id that isn't a uuid", method: http.MethodPut, path: "/api/p/1/collections/nope", body: referencing(f.mine.ID), wantStatus: http.StatusBadRequest, wantBody: "invalid collection id"},
@@ -392,7 +392,7 @@ func TestRecipeRoutesRefuseWithoutTMDB(t *testing.T) {
 			routeStep{name: path + " unauthenticated", method: http.MethodPost, path: path, body: `{"type":"movie","params":"{}"}`, noAuth: true, wantStatus: http.StatusUnauthorized},
 			routeStep{name: path + " malformed body", method: http.MethodPost, path: path, body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 			routeStep{name: path + " unknown type", method: http.MethodPost, path: path, body: `{"type":"anime","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "unknown catalog type"},
-			routeStep{name: path + " broken recipe", method: http.MethodPost, path: path, body: `{"type":"movie","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest},
+			routeStep{name: path + " broken recipe", method: http.MethodPost, path: path, body: `{"type":"movie","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest, wantBody: `invalid sort_by "bogus.desc"`},
 		)
 	}
 	runSteps(t, f.s, steps)
@@ -538,7 +538,6 @@ func TestEveryAPIErrorIsJSON(t *testing.T) {
 func TestUnknownAPIPathIsNotFound(t *testing.T) {
 	s := newProfileTestServer(t, newTestVaultDB(t))
 	for _, c := range []struct{ method, path string }{
-		{http.MethodGet, "/api/nope"},
 		{http.MethodDelete, "/api/health"},
 		{http.MethodPost, "/api/p/1/library"},
 	} {

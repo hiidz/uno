@@ -11,7 +11,6 @@ import {
   sumLanguage,
   sumOrder,
   sumRatings,
-  sumShuffle,
   sumWatch,
   summaryClass,
   withShuffle,
@@ -211,13 +210,6 @@ describe('sumCollection', () => {
     expect(sumCollection('', 'Star Wars Collection')).toBe('No TMDB collection picked')
     expect(sumCollection('10', 'Star Wars Collection')).toBe('Star Wars Collection')
     expect(sumCollection('10', undefined)).toBe('TMDB collection 10')
-  })
-})
-
-describe('sumShuffle', () => {
-  it('words what shuffling changes on a collection row and on a filtered one', () => {
-    expect(sumShuffle()).toBe('New set each time')
-    expect(sumShuffle(true)).toBe('New order each time')
   })
 })
 

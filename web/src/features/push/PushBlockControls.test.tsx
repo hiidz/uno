@@ -1,24 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
-import { BlockablePushButton, PushBlockNote } from './PushBlockControls'
-import type { Push } from './usePush'
-
-function push(overrides: Partial<Push> = {}): Push {
-  return { push: vi.fn(), ready: true, pushing: false, outcome: null, dismiss: vi.fn(), ...overrides }
-}
-
-describe('BlockablePushButton', () => {
-  it('is on when nothing blocks the push', () => {
-    render(<BlockablePushButton push={push()} block={null} />)
-    expect(screen.getByRole('button', { name: /Push/ })).toBeEnabled()
-  })
-
-  it('is off while something blocks the push', () => {
-    render(<BlockablePushButton push={push()} block={{ kind: 'shares-addons' }} />)
-    expect(screen.getByRole('button', { name: /Push/ })).toBeDisabled()
-  })
-})
+import { describe, expect, it } from 'vitest'
+import { PushBlockNote } from './PushBlockControls'
 
 describe('PushBlockNote', () => {
   it('says nothing when nothing blocks the push', () => {

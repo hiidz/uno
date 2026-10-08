@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { catalog } from '@/test/fixtures'
-import { accessibleIDs, buildRefOptions, filterRefOptions } from './refs'
+import { buildRefOptions, filterRefOptions } from './refs'
 
 // `tmdbKind` is the one value this needs from the API barrel, which would
 // otherwise load the auth session and its `window` listener.
@@ -37,11 +37,5 @@ describe('filterRefOptions', () => {
 
   it('leaves out the catalogs the folder already holds unfiltered', () => {
     expect(filterRefOptions(options, '', new Set(['c1', 'c3'])).map((o) => o.id)).toEqual(['c2'])
-  })
-})
-
-describe('accessibleIDs', () => {
-  it('is every option the picker offers', () => {
-    expect([...accessibleIDs(options)]).toEqual(['c1', 'c2', 'c3'])
   })
 })

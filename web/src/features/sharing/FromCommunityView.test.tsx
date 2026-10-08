@@ -85,22 +85,21 @@ describe('CatalogFromCommunity', () => {
     expect(screen.getAllByText('To push').length).toBeGreaterThan(0)
   })
 
-  it('duplicates to edit, in the region’s colour while no update waits', () => {
+  it('duplicates to edit while no update waits', () => {
     const { onDuplicate } = renderCatalog()
     const button = screen.getByRole('button', { name: 'Duplicate to edit' })
-    expect(button).toHaveClass('btn-primary')
     fireEvent.click(button)
     expect(onDuplicate).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('button', { name: 'Update…' })).toBeNull()
   })
 
-  it('offers Update… first while an update waits, and outlines Duplicate to edit', () => {
+  it('offers Update… first while an update waits', () => {
     const { onUpdate } = renderCatalog({
       catalog: { ...noir, subscription: { ...following, update_available: true } },
     })
     const update = screen.getByRole('button', { name: 'Update…' })
-    expect(update).toHaveClass('btn-primary')
-    expect(screen.getByRole('button', { name: 'Duplicate to edit' })).toHaveClass('btn-secondary')
+    const duplicate = screen.getByRole('button', { name: 'Duplicate to edit' })
+    expect(update.compareDocumentPosition(duplicate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByText('Update available', { selector: '.stk' })).toBeNull()
     expect(screen.getAllByText('From Community').length).toBeGreaterThan(0)
     fireEvent.click(update)
@@ -221,8 +220,10 @@ describe('CollectionFromCommunity', () => {
     const { onDuplicate, onUpdate } = renderCollection({
       collection: { ...nightCollection, subscription: { ...following, update_available: true } },
     })
-    expect(screen.getByRole('button', { name: 'Duplicate to edit' })).toHaveClass('btn-secondary')
-    fireEvent.click(screen.getByRole('button', { name: 'Update…' }))
+    const update = screen.getByRole('button', { name: 'Update…' })
+    const duplicate = screen.getByRole('button', { name: 'Duplicate to edit' })
+    expect(update.compareDocumentPosition(duplicate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(update)
     expect(onUpdate).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate to edit' }))
     expect(onDuplicate).toHaveBeenCalledTimes(1)

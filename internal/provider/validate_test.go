@@ -85,59 +85,29 @@ func TestCheckEntityIDs(t *testing.T) {
 	}
 }
 
-// TestValidateParamsChecksCompaniesAndKeywords covers the wiring in
-// ValidateParams: the include and exclude lists of both kinds reach their own
-// lookup, for either catalog type.
-func TestValidateParamsChecksCompaniesAndKeywords(t *testing.T) {
+// TestValidateParamsLooksUpEachEntityField covers the wiring in
+// ValidateParams, the lookup itself being TestCheckEntityIDs': every entity
+// list reaches its own lookup and names its field when an id is unknown, and a
+// field the catalog type's discover endpoint lacks (with_collection on series,
+// with_networks on movie) is refused without one, since the value would
+// otherwise be saved but never applied.
+func TestValidateParamsLooksUpEachEntityField(t *testing.T) {
 	tests := []struct {
 		name, catalogType, params string
-		wantInvalid, wantErr      bool
-		wantField                 string
+		wantField                 string // "" when the recipe passes
+		wantLookup                bool
 	}{
-		{"known company and keyword", "movie", `{"with_companies":"1","with_keywords":"1"}`, false, false, ""},
-		{"known on series", "series", `{"with_companies":"1|1","with_keywords":"1,1"}`, false, false, ""},
-		{"unknown company", "movie", `{"with_companies":"999"}`, true, true, "with_companies"},
-		{"unknown keyword", "series", `{"with_keywords":"1,999"}`, true, true, "with_keywords"},
-		{"keyword lookup failing", "movie", `{"with_keywords":"500"}`, false, true, ""},
-		{"known exclusions", "series", `{"without_companies":"1","without_keywords":"1,1"}`, false, false, ""},
-		{"unknown excluded company", "movie", `{"without_companies":"1,999"}`, true, true, "without_companies"},
-		{"unknown excluded keyword", "series", `{"without_keywords":"999"}`, true, true, "without_keywords"},
-		{"excluded company lookup failing", "movie", `{"without_companies":"500"}`, false, true, ""},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			c, _ := fakeEntityTMDB(t)
-
-			err := c.ValidateParams(t.Context(), tc.catalogType, tc.params)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("err = %v, want error: %v", err, tc.wantErr)
-			}
-			if got := errors.Is(err, ErrInvalidParams); got != tc.wantInvalid {
-				t.Fatalf("errors.Is(err, ErrInvalidParams) = %v, want %v (err: %v)", got, tc.wantInvalid, err)
-			}
-			if tc.wantField != "" && !strings.Contains(err.Error(), tc.wantField) {
-				t.Fatalf("err = %v, want it to name %s", err, tc.wantField)
-			}
-		})
-	}
-}
-
-// TestValidateParamsChecksCollection covers with_collection in
-// ValidateParams: a movie recipe's id is looked up on TMDB, and a series
-// recipe carrying it is rejected without a lookup, since /discover/tv has no
-// such filter and the value would otherwise be saved but never applied.
-func TestValidateParamsChecksCollection(t *testing.T) {
-	tests := []struct {
-		name, catalogType, params string
-		wantInvalid, wantErr      bool
-		wantHits                  int
-	}{
-		{"known collection", "movie", `{"with_collection":"1"}`, false, false, 1},
-		{"unknown collection", "movie", `{"with_collection":"999"}`, true, true, 1},
-		{"malformed collection", "movie", `{"with_collection":"abc"}`, true, true, 0},
-		{"collection lookup failing", "movie", `{"with_collection":"500"}`, false, true, 1},
-		{"collection on series", "series", `{"with_collection":"1"}`, true, true, 0},
+		{"known ids of every movie kind", "movie", `{"with_companies":"1","with_keywords":"1","without_companies":"1","without_keywords":"1"}`, "", true},
+		{"known collection", "movie", `{"with_collection":"1"}`, "", true},
+		{"known network", "series", `{"with_networks":"1"}`, "", true},
+		{"unknown company", "movie", `{"with_companies":"999"}`, "with_companies", true},
+		{"unknown keyword", "series", `{"with_keywords":"1,999"}`, "with_keywords", true},
+		{"unknown excluded company", "movie", `{"without_companies":"1,999"}`, "without_companies", true},
+		{"unknown excluded keyword", "series", `{"without_keywords":"999"}`, "without_keywords", true},
+		{"unknown collection", "movie", `{"with_collection":"999"}`, "with_collection", true},
+		{"unknown network", "series", `{"with_networks":"1|999"}`, "with_networks", true},
+		{"collection on series", "series", `{"with_collection":"1"}`, "with_collection", false},
+		{"networks on movie", "movie", `{"with_networks":"1"}`, "with_networks", false},
 	}
 
 	for _, tc := range tests {
@@ -145,83 +115,20 @@ func TestValidateParamsChecksCollection(t *testing.T) {
 			c, hits := fakeEntityTMDB(t)
 
 			err := c.ValidateParams(t.Context(), tc.catalogType, tc.params)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("err = %v, want error: %v", err, tc.wantErr)
+			if tc.wantField == "" && err != nil {
+				t.Fatalf("err = %v, want nil", err)
 			}
-			if got := errors.Is(err, ErrInvalidParams); got != tc.wantInvalid {
-				t.Fatalf("errors.Is(err, ErrInvalidParams) = %v, want %v (err: %v)", got, tc.wantInvalid, err)
+			if tc.wantField != "" && (!errors.Is(err, ErrInvalidParams) || !strings.Contains(err.Error(), tc.wantField)) {
+				t.Fatalf("err = %v, want ErrInvalidParams naming %s", err, tc.wantField)
 			}
-			if tc.wantInvalid && !strings.Contains(err.Error(), "with_collection") {
-				t.Fatalf("err = %v, want it to name with_collection", err)
+			looked := 0
+			for _, kind := range []string{"company", "keyword", "collection", "network"} {
+				looked += hits("/"+kind+"/1") + hits("/"+kind+"/999")
 			}
-			total := hits("/collection/1") + hits("/collection/999") + hits("/collection/500")
-			if total != tc.wantHits {
-				t.Fatalf("TMDB hit %d times, want %d", total, tc.wantHits)
-			}
-		})
-	}
-}
-
-// TestValidateParamsChecksNetworks covers with_networks in ValidateParams: a
-// series recipe's ids are looked up on TMDB, and a movie recipe carrying them
-// is rejected without a lookup, since /discover/movie has no such filter and
-// the value would otherwise be saved but never applied.
-func TestValidateParamsChecksNetworks(t *testing.T) {
-	tests := []struct {
-		name, catalogType, params string
-		wantInvalid, wantErr      bool
-		wantHits                  int
-	}{
-		{"known networks, AND and OR", "series", `{"with_networks":"1|1,1"}`, false, false, 1},
-		{"unknown network", "series", `{"with_networks":"1|999"}`, true, true, 2},
-		{"malformed network", "series", `{"with_networks":"abc"}`, true, true, 0},
-		{"network lookup failing", "series", `{"with_networks":"500"}`, false, true, 1},
-		{"networks on movie", "movie", `{"with_networks":"1"}`, true, true, 0},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			c, hits := fakeEntityTMDB(t)
-
-			err := c.ValidateParams(t.Context(), tc.catalogType, tc.params)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("err = %v, want error: %v", err, tc.wantErr)
-			}
-			if got := errors.Is(err, ErrInvalidParams); got != tc.wantInvalid {
-				t.Fatalf("errors.Is(err, ErrInvalidParams) = %v, want %v (err: %v)", got, tc.wantInvalid, err)
-			}
-			if tc.wantInvalid && !strings.Contains(err.Error(), "with_networks") {
-				t.Fatalf("err = %v, want it to name with_networks", err)
-			}
-			total := hits("/network/1") + hits("/network/999") + hits("/network/500")
-			if total != tc.wantHits {
-				t.Fatalf("TMDB hit %d times, want %d", total, tc.wantHits)
+			if (looked > 0) != tc.wantLookup {
+				t.Fatalf("TMDB lookups = %d, want any: %v", looked, tc.wantLookup)
 			}
 		})
-	}
-}
-
-// TestTVValidateCapsNetworks covers the no-network cap on with_networks,
-// which lives on the series recipe alone: twenty ids pass, a twenty-first is
-// rejected naming the field and the cap, for either separator.
-func TestTVValidateCapsNetworks(t *testing.T) {
-	for _, sep := range []string{",", "|"} {
-		for _, n := range []int{maxEntityIDs, maxEntityIDs + 1} {
-			parts := make([]string, n)
-			for i := range parts {
-				parts[i] = fmt.Sprint(i + 1)
-			}
-			err := TMDBTVParams{WithNetworks: strings.Join(parts, sep)}.Validate()
-			if n <= maxEntityIDs {
-				if err != nil {
-					t.Fatalf("with_networks with %d ids: %v, want accepted", n, err)
-				}
-				continue
-			}
-			if err == nil || !strings.Contains(err.Error(), "with_networks") || !strings.Contains(err.Error(), "20") {
-				t.Fatalf("with_networks with %d ids: %v, want an error naming with_networks and the cap", n, err)
-			}
-		}
 	}
 }
 
@@ -246,8 +153,9 @@ func TestMovieValidateRejectsCollectionList(t *testing.T) {
 }
 
 // TestValidateCapsEntityIDLists covers the no-network cap on the company and
-// keyword include and exclude lists: twenty ids pass, a twenty-first is rejected naming the
-// field and the cap, for either separator and either catalog type.
+// keyword include and exclude lists, for either catalog type, and on
+// with_networks, which only the series recipe has: twenty ids pass, a
+// twenty-first is rejected naming the field and the cap, for either separator.
 func TestValidateCapsEntityIDLists(t *testing.T) {
 	ids := func(n int, sep string) string {
 		parts := make([]string, n)
@@ -259,19 +167,20 @@ func TestValidateCapsEntityIDLists(t *testing.T) {
 
 	for _, sep := range []string{",", "|"} {
 		for _, n := range []int{maxEntityIDs, maxEntityIDs + 1} {
+			bothTypes := func(common TMDBCommonParams) []CatalogParams {
+				return []CatalogParams{TMDBMovieParams{TMDBCommonParams: common}, TMDBTVParams{TMDBCommonParams: common}}
+			}
 			for _, tc := range []struct {
 				field  string
-				common TMDBCommonParams
+				params []CatalogParams
 			}{
-				{"with_companies", TMDBCommonParams{WithCompanies: ids(n, sep)}},
-				{"with_keywords", TMDBCommonParams{WithKeywords: ids(n, sep)}},
-				{"without_companies", TMDBCommonParams{WithoutCompanies: ids(n, sep)}},
-				{"without_keywords", TMDBCommonParams{WithoutKeywords: ids(n, sep)}},
+				{"with_companies", bothTypes(TMDBCommonParams{WithCompanies: ids(n, sep)})},
+				{"with_keywords", bothTypes(TMDBCommonParams{WithKeywords: ids(n, sep)})},
+				{"without_companies", bothTypes(TMDBCommonParams{WithoutCompanies: ids(n, sep)})},
+				{"without_keywords", bothTypes(TMDBCommonParams{WithoutKeywords: ids(n, sep)})},
+				{"with_networks", []CatalogParams{TMDBTVParams{WithNetworks: ids(n, sep)}}},
 			} {
-				for _, p := range []CatalogParams{
-					TMDBMovieParams{TMDBCommonParams: tc.common},
-					TMDBTVParams{TMDBCommonParams: tc.common},
-				} {
+				for _, p := range tc.params {
 					err := p.Validate()
 					if n <= maxEntityIDs {
 						if err != nil {
