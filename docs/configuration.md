@@ -94,7 +94,7 @@ it.
 
 ## The dev auth bypass
 
-`DEV_AUTH_BYPASS_TOKEN` (`internal/api/devauth.go`, wired in `cmd/server/main.go`) makes one
+`DEV_AUTH_BYPASS_TOKEN` (`internal/api/devauth.go`, wired in `cmd/uno/main.go`) makes one
 fixed bearer token authenticate as `sub = "dev-user"` with no JWKS fetch and no Nuvio account.
 When the variable is set, `apiDeps` in `main.go` wraps both the `TokenVerifier` and the `NuvioClient` in the
 decorators from `devauth.go` before building `api.Deps` — `internal/api` itself is unchanged and
@@ -172,7 +172,7 @@ A schema change edits `schema.sql` and bumps `schemaVersion`.
 **Local dev:** deleting `vault.db` is fine; the next start creates the schema.
 
 **`uno migrate --db <path>`** moves a version 10 vault to version 11. It is a one-off, deleted once
-prod has run it (`cmd/server/migrate.go`). It refuses any version but 10. In one transaction it
+prod has run it (`cmd/uno/migrate.go`). It refuses any version but 10. In one transaction it
 creates `subscriptions_by_publication`, which a publication's cascade and release trigger read its
 subscribers through, drops `publications.catalog_count` and `folder_count`, which nothing read,
 drops `catalogs.unpublished_at` and `collections.unpublished_at` and recreates the release trigger

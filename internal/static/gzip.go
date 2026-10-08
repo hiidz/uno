@@ -43,7 +43,7 @@ var compressible = []string{
 // byte-range math is over the uncompressed file, which gzip would break.
 //
 // The error is the wrapper's own configuration check; it is returned rather
-// than fatal so the decision to abort startup stays in cmd/server.
+// than fatal so the decision to abort startup stays in cmd/uno.
 func Gzip(next http.Handler) (http.Handler, error) {
 	// MinSize is gzhttp's default; below it the gzip envelope costs more
 	// than it saves.

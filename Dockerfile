@@ -13,7 +13,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend-build /web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -o /uno ./cmd/server
+RUN CGO_ENABLED=0 go build -o /uno ./cmd/uno
 # distroless has no shell to mkdir/chown at runtime, so the volume mount
 # point is prepared here and copied across with the right owner — Docker
 # copies a named volume's initial ownership from the image path it's

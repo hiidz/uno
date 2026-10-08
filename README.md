@@ -31,7 +31,7 @@ the result straight into your Nuvio profile — so it shows up as rows on your N
 ```
 cp .env.example .env   # fill in TMDB_API_KEY and NUVIO_PUBLISHABLE_KEY
 cd web && npm ci && npm run build && cd ..
-go run ./cmd/server
+go run ./cmd/uno
 ```
 
 `web/embed.go` embeds `web/dist` into the binary. The directory is gitignored apart from a

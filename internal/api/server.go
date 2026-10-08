@@ -50,7 +50,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // type level — a struct literal with a field omitted still compiles — so
 // this checks for it explicitly and reports the missing dependency rather
 // than leaving a nil-pointer panic for the first request that happens to
-// reach it. Every error here is a startup misconfiguration; cmd/server is
+// reach it. Every error here is a startup misconfiguration; cmd/uno is
 // where that becomes a fatal.
 func New(d Deps) (*Server, error) {
 	switch {

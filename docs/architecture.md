@@ -62,17 +62,17 @@ imports the vault, not the other way round.
 
 `api.Server` is built from a `Deps` struct — `New(d Deps) (*Server, error)`, with `Deps{Vault, Provider,
 Verifier, Nuvio, SiteBaseURL, NuvioBaseURL, Access, Keys}` (`internal/api/deps.go`); a zero `Access` admits every
-account, and a nil `Keys` is a server with one shared TMDB key (*TMDB keys*). `cmd/server`'s
+account, and a nil `Keys` is a server with one shared TMDB key (*TMDB keys*). `cmd/uno`'s
 `apiDeps` builds them from the config. `Verifier` (`TokenVerifier`, one method)
 and `Nuvio` (`NuvioClient`, five methods) are narrow *consumer-side* interfaces over
 `*nuvio.Client`'s method set, not the concrete type — the seam that makes `requireNuvioAuth` and
 `listProfiles` testable against a fake. Compile-time assertions in `deps.go` turn a signature
 drift in `internal/nuvio` into a build error in `internal/api` rather than a surprise at the call
-site. `cmd/server/main.go` passes the same `*nuvio.Client` value for both fields; a second,
+site. `cmd/uno/main.go` passes the same `*nuvio.Client` value for both fields; a second,
 independently constructed `Verifier` would mean a second, out-of-sync JWKS key cache. Because a
 struct literal can silently omit a field, `New` checks each required field and returns an error
 rather than nil-panicking on the first request that reaches it. It returns rather than exiting so
-the decision to abort startup lives in `cmd/server/main.go`, the only place that calls
+the decision to abort startup lives in `cmd/uno/main.go`, the only place that calls
 `log.Fatal` — the same reason `addon.New` and `static.Gzip` return their errors.
 
 ## Auth model
@@ -166,7 +166,7 @@ within the hour.
 
 A verified account the policy doesn't admit gets **403** "this Nuvio account can't use this Uno
 server", never a 401: the SPA answers a 401 by refreshing its token and retrying, which a refused
-account would do forever. When the dev auth bypass is configured, `cmd/server` admits its fake
+account would do forever. When the dev auth bypass is configured, `cmd/uno` admits its fake
 account too, by its id, since it has no email (`Access.WithDevBypass`, `DevBypassSub`).
 
 The policy is read from the environment, so it holds across instances.

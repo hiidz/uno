@@ -20,7 +20,7 @@ type Access struct {
 }
 
 // WithDevBypass is a, admitting the dev auth bypass's fake account as well,
-// by its id, so an allowlist doesn't shut out local development. cmd/server
+// by its id, so an allowlist doesn't shut out local development. cmd/uno
 // applies it only when the bypass is configured.
 func (a Access) WithDevBypass() Access {
 	a.DevBypass = true
