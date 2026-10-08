@@ -11,8 +11,8 @@
 - [Features](#features)
 - [Getting started](#getting-started)
 - [Self-hosting](#self-hosting)
-- [API](#api)
 - [Development](#development)
+- [API](#api)
 - [Docs](#docs)
 
 ## What is Uno?
@@ -87,6 +87,20 @@ Two settings decide who can use your server and whose TMDB key it spends.
 
 The allowlist works with either key mode. In `per-account` mode, each account saves its TMDB key in the app, encrypted with `UNO_SECRET`; back that secret up with the database.
 
+### Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `SITE_BASE_URL` | Yes | Public URL Nuvio's apps reach this server at, with no trailing slash. |
+| `NUVIO_PUBLISHABLE_KEY` | Yes | Nuvio's publishable API key. |
+| `TMDB_API_KEY` | In `shared` key mode | The TMDB key every account uses. |
+| `TMDB_KEY_MODE` | No | `shared` (default) or `per-account`. |
+| `UNO_SECRET` | In `per-account` key mode | 32 random bytes, base64 (`openssl rand -base64 32`). |
+| `UNO_ACCESS` | No | `open` (default) or `allowlist`. |
+| `UNO_ALLOWED_EMAILS` | With `allowlist` | Comma-separated email addresses. |
+
+The port, database path and the rest are in [configuration](docs/configuration.md). The server refuses to start on a missing or invalid value and names it.
+
 ### Docker
 
 Images for `linux/amd64` and `linux/arm64` are on `ghcr.io/hiidz/uno`.
@@ -118,29 +132,6 @@ The web app is built into the binary, so `uno` and its `.env` are all you need t
 
 Any host that runs a Docker image works, given a persistent disk for the SQLite file and HTTPS in front.
 
-### Environment variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `SITE_BASE_URL` | Yes | Public URL Nuvio's apps reach this server at, with no trailing slash. |
-| `NUVIO_PUBLISHABLE_KEY` | Yes | Nuvio's publishable API key. |
-| `TMDB_API_KEY` | In `shared` key mode | The TMDB key every account uses. |
-| `TMDB_KEY_MODE` | No | `shared` (default) or `per-account`. |
-| `UNO_SECRET` | In `per-account` key mode | 32 random bytes, base64 (`openssl rand -base64 32`). |
-| `UNO_ACCESS` | No | `open` (default) or `allowlist`. |
-| `UNO_ALLOWED_EMAILS` | With `allowlist` | Comma-separated email addresses. |
-
-The port, database path and the rest are in [configuration](docs/configuration.md). The server refuses to start on a missing or invalid value and names it.
-
-## API
-
-Uno serves two HTTP APIs on one port:
-
-- **Addon** (`/u/{token}/...`): the public Stremio addon protocol that Nuvio's apps read. Manifest and catalog pages only; Uno serves no streams or metadata.
-- **Builder API** (`/api/...`): JSON for the web app, behind Nuvio sign-in.
-
-Every route and its shapes are in [`docs/api/openapi.yaml`](docs/api/openapi.yaml).
-
 ## Development
 
 With `.env` filled in:
@@ -158,6 +149,15 @@ Tech stack:
 
 How the parts fit is in [architecture](docs/architecture.md).
 
+## API
+
+Uno serves two HTTP APIs on one port:
+
+- **Addon** (`/u/{token}/...`): the public Stremio addon protocol that Nuvio's apps read. Manifest and catalog pages only; Uno serves no streams or metadata.
+- **Builder API** (`/api/...`): JSON for the web app, behind Nuvio sign-in.
+
+Every route and its shapes are in [`docs/api/openapi.yaml`](docs/api/openapi.yaml).
+
 ## Docs
 
 - [Architecture](docs/architecture.md): the parts, sign-in, push, the addon and sharing
@@ -169,6 +169,8 @@ How the parts fit is in [architecture](docs/architecture.md).
 ## Disclaimer
 
 Uno is not affiliated with Nuvio. It hosts no streams: titles and artwork come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB. Report problems at [github.com/hiidz/uno/issues](https://github.com/hiidz/uno/issues).
+
+Uno was built with help from AI coding tools. I reviewed, tested and run every change myself, but read the code with that in mind.
 
 ## License
 
