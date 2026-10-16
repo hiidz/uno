@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/img/logo-wordmark.svg" alt="Uno" width="360">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/uno-wordmark.svg">
+    <img src="docs/img/uno-wordmark-dark.svg" alt="Uno" width="360">
+  </picture>
 </p>
 
 <p align="center"><b>Your Nuvio home screen, row by row.</b></p>
@@ -7,7 +10,7 @@
 <p align="center">Build catalogs and collections from TMDB, arrange your home screen, and push it to Nuvio in one click.</p>
 
 <p align="center">
-  <img src="docs/img/home-preview.jpg" alt="Uno previewing a home screen: the library of catalogs on the left, the home screen's rows of posters on the right">
+  <img src="docs/img/uno-demo.gif" alt="Uno in use: the home screen list, its poster preview, adding a catalog from Community, and putting it on the home screen">
 </p>
 
 - [What is Uno?](#what-is-uno)
@@ -40,9 +43,9 @@ So they needed a way to set up a home screen to their own liking, without buildi
 
 No manifest URL to copy, no addon to install, no new account. Push does the install, and Community holds what others built, with their updates.
 
-<p align="center">
-  <img src="docs/img/community.jpg" alt="The Community page: catalogs other people published, each with a poster strip, a summary of its filters and an Add button">
-</p>
+| Add catalogs shared by others | Add collections shared by others |
+|---|---|
+| ![A published Horror Nights catalog: its filters on the left, the posters they match on the right, with Add and Duplicate](docs/img/community-catalog.jpg) | ![A published Film Studios collection: its folders and their catalogs on the left, a tabbed-grid preview of the Marvel Studios folder on the right](docs/img/community-collection.jpg) |
 
 Uno is just as much for people who want full control. Build catalogs from the full set of TMDB discover filters, compose collections with your own artwork, arrange the home screen across all six profiles, and publish your work to Community for others to add.
 
@@ -57,13 +60,9 @@ Uno is just as much for people who want full control. Build catalogs from the fu
 - **Community.** Publish catalogs and collections for everyone on the same server. Others add them as linked copies that take your updates, or duplicate them as their own.
 - **Import and export** catalogs and collections as a JSON file, to share them with anyone, on any server.
 
-<p align="center">
-  <img src="docs/img/collection-editor.jpg" alt="The collection editor: a Studios collection with six landscape folders, one per studio logo, and a preview of how the row looks in Nuvio">
-</p>
-
-| Build a catalog, with a live preview | Put the home screen in order |
-|---|---|
-| ![The catalog editor: filters for order, genres, ratings and language, with a preview of the matching posters](docs/img/catalog-editor.jpg) | ![The home screen list: four numbered rows that can be dragged or moved up and down](docs/img/home-order.jpg) |
+| Build collections from your own folders and artwork |
+|---|
+| ![The collection editor: a Film Studios collection with six studio-logo folders, the Marvel Studios folder open with its catalog and appearance settings, and a preview of the row in Nuvio](docs/img/collection-editor.jpg) |
 
 ## Getting started
 
