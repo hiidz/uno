@@ -129,6 +129,8 @@ docker compose up -d
 
 The data lives in one SQLite file on the `uno-data` volume. The server speaks plain HTTP, and `compose.yaml` publishes it on `127.0.0.1:8123` only: put an HTTPS reverse proxy in front.
 
+To update, see [upgrading](docs/upgrade.md).
+
 ### Manual
 
 Needs Go 1.26 and Node 22.
@@ -179,6 +181,7 @@ Every route and its shapes are in [`docs/api/openapi.yaml`](docs/api/openapi.yam
 - [Data model](docs/data-model.md): what's stored, recipes and export files
 - [Frontend](docs/frontend.md): how the web app is laid out
 - [Configuration](docs/configuration.md): every environment variable
+- [Upgrading](docs/upgrade.md): new releases, database changes and going back
 - [API](docs/api/openapi.yaml): every HTTP route
 
 ## Disclaimer

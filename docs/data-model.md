@@ -1,6 +1,6 @@
 # Data model
 
-Uno stores everything in one SQLite file (`VAULT_DB`). The schema is [`internal/vault/schema.sql`](../internal/vault/schema.sql), embedded in the binary. Uno creates it the first time it runs on an empty database.
+Uno stores everything in one SQLite file (`VAULT_DB`). The schema is [`internal/vault/schema.sql`](../internal/vault/schema.sql), embedded in the binary. Uno creates it the first time it runs on an empty database, and upgrades an older one on start (see [upgrading](upgrade.md)).
 
 ## Concepts
 

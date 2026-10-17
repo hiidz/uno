@@ -1,7 +1,7 @@
 services:
   uno:
-    # Pin UNO_TAG to a release (e.g. 1.2.0 for git tag v1.2.0) in .env to upgrade deliberately:
-    # a release that changes the database schema says so in its notes.
+    # Pin UNO_TAG to a release (e.g. 1.2.0 for git tag v1.2.0) in .env to upgrade deliberately.
+    # Upgrading is docker compose pull && docker compose up -d: see docs/upgrade.md.
     image: ghcr.io/hiidz/uno:${UNO_TAG:-latest}
     restart: unless-stopped
     # Longer than the server's 60s shutdown drain (shutdownGracePeriod in
