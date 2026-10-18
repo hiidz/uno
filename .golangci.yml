@@ -6,10 +6,15 @@ linters:
     - gosec                # the HTTP trust-boundary review, made re-runnable
     - errorlint            # %w wrapping and errors.As
     - bodyclose            # Nuvio and TMDB response bodies
+    - gocyclo              # function complexity
+  settings:
+    gocyclo:
+      min-complexity: 15
   exclusions:
     rules:
       # A test's own setup is not a trust boundary, and a fake TMDB handler's
       # fmt.Fprint or a t.Cleanup's db.Close has nothing to do on a failure but
-      # fail the test that is already running.
+      # fail the test that is already running. A long table-driven test is
+      # not complex code.
       - path: _test\.go
-        linters: [gosec, errcheck]
+        linters: [gosec, errcheck, gocyclo]
