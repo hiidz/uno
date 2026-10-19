@@ -554,12 +554,6 @@ export interface TMDBParams {
   with_networks?: string
 }
 
-/** `GET /api/config`: how this server reaches TMDB. `per-account` means each
- *  Nuvio account brings its own TMDB key, which the picker asks for. */
-export interface ServerConfig {
-  tmdb_key_mode: 'shared' | 'per-account'
-}
-
 /** `GET /api/account/tmdb-key`: all the SPA is told of the signed-in
  *  account's TMDB key — whether it has saved one, and its last four
  *  characters, which come only with a saved key. The key itself never comes

@@ -54,7 +54,6 @@ export {
   fetchCatalogGenreOptions,
   fetchProfiles,
   selectProfile,
-  fetchServerConfig,
   fetchTMDBKey,
 } from './resources'
 export { tmdbKind } from './types'
@@ -83,7 +82,6 @@ export type {
   PreviewItem,
   PublicationDetail,
   PublicationState,
-  ServerConfig,
   SnapshotChange,
   SnapshotCatalog,
   SnapshotFolder,
