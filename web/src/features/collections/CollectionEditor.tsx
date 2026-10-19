@@ -44,6 +44,7 @@ import {
   toCollectionPayload,
   validateCollectionForm,
   withCatalogEdit,
+  withFoldersRestored,
   type CollectionFormState,
   type FolderFormState,
   type FolderRefState,
@@ -439,12 +440,12 @@ export function CollectionEditor({
     patchFolders((folders) => [...folders, folder])
   }
 
-  /** Re-inserts what the next Save would delete, at the end of the list —
+  /** Re-inserts what the next Save would delete, each at its saved place —
    *  the removal warning's "Undo". The folders still carry their original
    *  `key`, which is safe to reinsert: `willDelete` is exactly the baseline
    *  folders no longer present in `state.folders`, so no key collides. */
   function undoRemoving() {
-    patchFolders((folders) => [...folders, ...willDelete])
+    patchFolders((folders) => withFoldersRestored(baseline, folders, willDelete))
   }
 
   // One folder's contents always show under the strip: the one picked, or the

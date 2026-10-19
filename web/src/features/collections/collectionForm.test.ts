@@ -13,9 +13,11 @@ import {
   newFolder,
   newRef,
   ownErrors,
+  removedFolders,
   toCollectionPayload,
   validateCollectionForm,
   withCatalogEdit,
+  withFoldersRestored,
   VIEW_MODES,
   type CollectionFormState,
 } from './collectionForm'
@@ -186,5 +188,24 @@ describe('appearanceSummary', () => {
 
   it('leaves the All tab out where there are no tabs', () => {
     expect(appearanceSummary({ ...base, viewMode: 'ROWS', showAllTab: true })).toBe('Rows')
+  })
+})
+
+describe('withFoldersRestored', () => {
+  const saved = formFromCollection(
+    collection({ folders: [folder({ id: 'a' }), folder({ id: 'b' }), folder({ id: 'c' })] }),
+  )
+  const [a, b, c] = saved.folders
+
+  it('puts removed folders back at their saved places, so the form is clean again', () => {
+    const removed = { ...saved, folders: [b] }
+    const undone = { ...saved, folders: withFoldersRestored(saved, removed.folders, removedFolders(saved, removed)) }
+    expect(undone.folders).toEqual([a, b, c])
+    expect(isSameCollection(saved, undone)).toBe(true)
+  })
+
+  it('keeps a folder added since after the restored ones', () => {
+    const added = newFolder()
+    expect(withFoldersRestored(saved, [a, c, added], [b])).toEqual([a, b, c, added])
   })
 })
