@@ -15,6 +15,10 @@ const devBypassToken: string | undefined = import.meta.env.DEV
 
 type FieldErrors = { email?: string; password?: string }
 
+// Something, an @, and a domain with a dot: enough to catch a typo before
+// Nuvio answers it as wrong credentials, without second-guessing real addresses.
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -37,6 +41,7 @@ export function Login() {
 
     const errors: FieldErrors = {}
     if (!email) errors.email = 'Enter the email you use for Nuvio.'
+    else if (!EMAIL_SHAPE.test(email)) errors.email = 'Enter a full email address, like name@example.com.'
     if (!password) errors.password = 'Enter your password to sign in.'
     setFieldErrors(errors)
     if (errors.email || errors.password) return
