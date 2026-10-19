@@ -140,3 +140,25 @@ func TestHandlerPageInjectionPoint(t *testing.T) {
 		t.Error("a page with no </head>: got a handler, want an error")
 	}
 }
+
+// A file the build doesn't have is a 404 under /assets/ and at
+// /favicon.ico, with no year-long cache header, while any other unknown
+// path is still the SPA's page.
+func TestHandlerAnswersAMissingFileWithNotFound(t *testing.T) {
+	h := newTestHandler(t, fstest.MapFS{"index.html": {Data: []byte(shell)}}, testConfig)
+	for _, path := range []string{"/assets/gone-abc123.js", "/assets/", "/favicon.ico"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, rec.Code)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "" {
+			t.Errorf("GET %s: Cache-Control = %q, want none", path, got)
+		}
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/no/such/route", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "uno-config") {
+		t.Errorf("GET /no/such/route = %d, want the page", rec.Code)
+	}
+}

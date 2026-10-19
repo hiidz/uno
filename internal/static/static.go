@@ -48,7 +48,7 @@ type Config struct {
 
 // Handler serves fsys as a single-page app: any request that doesn't
 // resolve to a real file is rewritten to "/" so the SPA's own router
-// handles it, and "/" is answered with fsys's index.html carrying cfg as a
+// handles it, unless it asked for a file (isSPARoute), and "/" is answered with fsys's index.html carrying cfg as a
 // JSON block (buildPage). configPath is answered with the same settings as a
 // script that sets window.__UNO_CONFIG__. Every
 // response carries the Content-Security-Policy built by
@@ -85,6 +85,12 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 			path = "."
 		}
 		if info, err := fs.Stat(fsys, path); err != nil || info.IsDir() {
+			if !isSPARoute(r.URL.Path) {
+				// Before Cache-Control, so a missing asset's 404 is never
+				// marked immutable.
+				http.NotFound(w, r)
+				return
+			}
 			r = cloneWithPath(r, "/")
 		}
 		h := w.Header()
@@ -193,6 +199,14 @@ func cacheControl(path string) string {
 		return "public, max-age=31536000, immutable"
 	}
 	return "no-cache"
+}
+
+// isSPARoute reports whether a path no file answers is the SPA's to route,
+// and so answered with index.html. A missing asset or favicon is a 404
+// instead: the browser asked for a file, and HTML in its place would be cached
+// or parsed as one.
+func isSPARoute(path string) bool {
+	return !strings.HasPrefix(path, assetsPrefix) && path != "/favicon.ico"
 }
 
 func cloneWithPath(r *http.Request, path string) *http.Request {
