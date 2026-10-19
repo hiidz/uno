@@ -1,6 +1,6 @@
 // Package static serves the embedded SPA build, falling back to
 // index.html for any path that isn't a real file so React Router can
-// resolve client-side routes (e.g. a hard reload on /configure).
+// resolve client-side routes (e.g. a hard reload on /p/1/community).
 package static
 
 import (
