@@ -30,6 +30,9 @@ export function LeaveGuard() {
   })
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    // A session that ended goes to sign-in unasked: nothing left could be
+    // saved or pushed without one.
+    if (nextLocation.pathname === '/login') return false
     const step = leaveStep(currentLocation.pathname, nextLocation.pathname)
     blockedStep.current = step
     if (step === 'none') return false

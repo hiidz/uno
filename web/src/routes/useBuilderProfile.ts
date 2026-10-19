@@ -38,7 +38,9 @@ export function useBuilderProfile(profileIndex: number): BuilderProfileState {
   // Select answers a slot the account doesn't have with a 400.
   const refused = selected.error instanceof ApiError && selected.error.status === 400
   if ((profiles.data && !nuvio) || refused) return { status: 'missing' }
-  if (profiles.isError || selected.isError) {
+  // A failed background refetch keeps what it had, so only a query with
+  // nothing to show has failed; the builder stays up through a blip.
+  if ((profiles.isError && !profiles.data) || (selected.isError && !selected.data)) {
     return {
       status: 'failed',
       retry: () => {

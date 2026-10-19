@@ -10,13 +10,15 @@ import { watchActiveProfile } from './activeProfile'
 import { Builder } from './Builder'
 
 // What each profile's server holds right now; a test changes it between visits.
-const server = vi.hoisted(() => ({ catalogs: new Map<number, unknown[]>() }))
+const server = vi.hoisted(() => ({ catalogs: new Map<number, unknown[]>(), profilesDown: false }))
 
 vi.mock('@/api', async () => ({
   ApiError: class extends Error {},
   // Nuvio has profiles 1 and 2 on this account.
-  fetchProfiles: async () =>
-    [1, 2].map((profile_index) => ({ profile_index, name: `Profile ${profile_index}`, uses_primary_addons: false })),
+  fetchProfiles: async () => {
+    if (server.profilesDown) throw new Error('Nuvio is down')
+    return [1, 2].map((profile_index) => ({ profile_index, name: `Profile ${profile_index}`, uses_primary_addons: false }))
+  },
   selectProfile: async (profileIndex: number) => ({ manifest_url: `https://uno.test/u/${profileIndex}/manifest.json` }),
   fetchLibrary: async (profileIndex: number) => ({
     catalogs: server.catalogs.get(profileIndex) ?? [],
@@ -65,6 +67,7 @@ let unwatch: (() => void) | undefined
 
 const routes = [
   { path: '/profiles', element: <p>Who is watching</p> },
+  { path: '/login', element: <p>Sign in</p> },
   { path: '/p/:profile', element: <Builder />, children: [{ index: true }, { path: 'community' }] },
 ]
 
@@ -85,6 +88,7 @@ beforeEach(() => {
   // The app's defaults, which keep a visited profile's rows fresh for 30s.
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
   server.catalogs.clear()
+  server.profilesDown = false
 })
 afterEach(() => {
   unwatch?.()
@@ -151,5 +155,38 @@ describe('Builder', () => {
     expect(router.state.location.pathname).toBe('/p/1')
     expect(screen.queryByText('Discard unpushed changes?')).not.toBeInTheDocument()
     expect(await rows()).toHaveTextContent('none')
+  })
+
+  it('stays up, unpushed changes and all, when a refetch of the profiles fails', async () => {
+    server.catalogs.set(1, [onHome('a', 'Alpha')])
+    open(1)
+    await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the first row' }))
+
+    server.profilesDown = true
+    await act(() => queryClient.refetchQueries({ queryKey: ['profiles'] }))
+    await waitFor(() => expect(queryClient.getQueryState(['profiles'])?.status).toBe('error'))
+    expect(screen.queryByText("Couldn't open this profile")).not.toBeInTheDocument()
+    expect(screen.getByTestId('rows')).toHaveTextContent('none')
+  })
+
+  it('says when the profile can’t load at all, and offers to try again', async () => {
+    server.profilesDown = true
+    open(1)
+    expect(await screen.findByText("Couldn't open this profile")).toBeInTheDocument()
+    server.profilesDown = false
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await rows()).toBeInTheDocument()
+  })
+
+  it('goes to sign-in unasked when the session ends', async () => {
+    server.catalogs.set(1, [onHome('a', 'Alpha')])
+    const router = open(1)
+    await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the first row' }))
+
+    await act(() => router.navigate('/login', { replace: true }))
+    expect(router.state.location.pathname).toBe('/login')
+    expect(screen.queryByText('Discard unpushed changes?')).not.toBeInTheDocument()
   })
 })
