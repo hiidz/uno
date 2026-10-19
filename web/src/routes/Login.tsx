@@ -13,6 +13,9 @@ const devBypassToken: string | undefined = import.meta.env.DEV
   ? import.meta.env.VITE_DEV_AUTH_BYPASS_TOKEN
   : undefined
 
+// Nuvio's account page, where an account is created and a password reset.
+const NUVIO_ACCOUNT = 'https://nuvio.tv/account'
+
 type FieldErrors = { email?: string; password?: string }
 
 // Something, an @, and a domain with a dot: enough to catch a typo before
@@ -70,7 +73,15 @@ export function Login() {
   return (
     <EntryPage
       title="Build your Nuvio home screen"
-      intro="Sign in with your Nuvio account."
+      intro={
+        <>
+          Sign in with your Nuvio account. New to Nuvio, or forgot your password? Go to{' '}
+          <a href={NUVIO_ACCOUNT} target="_blank" rel="noreferrer" className="text-ink underline">
+            nuvio.tv/account
+          </a>
+          .
+        </>
+      }
     >
       <form onSubmit={handleSubmit} noValidate className="bg-raised rounded-2xl px-5 pt-3 pb-5">
         <div className="setting">
