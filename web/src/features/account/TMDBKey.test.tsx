@@ -118,6 +118,10 @@ describe('TMDBKeyShelf', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
     expect(screen.getByLabelText('TMDB API Key')).toHaveFocus()
+    expect(screen.getByRole('link', { name: 'themoviedb.org' })).toHaveAttribute(
+      'href',
+      'https://www.themoviedb.org/settings/api',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByLabelText('TMDB API Key')).not.toBeInTheDocument()
 

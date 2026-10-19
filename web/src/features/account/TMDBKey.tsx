@@ -131,8 +131,11 @@ function KeyForm({ save, onDone }: KeyFormProps) {
         <KeyActions pending={save.isPending} ready={API_KEY_SHAPE.test(key.trim())} onCancel={onDone} />
       </div>
       <KeyError id={id} error={save.error?.message} />
+      {/* The gate says where the key comes from above the field, link and all;
+          a replacement has only this line to say it. */}
       <p id={`${id}-hint`} className="text-dim m-0 text-[13px] leading-snug">
-        32 letters and numbers, from Settings → API on <TMDBLink />. Not the longer Read Access Token.
+        32 letters and numbers{onDone && <>, from Settings → API on <TMDBLink /></>}. Not the longer Read Access
+        Token.
       </p>
     </form>
   )
