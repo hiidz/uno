@@ -1,22 +1,18 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { Location } from 'react-router-dom'
 import { queryKeys } from '@/api/keys'
+import { builderView } from './builderPaths'
 
 /** The slice of the data router `watchActiveProfile` reads. */
 interface WatchedRouter {
-  state: { location: Pick<Location, 'pathname' | 'state'> }
-  subscribe: (listener: (state: { location: Pick<Location, 'pathname' | 'state'> }) => void) => () => void
+  state: { location: Pick<Location, 'pathname'> }
+  subscribe: (listener: (state: { location: Pick<Location, 'pathname'> }) => void) => () => void
 }
 
-/**
- * The profile the builder is showing at this location, or null off `/configure`.
- * The router's location state is the one place the active profile is set: the
- * picker navigates with it, and a history entry carries it back.
- */
-function activeProfileIndex(location: Pick<Location, 'pathname' | 'state'>): number | null {
-  if (location.pathname !== '/configure') return null
-  const state = location.state as { profileIndex?: unknown } | null
-  return typeof state?.profileIndex === 'number' ? state.profileIndex : null
+/** The profile the builder is showing at this location, from its `/p/{i}`
+ *  path, or null outside the builder. */
+function activeProfileIndex(location: Pick<Location, 'pathname'>): number | null {
+  return builderView(location.pathname)?.profileIndex ?? null
 }
 
 /**

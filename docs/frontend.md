@@ -10,7 +10,8 @@ The web app in `web/` is React 19 and TypeScript, built with Vite. It uses React
 |---|---|
 | `/login` | Sign in with your Nuvio email and password. |
 | `/profiles` | Pick a Nuvio profile. |
-| `/configure` | The builder: library, editors, home screen, Community. |
+| `/p/{i}` | The builder on Nuvio profile `i` (1–6): library, editors, home screen. |
+| `/p/{i}/community` | The builder's Community section. |
 | anything else | A "page doesn't exist" page with a link home. A page that throws shows a "Something went wrong" page with Reload. |
 
 ## Layout

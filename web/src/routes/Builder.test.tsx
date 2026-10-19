@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog } from '@/api'
-import { useHomeSelection } from '@/features/home/useHomeSelection'
+import { useHomeEdits, useHomeSelection } from '@/features/home/useHomeSelection'
 import { catalog } from '@/test/fixtures'
 import { watchActiveProfile } from './activeProfile'
 import { Builder } from './Builder'
@@ -13,6 +13,11 @@ import { Builder } from './Builder'
 const server = vi.hoisted(() => ({ catalogs: new Map<number, unknown[]>() }))
 
 vi.mock('@/api', async () => ({
+  ApiError: class extends Error {},
+  // Nuvio has profiles 1 and 2 on this account.
+  fetchProfiles: async () =>
+    [1, 2].map((profile_index) => ({ profile_index, name: `Profile ${profile_index}`, uses_primary_addons: false })),
+  selectProfile: async (profileIndex: number) => ({ manifest_url: `https://uno.test/u/${profileIndex}/manifest.json` }),
   fetchLibrary: async (profileIndex: number) => ({
     catalogs: server.catalogs.get(profileIndex) ?? [],
     collections: [],
@@ -30,7 +35,15 @@ vi.mock('@/api', async () => ({
 vi.mock('@/features/builder/Workspace', () => ({
   Workspace: function Workspace() {
     const home = useHomeSelection()
-    return <p data-testid="rows">{home.ready ? home.rows.map((row) => row.id).join(',') || 'none' : 'loading'}</p>
+    const edits = useHomeEdits()
+    return (
+      <>
+        <p data-testid="rows">{home.ready ? home.rows.map((row) => row.id).join(',') || 'none' : 'loading'}</p>
+        <button type="button" onClick={() => edits.removeCatalog(home.rows[0].id)}>
+          Remove the first row
+        </button>
+      </>
+    )
   },
 }))
 vi.mock('@/features/community/CommunityView', () => ({ CommunityView: () => null }))
@@ -50,18 +63,13 @@ function onHome(id: string, name: string): Catalog {
 let queryClient: QueryClient
 let unwatch: (() => void) | undefined
 
-function profileEntry(profileIndex: number) {
-  return { pathname: '/configure', state: { profileIndex, profileName: `Profile ${profileIndex}` } }
-}
+const routes = [
+  { path: '/profiles', element: <p>Who is watching</p> },
+  { path: '/p/:profile', element: <Builder />, children: [{ index: true }, { path: 'community' }] },
+]
 
-function open(profileIndex: number) {
-  const router = createMemoryRouter(
-    [
-      { path: '/profiles', element: null },
-      { path: '/configure', element: <Builder /> },
-    ],
-    { initialEntries: [profileEntry(profileIndex)] },
-  )
+function open(path: string | number) {
+  const router = createMemoryRouter(routes, { initialEntries: [typeof path === 'number' ? `/p/${path}` : path] })
   unwatch = watchActiveProfile(router, queryClient)
   render(
     <QueryClientProvider client={queryClient}>
@@ -84,36 +92,8 @@ afterEach(() => {
 })
 
 describe('Builder', () => {
-  it('sends a direct visit with no profile back to the picker', async () => {
-    const router = createMemoryRouter(
-      [
-        { path: '/profiles', element: <p>Who is watching</p> },
-        { path: '/configure', element: <Builder /> },
-      ],
-      { initialEntries: ['/configure'] },
-    )
-    render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    )
-    expect(await screen.findByText('Who is watching')).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/profiles')
-  })
-
-  it.each([0, 7, 1.5, '2'])('sends state naming profile %j back to the picker', async (profileIndex) => {
-    const router = createMemoryRouter(
-      [
-        { path: '/profiles', element: <p>Who is watching</p> },
-        { path: '/configure', element: <Builder /> },
-      ],
-      { initialEntries: [{ pathname: '/configure', state: { profileIndex, profileName: 'Forged' } }] },
-    )
-    render(
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    )
+  it.each(['/p/0', '/p/7', '/p/x', '/p/3'])('sends %s, no profile of this account, back to the picker', async (path) => {
+    const router = open(path)
     expect(await screen.findByText('Who is watching')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/profiles')
   })
@@ -125,7 +105,7 @@ describe('Builder', () => {
 
     await act(() => router.navigate('/profiles'))
     server.catalogs.set(1, [onHome('b', 'Bravo')])
-    await act(() => router.navigate(profileEntry(1).pathname, { state: profileEntry(1).state }))
+    await act(() => router.navigate('/p/1'))
 
     await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('b'))
     expect(screen.getByTestId('rows')).not.toHaveTextContent('a')
@@ -137,10 +117,39 @@ describe('Builder', () => {
     const router = open(1)
     await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
 
-    await act(() => router.navigate('/configure', { state: profileEntry(2).state }))
+    await act(() => router.navigate('/p/2'))
 
     await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('x'))
     expect(screen.getByTestId('rows')).not.toHaveTextContent('a')
     expect(screen.getAllByText('All pushed').length).toBeGreaterThan(0)
+  })
+
+  it('asks before leaving the builder with unpushed changes, and stays on Stay here', async () => {
+    server.catalogs.set(1, [onHome('a', 'Alpha')])
+    const router = open(1)
+    await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the first row' }))
+
+    await act(() => router.navigate('/profiles'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Stay here' }))
+    expect(router.state.location.pathname).toBe('/p/1')
+    expect(screen.getByTestId('rows')).toHaveTextContent('none')
+
+    await act(() => router.navigate('/profiles'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard and leave' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/profiles'))
+  })
+
+  it('keeps unpushed changes, without asking, across a move to Community and back', async () => {
+    server.catalogs.set(1, [onHome('a', 'Alpha')])
+    const router = open(1)
+    await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the first row' }))
+
+    await act(() => router.navigate('/p/1/community'))
+    await act(() => router.navigate(-1))
+    expect(router.state.location.pathname).toBe('/p/1')
+    expect(screen.queryByText('Discard unpushed changes?')).not.toBeInTheDocument()
+    expect(await rows()).toHaveTextContent('none')
   })
 })

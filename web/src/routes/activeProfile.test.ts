@@ -7,13 +7,13 @@ import { watchActiveProfile } from './activeProfile'
 let queryClient: QueryClient
 let unwatch: () => void
 
-function setup(initial: string, state?: unknown) {
+function setup(initial: string) {
   const router = createMemoryRouter(
     [
       { path: '/profiles', element: null },
-      { path: '/configure', element: null },
+      { path: '/p/:profile', element: null, children: [{ index: true }, { path: 'community' }] },
     ],
-    { initialEntries: [{ pathname: initial, state }] },
+    { initialEntries: [initial] },
   )
   unwatch = watchActiveProfile(router, queryClient)
   return router
@@ -33,30 +33,31 @@ describe('watchActiveProfile', () => {
   it('drops every profile’s queries when the builder opens, and keeps the account-wide ones', async () => {
     const router = setup('/profiles')
     seed()
-    await router.navigate('/configure', { state: { profileIndex: 1 } })
+    await router.navigate('/p/1')
     expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
     expect(queryClient.getQueryData(queryKeys.genres('movie'))).toEqual(['kept'])
   })
 
   it('drops them when the builder reopens on the same profile', async () => {
-    const router = setup('/configure', { profileIndex: 1 })
+    const router = setup('/p/1')
     await router.navigate('/profiles')
     seed()
-    await router.navigate('/configure', { state: { profileIndex: 1 } })
+    await router.navigate('/p/1')
     expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
   })
 
   it('drops them when one profile’s entry gives way to another’s, as history back does', async () => {
-    const router = setup('/configure', { profileIndex: 1 })
+    const router = setup('/p/1')
     seed()
-    await router.navigate('/configure', { state: { profileIndex: 2 } })
+    await router.navigate('/p/2')
     expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
   })
 
   it('leaves the cache alone while the active profile stays the same or the builder closes', async () => {
-    const router = setup('/configure', { profileIndex: 1 })
+    const router = setup('/p/1')
     seed()
-    await router.navigate('/configure', { state: { profileIndex: 1 } })
+    await router.navigate('/p/1/community')
+    await router.navigate('/p/1')
     await router.navigate('/profiles')
     expect(queryClient.getQueryData(queryKeys.library(1))).toEqual(['stale'])
   })

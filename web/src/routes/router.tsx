@@ -28,10 +28,12 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: '/configure',
-        // The builder carries dnd-kit, Radix and every feature, so it is its own
-        // chunk, fetched on the first visit to /configure. A page load that lands
-        // here renders nothing until it arrives.
+        // Each profile's builder, its sections as children (`builderPaths.ts`)
+        // that `Builder` reads from the path itself, so moving between them
+        // keeps it mounted. The builder carries dnd-kit, Radix and every
+        // feature, so it is its own chunk, fetched on the first visit. A page
+        // load that lands here renders nothing until it arrives.
+        path: '/p/:profile',
         HydrateFallback: () => null,
         lazy: async () => {
           const { Builder } = await import('./Builder')
@@ -43,6 +45,7 @@ export const router = createBrowserRouter([
             ),
           }
         },
+        children: [{ index: true }, { path: 'community' }],
       },
       { path: '*', element: <ErrorPage kind="missing" /> },
     ],

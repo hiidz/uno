@@ -76,19 +76,21 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  * where they were. The two shortcuts between rail and Home are scroll requests
  * (`stacked.ts`); opening and closing an editor scroll nothing.
  *
- * **This owns every way out of an editor**, because every one of them starts
- * outside the editor: selecting a row in the rail, switching profile in the
- * header, the × in the editor's header, Escape, and below `lg` the browser's
- * Back. An editor only reports whether it has unsaved changes; the decision to
- * warn is made here, once, so no exit can be added later that quietly skips
- * the check.
+ * **This owns every way out of an editor within the Workspace**, because every
+ * one of them starts outside the editor: selecting a row in the rail, the × in
+ * the editor's header, Escape, and below `lg` the browser's Back. A way out of
+ * the Workspace itself is a navigation, which `LeaveGuard` asks about through
+ * the same guard. An editor only reports whether it has unsaved changes; the
+ * decision to warn is made through `EditorGuard`, so no exit can be added later
+ * that quietly skips the check.
  */
 export function Workspace({
   profileIndex,
   onOpenPublication,
 }: {
   profileIndex: number
-  /** Leaves for Community with a publication's page open: a copy's Update…. */
+  /** Leaves for Community with a publication's page open: a copy's Update….
+   *  A navigation, so the leave guard asks about the open editor. */
   onOpenPublication: (publication: OpenPublication) => void
 }) {
   const library = useLibrary(profileIndex)
@@ -119,16 +121,6 @@ export function Workspace({
     waitingForPush,
     onToast: setToast,
   })
-
-  // Leaving the Workspace tab unmounts the pane, so it passes the editor's
-  // guard like every other way out, and clears its dirty flag as the tab
-  // switch does.
-  function openPublication(publication: OpenPublication) {
-    guard(() => {
-      setDirty(false)
-      onOpenPublication(publication)
-    })
-  }
 
   const railRef = useRef<HTMLElement>(null)
   const paneRef = useRef<HTMLDivElement>(null)
@@ -615,7 +607,7 @@ export function Workspace({
                 onDuplicate={() => duplicateCatalog(activeCatalog)}
                 onDelete={() => deleteCatalog(activeCatalog)}
                 onUpdate={() =>
-                  openPublication({ id: activeCatalog.subscription!.publication_id, kind: 'catalog' })
+                  onOpenPublication({ id: activeCatalog.subscription!.publication_id, kind: 'catalog' })
                 }
               />
             ) : activeCollection?.subscription ? (
@@ -629,7 +621,7 @@ export function Workspace({
                 onDuplicate={() => duplicateCollection(activeCollection)}
                 onDelete={() => deleteCollection(activeCollection)}
                 onUpdate={() =>
-                  openPublication({ id: activeCollection.subscription!.publication_id, kind: 'collection' })
+                  onOpenPublication({ id: activeCollection.subscription!.publication_id, kind: 'collection' })
                 }
               />
             ) : target.kind === 'catalog' ? (

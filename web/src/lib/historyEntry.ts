@@ -4,8 +4,7 @@
  * browser's own Back closes it the way its in-app way out does.
  *
  * Each entry copies `history.state` before adding its flag, so React Router's
- * own state rides along and a Forward onto the entry still hands the builder
- * its profile.
+ * own keys ride along and it reads the entry as the location it already shows.
  */
 
 /** Whether the history state carries `flag`. */
