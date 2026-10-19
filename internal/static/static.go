@@ -62,7 +62,12 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return nil, fmt.Errorf("static: Nuvio base URL %q is not an absolute URL", cfg.NuvioBaseURL)
 	}
-	csp := contentSecurityPolicy(u.Scheme + "://" + u.Host)
+	nuvioOrigin := u.Scheme + "://" + u.Host
+	csp := contentSecurityPolicy(nuvioOrigin)
+	// The SPA's first calls go to Nuvio, as anonymous CORS fetches, so the
+	// page opens that connection early; without crossorigin the browser would
+	// open one those fetches can't use.
+	preconnect := "<" + nuvioOrigin + ">; rel=preconnect; crossorigin"
 	settings := configJSON(cfg)
 	script := []byte("window.__UNO_CONFIG__ = " + string(settings) + ";\n")
 	index, err := buildPage(fsys, settings)
@@ -101,6 +106,7 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 		h.Set("Cache-Control", cacheControl(r.URL.Path))
 		h.Set("Content-Security-Policy", csp)
 		if r.URL.Path == "/" && index != nil {
+			h.Set("Link", preconnect)
 			index.serve(w, r)
 			return
 		}

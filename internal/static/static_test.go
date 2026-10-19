@@ -96,7 +96,7 @@ func TestHandlerServesConfigScript(t *testing.T) {
 
 // TestHandlerServesThePageWithItsConfigBlock shows index.html, at "/" and
 // at any SPA route, carries the settings as a JSON block before </head>,
-// with an ETag a revalidation is answered against with a 304.
+// preconnects to Nuvio, and has an ETag a revalidation is answered against with a 304.
 func TestHandlerServesThePageWithItsConfigBlock(t *testing.T) {
 	h := newTestHandler(t, fstest.MapFS{"index.html": {Data: []byte(shell)}}, testConfig)
 
@@ -114,6 +114,9 @@ func TestHandlerServesThePageWithItsConfigBlock(t *testing.T) {
 		}
 		if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
 			t.Errorf("GET %s: Cache-Control = %q, want no-cache", path, got)
+		}
+		if got, want := rec.Header().Get("Link"), "<https://nuvio.example.com>; rel=preconnect; crossorigin"; got != want {
+			t.Errorf("GET %s: Link = %q, want %q", path, got, want)
 		}
 		etag = rec.Header().Get("ETag")
 		if etag == "" {
