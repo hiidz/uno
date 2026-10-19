@@ -1,10 +1,19 @@
 // Talks directly to Nuvio's auth endpoints — never through Uno's own API.
-// The server's /config.js, which index.html loads before the app, sets the
-// base URL and publishable key from its environment.
-declare global {
-  interface Window {
-    __UNO_CONFIG__: { nuvioBaseURL: string; nuvioPublishableKey: string }
+// The base URL and publishable key come from the server's environment, in the
+// JSON block the server puts in the page it serves (`internal/static`).
+interface NuvioConfig {
+  nuvioBaseURL: string
+  nuvioPublishableKey: string
+}
+
+/** The page's `uno-config` block. Read at call time, so a test (or a page)
+ *  can set it after this module has loaded. */
+function nuvioConfig(): NuvioConfig {
+  const block = document.getElementById('uno-config')
+  if (!block?.textContent) {
+    throw new Error("The page has no Uno settings block. It comes from Uno's server, so start it and reload.")
   }
+  return JSON.parse(block.textContent) as NuvioConfig
 }
 
 export interface NuvioUser {
@@ -54,7 +63,7 @@ async function tokenRequest(
   grantType: 'password' | 'refresh_token',
   body: Record<string, string>,
 ): Promise<NuvioTokenResponse> {
-  const { nuvioBaseURL, nuvioPublishableKey } = window.__UNO_CONFIG__
+  const { nuvioBaseURL, nuvioPublishableKey } = nuvioConfig()
   const res = await fetch(`${nuvioBaseURL}/auth/v1/token?grant_type=${grantType}`, {
     method: 'POST',
     headers: {
@@ -83,7 +92,7 @@ export function refreshWithToken(refreshToken: string): Promise<NuvioTokenRespon
 // default revokes every session the account holds, which would sign it out of
 // Nuvio on every device.
 export async function signOut(accessToken: string): Promise<void> {
-  const { nuvioBaseURL, nuvioPublishableKey } = window.__UNO_CONFIG__
+  const { nuvioBaseURL, nuvioPublishableKey } = nuvioConfig()
   await fetch(`${nuvioBaseURL}/auth/v1/logout?scope=local`, {
     method: 'POST',
     headers: {

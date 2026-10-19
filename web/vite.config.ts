@@ -2,14 +2,43 @@
 import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig, loadEnv, type UserConfig } from 'vite'
+import { defineConfig, loadEnv, type Plugin, type UserConfig } from 'vite'
+
+/** The Go server `vite dev` proxies to. */
+const GO_SERVER = 'http://localhost:8123'
+
+/** The runtime settings block the Go server puts in the page it serves
+ *  (`internal/static`). */
+const CONFIG_BLOCK = /<script type="application\/json" id="uno-config">.*?<\/script>/s
+
+/**
+ * Copies the Go server's settings block into the page `vite dev` serves, so
+ * the SPA reads the same block in dev as in production. Without the Go server
+ * there is no block to copy, and the page says to start it.
+ */
+function goConfigBlock(): Plugin {
+  return {
+    name: 'uno-go-config-block',
+    async transformIndexHtml(html) {
+      const page = await fetch(`${GO_SERVER}/`)
+        .then((res) => res.text())
+        .catch(() => '')
+      const block = CONFIG_BLOCK.exec(page)?.[0]
+      if (!block) {
+        return `<!doctype html><title>Uno</title><p>Uno's Go server isn't answering at ${GO_SERVER}. Start it (<code>go run ./cmd/uno</code> from the repo root), then reload.</p>`
+      }
+      return html.replace('</head>', `${block}\n</head>`)
+    },
+  }
+}
 
 // https://vite.dev/config/
 //
 // The dev server alone reads DEV_AUTH_BYPASS_TOKEN from the repo-root .env
 // the Go server reads, so the login page's bypass button sends the token the
 // server expects. Keyed on `command`, not `mode`: `vite build --mode
-// development` must not inline the token into a bundle.
+// development` must not inline the token into a bundle, and the settings
+// block comes from the Go server serving the build, not the build itself.
 export default defineConfig(({ command, mode }) => {
   if (command !== 'serve' || mode === 'test') {
     return config
@@ -17,6 +46,7 @@ export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, path.resolve(import.meta.dirname, '..'), '')
   return {
     ...config,
+    plugins: [...(config.plugins ?? []), goConfigBlock()],
     define: {
       'import.meta.env.VITE_DEV_AUTH_BYPASS_TOKEN': JSON.stringify(env.DEV_AUTH_BYPASS_TOKEN ?? ''),
     },
@@ -32,9 +62,8 @@ const config: UserConfig = {
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8123',
-      '/u': 'http://localhost:8123',
-      '/config.js': 'http://localhost:8123',
+      '/api': GO_SERVER,
+      '/u': GO_SERVER,
     },
   },
   // Tests run in node; a file that renders or needs `window` opts into jsdom

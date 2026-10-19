@@ -2,7 +2,7 @@
 
 The web app in `web/` is React 19 and TypeScript, built with Vite. It uses React Router for pages, TanStack Query for server data, Tailwind CSS for styling, and Radix UI for dialogs and menus.
 
-`npm run build` writes it to `web/dist`, which the Go binary embeds and serves. In development, `npm run dev` serves it and proxies `/api`, `/u` and `/config.js` to the Go server on port 8123.
+`npm run build` writes it to `web/dist`, which the Go binary embeds and serves. In development, `npm run dev` serves it, proxies `/api` and `/u` to the Go server on port 8123, and copies the settings block from the Go server's page into its own, so the Go server must be running first.
 
 ## Pages
 

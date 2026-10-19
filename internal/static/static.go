@@ -23,16 +23,10 @@ import (
 // favicon.svg — keep their names across builds and must not be.
 const assetsPrefix = "/assets/"
 
-// configPath is the script that carries the server's runtime settings the
-// SPA needs, the same ones as the page's configBlockID block. It is answered
-// here, never from fsys, so one image serves whatever Nuvio backend and key
-// its environment names.
-const configPath = "/config.js"
-
 // configBlockID is the id of the <script type="application/json"> element
-// the served index.html carries the runtime settings in. JSON in a data
-// block runs no code, so it needs no CSP exception the way an inline script
-// would.
+// the served index.html carries the runtime settings in, so one image serves
+// whatever Nuvio backend and key its environment names. JSON in a data block
+// runs no code, so it needs no CSP exception the way an inline script would.
 const configBlockID = "uno-config"
 
 // Config is the server's runtime settings the SPA reads before it starts.
@@ -49,9 +43,8 @@ type Config struct {
 // Handler serves fsys as a single-page app: any request that doesn't
 // resolve to a real file is rewritten to "/" so the SPA's own router
 // handles it, unless it asked for a file (isSPARoute), and "/" is answered
-// with fsys's index.html carrying cfg as a JSON block (buildPage).
-// configPath is answered with the same settings as a script that sets
-// window.__UNO_CONFIG__. Every response carries the Content-Security-Policy
+// with fsys's index.html carrying cfg as a JSON block (buildPage). Every
+// response carries the Content-Security-Policy
 // built by contentSecurityPolicy, with cfg.NuvioBaseURL's origin as the one
 // cross-origin endpoint the SPA may call.
 func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
@@ -65,9 +58,7 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 	// page opens that connection early; without crossorigin the browser would
 	// open one those fetches can't use.
 	preconnect := "<" + nuvioOrigin + ">; rel=preconnect; crossorigin"
-	settings := configJSON(cfg)
-	script := []byte("window.__UNO_CONFIG__ = " + string(settings) + ";\n")
-	index, err := buildPage(fsys, settings)
+	index, err := buildPage(fsys, configJSON(cfg))
 	if err != nil {
 		return nil, err
 	}
@@ -77,13 +68,6 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+configPath, func(w http.ResponseWriter, _ *http.Request) {
-		h := w.Header()
-		h.Set("Content-Type", "text/javascript; charset=utf-8")
-		h.Set("Cache-Control", "no-cache")
-		h.Set("Content-Security-Policy", csp)
-		_, _ = w.Write(script)
-	})
 	fileServer := http.FileServerFS(fsys)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
@@ -145,8 +129,8 @@ func unhashedETags(fsys fs.FS) (map[string]string, error) {
 	return etags, nil
 }
 
-// configJSON is cfg as the SPA reads it, from both configPath and the
-// page's config block. json.Marshal escapes <, > and &, so no value can
+// configJSON is cfg as the SPA reads it from the page's config block.
+// json.Marshal escapes <, > and &, so no value can
 // close the block's <script> element early.
 func configJSON(cfg Config) []byte {
 	// A struct of strings always marshals.

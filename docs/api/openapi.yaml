@@ -18,8 +18,8 @@ info:
     Request bodies are decoded strictly: an unknown field is a `400` that names
     it, and a body over 1 MiB (4 MiB for import) is a `413`.
 
-    The web app handler, outside this route table, serves `/config.js` and
-    the page itself, which carries the same settings in a
+    The web app handler, outside this route table, serves the page itself,
+    which carries the browser's runtime settings in a
     `<script type="application/json" id="uno-config">` block.
   license:
     name: MIT

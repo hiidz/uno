@@ -20,7 +20,7 @@ var testConfig = Config{
 	TMDBKeyMode:         "per-account",
 }
 
-// testSettings is testConfig as JSON, the block's and the script's payload,
+// testSettings is testConfig as JSON, the config block's payload,
 // with < and > escaped the way encoding/json writes them.
 var testSettings = strings.NewReplacer("<", `\`+"u003c", ">", `\`+"u003e").Replace(
 	`{"nuvioBaseURL":"https://nuvio.example.com","nuvioPublishableKey":"key-\"x</script>","tmdb_key_mode":"per-account"}`)
@@ -44,7 +44,7 @@ func TestHandlerSetsSecurityHeaders(t *testing.T) {
 	}
 	h := newTestHandler(t, fsys, Config{NuvioBaseURL: "https://nuvio.example.com/base/path"})
 
-	for _, path := range []string{"/configure", "/assets/app.js", "/config.js"} {
+	for _, path := range []string{"/configure", "/assets/app.js"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 
@@ -66,31 +66,6 @@ func TestHandlerRejectsNonAbsoluteNuvioURL(t *testing.T) {
 		if _, err := Handler(fstest.MapFS{}, Config{NuvioBaseURL: base}); err == nil {
 			t.Errorf("Handler(%q): got nil error, want one", base)
 		}
-	}
-}
-
-// TestHandlerServesConfigScript shows /config.js carries the settings the
-// SPA reads, is revalidated on every load, and is never read from the
-// build, even when a file of that name is in it.
-func TestHandlerServesConfigScript(t *testing.T) {
-	fsys := fstest.MapFS{
-		"index.html": {Data: []byte(shell)},
-		"config.js":  {Data: []byte("stale")},
-	}
-	h := newTestHandler(t, fsys, testConfig)
-
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/config.js", nil))
-
-	want := "window.__UNO_CONFIG__ = " + testSettings + ";\n"
-	if got := rec.Body.String(); got != want {
-		t.Errorf("body = %q, want %q", got, want)
-	}
-	if got := rec.Header().Get("Content-Type"); got != "text/javascript; charset=utf-8" {
-		t.Errorf("Content-Type = %q", got)
-	}
-	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
-		t.Errorf("Cache-Control = %q, want no-cache", got)
 	}
 }
 

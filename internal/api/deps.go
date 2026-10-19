@@ -50,7 +50,7 @@ type Deps struct {
 	Verifier    TokenVerifier
 	Nuvio       NuvioClient
 	SiteBaseURL string
-	// NuvioBaseURL and NuvioPublishableKey reach the SPA through /config.js,
+	// NuvioBaseURL and NuvioPublishableKey reach the SPA in its page's config block,
 	// since login and refresh go from the browser straight to Nuvio. The base
 	// URL's origin is also the one cross-origin endpoint the SPA's
 	// Content-Security-Policy lets it call.

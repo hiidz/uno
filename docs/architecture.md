@@ -47,7 +47,7 @@ flowchart LR
 | `internal/provider` | TMDB: recipe checks, lookups, previews, catalog pages, caching and rate limits. |
 | `internal/nuvio` | Nuvio: token verification and the profile, addon, collection and home-order calls. |
 | `internal/tmdbkey` | Encrypts per-account TMDB keys. |
-| `internal/static` | Serves the web app and `/config.js`. |
+| `internal/static` | Serves the web app, its page carrying the runtime settings. |
 | `web` | The React app. `web/embed.go` embeds the build. |
 
 ## Sign-in
