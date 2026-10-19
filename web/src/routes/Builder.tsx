@@ -74,8 +74,9 @@ export function Builder() {
 
   // Only reachable by selecting a profile on /profiles, which hands the
   // profile down via navigation state — a direct or refreshed visit to this
-  // URL has no state, so send the user back to pick a profile.
-  if (!profile) {
+  // URL has no state, and a forged one may name a slot Nuvio doesn't have, so
+  // either goes back to pick a profile.
+  if (!hasProfileSlot(profile)) {
     return <Navigate to="/profiles" replace />
   }
 
@@ -373,6 +374,13 @@ function PendingIndicator({
       {content}
     </button>
   )
+}
+
+/** Whether navigation state names one of Nuvio's six profile slots, the range
+ *  `requireProfile` accepts. */
+function hasProfileSlot(profile: BuilderProfile | null): profile is BuilderProfile {
+  const index: unknown = profile?.profileIndex
+  return Number.isInteger(index) && (index as number) >= 1 && (index as number) <= 6
 }
 
 function countLabel(count: number): string {
