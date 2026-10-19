@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CommunityItem, PublicationDetail } from '@/api'
 import { failWith, fakeApi, profileNotFound, type FakeRoute } from '@/test/fakeApi'
 import { communityFolder, communityItem } from '@/test/fixtures'
+import { builderView } from '@/features/builder/paths'
 import type { OpenPublication } from './communityQuery'
 import { CommunityView } from './CommunityView'
 
@@ -73,16 +74,28 @@ function listing(rows: CommunityItem[] | (() => CommunityItem[])) {
 
 const listCalls = (calls: string[]) => calls.filter((call) => call.startsWith('GET /api/p/1/community?'))
 
+/** Community on its path, as `Builder` puts it there. */
+function OnPath() {
+  const location = useLocation()
+  const view = builderView(location.pathname)
+  const kind = (location.state as { kind?: OpenPublication['kind'] } | null)?.kind
+  return <CommunityView profileIndex={1} publicationID={view?.publicationID ?? null} kind={kind} />
+}
+
 /** The library's two lists answer empty: every action settles only once
- *  they have refetched. */
+ *  they have refetched. `initialOpen` starts on its page, opened from the
+ *  Workspace as a copy's Update… opens it. */
 function renderView(routes: Record<string, FakeRoute>, initialOpen: OpenPublication | null = null) {
   const fake = fakeApi({ 'GET /api/p/1/catalogs': [], 'GET /api/p/1/collections': [], ...routes })
   api.current = fake.apiFetch
+  const entries = initialOpen
+    ? ['/p/1', { pathname: `/p/1/community/${initialOpen.id}`, state: { kind: initialOpen.kind } }]
+    : ['/p/1/community']
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <MemoryRouter initialEntries={['/configure']}>
+      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
         <Routes>
-          <Route path="/configure" element={<CommunityView profileIndex={1} initialOpen={initialOpen} />} />
+          <Route path="/p/:profile/*" element={<OnPath />} />
           <Route path="/profiles" element={<p>Pick a profile</p>} />
         </Routes>
       </MemoryRouter>

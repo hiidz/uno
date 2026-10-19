@@ -7,6 +7,7 @@ import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
 import { KeyProblemBanner } from '@/features/account/KeyProblemBanner'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
+import { builderPath, builderView, type BuilderSection, type BuilderView } from '@/features/builder/paths'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
 import { Workspace } from '@/features/builder/Workspace'
@@ -20,9 +21,7 @@ import { AddonURLButton, ChangesStrip, PushBanner } from '@/features/push/PushCo
 import { usePush } from '@/features/push/usePush'
 import { usePushBlock } from '@/features/push/usePushBlock'
 import { useCountDown } from '@/lib/useCountDown'
-import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { plural } from '@/lib/plural'
-import { builderPath, builderView, type BuilderSection } from './builderPaths'
 import { LeaveGuard } from './LeaveGuard'
 import { useBuilderProfile, type BuilderProfile } from './useBuilderProfile'
 
@@ -34,7 +33,7 @@ type Tab = BuilderSection
  * holding your home screen or the editor for whichever rail row is selected)
  * and a Community section (everyone else's public catalogs and collections,
  * browsed and added), each its own path under the profile's `/p/{i}`
- * (`builderPaths.ts`). Below `lg` the Workspace
+ * (`features/builder/paths.ts`). Below `lg` the Workspace
  * section's own two regions stack into one scrolling document rather than
  * becoming two screens — see `stacked.ts`; Community is already one column at
  * every width, so it needs no such treatment.
@@ -54,11 +53,11 @@ export function Builder() {
   if (!view) return <Navigate to="/profiles" replace />
   // Keyed on the profile: Home's pending and baseline state and the editor
   // guard are built once, so another profile's path must start new ones.
-  return <ProfileBuilder key={view.profileIndex} profileIndex={view.profileIndex} section={view.section} />
+  return <ProfileBuilder key={view.profileIndex} view={view} />
 }
 
-function ProfileBuilder({ profileIndex, section }: { profileIndex: number; section: BuilderSection }) {
-  const state = useBuilderProfile(profileIndex)
+function ProfileBuilder({ view }: { view: BuilderView }) {
+  const state = useBuilderProfile(view.profileIndex)
   if (state.status === 'missing') return <Navigate to="/profiles" replace />
   if (state.status === 'failed') return <ProfileFailed onRetry={state.retry} />
   if (state.status === 'loading') return null
@@ -69,30 +68,31 @@ function ProfileBuilder({ profileIndex, section }: { profileIndex: number; secti
       <EditorGuardProvider>
         <LeaveGuard />
         <div className="flex min-h-svh flex-col lg:h-svh">
-          <BuilderHeader profile={profile} tab={section} />
-          <SectionView profileIndex={profile.profileIndex} section={section} />
+          <BuilderHeader profile={profile} tab={view.section} />
+          <SectionView view={view} />
         </div>
       </EditorGuardProvider>
     </HomeSelectionProvider>
   )
 }
 
-function SectionView({ profileIndex, section }: { profileIndex: number; section: BuilderSection }) {
+function SectionView({ view }: { view: BuilderView }) {
   const navigate = useNavigate()
   const location = useLocation()
-  useDocumentTitle(section === 'workspace' ? 'Workspace' : 'Community')
+  const { profileIndex } = view
 
-  // A copy's Update… opens Community on its publication's page; the header's
-  // section switch opens it on its list.
+  // A copy's Update… opens its publication's page, with Community's list of
+  // its kind behind it. The browser's Back returns to the editor; the page's
+  // own way back goes to that list, so the entry isn't marked `IN_APP`.
   function openPublication(publication: OpenPublication) {
-    void navigate(builderPath.community(profileIndex), { state: { open: publication } })
+    void navigate(builderPath.publication(profileIndex, publication.id), { state: { kind: publication.kind } })
   }
 
-  if (section === 'workspace') {
-    return <Workspace profileIndex={profileIndex} onOpenPublication={openPublication} />
+  if (view.section === 'workspace') {
+    return <Workspace profileIndex={profileIndex} editor={view.editor} onOpenPublication={openPublication} />
   }
-  const opening = (location.state as { open?: OpenPublication } | null)?.open ?? null
-  return <CommunityView profileIndex={profileIndex} initialOpen={opening} />
+  const kind = (location.state as { kind?: OpenPublication['kind'] } | null)?.kind
+  return <CommunityView profileIndex={profileIndex} publicationID={view.publicationID} kind={kind} />
 }
 
 /** The profile's details didn't load: Nuvio, or Uno, didn't answer. */

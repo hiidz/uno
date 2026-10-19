@@ -18,16 +18,16 @@ describe('leftEntry', () => {
   })
 
   it('keeps a folder page open when Back steps off an entry pushed over it', () => {
-    // Back off the editor layer's entry lands on the folder page's own.
+    // Back off an editor's path lands on the folder page's own entry.
     expect(leftEntry(true, { unoFolder: true }, 'unoFolder')).toBe(false)
   })
 })
 
 describe('pushEntry', () => {
-  it('keeps the router state, adds the flag and drops the cleared ones', () => {
-    window.history.replaceState({ usr: { profileIndex: 1 }, idx: 1, unoFolder: true }, '')
-    expect(pushEntry('unoEditor', ['unoFolder'])).toBe(true)
-    expect(window.history.state).toEqual({ usr: { profileIndex: 1 }, idx: 1, unoEditor: true })
+  it('keeps the router state and adds the flag', () => {
+    window.history.replaceState({ usr: null, key: 'k', idx: 1 }, '')
+    expect(pushEntry('unoFolder')).toBe(true)
+    expect(window.history.state).toEqual({ usr: null, key: 'k', idx: 1, unoFolder: true })
   })
 
   it('reports a push that throws', () => {
@@ -42,16 +42,16 @@ describe('consumeEntry', () => {
   it('steps back only while the flagged entry is current', () => {
     const back = vi.spyOn(window.history, 'back').mockImplementation(() => {})
     window.history.replaceState({ idx: 1 }, '')
-    consumeEntry('unoEditor')
+    consumeEntry('unoFolder')
     expect(back).not.toHaveBeenCalled()
 
-    window.history.replaceState({ idx: 1, unoEditor: true }, '')
-    consumeEntry('unoEditor')
+    window.history.replaceState({ idx: 1, unoFolder: true }, '')
+    consumeEntry('unoFolder')
     expect(back).toHaveBeenCalledTimes(1)
   })
 
   it('reads only a true flag', () => {
-    expect(hasFlag({ unoEditor: 'yes' }, 'unoEditor')).toBe(false)
-    expect(hasFlag('state', 'unoEditor')).toBe(false)
+    expect(hasFlag({ unoFolder: 'yes' }, 'unoFolder')).toBe(false)
+    expect(hasFlag('state', 'unoFolder')).toBe(false)
   })
 })

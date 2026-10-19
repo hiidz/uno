@@ -35,14 +35,17 @@ import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharin
 import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
 import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useEditorGuard } from './EditorGuard'
 import { DeleteMessage } from './DeleteMessage'
 import { catalogDeleteConsequences, collectionDeleteConsequences } from './deleteConsequences'
 import { NewItemDialog } from './NewItemDialog'
+import { builderPath, type EditorRef } from './paths'
 import { EditorLayer } from './EditorLayer'
 import { useScrollRequests, useStackedLayout, useStackedScroll } from './stacked'
 import { homeMounted, selectionAction } from './selection'
 import { catalogTarget, collectionTarget, type EditorTarget } from './target'
+import { useEditorRoute } from './useEditorRoute'
 
 
 /**
@@ -86,9 +89,12 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  */
 export function Workspace({
   profileIndex,
+  editor,
   onOpenPublication,
 }: {
   profileIndex: number
+  /** The open editor, as the path names it; null for Home. */
+  editor: EditorRef | null
   /** Leaves for Community with a publication's page open: a copy's Update….
    *  A navigation, so the leave guard asks about the open editor. */
   onOpenPublication: (publication: OpenPublication) => void
@@ -97,9 +103,8 @@ export function Workspace({
   const catalogMutations = useCatalogMutations(profileIndex)
   const collectionMutations = useCollectionMutations(profileIndex)
 
-  const { guard, setDirty, blocked, proceed, cancel, dirty } = useEditorGuard()
+  const { setDirty, blocked, proceed, cancel, dirty } = useEditorGuard()
 
-  const [target, setTarget] = useState<EditorTarget | null>(null)
   // Held here, not in `HomePane`, so it survives an editor taking the pane:
   // closing one gives back the view you left rather than resetting to List.
   const [homeView, setHomeView] = useState<HomeView>('list')
@@ -143,43 +148,38 @@ export function Workspace({
   const resetCollectionUpdate = collectionMutations.update.reset
 
   /**
-   * Hand the pane to something else, or empty it.
-   *
-   * Clears the dirty flag: the incoming editor reports its own, and a stale
-   * `true` would guard a form that no longer exists. Clears the saves' errors
-   * for the same reason — a save that failed leaves its message behind, and
-   * the next editor would open showing a rejection of something else.
+   * The pane changing hands clears the dirty flag: the incoming editor reports
+   * its own, and a stale `true` would guard a form that no longer exists. It
+   * clears the saves' errors for the same reason — a save that failed leaves
+   * its message behind, and the next editor would open showing a rejection of
+   * something else.
    */
-  const show = useCallback(
-    (next: EditorTarget | null) => {
-      setDirty(false)
-      resetCatalogUpdate()
-      resetCollectionUpdate()
-      setTarget(next)
-    },
-    [setDirty, resetCatalogUpdate, resetCollectionUpdate],
-  )
+  const route = useEditorRoute(profileIndex, editor, library, () => {
+    setDirty(false)
+    resetCatalogUpdate()
+    resetCollectionUpdate()
+  })
+  const target = route.target
+  useDocumentTitle(paneTitle(target))
 
-  /** Selecting a library row (`selectionAction`): another row opens through
-   *  the guard; the open one closes as × does. */
+  /** Selecting a library row (`selectionAction`): another row opens; the open
+   *  one closes as × does. */
   const open = useCallback(
     (next: EditorTarget) => {
-      const actions = {
-        open: () => guard(() => show(next)),
-        close: () => guard(() => show(null)),
-      }
-      actions[selectionAction(target, next)]()
+      if (selectionAction(target, next) === 'close') route.close()
+      else route.open(next)
     },
-    [guard, show, target],
+    [route, target],
   )
 
-  /** Close the editor, giving the pane back to home: ×, Escape, the footer's
-   *  Close, and below `lg` the browser's Back. */
-  const close = useCallback(() => guard(() => show(null)), [guard, show])
+  /** Close the editor, giving the pane back to home: ×, Escape and the
+   *  footer's Close. The browser's Back does the same by itself. */
+  const close = route.close
 
-  /** Saved, so there is nothing left to warn about. */
-  function closeAfterSave() {
-    show(null)
+  /** Saved, or deleted, so there is nothing left to warn about. */
+  function closeWithoutAsking() {
+    setDirty(false)
+    route.close()
   }
 
   /** The rail's shortcut down to Home, below `lg`. Not an exit: while an
@@ -208,7 +208,7 @@ export function Workspace({
     catalogMutations.create.mutate(toPayload({ ...emptyForm(newCatalogType), name }), {
       onSuccess: (catalog) => {
         setNamingCatalog(false)
-        guard(() => show(catalogTarget(catalog)))
+        open(catalogTarget(catalog))
       },
     })
   }
@@ -225,14 +225,12 @@ export function Workspace({
     collectionMutations.create.mutate(toCollectionPayload({ ...emptyCollectionForm(), title }), {
       onSuccess: (collection) => {
         setNamingCollection(false)
-        guard(() =>
-          show(
-            collectionTarget(
-              // `folders` is `Folder[] | null` on the wire and `Folder[]` in the
-              // library; a collection created empty is exactly the case that
-              // comes back null.
-              { ...collection, folders: collection.folders ?? [] },
-            ),
+        open(
+          collectionTarget(
+            // `folders` is `Folder[] | null` on the wire and `Folder[]` in the
+            // library; a collection created empty is exactly the case that
+            // comes back null.
+            { ...collection, folders: collection.folders ?? [] },
           ),
         )
       },
@@ -242,7 +240,7 @@ export function Workspace({
   // `revision` is the one the editor was opened at (`target.initial`), never
   // the live row's: a save built from a row changed since is refused.
   function saveCatalog(id: string, revision: number, state: CatalogFormState) {
-    catalogMutations.update.mutate({ id, payload: { ...toPayload(state), revision } }, { onSuccess: closeAfterSave })
+    catalogMutations.update.mutate({ id, payload: { ...toPayload(state), revision } }, { onSuccess: closeWithoutAsking })
   }
 
   // `payload` already resolved every draft catalog into an inline `new`
@@ -250,7 +248,7 @@ export function Workspace({
   // `localCatalogs` to resolve them against — see its own `save`. `revision`
   // is the one the editor was opened at, as for a catalog.
   function saveCollection(id: string, revision: number, payload: CollectionPayload) {
-    collectionMutations.update.mutate({ id, payload: { ...payload, revision } }, { onSuccess: closeAfterSave })
+    collectionMutations.update.mutate({ id, payload: { ...payload, revision } }, { onSuccess: closeWithoutAsking })
   }
 
   function confirmDeleteCatalog(catalog: LibraryCatalog) {
@@ -264,7 +262,7 @@ export function Workspace({
         // Nor can it stay in the pane. This is the one close that doesn't ask:
         // the row it was editing is gone, so there is nothing to go back to and
         // nothing left to save.
-        if (target?.id === id) show(null)
+        if (target?.id === id) closeWithoutAsking()
       },
     })
   }
@@ -274,7 +272,7 @@ export function Workspace({
     collectionMutations.remove.mutate(id, {
       onSuccess: () => {
         setConfirming(null)
-        if (target?.id === id) show(null)
+        if (target?.id === id) closeWithoutAsking()
       },
     })
   }
@@ -298,11 +296,8 @@ export function Workspace({
     [library.collections],
   )
 
-  // A 404 on a profile-scoped route means this slot was never selected —
-  // there's nothing to retry, so send the user back to pick one.
-  if (library.error instanceof ProfileNotSelectedError) {
-    return <Navigate to="/profiles" replace />
-  }
+  const away = redirect(profileIndex, library.error, route.missing)
+  if (away) return <Navigate to={away} replace />
 
   // The library row the open editor was opened from. Below `lg` the editor's
   // own header carries that row's duplicate and delete — the row itself is
@@ -590,12 +585,7 @@ export function Workspace({
         />
 
         {target === null ? null : (
-          <EditorLayer
-            stacked={stacked}
-            label={editorSubject(target)}
-            onRequestClose={close}
-            fallbackFocus={railRef}
-          >
+          <EditorLayer stacked={stacked} label={editorSubject(target)} fallbackFocus={railRef}>
             {activeCatalog?.subscription ? (
               <CatalogFromCommunity
                 key={activeCatalog.id}
@@ -745,6 +735,21 @@ export function Workspace({
       {sharing.dialogs}
     </>
   )
+}
+
+/** Where the Workspace sends a path it can't show. A 404 on a
+ *  profile-scoped route means this slot was never selected — there's nothing
+ *  to retry, so the user goes back to pick one. An editor's address for a row
+ *  that is gone, or never was, goes to Home. */
+function redirect(profileIndex: number, error: Error | null, missing: boolean): string | null {
+  if (error instanceof ProfileNotSelectedError) return '/profiles'
+  if (missing) return builderPath.workspace(profileIndex)
+  return null
+}
+
+/** The browser tab's name: the open editor's subject, or the Workspace. */
+function paneTitle(target: EditorTarget | null): string {
+  return target ? editorSubject(target) : 'Workspace'
 }
 
 /** What the discard prompt is about: the row as it was opened, which is the

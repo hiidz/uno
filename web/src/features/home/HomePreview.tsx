@@ -84,8 +84,8 @@ function useFolderPage(preview: HomeScreenPreview) {
   }, [])
 
   // Only a step back off the folder's own entry closes it: stepping back off
-  // the editor layer's entry above it lands on the folder's, which still
-  // carries the flag.
+  // an editor's path above it lands on the folder's, which still carries the
+  // flag.
   useEffect(() => {
     function onPopState(event: PopStateEvent) {
       if (leftEntry(pushed.current, event.state, FOLDER_ENTRY)) {

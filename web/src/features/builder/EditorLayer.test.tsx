@@ -6,7 +6,6 @@ import { EditorLayer } from './EditorLayer'
 
 afterEach(() => {
   vi.restoreAllMocks()
-  window.history.replaceState(null, '')
   document.body.replaceChildren()
 })
 
@@ -22,7 +21,7 @@ function renderLayer(stacked: boolean) {
   document.body.append(header, workspace)
   const fallbackFocus: RefObject<HTMLElement | null> = { current: rail }
   const view = render(
-    <EditorLayer stacked={stacked} label="Mob two" onRequestClose={vi.fn()} fallbackFocus={fallbackFocus}>
+    <EditorLayer stacked={stacked} label="Mob two" fallbackFocus={fallbackFocus}>
       <h1 tabIndex={-1} data-landing>
         Mob two
       </h1>

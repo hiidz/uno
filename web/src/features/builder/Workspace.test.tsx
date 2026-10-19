@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { useReducer, type ReactNode } from 'react'
+import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-dom'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog, Collection } from '@/api'
 import { catalog, collection } from '@/test/fixtures'
 import { EditorGuardProvider } from './EditorGuard'
+import { builderView } from './paths'
 import { Workspace } from './Workspace'
 
 // Below `lg`: the layer is what these tests are about. `stacked.ts` reads
@@ -34,6 +36,7 @@ vi.mock('@/features/library/useLibrary', () => ({
     languages: [],
     countryNames: new Map(),
     isLoading: false,
+    loaded: true,
     error: null,
     refetch: () => {},
   }),
@@ -146,15 +149,25 @@ beforeEach(() => {
   rows.catalogs = [catalog({ id: 'c1', name: 'Noir' })]
   saves.inputs = []
   rows.collections = [collection({ id: 'k1', title: 'Night shift' })]
-  window.history.replaceState({ idx: 1 }, '')
 })
 
-function renderWorkspace() {
-  render(
+/** The Workspace on its path, as `Builder` puts it there. Rerender draws it
+ *  again with the rows as they are now, as a refetch would. */
+function OnPath() {
+  const view = builderView(useLocation().pathname)
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
+  return (
     <EditorGuardProvider>
-      <Workspace profileIndex={1} onOpenPublication={() => {}} />
-    </EditorGuardProvider>,
+      <button onClick={rerender}>Rerender</button>
+      <Workspace profileIndex={1} editor={view?.editor ?? null} onOpenPublication={() => {}} />
+    </EditorGuardProvider>
   )
+}
+
+function renderWorkspace(path = '/p/1') {
+  const router = createMemoryRouter([{ path: '/p/:profile/*', element: <OnPath /> }], { initialEntries: [path] })
+  render(<RouterProvider router={router} />)
+  return router
 }
 
 const layer = () => screen.queryByRole('dialog', { name: /Noir|Night shift/ })
@@ -171,14 +184,35 @@ describe('Workspace below lg', () => {
     expect(layer()).toBeNull()
   })
 
-  it('closes the layer on the browser Back', () => {
-    renderWorkspace()
+  it('opens a row at its own path, which the browser Back steps off', async () => {
+    const router = renderWorkspace()
     fireEvent.click(screen.getByRole('button', { name: 'Open Night shift' }))
+    expect(router.state.location.pathname).toBe('/p/1/collection/k1')
     expect(layer()).toBeInTheDocument()
-    act(() => {
-      window.history.replaceState({ idx: 1 }, '')
-      window.dispatchEvent(new PopStateEvent('popstate', { state: { idx: 1 } }))
-    })
+    await act(() => router.navigate(-1))
+    expect(router.state.location.pathname).toBe('/p/1')
+    expect(layer()).toBeNull()
+  })
+
+  it('closes with a step back to Home, not a step forward onto it', () => {
+    const router = renderWorkspace()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Noir' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close editor' }))
+    expect(router.state.historyAction).toBe('POP')
+    expect(router.state.location.pathname).toBe('/p/1')
+  })
+
+  it('opens a typed editor address, and closes it in place', () => {
+    const router = renderWorkspace('/p/1/catalog/c1')
+    expect(layer()).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close editor' }))
+    expect(router.state.historyAction).toBe('REPLACE')
+    expect(router.state.location.pathname).toBe('/p/1')
+  })
+
+  it('sends the address of a row the library doesn’t hold to Home', () => {
+    const router = renderWorkspace('/p/1/catalog/gone')
+    expect(router.state.location.pathname).toBe('/p/1')
     expect(layer()).toBeNull()
   })
 
@@ -224,18 +258,10 @@ describe('Workspace saves', () => {
   it('sends the revision each editor opened at, not the one a refetch brings', () => {
     rows.catalogs = [catalog({ id: 'c1', name: 'Noir', revision: 4 })]
     rows.collections = [collection({ id: 'k1', title: 'Night shift', revision: 2 })]
-    const { rerender } = render(
-      <EditorGuardProvider>
-        <Workspace profileIndex={1} onOpenPublication={() => {}} />
-      </EditorGuardProvider>,
-    )
+    renderWorkspace()
     fireEvent.click(screen.getByRole('button', { name: 'Open Noir' }))
     rows.catalogs = [catalog({ id: 'c1', name: 'Noir', revision: 5 })]
-    rerender(
-      <EditorGuardProvider>
-        <Workspace profileIndex={1} onOpenPublication={() => {}} />
-      </EditorGuardProvider>,
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Rerender' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save row' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Night shift' }))

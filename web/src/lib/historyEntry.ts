@@ -1,7 +1,7 @@
 /**
- * Browser history entries that stand for something open on screen — a Home
- * folder page (`unoFolder`), the editor layer below `lg` (`unoEditor`) — so the
- * browser's own Back closes it the way its in-app way out does.
+ * Browser history entries that stand for something open on screen without a
+ * path of its own — a Home folder page (`unoFolder`) — so the browser's own
+ * Back closes it the way its in-app way out does.
  *
  * Each entry copies `history.state` before adding its flag, so React Router's
  * own keys ride along and it reads the entry as the location it already shows.
@@ -14,9 +14,9 @@ export function hasFlag(state: unknown, flag: string): boolean {
 
 /**
  * Whether a `popstate` left the entry its listener pushed: one was pushed, and
- * the entry now current no longer carries the flag. An entry pushed on top of
- * it by something else copies the flag, so stepping back off that one is not
- * a step off this one.
+ * the entry now current no longer carries the flag. Stepping back off an entry
+ * pushed on top of it, such as an editor's path, lands on this one, which
+ * still carries it.
  */
 export function leftEntry(pushed: boolean, state: unknown, flag: string): boolean {
   if (!pushed) return false
@@ -24,13 +24,11 @@ export function leftEntry(pushed: boolean, state: unknown, flag: string): boolea
 }
 
 /**
- * Pushes an entry carrying `flag` over the current one. `clear` names flags
- * the new entry drops, so a step back keyed on them never lands on this entry
- * by mistake. False when the push throws, as it can in a sandboxed frame.
+ * Pushes an entry carrying `flag` over the current one. False when the push
+ * throws, as it can in a sandboxed frame.
  */
-export function pushEntry(flag: string, clear: string[] = []): boolean {
+export function pushEntry(flag: string): boolean {
   const next: Record<string, unknown> = { ...(window.history.state as object | null), [flag]: true }
-  for (const key of clear) delete next[key]
   try {
     window.history.pushState(next, '')
     return true

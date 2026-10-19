@@ -28,9 +28,9 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        // Each profile's builder, its sections as children (`builderPaths.ts`)
-        // that `Builder` reads from the path itself, so moving between them
-        // keeps it mounted. The builder carries dnd-kit, Radix and every
+        // Each profile's builder, its screens as children
+        // (`features/builder/paths.ts`) that `Builder` reads from the path
+        // itself, so moving between them keeps it mounted. The builder carries dnd-kit, Radix and every
         // feature, so it is its own chunk, fetched on the first visit. A page
         // load that lands here renders nothing until it arrives.
         path: '/p/:profile',
@@ -45,7 +45,13 @@ export const router = createBrowserRouter([
             ),
           }
         },
-        children: [{ index: true }, { path: 'community' }],
+        children: [
+          { index: true },
+          { path: 'catalog/:id' },
+          { path: 'collection/:id' },
+          { path: 'community' },
+          { path: 'community/:publicationID' },
+        ],
       },
       { path: '*', element: <ErrorPage kind="missing" /> },
     ],

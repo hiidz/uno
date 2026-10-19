@@ -4,7 +4,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useEditorGuard } from '@/features/builder/EditorGuard'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { pluralCount } from '@/lib/plural'
-import { leaveStep, type LeaveStep } from './builderPaths'
+import { leaveStep, type LeaveStep } from '@/features/builder/paths'
 
 /**
  * The one gate every navigation inside or out of the builder passes, the

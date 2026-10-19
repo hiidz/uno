@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { Location } from 'react-router-dom'
 import { queryKeys } from '@/api/keys'
-import { builderView } from './builderPaths'
+import { builderView } from '@/features/builder/paths'
 
 /** The slice of the data router `watchActiveProfile` reads. */
 interface WatchedRouter {

@@ -11,7 +11,7 @@ import { EntryPage } from '@/components/EntryPage'
 import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
-import { builderPath } from './builderPaths'
+import { builderPath } from '@/features/builder/paths'
 import { ProfilesRetry } from './ProfilesRetry'
 
 /** How the picker shows a failed profile call. A 403 there is this server
