@@ -104,7 +104,7 @@ function ImportFlow({
         <button
           type="button"
           onClick={flow.runImport}
-          disabled={busy || !flow.hasText || isEmpty(tally)}
+          disabled={busy || !flow.hasText || flow.broken || isEmpty(tally)}
           className="btn-primary"
         >
           {importLabel(flow.checking, flow.importing, tally)}
@@ -151,8 +151,8 @@ function Outcome({ flow }: { flow: Flow }) {
 }
 
 /** An error the dialog shows after a press: what happened, with the technical
- *  text dimmer beneath. It takes focus when it appears, which scrolls it into
- *  view and has it read out. */
+ *  text folded under Details. It takes focus when it appears, which scrolls it
+ *  into view and has it read out. */
 function ErrorLine({ className = '', problem }: { className?: string; problem: ImportProblem }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => ref.current?.focus(), [])
@@ -164,7 +164,12 @@ function ErrorLine({ className = '', problem }: { className?: string; problem: I
       className={`callout-danger flex flex-col gap-1 break-words outline-none ${className}`}
     >
       <p className="m-0">{problem.headline}</p>
-      {problem.detail && <p className="type-data text-dimmer m-0 text-[12.5px]">{problem.detail}</p>}
+      {problem.detail && (
+        <details className="text-dim text-[12.5px]">
+          <summary className="cursor-pointer">Details</summary>
+          <p className="type-data text-dimmer m-0 mt-1">{problem.detail}</p>
+        </details>
+      )}
     </div>
   )
 }
