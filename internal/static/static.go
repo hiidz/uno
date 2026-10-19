@@ -69,6 +69,10 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	etags, err := unhashedETags(fsys)
+	if err != nil {
+		return nil, err
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+configPath, func(w http.ResponseWriter, _ *http.Request) {
@@ -100,9 +104,42 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 			index.serve(w, r)
 			return
 		}
+		if etag, ok := etags[r.URL.Path]; ok {
+			// The file server answers a matching If-None-Match with a 304.
+			h.Set("ETag", etag)
+		}
 		fileServer.ServeHTTP(w, r)
 	})
 	return mux, nil
+}
+
+// unhashedETags maps the path of every file outside assetsPrefix — the ones
+// that keep their names across builds, such as favicon.svg — to an ETag of
+// its content. Embedded files carry a zero ModTime, so without one net/http
+// sends neither Last-Modified nor ETag, and each revalidation would
+// re-fetch the whole file. index.html is left out: buildPage serves it.
+func unhashedETags(fsys fs.FS) (map[string]string, error) {
+	etags := map[string]string{}
+	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case d.IsDir() && "/"+path+"/" == assetsPrefix:
+			return fs.SkipDir
+		case d.IsDir() || path == "index.html":
+			return nil
+		}
+		body, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		etags["/"+path] = etagOf(body)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("static: hashing the build's unhashed files: %w", err)
+	}
+	return etags, nil
 }
 
 // configJSON is cfg as the SPA reads it, from both configPath and the
@@ -192,8 +229,9 @@ func contentSecurityPolicy(nuvioOrigin string) string {
 // hashed assets be cached forever. Caching the shell would strand clients
 // on a stale page referencing asset hashes the new build no longer has.
 //
-// index.html is built at startup and served with an ETag (buildPage), so
-// "no-cache" costs it a 304 when nothing changed.
+// Every file outside assetsPrefix carries an ETag (buildPage for index.html,
+// unhashedETags for the rest), so "no-cache" costs it a 304 when nothing
+// changed.
 func cacheControl(path string) string {
 	if strings.HasPrefix(path, assetsPrefix) {
 		return "public, max-age=31536000, immutable"

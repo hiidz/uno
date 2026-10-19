@@ -162,3 +162,30 @@ func TestHandlerAnswersAMissingFileWithNotFound(t *testing.T) {
 		t.Errorf("GET /no/such/route = %d, want the page", rec.Code)
 	}
 }
+
+// A file outside /assets/ revalidates on every load and is answered with a
+// 304 when its ETag still matches.
+func TestHandlerRevalidatesAnUnhashedFile(t *testing.T) {
+	fsys := fstest.MapFS{
+		"index.html":    {Data: []byte(shell)},
+		"favicon.svg":   {Data: []byte("<svg/>")},
+		"assets/app.js": {Data: []byte("console.log(1)")},
+	}
+	h := newTestHandler(t, fsys, testConfig)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/favicon.svg", nil))
+	etag := rec.Header().Get("ETag")
+	if rec.Code != http.StatusOK || etag == "" || rec.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("GET /favicon.svg = %d, ETag %q, Cache-Control %q; want 200, an ETag, no-cache",
+			rec.Code, etag, rec.Header().Get("Cache-Control"))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
+	req.Header.Set("If-None-Match", etag)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotModified {
+		t.Errorf("revalidating /favicon.svg with its ETag = %d, want 304", rec.Code)
+	}
+}
