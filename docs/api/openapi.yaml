@@ -851,6 +851,8 @@ paths:
       responses:
         "200":
           description: The genres.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -871,6 +873,8 @@ paths:
       responses:
         "200":
           description: Each country's rating scale, keyed by ISO 3166-1 code.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -891,6 +895,8 @@ paths:
       responses:
         "200":
           description: The languages.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -908,6 +914,8 @@ paths:
       responses:
         "200":
           description: The countries.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -932,6 +940,8 @@ paths:
       responses:
         "200":
           description: The services.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -950,6 +960,8 @@ paths:
       responses:
         "200":
           description: The regions.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -1336,6 +1348,9 @@ components:
   headers:
     CORS:
       schema: { type: string, const: "*" }
+    ReferenceCache:
+      description: A TMDB reference list changes rarely, so the browser keeps it a day. Only a 200 carries it.
+      schema: { type: string, const: "private, max-age=86400" }
 
   responses:
     BadRequest:

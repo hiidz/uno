@@ -380,6 +380,26 @@ func TestRecipeRoutesReachTMDB(t *testing.T) {
 	}
 }
 
+// A reference list is cached by the browser for a day once it is fetched,
+// but a failure to fetch it is not cached at all.
+func TestReferenceListsAreCachedOnlyOnSuccess(t *testing.T) {
+	f := newRouteFixture(t)
+	for _, tc := range []struct {
+		tmdb http.HandlerFunc
+		want string
+	}{
+		{tmdbUp, "private, max-age=86400"},
+		{tmdbDown, ""},
+	} {
+		fakeTMDB(t, tc.tmdb)
+		f.s.provider = provider.NewTMDBClient("key")
+		w := serve(t, f.s, http.MethodGet, "/api/genres/movie", "", false)
+		if got := w.Header().Get("Cache-Control"); got != tc.want {
+			t.Errorf("GET /api/genres/movie = %d with Cache-Control %q, want %q", w.Code, got, tc.want)
+		}
+	}
+}
+
 // TestRecipeRoutesRefuseWithoutTMDB covers preview's and genre options'
 // refusals, which never reach TMDB.
 func TestRecipeRoutesRefuseWithoutTMDB(t *testing.T) {
