@@ -1523,6 +1523,10 @@ components:
 
     FolderArt:
       type: object
+      description: |
+        Each `_url` field is empty or an absolute http or https URL. A save
+        refuses one whose host is localhost or a literal loopback, private,
+        link-local or unspecified address.
       properties:
         tile_shape: { $ref: "#/components/schemas/TileShape" }
         hide_title: { type: boolean }
@@ -1634,7 +1638,10 @@ components:
         title: { type: string, maxLength: 200 }
         view_mode: { $ref: "#/components/schemas/ViewMode" }
         show_all_tab: { type: boolean }
-        backdrop_image_url: { type: string, maxLength: 2048 }
+        backdrop_image_url:
+          type: string
+          maxLength: 2048
+          description: Empty, or an http or https URL under the same host rule as FolderArt's.
         focus_glow_enabled: { type: boolean }
         folders:
           type: array
