@@ -48,15 +48,12 @@ type Config struct {
 
 // Handler serves fsys as a single-page app: any request that doesn't
 // resolve to a real file is rewritten to "/" so the SPA's own router
-// handles it, unless it asked for a file (isSPARoute), and "/" is answered with fsys's index.html carrying cfg as a
-// JSON block (buildPage). configPath is answered with the same settings as a
-// script that sets window.__UNO_CONFIG__. Every
-// response carries the Content-Security-Policy built by
-// contentSecurityPolicy, with cfg.NuvioBaseURL's origin as the one
+// handles it, unless it asked for a file (isSPARoute), and "/" is answered
+// with fsys's index.html carrying cfg as a JSON block (buildPage).
+// configPath is answered with the same settings as a script that sets
+// window.__UNO_CONFIG__. Every response carries the Content-Security-Policy
+// built by contentSecurityPolicy, with cfg.NuvioBaseURL's origin as the one
 // cross-origin endpoint the SPA may call.
-//
-// A build with no index.html, as on a fresh clone before the frontend is
-// built, is served as it is.
 func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 	u, err := url.Parse(cfg.NuvioBaseURL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
@@ -105,7 +102,7 @@ func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
 		h := w.Header()
 		h.Set("Cache-Control", cacheControl(r.URL.Path))
 		h.Set("Content-Security-Policy", csp)
-		if r.URL.Path == "/" && index != nil {
+		if r.URL.Path == "/" {
 			h.Set("Link", preconnect)
 			index.serve(w, r)
 			return
@@ -168,12 +165,17 @@ type page struct {
 	etag string
 }
 
-// buildPage is fsys's index.html with settings injected as the configBlockID
-// block just before </head>, or nil when fsys has no index.html.
+// unbuiltPage stands in for index.html when fsys has none, as on a fresh
+// clone before the frontend is built. It carries only the config block, which
+// is what vite dev reads from this server's "/".
+const unbuiltPage = "<!doctype html><html><head></head><body></body></html>"
+
+// buildPage is fsys's index.html, or unbuiltPage when fsys has none, with
+// settings injected as the configBlockID block just before </head>.
 func buildPage(fsys fs.FS, settings []byte) (*page, error) {
 	html, err := fs.ReadFile(fsys, "index.html")
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		html, err = []byte(unbuiltPage), nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("static: reading index.html: %w", err)

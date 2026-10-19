@@ -133,11 +133,14 @@ func TestHandlerServesThePageWithItsConfigBlock(t *testing.T) {
 	}
 }
 
-// A build with no index.html, as on a fresh clone, still makes a handler; a
-// page with nowhere to put the config block does not.
+// A build with no index.html, as on a fresh clone, still serves the config
+// block at "/"; a page with nowhere to put the block makes no handler.
 func TestHandlerPageInjectionPoint(t *testing.T) {
-	if _, err := Handler(fstest.MapFS{".gitkeep": {}}, testConfig); err != nil {
-		t.Errorf("a build with no index.html: %v, want a handler", err)
+	h := newTestHandler(t, fstest.MapFS{".gitkeep": {}}, testConfig)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `<script type="application/json" id="uno-config">`+testSettings+"</script>") {
+		t.Errorf("GET / with no index.html = %d %q, want 200 with the config block", rec.Code, rec.Body.String())
 	}
 	if _, err := Handler(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}}, testConfig); err == nil {
 		t.Error("a page with no </head>: got a handler, want an error")
