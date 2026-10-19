@@ -54,6 +54,8 @@ flowchart LR
 
 Uno has no accounts. The web app signs in with Nuvio directly and sends Nuvio's access token on every `/api` call. The server verifies the token against Nuvio's public keys, checks `UNO_ACCESS`, and for `/api/p/{profileIndex}/...` routes looks up the Uno profile for that Nuvio profile slot (1 to 6).
 
+The check is local: the token's signature, issuer, audience and expiry, with no call to Nuvio. So a token stays valid until the expiry Nuvio gave it (about a week), even after the user signs out or changes their password. Uno doesn't set that lifetime.
+
 ## Push
 
 A push sends the whole home screen to `POST /api/p/{profileIndex}/push`. Uno then writes three lists into the Nuvio profile:
