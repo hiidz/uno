@@ -35,9 +35,6 @@ func TestHandlerSetsSecurityHeaders(t *testing.T) {
 		if !strings.Contains(csp, "frame-ancestors 'none'") {
 			t.Errorf("%s: CSP missing frame-ancestors: %q", path, csp)
 		}
-		if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
-			t.Errorf("%s: X-Content-Type-Options = %q, want nosniff", path, got)
-		}
 	}
 }
 

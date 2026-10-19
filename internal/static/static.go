@@ -43,7 +43,6 @@ func Handler(fsys fs.FS, nuvioBaseURL, nuvioPublishableKey string) (http.Handler
 		h.Set("Content-Type", "text/javascript; charset=utf-8")
 		h.Set("Cache-Control", "no-cache")
 		h.Set("Content-Security-Policy", csp)
-		h.Set("X-Content-Type-Options", "nosniff")
 		_, _ = w.Write(script)
 	})
 	fileServer := http.FileServerFS(fsys)
@@ -58,7 +57,6 @@ func Handler(fsys fs.FS, nuvioBaseURL, nuvioPublishableKey string) (http.Handler
 		h := w.Header()
 		h.Set("Cache-Control", cacheControl(r.URL.Path))
 		h.Set("Content-Security-Policy", csp)
-		h.Set("X-Content-Type-Options", "nosniff")
 		fileServer.ServeHTTP(w, r)
 	})
 	return mux, nil

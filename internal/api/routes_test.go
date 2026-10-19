@@ -504,6 +504,20 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+// Every response carries the security headers, whichever surface answers it:
+// the builder API, the addon, and the SPA.
+func TestEveryResponseCarriesSecurityHeaders(t *testing.T) {
+	s := newProfileTestServer(t, newTestVaultDB(t))
+	for _, path := range []string{"/api/health", "/u/nope/manifest.json", "/configure"} {
+		w := serve(t, s, http.MethodGet, path, "", true)
+		for name, want := range securityHeaders {
+			if got := w.Header().Get(name); got != want {
+				t.Errorf("GET %s: %s = %q, want %q", path, name, got, want)
+			}
+		}
+	}
+}
+
 // Every failure the builder API answers, whichever layer refuses it, is JSON
 // with an error field: a path no route serves, an unauthenticated call, a
 // malformed id, a missing row, a route in the wrong key mode.
