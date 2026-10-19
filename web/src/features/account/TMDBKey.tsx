@@ -10,6 +10,10 @@ import type { KeyStep } from './useTMDBKey'
 /** Where TMDB's page for making an API key is. */
 const TMDB_API_SETTINGS = 'https://www.themoviedb.org/settings/api'
 
+/** A TMDB API key: 32 hexadecimal characters. The twin of `apiKeyShape` in
+ *  `internal/tmdbkey/tmdbkey.go`, which checks the key trimmed, as here. */
+const API_KEY_SHAPE = /^[0-9a-fA-F]{32}$/
+
 type SaveKey = ReturnType<typeof useKeyMutations>['save']
 
 interface KeyInputProps {
@@ -20,10 +24,15 @@ interface KeyInputProps {
   onChange: (value: string) => void
 }
 
-/** A refused key marks the field and points it at the words under it. */
+/** The field is described by the hint under it, and a refused key also marks
+ *  the field and points it at the words saying why. */
 function inputState(id: string, error?: string) {
-  if (!error) return { className: 'field type-data w-full' }
-  return { invalid: true, describedBy: `${id}-error`, className: 'field type-data w-full border-danger' }
+  if (!error) return { describedBy: `${id}-hint`, className: 'field type-data w-full' }
+  return {
+    invalid: true,
+    describedBy: `${id}-error ${id}-hint`,
+    className: 'field type-data w-full border-danger',
+  }
 }
 
 function KeyInput({ id, value, error, autoFocus, onChange }: KeyInputProps) {
@@ -34,6 +43,8 @@ function KeyInput({ id, value, error, autoFocus, onChange }: KeyInputProps) {
       value={value}
       onChange={(event) => onChange(event.target.value)}
       autoComplete="off"
+      autoCapitalize="off"
+      autoCorrect="off"
       spellCheck={false}
       autoFocus={autoFocus}
       aria-invalid={state.invalid}
@@ -45,14 +56,14 @@ function KeyInput({ id, value, error, autoFocus, onChange }: KeyInputProps) {
 
 interface KeyActionsProps {
   pending: boolean
-  empty: boolean
+  ready: boolean
   onCancel?: () => void
 }
 
-function KeyActions({ pending, empty, onCancel }: KeyActionsProps) {
+function KeyActions({ pending, ready, onCancel }: KeyActionsProps) {
   return (
     <span className="flex shrink-0 gap-1">
-      <button type="submit" className="btn-primary" disabled={pending || empty}>
+      <button type="submit" className="btn-primary" disabled={pending || !ready}>
         {pending ? 'Checking…' : 'Save key'}
       </button>
       {onCancel && (
@@ -79,10 +90,10 @@ interface KeyFormProps {
 }
 
 /**
- * The key field and Save. Saving asks TMDB, so it can take a moment; the
- * server's refusal (the wrong shape, the Read Access Token, a key TMDB
- * refuses, TMDB unreachable) shows under the field in its own words. With
- * `onDone` it is a replacement, with a Cancel, and closes once saved.
+ * The key field and Save. Save waits for the shape of an API key; saving asks
+ * TMDB, so it can take a moment, and the server's refusal (a key TMDB refuses,
+ * TMDB unreachable) shows under the field in its own words. With `onDone` it is
+ * a replacement, with a Cancel that Escape also presses, and closes once saved.
  */
 function KeyForm({ save, onDone }: KeyFormProps) {
   const [key, setKey] = useState('')
@@ -95,7 +106,14 @@ function KeyForm({ save, onDone }: KeyFormProps) {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="grid gap-1.5">
+    <form
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && onDone) onDone()
+      }}
+      noValidate
+      className="grid gap-1.5"
+    >
       <label htmlFor={id} className="type-label">
         TMDB API Key
       </label>
@@ -110,9 +128,12 @@ function KeyForm({ save, onDone }: KeyFormProps) {
             save.reset()
           }}
         />
-        <KeyActions pending={save.isPending} empty={key.trim() === ''} onCancel={onDone} />
+        <KeyActions pending={save.isPending} ready={API_KEY_SHAPE.test(key.trim())} onCancel={onDone} />
       </div>
       <KeyError id={id} error={save.error?.message} />
+      <p id={`${id}-hint`} className="text-dim m-0 text-[13px] leading-snug">
+        32 letters and numbers, from Settings → API on <TMDBLink />. Not the longer Read Access Token.
+      </p>
     </form>
   )
 }

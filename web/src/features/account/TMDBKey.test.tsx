@@ -25,6 +25,8 @@ function renderWith(ui: ReactNode) {
   return { queryClient, ...view }
 }
 
+const KEY = '0123456789abcdef0123456789ABCDEF'
+
 function ProblemProbe() {
   return <span>{useKeyProblem() ? 'problem' : 'fine'}</span>
 }
@@ -60,18 +62,31 @@ describe('TMDBKeyGate', () => {
     expect(screen.queryByRole('region')).not.toBeInTheDocument()
   })
 
-  it('shows the server’s refusal under the field, and clears it on the next edit', async () => {
-    api.saveTMDBKey.mockRejectedValue(new ApiError(400, 'That’s the Read Access Token.'))
+  it('enables Save only for the shape of an API key, trimmed', () => {
     renderWith(<TMDBKeyGate step={{ kind: 'needed' }} />)
     const field = screen.getByLabelText('TMDB API Key')
-    fireEvent.change(field, { target: { value: 'eyJhbGci' } })
+    const save = screen.getByRole('button', { name: 'Save key' })
+    for (const value of ['abc', 'eyJhbGciOiJIUzI1NiJ9', `${KEY}0`, KEY.replace('0', 'g')]) {
+      fireEvent.change(field, { target: { value } })
+      expect(save).toBeDisabled()
+    }
+    fireEvent.change(field, { target: { value: ` ${KEY}\n` } })
+    expect(save).toBeEnabled()
+    expect(field).toHaveAccessibleDescription(/^32 letters and numbers/)
+  })
+
+  it('shows the server’s refusal under the field, and clears it on the next edit', async () => {
+    api.saveTMDBKey.mockRejectedValue(new ApiError(400, 'TMDB didn’t accept this key.'))
+    renderWith(<TMDBKeyGate step={{ kind: 'needed' }} />)
+    const field = screen.getByLabelText('TMDB API Key')
+    fireEvent.change(field, { target: { value: KEY } })
     fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('That’s the Read Access Token.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('TMDB didn’t accept this key.')
     expect(field).toHaveAttribute('aria-invalid', 'true')
-    expect(field).toHaveAccessibleDescription('That’s the Read Access Token.')
+    expect(field).toHaveAccessibleDescription(/^TMDB didn’t accept this key\. 32 letters and numbers/)
 
-    fireEvent.change(field, { target: { value: 'eyJhbGciX' } })
+    fireEvent.change(field, { target: { value: KEY.toLowerCase() } })
     await vi.waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
   })
 
@@ -85,7 +100,7 @@ describe('TMDBKeyGate', () => {
       </>,
     )
     expect(screen.getByText('problem')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('TMDB API Key'), { target: { value: 'k' } })
+    fireEvent.change(screen.getByLabelText('TMDB API Key'), { target: { value: KEY } })
     fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
     expect(await screen.findByText('fine')).toBeInTheDocument()
     expect(queryClient.getQueryData(['account', 'tmdb-key'])).toEqual({ set: true, last4: 'cdef' })
@@ -107,10 +122,14 @@ describe('TMDBKeyShelf', () => {
     expect(screen.queryByLabelText('TMDB API Key')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
-    fireEvent.change(screen.getByLabelText('TMDB API Key'), { target: { value: 'new' } })
+    fireEvent.keyDown(screen.getByLabelText('TMDB API Key'), { key: 'Escape' })
+    expect(screen.queryByLabelText('TMDB API Key')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+    fireEvent.change(screen.getByLabelText('TMDB API Key'), { target: { value: KEY } })
     fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
     await vi.waitFor(() => expect(screen.queryByLabelText('TMDB API Key')).not.toBeInTheDocument())
-    expect(api.saveTMDBKey.mock.calls[0][0]).toBe('new')
+    expect(api.saveTMDBKey.mock.calls[0][0]).toBe(KEY)
   })
 
   it('asks before removing the key, saying what it costs', async () => {
