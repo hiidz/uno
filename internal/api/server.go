@@ -192,7 +192,11 @@ func (s *Server) routes() error {
 	if err != nil {
 		return fmt.Errorf("api: opening embedded web/dist: %w", err)
 	}
-	spa, err := static.Handler(distFS, s.nuvioBaseURL, s.nuvioPublishableKey)
+	spa, err := static.Handler(distFS, static.Config{
+		NuvioBaseURL:        s.nuvioBaseURL,
+		NuvioPublishableKey: s.nuvioPublishableKey,
+		TMDBKeyMode:         s.tmdbKeyMode(),
+	})
 	if err != nil {
 		return fmt.Errorf("api: building static handler: %w", err)
 	}

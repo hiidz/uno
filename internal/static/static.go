@@ -4,12 +4,17 @@
 package static
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // assetsPrefix is Vite's output directory. Everything under it is named
@@ -18,24 +23,52 @@ import (
 // favicon.svg — keep their names across builds and must not be.
 const assetsPrefix = "/assets/"
 
-// configPath is the script index.html loads before the app, carrying the
-// server's runtime settings the SPA needs. It is answered here, never from
-// fsys, so one image serves whatever Nuvio backend and key its environment
-// names.
+// configPath is the script that carries the server's runtime settings the
+// SPA needs, the same ones as the page's configBlockID block. It is answered
+// here, never from fsys, so one image serves whatever Nuvio backend and key
+// its environment names.
 const configPath = "/config.js"
+
+// configBlockID is the id of the <script type="application/json"> element
+// the served index.html carries the runtime settings in. JSON in a data
+// block runs no code, so it needs no CSP exception the way an inline script
+// would.
+const configBlockID = "uno-config"
+
+// Config is the server's runtime settings the SPA reads before it starts.
+type Config struct {
+	// NuvioBaseURL is the Nuvio backend the SPA signs in against.
+	NuvioBaseURL string
+	// NuvioPublishableKey is public by design
+	// (https://nuvio.tv/docs#publishable-key).
+	NuvioPublishableKey string
+	// TMDBKeyMode is "shared" or "per-account", as GET /api/config says it.
+	TMDBKeyMode string
+}
 
 // Handler serves fsys as a single-page app: any request that doesn't
 // resolve to a real file is rewritten to "/" so the SPA's own router
-// handles it, and configPath is answered with configScript. Every response
-// carries the Content-Security-Policy built by contentSecurityPolicy, with
-// nuvioBaseURL's origin as the one cross-origin endpoint the SPA may call.
-func Handler(fsys fs.FS, nuvioBaseURL, nuvioPublishableKey string) (http.Handler, error) {
-	u, err := url.Parse(nuvioBaseURL)
+// handles it, and "/" is answered with fsys's index.html carrying cfg as a
+// JSON block (buildPage). configPath is answered with the same settings as a
+// script that sets window.__UNO_CONFIG__. Every
+// response carries the Content-Security-Policy built by
+// contentSecurityPolicy, with cfg.NuvioBaseURL's origin as the one
+// cross-origin endpoint the SPA may call.
+//
+// A build with no index.html, as on a fresh clone before the frontend is
+// built, is served as it is.
+func Handler(fsys fs.FS, cfg Config) (http.Handler, error) {
+	u, err := url.Parse(cfg.NuvioBaseURL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("static: Nuvio base URL %q is not an absolute URL", nuvioBaseURL)
+		return nil, fmt.Errorf("static: Nuvio base URL %q is not an absolute URL", cfg.NuvioBaseURL)
 	}
 	csp := contentSecurityPolicy(u.Scheme + "://" + u.Host)
-	script := configScript(nuvioBaseURL, nuvioPublishableKey)
+	settings := configJSON(cfg)
+	script := []byte("window.__UNO_CONFIG__ = " + string(settings) + ";\n")
+	index, err := buildPage(fsys, settings)
+	if err != nil {
+		return nil, err
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+configPath, func(w http.ResponseWriter, _ *http.Request) {
@@ -57,21 +90,68 @@ func Handler(fsys fs.FS, nuvioBaseURL, nuvioPublishableKey string) (http.Handler
 		h := w.Header()
 		h.Set("Cache-Control", cacheControl(r.URL.Path))
 		h.Set("Content-Security-Policy", csp)
+		if r.URL.Path == "/" && index != nil {
+			index.serve(w, r)
+			return
+		}
 		fileServer.ServeHTTP(w, r)
 	})
 	return mux, nil
 }
 
-// configScript is the body of configPath: the Nuvio settings the SPA's
-// auth client reads from window.__UNO_CONFIG__. The publishable key is
-// public by design (https://nuvio.tv/docs#publishable-key).
-func configScript(nuvioBaseURL, nuvioPublishableKey string) []byte {
-	// A struct of two strings always marshals.
+// configJSON is cfg as the SPA reads it, from both configPath and the
+// page's config block. json.Marshal escapes <, > and &, so no value can
+// close the block's <script> element early.
+func configJSON(cfg Config) []byte {
+	// A struct of strings always marshals.
 	body, _ := json.Marshal(struct {
 		NuvioBaseURL        string `json:"nuvioBaseURL"`
 		NuvioPublishableKey string `json:"nuvioPublishableKey"`
-	}{nuvioBaseURL, nuvioPublishableKey})
-	return []byte("window.__UNO_CONFIG__ = " + string(body) + ";\n")
+		TMDBKeyMode         string `json:"tmdb_key_mode"`
+	}{cfg.NuvioBaseURL, cfg.NuvioPublishableKey, cfg.TMDBKeyMode})
+	return body
+}
+
+// page is a response body built once at startup and served with an ETag,
+// so a revalidation that finds it unchanged is a 304.
+type page struct {
+	body []byte
+	etag string
+}
+
+// buildPage is fsys's index.html with settings injected as the configBlockID
+// block just before </head>, or nil when fsys has no index.html.
+func buildPage(fsys fs.FS, settings []byte) (*page, error) {
+	html, err := fs.ReadFile(fsys, "index.html")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("static: reading index.html: %w", err)
+	}
+	at := bytes.Index(html, []byte("</head>"))
+	if at < 0 {
+		return nil, errors.New("static: index.html has no </head> to put the config block before")
+	}
+	block := `<script type="application/json" id="` + configBlockID + `">` + string(settings) + "</script>\n"
+	body := make([]byte, 0, len(html)+len(block))
+	body = append(append(append(body, html[:at]...), block...), html[at:]...)
+	return &page{body: body, etag: etagOf(body)}, nil
+}
+
+// serve answers r with p as HTML, through http.ServeContent, which answers
+// a matching If-None-Match with a 304 and handles HEAD and Range.
+func (p *page) serve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("ETag", p.etag)
+	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(p.body))
+}
+
+// etagOf is a weak ETag for body: weak because gzip, which leaves the ETag
+// as it is, serves the same content in a second encoding.
+func etagOf(body []byte) string {
+	sum := sha256.Sum256(body)
+	return `W/"` + hex.EncodeToString(sum[:16]) + `"`
 }
 
 // contentSecurityPolicy confines the SPA to its own origin, so a script
@@ -106,10 +186,8 @@ func contentSecurityPolicy(nuvioOrigin string) string {
 // hashed assets be cached forever. Caching the shell would strand clients
 // on a stale page referencing asset hashes the new build no longer has.
 //
-// Embedded files carry a zero ModTime, so net/http emits no Last-Modified
-// and no ETag; "no-cache" therefore costs a full re-fetch of the shell
-// rather than a 304. At a few hundred bytes that's a fair trade for not
-// having to hash the file at startup.
+// index.html is built at startup and served with an ETag (buildPage), so
+// "no-cache" costs it a 304 when nothing changed.
 func cacheControl(path string) string {
 	if strings.HasPrefix(path, assetsPrefix) {
 		return "public, max-age=31536000, immutable"

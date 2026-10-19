@@ -8,18 +8,41 @@ import (
 	"testing/fstest"
 )
 
+// shell is the smallest index.html a build carries: Handler puts the config
+// block before its </head>.
+const shell = "<!doctype html><html><head><title>Uno</title></head><body></body></html>"
+
+// testConfig is a server's settings for tests, the key carrying a quote and
+// a closing script tag so the encoding shows.
+var testConfig = Config{
+	NuvioBaseURL:        "https://nuvio.example.com",
+	NuvioPublishableKey: `key-"x</script>`,
+	TMDBKeyMode:         "per-account",
+}
+
+// testSettings is testConfig as JSON, the block's and the script's payload,
+// with < and > escaped the way encoding/json writes them.
+var testSettings = strings.NewReplacer("<", `\`+"u003c", ">", `\`+"u003e").Replace(
+	`{"nuvioBaseURL":"https://nuvio.example.com","nuvioPublishableKey":"key-\"x</script>","tmdb_key_mode":"per-account"}`)
+
+func newTestHandler(t *testing.T, fsys fstest.MapFS, cfg Config) http.Handler {
+	t.Helper()
+	h, err := Handler(fsys, cfg)
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	return h
+}
+
 // TestHandlerSetsSecurityHeaders covers both a real file and a path that
 // falls back to index.html, and shows connect-src carries only the Nuvio
 // base URL's origin, not its path.
 func TestHandlerSetsSecurityHeaders(t *testing.T) {
 	fsys := fstest.MapFS{
-		"index.html":    {Data: []byte("<!doctype html>")},
+		"index.html":    {Data: []byte(shell)},
 		"assets/app.js": {Data: []byte("console.log(1)")},
 	}
-	h, err := Handler(fsys, "https://nuvio.example.com/base/path", "publishable-key")
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
+	h := newTestHandler(t, fsys, Config{NuvioBaseURL: "https://nuvio.example.com/base/path"})
 
 	for _, path := range []string{"/configure", "/assets/app.js", "/config.js"} {
 		rec := httptest.NewRecorder()
@@ -40,7 +63,7 @@ func TestHandlerSetsSecurityHeaders(t *testing.T) {
 
 func TestHandlerRejectsNonAbsoluteNuvioURL(t *testing.T) {
 	for _, base := range []string{"", "api.nuvio.tv", "/rest/v1", "://bad"} {
-		if _, err := Handler(fstest.MapFS{}, base, ""); err == nil {
+		if _, err := Handler(fstest.MapFS{}, Config{NuvioBaseURL: base}); err == nil {
 			t.Errorf("Handler(%q): got nil error, want one", base)
 		}
 	}
@@ -51,18 +74,15 @@ func TestHandlerRejectsNonAbsoluteNuvioURL(t *testing.T) {
 // build, even when a file of that name is in it.
 func TestHandlerServesConfigScript(t *testing.T) {
 	fsys := fstest.MapFS{
-		"index.html": {Data: []byte("<!doctype html>")},
+		"index.html": {Data: []byte(shell)},
 		"config.js":  {Data: []byte("stale")},
 	}
-	h, err := Handler(fsys, "https://nuvio.example.com", `key-"x`)
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
+	h := newTestHandler(t, fsys, testConfig)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/config.js", nil))
 
-	want := `window.__UNO_CONFIG__ = {"nuvioBaseURL":"https://nuvio.example.com","nuvioPublishableKey":"key-\"x"};` + "\n"
+	want := "window.__UNO_CONFIG__ = " + testSettings + ";\n"
 	if got := rec.Body.String(); got != want {
 		t.Errorf("body = %q, want %q", got, want)
 	}
@@ -71,5 +91,52 @@ func TestHandlerServesConfigScript(t *testing.T) {
 	}
 	if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
 		t.Errorf("Cache-Control = %q, want no-cache", got)
+	}
+}
+
+// TestHandlerServesThePageWithItsConfigBlock shows index.html, at "/" and
+// at any SPA route, carries the settings as a JSON block before </head>,
+// with an ETag a revalidation is answered against with a 304.
+func TestHandlerServesThePageWithItsConfigBlock(t *testing.T) {
+	h := newTestHandler(t, fstest.MapFS{"index.html": {Data: []byte(shell)}}, testConfig)
+
+	wantBody := strings.Replace(shell, "</head>",
+		`<script type="application/json" id="uno-config">`+testSettings+"</script>\n</head>", 1)
+	var etag string
+	for _, path := range []string{"/", "/configure"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK || rec.Body.String() != wantBody {
+			t.Fatalf("GET %s = %d %q, want 200 %q", path, rec.Code, rec.Body.String(), wantBody)
+		}
+		if got := rec.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+			t.Errorf("GET %s: Content-Type = %q", path, got)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+			t.Errorf("GET %s: Cache-Control = %q, want no-cache", path, got)
+		}
+		etag = rec.Header().Get("ETag")
+		if etag == "" {
+			t.Fatalf("GET %s: no ETag", path)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("If-None-Match", etag)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotModified {
+		t.Errorf("revalidating with its ETag = %d, want 304", rec.Code)
+	}
+}
+
+// A build with no index.html, as on a fresh clone, still makes a handler; a
+// page with nowhere to put the config block does not.
+func TestHandlerPageInjectionPoint(t *testing.T) {
+	if _, err := Handler(fstest.MapFS{".gitkeep": {}}, testConfig); err != nil {
+		t.Errorf("a build with no index.html: %v, want a handler", err)
+	}
+	if _, err := Handler(fstest.MapFS{"index.html": {Data: []byte("<!doctype html>")}}, testConfig); err == nil {
+		t.Error("a page with no </head>: got a handler, want an error")
 	}
 }

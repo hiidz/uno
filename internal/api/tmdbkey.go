@@ -22,11 +22,17 @@ type serverConfig struct {
 // config answers GET /api/config. It needs no sign-in: it says nothing about
 // any account.
 func (s *Server) config(w http.ResponseWriter, _ *http.Request) {
-	mode := "shared"
+	httpx.WriteJSON(w, http.StatusOK, serverConfig{TMDBKeyMode: s.tmdbKeyMode()})
+}
+
+// tmdbKeyMode is "per-account" on a server where each account brings its own
+// TMDB key and "shared" otherwise: what GET /api/config and the SPA page's
+// config block both say.
+func (s *Server) tmdbKeyMode() string {
 	if s.keys != nil {
-		mode = "per-account"
+		return "per-account"
 	}
-	httpx.WriteJSON(w, http.StatusOK, serverConfig{TMDBKeyMode: mode})
+	return "shared"
 }
 
 // tmdbKeyStatus is all the SPA is ever told of the signed-in account's TMDB
