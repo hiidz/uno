@@ -56,6 +56,26 @@ func DecodeParams(catalogType, paramsJSON string) (CatalogParams, error) {
 	return p, nil
 }
 
+// DecodeSentParams is DecodeParams for a recipe a client sent rather than
+// one the vault stored: a key catalogType's recipe doesn't declare is an
+// error naming it, where DecodeParams ignores it. A misspelled or unknown
+// filter would otherwise save as no filter at all.
+func DecodeSentParams(catalogType, paramsJSON string) (CatalogParams, error) {
+	p, err := paramsFor(catalogType)
+	if err != nil {
+		return nil, err
+	}
+	d := json.NewDecoder(strings.NewReader(paramsJSON))
+	d.DisallowUnknownFields()
+	if err := d.Decode(p); err != nil {
+		if key, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+			return nil, fmt.Errorf("%s catalogs take no param %s", catalogType, key)
+		}
+		return nil, fmt.Errorf("provider: decode %s params: %w", catalogType, err)
+	}
+	return p, nil
+}
+
 // IsRandomized satisfies CatalogParams for every recipe type, since they all
 // embed BaseParams.
 func (p BaseParams) IsRandomized() bool { return p.Randomized }

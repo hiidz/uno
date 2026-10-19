@@ -793,7 +793,7 @@ paths:
                 type: { $ref: "#/components/schemas/CatalogType" }
                 params:
                   type: string
-                  description: The recipe params, as a JSON-encoded string.
+                  description: The recipe params, as a JSON-encoded string. A key the type's recipe doesn't declare is a `400` that names it.
                 genre:
                   type: string
                   description: A genre name from the recipe's genre options.
@@ -1478,7 +1478,7 @@ components:
         params:
           type: string
           maxLength: 8192
-          description: The recipe params as a JSON-encoded string. See docs/data-model.md, Recipes.
+          description: The recipe params as a JSON-encoded string. See docs/data-model.md, Recipes. A key the catalog type's recipe doesn't declare is a `400` that names it.
           examples: ['{"sort_by":"popularity.desc","with_genres":"878"}']
 
     CatalogSave:

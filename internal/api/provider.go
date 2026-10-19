@@ -202,7 +202,7 @@ var errUpstreamValidation = errors.New("cannot validate params against TMDB")
 // Every error returned is wrapped in vault.ErrInvalidInput so callers can
 // route it through the same errors.Is switch as a vault-layer failure.
 func (s *Server) validateCatalogParams(ctx context.Context, catalogType, params string) error {
-	p, err := provider.DecodeParams(catalogType, params)
+	p, err := provider.DecodeSentParams(catalogType, params)
 	if err != nil {
 		if errors.Is(err, provider.ErrInvalidCatalogType) {
 			// CatalogForm.Validate() should already reject anything else,

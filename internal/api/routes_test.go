@@ -413,6 +413,7 @@ func TestRecipeRoutesRefuseWithoutTMDB(t *testing.T) {
 			routeStep{name: path + " malformed body", method: http.MethodPost, path: path, body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 			routeStep{name: path + " unknown type", method: http.MethodPost, path: path, body: `{"type":"anime","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "unknown catalog type"},
 			routeStep{name: path + " broken recipe", method: http.MethodPost, path: path, body: `{"type":"movie","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest, wantBody: `invalid sort_by "bogus.desc"`},
+			routeStep{name: path + " undeclared key", method: http.MethodPost, path: path, body: `{"type":"movie","params":"{\"primary_release_year\":99999}"}`, wantStatus: http.StatusBadRequest, wantBody: `movie catalogs take no param "primary_release_year"`},
 		)
 	}
 	runSteps(t, f.s, steps)
