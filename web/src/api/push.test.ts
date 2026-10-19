@@ -58,7 +58,7 @@ describe('pushSelection', () => {
 
   it('throws on a dropped connection', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
-    await expect(pushSelection(0, body)).rejects.toBeInstanceOf(TypeError)
+    await expect(pushSelection(0, body)).rejects.toThrow("Couldn't reach Uno.")
   })
 
   it('throws when the profile was never selected', async () => {

@@ -84,10 +84,16 @@ async function bodyText(res: Response): Promise<string> {
   return (await res.text().catch(() => '')).trim()
 }
 
-/** The words of a failed answer: a JSON body's `error`, else its text, else
- *  the status. */
-function failureMessage(status: number, text: string, body: unknown): string {
-  return stringField(body, 'error') || text || `Request failed (${status})`
+/**
+ * The words of a failed answer. Only Uno's own error format, a JSON body's
+ * `error`, is shown as it is. Anything else (a proxy's, CDN's or captive
+ * portal's page) is said by its status.
+ */
+function failureMessage(status: number, body: unknown): string {
+  const error = stringField(body, 'error')
+  if (error) return error
+  if (status >= 500) return "Uno's server didn't answer. Try again in a moment."
+  return `Request failed (${status})`
 }
 
 /** Whether a failed answer is `requireProfile`'s 404. */
@@ -100,17 +106,29 @@ async function failure(res: Response): Promise<ApiError> {
   if (res.status === 429) return new RateLimitedError(res.headers.get('Retry-After'))
   // Every error under `/api` is JSON whose `error` carries its words, more
   // specific than anything the status alone gives, and the profile check's
-  // 404 a `code` as well. A body that is not JSON (a proxy's, say) is its own
-  // text.
-  const text = await bodyText(res)
-  const body = parseJSONOrUndefined(text)
-  const message = failureMessage(res.status, text, body)
+  // 404 a `code` as well.
+  const body = parseJSONOrUndefined(await bodyText(res))
+  const message = failureMessage(res.status, body)
   if (isProfileNotFound(res.status, body)) return new ProfileNotSelectedError(message)
   return new ApiError(res.status, message, body)
 }
 
+/** The message for a request that never got an answer: `fetch` rejects with a
+ *  `TypeError` when the network fails, worded by the browser ("Failed to
+ *  fetch"). */
+const UNREACHABLE = "Couldn't reach Uno. Check your connection and try again."
+
+async function send(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await apiFetch(path, init)
+  } catch (err) {
+    if (err instanceof TypeError) throw new Error(UNREACHABLE, { cause: err })
+    throw err
+  }
+}
+
 async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const res = await apiFetch(path, init)
+  const res = await send(path, init)
   if (!res.ok) throw await failure(res)
   if (res.status === 204) return null
   return await res.json()
