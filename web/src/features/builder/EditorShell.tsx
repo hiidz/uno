@@ -106,7 +106,7 @@ export function EditorShell({
         </div>
 
         {/* The row's actions, below `lg` only. */}
-        <div className="flex shrink-0 items-center gap-1 lg:hidden">
+        <div className="flex shrink-0 items-center gap-1 pointer-coarse:gap-3 lg:hidden">
           {onDuplicate && (
             <GlyphButton
               label={`Duplicate ${title}`}

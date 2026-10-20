@@ -96,7 +96,7 @@ export function LibrarySection({
 
   return (
     <section className="flex flex-col gap-2.5 p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 pointer-coarse:gap-2">
         <div className="relative flex-1">
           <Icon
             icon={Search}
@@ -110,7 +110,7 @@ export function LibrarySection({
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Filter by name or genre"
             aria-label="Filter your library"
-            className="field h-10 w-full pl-10 text-[14px] pointer-coarse:text-[16px]"
+            className="field h-10 w-full pl-10 text-[14px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
           />
         </div>
         <MoreMenu label="your library">

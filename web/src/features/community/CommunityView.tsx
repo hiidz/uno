@@ -239,7 +239,7 @@ function Controls({
           placeholder="Search"
           aria-label="Search Community"
           maxLength={SEARCH_MAX_LENGTH}
-          className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:text-[16px]"
+          className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
         />
       </div>
       <div className="flex items-center gap-2">
