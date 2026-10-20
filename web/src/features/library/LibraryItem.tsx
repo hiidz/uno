@@ -79,7 +79,7 @@ export function LibraryItem({
 
   return (
     <div
-      className={`rounded-xl transition-colors ${selected ? 'bg-raised-hi' : 'hover:bg-raised'}`}
+      className={`rounded-xl transition-colors ${selected ? 'bg-raised-hi' : 'hover:bg-raised-hi/70'}`}
     >
       {/* Two sibling buttons, never one inside the other. The row's button
           stretches over the whole row through its `::after`, so a press
