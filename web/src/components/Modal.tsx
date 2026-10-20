@@ -33,7 +33,7 @@ export function Modal({ open, onClose, labelledBy, width = '520px', shape = 'dia
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay
-          className={`fixed inset-0 z-50 grid place-items-center overscroll-contain bg-[var(--uno-scrim)] ${MODAL_SHAPE[shape].overlay}`}
+          className={`fixed inset-0 bottom-[var(--keyboard-h,0px)] z-50 grid place-items-center overscroll-contain bg-[var(--uno-scrim)] ${MODAL_SHAPE[shape].overlay}`}
         >
           <Dialog.Content
             aria-labelledby={labelledBy}
