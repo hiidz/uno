@@ -70,11 +70,12 @@ interface ProfileProps {
  * is. An image that fails to load leaves the coloured circle showing.
  */
 function ProfileAvatar({ profile }: ProfileProps) {
+  const color = avatarColor(profile)
   return (
     <span
       aria-hidden="true"
-      style={{ backgroundColor: avatarColor(profile) }}
-      className="text-ink relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full text-[18px] font-bold"
+      style={{ backgroundColor: color }}
+      className={`${initialInk(color)} relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full text-[18px] font-bold`}
     >
       {initialOf(profile.name)}
       <AvatarImage url={profile.avatar_image_url} />
@@ -104,6 +105,33 @@ const DEFAULT_AVATAR_COLOR = '#1E88E5'
 function avatarColor(profile: NuvioProfile): string {
   if (!profile.avatar_color_hex) return DEFAULT_AVATAR_COLOR
   return profile.avatar_color_hex
+}
+
+/** `--uno-ink` and `--uno-sign-ink`, the light and dark inks an initial can
+ *  take, as relative luminances. */
+const INK_LUMINANCE = luminance('#FFF7EA') ?? 1
+const SIGN_INK_LUMINANCE = luminance('#16193A') ?? 0
+
+/** The ink that stands out more on an avatar of colour `hex`: cream on a
+ *  dark colour, sign ink on a light one. A colour that isn't `#rrggbb`
+ *  keeps the cream. */
+function initialInk(hex: string): 'text-ink' | 'text-sign-ink' {
+  const bg = luminance(hex)
+  if (bg === undefined) return 'text-ink'
+  const onInk = (INK_LUMINANCE + 0.05) / (bg + 0.05)
+  const onSignInk = (bg + 0.05) / (SIGN_INK_LUMINANCE + 0.05)
+  return onSignInk > onInk ? 'text-sign-ink' : 'text-ink'
+}
+
+/** WCAG's relative luminance of a `#rrggbb` colour. */
+function luminance(hex: string): number | undefined {
+  const rgb = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!rgb) return undefined
+  const [r, g, b] = rgb.slice(1).map((part) => {
+    const c = parseInt(part, 16) / 255
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
 function initialOf(name: string): string {

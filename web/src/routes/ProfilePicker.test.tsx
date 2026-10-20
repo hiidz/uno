@@ -118,6 +118,17 @@ describe('ProfilePicker', () => {
     expect(within(lockedCard).getByText('É')).toHaveStyle({ backgroundColor: '#1E88E5' })
   })
 
+  it('draws an initial in whichever ink stands out more on its avatar’s colour', async () => {
+    const gold = { ...main, name: 'Sam', avatar_color_hex: '#F5B800' }
+    const night = { ...main, id: 'p2', profile_index: 2, name: 'Kit', avatar_color_hex: '#202040' }
+    api.fetchProfiles.mockResolvedValue([gold, night])
+    renderPicker()
+    expect(within(await screen.findByRole('button', { name: 'Profile 1, Sam' })).getByText('S')).toHaveClass(
+      'text-sign-ink',
+    )
+    expect(within(screen.getByRole('button', { name: 'Profile 2, Kit' })).getByText('K')).toHaveClass('text-ink')
+  })
+
   it('says plainly when this server doesn’t admit the account, with the way to another one', async () => {
     setKeyMode('per-account')
     api.fetchTMDBKey.mockResolvedValue({ set: false })
