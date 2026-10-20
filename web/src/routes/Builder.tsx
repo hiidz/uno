@@ -68,11 +68,36 @@ function ProfileBuilder({ view }: { view: BuilderView }) {
       <EditorGuardProvider>
         <LeaveGuard />
         <div className="flex min-h-svh flex-col lg:h-svh">
+          <SkipLink />
           <BuilderHeader profile={profile} tab={view.section} />
-          <SectionView view={view} />
+          {/* The builder's one `main`, whatever section and panes it shows:
+              the skip link's target. */}
+          <main id={MAIN_ID} tabIndex={-1} className="flex flex-1 flex-col outline-none lg:min-h-0">
+            <SectionView view={view} />
+          </main>
         </div>
       </EditorGuardProvider>
     </HomeSelectionProvider>
+  )
+}
+
+const MAIN_ID = 'main'
+
+/** The first stop on Tab: past the header's profile chip, tabs and Push to
+ *  the section itself. It moves focus without a navigation, so it adds no
+ *  history entry for Back to step through. */
+function SkipLink() {
+  return (
+    <a
+      href={`#${MAIN_ID}`}
+      onClick={(event) => {
+        event.preventDefault()
+        document.getElementById(MAIN_ID)?.focus()
+      }}
+      className="btn-secondary bg-raised-hi sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:h-[38px] focus:px-4"
+    >
+      Skip to main content
+    </a>
   )
 }
 

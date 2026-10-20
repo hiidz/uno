@@ -55,7 +55,7 @@ function expectNoForm() {
 describe('CatalogFromCommunity', () => {
   it('shows the recipe as spec tiles, the filters it leaves open as Any', () => {
     renderCatalog()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Noir after midnight')
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Noir after midnight')
     const genresTile = screen.getByText('Genres', { selector: 'dt' }).closest('div')!
     expect(within(genresTile).getByText('Crime and Thriller')).toBeInTheDocument()
     for (const label of ['Type', 'Genres', 'Rating', 'Order']) {
@@ -178,7 +178,7 @@ function renderCollection(props: Partial<ComponentProps<typeof CollectionFromCom
 describe('CollectionFromCommunity', () => {
   it('draws a card for each folder, its catalogs collapsed to a name over its recipe line', () => {
     renderCollection()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Horror Nights')
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Horror Nights')
     const cards = document.querySelectorAll<HTMLElement>('.fold-detail')
     expect(cards).toHaveLength(2)
     expect(cards[0]).toHaveTextContent('🔪Slashers')

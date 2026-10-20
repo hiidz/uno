@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 import type { ReactNode } from 'react'
 import { Copy, Trash2, X } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
@@ -61,6 +61,8 @@ export function EditorShell({
   footer,
   children,
 }: EditorShellProps) {
+  const headingID = useId()
+
   // Escape closes, matching the convention every modal dialog sets — the
   // muscle memory is already there and there's no reason to take it away.
   // Routed through `onRequestClose` so a dirty form still confirms.
@@ -86,18 +88,19 @@ export function EditorShell({
   }, [onRequestClose])
 
   return (
-    <main className={`tone-${tone} flex h-full min-h-0 min-w-0 flex-1 flex-col`}>
+    <section aria-labelledby={headingID} className={`tone-${tone} flex h-full min-h-0 min-w-0 flex-1 flex-col`}>
       <PaneSign as="header" className="shrink-0 gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* Where focus lands when the editor's layer opens below `lg`. */}
-          <h1
+          <h2
+            id={headingID}
             tabIndex={-1}
             data-landing
             className={`m-0 outline-none ${SIGN_TITLE}`}
           >
             <span className="sr-only">{purpose}: </span>
             {title}
-          </h1>
+          </h2>
           {badges && <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{badges}</div>}
         </div>
 
@@ -153,6 +156,6 @@ export function EditorShell({
       <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 py-4 lg:px-6">
         {footer}
       </div>
-    </main>
+    </section>
   )
 }

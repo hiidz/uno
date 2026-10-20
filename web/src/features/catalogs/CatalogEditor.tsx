@@ -787,7 +787,7 @@ export function CatalogEditor({
             <NameSetting value={state.name} error={errorFor('name')} onChange={patch} />
 
             <div className="setting is-head">
-              <h2 className="setting-label m-0">What the row shows</h2>
+              <h3 className="setting-label m-0">What the row shows</h3>
             </div>
 
             <SourceModeSetting isMovie={isMovie} value={state.sourceMode} onChange={switchSourceMode} />

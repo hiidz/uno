@@ -98,7 +98,7 @@ describe('HomePane', () => {
     const pinned = collection({ id: 'k1', title: 'Up top' })
     const rest = collection({ id: 'k2', title: 'Down below' })
     mount({ catalogs: [{ catalog: catalog({ id: 'c1', name: 'Action' }), showInHome: true }], collections: [pinned, rest], pinned: ['k1'] })
-    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     expect(headings).toEqual(['Pinned', 'Rows'])
     expect(screen.getByRole('button', { name: 'Move Action up, already first of the rows' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Move Down below down, already last of the rows' })).toBeDisabled()
