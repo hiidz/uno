@@ -137,6 +137,7 @@ export function TMDBEntityPicker({
   inputId,
   exclude = false,
   hiddenIds,
+  invalid,
 }: {
   kind: EntityKind
   /** The catalog's type, which company search counts titles for. Network
@@ -151,6 +152,9 @@ export function TMDBEntityPicker({
   /** Ids search never offers: the section's other list, so one id can't be
    *  both matched and left out. */
   hiddenIds?: number[]
+  /** Its error is on show: the search box carries `aria-invalid`, which
+   *  `.field` draws as a red border. */
+  invalid?: boolean
 }) {
   const source = SOURCES[kind]
   const plural = exclude ? `${source.plural} to leave out` : source.plural
@@ -329,6 +333,7 @@ export function TMDBEntityPicker({
         onKeyDown={onInputKeyDown}
         placeholder={source.single && ids.length > 0 ? 'Search to replace it…' : 'Search by name…'}
         aria-label={`Search ${plural}`}
+        aria-invalid={invalid}
         autoComplete="off"
         className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px] pointer-coarse:text-[16px]"
       />

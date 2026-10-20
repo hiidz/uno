@@ -508,6 +508,7 @@ function buildSections(args: SectionArgs) {
                   kind="network"
                   type={state.type}
                   value={state.params.with_networks}
+                  invalid={Boolean(errorFor('with_networks'))}
                   onChange={(with_networks) => patchParams({ with_networks })}
                 />
                 {errorFor('with_networks') && (
@@ -528,6 +529,7 @@ function buildSections(args: SectionArgs) {
                   type={state.type}
                   inputId="cat-collection"
                   value={state.params.with_collection}
+                  invalid={Boolean(errorFor('with_collection'))}
                   onChange={(with_collection) => patchParams({ with_collection })}
                 />
                 {errorFor('with_collection') && (

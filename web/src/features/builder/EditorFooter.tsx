@@ -62,6 +62,7 @@ export function EditorFooter({
     <>
       <SaveError noun={noun} error={saveError} />
       <SaveStatus errorCount={errorCount} errorLabels={errorLabels} dirty={dirty} notes={notes} />
+      <ErrorAnnouncement count={errorCount} labels={errorLabels} />
       <SignStepButton step={step} />
       <button type="button" onClick={onCancel} className="btn-ghost">
         Close
@@ -117,8 +118,27 @@ function ErrorStatus({ count, labels }: { count: number; labels: string[] }) {
   return (
     <span className="ed-status is-error">
       <Icon icon={TriangleAlert} size={16} />
-      {pluralCount(count, 'thing')} {count === 1 ? 'needs' : 'need'} fixing
-      {labels.length > 0 && `: ${labels.join(', ')}`}
+      {errorSentence(count, labels)}
+    </span>
+  )
+}
+
+function errorSentence(count: number, labels: string[]): string {
+  const where = labels.length > 0 ? `: ${labels.join(', ')}` : ''
+  return `${pluralCount(count, 'thing')} ${count === 1 ? 'needs' : 'need'} fixing${where}`
+}
+
+/**
+ * The status line's errors, read out politely once a save has put them on
+ * show (`labels` is empty until then) and again as they change. Always
+ * mounted and empty otherwise: a live region that arrives already holding its
+ * words is often not read, and "Unsaved changes" on every keystroke would
+ * be noise.
+ */
+function ErrorAnnouncement({ count, labels }: { count: number; labels: string[] }) {
+  return (
+    <span role="status" className="sr-only">
+      {count > 0 && labels.length > 0 ? errorSentence(count, labels) : ''}
     </span>
   )
 }

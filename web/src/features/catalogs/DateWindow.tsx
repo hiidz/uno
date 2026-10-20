@@ -142,7 +142,7 @@ function WindowBody({
   onParams,
   onDays,
 }: WindowBodyProps) {
-  if (view === 'fixed') return <FixedDates isMovie={isMovie} gte={gte} lte={lte} onParams={onParams} />
+  if (view === 'fixed') return <FixedDates isMovie={isMovie} gte={gte} lte={lte} invalid={Boolean(error)} onParams={onParams} />
   if (view === 'recent') return <RecentWindow isMovie={isMovie} days={days} error={error} onDays={onDays} />
   if (view === 'upcoming') {
     return (
@@ -158,6 +158,8 @@ interface FixedDatesProps {
   isMovie: boolean
   gte: string | undefined
   lte: string | undefined
+  /** The range's error is on show: both boxes say so. */
+  invalid: boolean
   onParams: PatchParams
 }
 
@@ -165,6 +167,7 @@ function FixedDates({
   isMovie,
   gte,
   lte,
+  invalid,
   onParams,
 }: FixedDatesProps) {
   return (
@@ -183,6 +186,7 @@ function FixedDates({
               : { first_air_date_gte: event.target.value || undefined },
           )
         }
+        aria-invalid={invalid || undefined}
         className="field type-data"
       />
       <label className="setting-label type-label" htmlFor="ed-to">
@@ -199,6 +203,7 @@ function FixedDates({
               : { first_air_date_lte: event.target.value || undefined },
           )
         }
+        aria-invalid={invalid || undefined}
         className="field type-data"
       />
     </div>

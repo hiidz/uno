@@ -53,6 +53,7 @@ export function EntityLists({
           inputId={`cat-${kind}-with`}
           value={withValue}
           hiddenIds={withoutIds}
+          invalid={Boolean(withError)}
           onChange={onWith}
         />
         {withError && <FieldNote tone="danger">{withError}</FieldNote>}
@@ -68,6 +69,7 @@ export function EntityLists({
           exclude
           value={withoutValue}
           hiddenIds={withIds}
+          invalid={Boolean(withoutError)}
           onChange={onWithout}
         />
         {withoutError && <FieldNote tone="danger">{withoutError}</FieldNote>}

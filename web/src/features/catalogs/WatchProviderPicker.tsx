@@ -124,6 +124,7 @@ export function WatchProviderPicker({
     <div className="flex w-full flex-col gap-2">
       <Select
         ariaLabel="Streaming country"
+        invalid={Boolean(error)}
         value={region}
         onChange={changeRegion}
         options={regionOptions}
