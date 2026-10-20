@@ -239,10 +239,13 @@ function CopyButton({
   const { copied, copy } = useCopy(url)
 
   return (
-    <button type="button" onClick={copy} className={`btn-ghost btn-sm shrink-0 ${className}`}>
-      <Icon icon={copied ? Check : Copy} size={14} />
-      {copied ? 'Copied' : label}
-    </button>
+    <>
+      <button type="button" onClick={copy} className={`btn-ghost btn-sm shrink-0 ${className}`}>
+        <Icon icon={copied ? Check : Copy} size={14} />
+        {copied ? 'Copied' : label}
+      </button>
+      <CopiedStatus copied={copied} />
+    </>
   )
 }
 
@@ -274,14 +277,28 @@ export function AddonURLButton({ url, className = '' }: { url: string; className
   const { copied, copy } = useCopy(url)
 
   return (
-    <button
-      type="button"
-      onClick={copy}
-      title={`Install this in Nuvio to get your home screen:\n${url}`}
-      className={`btn-ghost ${className}`}
-    >
-      <Icon icon={copied ? Check : Link} size={16} />
-      {copied ? 'Copied' : 'Addon URL'}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={copy}
+        title={`Install this in Nuvio to get your home screen:\n${url}`}
+        className={`btn-ghost ${className}`}
+      >
+        <Icon icon={copied ? Check : Link} size={16} />
+        {copied ? 'Copied' : 'Addon URL'}
+      </button>
+      <CopiedStatus copied={copied} />
+    </>
+  )
+}
+
+/** Says a copy of the addon URL landed, to a screen reader: the button's own
+ *  "Copied" label changes under focus without being read out. Rendered empty
+ *  beforehand, so the live region exists before its text does. */
+export function CopiedStatus({ copied }: { copied: boolean }) {
+  return (
+    <span role="status" className="sr-only">
+      {copied ? 'Addon URL copied' : ''}
+    </span>
   )
 }

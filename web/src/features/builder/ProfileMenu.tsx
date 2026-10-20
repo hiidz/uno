@@ -1,6 +1,7 @@
 import { ArrowLeftRight, ChevronDown } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { Icon } from '@/components/Icon'
+import { CopiedStatus } from '@/features/push/PushControls'
 import { useCopy } from '@/features/push/useCopy'
 import { useStackedLayout } from './stacked'
 
@@ -148,6 +149,7 @@ export function ProfileMenu({
             }}
           />
         )}
+        <CopiedStatus copied={copied} />
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   )
