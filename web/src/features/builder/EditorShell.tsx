@@ -5,9 +5,10 @@ import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
 import { PaneSign, SIGN_TITLE } from '@/components/PaneSign'
 
-/** A dialog or menu in front of the editor — any `role="dialog"` but the
- *  editor's own layer below `lg` (`EditorLayer`). */
-const DIALOG_IN_FRONT = '[role="dialog"]:not([data-editor-layer])'
+/** A dialog, confirmation or menu in front of the editor — any `role="dialog"`
+ *  or `role="alertdialog"` but the editor's own layer below `lg`
+ *  (`EditorLayer`). */
+const DIALOG_IN_FRONT = '[role="dialog"]:not([data-editor-layer]), [role="alertdialog"]'
 
 interface EditorShellProps {
   /** What kind of edit this is — "Edit catalog", "Edit collection". Read out
