@@ -163,6 +163,11 @@ function HomeList() {
   // Nuvio's own order, for continuous numbering — see the module comment.
   const order = [...preview.pinnedCollections.map((c) => c.id), ...preview.home.map(bandItemId)]
   const positionOf = (id: string) => order.indexOf(id) + 1
+  const names = new Map<string, string>([
+    ...preview.pinnedCollections.map((c): [string, string] => [c.id, c.title]),
+    ...preview.home.map((item): [string, string] => [bandItemId(item), item.kind === 'catalog' ? item.row.name : item.collection.title]),
+  ])
+  const nameOf = (id: string) => names.get(id) ?? ''
 
   return (
     <div className="flex flex-col gap-8">
@@ -170,6 +175,8 @@ function HomeList() {
         <Group label="Pinned">
           <SortableList
             ids={preview.pinnedCollections.map((c) => c.id)}
+            nameOf={nameOf}
+            positionOf={positionOf}
             onReorder={(ids) => home.reorderBand('pinned', ids)}
           >
             <ol className="flex flex-col">
@@ -193,7 +200,12 @@ function HomeList() {
         {preview.home.length === 0 ? (
           <EmptyBlock>No rows on your home screen.</EmptyBlock>
         ) : (
-          <SortableList ids={preview.home.map(bandItemId)} onReorder={(ids) => home.reorderBand('home', ids)}>
+          <SortableList
+            ids={preview.home.map(bandItemId)}
+            nameOf={nameOf}
+            positionOf={positionOf}
+            onReorder={(ids) => home.reorderBand('home', ids)}
+          >
             <ol className="flex flex-col">
               {preview.home.map((item, i, group) => (
                 <HomeBandRow
