@@ -40,7 +40,7 @@ export function EditorLayer({ stacked, label, fallbackFocus, children }: EditorL
       ref={ref}
       {...layerRole(stacked, label)}
       style={LAYER_STYLE}
-      className="layer-in flex min-w-0 flex-col max-lg:fixed max-lg:inset-0 max-lg:z-[35] max-lg:overscroll-contain max-lg:bg-ground lg:min-h-0"
+      className="layer-in flex min-w-0 flex-col max-lg:fixed max-lg:inset-0 max-lg:z-[35] max-lg:overscroll-contain max-lg:bg-ground max-lg:pr-[env(safe-area-inset-right)] max-lg:pl-[env(safe-area-inset-left)] lg:min-h-0"
     >
       {children}
     </div>

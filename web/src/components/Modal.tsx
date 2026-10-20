@@ -5,7 +5,7 @@ type ModalShape = 'dialog' | 'sheet'
 
 const MODAL_SHAPE: Record<ModalShape, { overlay: string; content: string }> = {
   dialog: { overlay: 'p-4 sm:p-8', content: 'rounded-[20px] border' },
-  sheet: { overlay: 'lg:p-8', content: 'max-lg:h-full lg:rounded-[20px] lg:border' },
+  sheet: { overlay: 'max-lg:pr-[env(safe-area-inset-right)] max-lg:pl-[env(safe-area-inset-left)] lg:p-8', content: 'max-lg:h-full lg:rounded-[20px] lg:border' },
 }
 
 interface ModalProps {
@@ -74,7 +74,7 @@ export function ModalFooter({
 }) {
   return (
     <div
-      className={`border-line flex shrink-0 items-center justify-end gap-2 border-t px-6 py-4 ${
+      className={`border-line flex shrink-0 items-center justify-end gap-2 border-t px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] ${
         tone ? `tone-${tone}` : ''
       }`}
     >

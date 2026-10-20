@@ -161,8 +161,13 @@
         @apply border-border outline-ring/50;
         scrollbar-color: var(--uno-line-hi) transparent;
     }
+    /* The page draws under a phone's notch and home bar (`viewport-fit=cover`
+       in index.html), so the sides keep clear of a notch in landscape; the
+       bars at the bottom pad themselves. `env()` is 0 everywhere else. */
     body {
         @apply bg-background text-foreground;
+        padding-right: env(safe-area-inset-right);
+        padding-left: env(safe-area-inset-left);
         -webkit-font-smoothing: antialiased;
         caret-color: var(--uno-ink);
     }
