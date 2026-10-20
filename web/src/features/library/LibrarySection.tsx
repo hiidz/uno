@@ -97,7 +97,7 @@ export function LibrarySection({
   return (
     <section className="flex flex-col gap-2.5 p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
       <div className="flex items-center gap-1 pointer-coarse:gap-2">
-        <div className="relative flex-1">
+        <div className="relative min-w-0 flex-1">
           <Icon
             icon={Search}
             size={16}

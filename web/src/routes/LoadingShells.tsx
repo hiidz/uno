@@ -4,9 +4,10 @@ import { Wordmark } from '@/components/Wordmark'
 import { builderView } from '@/features/builder/paths'
 
 /** The builder's header row, shared by the header and its stand-in. One row
- *  that never wraps, at every width. */
+ *  at every phone width; below 18rem, which a phone reaches only zoomed in,
+ *  Push and its status wrap to a second line rather than run off the screen. */
 export const HEADER_ROW =
-  'bg-ground border-line flex min-h-[55px] items-center gap-3 border-b px-4 py-2 lg:h-[60px] lg:gap-4 lg:px-5 lg:py-0'
+  'bg-ground border-line flex min-h-[55px] items-center gap-3 border-b px-4 py-2 max-[18rem]:flex-wrap lg:h-[60px] lg:gap-4 lg:px-5 lg:py-0'
 
 export const HEADER_WORDMARK = 'text-ink h-[14px] w-auto shrink-0 lg:h-[16px]'
 

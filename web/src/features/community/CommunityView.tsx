@@ -229,7 +229,7 @@ function Controls({
           { value: 'collection', label: 'Collections' },
         ]}
       />
-      <div className="relative min-w-[200px] flex-1">
+      <div className="relative min-w-[min(200px,100%)] flex-1">
         <Icon icon={Search} size={16} className="text-dimmer pointer-events-none absolute top-1/2 left-4 -translate-y-1/2" />
         <input
           type="search"

@@ -250,8 +250,11 @@
     /* A sign: a flat band in its region's colour across the full width of the
        region it names, lettered in sign ink. The band's height comes from its
        padding, so a sign holding a control grows around it. */
+    /* Wraps only where its words and action don't fit on one line, as at
+       200% zoom on a phone, rather than widening the page. */
     .sign {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 10px;
         min-height: 36px;
