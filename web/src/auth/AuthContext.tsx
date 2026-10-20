@@ -9,7 +9,8 @@ export interface AuthContextValue extends AuthState {
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+/** `fallback` is drawn while the startup sign-in check runs. */
+export function AuthProvider({ fallback = null, children }: { fallback?: ReactNode; children: ReactNode }) {
   const state = useSyncExternalStore(subscribeAuth, getAuthState)
 
   useEffect(() => {
@@ -19,7 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Nothing gated renders until the load-time refresh-token exchange (if
   // any) resolves. A visitor with no stored refresh token resolves this
   // synchronously with no network round trip, so /login isn't delayed.
-  if (state.status === 'loading') return null
+  if (state.status === 'loading') return fallback
 
   return <AuthContext.Provider value={{ ...state, login }}>{children}</AuthContext.Provider>
 }

@@ -3,6 +3,7 @@ import { RouterProvider } from 'react-router-dom'
 import { AuthProvider } from '@/auth'
 import { queryClient } from '@/lib/query-client'
 import { watchActiveProfile } from '@/routes/activeProfile'
+import { StartupShell } from '@/routes/LoadingShells'
 import { router } from '@/routes/router'
 
 watchActiveProfile(router, queryClient)
@@ -10,7 +11,7 @@ watchActiveProfile(router, queryClient)
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <AuthProvider fallback={<StartupShell />}>
         <RouterProvider router={router} />
       </AuthProvider>
     </QueryClientProvider>
