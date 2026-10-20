@@ -60,3 +60,10 @@ describe('LibrarySection filter', () => {
     expect(announced()).toBeEmptyDOMElement()
   })
 })
+
+describe('LibrarySection rows', () => {
+  it('give a truncated name its full text as the row’s tooltip', () => {
+    mount()
+    expect(screen.getByRole('button', { name: /^Heist again/ })).toHaveAttribute('title', 'Heist again')
+  })
+})

@@ -184,7 +184,9 @@ export function CommunityRow({ item, summary, meta, showKind, buttonID, onOpen, 
             </button>
             <RowStickers item={item} showKind={showKind} />
           </div>
-          <span className="text-dim line-clamp-2 text-[13.5px] sm:line-clamp-1">{summary}</span>
+          <span title={summary} className="text-dim line-clamp-2 text-[13.5px] sm:line-clamp-1">
+            {summary}
+          </span>
           <RowFolders item={item} onOpen={onOpen} />
           <span className="type-data text-dimmer text-[12.5px]">
             <MetaParts parts={meta} />

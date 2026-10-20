@@ -91,7 +91,7 @@ export function LibraryItem({
           onClick={onSelect}
           aria-current={selected ? 'true' : undefined}
           aria-expanded={selected}
-          title={`Edit ${name}`}
+          title={name}
           className="flex min-w-0 flex-col gap-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:outline-2 focus-visible:after:outline-offset-[-2px]"
         >
           <span className="relative truncate text-[15px] font-semibold">
@@ -102,7 +102,11 @@ export function LibraryItem({
               {stickerWords(stickers)}
             </span>
           </span>
-          {summary && <span className="text-dim truncate text-[13px]">{summary}</span>}
+          {summary && (
+            <span title={summary} className="text-dim truncate text-[13px]">
+              {summary}
+            </span>
+          )}
           {/* Hidden while empty: a collection row with no Community sticker. */}
           <span aria-hidden="true" className="mt-0.5 flex flex-wrap gap-1.5 empty:hidden">
             <SharingStickers stickers={[...RAIL_KIND[kind], ...stickers]} />
