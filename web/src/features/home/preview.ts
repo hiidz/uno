@@ -209,3 +209,7 @@ export function bandItemId(item: HomeBandItem): string {
   if (item.kind === 'catalog') return item.row.id
   return item.collection.id
 }
+
+/** The line under both "Only in Discover" headings, the list's and the
+ *  preview's: what Nuvio does with those rows. */
+export const DISCOVER_NOTE = 'Nuvio lists these in Discover, not as rows on your home screen.'

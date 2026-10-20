@@ -18,7 +18,7 @@ import { ordinal } from '@/lib/ordinal'
 import { showFirstAction } from './changes'
 import { CollectionDetail, DetailLine } from './FolderChips'
 import { HomePreview } from './HomePreview'
-import { bandItemId } from './preview'
+import { DISCOVER_NOTE, bandItemId } from './preview'
 import type { HomeBandItem, PreviewRow } from './preview'
 import { SortableList } from './SortableList'
 import { useHomeEdits, useHomePreview, useHomeSelection } from './useHomeSelection'
@@ -411,7 +411,12 @@ function CatalogRow({
       onMoveDown={() => onMove(1)}
       menu={
         <MoreMenu label={row.name}>
-          <MoreMenuItem onSelect={() => home.toggleShowInHome(row.id)}>Move to Discover</MoreMenuItem>
+          <MoreMenuItem
+            onSelect={() => home.toggleShowInHome(row.id)}
+            reason="Takes it off your home screen; still findable in Discover."
+          >
+            Move to Discover
+          </MoreMenuItem>
           <RemoveFromHomeItem onSelect={() => home.removeCatalog(row.id)} />
         </MoreMenu>
       }
@@ -494,6 +499,7 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
     <section className="flex flex-col gap-2">
       <div className="border-line-hi border-b pb-2.5">
         <h2 className="text-ink m-0 text-[16px] font-bold">Only in Discover</h2>
+        <p className="text-dim m-0 mt-1 text-[13px] leading-[18px]">{DISCOVER_NOTE}</p>
       </div>
       <ul className="flex flex-col">
         {rows.map((row) => (
