@@ -265,7 +265,8 @@ function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) 
  * is pending, a check once nothing is.
  *
  * It reads as "3 unpushed changes" while anything is pending, and as
- * "All pushed" once nothing is. The
+ * "All pushed" once nothing is: from `lg` plain text, so it doesn't look like
+ * a button it isn't, and below `lg` still the outlined half Push joins. The
  * clean state is drawn rather than dropped: this returns `null` until
  * `home.ready`, so rendering nothing already means "not loaded yet", and a
  * silent clean state would be indistinguishable from one still loading.
@@ -327,7 +328,7 @@ function PendingIndicator({
   const className = `type-data flex shrink-0 items-center gap-2 rounded-l-full text-[13.5px] font-semibold whitespace-nowrap transition-colors lg:h-[34px] lg:rounded-full ${
     dirty
       ? 'text-pending pr-2 pl-2.5 shadow-[inset_0_0_0_1.5px_var(--uno-pending)] lg:pr-3.5 lg:pl-1'
-      : 'text-dim pr-2.5 pl-3.5 shadow-[inset_0_0_0_1px_var(--uno-line-hi)] lg:px-3.5'
+      : 'text-dim pr-2.5 pl-3.5 shadow-[inset_0_0_0_1px_var(--uno-line-hi)] lg:px-0 lg:shadow-none'
   }`
 
   if (home.pendingCount === 0) {
