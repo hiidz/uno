@@ -221,13 +221,17 @@ function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) 
               Push — no gap, stretched to Push's height, Push squared off on
               the side they share — which is what fits it into a row with no
               room for its words. Until it renders, Push keeps both ends
-              round. */}
+              round. From `lg` the status holds a right-aligned slot as wide
+              as "88 unpushed changes" from the first frame, so neither its
+              arrival nor a change of words moves anything. */}
           <div className="ml-auto flex shrink-0 items-stretch lg:items-center lg:gap-4">
-            <PendingIndicator
-              count={pendingShown}
-              open={changesOpen}
-              onToggle={() => setChangesOpen((o) => !o)}
-            />
+            <div className="flex lg:min-w-[12rem] lg:justify-end">
+              <PendingIndicator
+                count={pendingShown}
+                open={changesOpen}
+                onToggle={() => setChangesOpen((o) => !o)}
+              />
+            </div>
             <AddonURLButton url={profile.manifestURL} className="hidden lg:inline-flex" />
             <BlockablePushButton push={push} block={block} className={home.ready ? 'max-lg:rounded-l-none' : ''} />
           </div>
