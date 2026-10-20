@@ -32,6 +32,36 @@ function goConfigBlock(): Plugin {
   }
 }
 
+/** The Latin files of the two fonts every page draws text in (`src/index.css`). */
+const PRELOADED_FONTS = /^assets\/(figtree-latin-wght|archivo-latin-wdth)-normal-[\w-]+\.woff2$/
+
+/**
+ * Preloads the built page's two Latin font files, so the browser fetches them
+ * alongside the stylesheet rather than once the stylesheet has been parsed.
+ */
+function preloadFonts(): Plugin {
+  let base = '/'
+  return {
+    name: 'uno-preload-fonts',
+    apply: 'build',
+    configResolved(resolved) {
+      base = resolved.base
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        return Object.keys(ctx.bundle ?? {})
+          .filter((file) => PRELOADED_FONTS.test(file))
+          .map((file) => ({
+            tag: 'link',
+            attrs: { rel: 'preload', as: 'font', type: 'font/woff2', crossorigin: true, href: base + file },
+            injectTo: 'head' as const,
+          }))
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 //
 // The dev server alone reads DEV_AUTH_BYPASS_TOKEN from the repo-root .env
@@ -54,7 +84,7 @@ export default defineConfig(({ command, mode }) => {
 })
 
 const config: UserConfig = {
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), preloadFonts()],
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
