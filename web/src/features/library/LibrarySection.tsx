@@ -7,6 +7,8 @@ import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { railStickers } from '@/features/sharing/sharingState'
 import { ListError, ListState } from '@/components/ListState'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
+import { andList } from '@/lib/list'
+import { pluralCount } from '@/lib/plural'
 import { describeCollection } from './collection'
 import { LibraryItem } from './LibraryItem'
 import { catalogListing } from './recipe'
@@ -114,6 +116,11 @@ export function LibrarySection({
           <MoreMenuItem onSelect={onExport}>Export JSON</MoreMenuItem>
         </MoreMenu>
       </div>
+      {/* What the filter leaves, read out politely while one is typed; empty,
+          and so silent, when the whole library shows or it is still loading. */}
+      <p role="status" className="sr-only">
+        {query && !library.isLoading ? filterResult(catalogs.length, collections.length) : ''}
+      </p>
       {notice}
 
       {/* One error and one Retry for the whole library: both lists come from
@@ -250,6 +257,16 @@ function LibraryGroup({
       </ListState>
     </div>
   )
+}
+
+/** "2 catalogs and 1 collection match", or "Nothing matches". */
+function filterResult(catalogs: number, collections: number): string {
+  const parts = [
+    ...(catalogs > 0 ? [pluralCount(catalogs, 'catalog')] : []),
+    ...(collections > 0 ? [pluralCount(collections, 'collection')] : []),
+  ]
+  if (parts.length === 0) return 'Nothing matches'
+  return `${andList(parts)} ${catalogs + collections === 1 ? 'matches' : 'match'}`
 }
 
 /** Folder names carry more signal than a bare count, so search matches them

@@ -279,7 +279,7 @@ export function catalogListing(
   const segments = describeRecipe(catalog, lookup)
   return {
     line: capitalize(segments.join(' · ')),
-    searchText: `${catalog.name} ${segments.join(' ')}`.toLowerCase(),
+    searchText: `${catalog.name} ${typeLabel(catalog.type)} ${segments.join(' ')}`.toLowerCase(),
   }
 }
 
