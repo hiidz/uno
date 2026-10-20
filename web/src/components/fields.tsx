@@ -181,6 +181,7 @@ export function TextInput({
       value={value}
       placeholder={placeholder}
       maxLength={maxLength}
+      enterKeyHint="done"
       aria-label={ariaLabel}
       aria-invalid={invalid || undefined}
       onChange={(event) => onChange(event.target.value)}

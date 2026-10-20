@@ -46,6 +46,7 @@ function KeyInput({ id, value, error, autoFocus, onChange }: KeyInputProps) {
       autoCapitalize="off"
       autoCorrect="off"
       spellCheck={false}
+      enterKeyHint="go"
       autoFocus={autoFocus}
       aria-invalid={state.invalid}
       aria-describedby={state.describedBy}

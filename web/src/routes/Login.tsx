@@ -93,6 +93,7 @@ export function Login() {
               id="login-email"
               type="email"
               autoComplete="username"
+              enterKeyHint="next"
               aria-invalid={Boolean(fieldErrors.email) || undefined}
               aria-describedby={fieldErrors.email ? 'login-email-error' : undefined}
               value={email}
@@ -118,6 +119,7 @@ export function Login() {
               id="login-password"
               type="password"
               autoComplete="current-password"
+              enterKeyHint="go"
               aria-invalid={Boolean(fieldErrors.password) || undefined}
               aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
               value={password}

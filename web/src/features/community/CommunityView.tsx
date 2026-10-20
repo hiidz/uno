@@ -233,6 +233,7 @@ function Controls({
         <Icon icon={Search} size={16} className="text-dimmer pointer-events-none absolute top-1/2 left-4 -translate-y-1/2" />
         <input
           type="search"
+          enterKeyHint="search"
           value={filters.q}
           onChange={(event) => patch({ q: event.target.value })}
           placeholder="Search"

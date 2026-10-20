@@ -105,6 +105,7 @@ export function LibrarySection({
           />
           <input
             type="search"
+            enterKeyHint="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Filter by name or genre"
