@@ -1,17 +1,10 @@
 import { useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import {
-  fetchCertifications,
-  fetchCountries,
-  fetchGenres,
-  fetchLanguages,
-  fetchLibrary,
-  ProfileNotSelectedError,
-  queryKeys,
-} from '@/api'
+import { fetchLibrary, ProfileNotSelectedError, queryKeys } from '@/api'
 import type { Catalog, CertificationsByCountry, Collection, Folder, Genre, Language, LibraryData, PendingChange } from '@/api'
 import { buildCountryLookup, type CountryLookup } from '@/features/catalogs/countries'
 import { buildGenreLookup, type GenreLookup } from './recipe'
+import { referenceQueries } from './referenceQueries'
 
 /** The library is exactly this profile's own catalogs — the closed-graph model
  *  never offers another owner's rows to reference or edit here. Aliased,
@@ -93,10 +86,7 @@ const NO_LANGUAGES: Language[] = []
  */
 export function useGenreLookups(): Pick<Library, 'genres' | 'genreLists'> {
   const genreResults = useQueries({
-    queries: [
-      { queryKey: queryKeys.genres('movie'), queryFn: () => fetchGenres('movie'), staleTime: Infinity },
-      { queryKey: queryKeys.genres('series'), queryFn: () => fetchGenres('series'), staleTime: Infinity },
-    ],
+    queries: [referenceQueries.genres('movie'), referenceQueries.genres('series')],
   })
 
   const movieGenres = genreResults[0].data ?? NO_GENRES
@@ -124,18 +114,7 @@ export function useLibrary(profileIndex: number): Library {
   const { genres, genreLists } = useGenreLookups()
 
   const certificationResults = useQueries({
-    queries: [
-      {
-        queryKey: queryKeys.certifications('movie'),
-        queryFn: () => fetchCertifications('movie'),
-        staleTime: Infinity,
-      },
-      {
-        queryKey: queryKeys.certifications('series'),
-        queryFn: () => fetchCertifications('series'),
-        staleTime: Infinity,
-      },
-    ],
+    queries: [referenceQueries.certifications('movie'), referenceQueries.certifications('series')],
   })
 
   const movieCertifications = certificationResults[0].data
@@ -148,18 +127,10 @@ export function useLibrary(profileIndex: number): Library {
   // Same account-wide, cached-indefinitely treatment as genres above — TMDB's
   // language table barely changes and a failed fetch just leaves the picker
   // empty rather than failing the library.
-  const languagesResult = useQuery({
-    queryKey: queryKeys.languages(),
-    queryFn: fetchLanguages,
-    staleTime: Infinity,
-  })
+  const languagesResult = useQuery(referenceQueries.languages())
   const languages = languagesResult.data ?? NO_LANGUAGES
 
-  const countriesResult = useQuery({
-    queryKey: queryKeys.countries(),
-    queryFn: fetchCountries,
-    staleTime: Infinity,
-  })
+  const countriesResult = useQuery(referenceQueries.countries())
   const countryNames = useMemo(() => buildCountryLookup(countriesResult.data ?? []), [countriesResult.data])
 
   const catalogs = owned.data?.catalogs ?? NO_CATALOGS
