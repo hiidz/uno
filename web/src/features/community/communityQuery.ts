@@ -1,6 +1,7 @@
 import type { CommunityItem, CommunityPage, CommunityQuery } from '@/api'
 import { COLLECTION_KIND, kindSticker, type SharingSticker } from '@/features/sharing/sharingState'
 import { describeFolders } from '@/features/library/collection'
+import { pluralCount } from '@/lib/plural'
 
 /** What Community shows: the search words, which kind, and the order. The
  *  server searches, filters and sorts, a page at a time. */
@@ -70,14 +71,14 @@ export function itemSummary(item: CommunityItem, recipe: string): string {
 
 /** A row's third line, fact by fact so a narrow column breaks between them:
  *  how many have added it, when it was published, and when it was last
- *  updated, if it was — "Added by 3", "Published 3 weeks ago", "Updated 2
+ *  updated, if it was — "Added by 3 profiles", "Published 3 weeks ago", "Updated 2
  *  days ago". */
 export function itemMeta(item: CommunityItem, now: Date): string[] {
   return [addedBy(item), `Published ${relativeDay(item.published_at, now)}`, updatedAgo(item, now)].filter(Boolean)
 }
 
 function addedBy(item: CommunityItem): string {
-  return item.subscriber_count > 0 ? `Added by ${item.subscriber_count}` : ''
+  return item.subscriber_count > 0 ? `Added by ${pluralCount(item.subscriber_count, 'profile')}` : ''
 }
 
 function updatedAgo(item: CommunityItem, now: Date): string {

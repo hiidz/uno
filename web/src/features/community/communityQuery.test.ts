@@ -69,9 +69,10 @@ describe('row words', () => {
     const meta = (subscriber_count: number, updated_at: string) =>
       itemMeta(communityItem({ subscriber_count, published_at: '2026-09-08T10:00:00Z', updated_at }), now).join(' · ')
     expect(meta(0, '2026-09-08T10:00:00Z')).toBe('Published 3 weeks ago')
+    expect(meta(1, '2026-09-08T10:00:00Z')).toBe('Added by 1 profile · Published 3 weeks ago')
     expect(meta(0, '2026-09-27T10:00:00Z')).toBe('Published 3 weeks ago · Updated 2 days ago')
-    expect(meta(3, '2026-09-08T10:00:00Z')).toBe('Added by 3 · Published 3 weeks ago')
-    expect(meta(3, '2026-09-27T10:00:00Z')).toBe('Added by 3 · Published 3 weeks ago · Updated 2 days ago')
+    expect(meta(3, '2026-09-08T10:00:00Z')).toBe('Added by 3 profiles · Published 3 weeks ago')
+    expect(meta(3, '2026-09-27T10:00:00Z')).toBe('Added by 3 profiles · Published 3 weeks ago · Updated 2 days ago')
   })
   it('counts days, weeks, months and years', () => {
     const now = new Date(2026, 8, 29, 12)
