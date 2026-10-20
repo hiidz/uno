@@ -1,4 +1,5 @@
 import type { PreviewItem, TileShape, TMDBKind } from '@/api'
+import { thumbnail } from '@/lib/tmdbImage'
 
 /**
  * Drawing a catalog's content in Uno's own look: the tiles themselves and the
@@ -133,7 +134,7 @@ function ContentTile({
       </span>
       {item.poster && (
         <img
-          src={item.poster}
+          {...thumbnail(item.poster, '(min-width: 64rem) 8rem, 40vw')}
           alt=""
           loading="lazy"
           className="absolute inset-0 h-full w-full object-cover"
