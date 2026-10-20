@@ -169,6 +169,12 @@
     html {
         @apply font-sans;
     }
+    /* Tailwind's preflight gives buttons the default arrow; a pointer marks
+       what a click acts on. A disabled one keeps the arrow. */
+    button:not(:disabled):not([aria-disabled='true']),
+    [role='button']:not([aria-disabled='true']) {
+        cursor: pointer;
+    }
     ::selection {
         background: color-mix(in srgb, var(--uno-catalog) 55%, transparent);
         color: var(--uno-ink);
