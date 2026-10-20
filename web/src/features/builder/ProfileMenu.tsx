@@ -101,7 +101,7 @@ export function ProfileMenu({
         {/* The word "profile" is dropped here and kept in the menu below: it is
             52.9px of a row that has none to spare, and the chip's position and
             the menu it opens both already say what it is. */}
-        <span className="truncate">{profileName}</span>
+        <span className="min-w-[4ch] truncate">{profileName}</span>
         <Icon icon={ChevronDown} size={14} className="text-dim shrink-0" />
       </DropdownMenu.Trigger>
 
