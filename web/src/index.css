@@ -273,8 +273,10 @@
         font-weight: 700;
         transition: background-color 160ms ease;
     }
-    .sign-btn:hover {
-        background: color-mix(in srgb, var(--uno-sign-ink) 82%, black);
+    @media (hover: hover) {
+        .sign-btn:hover {
+            background: color-mix(in srgb, var(--uno-sign-ink) 82%, black);
+        }
     }
     /* A way back out of a region, drawn on its sign: an outlined pill in sign
        ink — the Library button over the Home pane. */
@@ -291,8 +293,10 @@
         box-shadow: inset 0 0 0 1.5px var(--uno-sign-ink);
         transition: background-color 160ms ease;
     }
-    .sign-btn-outline:hover {
-        background: color-mix(in srgb, var(--uno-sign-ink) 15%, transparent);
+    @media (hover: hover) {
+        .sign-btn-outline:hover {
+            background: color-mix(in srgb, var(--uno-sign-ink) 15%, transparent);
+        }
     }
     .sign-btn:focus-visible,
     .sign :focus-visible {
@@ -387,11 +391,15 @@
         border: 1.5px dashed var(--uno-dimmer);
         transition: border-color 160ms ease;
     }
-    .home-sticker[aria-pressed='false']:hover {
-        color: var(--uno-nuvio-yellow);
+    @media (hover: hover) {
+        .home-sticker[aria-pressed='false']:hover {
+            color: var(--uno-nuvio-yellow);
+        }
     }
-    .home-sticker[aria-pressed='false']:hover::before {
-        border-color: var(--uno-nuvio-yellow);
+    @media (hover: hover) {
+        .home-sticker[aria-pressed='false']:hover::before {
+            border-color: var(--uno-nuvio-yellow);
+        }
     }
     .home-sticker[aria-pressed='true'] {
         background: var(--uno-nuvio-yellow);
@@ -414,8 +422,10 @@
         font-size: 8.5px;
         letter-spacing: 0.01em;
     }
-    .home-sticker[aria-pressed='true']:hover {
-        background: var(--uno-nuvio-yellow-hover);
+    @media (hover: hover) {
+        .home-sticker[aria-pressed='true']:hover {
+            background: var(--uno-nuvio-yellow-hover);
+        }
     }
     .home-sticker[data-slap] {
         animation: uno-slap 420ms var(--uno-ease);
@@ -532,8 +542,10 @@
         color: var(--uno-sign-ink);
         font-weight: 750;
     }
-    .btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
-        background: color-mix(in srgb, var(--accent) 86%, white);
+    @media (hover: hover) {
+        .btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
+            background: color-mix(in srgb, var(--accent) 86%, white);
+        }
     }
     .btn-primary:active:not(:disabled):not([aria-disabled='true']) {
         background: color-mix(in srgb, var(--accent) 88%, black);
@@ -559,8 +571,10 @@
         color: var(--uno-sign-ink);
         font-weight: 750;
     }
-    .btn-push:hover:not(:disabled) {
-        background: var(--uno-nuvio-yellow-hover);
+    @media (hover: hover) {
+        .btn-push:hover:not(:disabled) {
+            background: var(--uno-nuvio-yellow-hover);
+        }
     }
     .btn-push:active:not(:disabled) {
         background: var(--uno-nuvio-yellow-pressed);
@@ -586,8 +600,10 @@
         color: var(--uno-ink);
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
     }
-    .btn-secondary:hover:not(:disabled) {
-        box-shadow: inset 0 0 0 1px var(--uno-dim);
+    @media (hover: hover) {
+        .btn-secondary:hover:not(:disabled) {
+            box-shadow: inset 0 0 0 1px var(--uno-dim);
+        }
     }
     .btn-secondary:active:not(:disabled) {
         background: var(--uno-raised);
@@ -602,9 +618,11 @@
         color: var(--accent);
         box-shadow: inset 0 0 0 1.5px var(--accent);
     }
-    .btn-secondary.btn-accent-outline:hover:not(:disabled) {
-        background: var(--uno-raised-hi);
-        box-shadow: inset 0 0 0 1.5px var(--accent);
+    @media (hover: hover) {
+        .btn-secondary.btn-accent-outline:hover:not(:disabled) {
+            background: var(--uno-raised-hi);
+            box-shadow: inset 0 0 0 1.5px var(--accent);
+        }
     }
 
     /* Quiet (DESIGN.md's "Quiet / Ghost"): dim label, no outline until the
@@ -614,9 +632,11 @@
         color: var(--uno-dim);
         padding: 0 12px;
     }
-    .btn-ghost:hover:not(:disabled) {
-        color: var(--uno-ink);
-        background: var(--uno-raised-hi);
+    @media (hover: hover) {
+        .btn-ghost:hover:not(:disabled) {
+            color: var(--uno-ink);
+            background: var(--uno-raised-hi);
+        }
     }
     .btn-ghost:disabled {
         color: var(--uno-dimmer);
@@ -629,8 +649,10 @@
         color: var(--uno-danger-ink);
         font-weight: 750;
     }
-    .btn-danger:hover:not(:disabled) {
-        background: var(--uno-danger-hover);
+    @media (hover: hover) {
+        .btn-danger:hover:not(:disabled) {
+            background: var(--uno-danger-hover);
+        }
     }
     .btn-danger:active:not(:disabled) {
         background: var(--uno-danger-pressed);
@@ -655,9 +677,11 @@
         text-decoration-color: color-mix(in srgb, var(--uno-danger) 55%, transparent);
         text-underline-offset: 4px;
     }
-    .btn-danger-text:hover:not(:disabled) {
-        color: var(--uno-danger-text-hover);
-        text-decoration-color: var(--uno-danger-text-hover);
+    @media (hover: hover) {
+        .btn-danger-text:hover:not(:disabled) {
+            color: var(--uno-danger-text-hover);
+            text-decoration-color: var(--uno-danger-text-hover);
+        }
     }
 
     .btn-primary:focus-visible,
@@ -710,8 +734,10 @@
     .field::placeholder {
         color: var(--uno-dimmer);
     }
-    .field:hover:not(:disabled):not(:focus) {
-        border-color: var(--uno-dim);
+    @media (hover: hover) {
+        .field:hover:not(:disabled):not(:focus) {
+            border-color: var(--uno-dim);
+        }
     }
     .field:focus {
         border-color: var(--uno-dim);
@@ -791,8 +817,10 @@
             background-color 160ms ease,
             border-color 160ms ease;
     }
-    .checkbox:hover:not(:checked) {
-        border-color: var(--uno-ink);
+    @media (hover: hover) {
+        .checkbox:hover:not(:checked) {
+            border-color: var(--uno-ink);
+        }
     }
     .checkbox:checked {
         background: var(--uno-ink);
@@ -923,10 +951,12 @@
             background-color 160ms ease,
             color 160ms ease;
     }
-    .pv-row-btn:hover,
-    .fp-back:hover {
-        color: var(--uno-ink);
-        background: var(--uno-raised-hi);
+    @media (hover: hover) {
+        .pv-row-btn:hover,
+        .fp-back:hover {
+            color: var(--uno-ink);
+            background: var(--uno-raised-hi);
+        }
     }
     .pv-row-btn:focus-visible,
     .fp-back:focus-visible {
@@ -1077,9 +1107,11 @@
     .pv-tile:focus-visible {
         outline: none;
     }
-    a.pv-tile:hover .art::after,
-    button.pv-tile:hover .art::after {
-        box-shadow: inset 0 0 0 1px var(--uno-ink);
+    @media (hover: hover) {
+        a.pv-tile:hover .art::after,
+        button.pv-tile:hover .art::after {
+            box-shadow: inset 0 0 0 1px var(--uno-ink);
+        }
     }
     .pv-tile:focus-visible .art::after {
         box-shadow: inset 0 0 0 2px var(--uno-ink);
@@ -1327,8 +1359,10 @@
         border-radius: 14px;
         transition: background-color 160ms ease;
     }
-    button.sec-head:hover {
-        background: var(--uno-raised-hi);
+    @media (hover: hover) {
+        button.sec-head:hover {
+            background: var(--uno-raised-hi);
+        }
     }
     .sec-head > .setting-label {
         grid-column: 1;
@@ -1436,10 +1470,12 @@
             box-shadow 160ms ease,
             color 160ms ease;
     }
-    .choice:hover,
-    .gchip:hover {
-        color: var(--uno-ink);
-        box-shadow: inset 0 0 0 1px var(--uno-dim);
+    @media (hover: hover) {
+        .choice:hover,
+        .gchip:hover {
+            color: var(--uno-ink);
+            box-shadow: inset 0 0 0 1px var(--uno-dim);
+        }
     }
     .choice[aria-pressed='true'],
     .choice[data-state='active'],
@@ -1615,8 +1651,10 @@
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
         transition: box-shadow 160ms ease;
     }
-    .fold-tile-btn:hover .fold-tile-face {
-        box-shadow: inset 0 0 0 1px var(--uno-dim);
+    @media (hover: hover) {
+        .fold-tile-btn:hover .fold-tile-face {
+            box-shadow: inset 0 0 0 1px var(--uno-dim);
+        }
     }
     .fold-tile.is-selected .fold-tile-face {
         outline: 2px solid var(--accent);
@@ -1657,9 +1695,13 @@
         opacity: 0;
         transition: opacity 160ms ease;
     }
-    .fold-tile:hover .fold-tile-grip,
     .fold-tile:focus-within .fold-tile-grip {
         opacity: 1;
+    }
+    @media (hover: hover) {
+        .fold-tile:hover .fold-tile-grip {
+            opacity: 1;
+        }
     }
     @media (pointer: coarse) {
         .fold-tile-grip {
@@ -1705,8 +1747,10 @@
     .fold-detail .sec-head {
         background: var(--uno-raised-hi);
     }
-    .fold-detail button.sec-head:hover {
-        background: var(--uno-line);
+    @media (hover: hover) {
+        .fold-detail button.sec-head:hover {
+            background: var(--uno-line);
+        }
     }
     .fold-detail .setting.is-head {
         margin-top: 16px;
@@ -1795,8 +1839,10 @@
     .community-row {
         --row-fill: var(--uno-ground);
     }
-    .community-row:hover {
-        --row-fill: var(--uno-raised);
+    @media (hover: hover) {
+        .community-row:hover {
+            --row-fill: var(--uno-raised);
+        }
     }
     .community-row:active {
         --row-fill: var(--uno-raised-hi);
