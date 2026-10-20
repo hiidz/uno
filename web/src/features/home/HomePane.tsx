@@ -7,6 +7,7 @@ import { Grip, MoveDownButton, MoveUpButton } from '@/components/dnd'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
+import { SkeletonBar, skeletonKeys } from '@/components/Skeleton'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
 import { describeCollection } from '@/features/library/collection'
@@ -111,6 +112,7 @@ export function HomePane({
           error={home.error}
           onRetry={home.retry}
           loadingLabel="Loading your home screen…"
+          skeleton={view === 'list' && <HomeListSkeleton />}
           errorLabel="Couldn't load your home screen."
         >
           {view === 'list' ? <HomeList /> : <HomePreview />}
@@ -118,6 +120,22 @@ export function HomePane({
       </div>
     </section>
   )
+}
+
+/** The list view's stand-in while the home screen loads: rows with a Home
+ *  row's border and height, its place sticker, name and detail lines, and
+ *  its ↑ ↓ ⋯ controls. */
+function HomeListSkeleton() {
+  return skeletonKeys(4).map((key) => (
+    <div key={key} className="border-line flex h-[105px] items-center gap-3 border-b py-3 pr-1 sm:h-[74px]">
+      <SkeletonBar className="size-7 rounded-full" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <SkeletonBar className="h-4 w-1/3" />
+        <SkeletonBar className="h-3 w-2/3" />
+      </div>
+      <SkeletonBar className="h-8 w-24" />
+    </div>
+  ))
 }
 
 function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeView) => void }) {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import { GlyphButton } from '@/components/GlyphButton'
 import { Icon } from '@/components/Icon'
+import { SkeletonBar } from '@/components/Skeleton'
 import { kindSticker, stickerWords, type SharingSticker } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { prefersReducedMotion } from '@/lib/motion'
@@ -141,6 +142,28 @@ export function LibraryItem({
           <GlyphButton label={`Delete ${name}`} icon={Trash2} onClick={onDelete} destructive variant="labeled" />
         </div>
       )}
+    </div>
+  )
+}
+
+/** A row's stand-in while the library loads: `LibraryItem`'s grid and
+ *  padding, its name, summary and sticker lines at their own heights, and a
+ *  circle where the home sticker goes. */
+export function LibraryItemSkeleton() {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2.5 pr-2 pl-3">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="flex h-[22.5px] items-center">
+          <SkeletonBar className="h-3.5 w-2/5" />
+        </span>
+        <span className="flex h-[19.5px] items-center">
+          <SkeletonBar className="h-3 w-4/5" />
+        </span>
+        <span className="mt-0.5 flex">
+          <SkeletonBar className="h-5 w-16 rounded-full" />
+        </span>
+      </div>
+      <SkeletonBar className="size-[42px] rounded-full pointer-coarse:size-11" />
     </div>
   )
 }

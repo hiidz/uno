@@ -10,6 +10,10 @@ import type { ReactNode } from 'react'
  * Copy rules: errors say what happened and offer the next action — no
  * apology, no vagueness. An empty list is an invitation to act, so callers
  * pass real guidance rather than "No items".
+ *
+ * A list with a `skeleton` draws it while loading, rows shaped like its own
+ * so nothing moves when they fill in, and keeps `loadingLabel` for screen
+ * readers only.
  */
 export function ListState({
   isLoading,
@@ -18,6 +22,7 @@ export function ListState({
   onRetry,
   isEmpty = false,
   loadingLabel = 'Loading…',
+  skeleton,
   emptyLabel,
   children,
 }: {
@@ -27,10 +32,20 @@ export function ListState({
   onRetry?: () => void
   isEmpty?: boolean
   loadingLabel?: string
+  skeleton?: ReactNode
   emptyLabel?: ReactNode
   children: ReactNode
 }) {
   if (error) return <ListError label={errorLabel} error={error} onRetry={onRetry} />
+
+  if (isLoading && skeleton) {
+    return (
+      <>
+        <p className="sr-only">{loadingLabel}</p>
+        <div aria-hidden="true">{skeleton}</div>
+      </>
+    )
+  }
 
   if (isLoading) {
     return <p className="type-data text-dimmer m-0 py-2 text-[12.5px]">{loadingLabel}</p>

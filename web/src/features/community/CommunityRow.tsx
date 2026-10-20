@@ -2,6 +2,7 @@ import { Check, ChevronRight } from 'lucide-react'
 import type { CommunityItem } from '@/api'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
+import { SkeletonBar } from '@/components/Skeleton'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { itemKind } from './communityQuery'
 import { MetaParts } from './MetaParts'
@@ -205,5 +206,21 @@ function RowStickers({ item, showKind }: { item: CommunityItem; showKind: boolea
     <span className="flex flex-wrap items-center gap-1.5">
       <SharingStickers stickers={[itemKind(item)]} />
     </span>
+  )
+}
+
+/** A row's stand-in while Community loads: `CommunityRow`'s padding and
+ *  height at each width, its poster stack, and its name, summary and meta
+ *  lines. */
+export function CommunityRowSkeleton() {
+  return (
+    <div className="-mx-3 flex h-[173px] items-start gap-3 px-3 py-3 sm:h-[95px] sm:items-center sm:gap-4">
+      <SkeletonBar className="h-[60px] w-[76px] sm:h-[69px] sm:w-[106px]" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <SkeletonBar className="h-4 w-2/5" />
+        <SkeletonBar className="h-3 w-3/4" />
+        <SkeletonBar className="h-3 w-1/4" />
+      </div>
+    </div>
   )
 }
