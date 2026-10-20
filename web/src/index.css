@@ -96,6 +96,9 @@
     /* A region's own colour, which its primary button and headings take. Set
        per region by `.tone-*`; outside one, the primary is sticker white. */
     --accent: var(--uno-ink);
+    /* The primary button under a pointer: lighter on a region's colour, and
+       darker on sticker white, which has no lighter to go to. */
+    --accent-hover: color-mix(in srgb, var(--uno-ink) 82%, var(--uno-sign-ink));
 
     --background: var(--uno-ground);
     --foreground: var(--uno-ink);
@@ -203,15 +206,19 @@
     /* A region's colour: its sign, its headings, and its primary button. */
     .tone-catalog {
         --accent: var(--uno-catalog);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
     .tone-collection {
         --accent: var(--uno-collection);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
     .tone-community {
         --accent: var(--uno-community);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
     .tone-home {
         --accent: var(--uno-nuvio-yellow);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
 
     /* A heading: Figtree bold, mixed case. Callers set their own size and
@@ -558,7 +565,7 @@
     }
     @media (hover: hover) {
         .btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
-            background: color-mix(in srgb, var(--accent) 86%, white);
+            background: var(--accent-hover);
         }
     }
     .btn-primary:active:not(:disabled):not([aria-disabled='true']) {
