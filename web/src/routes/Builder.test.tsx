@@ -144,6 +144,24 @@ describe('Builder', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/profiles'))
   })
 
+  it('opens the leave question on Stay here, and stays on Escape without stalling the next move', async () => {
+    server.catalogs.set(1, [onHome('a', 'Alpha')])
+    const router = open(1)
+    await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the first row' }))
+
+    await act(() => router.navigate('/profiles'))
+    const question = await screen.findByRole('alertdialog', { name: 'Discard unpushed changes?' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Stay here' })).toHaveFocus())
+    fireEvent.keyDown(question, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(router.state.location.pathname).toBe('/p/1')
+
+    await act(() => router.navigate('/profiles'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard and leave' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/profiles'))
+  })
+
   it('keeps unpushed changes, without asking, across a move to Community and back', async () => {
     server.catalogs.set(1, [onHome('a', 'Alpha')])
     const router = open(1)

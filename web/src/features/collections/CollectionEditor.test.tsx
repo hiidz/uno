@@ -132,7 +132,7 @@ describe('CollectionEditor', () => {
     fireEvent.change(within(nested()).getByLabelText('Name'), { target: { value: 'Scoped, renamed' } })
 
     fireEvent.click(within(nested()).getByRole('button', { name: 'Close' }))
-    expect(screen.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeInTheDocument()
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
     expect(within(nested()).getByLabelText('Name')).toHaveValue('Scoped, renamed')
 
