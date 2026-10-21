@@ -143,7 +143,7 @@ func TestPushRecordHoldsWhatNuvioReaches(t *testing.T) {
 	all, err := f.db.GetUserCollections(ctx, f.owner)
 	selection := slices.DeleteFunc(all, func(c CollectionWithFolders) bool { return c.HomeSortOrder == nil })
 	slices.SortFunc(selection, func(a, b CollectionWithFolders) int {
-		return compareCollectionsByHomeSortOrder(a.Collection, b.Collection)
+		return compareHomeSortOrder(a.HomeSortOrder, b.HomeSortOrder)
 	})
 	if err != nil || len(selection) != 2 || len(record.Collections) != 2 {
 		t.Fatalf("selection %d, record %d collections (%v); want 2 each", len(selection), len(record.Collections), err)

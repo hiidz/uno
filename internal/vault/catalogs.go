@@ -102,20 +102,20 @@ func ownCatalog(ctx context.Context, q dbtx, profileID, id uuid.UUID) (Catalog, 
 	return catalogs[0], nil
 }
 
-// compareByHomeSortOrder orders catalogs by HomeSortOrder, nil-safe: a nil
-// order (not currently selected) sorts after every non-nil one rather than
-// panicking, so this doesn't depend on the caller's WHERE clause having
-// filtered them out.
-func compareByHomeSortOrder(a, b Catalog) int {
+// compareHomeSortOrder orders two HomeSortOrder values, of catalogs or of
+// collections, nil-safe: a nil order (not currently selected) sorts after
+// every non-nil one rather than panicking, so this doesn't depend on the
+// caller's WHERE clause having filtered them out.
+func compareHomeSortOrder(a, b *int) int {
 	switch {
-	case a.HomeSortOrder == nil && b.HomeSortOrder == nil:
+	case a == nil && b == nil:
 		return 0
-	case a.HomeSortOrder == nil:
+	case a == nil:
 		return 1
-	case b.HomeSortOrder == nil:
+	case b == nil:
 		return -1
 	default:
-		return cmp.Compare(*a.HomeSortOrder, *b.HomeSortOrder)
+		return cmp.Compare(*a, *b)
 	}
 }
 
@@ -245,18 +245,26 @@ func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalo
 		if err := refuseStale(ctx, tx, "catalogs", profileID, catalogID, revision); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1
-			WHERE id = ? AND owner_id = ?
-		`, input.Name, input.Params, utcTimestamp(time.Now()), catalogID.String(), profileID.String()); err != nil {
-			return fmt.Errorf("updating catalog: %w", err)
-		}
-		return nil
+		return writeCatalogRecipe(ctx, tx, profileID, catalogID, input.Name, input.Params, utcTimestamp(time.Now()))
 	})
 	if err != nil {
 		return Catalog{}, err
 	}
 	return ownCatalog(ctx, db.conn, profileID, catalogID)
+}
+
+// writeCatalogRecipe writes catalog id's name and params, raising its
+// revision. Every write of a catalog's recipe goes through it: a catalog save,
+// a collection save's scoped edit, and an Update of a catalog copy. Each
+// caller has already loaded the row in tx and decided the write is due.
+func writeCatalogRecipe(ctx context.Context, tx *sql.Tx, profileID, id uuid.UUID, name, params, nowStr string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1
+		WHERE id = ? AND owner_id = ?
+	`, name, params, nowStr, id.String(), profileID.String()); err != nil {
+		return fmt.Errorf("updating catalog: %w", err)
+	}
+	return nil
 }
 
 // catalogKind is what never changes about a catalog once it exists: its type

@@ -88,7 +88,7 @@ func StoredPushRecord(ctx context.Context, q dbtx, profileID uuid.UUID) (PushRec
 	if err != nil {
 		return PushRecord{}, err
 	}
-	slices.SortFunc(listed, compareByHomeSortOrder)
+	slices.SortFunc(listed, func(a, b Catalog) int { return compareHomeSortOrder(a.HomeSortOrder, b.HomeSortOrder) })
 	var home PushedHome
 	for _, c := range listed {
 		home.Catalogs = append(home.Catalogs, SelectedCatalogInput{CatalogID: c.ID, ShowInHome: c.ShowInHome, Position: *c.HomeSortOrder})
@@ -98,7 +98,7 @@ func StoredPushRecord(ctx context.Context, q dbtx, profileID uuid.UUID) (PushRec
 	if err != nil {
 		return PushRecord{}, err
 	}
-	slices.SortFunc(onHome, compareCollectionsByHomeSortOrder)
+	slices.SortFunc(onHome, func(a, b Collection) int { return compareHomeSortOrder(a.HomeSortOrder, b.HomeSortOrder) })
 	for _, c := range onHome {
 		home.Collections = append(home.Collections, SelectedCollectionInput{CollectionID: c.ID, PinToTop: c.PinToTop, Position: *c.HomeSortOrder})
 	}

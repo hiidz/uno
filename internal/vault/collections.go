@@ -1,7 +1,6 @@
 package vault
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -215,14 +214,7 @@ func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 	if e.Name == stored.name && e.Params == stored.params {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE catalogs
-		SET name = ?, params = ?, updated_at = ?, revision = revision + 1
-		WHERE id = ? AND owner_id = ?
-	`, e.Name, e.Params, nowStr, e.ID.String(), profileID.String()); err != nil {
-		return fmt.Errorf("updating edited catalog: %w", err)
-	}
-	return nil
+	return writeCatalogRecipe(ctx, tx, profileID, e.ID, e.Name, e.Params, nowStr)
 }
 
 // storedRecipe is the part of a catalog row a ScopedCatalogEdit rewrites,
@@ -346,23 +338,6 @@ func (db *DB) DeleteUserCollection(ctx context.Context, profileID uuid.UUID, col
 		}
 		return nil
 	})
-}
-
-// compareCollectionsByHomeSortOrder orders collections by HomeSortOrder,
-// nil-safe: a nil order (not currently selected) sorts after every non-nil
-// one rather than panicking, so this doesn't depend on the caller's WHERE
-// clause having filtered them out.
-func compareCollectionsByHomeSortOrder(a, b Collection) int {
-	switch {
-	case a.HomeSortOrder == nil && b.HomeSortOrder == nil:
-		return 0
-	case a.HomeSortOrder == nil:
-		return 1
-	case b.HomeSortOrder == nil:
-		return -1
-	default:
-		return cmp.Compare(*a.HomeSortOrder, *b.HomeSortOrder)
-	}
 }
 
 // saveCollectionSelectionTx resets this profile's collection selection to
