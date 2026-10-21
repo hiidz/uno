@@ -55,16 +55,35 @@ describe('successful responses', () => {
 })
 
 describe('failed responses', () => {
-  it('carries a body that is not JSON as the message', async () => {
-    answer(new Response('name is required\n', { status: 400 }))
+  it('says a 4xx that is not Uno\'s error format by its status', async () => {
+    answer(new Response('<html>Blocked by policy</html>', { status: 403 }))
     const err = await rejection(sendJSON('POST', '/api/p/0/catalogs', {}))
     expect(err).toBeInstanceOf(ApiError)
-    expect(err).toMatchObject({ status: 400, message: 'name is required', body: undefined })
+    expect(err).toMatchObject({ status: 403, message: 'Request failed (403)', body: undefined })
   })
 
-  it('falls back to the status when the body is empty', async () => {
-    answer(new Response('', { status: 502 }))
-    await expect(getJSON('/api/me')).rejects.toMatchObject({ status: 502, message: 'Request failed (502)' })
+  it.each(['', '<html>502 Bad Gateway</html>', '{"success":false}'])(
+    'says a 5xx without an error field (%j) as the server not answering',
+    async (text) => {
+      answer(new Response(text, { status: 502 }))
+      await expect(getJSON('/api/me')).rejects.toMatchObject({
+        status: 502,
+        message: "Uno's server didn't answer. Try again in a moment.",
+      })
+    },
+  )
+
+  it('says a request that never got an answer as Uno being unreachable', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const err = await rejection(getJSON('/api/me'))
+    expect(err).not.toBeInstanceOf(ApiError)
+    expect(err).toMatchObject({ message: "Couldn't reach Uno. Check your connection and try again." })
+  })
+
+  it('passes any other rejection through', async () => {
+    const abort = new DOMException('The operation was aborted.', 'AbortError')
+    fetchMock.mockRejectedValueOnce(abort)
+    await expect(getJSON('/api/me')).rejects.toBe(abort)
   })
 
   it('keeps a JSON error body parsed', async () => {

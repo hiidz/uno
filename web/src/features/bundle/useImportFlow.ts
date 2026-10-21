@@ -29,6 +29,8 @@ export function useImportFlow(profileIndex: number, onImported: (result: ImportR
   const [pasted, setPasted] = useState('')
   const [valid, setValid] = useState(false)
   const [inputError, setInputError] = useState<ImportProblem | null>(null)
+  // The field's text failed to parse, so Import stays off until it is edited.
+  const [broken, setBroken] = useState(false)
   const [review, setReview] = useState<Review | null>(null)
   const checking = useMutation({
     mutationFn: (bundle: unknown) => checkImport(profileIndex, bundle),
@@ -40,6 +42,7 @@ export function useImportFlow(profileIndex: number, onImported: (result: ImportR
   function clear() {
     setValid(false)
     setInputError(null)
+    setBroken(false)
     setReview(null)
     checking.reset()
     importing.reset()
@@ -61,6 +64,11 @@ export function useImportFlow(profileIndex: number, onImported: (result: ImportR
     importing.mutate({ bundle, reuse, skip }, { onSuccess: onImported })
   }
 
+  function refuse(problem: ImportProblem) {
+    setInputError(problem)
+    setBroken(true)
+  }
+
   function runImport() {
     if (review) {
       const live = liveMatches(review.check, review.skip)
@@ -71,7 +79,7 @@ export function useImportFlow(profileIndex: number, onImported: (result: ImportR
     clear()
     const parsed = parseBundleText(pasted)
     if (!parsed.ok) {
-      setInputError(parsed.problem)
+      refuse(parsed.problem)
       return
     }
     const { bundle } = parsed
@@ -84,6 +92,7 @@ export function useImportFlow(profileIndex: number, onImported: (result: ImportR
   return {
     pasted,
     hasText,
+    broken,
     valid,
     review,
     inputError,
@@ -96,7 +105,7 @@ export function useImportFlow(profileIndex: number, onImported: (result: ImportR
     validate() {
       const parsed = parseBundleText(pasted)
       if (parsed.ok) setValid(true)
-      else setInputError(parsed.problem)
+      else refuse(parsed.problem)
     },
     setChoices: (choices: ReuseChoices) => setReview((held) => held && { ...held, choices }),
     setSkip: (skip: number[]) => setReview((held) => held && { ...held, skip }),

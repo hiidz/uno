@@ -115,12 +115,14 @@ describe('ImportDialog', () => {
     paste('{nope')
     press('Validate JSON')
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/^This isn't valid JSON\.\S/)
+    expect(screen.getByRole('alert')).toHaveTextContent(/^This isn't valid JSON\.Details\S/)
     expect(field()).toHaveValue('{nope')
     expect(api.checkImport).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled()
 
     fireEvent.change(field(), { target: { value: '{' } })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled()
   })
 
   it('refuses invalid JSON on Import without sending it', () => {
@@ -128,8 +130,9 @@ describe('ImportDialog', () => {
     paste('{nope')
     press('Import')
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/^This isn't valid JSON\.\S/)
+    expect(screen.getByRole('alert')).toHaveTextContent(/^This isn't valid JSON\.Details\S/)
     expect(api.checkImport).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled()
   })
 
   it('refuses a paste over 4 MiB at once, keeping what the field held', () => {
@@ -142,6 +145,7 @@ describe('ImportDialog', () => {
     )
     expect(field()).toHaveValue('{"a": 1}')
     expect(api.checkImport).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled()
 
     paste('{"a": 2}')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -301,7 +305,7 @@ describe('ImportDialog', () => {
     press('Import')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      "This JSON isn't a bundle Uno can import.not a bundle",
+      "This JSON isn't a bundle Uno can import.Detailsnot a bundle",
     )
     expect(screen.getByRole('alert')).toHaveFocus()
     expect(api.importBundle).not.toHaveBeenCalled()
@@ -318,7 +322,7 @@ describe('ImportDialog', () => {
     await screen.findByRole('button', { name: 'Import 2 catalogs' })
     press('Import 2 catalogs')
 
-    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't import. Nothing was added.disk full")
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't import. Nothing was added.Detailsdisk full")
     expect(screen.getByRole('alert')).toHaveFocus()
     expect(screen.getByText('A')).toBeInTheDocument()
   })

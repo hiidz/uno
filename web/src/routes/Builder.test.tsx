@@ -101,6 +101,23 @@ describe('Builder', () => {
     expect(router.state.location.pathname).toBe('/profiles')
   })
 
+  it.each([0, 7, 1.5, '2'])('sends state naming profile %j back to the picker', async (profileIndex) => {
+    const router = createMemoryRouter(
+      [
+        { path: '/profiles', element: <p>Who is watching</p> },
+        { path: '/configure', element: <Builder /> },
+      ],
+      { initialEntries: [{ pathname: '/configure', state: { profileIndex, profileName: 'Forged' } }] },
+    )
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('Who is watching')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/profiles')
+  })
+
   it('rebuilds Home from fresh rows when it opens on a profile again', async () => {
     server.catalogs.set(1, [onHome('a', 'Alpha')])
     const router = open(1)

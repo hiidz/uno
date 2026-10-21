@@ -31,13 +31,23 @@ export class NuvioAuthError extends Error {
   }
 }
 
+/** GoTrue's error body, `{code, error_code, msg}`; older endpoints answer
+ *  `{error, error_description}`. */
+interface GoTrueError {
+  error_code?: unknown
+  msg?: unknown
+  error_description?: unknown
+}
+
+// Wrong credentials get Uno's own words; anything else is said in Nuvio's, or
+// in a short fallback when the body holds none.
 async function errorMessageFor(res: Response): Promise<string> {
-  try {
-    const body = (await res.json()) as { message?: string }
-    return body.message ?? `Nuvio auth request failed (${res.status})`
-  } catch {
-    return `Nuvio auth request failed (${res.status})`
+  const body = (await res.json().catch(() => ({}))) as GoTrueError | null
+  if (body?.error_code === 'invalid_credentials') {
+    return "That email and password don't match a Nuvio account."
   }
+  const words = body?.msg ?? body?.error_description
+  return typeof words === 'string' && words ? words : "Nuvio couldn't sign you in. Try again in a moment."
 }
 
 async function tokenRequest(
