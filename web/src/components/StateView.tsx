@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
+import { Button } from './Button'
 
 type Size = 'default' | 'compact'
 
 /** Each size's line: the default a list's own, the compact one a field note's. */
 const LINE: Record<Size, string> = {
-  default: 'type-data m-0 text-[12.5px]',
-  compact: 'type-data m-0 max-w-[var(--w-entry)] text-[13px] leading-[1.45]',
+  default: 'type-data m-0 text-meta',
+  compact: 'type-data m-0 max-w-[var(--w-entry)] text-meta',
 }
 
 /**
@@ -96,9 +97,9 @@ export function StateError({
           anything we'd synthesise, so surface it under the headline. */}
       {size === 'default' && <p className={`${LINE[size]} text-dimmer`}>{error.message}</p>}
       {onRetry && (
-        <button type="button" onClick={onRetry} className={size === 'default' ? 'btn-ghost' : 'btn-ghost btn-sm'}>
+        <Button kind="ghost" size={size === 'default' ? 'md' : 'sm'} onClick={onRetry}>
           Retry
-        </button>
+        </Button>
       )}
     </div>
   )

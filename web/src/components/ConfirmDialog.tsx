@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { AlertDialog } from 'radix-ui'
+import { Button } from './Button'
 
 /**
  * A confirmation the user has to answer before something irreversible happens.
@@ -53,11 +54,11 @@ export function ConfirmDialog({
           <AlertDialog.Content
             className="bg-raised border-line-hi flex max-h-full w-full max-w-[440px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-[20px] border p-6 outline-none"
           >
-            <AlertDialog.Title className="type-display m-0 text-[21px] leading-[28px]">
+            <AlertDialog.Title className="type-display m-0 text-display">
               {title}
             </AlertDialog.Title>
             <AlertDialog.Description asChild>
-              <div className="text-dim text-[14.5px] leading-relaxed">{body}</div>
+              <div className="text-dim text-body-sm leading-relaxed">{body}</div>
             </AlertDialog.Description>
             {error && (
               <p
@@ -69,15 +70,9 @@ export function ConfirmDialog({
             )}
             <div className="flex justify-end gap-2">
               <AlertDialog.Cancel className="btn-ghost">{cancelLabel}</AlertDialog.Cancel>
-              <button
-                type="button"
-                onClick={onConfirm}
-                disabled={pending}
-                aria-live="polite"
-                className={destructive ? 'btn-danger' : 'btn-primary'}
-              >
+              <Button kind={destructive ? 'danger' : 'primary'} onClick={onConfirm} disabled={pending} aria-live="polite">
                 {confirmLabel}
-              </button>
+              </Button>
             </div>
           </AlertDialog.Content>
         </AlertDialog.Overlay>

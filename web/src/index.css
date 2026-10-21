@@ -936,7 +936,7 @@
        control and leaves it there, which on a form this dense means every tap
        into a field re-frames the screen. The `--w-*` widths grow alongside it.
        Fields that set their own smaller size — the number boxes, the search
-       inputs — carry `pointer-coarse:text-[16px]` at their call site, because a
+       inputs — carry `pointer-coarse:text-field` at their call site, because a
        utility beats a component-layer rule whatever its specificity. */
     @media (pointer: coarse) {
         .field {

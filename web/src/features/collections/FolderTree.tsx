@@ -4,7 +4,8 @@ import { DndContext, type Announcements, type DragEndEvent } from '@dnd-kit/core
 import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ChevronLeft, ChevronRight, TriangleAlert } from 'lucide-react'
-import { Grip, RowIconButton, useDragSensors } from '@/components/dnd'
+import { Grip, useDragSensors } from '@/components/dnd'
+import { IconButton } from '@/components/IconButton'
 import { Icon } from '@/components/Icon'
 import { TILE_ASPECT } from '@/features/preview/tiles'
 import { reorder } from '@/lib/order'
@@ -236,13 +237,17 @@ function FolderMoveArrows({
 }) {
   return (
     <div className="fold-tile-move">
-      <RowIconButton
+      <IconButton
+        variant="plain"
+        size="sm"
         icon={ChevronLeft}
         label={`Move ${label} left${position === 0 ? ', already first' : ''}`}
         disabled={position === 0}
         onClick={() => onMove(-1)}
       />
-      <RowIconButton
+      <IconButton
+        variant="plain"
+        size="sm"
         icon={ChevronRight}
         label={`Move ${label} right${position === total - 1 ? ', already last' : ''}`}
         disabled={position === total - 1}

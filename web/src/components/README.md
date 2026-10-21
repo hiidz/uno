@@ -9,7 +9,7 @@ them.
 | Component | Use it for |
 |---|---|
 | `Button` | Every text button. `kind` picks the look, `size="sm"` the smaller height. |
-| `IconButton` | A button named by an icon: a circle (`xs`, `sm`, `md`) or the icon-plus-word pill. |
+| `IconButton` | A button named by an icon: a circle (`xs`, `sm`, `md`) printed on a sign or plain on a pane, or the icon-plus-word pill. |
 | `StateView` | The loading, empty and error states of anything fetched; `size="compact"` in pickers. |
 | `fields.tsx` | Form fields, `FieldError`, `FieldNote`, `Segmented`, `InfoTip`. |
 | `Modal`, `ConfirmDialog` | A dialog, and the alert that asks before something can't be undone. |
