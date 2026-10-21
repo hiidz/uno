@@ -260,11 +260,7 @@ func updateCatalogCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sub
 	if err := want.Validate(); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
-		want.Name, want.Params, utcTimestamp(time.Now()), c.ID.String()); err != nil {
-		return fmt.Errorf("updating subscribed catalog: %w", err)
-	}
-	return nil
+	return writeCatalogRecipe(ctx, tx, profileID, c.ID, want.Name, want.Params, utcTimestamp(time.Now()))
 }
 
 // copySnapshot is catalog copy c as a snapshot under the key of its

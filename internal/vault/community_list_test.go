@@ -282,6 +282,9 @@ func queryPlan(t *testing.T, db *DB, query string, args []any) string {
 		}
 		lines = append(lines, detail)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	return strings.Join(lines, "; ")
 }
 
