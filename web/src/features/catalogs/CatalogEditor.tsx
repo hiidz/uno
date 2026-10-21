@@ -582,7 +582,7 @@ interface CatalogEditorProps {
  * to a collection, a modal over that collection's editor. Always a saved row
  * (or a collection's staged draft): a catalog is named into existence by its
  * own dialog before this editor opens, and Duplicate is one server call
- * (`Workspace.tsx`'s `confirmDuplicateCatalog`) whose finished copy opens here
+ * (`Configure.tsx`'s `confirmDuplicateCatalog`) whose finished copy opens here
  * like any other row.
  *
  * **Dirtiness is reported, not handled.** Every way out of this editor

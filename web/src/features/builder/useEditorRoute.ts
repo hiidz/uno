@@ -17,7 +17,7 @@ interface EditorRoute {
 }
 
 /**
- * The Workspace's open editor, as its path names it (`paths.ts`).
+ * Configure's open editor, as its path names it (`paths.ts`).
  *
  * The target is caught once per row, as the path first names it: from what
  * `open` was handed, which is a row the library may not list yet (just
@@ -72,7 +72,7 @@ export function useEditorRoute(
 
   const close = useCallback(() => {
     if (pushedInApp(pushedState.current)) void navigate(-1)
-    else void navigate(builderPath.workspace(), { replace: true })
+    else void navigate(builderPath.configure(), { replace: true })
   }, [navigate])
 
   const missing = editor !== null && current === null && found === null && library.loaded

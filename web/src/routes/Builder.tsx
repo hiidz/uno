@@ -13,7 +13,7 @@ import { builderPath, builderView, type BuilderSection, type BuilderView, type E
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
 import { ToPicker } from '@/features/builder/redirects'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
-import { Workspace } from '@/features/builder/Workspace'
+import { Configure } from '@/features/builder/Configure'
 import { CommunityView } from '@/features/community/CommunityView'
 import { HomeSelectionProvider } from '@/features/home/HomeSelectionContext'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
@@ -33,12 +33,12 @@ import { useBuilderProfile, type BuilderProfile } from './useBuilderProfile'
 type Tab = BuilderSection
 
 /**
- * The single builder page: a Workspace section (two regions — a Library rail on
+ * The single builder page: a Configure section (two regions — a Library rail on
  * the left, every catalog and collection you own, and a pane on the right
  * holding your home screen or the editor for whichever rail row is selected)
  * and a Community section (everyone else's public catalogs and collections,
  * browsed and added), each its own path (`features/builder/paths.ts`), on the
- * profile picked last (`activeProfile.ts`). Below `lg` the Workspace
+ * profile picked last (`activeProfile.ts`). Below `lg` Configure
  * section's own two regions stack into one scrolling document rather than
  * becoming two screens — see `stacked.ts`; Community is already one column at
  * every width, so it needs no such treatment.
@@ -117,8 +117,8 @@ function SectionView({ profileIndex, view }: { profileIndex: number; view: Build
     void navigate(builderPath.publication(publication))
   }
 
-  if (view.section === 'workspace') {
-    return <Workspace profileIndex={profileIndex} editor={view.editor} onOpenPublication={openPublication} />
+  if (view.section === 'configure') {
+    return <Configure profileIndex={profileIndex} editor={view.editor} onOpenPublication={openPublication} />
   }
   return <CommunityView profileIndex={profileIndex} publication={view.publication} />
 }
@@ -361,7 +361,7 @@ function PendingIndicator({
   )
 }
 
-/** The Workspace / Community switch, factored out only because it's rendered
+/** The Configure / Community switch, factored out only because it's rendered
  *  twice — inline in the header above `lg`, on its own row below it. */
 function BuilderTabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
   return (
@@ -370,7 +370,7 @@ function BuilderTabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void
       value={tab}
       onChange={onChange}
       options={[
-        { value: 'workspace', label: 'Workspace' },
+        { value: 'configure', label: 'Configure' },
         {
           value: 'community',
           label: (

@@ -39,7 +39,7 @@ export const router = createBrowserRouter([
       {
         // The builder, on the profile picked last (`activeProfile.ts`): its
         // screens are children (`features/builder/paths.ts`) that `Builder`
-        // reads from the path itself, so moving between them, Workspace and
+        // reads from the path itself, so moving between them, Configure and
         // Community included, keeps it mounted with Home's unpushed edits.
         // Its shell stands in while its chunk arrives.
         element: (

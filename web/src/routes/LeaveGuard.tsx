@@ -12,7 +12,7 @@ import { leaveStep, type LeaveStep } from '@/features/builder/paths'
  * navigate, and this asks what the move would discard (`leaveStep`).
  *
  * The editor's question comes first, through `EditorGuard` — the prompt
- * `Workspace` draws — then, when the move leaves the builder, Home's. Moving
+ * `Configure` draws — then, when the move leaves the builder, Home's. Moving
  * between the builder's sections keeps Home's state, which lives above both.
  * Each answer to stay resets the blocker, so the next navigation is asked
  * afresh.

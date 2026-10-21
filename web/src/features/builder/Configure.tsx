@@ -51,7 +51,7 @@ import { useEditorRoute } from './useEditorRoute'
 
 
 /**
- * What the workspace is waiting on an answer to.
+ * What Configure is waiting on an answer to.
  *
  * The four row actions all ask before they act, and only one can be asked at a
  * time: the prompt is a modal over the whole builder, so there is nothing to
@@ -81,15 +81,15 @@ type ConfirmProps = Omit<ComponentProps<typeof ConfirmDialog>, 'open'>
  * where they were. The two shortcuts between rail and Home are scroll requests
  * (`stacked.ts`); opening and closing an editor scroll nothing.
  *
- * **This owns every way out of an editor within the Workspace**, because every
+ * **This owns every way out of an editor within Configure**, because every
  * one of them starts outside the editor: selecting a row in the rail, the × in
  * the editor's header, Escape, and below `lg` the browser's Back. A way out of
- * the Workspace itself is a navigation, which `LeaveGuard` asks about through
+ * Configure itself is a navigation, which `LeaveGuard` asks about through
  * the same guard. An editor only reports whether it has unsaved changes; the
  * decision to warn is made through `EditorGuard`, so no exit can be added later
  * that quietly skips the check.
  */
-export function Workspace({
+export function Configure({
   profileIndex,
   editor,
   onOpenPublication,
@@ -302,7 +302,7 @@ export function Workspace({
 
   if (library.error instanceof ProfileNotSelectedError) return <ToPicker />
   if (route.missing && editor) {
-    return <ToParent to={builderPath.workspace()} notice={`That ${editor.kind} isn’t in this profile.`} />
+    return <ToParent to={builderPath.configure()} notice={`That ${editor.kind} isn’t in this profile.`} />
   }
 
   const { activeCatalog, activeCollection, editingCollectionCatalogs } = openRows(target, library)
@@ -509,7 +509,7 @@ export function Workspace({
 
   return (
     <>
-      <h1 className="sr-only">Workspace</h1>
+      <h1 className="sr-only">Configure</h1>
       <div className="grid min-h-0 flex-1 lg:grid-cols-[372px_minmax(0,1fr)]">
         {/* The sidebar: every catalog and collection you own, one permanently
             visible section with its own scroll region and its own name/genre
@@ -729,7 +729,7 @@ export function Workspace({
   )
 }
 
-/** Where the Workspace sends a path it can't show. A 404 on a
+/** Where Configure sends a path it can't show. A 404 on a
  *  profile-scoped route means this slot was never selected — there's nothing
  *  to retry, so the user goes back to pick one. An editor's address for a row
  *  that is gone, or never was, goes to Home. */
@@ -773,9 +773,9 @@ function openRows(
   return { activeCatalog, activeCollection, editingCollectionCatalogs }
 }
 
-/** The browser tab's name: the open editor's subject, or the Workspace. */
+/** The browser tab's name: the open editor's subject, or Configure. */
 function paneTitle(target: EditorTarget | null): string {
-  return target ? editorSubject(target) : 'Workspace'
+  return target ? editorSubject(target) : 'Configure'
 }
 
 /** What the discard prompt is about: the row as it was opened, which is the

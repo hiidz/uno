@@ -14,7 +14,7 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
  *
  * That rule is what decides how many fields there are, so `extra` is where a
  * kind with a second immutable field puts it. A kind whose name is the only
- * thing worth settling up front leaves the slot out. `Workspace`'s two call
+ * thing worth settling up front leaves the slot out. `Configure`'s two call
  * sites say which is which; `CollectionEditor`'s "new inside this collection"
  * asks the same two things a library catalog does.
  */

@@ -39,8 +39,8 @@ vi.mock('@/api', async () => ({
 }))
 
 // Everything the builder draws around Home's state is beside the point here.
-vi.mock('@/features/builder/Workspace', () => ({
-  Workspace: function Workspace() {
+vi.mock('@/features/builder/Configure', () => ({
+  Configure: function Configure() {
     const home = useHomeSelection()
     const edits = useHomeEdits()
     return (
