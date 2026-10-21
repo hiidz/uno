@@ -301,6 +301,7 @@ function buildSections(args: SectionArgs) {
         <>
           <div className="choices" role="group" aria-label="Order by">
             {SORT_FIELDS[state.type].map((option) => (
+              // drift-ok: a choice chip, drawn by `.choice`
               <button
                 key={option.value}
                 type="button"
@@ -796,6 +797,7 @@ export function CatalogEditor({
 
             {sections.map((section) => (
               <div key={section.key}>
+                {/* drift-ok: a folded section's head, drawn by `.sec-head` */}
                 <button
                   type="button"
                   id={`sec-head-${section.key}`}

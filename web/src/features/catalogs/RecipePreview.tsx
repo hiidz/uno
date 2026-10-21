@@ -4,6 +4,7 @@ import { CONTENT_TILE_SHAPE, TileGrid } from '@/features/preview/tiles'
 import type { RecipePreview as Preview } from '@/features/preview/useRecipeTiles'
 import { andList } from '@/lib/list'
 import { plural } from '@/lib/plural'
+import { Button } from '@/components/Button'
 
 interface RecipePreviewProps {
   preview: Preview
@@ -46,9 +47,9 @@ export function RecipePreview({ preview, type, invalid, fixFirst = [], onRun, re
     <aside className="ed-pv" aria-label="Results">
       <div className="ed-pv-head">
         <span className="type-label">One page of results</span>
-        <button type="button" onClick={onRun} disabled={preview.tiles.isLoading} className="btn-secondary btn-sm">
+        <Button kind="secondary" size="sm" onClick={onRun} disabled={preview.tiles.isLoading}>
           {preview.tiles.isLoading ? 'Running…' : preview.idle ? 'Run preview' : 'Run again'}
-        </button>
+        </Button>
       </div>
 
       <Body preview={preview} type={type} invalid={invalid} fixFirst={fixFirst} readOnly={readOnly} />

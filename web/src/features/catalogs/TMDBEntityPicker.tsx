@@ -14,11 +14,11 @@ import {
 } from '@/api'
 import type { CatalogType } from '@/api'
 import { FieldNote, Segmented } from '@/components/fields'
-import { Icon } from '@/components/Icon'
 import { useDebounce } from '@/lib/useDebounce'
 import { MAX_ENTITY_IDS } from './catalogForm'
 import { parseIdList, serializeIdList, type IdJoin } from './params'
 import { companyDetail } from './summary'
+import { IconButton } from '@/components/IconButton'
 
 /**
  * TMDB entities picked by name from a server search, kept as chips — the
@@ -307,7 +307,7 @@ export function TMDBEntityPicker({
             return (
               <li
                 key={id}
-                className={`inline-flex items-center rounded-full border pl-2 text-[12.5px] ${
+                className={`text-meta inline-flex items-center rounded-full border pl-2 ${
                   missing ? 'border-danger text-danger' : 'bg-raised-hi border-dim text-ink'
                 }`}
               >
@@ -315,14 +315,7 @@ export function TMDBEntityPicker({
                   {label}
                   {missing && <span className="text-dimmer"> · not found</span>}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => remove(id)}
-                  aria-label={`Remove ${label}`}
-                  className="text-dimmer hover:text-ink grid h-6 w-6 place-items-center transition-colors pointer-coarse:h-11 pointer-coarse:w-11"
-                >
-                  <Icon icon={X} size={12} />
-                </button>
+                <IconButton label={`Remove ${label}`} icon={X} onClick={() => remove(id)} variant="plain" size="xs" />
               </li>
             )
           })}
@@ -353,7 +346,7 @@ export function TMDBEntityPicker({
         aria-label={`Search ${plural}`}
         aria-invalid={invalid}
         autoComplete="off"
-        className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px] pointer-coarse:text-[16px]"
+        className="field type-data text-meta w-full max-w-[var(--w-entry)] pointer-coarse:text-field"
       />
 
       <div role="status">{status && <FieldNote tone={failed ? 'danger' : 'dim'}>{status}</FieldNote>}</div>
@@ -367,11 +360,12 @@ export function TMDBEntityPicker({
         >
           {matches.map((entity) => (
             <li key={entity.id}>
+              {/* drift-ok: a search result's row, the whole row its target */}
               <button
                 type="button"
                 onClick={() => add(entity)}
                 aria-label={`Add ${entity.name}`}
-                className="text-dim hover:bg-raised-hi hover:text-ink focus-visible:bg-raised-hi focus-visible:text-ink w-full rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors pointer-coarse:py-3"
+                className="text-dim hover:bg-raised-hi hover:text-ink focus-visible:bg-raised-hi focus-visible:text-ink text-meta w-full rounded-lg px-2 py-1.5 text-left transition-colors pointer-coarse:py-3"
               >
                 {entity.name}
                 {source.rowDetail && (
