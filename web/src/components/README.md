@@ -14,7 +14,7 @@ them.
 | `fields.tsx` | Form fields, `FieldError`, `FieldNote`, `Segmented`, `InfoTip`. |
 | `Modal`, `ConfirmDialog` | A dialog, and the alert that asks before something can't be undone. |
 | `MoreMenu` | A row's ⋯ menu. |
-| `Toasts`, `useToasts` | The app's toasts: `show({ tone, text, detail })`, a success, failure or notice. `ToastProvider` sits in `App.tsx`. |
+| `Toasts`, `useToasts`, `useToastLift` | The app's toasts: `show({ tone, text, detail })`, a success, failure or notice. `ToastProvider` sits in `App.tsx`; a bar along the screen's foot calls `useToastLift` so they sit above it. |
 | `Toast`, `useToast` | The old in-place message, until every screen has moved onto `useToasts`. |
 | `PaneSign`, `EntryPage` | A pane's sign, and the sign-in and profile-picker page. |
 | `Icon`, `Skeleton`, `dnd.tsx`, `Wordmark`, `Fascia` | Smaller parts. |

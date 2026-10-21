@@ -38,7 +38,6 @@ export function LibrarySection({
   onDeleteCollection,
   onImport,
   onExport,
-  notice,
 }: {
   library: Library
   /** The row whose editor is open in the pane, or `null` for none. */
@@ -53,8 +52,6 @@ export function LibrarySection({
   onDeleteCollection: (collection: LibraryCollection) => void
   onImport: () => void
   onExport: () => void
-  /** A short outcome line under the search row, such as the result of an import. */
-  notice?: ReactNode
 }) {
   const [search, setSearch] = useState('')
   const home = useHomeSelection()
@@ -124,7 +121,6 @@ export function LibrarySection({
       <p role="status" className="sr-only">
         {query && !library.isLoading ? filterResult(catalogs.length, collections.length) : ''}
       </p>
-      {notice}
 
       {/* One error and one Retry for the whole library: both lists come from
           the same request, so a failure leaves both groups undrawn. */}

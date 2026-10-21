@@ -9,6 +9,7 @@ import { communityFolder, communityItem } from '@/test/fixtures'
 import { builderView } from '@/features/builder/paths'
 import type { OpenPublication } from './communityQuery'
 import { CommunityView } from './CommunityView'
+import { ToastProvider } from '@/components/Toasts'
 
 const api = vi.hoisted(() => ({ current: null as null | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) }))
 vi.mock('@/api/client', () => ({ apiFetch: (input: RequestInfo | URL, init?: RequestInit) => api.current!(input, init) }))
@@ -89,12 +90,14 @@ function renderView(routes: Record<string, FakeRoute>, initialOpen: OpenPublicat
   const entries = initialOpen ? ['/configure', `/community/${initialOpen.kind}/${initialOpen.id}`] : ['/community']
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
-        <Routes>
-          <Route path="/community/*" element={<OnPath />} />
-          <Route path="/profiles" element={<p>Pick a profile</p>} />
-        </Routes>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
+          <Routes>
+            <Route path="/community/*" element={<OnPath />} />
+            <Route path="/profiles" element={<p>Pick a profile</p>} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </QueryClientProvider>,
   )
   return fake.calls

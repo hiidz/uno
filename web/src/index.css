@@ -598,7 +598,7 @@
 
     /* Toasts (DESIGN.md, "Toast"): one stack, newest at the bottom, in the
        window's bottom-right corner from `lg` and full width at a phone's
-       foot, above any bar there (`--toast-lift`). Raised-hi cards with the
+       foot, above any bar along the bottom (`--toast-lift`). Raised-hi cards with the
        line-hi edge, no shadow; a failure's edge is red. */
     .toast-viewport {
         position: fixed;
@@ -617,7 +617,7 @@
     @media (width >= 64rem) {
         .toast-viewport {
             right: 24px;
-            bottom: 24px;
+            bottom: calc(24px + var(--toast-lift, 0px));
             left: auto;
             width: 380px;
         }

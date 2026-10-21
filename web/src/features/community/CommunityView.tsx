@@ -7,6 +7,7 @@ import { Icon } from '@/components/Icon'
 import { StateView } from '@/components/StateView'
 import { skeletonKeys } from '@/components/Skeleton'
 import { Toast } from '@/components/Toast'
+import { useToasts } from '@/components/toastQueue'
 import { useToast, type ToastMessage } from '@/components/useToast'
 import { IN_APP, builderPath, pushedInApp, type EditorRef } from '@/features/builder/paths'
 import { ToParent, ToPicker, useRedirectNotice } from '@/features/builder/redirects'
@@ -69,7 +70,7 @@ export function CommunityView({
   const openDetail = useOpenPublication(profileIndex, openID)
 
   const [toast, setToast] = useToast()
-  useRedirectNotice(setToast)
+  useRedirectNotice(useToasts().show)
   // Keyed by publication id. Actions on different rows can overlap.
   const [pending, setPending] = useState<ReadonlyMap<string, CommunityAction>>(new Map())
 

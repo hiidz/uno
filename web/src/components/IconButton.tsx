@@ -53,7 +53,7 @@ export function IconButton({
         onClick?.(event)
       }}
       aria-label={label}
-      title={label}
+      title={rest.title ?? label}
       className={`${
         variant === 'icon'
           ? `tap grid ${circle.box} shrink-0 place-items-center rounded-full transition-colors ${

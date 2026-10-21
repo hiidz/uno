@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Field, TextInput } from '@/components/fields'
+import { Button } from '@/components/Button'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 
 /**
@@ -51,7 +52,7 @@ export function NewItemDialog({
   return (
     <Modal open={open} onClose={onClose} labelledBy={`new-${noun}-title`} width="440px">
       <ModalHeader>
-        <h2 id={`new-${noun}-title`} className="type-display m-0 text-[18px]">
+        <h2 id={`new-${noun}-title`} className="type-display text-display m-0">
           New {noun}
         </h2>
       </ModalHeader>
@@ -138,12 +139,12 @@ function NewItemForm({
       </ModalBody>
 
       <ModalFooter tone={noun}>
-        <button type="button" onClick={onClose} className="btn-ghost">
+        <Button kind="ghost" onClick={onClose}>
           Cancel
-        </button>
-        <button type="submit" disabled={saving} className="btn-primary">
+        </Button>
+        <Button kind="primary" type="submit" disabled={saving}>
           {saving ? 'Creating…' : `Create ${noun}`}
-        </button>
+        </Button>
       </ModalFooter>
     </form>
   )

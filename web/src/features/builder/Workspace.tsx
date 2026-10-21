@@ -5,8 +5,9 @@ import type { CatalogPayload, CatalogType, CollectionPayload, ImportResult } fro
 import { ArrowDown } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Icon } from '@/components/Icon'
-import { Toast } from '@/components/Toast'
-import { useToast } from '@/components/useToast'
+import { Button } from '@/components/Button'
+import { useToastLift } from '@/components/toastLift'
+import { useToasts } from '@/components/toastQueue'
 import { ExportDialog } from '@/features/bundle/ExportDialog'
 import { ImportDialog } from '@/features/bundle/ImportDialog'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
@@ -117,18 +118,20 @@ export function Workspace({
   const [namingCollection, setNamingCollection] = useState(false)
   const [confirming, setConfirming] = useState<Confirmation | null>(null)
   const [transfer, setTransfer] = useState<'import' | 'export' | null>(null)
-  const [toast, setToast] = useToast()
-  useRedirectNotice(setToast)
+  const toasts = useToasts()
+  useRedirectNotice(toasts.show)
   const waitingForPush = usePushWaiting(profileIndex)
   const sharing = useWorkspaceSharing({
     profileIndex,
     genres: library.genres,
     dirty,
     waitingForPush,
-    onToast: setToast,
+    onToast: toasts.show,
   })
 
   const railRef = useRef<HTMLElement>(null)
+  // The jump button pins to a phone's foot while the rail is on screen.
+  const jumpRef = useToastLift(8)
   const paneRef = useRef<HTMLDivElement>(null)
   const stacked = useStackedLayout()
   const { request, requestScroll } = useScrollRequests()
@@ -538,7 +541,6 @@ export function Workspace({
             onDeleteCollection={deleteCollection}
             onImport={() => setTransfer('import')}
             onExport={() => setTransfer('export')}
-            notice={<Toast toast={toast} />}
           />
 
           {/* Above `lg` home is simply the other half of the screen and needs
@@ -548,14 +550,15 @@ export function Workspace({
               while the rail is on screen, and leaves with the rail's end as
               the pane scrolls in. `z-20` ties the rail's sticky signs and wins on
               document order; the sticky header band (`z-30`) stays over it. */}
-          <button
-            type="button"
+          <Button
+            ref={jumpRef}
+            kind="secondary"
             onClick={showHome}
-            className="btn-secondary bg-raised-hi sticky bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 mb-4 self-center lg:hidden"
+            className="bg-raised-hi sticky bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 mb-4 self-center lg:hidden"
           >
             Your home screen
             <Icon icon={ArrowDown} size={16} />
-          </button>
+          </Button>
         </aside>
 
         <HomeSlot
@@ -707,7 +710,7 @@ export function Workspace({
         onClose={() => setTransfer(null)}
         onImported={(result) => {
           setTransfer(null)
-          setToast({ text: importedText(result), tone: 'success' })
+          toasts.show({ text: importedText(result), tone: 'success' })
         }}
       />
 

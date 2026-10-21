@@ -1,5 +1,6 @@
 import { TriangleAlert } from 'lucide-react'
 import { Icon } from '@/components/Icon'
+import { Button } from '@/components/Button'
 import { SignStepButton, type SignStep } from '@/components/PaneSign'
 import { pluralCount } from '@/lib/plural'
 
@@ -64,18 +65,12 @@ export function EditorFooter({
       <SaveStatus errorCount={errorCount} errorLabels={errorLabels} dirty={dirty} notes={notes} />
       <ErrorAnnouncement count={errorCount} labels={errorLabels} />
       <SignStepButton step={step} />
-      <button type="button" onClick={onCancel} className="btn-ghost">
+      <Button kind="ghost" onClick={onCancel}>
         Close
-      </button>
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={saving}
-        aria-disabled={!saving && errorCount > 0}
-        className="btn-primary"
-      >
+      </Button>
+      <Button kind="primary" onClick={onSubmit} disabled={saving} aria-disabled={!saving && errorCount > 0}>
         {saving ? 'Saving…' : saveLabel}
-      </button>
+      </Button>
     </>
   )
 }

@@ -70,12 +70,13 @@ export function ProfileMenu({
   // chip, so the chip needs no menu behind it: it is a one-tap switch.
   if (!stacked) {
     return (
+      // drift-ok: the profile chip, a pill of its own with the slot sticker
       <button
         type="button"
         onClick={onSwitchProfile}
         title="Switch profile"
         aria-label={`Profile ${profileIndex}, ${profileName}. Switch profile`}
-        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] shrink-0 items-center gap-2 rounded-full pointer-coarse:h-11 pr-3.5 pl-1 text-[14px] font-semibold whitespace-nowrap transition-colors ${className}`}
+        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] shrink-0 items-center gap-2 rounded-full pointer-coarse:h-11 pr-3.5 pl-1 text-body-sm font-semibold whitespace-nowrap transition-colors ${className}`}
       >
         <SlotSticker index={profileIndex} />
         {profileName}
@@ -95,7 +96,7 @@ export function ProfileMenu({
         // as a flex container, so without it this keeps its full width and
         // spills out of the wrapper the row has already squeezed — under Push
         // — instead of truncating inside it.
-        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] min-w-0 max-w-full items-center gap-2 rounded-full pointer-coarse:h-11 pr-3 pl-1 text-[14px] font-semibold transition-colors ${className}`}
+        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] min-w-0 max-w-full items-center gap-2 rounded-full pointer-coarse:h-11 pr-3 pl-1 text-body-sm font-semibold transition-colors ${className}`}
       >
         <SlotSticker index={profileIndex} />
         {/* The word "profile" is dropped here and kept in the menu below: it is
@@ -121,7 +122,7 @@ export function ProfileMenu({
             menu should read as its items. */}
         <p
           aria-hidden="true"
-          className="text-dim border-line m-0 truncate border-b px-2.5 py-2 text-[13px] font-semibold"
+          className="text-dim border-line m-0 truncate border-b px-2.5 py-2 text-meta font-semibold"
         >
           Profile {profileIndex} · {profileName}
         </p>
@@ -169,11 +170,11 @@ function MenuItem({
       onSelect={onSelect}
       className="hover:bg-line focus-visible:bg-line flex min-h-[44px] flex-col justify-center gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors"
     >
-      <span className="text-ink text-[14px] font-semibold">{label}</span>
+      <span className="text-ink text-body-sm font-semibold">{label}</span>
       {/* What the desktop button says in its `title`. Kept as text because
           `title` never surfaces on touch, which is the only pointer that
           reaches this menu. */}
-      {detail && <span className="text-dim text-[13px] leading-snug">{detail}</span>}
+      {detail && <span className="text-dim text-meta leading-snug">{detail}</span>}
     </DropdownMenu.Item>
   )
 }

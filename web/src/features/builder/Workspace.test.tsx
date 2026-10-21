@@ -8,6 +8,7 @@ import { catalog, collection } from '@/test/fixtures'
 import { EditorGuardProvider } from './EditorGuard'
 import { builderView } from './paths'
 import { Workspace } from './Workspace'
+import { ToastProvider } from '@/components/Toasts'
 
 // Below `lg`: the layer is what these tests are about. `stacked.ts` reads
 // `matchMedia` once and keeps it, so it is stubbed before anything renders.
@@ -166,7 +167,11 @@ function OnPath() {
 
 function renderWorkspace(path = '/configure') {
   const router = createMemoryRouter([{ path: '/configure/*', element: <OnPath /> }], { initialEntries: [path] })
-  render(<RouterProvider router={router} />)
+  render(
+    <ToastProvider>
+      <RouterProvider router={router} />
+    </ToastProvider>,
+  )
   return router
 }
 

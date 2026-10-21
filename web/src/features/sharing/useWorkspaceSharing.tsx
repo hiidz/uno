@@ -2,7 +2,7 @@ import { useState, type Dispatch, type ReactNode } from 'react'
 import type { Catalog, Collection } from '@/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import type { SignStep } from '@/components/PaneSign'
-import type { ToastMessage } from '@/components/useToast'
+import type { ToastInput } from '@/components/toastQueue'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { SinceLastPublished } from './Changes'
 import { PublishDialog, type PublishSubject } from './PublishDialog'
@@ -50,7 +50,7 @@ interface WorkspaceSharingOptions {
   dirty: boolean
   /** The ids of the rows a push would change in Nuvio (`usePushWaiting`). */
   waitingForPush: ReadonlySet<string>
-  onToast: Dispatch<ToastMessage>
+  onToast: Dispatch<ToastInput>
 }
 
 /**

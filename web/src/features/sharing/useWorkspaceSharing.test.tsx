@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog, Collection, SubscriptionState } from '@/api'
 import { SignStepButton } from '@/components/PaneSign'
-import type { ToastMessage } from '@/components/useToast'
+import type { ToastInput } from '@/components/toastQueue'
 import { failWith, fakeApi, type FakeRoute } from '@/test/fakeApi'
 import { catalog, collection, folder } from '@/test/fixtures'
 import { useWorkspaceSharing } from './useWorkspaceSharing'
@@ -23,7 +23,7 @@ function Harness(props: {
   dirty?: boolean
   /** The ids a push would change in Nuvio. */
   waiting?: string[]
-  onToast: (toast: ToastMessage) => void
+  onToast: (toast: ToastInput) => void
 }) {
   const sharing = useWorkspaceSharing({
     profileIndex: 1,

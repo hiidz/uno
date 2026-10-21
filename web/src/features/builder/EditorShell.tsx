@@ -2,8 +2,8 @@ import { useEffect, useId } from 'react'
 import type { ReactNode } from 'react'
 import { Copy, Trash2, X } from 'lucide-react'
 import { IconButton } from '@/components/IconButton'
-import { Icon } from '@/components/Icon'
 import { PaneSign, SIGN_TITLE } from '@/components/PaneSign'
+import { useToastLift } from '@/components/toastLift'
 
 /** A dialog, confirmation or menu in front of the editor — any `role="dialog"`
  *  or `role="alertdialog"` but the editor's own layer below `lg`
@@ -63,6 +63,7 @@ export function EditorShell({
   children,
 }: EditorShellProps) {
   const headingID = useId()
+  const footerRef = useToastLift()
 
   // Escape closes, matching the convention every modal dialog sets — the
   // muscle memory is already there and there's no reason to take it away.
@@ -126,15 +127,14 @@ export function EditorShell({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onRequestClose}
-          aria-label="Close editor"
+        <IconButton
+          label="Close editor"
           title="Close (Esc)"
-          className="tap hover:bg-sign-ink/15 ml-auto grid h-10 w-10 shrink-0 place-items-center rounded-full transition-colors"
-        >
-          <Icon icon={X} size={20} />
-        </button>
+          icon={X}
+          onClick={onRequestClose}
+          variant="icon"
+          className="ml-auto"
+        />
       </PaneSign>
 
       {/* One inset on all three bands — `px-4` narrow, `px-6` from `lg`: the
@@ -154,7 +154,9 @@ export function EditorShell({
       </div>
 
       {/* The flex column pins it under the scrolling body at every width. */}
-      <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:px-6">
+      <div
+        ref={footerRef}
+        className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:px-6">
         {footer}
       </div>
     </section>
