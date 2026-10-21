@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,6 +83,65 @@ func TestNuvioCallsArePacedPerAccount(t *testing.T) {
 	}
 	if w := listProfiles("flooder"); w.Code != http.StatusTooManyRequests {
 		t.Errorf("right after the refill was spent: status = %d, want 429", w.Code)
+	}
+}
+
+// Nuvio's own 429 reaches the builder as a 429 with Nuvio's wait, not as a
+// 502: on the profile list, on push's live-profile read, and on a push step
+// once its undo has put back what Nuvio took. An undo that fails too is still
+// the 500 that says so.
+func TestNuvioRateLimitIsPassedOn(t *testing.T) {
+	limited := &nuvio.RateLimitedError{Wait: 2 * time.Second}
+
+	t.Run("profile list", func(t *testing.T) {
+		s := newTestServer(t, newTestVaultDB(t), &fakeNuvio{listProfilesErr: limited})
+		w := serve(t, s, http.MethodGet, "/api/profiles", "", false)
+		if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") != "2" || answerText(w) != "nuvio is busy" {
+			t.Fatalf("answer = %d, Retry-After %q, %q; want 429, 2, nuvio is busy", w.Code, w.Header().Get("Retry-After"), answerText(w))
+		}
+	})
+
+	for _, tc := range []struct {
+		name       string
+		fake       func(*fakeNuvio)
+		wantStatus int
+		wantBody   string
+		wantWait   string
+	}{
+		{"live profile read", func(f *fakeNuvio) { f.listProfilesErr = limited }, http.StatusTooManyRequests, `{"success":false}`, "2"},
+		{"home order push, undone", func(f *fakeNuvio) { f.pushHomeOrderErrs = []error{limited} }, http.StatusTooManyRequests, `{"success":false}`, "2"},
+		{"home order push, undo failed", func(f *fakeNuvio) {
+			f.pushHomeOrderErrs = []error{limited}
+			f.pushCollectionsErrs = []error{nil, limited}
+		}, http.StatusInternalServerError, `{"success":false,"undo_failed":true}`, ""},
+	} {
+		t.Run("push: "+tc.name, func(t *testing.T) {
+			db := newTestVaultDB(t)
+			ctx := t.Context()
+			profile, err := db.ResolveOrCreateProfile(ctx, "user-limited", 1, "nuvio-uuid-limited")
+			if err != nil {
+				t.Fatalf("creating profile: %v", err)
+			}
+			fake := &fakeNuvio{}
+			tc.fake(fake)
+			if fake.listProfilesErr == nil {
+				fake.profiles = liveAs(profile)
+			}
+			s := &Server{vault: db, nuvio: fake, siteBaseURL: "http://example.com"}
+
+			w := httptest.NewRecorder()
+			s.push(w, newPushRequest(t, withNuvioToken(withProfile(ctx, profile), "token"), db, pushRequest{}))
+
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body %s)", w.Code, tc.wantStatus, w.Body.String())
+			}
+			if body := strings.TrimSpace(w.Body.String()); body != tc.wantBody {
+				t.Errorf("body = %s, want %s", body, tc.wantBody)
+			}
+			if got := w.Header().Get("Retry-After"); got != tc.wantWait {
+				t.Errorf("Retry-After = %q, want %q", got, tc.wantWait)
+			}
+		})
 	}
 }
 

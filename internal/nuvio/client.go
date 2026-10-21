@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,60 @@ import (
 // a call to Nuvio, so callers can distinguish "Nuvio itself failed" from
 // other error causes with errors.Is.
 var ErrNuvioRequestFailed = errors.New("nuvio: request failed")
+
+// RateLimitedError is a 429 from Nuvio: Nuvio counts every client of every
+// app against one shared budget, and this one was refused for it. Wait is how
+// long Nuvio asked callers to hold off. It is an ErrNuvioRequestFailed.
+type RateLimitedError struct {
+	Wait time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
+	return fmt.Sprintf("%v: rate limited, retry in %v", ErrNuvioRequestFailed, e.Wait)
+}
+
+func (e *RateLimitedError) Unwrap() error { return ErrNuvioRequestFailed }
+
+// defaultRateLimitWait is a 429's wait when it gives none Uno can read, and
+// maxRateLimitWait caps what one may ask for.
+const (
+	defaultRateLimitWait = time.Second
+	maxRateLimitWait     = time.Minute
+)
+
+// statusError is the error for resp's unexpected status: a RateLimitedError
+// for a 429, an ErrNuvioRequestFailed naming the status otherwise.
+func statusError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &RateLimitedError{Wait: rateLimitWait(resp.Header, time.Now())}
+	}
+	return fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+}
+
+// rateLimitWait is how long a 429 at now asks callers to wait: its
+// Retry-After, in seconds or as an HTTP date, else its RateLimit-Reset in
+// seconds, else defaultRateLimitWait; between zero and maxRateLimitWait.
+func rateLimitWait(h http.Header, now time.Time) time.Duration {
+	wait := defaultRateLimitWait
+	if seconds, ok := headerSeconds(h.Get("Retry-After")); ok {
+		wait = seconds
+	} else if at, err := http.ParseTime(h.Get("Retry-After")); err == nil {
+		wait = at.Sub(now)
+	} else if seconds, ok := headerSeconds(h.Get("RateLimit-Reset")); ok {
+		wait = seconds
+	}
+	return min(max(wait, 0), maxRateLimitWait)
+}
+
+// headerSeconds reads a header value of whole seconds, clamped before scaling
+// so a huge value can't overflow Duration.
+func headerSeconds(value string) (time.Duration, bool) {
+	seconds, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	return time.Duration(min(max(seconds, 0), int(maxRateLimitWait/time.Second))) * time.Second, true
+}
 
 // maxResponseBytes caps how much of a Nuvio response this package will read
 // before giving up. A profile list or a collections blob is orders of
@@ -67,7 +122,7 @@ func (c *Client) ListProfiles(ctx context.Context, accessToken string) ([]NuvioP
 	// is the only success case — unlike a push RPC, which can legitimately
 	// return 204 No Content. Don't copy this check as-is for a push method.
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return nil, statusError(resp)
 	}
 
 	var profiles []NuvioProfile
@@ -92,7 +147,7 @@ func (c *Client) AvatarImages(ctx context.Context, accessToken string) (map[stri
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return nil, statusError(resp)
 	}
 
 	var entries []avatarEntry
@@ -173,7 +228,7 @@ func (c *Client) ListAddons(ctx context.Context, accessToken string, profileID i
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return nil, statusError(resp)
 	}
 
 	var addons []NuvioAddon
@@ -203,7 +258,7 @@ func (c *Client) PushAddons(ctx context.Context, accessToken string, profileID i
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return statusError(resp)
 	}
 	return nil
 }
@@ -225,7 +280,7 @@ func (c *Client) PullCollections(ctx context.Context, accessToken string, profil
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return nil, statusError(resp)
 	}
 
 	var envelope []struct {
@@ -263,7 +318,7 @@ func (c *Client) PullHomeOrder(ctx context.Context, accessToken string, profileI
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return nil, statusError(resp)
 	}
 
 	var envelope []struct {
@@ -309,7 +364,7 @@ func (c *Client) PushHomeOrder(ctx context.Context, accessToken string, profileI
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return statusError(resp)
 	}
 	return nil
 }
@@ -334,7 +389,7 @@ func (c *Client) PushCollections(ctx context.Context, accessToken string, profil
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("%w: status %s", ErrNuvioRequestFailed, resp.Status)
+		return statusError(resp)
 	}
 	return nil
 }

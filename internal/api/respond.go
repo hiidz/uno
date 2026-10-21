@@ -156,15 +156,19 @@ func serverError(w http.ResponseWriter, op string, err error, msg string) {
 }
 
 // writeNuvioError classifies a Nuvio-call error and writes an error
-// answer: nuvio.ErrNuvioRequestFailed is upstream's fault (502, "nuvio
-// unavailable"), anything else is ours (500, defaultMsg). Delegates the
+// answer: Nuvio's rate limit is a 429 with Nuvio's wait ("nuvio is busy"),
+// any other nuvio.ErrNuvioRequestFailed upstream's fault (502, "nuvio
+// unavailable"), anything else ours (500, defaultMsg). Delegates the
 // classification to nuvioErrorStatus (push.go) so push's answers and
 // these can't drift apart on what counts as an upstream
 // failure.
 func writeNuvioError(w http.ResponseWriter, err error, defaultMsg string) {
-	if nuvioErrorStatus(err) == http.StatusBadGateway {
+	switch nuvioErrorStatus(err) {
+	case http.StatusTooManyRequests:
+		writeTooManyRequests(w, nuvioRetryAfter(err), "nuvio is busy")
+	case http.StatusBadGateway:
 		httpx.WriteError(w, http.StatusBadGateway, "nuvio unavailable")
-		return
+	default:
+		httpx.WriteError(w, http.StatusInternalServerError, defaultMsg)
 	}
-	httpx.WriteError(w, http.StatusInternalServerError, defaultMsg)
 }
