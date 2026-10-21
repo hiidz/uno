@@ -136,8 +136,10 @@ func buildPushRecord(ctx context.Context, q dbtx, profileID uuid.UUID, home Push
 }
 
 // selectedTrees is profileID's collections home names, each with its tree,
-// in Home order and with the pin its entry carries, read through q. One that
-// isn't profileID's own is ErrInvalidInput.
+// in Home order and with the pin its entry carries, read through q: the pin a
+// push sends is the pending one, which only the write after Nuvio accepted
+// the push stores. One that isn't profileID's own is ErrInvalidInput
+// (inSelectionOrder).
 func selectedTrees(ctx context.Context, q dbtx, profileID uuid.UUID, home PushedHome) ([]CollectionWithFolders, error) {
 	ids := home.collectionIDs()
 	if len(ids) == 0 {
@@ -151,15 +153,7 @@ func selectedTrees(ctx context.Context, q dbtx, profileID uuid.UUID, home Pushed
 	if err != nil {
 		return nil, err
 	}
-	return applySelection(trees, home)
-}
-
-// applySelection is trees in home's order, each with the pin its entry
-// carries: the pin a push sends is the pending one, which only the write after
-// Nuvio accepted the push stores. An entry trees lacks is ErrInvalidInput
-// (inSelectionOrder).
-func applySelection(trees []CollectionWithFolders, home PushedHome) ([]CollectionWithFolders, error) {
-	ordered, err := inSelectionOrder("collection", home.collectionIDs(), trees, treeID)
+	ordered, err := inSelectionOrder("collection", ids, trees, treeID)
 	if err != nil {
 		return nil, err
 	}
@@ -367,8 +361,24 @@ type HomeRow struct {
 // their own and the other collections together, each list in Position
 // order. A catalog in Discover only, or one only a folder uses, has no row.
 func (r PushRecord) HomeRows() (pinned, rows []HomeRow) {
-	pinned = r.collectionRows(true)
-	rows = append(r.catalogRows(), r.collectionRows(false)...)
+	pushed := make(map[uuid.UUID]PushedCatalog, len(r.Catalogs))
+	for _, c := range r.Catalogs {
+		pushed[c.ID] = c
+	}
+	for _, c := range r.Home.Catalogs {
+		if c.ShowInHome {
+			pc := pushed[c.CatalogID]
+			rows = append(rows, HomeRow{Type: pc.Type, CatalogID: ManifestID(Catalog{ID: pc.ID, Provider: pc.Provider}), position: c.Position})
+		}
+	}
+	for _, c := range r.Home.Collections {
+		row := HomeRow{CollectionID: c.CollectionID, position: c.Position}
+		if c.PinToTop {
+			pinned = append(pinned, row)
+		} else {
+			rows = append(rows, row)
+		}
+	}
 	slices.SortStableFunc(pinned, byPosition)
 	slices.SortStableFunc(rows, byPosition)
 	return pinned, rows
@@ -376,36 +386,3 @@ func (r PushRecord) HomeRows() (pinned, rows []HomeRow) {
 
 // byPosition orders two home rows by their place on Home.
 func byPosition(a, b HomeRow) int { return a.position - b.position }
-
-// catalogRows is r's catalogs with a home row of their own.
-func (r PushRecord) catalogRows() []HomeRow {
-	pushed := r.pushedCatalogs()
-	var rows []HomeRow
-	for _, c := range r.Home.Catalogs {
-		if c.ShowInHome {
-			pc := pushed[c.CatalogID]
-			rows = append(rows, HomeRow{Type: pc.Type, CatalogID: ManifestID(Catalog{ID: pc.ID, Provider: pc.Provider}), position: c.Position})
-		}
-	}
-	return rows
-}
-
-// pushedCatalogs is r's catalogs by id.
-func (r PushRecord) pushedCatalogs() map[uuid.UUID]PushedCatalog {
-	pushed := make(map[uuid.UUID]PushedCatalog, len(r.Catalogs))
-	for _, c := range r.Catalogs {
-		pushed[c.ID] = c
-	}
-	return pushed
-}
-
-// collectionRows is r's collections pinned or not, as pinned says.
-func (r PushRecord) collectionRows(pinned bool) []HomeRow {
-	var rows []HomeRow
-	for _, c := range r.Home.Collections {
-		if c.PinToTop == pinned {
-			rows = append(rows, HomeRow{CollectionID: c.CollectionID, position: c.Position})
-		}
-	}
-	return rows
-}
