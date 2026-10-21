@@ -1,64 +1,81 @@
 import { QueryClient } from '@tanstack/react-query'
-import { createMemoryRouter } from 'react-router-dom'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '@/api/keys'
-import { watchActiveProfile } from './activeProfile'
+import { activeProfile, pickProfile, watchActiveProfile } from './activeProfile'
 
 let queryClient: QueryClient
 let unwatch: () => void
-
-function setup(initial: string) {
-  const router = createMemoryRouter(
-    [
-      { path: '/profiles', element: null },
-      { path: '/p/:profile', element: null, children: [{ index: true }, { path: 'community' }] },
-    ],
-    { initialEntries: [initial] },
-  )
-  unwatch = watchActiveProfile(router, queryClient)
-  return router
-}
 
 function seed() {
   queryClient.setQueryData(queryKeys.library(1), ['stale'])
   queryClient.setQueryData(queryKeys.genres('movie'), ['kept'])
 }
 
+/** Storage as this browser holds it, which `activeProfile` reads once per account. */
+const stored = new Map<string, string>()
+
 beforeEach(() => {
   queryClient = new QueryClient()
+  unwatch = watchActiveProfile(queryClient)
+  stored.clear()
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => stored.set(key, value),
+  })
 })
-afterEach(() => unwatch())
+afterEach(() => {
+  unwatch()
+  vi.unstubAllGlobals()
+})
+
+describe('activeProfile', () => {
+  it('opens on the profile picked last, after a reload too, for that account only', () => {
+    pickProfile('ana', 2)
+    expect(activeProfile('ana')).toBe(2)
+    expect(stored.get('uno:profile:ana')).toBe('2')
+    expect(activeProfile('bo')).toBeNull()
+  })
+
+  it('keeps this tab’s profile when another tab picks one', () => {
+    stored.set('uno:profile:cy', '1')
+    expect(activeProfile('cy')).toBe(1)
+    stored.set('uno:profile:cy', '4')
+    expect(activeProfile('cy')).toBe(1)
+  })
+
+  it('reads a stored slot outside 1–6 as none', () => {
+    stored.set('uno:profile:di', '9')
+    expect(activeProfile('di')).toBeNull()
+  })
+
+  it('asks each time when storage is blocked', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('blocked')
+      },
+      setItem: () => {
+        throw new Error('blocked')
+      },
+    })
+    expect(activeProfile('ed')).toBeNull()
+    pickProfile('ed', 3)
+    expect(activeProfile('ed')).toBe(3)
+  })
+})
 
 describe('watchActiveProfile', () => {
-  it('drops every profile’s queries when the builder opens, and keeps the account-wide ones', async () => {
-    const router = setup('/profiles')
+  it('drops every profile’s queries on each pick, the same profile’s included, and keeps the account-wide ones', () => {
+    pickProfile('fay', 1)
     seed()
-    await router.navigate('/p/1')
+    pickProfile('fay', 1)
     expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
     expect(queryClient.getQueryData(queryKeys.genres('movie'))).toEqual(['kept'])
   })
 
-  it('drops them when the builder reopens on the same profile', async () => {
-    const router = setup('/p/1')
-    await router.navigate('/profiles')
+  it('leaves the cache alone between picks', () => {
+    pickProfile('gus', 1)
     seed()
-    await router.navigate('/p/1')
-    expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
-  })
-
-  it('drops them when one profile’s entry gives way to another’s, as history back does', async () => {
-    const router = setup('/p/1')
-    seed()
-    await router.navigate('/p/2')
-    expect(queryClient.getQueryData(queryKeys.library(1))).toBeUndefined()
-  })
-
-  it('leaves the cache alone while the active profile stays the same or the builder closes', async () => {
-    const router = setup('/p/1')
-    seed()
-    await router.navigate('/p/1/community')
-    await router.navigate('/p/1')
-    await router.navigate('/profiles')
+    expect(activeProfile('gus')).toBe(1)
     expect(queryClient.getQueryData(queryKeys.library(1))).toEqual(['stale'])
   })
 })

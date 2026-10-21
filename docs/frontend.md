@@ -8,14 +8,17 @@ The web app in `web/` is React 19 and TypeScript, built with Vite. It uses React
 
 | Path | Page |
 |---|---|
+| `/` | The builder on the profile picked last, or the picker when none is. |
 | `/login` | Sign in with your Nuvio email and password. |
 | `/profiles` | Pick a Nuvio profile. |
-| `/p/{i}` | The builder on Nuvio profile `i` (1–6): library and home screen. |
-| `/p/{i}/catalog/{id}`, `/p/{i}/collection/{id}` | The builder with that row's editor open. |
-| `/p/{i}/community`, `/p/{i}/community/{id}` | The builder's Community section, and one publication's page. |
+| `/configure` | The builder: library and home screen, on the profile picked last. |
+| `/configure/catalog/{id}`, `/configure/collection/{id}` | The builder with that row's editor open. |
+| `/community`, `/community/catalog/{id}`, `/community/collection/{id}` | The builder's Community section, and one publication's page. |
+| anything else | A "page doesn't exist" page with a link home. A page that throws shows a "Something went wrong" page with Reload. |
+
+The profile is not in the address. The browser remembers the last profile picked for each Nuvio account, and an open tab keeps its own. A builder address with no profile picked yet goes to `/profiles` first, then on to the address. An address naming a row this profile doesn't have goes to its section with a short note.
 
 Opening an editor or a publication's page adds a browser history step, so Back closes it. Moving from one editor to another doesn't add one. Back, or any move that would discard unsaved editor changes or unpushed home-screen changes, asks first.
-| anything else | A "page doesn't exist" page with a link home. A page that throws shows a "Something went wrong" page with Reload. |
 
 ## Layout
 

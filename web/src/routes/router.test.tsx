@@ -5,9 +5,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { router } from './router'
 
 const builder = vi.hoisted(() => ({ loaded: false }))
+const auth = vi.hoisted(() => ({ status: 'unauthenticated' }))
 
-// Signed out, as `RequireAuth` sees it.
-vi.mock('@/auth/useAuth', () => ({ useAuth: () => ({ status: 'unauthenticated' }) }))
+// Signed out, as `RequireAuth` sees it, unless a test signs in.
+vi.mock('@/auth/useAuth', () => ({ useAuth: () => ({ status: auth.status }) }))
 vi.mock('./Builder', () => {
   builder.loaded = true
   return { Builder: () => null }
@@ -32,6 +33,11 @@ describe('router', () => {
     expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
   })
 
+  it('shows an old /p/ address as the missing page', async () => {
+    open('/p/1/community')
+    expect(await screen.findByRole('heading', { name: "This page doesn't exist" })).toBeInTheDocument()
+  })
+
   it('shows a page that throws as the error page, with Reload and home', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     open('/login')
@@ -42,8 +48,15 @@ describe('router', () => {
 
   it('sends a signed-out visit to a builder address to sign-in without loading the builder', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const memory = open('/p/1')
+    const memory = open('/configure')
     await waitFor(() => expect(memory.state.location.pathname).toBe('/login'))
     expect(builder.loaded).toBe(false)
+  })
+
+  it('opens the builder at the bare address once signed in', async () => {
+    auth.status = 'authenticated'
+    const memory = open('/')
+    await waitFor(() => expect(memory.state.location.pathname).toBe('/configure'))
+    auth.status = 'unauthenticated'
   })
 })

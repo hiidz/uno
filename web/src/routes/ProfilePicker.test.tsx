@@ -28,7 +28,7 @@ vi.mock('@/api', async () => ({
   ...api,
 }))
 vi.mock('@/api/client', () => ({ apiFetch: vi.fn() }))
-vi.mock('@/auth', () => ({ logout: vi.fn() }))
+vi.mock('@/auth', () => ({ logout: vi.fn(), useAuth: () => ({ user: { id: 'me' } }) }))
 vi.mock('./Builder', () => ({}))
 
 /** Puts the server's settings block in the page, as `internal/static` does. */

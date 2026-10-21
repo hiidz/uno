@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useReducer, type ReactNode } from 'react'
 import { RouterProvider, createMemoryRouter, useLocation } from 'react-router-dom'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -164,8 +164,8 @@ function OnPath() {
   )
 }
 
-function renderWorkspace(path = '/p/1') {
-  const router = createMemoryRouter([{ path: '/p/:profile/*', element: <OnPath /> }], { initialEntries: [path] })
+function renderWorkspace(path = '/configure') {
+  const router = createMemoryRouter([{ path: '/configure/*', element: <OnPath /> }], { initialEntries: [path] })
   render(<RouterProvider router={router} />)
   return router
 }
@@ -187,10 +187,10 @@ describe('Workspace below lg', () => {
   it('opens a row at its own path, which the browser Back steps off', async () => {
     const router = renderWorkspace()
     fireEvent.click(screen.getByRole('button', { name: 'Open Night shift' }))
-    expect(router.state.location.pathname).toBe('/p/1/collection/k1')
+    expect(router.state.location.pathname).toBe('/configure/collection/k1')
     expect(layer()).toBeInTheDocument()
     await act(() => router.navigate(-1))
-    expect(router.state.location.pathname).toBe('/p/1')
+    expect(router.state.location.pathname).toBe('/configure')
     expect(layer()).toBeNull()
   })
 
@@ -199,21 +199,23 @@ describe('Workspace below lg', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Noir' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close editor' }))
     expect(router.state.historyAction).toBe('POP')
-    expect(router.state.location.pathname).toBe('/p/1')
+    expect(router.state.location.pathname).toBe('/configure')
   })
 
   it('opens a typed editor address, and closes it in place', () => {
-    const router = renderWorkspace('/p/1/catalog/c1')
+    const router = renderWorkspace('/configure/catalog/c1')
     expect(layer()).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Close editor' }))
     expect(router.state.historyAction).toBe('REPLACE')
-    expect(router.state.location.pathname).toBe('/p/1')
+    expect(router.state.location.pathname).toBe('/configure')
   })
 
-  it('sends the address of a row the library doesn’t hold to Home', () => {
-    const router = renderWorkspace('/p/1/catalog/gone')
-    expect(router.state.location.pathname).toBe('/p/1')
+  it('sends the address of a row the library doesn’t hold to Home, and says so once', async () => {
+    const router = renderWorkspace('/configure/catalog/gone')
+    expect(router.state.location.pathname).toBe('/configure')
     expect(layer()).toBeNull()
+    expect(await screen.findByText('That catalog isn’t in this profile.')).toBeInTheDocument()
+    await waitFor(() => expect(router.state.location.state).toBeNull())
   })
 
   it.each([

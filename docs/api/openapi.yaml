@@ -842,7 +842,7 @@ paths:
         "500": { $ref: "#/components/responses/ServerError" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/genres/{type}:
+  /api/tmdb/genres/{type}:
     parameters:
       - $ref: "#/components/parameters/catalogType"
     get:
@@ -864,7 +864,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/certifications/{type}:
+  /api/tmdb/certifications/{type}:
     parameters:
       - $ref: "#/components/parameters/catalogType"
     get:
@@ -888,7 +888,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/languages:
+  /api/tmdb/languages:
     get:
       tags: [tmdb]
       summary: TMDB's language table
@@ -907,7 +907,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/countries:
+  /api/tmdb/countries:
     get:
       tags: [tmdb]
       summary: TMDB's country table
@@ -926,7 +926,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/watch-providers/{type}:
+  /api/tmdb/watch-providers/{type}:
     parameters:
       - $ref: "#/components/parameters/catalogType"
     get:
@@ -953,7 +953,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/watch-regions:
+  /api/tmdb/watch-regions:
     get:
       tags: [tmdb]
       summary: Countries TMDB has streaming data for
@@ -972,7 +972,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/companies/search:
+  /api/tmdb/companies/search:
     get:
       tags: [tmdb]
       summary: Search production companies
@@ -1000,7 +1000,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/companies/{id}:
+  /api/tmdb/companies/{id}:
     parameters:
       - $ref: "#/components/parameters/tmdbID"
     get:
@@ -1019,7 +1019,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/keywords/search:
+  /api/tmdb/keywords/search:
     get:
       tags: [tmdb]
       summary: Search keywords
@@ -1042,7 +1042,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/keywords/{id}:
+  /api/tmdb/keywords/{id}:
     parameters:
       - $ref: "#/components/parameters/tmdbID"
     get:
@@ -1061,7 +1061,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/collections/search:
+  /api/tmdb/collections/search:
     get:
       tags: [tmdb]
       summary: Search TMDB collections
@@ -1085,7 +1085,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/collections/{id}:
+  /api/tmdb/collections/{id}:
     parameters:
       - $ref: "#/components/parameters/tmdbID"
     get:
@@ -1104,7 +1104,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/networks/search:
+  /api/tmdb/networks/search:
     get:
       tags: [tmdb]
       summary: Search TV networks
@@ -1127,7 +1127,7 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
-  /api/networks/{id}:
+  /api/tmdb/networks/{id}:
     parameters:
       - $ref: "#/components/parameters/tmdbID"
     get:

@@ -335,7 +335,7 @@ export interface Certification {
   order: number
 }
 
-/** `GET /api/certifications/{type}` — every country's rating scale, keyed by
+/** `GET /api/tmdb/certifications/{type}` — every country's rating scale, keyed by
  *  ISO 3166-1 country code. */
 export type CertificationsByCountry = Record<string, Certification[]>
 
@@ -348,14 +348,14 @@ export interface Language {
 }
 
 /** One entry in TMDB's ISO 3166-1 country table — names the country codes
- *  `GET /api/certifications/{type}` returns, which come back as codes only. */
+ *  `GET /api/tmdb/certifications/{type}` returns, which come back as codes only. */
 export interface Country {
   iso_3166_1: string
   english_name: string
   native_name: string
 }
 
-/** One entry from `GET /api/watch-providers/{type}` — a streaming service
+/** One entry from `GET /api/tmdb/watch-providers/{type}` — a streaming service
  *  `with_watch_providers` accepts. `provider_id` is what goes on the wire;
  *  `provider_name` is what the picker shows. Already sorted server-side by
  *  TMDB's own prominence ranking. */
@@ -366,7 +366,7 @@ export interface WatchProvider {
   logo_path: string
 }
 
-/** One entry from `GET /api/watch-regions` — a country TMDB has streaming
+/** One entry from `GET /api/tmdb/watch-regions` — a country TMDB has streaming
  *  data for, which is what `watch_region` accepts. A strict subset of
  *  `Country`, so the two are not interchangeable. */
 export interface WatchRegion {
@@ -375,14 +375,14 @@ export interface WatchRegion {
   native_name: string
 }
 
-/** `GET /api/companies/{id}` — a production company `with_companies`
+/** `GET /api/tmdb/companies/{id}` — a production company `with_companies`
  *  accepts. */
 export interface Company {
   id: number
   name: string
 }
 
-/** One result from `GET /api/companies/search?type=`. The server keeps only
+/** One result from `GET /api/tmdb/companies/search?type=`. The server keeps only
  *  companies with at least 5 titles of that type, sorted by `title_count`
  *  descending, top 10. `origin_country` is an ISO 3166-1 code, or `""` when
  *  TMDB has none. */
@@ -392,14 +392,14 @@ export interface CompanySearchResult extends Company {
   title_count: number
 }
 
-/** One result from `GET /api/keywords/search` or `GET /api/keywords/{id}` —
+/** One result from `GET /api/tmdb/keywords/search` or `GET /api/tmdb/keywords/{id}` —
  *  a TMDB keyword `with_keywords` accepts. */
 export interface Keyword {
   id: number
   name: string
 }
 
-/** `GET /api/networks/{id}` — a TV network `with_networks` accepts.
+/** `GET /api/tmdb/networks/{id}` — a TV network `with_networks` accepts.
  *  `origin_country` is an ISO 3166-1 code, or `""` when TMDB has none. */
 export interface Network {
   id: number
@@ -407,13 +407,13 @@ export interface Network {
   origin_country: string
 }
 
-/** One result from `GET /api/networks/search`: the same shape and rules as
+/** One result from `GET /api/tmdb/networks/search`: the same shape and rules as
  *  `CompanySearchResult`, with `title_count` counting series. */
 export interface NetworkSearchResult extends Network {
   title_count: number
 }
 
-/** One result from `GET /api/collections/search` or `GET /api/collections/{id}`
+/** One result from `GET /api/tmdb/collections/search` or `GET /api/tmdb/collections/{id}`
  *  — a TMDB movie collection `with_collection` accepts, e.g. "Star Wars Collection".
  *  Not Uno's own `Collection`. */
 export interface TMDBCollection {

@@ -19,10 +19,12 @@ export const router = createBrowserRouter([
     children: [
       { path: '/login', element: <Login /> },
       {
+        // The builder on the profile picked last, which goes through the
+        // picker first when none is.
         path: '/',
         element: (
           <RequireAuth>
-            <Navigate to="/profiles" replace />
+            <Navigate to="/configure" replace />
           </RequireAuth>
         ),
       },
@@ -35,11 +37,11 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        // Each profile's builder, its screens as children
-        // (`features/builder/paths.ts`) that `Builder` reads from the path
-        // itself, so moving between them keeps it mounted. Its shell stands in
-        // while its chunk arrives.
-        path: '/p/:profile',
+        // The builder, on the profile picked last (`activeProfile.ts`): its
+        // screens are children (`features/builder/paths.ts`) that `Builder`
+        // reads from the path itself, so moving between them, Workspace and
+        // Community included, keeps it mounted with Home's unpushed edits.
+        // Its shell stands in while its chunk arrives.
         element: (
           <RequireAuth>
             <Suspense fallback={<BuilderShellSkeleton />}>
@@ -48,11 +50,12 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
         children: [
-          { index: true },
-          { path: 'catalog/:id' },
-          { path: 'collection/:id' },
-          { path: 'community' },
-          { path: 'community/:publicationID' },
+          { path: '/configure' },
+          { path: '/configure/catalog/:id' },
+          { path: '/configure/collection/:id' },
+          { path: '/community' },
+          { path: '/community/catalog/:id' },
+          { path: '/community/collection/:id' },
         ],
       },
       { path: '*', element: <ErrorPage kind="missing" /> },

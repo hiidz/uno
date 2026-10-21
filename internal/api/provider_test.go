@@ -44,11 +44,11 @@ func TestEntityLookupRoutes(t *testing.T) {
 		wantStatus int
 		wantBody   string
 	}{
-		{name: "unauthenticated id", path: "/api/keywords/1", noAuth: true, wantStatus: http.StatusUnauthorized},
-		{name: "company search with TMDB's type word", path: "/api/companies/search?q=a24&type=tv", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog type"},
-		{name: "keyword search with blank q", path: "/api/keywords/search?q=%20%20", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
-		{name: "non-numeric company id", path: "/api/companies/marvel", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
-		{name: "non-positive network id", path: "/api/networks/0", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
+		{name: "unauthenticated id", path: "/api/tmdb/keywords/1", noAuth: true, wantStatus: http.StatusUnauthorized},
+		{name: "company search with TMDB's type word", path: "/api/tmdb/companies/search?q=a24&type=tv", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog type"},
+		{name: "keyword search with blank q", path: "/api/tmdb/keywords/search?q=%20%20", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
+		{name: "non-numeric company id", path: "/api/tmdb/companies/marvel", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
+		{name: "non-positive network id", path: "/api/tmdb/networks/0", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
 	}
 
 	for _, tc := range tests {

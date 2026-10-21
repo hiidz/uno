@@ -6,11 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog } from '@/api'
 import { useHomeEdits, useHomeSelection } from '@/features/home/useHomeSelection'
 import { catalog } from '@/test/fixtures'
-import { watchActiveProfile } from './activeProfile'
+import { pickProfile, watchActiveProfile } from './activeProfile'
 import { Builder } from './Builder'
 
 // What each profile's server holds right now; a test changes it between visits.
 const server = vi.hoisted(() => ({ catalogs: new Map<number, unknown[]>(), profilesDown: false }))
+// Each test signs in as an account of its own, so no test inherits another's
+// picked profile.
+const auth = vi.hoisted(() => ({ account: '', count: 0 }))
+
+vi.mock('@/auth', () => ({ useAuth: () => ({ status: 'authenticated', user: { id: auth.account } }) }))
 
 vi.mock('@/api', async () => ({
   ApiError: class extends Error {},
@@ -68,12 +73,14 @@ let unwatch: (() => void) | undefined
 const routes = [
   { path: '/profiles', element: <p>Who is watching</p> },
   { path: '/login', element: <p>Sign in</p> },
-  { path: '/p/:profile', element: <Builder />, children: [{ index: true }, { path: 'community' }] },
+  { element: <Builder />, children: [{ path: '/configure' }, { path: '/configure/catalog/:id' }, { path: '/community' }] },
 ]
 
-function open(path: string | number) {
-  const router = createMemoryRouter(routes, { initialEntries: [typeof path === 'number' ? `/p/${path}` : path] })
-  unwatch = watchActiveProfile(router, queryClient)
+/** The builder at `path`, with `profile` picked first, or none. */
+function open(profile: number | null, path = '/configure') {
+  const router = createMemoryRouter(routes, { initialEntries: [path] })
+  unwatch = watchActiveProfile(queryClient)
+  if (profile !== null) pickProfile(auth.account, profile)
   render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -89,6 +96,8 @@ beforeEach(() => {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
   server.catalogs.clear()
   server.profilesDown = false
+  auth.count += 1
+  auth.account = `account-${auth.count}`
 })
 afterEach(() => {
   unwatch?.()
@@ -96,10 +105,14 @@ afterEach(() => {
 })
 
 describe('Builder', () => {
-  it.each(['/p/0', '/p/7', '/p/x', '/p/3'])('sends %s, no profile of this account, back to the picker', async (path) => {
-    const router = open(path)
+  it.each([
+    ['none is picked', null],
+    ['the one picked isn’t the account’s', 3],
+  ])('sends the address to the picker and keeps it when %s', async (_, profile) => {
+    const router = open(profile, '/configure/catalog/c1')
     expect(await screen.findByText('Who is watching')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/profiles')
+    expect(router.state.location.state).toMatchObject({ from: { pathname: '/configure/catalog/c1' } })
   })
 
   it('rebuilds Home from fresh rows when it opens on a profile again', async () => {
@@ -109,7 +122,8 @@ describe('Builder', () => {
 
     await act(() => router.navigate('/profiles'))
     server.catalogs.set(1, [onHome('b', 'Bravo')])
-    await act(() => router.navigate('/p/1'))
+    pickProfile(auth.account, 1)
+    await act(() => router.navigate('/configure'))
 
     await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('b'))
     expect(screen.getByTestId('rows')).not.toHaveTextContent('a')
@@ -118,10 +132,10 @@ describe('Builder', () => {
   it('rebuilds the pending and baseline state when the profile changes under the mounted builder', async () => {
     server.catalogs.set(1, [onHome('a', 'Alpha')])
     server.catalogs.set(2, [onHome('x', 'Xray')])
-    const router = open(1)
+    open(1)
     await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
 
-    await act(() => router.navigate('/p/2'))
+    act(() => pickProfile(auth.account, 2))
 
     await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('x'))
     expect(screen.getByTestId('rows')).not.toHaveTextContent('a')
@@ -136,7 +150,7 @@ describe('Builder', () => {
 
     await act(() => router.navigate('/profiles'))
     fireEvent.click(await screen.findByRole('button', { name: 'Stay here' }))
-    expect(router.state.location.pathname).toBe('/p/1')
+    expect(router.state.location.pathname).toBe('/configure')
     expect(screen.getByTestId('rows')).toHaveTextContent('none')
 
     await act(() => router.navigate('/profiles'))
@@ -155,7 +169,7 @@ describe('Builder', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stay here' })).toHaveFocus())
     fireEvent.keyDown(question, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
-    expect(router.state.location.pathname).toBe('/p/1')
+    expect(router.state.location.pathname).toBe('/configure')
 
     await act(() => router.navigate('/profiles'))
     fireEvent.click(await screen.findByRole('button', { name: 'Discard and leave' }))
@@ -168,9 +182,9 @@ describe('Builder', () => {
     await waitFor(async () => expect(await rows()).toHaveTextContent('a'))
     fireEvent.click(screen.getByRole('button', { name: 'Remove the first row' }))
 
-    await act(() => router.navigate('/p/1/community'))
+    await act(() => router.navigate('/community'))
     await act(() => router.navigate(-1))
-    expect(router.state.location.pathname).toBe('/p/1')
+    expect(router.state.location.pathname).toBe('/configure')
     expect(screen.queryByText('Discard unpushed changes?')).not.toBeInTheDocument()
     expect(await rows()).toHaveTextContent('none')
   })

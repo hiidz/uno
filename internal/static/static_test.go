@@ -44,7 +44,7 @@ func TestHandlerSetsSecurityHeaders(t *testing.T) {
 	}
 	h := newTestHandler(t, fsys, Config{NuvioBaseURL: "https://nuvio.example.com/base/path"})
 
-	for _, path := range []string{"/p/1/community", "/assets/app.js"} {
+	for _, path := range []string{"/community", "/assets/app.js"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 
@@ -78,7 +78,7 @@ func TestHandlerServesThePageWithItsConfigBlock(t *testing.T) {
 	wantBody := strings.Replace(shell, "</head>",
 		`<script type="application/json" id="uno-config">`+testSettings+"</script>\n</head>", 1)
 	var etag string
-	for _, path := range []string{"/", "/p/1/community"} {
+	for _, path := range []string{"/", "/community"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK || rec.Body.String() != wantBody {

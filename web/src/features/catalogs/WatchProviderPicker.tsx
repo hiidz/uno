@@ -8,7 +8,7 @@ import { parseIdList, serializeIdList } from './params'
 /**
  * Which streaming services a title has to be on, picked by name.
  *
- * `GET /api/watch-providers/{type}` names every service and ranks them by
+ * `GET /api/tmdb/watch-providers/{type}` names every service and ranks them by
  * TMDB's own prominence, so this is a click rather than a lookup of TMDB's
  * numeric provider ids.
  *

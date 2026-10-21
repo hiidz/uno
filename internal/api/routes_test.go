@@ -393,9 +393,9 @@ func TestReferenceListsAreCachedOnlyOnSuccess(t *testing.T) {
 	} {
 		fakeTMDB(t, tc.tmdb)
 		f.s.provider = provider.NewTMDBClient("key")
-		w := serve(t, f.s, http.MethodGet, "/api/genres/movie", "", false)
+		w := serve(t, f.s, http.MethodGet, "/api/tmdb/genres/movie", "", false)
 		if got := w.Header().Get("Cache-Control"); got != tc.want {
-			t.Errorf("GET /api/genres/movie = %d with Cache-Control %q, want %q", w.Code, got, tc.want)
+			t.Errorf("GET /api/tmdb/genres/movie = %d with Cache-Control %q, want %q", w.Code, got, tc.want)
 		}
 	}
 }
@@ -529,7 +529,7 @@ func TestHealth(t *testing.T) {
 // the builder API, the addon, and the SPA.
 func TestEveryResponseCarriesSecurityHeaders(t *testing.T) {
 	s := newProfileTestServer(t, newTestVaultDB(t))
-	for _, path := range []string{"/api/health", "/u/nope/manifest.json", "/p/1/community"} {
+	for _, path := range []string{"/api/health", "/u/nope/manifest.json", "/community"} {
 		w := serve(t, s, http.MethodGet, path, "", true)
 		for name, want := range securityHeaders {
 			if got := w.Header().Get(name); got != want {
@@ -555,7 +555,7 @@ func TestEveryAPIErrorIsJSON(t *testing.T) {
 		{"malformed id", http.MethodDelete, "/api/p/1/catalogs/nope", false, http.StatusBadRequest},
 		{"missing row", http.MethodDelete, "/api/p/1/catalogs/" + uuid.NewString(), false, http.StatusNotFound},
 		{"TMDB key route in shared mode", http.MethodGet, "/api/account/tmdb-key", false, http.StatusNotFound},
-		{"malformed TMDB id", http.MethodGet, "/api/companies/abc", false, http.StatusBadRequest},
+		{"malformed TMDB id", http.MethodGet, "/api/tmdb/companies/abc", false, http.StatusBadRequest},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w := serve(t, f.s, c.method, c.path, "", c.noAuth)

@@ -76,10 +76,8 @@ const listCalls = (calls: string[]) => calls.filter((call) => call.startsWith('G
 
 /** Community on its path, as `Builder` puts it there. */
 function OnPath() {
-  const location = useLocation()
-  const view = builderView(location.pathname)
-  const kind = (location.state as { kind?: OpenPublication['kind'] } | null)?.kind
-  return <CommunityView profileIndex={1} publicationID={view?.publicationID ?? null} kind={kind} />
+  const view = builderView(useLocation().pathname)
+  return <CommunityView profileIndex={1} publication={view?.publication ?? null} />
 }
 
 /** The library's two lists answer empty: every action settles only once
@@ -88,14 +86,12 @@ function OnPath() {
 function renderView(routes: Record<string, FakeRoute>, initialOpen: OpenPublication | null = null) {
   const fake = fakeApi({ 'GET /api/p/1/catalogs': [], 'GET /api/p/1/collections': [], ...routes })
   api.current = fake.apiFetch
-  const entries = initialOpen
-    ? ['/p/1', { pathname: `/p/1/community/${initialOpen.id}`, state: { kind: initialOpen.kind } }]
-    : ['/p/1/community']
+  const entries = initialOpen ? ['/configure', `/community/${initialOpen.kind}/${initialOpen.id}`] : ['/community']
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
         <Routes>
-          <Route path="/p/:profile/*" element={<OnPath />} />
+          <Route path="/community/*" element={<OnPath />} />
           <Route path="/profiles" element={<p>Pick a profile</p>} />
         </Routes>
       </MemoryRouter>
@@ -274,6 +270,34 @@ describe('CommunityView', () => {
     })
     fireEvent.click(await screen.findByText('A24 Horror'))
     expect(await screen.findByText('Couldn’t load this. Its publisher may have unpublished it.')).toBeInTheDocument()
+  })
+
+  it('keeps an address whose publication failed to load, to retry', async () => {
+    let failing = true
+    renderView(
+      {
+        'GET /api/p/1/community': listing([]),
+        'GET /api/p/1/community/a24': () =>
+          failing ? failWith(500, 'boom') : { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
+      },
+      { id: 'a24', kind: 'catalog' },
+    )
+    expect(await screen.findByText('Couldn’t load this publication.')).toBeInTheDocument()
+    failing = false
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('heading', { name: 'A24 Horror' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['is gone', 'catalog', () => failWith(404, 'not found')],
+    ['is of another kind than its address', 'collection', () => a24],
+  ] as const)('sends a publication’s address to the list when it %s, and says so', async (_, kind, answer) => {
+    renderView(
+      { 'GET /api/p/1/community': listing([night]), 'GET /api/p/1/community/a24': answer },
+      { id: 'a24', kind },
+    )
+    expect(await screen.findByText('That publication isn’t available.')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Search Community')).toBeInTheDocument()
   })
 
   it('shows a catalog publication’s recipe on its page', async () => {

@@ -59,10 +59,10 @@ describe('CatalogBlock tiles', () => {
 
 describe('CatalogBlock names', () => {
   const routes = {
-    'GET /api/companies/10342': { id: 10342, name: 'Studio Ghibli' },
-    'GET /api/companies/3': { id: 3, name: 'Pixar' },
-    'GET /api/keywords/849': { id: 849, name: 'gore' },
-    'GET /api/watch-providers/movie': [
+    'GET /api/tmdb/companies/10342': { id: 10342, name: 'Studio Ghibli' },
+    'GET /api/tmdb/companies/3': { id: 3, name: 'Pixar' },
+    'GET /api/tmdb/keywords/849': { id: 849, name: 'gore' },
+    'GET /api/tmdb/watch-providers/movie': [
       { provider_id: 8, provider_name: 'Netflix', display_priority: 1, logo_path: '' },
       { provider_id: 337, provider_name: 'Disney Plus', display_priority: 2, logo_path: '' },
     ],
@@ -75,11 +75,11 @@ describe('CatalogBlock names', () => {
     expect(await screen.findByText('Studio Ghibli or Pixar')).toBeInTheDocument()
     expect(value('Left-out keyword')).toHaveTextContent('gore')
     expect(await screen.findByText(/^Netflix or Disney Plus in /)).toBeInTheDocument()
-    expect(calls).toContain('GET /api/watch-providers/movie?watch_region=US')
+    expect(calls).toContain('GET /api/tmdb/watch-providers/movie?watch_region=US')
   })
 
   it('settles on the count for a list a lookup can’t name', async () => {
-    renderBlock({ ...routes, 'GET /api/companies/3': () => failWith(404, 'not found') })
+    renderBlock({ ...routes, 'GET /api/tmdb/companies/3': () => failWith(404, 'not found') })
     expect(await screen.findByText('gore')).toBeInTheDocument()
     expect(value('Production companies')).toHaveTextContent('2')
   })
@@ -107,7 +107,7 @@ describe('CatalogBlock marks', () => {
     was_catalog: { key: 'm', name: 'Marked', type: 'movie' as const, provider: 'tmdb', params: { with_genres: '28', vote_average_gte: 6, without_keywords: '849' } },
   }
   const lookup = { movie: new Map([[28, 'Action'], [12, 'Adventure']]), tv: new Map<number, string>() }
-  const routes = { 'GET /api/keywords/849': { id: 849, name: 'gore' } }
+  const routes = { 'GET /api/tmdb/keywords/849': { id: 849, name: 'gore' } }
 
   it('edges each tile an update changes in the accent, with what it was under the value', async () => {
     renderBlock(routes, { catalog: now, genres: lookup, mark: { words: '', recipe, id: 'update-catalog-m', startOpen: true } })

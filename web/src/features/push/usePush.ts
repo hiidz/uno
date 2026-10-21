@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ProfileNotSelectedError, RateLimitedError, pushSelection, queryKeys } from '@/api'
 import type { PushFailure, PushRefusal } from '@/api'
+import { returnState } from '@/features/builder/redirects'
 import { toPushPayload } from '@/features/home/pending'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 
@@ -83,10 +84,11 @@ export interface Push {
 /** Pushes the pending Home to Nuvio, one push at a time, and reports how it
  *  ended. On success it marks what was sent as pushed and refetches the
  *  library. A profile that was never selected sends the user back to
- *  `/profiles`. */
+ *  `/profiles`, and back here once one is picked. */
 export function usePush(profileIndex: number): Push {
   const home = useHomeSelection()
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [pushing, setPushing] = useState(false)
   const [outcome, setOutcome] = useState<PushOutcome | null>(null)
@@ -133,7 +135,7 @@ export function usePush(profileIndex: number): Push {
         // A 404 here means the profile slot was never selected — there's
         // nothing to retry, so send the user back to pick one.
         if (err instanceof ProfileNotSelectedError) {
-          void navigate('/profiles', { replace: true })
+          void navigate('/profiles', { replace: true, state: returnState(location) })
           return
         }
         setOutcome(thrownOutcome(err))
@@ -142,7 +144,7 @@ export function usePush(profileIndex: number): Push {
         setPushing(false)
       }
     })()
-  }, [home, navigate, profileIndex, queryClient])
+  }, [home, location, navigate, profileIndex, queryClient])
 
   const dismiss = useCallback(() => setOutcome(null), [])
 
