@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react'
 import type { Catalog, Collection, CommunityItem, PublicationDetail } from '@/api'
-import { ListState } from '@/components/ListState'
+import { StateView } from '@/components/StateView'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { UpdateChanges, useUpdateMarks } from '@/features/sharing/Changes'
 import { RenamedFrom } from '@/features/sharing/MarkViews'
@@ -53,7 +53,7 @@ export function PublicationPage({
       <RenamedFrom name={renamedName(marks, item.kind)} />
       <PageActions item={item} actions={actions} />
       <UpdateChanges profileIndex={profileIndex} item={item} genres={genres} />
-      <ListState
+      <StateView
         isLoading={detail.isPending}
         error={detail.error as Error | null}
         loadingLabel="Loading…"
@@ -61,7 +61,7 @@ export function PublicationPage({
         onRetry={detail.refetch}
       >
         {null}
-      </ListState>
+      </StateView>
     </>
   )
   return <PublicationBody kind={item.kind} detail={detail.data} genres={genres} lead={lead} marks={marks} />

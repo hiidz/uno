@@ -5,7 +5,7 @@ import { tmdbKind } from '@/api'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { railStickers } from '@/features/sharing/sharingState'
-import { ListError, ListState } from '@/components/ListState'
+import { StateError, StateView } from '@/components/StateView'
 import { skeletonKeys } from '@/components/Skeleton'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { andList } from '@/lib/list'
@@ -128,7 +128,7 @@ export function LibrarySection({
       {/* One error and one Retry for the whole library: both lists come from
           the same request, so a failure leaves both groups undrawn. */}
       {library.error && (
-        <ListError label="Couldn't load your library." error={library.error} onRetry={library.refetch} />
+        <StateError label="Couldn't load your library." error={library.error} onRetry={library.refetch} />
       )}
 
       <LibraryGroup
@@ -254,7 +254,7 @@ function LibraryGroup({
         </h3>
         {action}
       </div>
-      <ListState
+      <StateView
         isLoading={isLoading}
         isEmpty={count === 0}
         loadingLabel={`Loading ${label.toLowerCase()}…`}
@@ -268,7 +268,7 @@ function LibraryGroup({
         emptyLabel={emptyLabel}
       >
         <div className="-mx-2 flex flex-col gap-0.5">{children}</div>
-      </ListState>
+      </StateView>
     </div>
   )
 }
