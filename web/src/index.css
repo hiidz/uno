@@ -49,6 +49,70 @@
     --color-background: var(--background);
 }
 
+/* Text roles (DESIGN.md, "Typography"): `text-meta`, `text-title`… set a
+   role's size and line height together, and its weight where the role has
+   one weight. A caller's `font-*` or `leading-*` still wins. The sign roles
+   carry 800, so they leave `.type-sign`'s weight standing. `static` emits
+   every role as a variable on `:root`, which the responsive roles below and
+   `.type-label` read. */
+@theme static {
+    --text-sticker: 10.5px;
+    --text-sticker--line-height: 1;
+    --text-sticker--letter-spacing: 0.06em;
+    --text-sticker--font-weight: 700;
+    --text-caption: 12px;
+    --text-caption--line-height: 1.4;
+    --text-meta: 13px;
+    --text-meta--line-height: 1.45;
+    --text-label: 13.5px;
+    --text-label--line-height: 1.3;
+    --text-label--font-weight: 650;
+    --text-body-sm: 14px;
+    --text-body-sm--line-height: 1.45;
+    --text-body: 15px;
+    --text-body--line-height: 1.5;
+    --text-title: 16px;
+    --text-title--line-height: 1.3;
+    --text-title--font-weight: 700;
+    --text-display: 21px;
+    --text-display--line-height: 28px;
+    --text-display--font-weight: 750;
+    --text-sign: 12.5px;
+    --text-sign--line-height: 1;
+    --text-sign--font-weight: 800;
+    --text-sign-headline: 16px;
+    --text-sign-headline--line-height: 1.15;
+    --text-sign-headline--font-weight: 800;
+    --text-sign-title: 18px;
+    --text-sign-title--line-height: 1.25;
+    --text-sign-title--font-weight: 800;
+    --text-sign-hero: 34px;
+    --text-sign-hero--line-height: 1.05;
+    --text-sign-hero--font-weight: 800;
+    --text-sign-hero-wide: 38px;
+    --text-sign-hero-wide--line-height: 1.05;
+    --text-sign-hero-wide--font-weight: 800;
+    /* A field's text on touch, written `pointer-coarse:text-field`: Safari
+       zooms the page into a focused field set under 16px. */
+    --text-field: 16px;
+}
+
+/* The responsive roles: one class, a size per breakpoint. A pane's sign grows
+   from `lg`, where it heads a pane rather than a phone's page; the sign-in
+   headline shrinks below `sm`. */
+@media (width >= 64rem) {
+    :root {
+        --text-sign-headline: 25px;
+        --text-sign-title: 25px;
+    }
+}
+@media (width < 40rem) {
+    :root {
+        --text-sign-hero: 25px;
+        --text-sign-hero-wide: 27px;
+    }
+}
+
 /* Single-theme: the builder is used at a desk and on the couch
    in the evening, and it is dark.
 
@@ -241,9 +305,9 @@
     /* A field's label, a group's name, the small heading over a list. Sentence
        case, set in the body face. */
     .type-label {
-        font-size: 13.5px;
-        font-weight: 650;
-        line-height: 1.3;
+        font-size: var(--text-label);
+        font-weight: var(--text-label--font-weight);
+        line-height: var(--text-label--line-height);
         color: var(--uno-dim);
     }
 
