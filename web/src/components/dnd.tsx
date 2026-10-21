@@ -6,11 +6,9 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
-import type { MouseEvent } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { GripIcon } from './Icon'
 import { IconButton } from './IconButton'
-import { keepFocusOnMove } from './returnFocus'
 
 /**
  * The three sensors every drag-to-reorder list in the app shares — the Home
@@ -65,18 +63,10 @@ export function Grip({
  *  its list. */
 type MoveButtonProps = { label: string; disabled: boolean; onClick: () => void }
 
-export function MoveUpButton({ onClick, ...props }: MoveButtonProps) {
-  return <IconButton icon={ChevronUp} variant="plain" size="sm" {...props} onClick={moveKeepingFocus(onClick)} />
+export function MoveUpButton(props: MoveButtonProps) {
+  return <IconButton icon={ChevronUp} variant="plain" size="sm" {...props} />
 }
 
-export function MoveDownButton({ onClick, ...props }: MoveButtonProps) {
-  return <IconButton icon={ChevronDown} variant="plain" size="sm" {...props} onClick={moveKeepingFocus(onClick)} />
-}
-
-/** `move`, with focus kept on the arrow as its row moves (`keepFocusOnMove`). */
-export function moveKeepingFocus(move: () => void) {
-  return (event: MouseEvent<HTMLButtonElement>) => {
-    keepFocusOnMove(event)
-    move()
-  }
+export function MoveDownButton(props: MoveButtonProps) {
+  return <IconButton icon={ChevronDown} variant="plain" size="sm" {...props} />
 }

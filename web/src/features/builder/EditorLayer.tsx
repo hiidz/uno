@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
-import { returnFocusWhenFree } from '@/components/returnFocus'
+import { returnFocusTo } from '@/components/returnFocus'
 import { land } from './stacked'
 
 interface EditorLayerProps {
@@ -118,7 +118,7 @@ function useScrollLock(stacked: boolean) {
 /**
  * Focus to the editor's title on open below `lg`. On close, at every width,
  * back to what opened the editor, or to `fallback` when that is gone, as a
- * deleted row is, once a dialog closing with it has let go. The opener is read as each row opens, during that render,
+ * deleted row is. The opener is read as each row opens, during that render,
  * before anything moves focus; one opened from inside the editor (Duplicate)
  * keeps the opener from outside it. Passive effects, so on close the page
  * behind has already stopped being inert.
@@ -147,7 +147,7 @@ function useFocusHandoff(
 
   useEffect(() => {
     const rail = fallback.current
-    return () => returnFocusWhenFree(latest.current, rail)
+    return () => returnFocusTo(latest.current, rail)
   }, [fallback])
 }
 

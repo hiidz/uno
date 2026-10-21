@@ -13,8 +13,8 @@ them.
 | `StateView` | The loading, empty and error states of anything fetched; `size="compact"` in pickers. |
 | `fields.tsx` | Form fields, `FieldError`, `FieldNote`, `Segmented`, `InfoTip`. |
 | `Modal`, `ConfirmDialog` | A dialog, and the alert that asks before something can't be undone. |
-| `MoreMenu` | A row's ⋯ menu; when an entry takes its row away, focus goes to the nearest ⋯ left. |
-| `returnFocus.ts` | Where focus goes as something closes: `useReturnFocus` for a dialog with no Radix trigger, `returnFocusWhenFree` for the editor, `keepFocusOnMove` for a row's arrows. |
+| `MoreMenu` | A row's ⋯ menu. |
+| `returnFocus.ts` | Where focus goes as something closes: `useReturnFocus` for a dialog with no Radix trigger, `returnFocusTo` for the editor. |
 | `Toasts`, `useToasts`, `useToastLift` | The app's toasts: `show({ tone, text, detail })`, a success, failure or notice. `ToastProvider` sits in `App.tsx`; a bar along the screen's foot calls `useToastLift` so they sit above it. |
 | `PaneSign`, `EntryPage` | A pane's sign, and the sign-in and profile-picker page. |
 | `Icon`, `Skeleton`, `dnd.tsx`, `Wordmark`, `Fascia` | Smaller parts. |
