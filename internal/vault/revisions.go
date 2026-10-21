@@ -1,7 +1,8 @@
 // Revisions: what an editor's save and a push are checked against. Each
-// content write raises its row's revision in its own statement (writeCatalog,
-// updateCollectionRow, writeCatalogEdit, writeCatalogCopy), and each push
-// raises its profile's home_revision (SavePush). An editor's save carries the
+// content write raises its row's revision in its own statement
+// (UpdateUserCatalog, updateCollectionRow, applyCatalogEdit,
+// updateCatalogCopy), and each push raises its profile's home_revision
+// (SavePush). An editor's save carries the
 // revision it was built from, and is refused as ErrStale when the row is at
 // another; push compares the home_revision it was built from itself
 // (HomeRevision).
@@ -33,27 +34,6 @@ func refuseStale(ctx context.Context, tx *sql.Tx, table string, profileID, id uu
 		return ErrStale
 	}
 	return nil
-}
-
-// writeCatalogAt is writeCatalog for a catalog editor's save built from
-// catalogID at revision: ErrStale, writing nothing, when the row is at
-// another.
-func writeCatalogAt(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, revision int64, input CatalogForm) error {
-	if err := refuseStale(ctx, tx, "catalogs", profileID, catalogID, revision); err != nil {
-		return err
-	}
-	return writeCatalog(ctx, tx, profileID, catalogID, input)
-}
-
-// updateCollectionTxAt is updateCollectionTx for a collection editor's save
-// built from collectionID at revision: ErrStale, writing nothing, when the
-// row is at another. The collection's revision also guards the catalogs
-// scoped to it, which only a save or an Update of the collection writes.
-func updateCollectionTxAt(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, revision int64, form CollectionForm, nowStr string) error {
-	if err := refuseStale(ctx, tx, "collections", profileID, collectionID, revision); err != nil {
-		return err
-	}
-	return updateCollectionTx(ctx, tx, profileID, collectionID, form, nowStr)
 }
 
 // HomeRevision is profileID's home_revision as it stands now: what push

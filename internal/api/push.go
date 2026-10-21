@@ -181,11 +181,24 @@ func (s *Server) lockPush(ctx context.Context, profileID uuid.UUID) (unlock func
 	}
 }
 
-// pushLocked is push once it holds the profile's push lock.
+// pushLocked is push once it holds the profile's push lock. Its refusals run
+// in order, each before anything reaches Nuvio: an id the profile may not put
+// on Home (400), a Home another push has changed since (refuseStaleHome),
+// then the record and the live Nuvio profile (refusePush).
+//
+// The push record is built once: its collections are the bytes sent, and the
+// whole record is what the local write stores. Its build refusing an id
+// (vault.ErrInvalidInput) is load-bearing, not a fail-fast nicety: with the
+// write moved to the end, it is the only check standing between the request
+// body and a third-party API call.
 func (s *Server) pushLocked(ctx context.Context, w http.ResponseWriter, profile vault.Profile, body pushRequest) {
 	accessToken, _ := nuvioTokenFrom(ctx) // guaranteed by requireNuvioAuth
 
-	record, err := s.pushRecord(ctx, profile.ID, body)
+	var record vault.PushRecord
+	home, err := body.selection()
+	if err == nil {
+		record, err = s.vault.BuildPushRecord(ctx, profile.ID, home)
+	}
 	if err != nil {
 		log.Printf("push: %v", err)
 		status := http.StatusInternalServerError
@@ -196,20 +209,11 @@ func (s *Server) pushLocked(ctx context.Context, w http.ResponseWriter, profile 
 		return
 	}
 
-	if s.refusePushFrom(ctx, w, accessToken, profile, body.HomeRevision, record) {
+	if s.refuseStaleHome(ctx, w, profile.ID, body.HomeRevision) || s.refusePush(ctx, w, accessToken, profile, record) {
 		return
 	}
 	status, result := s.sendPush(ctx, accessToken, profile, record)
 	httpx.WriteJSON(w, status, result)
-}
-
-// refusePushFrom is refusePush for a push built from homeRevision: a Home
-// another push has changed since (refuseStaleHome) is refused first.
-func (s *Server) refusePushFrom(ctx context.Context, w http.ResponseWriter, accessToken string, profile vault.Profile, homeRevision int64, record vault.PushRecord) bool {
-	if s.refuseStaleHome(ctx, w, profile.ID, homeRevision) {
-		return true
-	}
-	return s.refusePush(ctx, w, accessToken, profile, record)
 }
 
 // refuseStaleHome answers a push built from homeRevision when profileID's
@@ -410,18 +414,53 @@ func (r *pushRun) prepareHomeOrder() (pushRevert, error) {
 // nothingToRevert is the revert of a step that wrote nothing.
 func nothingToRevert(context.Context) error { return nil }
 
-// pushAddons is the addons step (Server.pushAddons).
+// pushAddons is the addons step, a read-modify-write cycle: pull the
+// profile's current addons, merge Uno's own entry into that list (mergeAddon),
+// and push the complete merged list back — omitting any existing addon would
+// delete it. Its revert pushes the pulled list. It doesn't depend on the
+// pending selection, so it's unaffected by push's Nuvio-first ordering.
 func (r *pushRun) pushAddons() (pushRevert, error) {
-	pulled, err := r.s.pushAddons(r.ctx, r.accessToken, r.slot, r.manifestURL)
+	pulled, err := r.s.nuvio.ListAddons(r.ctx, r.accessToken, r.slot)
+	if err == nil {
+		err = r.s.nuvio.PushAddons(r.ctx, r.accessToken, r.slot, mergeAddon(pulled, r.manifestURL, r.s.siteBaseURL))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("addons push: %w", err)
 	}
 	return func(ctx context.Context) error { return r.s.nuvio.PushAddons(ctx, r.accessToken, r.slot, pulled) }, nil
 }
 
-// pushCollections is the collections step (Server.pushCollections).
+// pushCollections is the collections step, a read-modify-write cycle sending
+// the push record's collections, built from the pending selection in the
+// request body (vault.BuildPushRecord), since the local write hasn't happened
+// yet at this point in push's sequence. Nuvio's blob is full-replace and holds
+// collections Uno knows nothing about (its own native UI, or another client),
+// so the merge has to touch only what Uno manages and leave everything else
+// byte-for-byte untouched:
+//
+//  1. Pull the current blob as raw JSON per element — never decoded into a
+//     generic map, which would round-trip numbers through float64 and
+//     silently corrupt any collection Uno doesn't own.
+//  2. Drop every pulled entry in managed: owned by this profile, or sent by
+//     its last push (managedCollectionIDs). Everything on Home is owned, so
+//     the owned set covers it; the push record covers a collection deleted
+//     since the last push, whatever it held. A collection is never dropped
+//     for what its folders hold: Nuvio's own collection editors build
+//     sources from Uno's catalogs too.
+//  3. Append the record's collections: in Home order, each pinned to the top
+//     of home as its selection entry says, as the exact bytes the record
+//     keeps.
+//
+// Its revert pushes the pulled blob.
 func (r *pushRun) pushCollections() (pushRevert, error) {
-	pulled, err := r.s.pushCollections(r.ctx, r.accessToken, r.slot, r.managed, r.record.Collections)
+	pulled, err := r.s.nuvio.PullCollections(r.ctx, r.accessToken, r.slot)
+	if err != nil {
+		return nil, fmt.Errorf("collections push: %w", err)
+	}
+	foreign, err := dropManaged(pulled, r.managed)
+	if err == nil {
+		err = r.s.nuvio.PushCollections(r.ctx, r.accessToken, r.slot, slices.Concat(foreign, r.record.Collections))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("collections push: %w", err)
 	}
@@ -475,37 +514,6 @@ func undoPush(ctx context.Context, status int, reverts ...pushRevert) (int, push
 	return status, pushResult{}
 }
 
-// pushRecord builds what a push of body puts in Nuvio, once: its collections
-// are the bytes sent, and the whole record is what the local write stores. The
-// build refuses an id profileID may not put on Home (vault.ErrInvalidInput),
-// which is load-bearing, not a fail-fast nicety: with the write moved to the
-// end, it is the only check standing between the request body and a
-// third-party API call.
-func (s *Server) pushRecord(ctx context.Context, profileID uuid.UUID, body pushRequest) (vault.PushRecord, error) {
-	home, err := body.selection()
-	if err != nil {
-		return vault.PushRecord{}, err
-	}
-	return s.vault.BuildPushRecord(ctx, profileID, home)
-}
-
-// pushAddons runs the addons read-modify-write cycle: pull the profile's
-// current addons, merge Uno's own entry into that list (mergeAddon), and push
-// the complete merged list back — omitting any existing addon would delete
-// it. Returns the pulled list, which a failed push puts back.
-// Has no dependency on the pending selection, so it's unaffected by push's
-// Nuvio-first ordering.
-func (s *Server) pushAddons(ctx context.Context, accessToken string, nuvioProfileIndex int, manifestURL string) ([]nuvio.NuvioAddon, error) {
-	current, err := s.nuvio.ListAddons(ctx, accessToken, nuvioProfileIndex)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.nuvio.PushAddons(ctx, accessToken, nuvioProfileIndex, mergeAddon(current, manifestURL, s.siteBaseURL)); err != nil {
-		return nil, err
-	}
-	return current, nil
-}
-
 // mergeAddon is current with this profile's addon in it once and switched
 // on, every other addon as it was, in order. Entries are matched the way
 // Nuvio's apps match addon URLs (addonKey): Nuvio TV saves Uno's URL without
@@ -553,47 +561,6 @@ func addonKey(url string) string {
 // merge reads: its id, for the managed-set match.
 type pulledCollection struct {
 	ID string `json:"id"`
-}
-
-// pushCollections runs the collections read-modify-write cycle, sending
-// fresh: the push record's collections, built from the pending selection in
-// the request body (vault.BuildPushRecord), since the local write hasn't
-// happened yet at this point in push's sequence (see push above). Nuvio's
-// blob is full-replace and holds
-// collections Uno knows nothing about (its own native UI, or another
-// client), so the merge has to touch only what Uno manages and leave
-// everything else byte-for-byte untouched:
-//
-//  1. Pull the current blob as raw JSON per element — never decoded into a
-//     generic map, which would round-trip numbers through float64 and
-//     silently corrupt any collection Uno doesn't own.
-//  2. Drop every pulled entry in managed: owned by this profile, or sent by
-//     its last push (managedCollectionIDs). Everything on Home is owned, so
-//     the owned set covers it; the push record covers a collection deleted
-//     since the last push, whatever it held. A collection is never dropped
-//     for what its folders hold: Nuvio's own collection editors build
-//     sources from Uno's catalogs too.
-//  3. Append fresh, the profile's pending selection as the record holds it:
-//     in Home order, each pinned to the top of home as its selection entry
-//     says, as the exact bytes the record keeps.
-//
-// Returns the pulled blob on success, which a failed push puts back.
-func (s *Server) pushCollections(ctx context.Context, accessToken string, nuvioProfileIndex int, managed map[string]bool, fresh []json.RawMessage) ([]json.RawMessage, error) {
-	pulled, err := s.nuvio.PullCollections(ctx, accessToken, nuvioProfileIndex)
-	if err != nil {
-		return nil, err
-	}
-
-	foreign, err := dropManaged(pulled, managed)
-	if err != nil {
-		return nil, err
-	}
-	kept := slices.Concat(foreign, fresh)
-
-	if err := s.nuvio.PushCollections(ctx, accessToken, nuvioProfileIndex, kept); err != nil {
-		return nil, err
-	}
-	return pulled, nil
 }
 
 // nuvioErrorStatus classifies a push-stage error into a status code: a

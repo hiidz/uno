@@ -129,6 +129,35 @@ const SOURCES: Record<EntityKind, EntitySource> = {
 const SEARCH_DELAY_MS = 300
 const MIN_QUERY = 2
 
+/** How a list's ids join. Outside an exclude list, one id carries no
+ *  separator, so it takes the kind's default join. */
+function idJoin(value: string | undefined, exclude: boolean, defaultJoin: IdJoin): IdJoin {
+  if (exclude) return 'and'
+  if (value?.includes('|')) return 'or'
+  if (value?.includes(',')) return 'and'
+  return defaultJoin
+}
+
+/** The line under the search box: why it can't search, that it is
+ *  searching, or what the search found. */
+function pickerStatus(s: {
+  full: boolean
+  exclude: boolean
+  plural: string
+  query: string
+  searching: boolean
+  failed: boolean
+  matches: number
+}): string {
+  if (s.full) return `A row can ${s.exclude ? 'leave out' : 'use'} up to ${MAX_ENTITY_IDS} ${s.plural}. Remove one to add another.`
+  if (s.query.length === 0) return ''
+  if (s.query.length < MIN_QUERY) return `Type at least ${MIN_QUERY} letters to search.`
+  if (s.searching) return 'Searching…'
+  if (s.failed) return `Couldn't search ${s.plural}. Try again.`
+  if (s.matches === 0) return `No ${s.plural} match that name.`
+  return `${s.matches} ${s.matches === 1 ? 'match' : 'matches'}. Press Down to pick one.`
+}
+
 export function TMDBEntityPicker({
   kind,
   type,
@@ -164,15 +193,7 @@ export function TMDBEntityPicker({
 
   const ids = useMemo(() => [...new Set(parseIdList(value).ids)], [value])
 
-  // Outside an exclude list, one id carries no separator, so it takes the
-  // kind's default join.
-  const join: IdJoin = exclude
-    ? 'and'
-    : value?.includes('|')
-      ? 'or'
-      : value?.includes(',')
-        ? 'and'
-        : source.defaultJoin
+  const join = idJoin(value, exclude, source.defaultJoin)
 
   const full = !source.single && ids.length >= MAX_ENTITY_IDS
 
@@ -262,19 +283,15 @@ export function TMDBEntityPicker({
   const trimmed = query.trim()
   const searching = trimmed !== settled || results.isFetching
   const failed = !searching && results.isError
-  const status = full
-    ? `A row can ${exclude ? 'leave out' : 'use'} up to ${MAX_ENTITY_IDS} ${source.plural}. Remove one to add another.`
-    : trimmed.length === 0
-      ? ''
-      : trimmed.length < MIN_QUERY
-        ? `Type at least ${MIN_QUERY} letters to search.`
-        : searching
-          ? 'Searching…'
-          : failed
-            ? `Couldn't search ${source.plural}. Try again.`
-            : matches.length === 0
-              ? `No ${source.plural} match that name.`
-              : `${matches.length} ${matches.length === 1 ? 'match' : 'matches'}. Press Down to pick one.`
+  const status = pickerStatus({
+    full,
+    exclude,
+    plural: source.plural,
+    query: trimmed,
+    searching,
+    failed,
+    matches: matches.length,
+  })
 
   const showResults = !full && trimmed.length >= MIN_QUERY && trimmed === settled && matches.length > 0
 

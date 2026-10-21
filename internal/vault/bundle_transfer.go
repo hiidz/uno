@@ -144,7 +144,8 @@ func planImport(profileID uuid.UUID, b Bundle, reuse map[string]uuid.UUID) (impo
 	if err := b.Validate(); err != nil {
 		return importPlan{}, err
 	}
-	if err := checkReuseKeys(b, reuse); err != nil {
+	targets, err := reuseTargets(b, reuse)
+	if err != nil {
 		return importPlan{}, err
 	}
 	ids, listed, err := mintListed(profileID, b.Catalogs, reuse)
@@ -155,27 +156,7 @@ func planImport(profileID uuid.UUID, b Bundle, reuse map[string]uuid.UUID) (impo
 	if err != nil {
 		return importPlan{}, err
 	}
-	return importPlan{listed: listed, collections: collections, reuse: reuseTargets(b, reuse)}, nil
-}
-
-// checkReuseKeys confirms every key reuse maps is a catalog key of b.
-func checkReuseKeys(b Bundle, reuse map[string]uuid.UUID) error {
-	keys := bundleKeys(b)
-	for _, key := range slices.Sorted(maps.Keys(reuse)) {
-		if !keys[key] {
-			return fmt.Errorf("%w: reuse names catalog key %q, which the bundle doesn't have", ErrInvalidInput, key)
-		}
-	}
-	return nil
-}
-
-// bundleKeys is the set of every catalog key in b.
-func bundleKeys(b Bundle) map[string]bool {
-	keys := map[string]bool{}
-	for key := range bundleRecipeHashes(b) {
-		keys[key] = true
-	}
-	return keys
+	return importPlan{listed: listed, collections: collections, reuse: targets}, nil
 }
 
 // bundleRecipeHashes is the recipe hash of every catalog in b by its key.
@@ -193,39 +174,33 @@ func bundleRecipeHashes(b Bundle) map[string]string {
 	return hashes
 }
 
-// reuseTargets is reuse as targets, ordered by key. Every key of reuse is one
-// of b's (checkReuseKeys).
-func reuseTargets(b Bundle, reuse map[string]uuid.UUID) []reuseTarget {
+// reuseTargets is reuse as targets, ordered by key, or ErrInvalidInput naming
+// the first key that isn't a catalog key of b.
+func reuseTargets(b Bundle, reuse map[string]uuid.UUID) ([]reuseTarget, error) {
 	hashes := bundleRecipeHashes(b)
 	targets := make([]reuseTarget, 0, len(reuse))
 	for _, key := range slices.Sorted(maps.Keys(reuse)) {
-		targets = append(targets, reuseTarget{key: key, id: reuse[key], hash: hashes[key]})
+		hash, ok := hashes[key]
+		if !ok {
+			return nil, fmt.Errorf("%w: reuse names catalog key %q, which the bundle doesn't have", ErrInvalidInput, key)
+		}
+		targets = append(targets, reuseTarget{key: key, id: reuse[key], hash: hash})
 	}
-	return targets
+	return targets, nil
 }
 
-// reuseIDs is the id of each target.
-func reuseIDs(targets []reuseTarget) []uuid.UUID {
+// checkReuseTargets confirms each target is one of profileID's listed catalogs
+// and holds the recipe of the bundle catalog that names it, so a reused
+// catalog is the one the file describes and not another type or another
+// filter.
+func checkReuseTargets(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, targets []reuseTarget) error {
 	ids := make([]uuid.UUID, len(targets))
 	for i, t := range targets {
 		ids[i] = t.id
 	}
-	return ids
-}
-
-// checkReuseTargets confirms each target is one of profileID's listed catalogs
-// and holds the recipe of the bundle catalog that names it.
-func checkReuseTargets(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, targets []reuseTarget) error {
-	if err := validateFolderRefs(ctx, tx, profileID, nil, reuseIDs(targets)); err != nil {
+	if err := validateFolderRefs(ctx, tx, profileID, nil, ids); err != nil {
 		return err
 	}
-	return checkReuseRecipes(ctx, tx, targets)
-}
-
-// checkReuseRecipes confirms each target holds the recipe of the bundle catalog
-// that names it, so a reused catalog is the one the file describes and not
-// another type or another filter. The targets are already known to exist.
-func checkReuseRecipes(ctx context.Context, tx *sql.Tx, targets []reuseTarget) error {
 	for _, t := range targets {
 		var catalogType, catalogProvider, params string
 		if err := tx.QueryRowContext(ctx, `SELECT type, provider, params FROM catalogs WHERE id = ?`, t.id.String()).
@@ -338,8 +313,10 @@ func (p importPlan) write(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) 
 	if err := checkReuseTargets(ctx, tx, profileID, p.reuse); err != nil {
 		return nil, err
 	}
-	if err := insertCatalogs(ctx, tx, p.listed); err != nil {
-		return nil, err
+	for _, c := range p.listed {
+		if _, err := insertCatalog(ctx, tx, c); err != nil {
+			return nil, err
+		}
 	}
 	ids := make([]uuid.UUID, len(p.collections))
 	for i, form := range p.collections {
@@ -350,16 +327,6 @@ func (p importPlan) write(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) 
 		ids[i] = created.ID
 	}
 	return ids, nil
-}
-
-// insertCatalogs inserts each of catalogs in turn.
-func insertCatalogs(ctx context.Context, tx *sql.Tx, catalogs []Catalog) error {
-	for _, c := range catalogs {
-		if _, err := insertCatalog(ctx, tx, c); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // listedIDs is the id of each new listed catalog, in bundle order.

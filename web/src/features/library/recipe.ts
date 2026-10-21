@@ -173,6 +173,7 @@ export function describeRecipe(catalog: Pick<Catalog, 'type' | 'params'>, lookup
 
 /** `describeRecipe` over params already parsed, for a caller that reads them
  *  itself too. */
+// oxlint-disable-next-line complexity -- a flat list of summary segments, one if per filter, in reading order
 function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLookup): string[] {
   const out: string[] = []
 

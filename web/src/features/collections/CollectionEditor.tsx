@@ -476,18 +476,7 @@ export function CollectionEditor({
 
   const roleLabels = showErrors ? errorRoleLabels(errors, state.folders) : []
 
-  // What the save bar adds after its status: what the next Save deletes, and
-  // folders that would show nothing — the last one whether or not anything
-  // has changed.
-  const statusNotes = [
-    ...(dirty && willDelete.length > 0 ? [`${pluralCount(willDelete.length, 'folder')} will be deleted`] : []),
-    ...(dirty && catalogsWillDelete.length > 0
-      ? [`${pluralCount(catalogsWillDelete.length, 'catalog')} will be deleted`]
-      : []),
-    ...(emptyFolders.length > 0
-      ? [`${pluralCount(emptyFolders.length, 'folder')} ${emptyFolders.length === 1 ? 'has' : 'have'} no catalogs`]
-      : []),
-  ]
+  const statusNotes = saveBarNotes(dirty, willDelete.length, catalogsWillDelete.length, emptyFolders.length)
 
   return (
     <EditorShell
@@ -651,4 +640,17 @@ export function CollectionEditor({
       />
     </EditorShell>
   )
+}
+
+/** What the save bar adds after its status: how many folders and catalogs
+ *  the next Save deletes, and folders that would show nothing — the last
+ *  whether or not anything has changed. */
+function saveBarNotes(dirty: boolean, folders: number, catalogs: number, emptyFolders: number): string[] {
+  const notes: string[] = []
+  if (dirty && folders > 0) notes.push(`${pluralCount(folders, 'folder')} will be deleted`)
+  if (dirty && catalogs > 0) notes.push(`${pluralCount(catalogs, 'catalog')} will be deleted`)
+  if (emptyFolders > 0) {
+    notes.push(`${pluralCount(emptyFolders, 'folder')} ${emptyFolders === 1 ? 'has' : 'have'} no catalogs`)
+  }
+  return notes
 }
