@@ -75,9 +75,11 @@ function duplicateReason(item: CommunityItem): string {
  * A publication page's actions: the one primary, in the Community accent —
  * Add, Update while one waits, or a disabled ✓ Added — and beside it
  * Duplicate. The page says in its own words what each makes, so there is no
- * menu and no tip.
+ * menu and no tip. On the profile's own publication, which it can neither add
+ * nor duplicate, a line saying so stands in for both.
  */
 export function PageActions({ item, actions }: { item: CommunityItem; actions: RowActions }) {
+  if (item.own) return <p className="text-dim m-0 text-[14px]">You published this.</p>
   return (
     <div className="flex flex-wrap items-center gap-2">
       <PagePrimary item={item} actions={actions} />

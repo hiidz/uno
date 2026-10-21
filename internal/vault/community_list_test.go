@@ -109,7 +109,7 @@ func TestGetPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.Title != "Halloween" || detail.Catalog != nil || detail.Snapshot.Collection.Folders[0].Title != "F" || detail.Snapshot.Catalogs[0].Name != "Ghosts" {
+	if detail.Title != "Halloween" || detail.Own || detail.Catalog != nil || detail.Snapshot.Collection.Folders[0].Title != "F" || detail.Snapshot.Catalogs[0].Name != "Ghosts" {
 		t.Errorf("detail = %+v", detail)
 	}
 	if _, err := db.GetPublication(ctx, viewer, uuid.New()); !errors.Is(err, ErrPublicationNotFound) {
@@ -117,8 +117,8 @@ func TestGetPublication(t *testing.T) {
 	}
 }
 
-// A publisher can read their own publication's page, as everyone else sees it,
-// though the list leaves it out.
+// A publisher can read their own publication's page, as everyone else sees it
+// but marked as theirs, though the list leaves it out.
 func TestGetPublicationAnswersForItsPublisher(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
@@ -126,8 +126,8 @@ func TestGetPublicationAnswersForItsPublisher(t *testing.T) {
 	source := publishCatalog(t, db, owner, "Popular", `{"sort_by":"popularity.desc"}`)
 
 	detail, err := db.GetPublication(ctx, owner, source.Publication.ID)
-	if err != nil || detail.Title != "Popular" {
-		t.Fatalf("GetPublication by its publisher = %+v, %v, want the publication", detail, err)
+	if err != nil || detail.Title != "Popular" || !detail.Own {
+		t.Fatalf("GetPublication by its publisher = %+v, %v, want the publication, marked own", detail, err)
 	}
 	if items := listCommunity(t, db, owner); len(items) != 0 {
 		t.Errorf("the publisher's Community list = %v, want it to leave out their own", itemTitles(items))

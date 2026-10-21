@@ -1756,7 +1756,7 @@ components:
 
     CommunityItem:
       type: object
-      required: [id, kind, title, subscriber_count, published_at, updated_at, subscribed, update_available]
+      required: [id, kind, title, subscriber_count, published_at, updated_at, subscribed, update_available, own]
       properties:
         id: { type: string, format: uuid }
         kind: { type: string, enum: [catalog, collection] }
@@ -1768,6 +1768,9 @@ components:
           type: boolean
           description: The caller has added it.
         update_available: { type: boolean }
+        own:
+          type: boolean
+          description: The caller published it. Always false in the list, which leaves the caller's own out; a detail can be the caller's own.
         catalog_names:
           type: array
           items: { type: string }
