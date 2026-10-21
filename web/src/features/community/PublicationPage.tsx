@@ -17,7 +17,8 @@ import { usePublication } from './useCommunity'
  * One publication's page, in place of the list, under a sign that carries its
  * name beside the way back (`CommunitySign`). The body leads with how many
  * have added it and when it changed, then the one primary — Add, Update while
- * one waits, or ✓ Added — beside Duplicate. While an update waits for this
+ * one waits, or ✓ Added — beside Duplicate, or on the profile's own
+ * publication a line saying it published this. While an update waits for this
  * profile's added row, a shelf of what the update changes comes next, then
  * what the page holds, which is the new version, and Update applies it. A
  * catalog shows its spec tiles beside one page of its results; a collection

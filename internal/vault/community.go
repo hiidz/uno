@@ -21,9 +21,10 @@ import (
 
 // CommunityItem is one publication as Community lists it: what it is, how
 // many subscribe, when it was published and last updated, whether
-// the caller subscribes and has an update waiting, the names of the catalogs
-// it holds, a collection's folders in order as their tiles show them, and for
-// a catalog its recipe. Its publisher is never on the wire.
+// the caller subscribes and has an update waiting, whether the caller is its
+// publisher, the names of the catalogs it holds, a collection's folders in
+// order as their tiles show them, and for a catalog its recipe. Its publisher
+// is never on the wire.
 type CommunityItem struct {
 	ID              uuid.UUID         `json:"id"`
 	Kind            string            `json:"kind"`
@@ -33,6 +34,7 @@ type CommunityItem struct {
 	UpdatedAt       time.Time         `json:"updated_at"`
 	Subscribed      bool              `json:"subscribed"`
 	UpdateAvailable bool              `json:"update_available"`
+	Own             bool              `json:"own"`
 	CatalogNames    []string          `json:"catalog_names"`
 	Folders         []CommunityFolder `json:"folders"`
 	Catalog         *BundleCatalog    `json:"catalog"`
@@ -54,10 +56,11 @@ type PublicationDetail struct {
 }
 
 // communityItemColumns are the columns scanCommunityItem reads, from
-// publications as p and the caller's subscriptions as s.
+// publications as p and the subscriptions of :me, the caller, as s.
 const communityItemColumns = `p.id, p.kind, p.title, p.subscriber_count,
 	p.published_at, p.updated_at, p.snapshot,
-	s.id IS NOT NULL, coalesce(s.subscribed_hash <> p.content_hash, 0)`
+	s.id IS NOT NULL, coalesce(s.subscribed_hash <> p.content_hash, 0),
+	p.publisher_id = :me`
 
 // The Community list's page size and the bounds on its search: each word is
 // one more pass over every row's catalog names, so the word count is what a
@@ -317,7 +320,7 @@ func scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error) {
 	var item CommunityItem
 	var id, publishedAt, updatedAt, raw string
 	if err := row.Scan(&id, &item.Kind, &item.Title, &item.SubscriberCount,
-		&publishedAt, &updatedAt, &raw, &item.Subscribed, &item.UpdateAvailable); err != nil {
+		&publishedAt, &updatedAt, &raw, &item.Subscribed, &item.UpdateAvailable, &item.Own); err != nil {
 		return CommunityItem{}, Snapshot{}, err
 	}
 	var p rowParser
@@ -373,8 +376,8 @@ func (s Snapshot) listed(kind string) ([]string, *BundleCatalog) {
 
 // GetPublication is publicationID with its snapshot, for profileID, or
 // ErrPublicationNotFound when there is no such publication. Unlike the list, a
-// subscribe and a duplicate, it answers for profileID's own publication too: a
-// publisher previews their page as everyone else sees it.
+// subscribe and a duplicate, it answers for profileID's own publication too,
+// marked Own: a publisher previews their page as everyone else sees it.
 func (db *DB) GetPublication(ctx context.Context, profileID, publicationID uuid.UUID) (PublicationDetail, error) {
 	row := db.conn.QueryRowContext(ctx, `
 		SELECT `+communityItemColumns+`

@@ -205,7 +205,8 @@ interface Snapshot {
  *  holds, for search. `folders` lists a collection's folders in order as their
  *  tiles show them, empty for a catalog. `catalog` is a catalog publication's one catalog, so
  *  its row can be summarized without a detail call; `null` for a
- *  collection. */
+ *  collection. `own` is true only on a detail of this profile's own
+ *  publication; the list leaves those out. */
 export interface CommunityItem {
   id: string
   kind: 'catalog' | 'collection'
@@ -215,6 +216,7 @@ export interface CommunityItem {
   updated_at: string
   subscribed: boolean
   update_available: boolean
+  own: boolean
   catalog_names: string[] | null
   folders: CommunityFolder[] | null
   catalog: SnapshotCatalog | null

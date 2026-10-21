@@ -183,6 +183,17 @@ describe('CommunityView', () => {
     expect((await screen.findAllByText('Slashers')).length).toBeGreaterThan(0)
   })
 
+  it('says on the profile’s own publication that it published it, offering neither Add nor Duplicate', async () => {
+    const mine = { ...nightDetail, subscribed: false, update_available: false, own: true }
+    renderView(
+      { 'GET /api/p/1/community': listing([]), 'GET /api/p/1/community/night': mine },
+      { id: 'night', kind: 'collection' },
+    )
+    expect(await screen.findByText('You published this.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Add/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Duplicate' })).toBeNull()
+  })
+
   it('says when nothing is published, and when nothing matches', async () => {
     renderView({ 'GET /api/p/1/community': listing([a24]) })
     await screen.findByText('A24 Horror')

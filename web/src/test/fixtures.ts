@@ -70,6 +70,7 @@ export function communityItem(overrides: Partial<CommunityItem> = {}): Community
     updated_at: '2026-09-20T10:00:00Z',
     subscribed: false,
     update_available: false,
+    own: false,
     catalog_names: ['Popular'],
     folders: [],
     catalog: { key: 'k1', name: 'Popular', type: 'movie', provider: 'tmdb', params: {} },
