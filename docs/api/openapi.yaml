@@ -92,6 +92,7 @@ paths:
                   $ref: "#/components/schemas/NuvioProfile"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyNuvioCalls" }
         "500": { $ref: "#/components/responses/ServerError" }
         "502": { $ref: "#/components/responses/Upstream" }
 
@@ -135,6 +136,7 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyNuvioCalls" }
         "500": { $ref: "#/components/responses/ServerError" }
         "502": { $ref: "#/components/responses/Upstream" }
 
@@ -760,6 +762,19 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PushResult" }
         "413": { $ref: "#/components/responses/TooLarge" }
+        "429":
+          description: |
+            The account is over its budget for the routes that call Nuvio (an
+            `Error`, before anything reaches Nuvio), or Nuvio refused a call for
+            its rate limit and what it took was put back (a `PushResult`).
+          headers:
+            Retry-After: { $ref: "#/components/headers/RetryAfter" }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/PushResult"
+                  - $ref: "#/components/schemas/Error"
         "500":
           description: Failed on Uno's side. `undo_failed` is true when putting back Nuvio's lists failed too.
           content:
@@ -1351,6 +1366,9 @@ components:
     ReferenceCache:
       description: A TMDB reference list changes rarely, so the browser keeps it a day. Only a 200 carries it.
       schema: { type: string, const: "private, max-age=86400" }
+    RetryAfter:
+      description: Whole seconds to wait before the next request is let through.
+      schema: { type: integer, minimum: 1 }
 
   responses:
     BadRequest:
@@ -1385,6 +1403,16 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     Conflict:
       description: The row changed since the editor loaded it (`Error saving.`), or the request conflicts with the row's state.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooManyNuvioCalls:
+      description: |
+        The account is over its budget for the routes that call Nuvio (10 at
+        once, then one more every 3 seconds, shared by the three), or Nuvio
+        refused the call for its rate limit (`nuvio is busy`).
+      headers:
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

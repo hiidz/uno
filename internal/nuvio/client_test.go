@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 )
 
 // nuvioRequest is what a fake Nuvio server saw of the last request it served.
@@ -260,6 +261,54 @@ func TestClientUpstreamFailures(t *testing.T) {
 			srv.Close()
 			if err := call.call(NewClient(srv.URL, "publishable-key")); !errors.Is(err, ErrNuvioRequestFailed) {
 				t.Fatalf("err = %v, want it to wrap ErrNuvioRequestFailed", err)
+			}
+		})
+	}
+}
+
+// A 429 from any call is a RateLimitedError, still an ErrNuvioRequestFailed,
+// waiting what Nuvio asked: Retry-After first, then RateLimit-Reset, else a
+// second, capped at a minute.
+func TestClientRateLimited(t *testing.T) {
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+		want    time.Duration
+	}{
+		{"neither header", nil, time.Second},
+		{"Retry-After in seconds", map[string]string{"Retry-After": "5", "RateLimit-Reset": "1"}, 5 * time.Second},
+		{"Retry-After as a date", map[string]string{"Retry-After": now.Add(7 * time.Second).Format(http.TimeFormat)}, 7 * time.Second},
+		{"RateLimit-Reset alone", map[string]string{"RateLimit-Reset": "2"}, 2 * time.Second},
+		{"unreadable", map[string]string{"Retry-After": "soon", "RateLimit-Reset": "later"}, time.Second},
+		{"huge", map[string]string{"Retry-After": "99999999999"}, time.Minute},
+		{"negative", map[string]string{"RateLimit-Reset": "-3"}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := http.Header{}
+			for name, value := range tc.headers {
+				h.Set(name, value)
+			}
+			if got := rateLimitWait(h, now); got != tc.want {
+				t.Errorf("rateLimitWait = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	for _, call := range []clientCall{listProfiles, listAddons, pullCollections, avatarImages, pushAddons, pushCollections, pullHomeOrder, pushHomeOrder} {
+		t.Run(call.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("RateLimit-Reset", "1")
+				w.WriteHeader(http.StatusTooManyRequests)
+			}))
+			t.Cleanup(srv.Close)
+			err := call.call(NewClient(srv.URL, "publishable-key"))
+			limited, ok := errors.AsType[*RateLimitedError](err)
+			if !ok || limited.Wait != time.Second {
+				t.Fatalf("err = %v, want a RateLimitedError waiting 1s", err)
+			}
+			if !errors.Is(err, ErrNuvioRequestFailed) {
+				t.Errorf("err = %v, want it to wrap ErrNuvioRequestFailed", err)
 			}
 		})
 	}

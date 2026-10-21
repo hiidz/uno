@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,12 +92,14 @@ func (body pushRequest) selection() (vault.PushedHome, error) {
 // failed too (undoPush). Refused names why push turned the selection away
 // before contacting Nuvio, when the SPA has words of its own for it.
 // HomeRevision, on a success only, is the profile's home_revision the push
-// raised it to: what the tab's next push is built from.
+// raised it to: what the tab's next push is built from. retryAfter, on a 429
+// only, is how long Nuvio asked to wait: Retry-After, not part of the body.
 type pushResult struct {
 	Success      bool   `json:"success"`
 	UndoFailed   bool   `json:"undo_failed,omitempty"`
 	Refused      string `json:"refused,omitempty"`
 	HomeRevision int64  `json:"home_revision,omitempty"`
+	retryAfter   time.Duration
 }
 
 // The pushResult.Refused values.
@@ -213,7 +216,7 @@ func (s *Server) pushLocked(ctx context.Context, w http.ResponseWriter, profile 
 		return
 	}
 	status, result := s.sendPush(ctx, accessToken, profile, record)
-	httpx.WriteJSON(w, status, result)
+	writePushResult(w, status, result)
 }
 
 // refuseStaleHome answers a push built from homeRevision when profileID's
@@ -256,7 +259,7 @@ func (s *Server) refusePush(ctx context.Context, w http.ResponseWriter, accessTo
 	switch {
 	case err != nil:
 		log.Printf("push: reading the live profile: %v", err)
-		httpx.WriteJSON(w, nuvioErrorStatus(err), pushResult{})
+		writePushResult(w, nuvioErrorStatus(err), pushResult{retryAfter: nuvioRetryAfter(err)})
 	case !found:
 		httpx.WriteJSON(w, http.StatusConflict, pushResult{Refused: refusedProfileChanged})
 	case live.UsesPrimaryAddons:
@@ -484,7 +487,8 @@ func (r *pushRun) pushHomeOrder() (pushRevert, error) {
 // failedPush answers a push whose step failed with err, after running
 // reverts, what the steps before it wrote, within pushSettleBudget of ctx. A
 // home-order list push couldn't read is a refusal the SPA has words for: it
-// fails the first step, before anything reached Nuvio.
+// fails the first step, before anything reached Nuvio. Nuvio's rate limit,
+// once undone, is a 429 with Nuvio's wait.
 func failedPush(ctx context.Context, err error, reverts ...pushRevert) (int, pushResult) {
 	log.Printf("push: %v", err)
 	settleCtx, cancel := context.WithTimeout(ctx, pushSettleBudget)
@@ -492,6 +496,9 @@ func failedPush(ctx context.Context, err error, reverts ...pushRevert) (int, pus
 	status, result := undoPush(settleCtx, nuvioErrorStatus(err), reverts...)
 	if errors.Is(err, errHomeOrderUnreadable) {
 		result.Refused = refusedHomeOrderUnreadable
+	}
+	if status == http.StatusTooManyRequests {
+		result.retryAfter = nuvioRetryAfter(err)
 	}
 	return status, result
 }
@@ -563,14 +570,35 @@ type pulledCollection struct {
 	ID string `json:"id"`
 }
 
-// nuvioErrorStatus classifies a push-stage error into a status code: a
-// failed Nuvio call itself is 502 (upstream problem), anything else (a
-// vault read failing, JSON parsing a pulled collection) is 500.
+// nuvioErrorStatus classifies a push-stage error into a status code: Nuvio
+// refusing the call for its rate limit is 429, any other failed Nuvio call 502
+// (upstream problem), anything else (a vault read failing, JSON parsing a
+// pulled collection) 500.
 func nuvioErrorStatus(err error) int {
+	if _, limited := errors.AsType[*nuvio.RateLimitedError](err); limited {
+		return http.StatusTooManyRequests
+	}
 	if errors.Is(err, nuvio.ErrNuvioRequestFailed) {
 		return http.StatusBadGateway
 	}
 	return http.StatusInternalServerError
+}
+
+// nuvioRetryAfter is how long Nuvio asked to wait when err is its rate limit
+// (nuvio.RateLimitedError), zero for any other error.
+func nuvioRetryAfter(err error) time.Duration {
+	if limited, ok := errors.AsType[*nuvio.RateLimitedError](err); ok {
+		return limited.Wait
+	}
+	return 0
+}
+
+// writePushResult answers result with status, with Retry-After on a 429.
+func writePushResult(w http.ResponseWriter, status int, result pushResult) {
+	if status == http.StatusTooManyRequests {
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(result.retryAfter)))
+	}
+	httpx.WriteJSON(w, status, result)
 }
 
 // managedCollectionIDs is the id of every collection push owns in Nuvio's blob

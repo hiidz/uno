@@ -94,8 +94,7 @@ func (c *TMDBClient) CheckKey(ctx context.Context, key string) error {
 // carries, since that URL holds the api_key: the error is logged, and a key
 // never is.
 func withoutURL(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
 		return fmt.Errorf("%s: %w", urlErr.Op, urlErr.Err)
 	}
 	return err

@@ -41,6 +41,9 @@ type Server struct {
 	// pushLocks holds each profile's push lock (lockPush), a profile id
 	// mapped to a chan struct{} with room for one.
 	pushLocks sync.Map
+	// nuvioCalls paces each account's requests to the routes that call Nuvio
+	// (limitNuvioCalls).
+	nuvioCalls *accountLimiter
 }
 
 // ServeHTTP sets securityHeaders on every response — the API, the addon and
@@ -105,6 +108,7 @@ func New(d Deps) (*Server, error) {
 		nuvioPublishableKey: d.NuvioPublishableKey,
 		admission:           d.Access.admission(),
 		keys:                d.Keys,
+		nuvioCalls:          newAccountLimiter(nuvioCallBurst, nuvioCallEvery),
 	}
 	if err := s.routes(); err != nil {
 		return nil, err
@@ -150,7 +154,7 @@ func (s *Server) routes() error {
 	// The Home selection travels whole in push's body and is written only by
 	// that handler, in one transaction, once Nuvio has accepted the push. It
 	// is read back from the library, as each row's home_position.
-	s.router.HandleFunc("POST /api/p/{profileIndex}/push", s.requireProfileAuth(s.push))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/push", s.requireProfileAuth(s.limitNuvioCalls(s.push)))
 
 	s.router.HandleFunc("GET /api/tmdb/genres/{type}", s.requireNuvioAuth(s.listGenres))
 	s.router.HandleFunc("GET /api/tmdb/certifications/{type}", s.requireNuvioAuth(s.listCertifications))
@@ -174,8 +178,9 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("PUT /api/account/tmdb-key", s.requireNuvioAuth(s.perAccountKeys(s.putTMDBKey)))
 	s.router.HandleFunc("DELETE /api/account/tmdb-key", s.requireNuvioAuth(s.perAccountKeys(s.deleteTMDBKey)))
 
-	s.router.HandleFunc("GET /api/profiles", s.requireNuvioAuth(s.listProfiles))
-	s.router.HandleFunc("POST /api/profiles/select", s.requireNuvioAuth(s.selectProfile))
+	// The routes that call Nuvio are paced per account (limitNuvioCalls).
+	s.router.HandleFunc("GET /api/profiles", s.requireNuvioAuth(s.limitNuvioCalls(s.listProfiles)))
+	s.router.HandleFunc("POST /api/profiles/select", s.requireNuvioAuth(s.limitNuvioCalls(s.selectProfile)))
 	s.router.HandleFunc("GET /api/health", s.health)
 
 	s.router.HandleFunc("GET "+addon.ManifestPathPattern, s.addon.Public(s.addon.ManifestHandler))

@@ -66,6 +66,8 @@ A push sends the whole home screen to `POST /api/p/{profileIndex}/push`. Uno the
 
 Nuvio replaces each list whole, so Uno pulls each one first and keeps every entry that isn't its own. If a step fails, Uno puts back what it changed. Only after all three succeed does Uno save the new home screen, and a record of what it pushed.
 
+Nuvio's rate limit is shared across its clients, so the three routes that call Nuvio (push, the profile list and profile select) allow each account 10 requests at once, then one more every 3 seconds, and answer a `429` with `Retry-After` beyond that. A `429` from Nuvio itself is passed on the same way.
+
 ## Addon
 
 Nuvio's apps load `{SITE_BASE_URL}/u/{token}/manifest.json`. Each profile has its own random token. The addon serves the catalogs from the profile's **last push**, not the current edits, so a change shows up in Nuvio after the next push. Catalog pages come from TMDB, 20 titles at a time.

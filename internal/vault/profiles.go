@@ -136,8 +136,7 @@ func newToken() (string, error) {
 }
 
 func isUniqueConstraintErr(err error) bool {
-	var sqliteErr *sqlite.Error
-	if errors.As(err, &sqliteErr) {
+	if sqliteErr, ok := errors.AsType[*sqlite.Error](err); ok {
 		return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
 	}
 	return false
