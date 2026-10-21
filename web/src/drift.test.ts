@@ -21,9 +21,6 @@ const RULES = [
 
 const OPT_OUT = /drift-ok:\s*\S/
 
-/** Screens not yet moved onto the components and roles. Adopt takes each off as it moves it. */
-const NOT_YET_MIGRATED = new Set<string>([])
-
 const SRC = join(import.meta.dirname)
 
 function screenFiles(): string[] {
@@ -77,13 +74,7 @@ describe('drift check', () => {
     expect(relative(SRC, join(SRC, files[0]))).not.toMatch(/^components/)
   })
 
-  it('holds every migrated screen to the components, text roles and colour tokens', () => {
-    const found = files.filter((path) => !NOT_YET_MIGRATED.has(path)).flatMap(drift)
-    expect(found).toEqual([])
-  })
-
-  it('lists only screens that still drift, so a migrated one comes off the list', () => {
-    const clean = [...NOT_YET_MIGRATED].filter((path) => !files.includes(path) || drift(path).length === 0)
-    expect(clean).toEqual([])
+  it('holds every screen to the components, text roles and colour tokens', () => {
+    expect(files.flatMap(drift)).toEqual([])
   })
 })
