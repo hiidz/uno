@@ -49,8 +49,7 @@ const unknownFieldPrefix = "json: unknown field "
 // its limit, else 400. A strict decoder's unknown field is named in the 400.
 func decoded(w http.ResponseWriter, d *json.Decoder, v any) bool {
 	if err := d.Decode(v); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
 			httpx.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
 			return false
 		}
