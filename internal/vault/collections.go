@@ -204,45 +204,17 @@ func updateCollectionRow(ctx context.Context, tx *sql.Tx, profileID, collectionI
 	return nil
 }
 
-// updateCollectionRowAndEdits writes the collection's own columns and then
-// every catalog edit input carries: the rows a save rewrites ahead of its
-// folder set. The edits land before that rewrite
-// because its orphan cleanup deletes any scoped catalog the save no longer
-// references, and an edit must still find its catalog inside this collection.
-func updateCollectionRowAndEdits(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, input CollectionForm, nowStr string) error {
-	if err := updateCollectionRow(ctx, tx, profileID, collectionID, input, nowStr); err != nil {
-		return err
-	}
-	return applyCatalogEdits(ctx, tx, profileID, collectionID, input.CatalogEdits, nowStr)
-}
-
-// applyCatalogEdits writes each of edits in turn; see applyCatalogEdit.
-func applyCatalogEdits(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, edits []ScopedCatalogEdit, nowStr string) error {
-	for _, e := range edits {
-		if err := applyCatalogEdit(ctx, tx, profileID, collectionID, e, nowStr); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// applyCatalogEdit writes one ScopedCatalogEdit: the new name and recipe.
-// An edit that changes nothing is skipped, so the row's updated_at stays
-// put.
+// applyCatalogEdit writes one ScopedCatalogEdit, its new name and recipe,
+// raising its catalog's revision. An edit that changes nothing is skipped, so
+// the row's updated_at stays put.
 func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
 	stored, err := loadEditedCatalog(ctx, tx, profileID, collectionID, e)
 	if err != nil {
 		return err
 	}
-	if e.changesNothing(stored) {
+	if e.Name == stored.name && e.Params == stored.params {
 		return nil
 	}
-	return writeCatalogEdit(ctx, tx, profileID, e, nowStr)
-}
-
-// writeCatalogEdit writes e's name and params over its catalog, raising its
-// revision; see applyCatalogEdit.
-func writeCatalogEdit(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE catalogs
 		SET name = ?, params = ?, updated_at = ?, revision = revision + 1
@@ -282,13 +254,6 @@ func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 	return s, nil
 }
 
-// changesNothing reports whether e would leave stored exactly as it is: the
-// same name and the same params; its type and provider already match
-// (loadEditedCatalog).
-func (e ScopedCatalogEdit) changesNothing(stored storedRecipe) bool {
-	return e.Name == stored.name && e.Params == stored.params
-}
-
 // deleteOrphanedScopedCatalogs removes every catalog scoped to collectionID
 // that no folder of it references any more: one whose last reference this
 // save removed. Runs in the same transaction as the folder rewrite.
@@ -306,14 +271,22 @@ func deleteOrphanedScopedCatalogs(ctx context.Context, tx *sql.Tx, collectionID 
 }
 
 // updateCollectionTx writes form over collectionID inside tx: the row's own
-// columns, form's catalog edits, and then its folder set, which drops the folders form leaves out and deletes any scoped catalog
-// no folder references any more. The caller validates form first and
-// commits; the row's own update answers ErrCollectionNotFound, before
-// anything else is written, when collectionID isn't profileID's. An editor
-// save and a subscription's Update both write through it.
+// columns, form's catalog edits, and then its folder set, which drops the
+// folders form leaves out and deletes any scoped catalog no folder references
+// any more. The edits land before that rewrite because its orphan cleanup
+// deletes any scoped catalog the save no longer references, and an edit must
+// still find its catalog inside this collection. The caller validates form
+// first and commits; the row's own update answers ErrCollectionNotFound,
+// before anything else is written, when collectionID isn't profileID's. An
+// editor save and a subscription's Update both write through it.
 func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, form CollectionForm, nowStr string) error {
-	if err := updateCollectionRowAndEdits(ctx, tx, profileID, collectionID, form, nowStr); err != nil {
+	if err := updateCollectionRow(ctx, tx, profileID, collectionID, form, nowStr); err != nil {
 		return err
+	}
+	for _, e := range form.CatalogEdits {
+		if err := applyCatalogEdit(ctx, tx, profileID, collectionID, e, nowStr); err != nil {
+			return err
+		}
 	}
 	if err := deleteRemovedFolders(ctx, tx, collectionID, form.Folders); err != nil {
 		return err
@@ -322,35 +295,32 @@ func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID
 }
 
 // UpdateUserCollection validates input and replaces the collection
-// identified by collectionID (title, settings, and its full folder set),
-// provided it's owned by profileID (ErrCollectionNotFound otherwise) and
-// still at revision, the one the editor's form was built from (ErrStale
-// otherwise). A subscribed copy is ErrInvalidInput (refuseSubscribedCopy):
-// only Update writes one.
+// identified by collectionID (title, settings, and its full folder set)
+// through the update core, refusing in order: a subscribed copy is
+// ErrInvalidInput (refuseSubscribedCopy), since only Update writes one; a
+// collection at a revision other than revision, the one the editor's form was
+// built from, is ErrStale; and one profileID doesn't own is
+// ErrCollectionNotFound, from the core's first write. The collection's
+// revision also guards the catalogs scoped to it, which only a save or an
+// Update of the collection writes.
 func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID, revision int64, input CollectionForm) (CollectionWithFolders, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return CollectionWithFolders{}, err
 	}
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
-		return saveCollectionTx(ctx, tx, profileID, collectionID, revision, input)
+		if err := refuseSubscribedCopy(ctx, tx, profileID, kindCollection, collectionID); err != nil {
+			return err
+		}
+		if err := refuseStale(ctx, tx, "collections", profileID, collectionID, revision); err != nil {
+			return err
+		}
+		return updateCollectionTx(ctx, tx, profileID, collectionID, input, utcTimestamp(time.Now()))
 	})
 	if err != nil {
 		return CollectionWithFolders{}, err
 	}
 	return ownCollection(ctx, db.conn, profileID, collectionID)
-}
-
-// saveCollectionTx is UpdateUserCollection's write, inside tx: a collection
-// that is not a subscribed copy of profileID's, and is still at revision, has
-// input written over it through the update core, whose first write answers
-// ErrCollectionNotFound for a collection profileID doesn't own. Update shares
-// the core without either refusal.
-func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, revision int64, input CollectionForm) error {
-	if err := refuseSubscribedCopy(ctx, tx, profileID, kindCollection, collectionID); err != nil {
-		return err
-	}
-	return updateCollectionTxAt(ctx, tx, profileID, collectionID, revision, input, utcTimestamp(time.Now()))
 }
 
 // DeleteUserCollection deletes the collection identified by collectionID,
@@ -361,27 +331,21 @@ func saveCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID u
 // copies as their own (publications_release_subscribers).
 func (db *DB) DeleteUserCollection(ctx context.Context, profileID uuid.UUID, collectionID uuid.UUID) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
-		return deleteOwnedCollection(ctx, tx, profileID, collectionID)
+		result, err := tx.ExecContext(ctx, `
+			DELETE FROM collections WHERE id = ? AND owner_id = ?
+		`, collectionID.String(), profileID.String())
+		if err != nil {
+			return fmt.Errorf("deleting collection: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("checking rows affected: %w", err)
+		}
+		if rows == 0 {
+			return ErrCollectionNotFound
+		}
+		return nil
 	})
-}
-
-// deleteOwnedCollection deletes collectionID inside tx when profileID owns it
-// (ErrCollectionNotFound otherwise).
-func deleteOwnedCollection(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID) error {
-	result, err := tx.ExecContext(ctx, `
-		DELETE FROM collections WHERE id = ? AND owner_id = ?
-	`, collectionID.String(), profileID.String())
-	if err != nil {
-		return fmt.Errorf("deleting collection: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("checking rows affected: %w", err)
-	}
-	if rows == 0 {
-		return ErrCollectionNotFound
-	}
-	return nil
 }
 
 // compareCollectionsByHomeSortOrder orders collections by HomeSortOrder,

@@ -131,11 +131,6 @@ func insertCatalog(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) 
 	if err := checkCatalogAdd(ctx, tx, c); err != nil {
 		return Catalog{}, err
 	}
-	return insertCatalogRow(ctx, tx, c)
-}
-
-// insertCatalogRow is insertCatalog's INSERT.
-func insertCatalogRow(ctx context.Context, tx *sql.Tx, c Catalog) (Catalog, error) {
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO catalogs (id, name, type, provider, params, owner_id, collection_id, sub_key, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -224,54 +219,44 @@ func (db *DB) DuplicateCatalog(ctx context.Context, profileID, catalogID uuid.UU
 	})
 }
 
-// UpdateUserCatalog validates input and updates the listed catalog
-// identified by catalogID, provided it's owned by profileID and still at
-// revision, the one the editor's form was built from. Returns
-// ErrCatalogNotFound if no such row exists (including one owned by another
-// profile), ErrInvalidInput for a catalog inside a collection
-// (checkCatalogRewrite) and for a subscribed copy (refuseSubscribedCopy), and
-// ErrStale for a catalog at another revision.
+// UpdateUserCatalog validates input and writes its name and params over the
+// listed catalog identified by catalogID, raising its revision, refusing in
+// order: ErrCatalogNotFound if no such row exists (including one owned by
+// another profile), ErrInvalidInput for a subscribed copy
+// (refuseSubscribedCopy) and for a catalog inside a collection or a change of
+// type (checkCatalogRewrite), and ErrStale for a catalog at a revision other
+// than revision, the one the editor's form was built from.
 func (db *DB) UpdateUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID, revision int64, input CatalogForm) (Catalog, error) {
 	input = input.normalized()
 	if err := input.Validate(); err != nil {
 		return Catalog{}, err
 	}
 	err := db.inTx(ctx, func(tx *sql.Tx) error {
-		return updateCatalogTx(ctx, tx, profileID, catalogID, revision, input)
+		stored, err := loadCatalogForUpdate(ctx, tx, profileID, catalogID)
+		if err != nil {
+			return err
+		}
+		if err := refuseSubscribedCopy(ctx, tx, profileID, kindCatalog, catalogID); err != nil {
+			return err
+		}
+		if err := checkCatalogRewrite(stored, input); err != nil {
+			return err
+		}
+		if err := refuseStale(ctx, tx, "catalogs", profileID, catalogID, revision); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1
+			WHERE id = ? AND owner_id = ?
+		`, input.Name, input.Params, utcTimestamp(time.Now()), catalogID.String(), profileID.String()); err != nil {
+			return fmt.Errorf("updating catalog: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
 		return Catalog{}, err
 	}
 	return ownCatalog(ctx, db.conn, profileID, catalogID)
-}
-
-// updateCatalogTx is UpdateUserCatalog's write, inside tx.
-func updateCatalogTx(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, revision int64, input CatalogForm) error {
-	stored, err := loadCatalogForUpdate(ctx, tx, profileID, catalogID)
-	if err != nil {
-		return err
-	}
-	if err := refuseSubscribedCopy(ctx, tx, profileID, kindCatalog, catalogID); err != nil {
-		return err
-	}
-	if err := checkCatalogRewrite(stored, input); err != nil {
-		return err
-	}
-	return writeCatalogAt(ctx, tx, profileID, catalogID, revision, input)
-}
-
-// writeCatalog writes input's name and params over catalogID, raising its
-// revision; see UpdateUserCatalog. Its type and provider never change
-// (checkCatalogRewrite).
-func writeCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID, input CatalogForm) error {
-	nowStr := utcTimestamp(time.Now())
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1
-		WHERE id = ? AND owner_id = ?
-	`, input.Name, input.Params, nowStr, catalogID.String(), profileID.String()); err != nil {
-		return fmt.Errorf("updating catalog: %w", err)
-	}
-	return nil
 }
 
 // catalogKind is what never changes about a catalog once it exists: its type
@@ -344,31 +329,23 @@ func checkCatalogRewrite(stored storedCatalog, input CatalogForm) error {
 // (publications_release_subscribers). Every collection whose folders used the
 // catalog loses it from those folders by cascade too.
 func (db *DB) DeleteUserCatalog(ctx context.Context, profileID uuid.UUID, catalogID uuid.UUID) error {
-	var deleted bool
-	err := db.inTx(ctx, func(tx *sql.Tx) (err error) {
-		deleted, err = deleteListedCatalog(ctx, tx, profileID, catalogID)
-		return err
+	var deleted int64
+	err := db.inTx(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `
+			DELETE FROM catalogs WHERE id = ? AND owner_id = ? AND collection_id IS NULL
+		`, catalogID.String(), profileID.String())
+		if err != nil {
+			return fmt.Errorf("deleting catalog: %w", err)
+		}
+		if deleted, err = result.RowsAffected(); err != nil {
+			return fmt.Errorf("checking rows affected: %w", err)
+		}
+		return nil
 	})
-	if err != nil || deleted {
+	if err != nil || deleted > 0 {
 		return err
 	}
 	return db.catalogNotDeleted(ctx, profileID, catalogID)
-}
-
-// deleteListedCatalog deletes catalogID when it is a listed catalog owned by
-// profileID; otherwise it changes nothing and reports false.
-func deleteListedCatalog(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID) (bool, error) {
-	result, err := tx.ExecContext(ctx, `
-		DELETE FROM catalogs WHERE id = ? AND owner_id = ? AND collection_id IS NULL
-	`, catalogID.String(), profileID.String())
-	if err != nil {
-		return false, fmt.Errorf("deleting catalog: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("checking rows affected: %w", err)
-	}
-	return rows > 0, nil
 }
 
 // catalogNotDeleted explains a DeleteUserCatalog that matched no row: the
