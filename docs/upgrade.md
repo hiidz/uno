@@ -12,7 +12,7 @@ docker compose up -d
 docker compose logs -f uno
 ```
 
-`up -d` alone keeps running the image already on the host, so `pull` first. `compose.yaml` runs `latest` unless `UNO_TAG` in `.env` pins a version (`1.2.0` for release `v1.2.0`). Upgrading from any earlier release works, however many you skip.
+`up -d` alone keeps running the image already on the host, so `pull` first. `compose.yaml` runs `latest` unless `UNO_TAG` in `.env` pins a version (`1.2.0` for release `v1.2.0`). Pin it before you upgrade, so you know which version to go back to. Upgrading from any earlier release works, however many you skip.
 
 ## Manual
 
@@ -26,7 +26,7 @@ A release that changes the database schema says so in its notes. There is nothin
 2. upgrades it in one transaction, through every release you skipped,
 3. logs `Upgrading the database from schema version X to Y, backup at …`.
 
-If the upgrade fails, the database is left as it was and the server stops with the error. Docker keeps restarting it, and each attempt fails the same way without changing anything. Read the error in `docker compose logs uno`, then set `UNO_TAG` back to the version you were on and run `docker compose up -d`. The backup stays until the next upgrade replaces it.
+If the upgrade fails, the database is left as it was and the server stops with the error. Docker keeps restarting it, and each attempt fails the same way without changing anything. Read the error in `docker compose logs uno`, then set `UNO_TAG` back to the version you were on and run `docker compose up -d`. Each upgrade leaves its own `vault.db.v<N>.bak`, and nothing deletes them: remove old ones yourself.
 
 ## Going back
 
