@@ -438,8 +438,8 @@ func TestLengthBoundsCountCharacters(t *testing.T) {
 
 	over := strings.Repeat("字", maxNameLen+1)
 	_, err = db.CreateUserCatalog(ctx, owner, listedCatalogForm(over))
-	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "name is longer than 200 characters") {
-		t.Errorf("create with %d characters = %v, want ErrInvalidInput naming 200 characters", maxNameLen+1, err)
+	if !errors.Is(err, ErrInvalidInput) || !strings.Contains(err.Error(), "name is longer than 60 characters") {
+		t.Errorf("create with %d characters = %v, want ErrInvalidInput naming 60 characters", maxNameLen+1, err)
 	}
 
 	for _, tc := range []struct {
