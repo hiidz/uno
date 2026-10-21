@@ -5,9 +5,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { router } from './router'
 
 const builder = vi.hoisted(() => ({ loaded: false }))
+const auth = vi.hoisted(() => ({ status: 'unauthenticated' }))
 
-// Signed out, as `RequireAuth` sees it.
-vi.mock('@/auth/useAuth', () => ({ useAuth: () => ({ status: 'unauthenticated' }) }))
+// Signed out, as `RequireAuth` sees it, unless a test signs in.
+vi.mock('@/auth/useAuth', () => ({ useAuth: () => ({ status: auth.status }) }))
 vi.mock('./Builder', () => {
   builder.loaded = true
   return { Builder: () => null }
@@ -50,5 +51,12 @@ describe('router', () => {
     const memory = open('/configure')
     await waitFor(() => expect(memory.state.location.pathname).toBe('/login'))
     expect(builder.loaded).toBe(false)
+  })
+
+  it('opens the builder at the bare address once signed in', async () => {
+    auth.status = 'authenticated'
+    const memory = open('/')
+    await waitFor(() => expect(memory.state.location.pathname).toBe('/configure'))
+    auth.status = 'unauthenticated'
   })
 })

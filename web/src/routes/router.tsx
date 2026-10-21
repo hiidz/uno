@@ -19,10 +19,12 @@ export const router = createBrowserRouter([
     children: [
       { path: '/login', element: <Login /> },
       {
+        // The builder on the profile picked last, which goes through the
+        // picker first when none is.
         path: '/',
         element: (
           <RequireAuth>
-            <Navigate to="/profiles" replace />
+            <Navigate to="/configure" replace />
           </RequireAuth>
         ),
       },

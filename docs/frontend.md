@@ -8,6 +8,7 @@ The web app in `web/` is React 19 and TypeScript, built with Vite. It uses React
 
 | Path | Page |
 |---|---|
+| `/` | The builder on the profile picked last, or the picker when none is. |
 | `/login` | Sign in with your Nuvio email and password. |
 | `/profiles` | Pick a Nuvio profile. |
 | `/configure` | The builder: library and home screen, on the profile picked last. |
