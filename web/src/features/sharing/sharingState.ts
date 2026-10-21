@@ -165,11 +165,11 @@ export function ownName(own: OwnRow): string {
   return own.kind === 'catalog' ? own.row.name : own.row.title
 }
 
-/** Which own rows come first in the publish picker: edits waiting to be
- *  published, then the private, then the published as they are. */
-const PICK_ORDER: Record<OwnSharing, number> = { changed: 0, private: 1, live: 2 }
+/** The order of the profile's own rows under Your publications: the
+ *  published, those with edits waiting first, then the private. */
+const PICK_ORDER: Record<OwnSharing, number> = { changed: 0, live: 1, private: 2 }
 
-/** The rows a profile can publish, for the publish picker: its listed
+/** The rows a profile can publish, for Your publications: its listed
  *  catalogs and its collections, leaving out what it added from Community,
  *  in `PICK_ORDER` and otherwise in library order, catalogs before
  *  collections. */
@@ -181,6 +181,34 @@ export function publishChoices(library: { catalogs: Catalog[]; collections: Coll
   return rows
     .filter((own) => own.row.subscription === null)
     .sort((a, b) => PICK_ORDER[ownSharing(a.row.publication)] - PICK_ORDER[ownSharing(b.row.publication)])
+}
+
+/** What the Your publications card counts: how many own rows are
+ *  published, how many of those have edits waiting, and how many are
+ *  private. */
+export interface PublicationCounts {
+  published: number
+  toPublish: number
+  private: number
+}
+
+export function publicationCounts(choices: OwnRow[]): PublicationCounts {
+  const states = choices.map((own) => ownSharing(own.row.publication))
+  return {
+    published: states.filter((state) => state !== 'private').length,
+    toPublish: states.filter((state) => state === 'changed').length,
+    private: states.filter((state) => state === 'private').length,
+  }
+}
+
+/** The card's count line: "4 published · 2 not published yet", leaving out
+ *  a zero, or what it says with nothing of the profile's own. */
+export function countsLine(counts: PublicationCounts): string {
+  const parts = [
+    counts.published > 0 ? `${counts.published} published` : '',
+    counts.private > 0 ? `${counts.private} not published yet` : '',
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : 'Nothing of yours yet'
 }
 
 /** The own row whose publication is `publicationID`, or null while the

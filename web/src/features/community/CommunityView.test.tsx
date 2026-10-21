@@ -409,7 +409,7 @@ describe('CommunityView', () => {
     expect(calls).toContain('POST /api/p/1/community/a24/duplicate')
   })
 
-  it('lists the profile’s own rows under Publish…, and publishes a private one through its dialog', async () => {
+  it('counts the profile’s own rows on Your publications, lists them, and publishes a private one through its dialog', async () => {
     const library = {
       ...emptyLibrary,
       catalogs: [
@@ -423,10 +423,12 @@ describe('CommunityView', () => {
       'GET /api/p/1/library': library,
       'POST /api/p/1/catalogs/mine/publish': catalog({ id: 'mine' }),
     })
-    fireEvent.click(await screen.findByRole('button', { name: 'Publish…' }))
-    const picker = await screen.findByRole('dialog', { name: 'Publish to Community' })
-    const rows = within(picker).getAllByRole('listitem').map((li) => li.textContent)
-    expect(rows).toEqual([expect.stringMatching(/^Mine/), expect.stringMatching(/^Live one/)])
+    expect(await screen.findByText('1 published · 1 not published yet')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Your publications/ }))
+    const picker = await screen.findByRole('dialog', { name: 'Your publications' })
+    const names = (group: string) => within(within(picker).getByRole('region', { name: group })).getAllByRole('listitem').map((li) => li.textContent)
+    expect(names('Published')).toEqual([expect.stringMatching(/^Live one/)])
+    expect(names('Not published yet')).toEqual([expect.stringMatching(/^Mine/)])
     fireEvent.click(within(picker).getByRole('button', { name: /^Mine/ }))
     const dialog = await screen.findByRole('dialog', { name: 'Publish “Mine”?' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Publish' }))

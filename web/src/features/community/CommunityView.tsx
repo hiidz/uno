@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
-import { Button } from '@/components/Button'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { StateView } from '@/components/StateView'
@@ -32,7 +31,7 @@ import {
 import { CommunityRow, CommunityRowSkeleton, type RowActions } from './CommunityRow'
 import { CommunitySign } from './CommunitySign'
 import { PublicationPage } from './PublicationPage'
-import { PublishPicker } from './PublishPicker'
+import { YourPublicationsCard, YourPublicationsDialog } from './YourPublications'
 import { focusRow, rowButtonID, useScrollMemory } from './scroll'
 import { SearchNote } from './SearchNote'
 import { ShowMore } from './ShowMore'
@@ -52,9 +51,10 @@ const SEARCH_MAX_LENGTH = 200
  * Add puts it in the library, read-only, following its publisher's updates;
  * Update… opens the page, which shows the new version and applies it;
  * Duplicate adds a copy that is the profile's own. No publisher is named
- * anywhere here. The profile's own rows are published from here too: Publish…
- * lists them (`PublishPicker`), a private one publishes through its dialog,
- * and a published one opens its own page, which the list never shows. The open page is the path's `publication`, so the browser's
+ * anywhere here. The profile's own rows are published from here too: the Your
+ * publications card above the controls opens them (`YourPublications`), a
+ * private one publishes through its dialog, and a published one opens its own
+ * page, which the list never shows. The open page is the path's `publication`, so the browser's
  * Back closes it, and its kind picks the list behind it.
  */
 export function CommunityView({
@@ -200,7 +200,8 @@ export function CommunityView({
           />
         ) : (
           <>
-            <Controls filters={filters} onChange={setFilters} onPublish={() => setPicking(true)} />
+            <YourPublicationsCard choices={choices} loaded={library.isSuccess} onOpen={() => setPicking(true)} />
+            <Controls filters={filters} onChange={setFilters} />
             <SearchNote problem={problem} />
             <StateView
               isLoading={list.isPending}
@@ -237,7 +238,7 @@ export function CommunityView({
           </>
         )}
       </section>
-      <PublishPicker
+      <YourPublicationsDialog
         open={picking}
         choices={choices}
         onPublish={publishFromPicker}
@@ -270,16 +271,13 @@ function emptyLabel(filters: CommunityFilters): string {
   return `Nobody has published any ${KIND_WORD[filters.kind]} yet.`
 }
 
-/** The kind switch, the search box and the sort, then Publish…, the way in
- *  for the profile's own rows. */
+/** The kind switch, the search box and the sort. */
 function Controls({
   filters,
   onChange,
-  onPublish,
 }: {
   filters: CommunityFilters
   onChange: (filters: CommunityFilters) => void
-  onPublish: () => void
 }) {
   const patch = (next: Partial<CommunityFilters>) => onChange({ ...filters, ...next })
   return (
@@ -318,9 +316,6 @@ function Controls({
           ]}
         />
       </div>
-      <Button kind="secondary" onClick={onPublish} className="ml-auto">
-        Publish…
-      </Button>
     </div>
   )
 }

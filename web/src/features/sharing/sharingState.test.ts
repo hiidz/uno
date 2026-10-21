@@ -4,7 +4,9 @@ import { catalog, collection, folder } from '@/test/fixtures'
 import {
   kindStickers,
   ownRowOf,
+  countsLine,
   ownSharing,
+  publicationCounts,
   publishChoices,
   publishGroups,
   railStickers,
@@ -118,7 +120,7 @@ describe('publishGroups', () => {
 })
 
 describe('publishChoices', () => {
-  it('lists edits to publish first, then the private, then the published, leaving out what was added', () => {
+  it('lists the published, edits to publish first, then the private, leaving out what was added', () => {
     const changed = { id: 'p2', changed_since_publish: true }
     const choices = publishChoices({
       catalogs: [
@@ -129,8 +131,18 @@ describe('publishChoices', () => {
       ],
       collections: [collection({ id: 'col-private' }), collection({ id: 'col-live', publication: live })],
     })
-    expect(choices.map((own) => own.row.id)).toEqual(['changed', 'private', 'col-private', 'live', 'col-live'])
+    expect(choices.map((own) => own.row.id)).toEqual(['changed', 'live', 'col-live', 'private', 'col-private'])
     expect(choices.find((own) => own.row.id === 'col-private')?.kind).toBe('collection')
+    expect(publicationCounts(choices)).toEqual({ published: 3, toPublish: 1, private: 2 })
+  })
+})
+
+describe('countsLine', () => {
+  it('counts the published and the private, leaving out a zero', () => {
+    expect(countsLine({ published: 4, toPublish: 1, private: 2 })).toBe('4 published · 2 not published yet')
+    expect(countsLine({ published: 0, toPublish: 0, private: 2 })).toBe('2 not published yet')
+    expect(countsLine({ published: 3, toPublish: 0, private: 0 })).toBe('3 published')
+    expect(countsLine({ published: 0, toPublish: 0, private: 0 })).toBe('Nothing of yours yet')
   })
 })
 
