@@ -43,6 +43,18 @@ describe('CatalogEditor', () => {
     expect(nameInput()).toHaveFocus()
   })
 
+  it('marks a failing range invalid and reads the errors out once Save shows them', () => {
+    const { onSave } = renderEditor({ initial: formFromCatalog(catalog({ name: 'Top', params: '{"vote_average_gte":11}' })) })
+    const announcement = () => document.querySelector('[role=status].sr-only')
+    expect(announcement()).toBeEmptyDOMElement()
+    save()
+    expect(onSave).not.toHaveBeenCalled()
+    expect(screen.getByRole('spinbutton', { name: 'Minimum rating' })).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('spinbutton', { name: 'Maximum rating' })).toHaveAttribute('aria-invalid', 'true')
+    expect(nameInput()).not.toHaveAttribute('aria-invalid')
+    expect(announcement()).toHaveTextContent(/^1 thing needs fixing: /)
+  })
+
   it('saves the form once it is valid, reporting it dirty until then', () => {
     const { onSave, onDirtyChange } = renderEditor()
     fireEvent.change(nameInput(), { target: { value: 'Trending Sci-Fi' } })

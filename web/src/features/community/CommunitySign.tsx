@@ -33,7 +33,7 @@ function PageSign({ item, onBack }: { item: CommunityItem; onBack: () => void })
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[role="dialog"]')) return
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('[role="dialog"], [role="alertdialog"]')) return
       onBack()
     }
     document.addEventListener('keydown', onKeyDown)

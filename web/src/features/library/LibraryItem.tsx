@@ -30,8 +30,8 @@ const RAIL_KIND: Record<RowKind, SharingSticker[]> = {
  * the way × does. Selecting also reveals the row's actions — duplicating and
  * deleting — so they belong to whichever single row the pane is showing.
  * **The ON NUVIO sticker** puts it on the home
- * screen or takes it off; it stops the click from reaching the row, because
- * adding something to home is not a request to edit it. Putting a row on the
+ * screen or takes it off. It is the row button's sibling, not its child,
+ * because adding something to home is not a request to edit it. Putting a row on the
  * home screen from here slaps the sticker on (`data-slap`, `uno-slap` in `index.css`),
  * unless the viewer has asked for less motion; a row that arrives on the home
  * screen some other way just shows it.
@@ -80,23 +80,19 @@ export function LibraryItem({
     <div
       className={`rounded-xl transition-colors ${selected ? 'bg-raised-hi' : 'hover:bg-raised'}`}
     >
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onSelect}
-        onKeyDown={(event) => {
-          // A key on the home toggle inside the row is the toggle's own press.
-          if (event.target !== event.currentTarget) return
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          event.preventDefault()
-          onSelect()
-        }}
-        aria-current={selected ? 'true' : undefined}
-        aria-expanded={selected}
-        title={`Edit ${name}`}
-        className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl py-2.5 pr-2 pl-3 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
-      >
-        <div className="flex min-w-0 flex-col gap-1">
+      {/* Two sibling buttons, never one inside the other. The row's button
+          stretches over the whole row through its `::after`, so a press
+          anywhere but the sticker opens it, and its focus ring rings the row;
+          the sticker sits above that layer. */}
+      <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2.5 pr-2 pl-3">
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-current={selected ? 'true' : undefined}
+          aria-expanded={selected}
+          title={`Edit ${name}`}
+          className="flex min-w-0 flex-col gap-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:outline-2 focus-visible:after:outline-offset-[-2px]"
+        >
           <span className="relative truncate text-[15px] font-semibold">
             {name}
             <span className="sr-only">
@@ -110,14 +106,11 @@ export function LibraryItem({
           <span aria-hidden="true" className="mt-0.5 flex flex-wrap gap-1.5 empty:hidden">
             <SharingStickers stickers={[...RAIL_KIND[kind], ...stickers]} />
           </span>
-        </div>
+        </button>
 
         <button
           type="button"
-          onClick={(event) => {
-            // Adding something to the home screen is not a request to edit it,
-            // so this must not reach the row's own click.
-            event.stopPropagation()
+          onClick={() => {
             // Only when the animation will run: its end is what clears the flag.
             setSlap(!onHome && !prefersReducedMotion())
             onToggle()

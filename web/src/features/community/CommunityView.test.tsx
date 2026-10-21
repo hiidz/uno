@@ -123,7 +123,7 @@ describe('CommunityView', () => {
     expect(screen.getByText('1 folder · Slashers')).toBeInTheDocument()
     expect(screen.getByText(/Added by 4/)).toBeInTheDocument()
     expect(screen.queryByText('Update available')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Update…' })).toHaveClass('btn-accent-outline')
+    expect(screen.getByRole('button', { name: /^Update… / })).toHaveClass('btn-accent-outline')
     expect(listCalls(calls)).toEqual([
       'GET /api/p/1/community?kind=catalog&sort=name',
       'GET /api/p/1/community?kind=collection&sort=name',
@@ -206,9 +206,9 @@ describe('CommunityView', () => {
         return { kind: 'catalog' }
       },
     })
-    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
+    fireEvent.click(await screen.findByRole('button', { name: `Add ${a24.title}` }))
     expect(await screen.findByText('Added to your catalogs')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Added' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: `Added ${a24.title}` })).toBeDisabled()
   })
 
   it('says what a stale or failed Add means', async () => {
@@ -217,15 +217,15 @@ describe('CommunityView', () => {
       'GET /api/p/1/community': listing([a24]),
       'POST /api/p/1/community/a24/subscribe': () => answer,
     })
-    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Add / }))
     expect(await screen.findByText('Already added')).toBeInTheDocument()
 
     answer = failWith(404, 'publication not found')
-    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Add / }))
     expect(await screen.findByText('Its publisher unpublished it.')).toBeInTheDocument()
 
     answer = failWith(500, 'database locked')
-    fireEvent.click(await screen.findByRole('button', { name: 'Add' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Add / }))
     expect(await screen.findByText('Couldn’t add it: database locked')).toBeInTheDocument()
   })
 
@@ -324,7 +324,7 @@ describe('CommunityView', () => {
     const row = button.closest('.relative')!
     expect(row).toHaveClass('hover:bg-raised', 'rounded-[12px]')
     expect(row).not.toHaveClass('border-b')
-    expect(screen.getByRole('button', { name: 'Add' }).closest('.relative')).toHaveClass('z-10')
+    expect(screen.getByRole('button', { name: /^Add / }).closest('.relative')).toHaveClass('z-10')
     expect(screen.getByPlaceholderText('Search')).toBeInTheDocument()
   })
 
@@ -363,7 +363,7 @@ describe('CommunityView', () => {
     const add = await screen.findByRole('button', { name: 'Add' })
     expect(add).toHaveClass('btn-primary')
     expect(add.closest('.tone-community')).not.toBeNull()
-    expect(screen.getByText((_, el) => el?.tagName === 'P' && /^Added by 1 · /.test(el.textContent ?? ''))).toBeInTheDocument()
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && /^Added by 1 profile · /.test(el.textContent ?? ''))).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
     expect(await screen.findByText('Duplicated to your catalogs')).toBeInTheDocument()
     expect(calls).toContain('POST /api/p/1/community/a24/duplicate')
@@ -401,7 +401,7 @@ describe('CommunityView', () => {
     })
     await screen.findByRole('heading', { name: 'Community' })
     fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Update…' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Update… / }))
     expect((await screen.findAllByText('Slashers')).length).toBeGreaterThan(0)
     expect(calls).not.toContain('POST /api/p/1/community/night/update')
 

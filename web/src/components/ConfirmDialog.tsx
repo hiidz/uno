@@ -1,6 +1,5 @@
-import { useRef } from 'react'
 import type { ReactNode } from 'react'
-import { Dialog } from 'radix-ui'
+import { AlertDialog } from 'radix-ui'
 
 /**
  * A confirmation the user has to answer before something irreversible happens.
@@ -11,6 +10,10 @@ import { Dialog } from 'radix-ui'
  *
  * Copy rule: the confirm button repeats the verb the user is about to commit
  * to — "Discard changes", "Delete catalog" — never "OK".
+ *
+ * A Radix `AlertDialog`: it opens on the safe button, so a stray Enter keeps
+ * what is at stake, and a click on the scrim does nothing. Escape and the
+ * cancel button both answer `onCancel`.
  */
 export function ConfirmDialog({
   open,
@@ -38,33 +41,24 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const confirmRef = useRef<HTMLButtonElement>(null)
-
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => !next && onCancel()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-[var(--uno-scrim)] p-4 sm:p-8">
+    <AlertDialog.Root open={open} onOpenChange={(next) => !next && onCancel()}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-[var(--uno-scrim)] p-4 sm:p-8">
           {/* `max-h-full` and a scroll of its own. The body names what is at
               stake — a collection's title, the folders going with it — so it
               has no bounded height, and a panel taller than the viewport in a
               `place-items-center` grid is clipped at both ends with no way to
               reach either. */}
-          <Dialog.Content
-            onOpenAutoFocus={(event) => {
-              // The confirm button, not whatever is first in the DOM — the
-              // action this dialog exists to ask about should be one Enter
-              // away, matching every native confirm the browser would show.
-              event.preventDefault()
-              confirmRef.current?.focus()
-            }}
+          <AlertDialog.Content
             className="bg-raised border-line-hi flex max-h-full w-full max-w-[440px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-[20px] border p-6 outline-none"
           >
-            <Dialog.Title className="type-display m-0 text-[21px] leading-[28px]">
+            <AlertDialog.Title className="type-display m-0 text-[21px] leading-[28px]">
               {title}
-            </Dialog.Title>
-            <Dialog.Description asChild>
+            </AlertDialog.Title>
+            <AlertDialog.Description asChild>
               <div className="text-dim text-[14.5px] leading-relaxed">{body}</div>
-            </Dialog.Description>
+            </AlertDialog.Description>
             {error && (
               <p
                 role="alert"
@@ -74,11 +68,8 @@ export function ConfirmDialog({
               </p>
             )}
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={onCancel} className="btn-ghost">
-                {cancelLabel}
-              </button>
+              <AlertDialog.Cancel className="btn-ghost">{cancelLabel}</AlertDialog.Cancel>
               <button
-                ref={confirmRef}
                 type="button"
                 onClick={onConfirm}
                 disabled={pending}
@@ -88,9 +79,9 @@ export function ConfirmDialog({
                 {confirmLabel}
               </button>
             </div>
-          </Dialog.Content>
-        </Dialog.Overlay>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </AlertDialog.Content>
+        </AlertDialog.Overlay>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   )
 }

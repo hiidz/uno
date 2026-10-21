@@ -539,7 +539,7 @@ export function CollectionEditor({
             </div>
 
             <div className="setting is-head">
-              <h2 className="setting-label type-label">Folders</h2>
+              <h3 className="setting-label type-label">Folders</h3>
               <div className="setting-value flex justify-end">
                 <button
                   type="button"

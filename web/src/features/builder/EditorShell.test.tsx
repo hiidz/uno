@@ -39,10 +39,10 @@ describe('EditorShell', () => {
     expect(onRequestClose).toHaveBeenCalledTimes(1)
   })
 
-  it('leaves Escape to a dialog in front of it', () => {
+  it.each(['dialog', 'alertdialog'])('leaves Escape to a %s in front of it', (role) => {
     const onRequestClose = renderShell()
     const dialog = document.createElement('div')
-    dialog.setAttribute('role', 'dialog')
+    dialog.setAttribute('role', role)
     document.body.append(dialog)
     pressEscape()
     expect(onRequestClose).not.toHaveBeenCalled()

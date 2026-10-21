@@ -55,6 +55,7 @@ function renderHarness(props: Omit<Parameters<typeof Harness>[0], 'onToast'>, ro
 }
 
 const dialog = () => screen.getByRole('dialog')
+const question = () => screen.getByRole('alertdialog')
 
 beforeEach(() => {
   api.current = null
@@ -155,8 +156,8 @@ describe('useWorkspaceSharing', () => {
       { 'POST /api/p/1/catalogs/c1/unpublish': catalog({ id: 'c1' }) },
     )
     fireEvent.click(screen.getByRole('button', { name: 'Unpublish…' }))
-    expect(within(dialog()).getByText(/Community stops listing it/)).toBeInTheDocument()
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
+    expect(within(question()).getByText(/Community stops listing it/)).toBeInTheDocument()
+    fireEvent.click(within(question()).getByRole('button', { name: 'Unpublish' }))
     await waitFor(() => expect(onToast).toHaveBeenCalledWith({ text: 'Unpublished “Horror”', tone: 'success' }))
     expect(calls).toContain('POST /api/p/1/catalogs/c1/unpublish')
   })
@@ -168,11 +169,11 @@ describe('useWorkspaceSharing', () => {
       { 'POST /api/p/1/catalogs/c1/unpublish': () => failWith(500, 'database locked') },
     )
     fireEvent.click(screen.getByRole('button', { name: 'Unpublish…' }))
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
-    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('database locked')
+    fireEvent.click(within(question()).getByRole('button', { name: 'Unpublish' }))
+    expect(await within(question()).findByRole('alert')).toHaveTextContent('database locked')
     expect(onToast).not.toHaveBeenCalled()
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(within(question()).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
   })
 
   it('publishes a collection using a catalog added from Community, marking that catalog', async () => {
@@ -215,7 +216,7 @@ describe('useWorkspaceSharing', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Publish update…' }))
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Unpublish' }))
-    expect(within(dialog()).getByText(/Community stops listing it/)).toBeInTheDocument()
+    expect(within(question()).getByText(/Community stops listing it/)).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Publish your changes to “Horror”?' })).toBeNull()
   })
 

@@ -41,6 +41,8 @@ function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActio
         type="button"
         onClick={item.update_available ? actions.onUpdate : actions.onSubscribe}
         disabled={pending !== undefined || added}
+        // Every row's button reads Add, so its name also says which row.
+        aria-label={`${mainWords(item, pending, actions.updateLabel)} ${item.title}`}
         className={mainButtonClass(item)}
       >
         <MainLabel item={item} pending={pending} update={actions.updateLabel} />
@@ -121,15 +123,21 @@ function MainLabel({
   pending: CommunityAction | undefined
   update: string
 }) {
-  if (pending) return PENDING_LABEL[pending]
-  if (item.update_available) return update
-  if (!item.subscribed) return 'Add'
+  if (!item.subscribed || item.update_available || pending) return mainWords(item, pending, update)
   return (
     <>
       <Icon icon={Check} size={14} />
       Added
     </>
   )
+}
+
+/** The main button's words as text: what is in flight, else `update`, Add or
+ *  Added. */
+function mainWords(item: CommunityItem, pending: CommunityAction | undefined, update: string): string {
+  if (pending) return PENDING_LABEL[pending]
+  if (item.update_available) return update
+  return item.subscribed ? 'Added' : 'Add'
 }
 
 interface CommunityRowProps {

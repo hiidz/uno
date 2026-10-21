@@ -518,6 +518,7 @@ export function Workspace({
 
   return (
     <>
+      <h1 className="sr-only">Workspace</h1>
       <div className="grid min-h-0 flex-1 lg:grid-cols-[372px_minmax(0,1fr)]">
         {/* The sidebar: every catalog and collection you own, one permanently
             visible section with its own scroll region and its own name/genre
@@ -535,6 +536,7 @@ export function Workspace({
           aria-label="Library"
           className="bg-sidebar border-line flex flex-col outline-none lg:min-h-0 lg:border-r"
         >
+          <h2 className="sr-only">Library</h2>
           <LibrarySection
             library={library}
             selectedID={target?.id ?? null}

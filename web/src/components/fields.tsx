@@ -217,6 +217,7 @@ export function Select({
    *  the pick width; a select over country codes asks for less. */
   width = 'var(--w-pick)',
   ariaLabel,
+  invalid,
 }: {
   value: string
   onChange: (value: string) => void
@@ -231,10 +232,14 @@ export function Select({
   /** For a select whose name is a heading elsewhere — a catalog section's
    *  head — rather than a label of its own. */
   ariaLabel?: string
+  /** Its error is on show: `aria-invalid`, which `.field` draws as a red
+   *  border. */
+  invalid?: boolean
 }) {
   const select = (
     <select
       aria-label={ariaLabel}
+      aria-invalid={invalid || undefined}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       style={clearable ? undefined : { maxWidth: width }}

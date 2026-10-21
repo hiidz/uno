@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Catalog, Collection, SubscriptionState } from '@/api'
 import { catalog, collection, folder } from '@/test/fixtures'
@@ -98,7 +98,7 @@ describe('HomePane', () => {
     const pinned = collection({ id: 'k1', title: 'Up top' })
     const rest = collection({ id: 'k2', title: 'Down below' })
     mount({ catalogs: [{ catalog: catalog({ id: 'c1', name: 'Action' }), showInHome: true }], collections: [pinned, rest], pinned: ['k1'] })
-    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
     expect(headings).toEqual(['Pinned', 'Rows'])
     expect(screen.getByRole('button', { name: 'Move Action up, already first of the rows' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Move Down below down, already last of the rows' })).toBeDisabled()
@@ -139,3 +139,21 @@ describe('HomePane', () => {
   })
 })
 
+
+describe('HomePane drag announcements', () => {
+  it('names the row and its place on the home screen, not its id', async () => {
+    mount({
+      catalogs: [
+        { catalog: catalog({ id: 'c1', name: 'Action' }), showInHome: true },
+        { catalog: catalog({ id: 'c2', name: 'Noir' }), showInHome: true },
+      ],
+    })
+    const grip = screen.getByRole('button', { name: 'Reorder Noir, 2nd on your home screen' })
+    grip.focus()
+    fireEvent.keyDown(grip, { code: 'Space' })
+    // jsdom measures every row at 0×0, so the drag is over the first row at once.
+    expect(await screen.findByText('“Noir” would be 1st on your home screen.')).toBeInTheDocument()
+    fireEvent.keyDown(grip, { code: 'Escape' })
+    expect(await screen.findByText('Moving “Noir” cancelled; it stays 2nd on your home screen.')).toBeInTheDocument()
+  })
+})

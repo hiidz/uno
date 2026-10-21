@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Tv } from 'lucide-react'
@@ -18,7 +18,7 @@ import { ordinal } from '@/lib/ordinal'
 import { showFirstAction } from './changes'
 import { CollectionDetail, DetailLine } from './FolderChips'
 import { HomePreview } from './HomePreview'
-import { bandItemId } from './preview'
+import { DISCOVER_NOTE, bandItemId } from './preview'
 import type { HomeBandItem, PreviewRow } from './preview'
 import { SortableList } from './SortableList'
 import { useHomeEdits, useHomePreview, useHomeSelection } from './useHomeSelection'
@@ -60,11 +60,12 @@ export function HomePane({
   onShowLibrary: () => void
 }) {
   const home = useHomeSelection()
+  const headingID = useId()
 
   return (
-    <main className="tone-home flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
+    <section aria-labelledby={headingID} className="tone-home flex flex-1 flex-col lg:min-h-0 lg:overflow-y-auto">
       {/* The padding is split between this band and the content below rather
-          than sitting on `main`, because a sticky child of a padded parent
+          than sitting on the section, because a sticky child of a padded parent
           leaves a gap above it that the content then scrolls through.
 
           It is the home screen's sign: Nuvio yellow, because everything under it
@@ -72,13 +73,14 @@ export function HomePane({
       <PaneSign className="flex-wrap gap-x-4 gap-y-2">
         <Icon icon={Tv} size={24} className="hidden shrink-0 lg:block" />
         {/* Where focus lands when the page scrolls here — see `stacked.ts`. */}
-        <h1
+        <h2
+          id={headingID}
           tabIndex={-1}
           data-landing
           className="type-sign m-0 text-[16px] leading-tight outline-none lg:text-[25px]"
         >
           Your home screen
-        </h1>
+        </h2>
         {/* On the sign above `lg`. Below it the sign is pinned and has room for
             one line, so the switch moves to the row underneath. */}
         <div className="hidden lg:block">
@@ -114,7 +116,7 @@ export function HomePane({
           {view === 'list' ? <HomeList /> : <HomePreview />}
         </ListState>
       </div>
-    </main>
+    </section>
   )
 }
 
@@ -163,6 +165,11 @@ function HomeList() {
   // Nuvio's own order, for continuous numbering — see the module comment.
   const order = [...preview.pinnedCollections.map((c) => c.id), ...preview.home.map(bandItemId)]
   const positionOf = (id: string) => order.indexOf(id) + 1
+  const names = new Map<string, string>([
+    ...preview.pinnedCollections.map((c): [string, string] => [c.id, c.title]),
+    ...preview.home.map((item): [string, string] => [bandItemId(item), item.kind === 'catalog' ? item.row.name : item.collection.title]),
+  ])
+  const nameOf = (id: string) => names.get(id) ?? ''
 
   return (
     <div className="flex flex-col gap-8">
@@ -170,6 +177,8 @@ function HomeList() {
         <Group label="Pinned">
           <SortableList
             ids={preview.pinnedCollections.map((c) => c.id)}
+            nameOf={nameOf}
+            positionOf={positionOf}
             onReorder={(ids) => home.reorderBand('pinned', ids)}
           >
             <ol className="flex flex-col">
@@ -193,7 +202,12 @@ function HomeList() {
         {preview.home.length === 0 ? (
           <EmptyBlock>No rows on your home screen.</EmptyBlock>
         ) : (
-          <SortableList ids={preview.home.map(bandItemId)} onReorder={(ids) => home.reorderBand('home', ids)}>
+          <SortableList
+            ids={preview.home.map(bandItemId)}
+            nameOf={nameOf}
+            positionOf={positionOf}
+            onReorder={(ids) => home.reorderBand('home', ids)}
+          >
             <ol className="flex flex-col">
               {preview.home.map((item, i, group) => (
                 <HomeBandRow
@@ -251,7 +265,7 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-1">
       <div className="border-line-hi border-b pb-2.5">
-        <h2 className="text-ink m-0 text-[16px] font-bold">{label}</h2>
+        <h3 className="text-ink m-0 text-[16px] font-bold">{label}</h3>
       </div>
       {children}
     </section>
@@ -411,7 +425,12 @@ function CatalogRow({
       onMoveDown={() => onMove(1)}
       menu={
         <MoreMenu label={row.name}>
-          <MoreMenuItem onSelect={() => home.toggleShowInHome(row.id)}>Move to Discover</MoreMenuItem>
+          <MoreMenuItem
+            onSelect={() => home.toggleShowInHome(row.id)}
+            reason="Takes it off your home screen; still findable in Discover."
+          >
+            Move to Discover
+          </MoreMenuItem>
           <RemoveFromHomeItem onSelect={() => home.removeCatalog(row.id)} />
         </MoreMenu>
       }
@@ -493,7 +512,8 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
   return (
     <section className="flex flex-col gap-2">
       <div className="border-line-hi border-b pb-2.5">
-        <h2 className="text-ink m-0 text-[16px] font-bold">Only in Discover</h2>
+        <h3 className="text-ink m-0 text-[16px] font-bold">Only in Discover</h3>
+        <p className="text-dim m-0 mt-1 text-[13px] leading-[18px]">{DISCOVER_NOTE}</p>
       </div>
       <ul className="flex flex-col">
         {rows.map((row) => (

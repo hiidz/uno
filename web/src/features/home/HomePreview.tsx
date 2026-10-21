@@ -10,7 +10,7 @@ import { noTiles, type CatalogTiles } from '@/features/preview/tiles'
 import { useRecipesTiles } from '@/features/preview/useRecipesTiles'
 import { useHomePreview, useHomeSelection } from './useHomeSelection'
 import { useCatalogTiles } from './useCatalogTiles'
-import { bandItemId, findFolderPage } from './preview'
+import { DISCOVER_NOTE, bandItemId, findFolderPage } from './preview'
 import type { FolderPageTarget, HomeBandItem, HomeScreenPreview, PreviewRow } from './preview'
 import { FOLDER_LAYOUT_LABEL, PreviewCatalogRow, PreviewCollectionRow, PreviewFolderPage } from './previewScreen'
 
@@ -289,8 +289,9 @@ function RefreshPreviewButton() {
 function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
   return (
     <section className="border-line flex flex-col gap-2 border-t pt-4">
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-col gap-1">
         <span className="type-label">Only in Discover</span>
+        <p className="text-dim m-0 text-[13px] leading-[18px]">{DISCOVER_NOTE}</p>
       </div>
       <div className="flex flex-col gap-1">
         {rows.map((row) => (

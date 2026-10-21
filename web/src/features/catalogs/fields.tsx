@@ -56,6 +56,7 @@ function NumberInput({
   step,
   min,
   ariaLabel,
+  invalid,
 }: {
   value: number | undefined
   onChange: (value: number | undefined) => void
@@ -65,6 +66,7 @@ function NumberInput({
   /** These sit on a row whose only text is the range's own label, so each box
    *  has to name which end of it it holds. */
   ariaLabel?: string
+  invalid?: boolean
 }) {
   return (
     <input
@@ -75,6 +77,7 @@ function NumberInput({
       value={value ?? ''}
       placeholder={placeholder}
       aria-label={ariaLabel}
+      aria-invalid={invalid || undefined}
       onChange={(event) => {
         const raw = event.target.value
         onChange(raw === '' ? undefined : Number(raw))
@@ -132,6 +135,7 @@ export function RangeField({
           value={low}
           onChange={(next) => onChange(next, high)}
           ariaLabel={`Minimum ${label.toLowerCase()}`}
+          invalid={Boolean(error)}
           placeholder={String(min)}
           step={step}
           min={min}
@@ -143,6 +147,7 @@ export function RangeField({
           value={high}
           onChange={(next) => onChange(low, next)}
           ariaLabel={`Maximum ${label.toLowerCase()}`}
+          invalid={Boolean(error)}
           placeholder={formatValue ? formatValue(max) : String(max)}
           step={step}
           min={min}
@@ -348,6 +353,7 @@ export function CertificationPicker({
       <div className="flex flex-col gap-3">
         <Select
           ariaLabel="Age rating country"
+          invalid={Boolean(error)}
           value={country ?? ''}
           onChange={(next) =>
             onChange({

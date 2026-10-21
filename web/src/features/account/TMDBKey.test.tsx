@@ -139,14 +139,14 @@ describe('TMDBKeyShelf', () => {
     api.removeTMDBKey.mockResolvedValue(null)
     const { queryClient } = renderWith(<TMDBKeyShelf step={set} />)
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
-    const dialog = await screen.findByRole('dialog')
+    const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toHaveTextContent('your home screen can’t load Uno’s rows')
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
     expect(api.removeTMDBKey).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove key' }))
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Remove key' }))
     await vi.waitFor(() => expect(queryClient.getQueryData(['account', 'tmdb-key'])).toEqual({ set: false }))
   })
 

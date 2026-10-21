@@ -68,9 +68,9 @@ export function FolderDetail({
   return (
     <section className="fold-detail" aria-label={`Folder: ${folder.title.trim() || 'untitled'}`}>
       <header className="fold-detail-head">
-        <h3 className="type-data m-0 min-w-0 flex-1 text-[15px] leading-[24px] font-semibold">
+        <h4 className="type-data m-0 min-w-0 flex-1 text-[15px] leading-[24px] font-semibold">
           {folder.title.trim() || 'Untitled folder'}
-        </h3>
+        </h4>
         <div className="fold-detail-actions">
           <button type="button" onClick={onRemove} className="btn-danger-text h-8 text-[13px]">
             Remove
