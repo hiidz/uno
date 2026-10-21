@@ -113,6 +113,7 @@ The allowlist works with either key mode. In `per-account` mode, each account sa
 | `UNO_SECRET` | In `per-account` key mode | 32 random bytes, base64 (`openssl rand -base64 32`). |
 | `UNO_ACCESS` | No | `open` (default) or `allowlist`. |
 | `UNO_ALLOWED_EMAILS` | With `allowlist` | Comma-separated email addresses. |
+| `UNO_COMMUNITY` | No | `on` (default), `no-images` or `off`. On a server open to strangers, `no-images` keeps publishers' image links out of everyone else's Community and Nuvio. |
 
 The port, database path and the rest are in [configuration](docs/configuration.md). The server refuses to start on a missing or invalid value and names it.
 
