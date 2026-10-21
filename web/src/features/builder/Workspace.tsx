@@ -111,6 +111,8 @@ export function Workspace({
   // closing one gives back the view you left rather than resetting to List.
   const [homeView, setHomeView] = useState<HomeView>('list')
   const [namingCatalog, setNamingCatalog] = useState(false)
+  const [made, setMade] = useState<string | null>(null)
+  const clearMade = useCallback(() => setMade(null), [])
   // The naming dialog's second field, held here because it is the answer the
   // dialog is collecting rather than something it displays — `createBareCatalog`
   // is what reads it. Reset when the dialog is opened, not when it closes, so a
@@ -210,7 +212,7 @@ export function Workspace({
     catalogMutations.create.mutate(toPayload({ ...emptyForm(newCatalogType), name }), {
       onSuccess: (catalog) => {
         setNamingCatalog(false)
-        open(catalogTarget(catalog))
+        openMade(catalogTarget(catalog))
       },
     })
   }
@@ -227,7 +229,7 @@ export function Workspace({
     collectionMutations.create.mutate(toCollectionPayload({ ...emptyCollectionForm(), title }), {
       onSuccess: (collection) => {
         setNamingCollection(false)
-        open(
+        openMade(
           collectionTarget(
             // `folders` is `Folder[] | null` on the wire and `Folder[]` in the
             // library; a collection created empty is exactly the case that
@@ -305,6 +307,14 @@ export function Workspace({
 
   const { activeCatalog, activeCollection, editingCollectionCatalogs } = openRows(target, library)
 
+  /** Opens a row just made, created or duplicated: its editor takes focus on
+   *  its title at every width, where a row opened from the rail leaves focus
+   *  on the rail from `lg`. */
+  function openMade(next: EditorTarget) {
+    setMade(editorKey(next))
+    open(next)
+  }
+
   function selectCatalog(catalog: LibraryCatalog) {
     open(catalogTarget(catalog))
   }
@@ -345,7 +355,7 @@ export function Workspace({
     catalogMutations.duplicate.mutate(catalog.id, {
       onSuccess: (newCatalog) => {
         setConfirming(null)
-        open(catalogTarget(newCatalog))
+        openMade(catalogTarget(newCatalog))
       },
     })
   }
@@ -360,7 +370,7 @@ export function Workspace({
     collectionMutations.duplicate.mutate(collection.id, {
       onSuccess: (newCollection) => {
         setConfirming(null)
-        open({
+        openMade({
           kind: 'collection',
           id: newCollection.id,
           initial: formFromCollection(newCollection),
@@ -568,7 +578,7 @@ export function Workspace({
         />
 
         {target === null ? null : (
-          <EditorLayer stacked={stacked} label={editorSubject(target)} fallbackFocus={railRef}>
+          <EditorLayer stacked={stacked} label={editorSubject(target)} openKey={editorKey(target)} landOnOpen={made === editorKey(target)} onLanded={clearMade} fallbackFocus={railRef}>
             {activeCatalog?.subscription ? (
               <CatalogFromCommunity
                 key={activeCatalog.id}
@@ -816,4 +826,9 @@ function HomeSlot({ shown, paneRef, view, onViewChange, onShowLibrary }: HomeSlo
       <HomePane view={view} onViewChange={onViewChange} onShowLibrary={onShowLibrary} />
     </div>
   )
+}
+
+/** Which row an editor holds, as `EditorLayer`'s `openKey`. */
+function editorKey(target: Pick<EditorTarget, 'kind' | 'id'>): string {
+  return `${target.kind}/${target.id}`
 }

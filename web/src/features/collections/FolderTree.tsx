@@ -4,7 +4,7 @@ import { DndContext, type Announcements, type DragEndEvent } from '@dnd-kit/core
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ChevronDown, ChevronUp, TriangleAlert } from 'lucide-react'
-import { Grip, useDragSensors } from '@/components/dnd'
+import { Grip, moveKeepingFocus, useDragSensors } from '@/components/dnd'
 import { IconButton } from '@/components/IconButton'
 import { Icon } from '@/components/Icon'
 import { thumbnail } from '@/lib/tmdbImage'
@@ -246,7 +246,7 @@ function FolderMoveArrows({
         icon={ChevronUp}
         label={`Move ${label} earlier${position === 0 ? ', already first' : ''}`}
         disabled={position === 0}
-        onClick={() => onMove(-1)}
+        onClick={moveKeepingFocus(() => onMove(-1))}
       />
       <IconButton
         variant="plain"
@@ -254,7 +254,7 @@ function FolderMoveArrows({
         icon={ChevronDown}
         label={`Move ${label} later${position === total - 1 ? ', already last' : ''}`}
         disabled={position === total - 1}
-        onClick={() => onMove(1)}
+        onClick={moveKeepingFocus(() => onMove(1))}
       />
     </span>
   )

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Dialog } from 'radix-ui'
+import { useReturnFocus } from './returnFocus'
 
 type ModalShape = 'dialog' | 'sheet'
 
@@ -23,12 +24,14 @@ interface ModalProps {
  * export, and a collection's nested catalog editor. The catalog and collection
  * editors themselves fill the builder's right pane instead of this.
  *
- * Built on Radix `Dialog` for a real focus trap and return-focus-on-close.
+ * Built on Radix `Dialog` for a real focus trap. It has no `Dialog.Trigger`,
+ * so focus goes back to whatever opened it through `useReturnFocus`.
  * `labelledBy` is the `id` of the caller's own heading. `shape="sheet"` fills
  * the screen below `lg`, as an editor's layer does there, and is the usual
  * dialog from `lg` — for an editor opened from inside another.
  */
 export function Modal({ open, onClose, labelledBy, width = '520px', shape = 'dialog', children }: ModalProps) {
+  const onCloseAutoFocus = useReturnFocus(open)
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
@@ -37,6 +40,7 @@ export function Modal({ open, onClose, labelledBy, width = '520px', shape = 'dia
         >
           <Dialog.Content
             aria-labelledby={labelledBy}
+            onCloseAutoFocus={onCloseAutoFocus}
             style={{ width: `min(${width}, 100%)` }}
             className={`bg-raised border-line-hi flex max-h-full flex-col overflow-hidden outline-none ${MODAL_SHAPE[shape].content}`}
           >
