@@ -23,8 +23,6 @@ const OPT_OUT = /drift-ok:\s*\S/
 
 /** Screens not yet moved onto the components and roles. Adopt takes each off as it moves it. */
 const NOT_YET_MIGRATED = new Set([
-  'features/account/KeyProblemBanner.tsx',
-  'features/account/TMDBKey.tsx',
   'features/community/CommunityRow.tsx',
   'features/community/CommunitySign.tsx',
   'features/community/CommunityView.tsx',
@@ -34,10 +32,6 @@ const NOT_YET_MIGRATED = new Set([
   'features/community/ShowMore.tsx',
   'features/sharing/FromCommunityView.tsx',
   'features/sharing/PublicationBodies.tsx',
-  'routes/ErrorPage.tsx',
-  'routes/Login.tsx',
-  'routes/ProfilePicker.tsx',
-  'routes/ProfilesRetry.tsx',
 ])
 
 const SRC = join(import.meta.dirname)

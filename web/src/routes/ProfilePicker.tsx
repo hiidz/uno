@@ -16,6 +16,7 @@ import { builderPath } from '@/features/builder/paths'
 import { returnPath } from '@/features/builder/redirects'
 import { pickProfile } from './activeProfile'
 import { ProfilesRetry } from './ProfilesRetry'
+import { Button } from '@/components/Button'
 
 /** How the picker shows a failed profile call. A 403 there is this server
  *  refusing the signed-in Nuvio account, which only its access policy answers:
@@ -31,8 +32,8 @@ function RefusedAccount({ shown }: { shown: boolean }) {
   if (!shown) return null
   return (
     <div className="bg-raised grid gap-2 rounded-2xl p-5">
-      <p className="m-0 text-[17px] font-bold">This Nuvio account can&rsquo;t use this Uno.</p>
-      <p className="text-dim m-0 max-w-[46ch] text-[15px]">
+      <p className="text-title m-0">This Nuvio account can&rsquo;t use this Uno.</p>
+      <p className="text-dim text-body m-0 max-w-[46ch]">
         Whoever runs it chooses who can sign in. Sign in with another account, or ask them to add this one.
       </p>
     </div>
@@ -58,7 +59,7 @@ function cardNote(isChoosing: boolean, gated: boolean, noteId: string): string |
  *  opens like any other, but Push is off for it (`usePushBlock`). */
 function SharesAddonsNote({ profile }: { profile: NuvioProfile }) {
   if (!profile.uses_primary_addons) return null
-  return <span className="text-dim truncate text-[13px]">Uses profile 1&rsquo;s addons in Nuvio · Push is off</span>
+  return <span className="text-dim text-meta truncate">Uses profile 1&rsquo;s addons in Nuvio · Push is off</span>
 }
 
 interface ProfileProps {
@@ -77,6 +78,7 @@ function ProfileAvatar({ profile }: ProfileProps) {
     <span
       aria-hidden="true"
       style={{ backgroundColor: color }}
+      // drift-ok: the initial is sized to its avatar
       className={`${initialInk(color)} relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full text-[18px] font-bold`}
     >
       {initialOf(profile.name)}
@@ -145,7 +147,7 @@ function initialOf(name: string): string {
 function PinBadge({ profile }: ProfileProps) {
   if (!profile.pin_enabled) return null
   return (
-    <span className="type-sign text-dim flex items-center gap-1 text-[11px]">
+    <span className="type-sign text-dim text-caption flex items-center gap-1">
       <Icon icon={Lock} size={12} />
       PIN in Nuvio
     </span>
@@ -226,7 +228,7 @@ export function ProfilePicker() {
       title={<>Who&rsquo;s watching?</>}
     >
       {error && (
-        <p role="alert" className="mb-4 grid grid-cols-[16px_minmax(0,1fr)] gap-x-2 text-[14px] leading-[20px]">
+        <p role="alert" className="text-body-sm mb-4 grid grid-cols-[16px_minmax(0,1fr)] gap-x-2 leading-[20px]">
           <Icon icon={TriangleAlert} className="text-danger mt-0.5" />
           <span>{error}</span>
         </p>
@@ -252,7 +254,7 @@ export function ProfilePicker() {
                 </li>
               ))}
             </ul>
-            <p className="text-dim pt-4 text-[14px]">Getting your profiles from Nuvio…</p>
+            <p className="text-dim text-body-sm pt-4">Getting your profiles from Nuvio…</p>
           </>
         )}
 
@@ -261,8 +263,8 @@ export function ProfilePicker() {
 
         {profiles.data?.length === 0 && (
           <div className="bg-raised grid gap-2 rounded-2xl p-5">
-            <p className="m-0 text-[17px] font-bold">This account has no profiles yet.</p>
-            <p className="text-dim m-0 max-w-[46ch] text-[15px]">
+            <p className="text-title m-0">This account has no profiles yet.</p>
+            <p className="text-dim text-body m-0 max-w-[46ch]">
               Add one in Nuvio, then come back.
             </p>
           </div>
@@ -276,6 +278,7 @@ export function ProfilePicker() {
                 const isOff = cardOff(isChoosing, isChosen, held)
                 return (
                   <li key={profile.id}>
+                    {/* drift-ok: a profile's membership card, the whole card its target */}
                     <button
                       type="button"
                       disabled={isOff}
@@ -300,15 +303,16 @@ export function ProfilePicker() {
                           <Wordmark className="text-dim h-[11px] w-auto" />
                           <span className="flex items-center gap-2">
                             <PinBadge profile={profile} />
-                            <span className="type-sign text-dim text-[11px]">Profile {profile.profile_index}</span>
+                            <span className="type-sign text-dim text-caption">Profile {profile.profile_index}</span>
                           </span>
                         </span>
                         <span className="mt-auto flex min-w-0 items-center gap-3">
                           <ProfileAvatar profile={profile} />
+                          {/* drift-ok: the one display-sized name in the app, a profile's on its card */}
                           <span className="truncate text-[28px] leading-tight font-bold">{profile.name}</span>
                         </span>
                         <SharesAddonsNote profile={profile} />
-                        <span className="mt-2 flex items-center justify-between gap-3 text-[14px]">
+                        <span className="text-body-sm mt-2 flex items-center justify-between gap-3">
                           <span className={isChosen ? 'text-ink' : 'text-dim'}>
                             {isChosen ? 'Signing in…' : 'Open its home screen'}
                           </span>
@@ -325,7 +329,7 @@ export function ProfilePicker() {
               })}
             </ul>
             {isChoosing && (
-              <p id={noteId} className="text-dim pt-5 text-[14px]">
+              <p id={noteId} className="text-dim text-body-sm pt-5">
                 Signing in as {choosingName}…
               </p>
             )}
@@ -336,16 +340,16 @@ export function ProfilePicker() {
       <TMDBKeyShelf step={keyStep} />
 
       <div className="pt-6">
-        <button
-          type="button"
+        <Button
+          kind="ghost"
           onClick={switchAccount}
           disabled={isChoosing}
           aria-disabled={isChoosing || undefined}
           aria-describedby={isChoosing ? noteId : undefined}
-          className="btn-ghost -ml-3"
+          className="-ml-3"
         >
           Sign in with a different account
-        </button>
+        </Button>
       </div>
     </EntryPage>
   )

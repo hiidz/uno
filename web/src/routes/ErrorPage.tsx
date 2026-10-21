@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { EntryPage } from '@/components/EntryPage'
+import { Button } from '@/components/Button'
 
 /**
  * The page for an address the router has no route for (`missing`), and the
@@ -19,9 +20,9 @@ export function ErrorPage({ kind }: { kind: 'missing' | 'crashed' }) {
     >
       <div className="flex flex-wrap gap-3 max-sm:flex-col">
         {!missing && (
-          <button type="button" onClick={() => window.location.reload()} className="btn-primary">
+          <Button kind="primary" onClick={() => window.location.reload()}>
             Reload
-          </button>
+          </Button>
         )}
         <Link to="/" className={missing ? 'btn-primary' : 'btn-secondary'}>
           Go to Uno&rsquo;s home

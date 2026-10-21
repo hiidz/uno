@@ -1,3 +1,5 @@
+import { Button } from '@/components/Button'
+
 interface ProfilesRetryProps {
   /** The profile list failed to load. */
   failed: boolean
@@ -12,8 +14,8 @@ interface ProfilesRetryProps {
 export function ProfilesRetry({ failed, refused, onRetry }: ProfilesRetryProps) {
   if (!failed || refused) return null
   return (
-    <button type="button" onClick={() => void onRetry()} className="btn-ghost mb-4">
+    <Button kind="ghost" onClick={() => void onRetry()} className="mb-4">
       Retry
-    </button>
+    </Button>
   )
 }

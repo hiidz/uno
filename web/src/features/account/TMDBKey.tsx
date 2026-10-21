@@ -6,6 +6,7 @@ import { FieldError } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { KEY_GATE_HEADING, useKeyMutations } from './useTMDBKey'
 import type { KeyStep } from './useTMDBKey'
+import { Button } from '@/components/Button'
 
 /** Where TMDB's page for making an API key is. */
 const TMDB_API_SETTINGS = 'https://www.themoviedb.org/settings/api'
@@ -64,13 +65,13 @@ interface KeyActionsProps {
 function KeyActions({ pending, ready, onCancel }: KeyActionsProps) {
   return (
     <span className="flex shrink-0 gap-1">
-      <button type="submit" className="btn-primary" disabled={pending || !ready}>
+      <Button kind="primary" type="submit" disabled={pending || !ready}>
         {pending ? 'Checking…' : 'Save key'}
-      </button>
+      </Button>
       {onCancel && (
-        <button type="button" className="btn-ghost" onClick={onCancel}>
+        <Button kind="ghost" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       )}
     </span>
   )
@@ -134,7 +135,7 @@ function KeyForm({ save, onDone }: KeyFormProps) {
       <KeyError id={id} error={save.error?.message} />
       {/* The gate says where the key comes from above the field, link and all;
           a replacement has only this line to say it. */}
-      <p id={`${id}-hint`} className="text-dim m-0 text-[13px] leading-snug">
+      <p id={`${id}-hint`} className="text-dim text-meta m-0 leading-snug">
         32 letters and numbers{onDone && <>, from Settings → API on <TMDBLink /></>}. Not the longer Read Access
         Token.
       </p>
@@ -193,10 +194,10 @@ export function TMDBKeyGate({ step }: { step: KeyStep }) {
       aria-labelledby={KEY_GATE_HEADING}
       className="bg-raised border-line-hi mb-4 grid gap-3 rounded-2xl border p-5"
     >
-      <h3 id={KEY_GATE_HEADING} className="m-0 text-[17px] font-bold">
+      <h3 id={KEY_GATE_HEADING} className="text-title m-0">
         Add your TMDB key to start
       </h3>
-      <p className="text-dim m-0 max-w-[52ch] text-[15px] leading-[1.5]">
+      <p className="text-dim text-body m-0 max-w-[52ch]">
         Uno finds titles through TMDB, a free film and TV database, and this Uno asks each account for its own key.
         Make a free account at <TMDBLink />, open Settings → API, and copy the API Key.
       </p>
@@ -219,15 +220,15 @@ export function TMDBKeyShelf({ step }: { step: KeyStep }) {
     <section aria-label="Your TMDB key" className="bg-raised mt-4 grid gap-3 rounded-2xl px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Icon icon={KeyRound} className="text-dim" />
-        <span className="text-[15px] font-semibold">TMDB key</span>
-        <span className="type-data text-dim text-[14px]">ends in {step.last4}</span>
+        <span className="text-body font-semibold">TMDB key</span>
+        <span className="type-data text-dim text-body-sm">ends in {step.last4}</span>
         <span hidden={replacing} className="ml-auto flex gap-1 pointer-coarse:gap-3">
-          <button type="button" className="btn-secondary btn-sm" onClick={() => setReplacing(true)}>
+          <Button kind="secondary" size="sm" onClick={() => setReplacing(true)}>
             Replace
-          </button>
-          <button type="button" className="btn-ghost btn-sm" onClick={() => setConfirmingRemove(true)}>
+          </Button>
+          <Button kind="ghost" size="sm" onClick={() => setConfirmingRemove(true)}>
             Remove
-          </button>
+          </Button>
         </span>
       </div>
       {replacing && <KeyForm save={save} onDone={() => setReplacing(false)} />}

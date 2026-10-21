@@ -5,6 +5,7 @@ import { EntryPage } from '@/components/EntryPage'
 import { FieldError } from '@/components/fields'
 import { NuvioAuthError, loginWithBypassToken, useAuth } from '@/auth'
 import { returnPath } from '@/features/builder/redirects'
+import { Button } from '@/components/Button'
 
 // Gated on import.meta.env.DEV so the whole bypass branch is statically dead
 // in a production build. The Vite dev server sets it from
@@ -136,24 +137,25 @@ export function Login() {
         </div>
 
         <div className="grid justify-items-start gap-3 pt-4 max-sm:justify-items-stretch">
-          <button
+          <Button
+            kind="primary"
             type="submit"
             disabled={submitting}
             aria-busy={submitting || undefined}
-            className="btn-primary max-sm:w-full"
+            className="max-sm:w-full"
           >
             {submitting ? 'Signing in…' : 'Sign in'}
-          </button>
+          </Button>
           {networkError && <FieldError role="alert">{networkError}</FieldError>}
         </div>
       </form>
 
       {devBypassToken && (
         <div className="border-line mt-8 flex flex-col gap-2 border-t pt-4">
-          <button type="button" onClick={handleDevBypass} className="btn-ghost -ml-3 self-start">
+          <Button kind="ghost" onClick={handleDevBypass} className="-ml-3 self-start">
             Dev bypass login
-          </button>
-          <p className="type-data text-dimmer m-0 text-[13px]">
+          </Button>
+          <p className="type-data text-dimmer text-meta m-0">
             Local dev only — signs in as the server&rsquo;s fake account.
           </p>
         </div>

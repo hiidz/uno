@@ -4,6 +4,7 @@ import { fetchTMDBKey, queryKeys } from '@/api'
 import type { TMDBKeyStatus } from '@/api'
 import { Icon } from '@/components/Icon'
 import { useKeyProblem } from './keyProblem'
+import { Button } from '@/components/Button'
 
 /** The banner's words for an account whose saved key TMDB refuses, for one
  *  that has none, and for when asking which failed. */
@@ -47,12 +48,12 @@ export function KeyProblemBanner({ onFix }: { onFix: () => void }) {
       className="bg-raised border-line flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2.5 lg:px-5"
     >
       <Icon icon={TriangleAlert} className="text-danger shrink-0" />
-      <p className="m-0 min-w-0 flex-1 text-[14px] font-semibold">
+      <p className="text-body-sm m-0 min-w-0 flex-1 font-semibold">
         {words.problem} Your home screen can’t load Uno’s rows until you {words.fix}.
       </p>
-      <button type="button" className="btn-secondary btn-sm" onClick={onFix}>
+      <Button kind="secondary" size="sm" onClick={onFix}>
         {words.button}
-      </button>
+      </Button>
     </div>
   )
 }
