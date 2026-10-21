@@ -4,6 +4,7 @@ import { Check } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { EntryPage } from '@/components/EntryPage'
 import { Segmented } from '@/components/fields'
+import { useToasts } from '@/components/toastQueue'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
 import { useAuth } from '@/auth'
@@ -368,14 +369,17 @@ const COMMUNITY_OFF = 'Community is off on this server.'
 
 /** The Configure / Community switch, factored out only because it's rendered
  *  twice — inline in the header above `lg`, on its own row below it. On a
- *  server whose Community is off, Community stays in it, greyed. */
+ *  server whose Community is off, Community stays in it, greyed, and a tap on
+ *  it says why. */
 function BuilderTabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
   const off = communitySetting() === 'off'
+  const toasts = useToasts()
   return (
     <Segmented
       ariaLabel="Builder section"
       value={tab}
       onChange={onChange}
+      onDisabledPick={(reason) => toasts.show({ text: reason, tone: 'notice' })}
       options={[
         { value: 'configure', label: 'Configure' },
         {

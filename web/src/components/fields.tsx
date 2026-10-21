@@ -303,8 +303,9 @@ export function Select({
  * overflowing the container — the labels stay whole, which is the property
  * this control exists to keep.
  *
- * An option with a `disabledReason` is greyed on its own, says why in its
- * tooltip, and can't be picked.
+ * An option with a `disabledReason` is greyed on its own and can't be picked.
+ * It says why in its tooltip, and through `onDisabledPick` when tapped or
+ * clicked, since a tooltip never opens on a touch screen.
  */
 export function Segmented<T extends string>({
   value,
@@ -312,11 +313,14 @@ export function Segmented<T extends string>({
   options,
   ariaLabel,
   disabled = false,
+  onDisabledPick,
 }: {
   value: T
   onChange: (value: T) => void
   options: { value: T; label: ReactNode; disabledReason?: string }[]
   ariaLabel: string
+  /** Told an option's `disabledReason` when that option is tapped or clicked. */
+  onDisabledPick?: (reason: string) => void
   /** Greyed as a whole while the control can't do anything — the "All" tab
    *  segmented control outside Tabbed Grids. Keeps its value: the selected
    *  segment stays focusable (aria-disabled) with a not-allowed cursor and
@@ -338,7 +342,11 @@ export function Segmented<T extends string>({
           <button
             key={option.value}
             type="button"
-            onClick={() => !disabled && !optionOff && onChange(option.value)}
+            onClick={() => {
+              if (disabled) return
+              if (option.disabledReason) onDisabledPick?.(option.disabledReason)
+              else onChange(option.value)
+            }}
             aria-pressed={value === option.value}
             aria-disabled={disabled || optionOff || undefined}
             title={option.disabledReason}
