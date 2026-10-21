@@ -10,6 +10,7 @@ import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { pluralCount } from '@/lib/plural'
 import { choicesForAll, liveCatalogs, liveMatches, withSkip, type ReuseChoice, type ReuseChoices } from './reuse'
 import type { Review } from './useImportFlow'
+import { Button } from '@/components/Button'
 
 interface ImportReviewProps {
   review: Review
@@ -59,7 +60,7 @@ export function ImportReview({ review, genres, busy, onEdit, onChoices, onSkip }
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <div ref={summary} tabIndex={-1} className="flex flex-1 basis-[240px] flex-col gap-1 outline-none">
-          <p className="text-ink m-0 text-[13.5px] leading-relaxed break-words">
+          <p className="text-ink text-meta m-0 leading-relaxed break-words">
             This JSON holds {pluralCount(liveCatalogs(check, []).length, 'catalog')},{' '}
             {pluralCount(check.collections.length, 'collection')} and {pluralCount(folders, 'folder')}.
           </p>
@@ -68,18 +69,18 @@ export function ImportReview({ review, genres, busy, onEdit, onChoices, onSkip }
             catalogs={live.length}
           />
         </div>
-        <button type="button" onClick={onEdit} disabled={busy} className="btn-secondary shrink-0">
+        <Button kind="secondary" onClick={onEdit} disabled={busy} className="shrink-0">
           Edit JSON
-        </button>
+        </Button>
       </div>
       {live.length > 0 && (
         <div className="-ml-3 flex flex-wrap">
-          <button type="button" className="btn-ghost" onClick={() => onChoices(choicesForAll(live, false))}>
+          <Button kind="ghost" onClick={() => onChoices(choicesForAll(live, false))}>
             Import all
-          </button>
-          <button type="button" className="btn-ghost" onClick={() => onChoices(choicesForAll(live, true))}>
+          </Button>
+          <Button kind="ghost" onClick={() => onChoices(choicesForAll(live, true))}>
             Use mine for all
-          </button>
+          </Button>
         </div>
       )}
       <ContentGroup label="Catalogs" count={check.catalogs.length}>
@@ -115,7 +116,7 @@ function Question({ collections, catalogs }: { collections: number; catalogs: nu
   ].filter((s) => s !== '')
   if (found.length === 0) return null
   return (
-    <p className="text-dim m-0 text-[13px] leading-relaxed">
+    <p className="text-dim text-meta m-0 leading-relaxed">
       {found.join(' ')} Choose what Import does with each.
     </p>
   )
@@ -160,8 +161,8 @@ function ContentRow({ name, line, sticker, children }: ContentRowProps) {
   return (
     <li className="border-line flex min-w-0 flex-col gap-2 border-t py-3">
       <div className="flex min-w-0 flex-col gap-1">
-        <span className="text-ink text-[14px] font-semibold break-words">{name}</span>
-        {line && <span className="text-dim text-[12.5px] break-words">{line}</span>}
+        <span className="text-ink text-body-sm font-semibold break-words">{name}</span>
+        {line && <span className="text-dim text-meta break-words">{line}</span>}
         <span className="mt-0.5 flex flex-wrap gap-1.5">
           <SharingStickers stickers={[sticker]} />
         </span>
@@ -215,7 +216,7 @@ function CollectionChoice({ title, own, skipped, onSkip }: CollectionChoiceProps
         ]}
       />
       {skipped && own > 0 && (
-        <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
+        <span className="type-data text-dimmer text-meta">
           Its catalogs are left out too.
         </span>
       )}
@@ -261,7 +262,7 @@ function Reuse({ catalog, scoped, choice, onChange }: CatalogChoiceProps) {
     <>
       <ExistingPick catalog={catalog} choice={choice} onChange={onChange} />
       {scoped && (
-        <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
+        <span className="type-data text-dimmer text-meta">
           The collection will share your library catalog, so later edits to it show up there too.
         </span>
       )}
@@ -283,7 +284,7 @@ function ExistingPick({ catalog, choice, onChange }: Omit<CatalogChoiceProps, 's
     )
   }
   return (
-    <span className="type-data text-dim text-[12.5px] break-words">
+    <span className="type-data text-dim text-meta break-words">
       Uses {catalog.existing[0].name} from your library
     </span>
   )

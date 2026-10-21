@@ -4,7 +4,7 @@ import { useRef } from 'react'
 const MIN_LINES = 8
 const MAX_HEIGHT = '60vh'
 
-const TEXT = 'font-mono text-[13px] leading-snug pointer-coarse:text-[16px]'
+const TEXT = 'font-mono text-meta leading-snug pointer-coarse:text-field'
 
 /**
  * A multi-line field for JSON with a line number beside each line. It grows

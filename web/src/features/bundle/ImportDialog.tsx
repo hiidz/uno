@@ -9,6 +9,7 @@ import { JsonField } from './JsonField'
 import { importTally } from './reuse'
 import type { ImportProblem } from './problem'
 import { useImportFlow } from './useImportFlow'
+import { Button } from '@/components/Button'
 
 /**
  * Imports a bundle as new, private catalogs and collections: paste its JSON,
@@ -37,7 +38,7 @@ export function ImportDialog({
   return (
     <Modal open={open} onClose={onClose} labelledBy="import-title" width="760px">
       <ModalHeader>
-        <h2 id="import-title" className="type-display m-0 text-[18px]">
+        <h2 id="import-title" className="type-display text-display m-0">
           Import
         </h2>
       </ModalHeader>
@@ -80,7 +81,7 @@ function ImportFlow({
             />
           ) : (
             <>
-              <p className="text-dim m-0 text-[13px] leading-relaxed">
+              <p className="text-dim text-meta m-0 leading-relaxed">
                 Paste the JSON of an Uno export. Everything in it is added to your library as new,
                 private catalogs and collections.
               </p>
@@ -98,17 +99,12 @@ function ImportFlow({
         {flow.importError && <ErrorLine className="mt-4" problem={flow.importError} />}
       </ModalBody>
       <ModalFooter>
-        <button type="button" onClick={onClose} className="btn-ghost">
+        <Button kind="ghost" onClick={onClose}>
           Cancel
-        </button>
-        <button
-          type="button"
-          onClick={flow.runImport}
-          disabled={busy || !flow.hasText || flow.broken || isEmpty(tally)}
-          className="btn-primary"
-        >
+        </Button>
+        <Button kind="primary" onClick={flow.runImport} disabled={busy || !flow.hasText || flow.broken || isEmpty(tally)}>
           {importLabel(flow.checking, flow.importing, tally)}
-        </button>
+        </Button>
       </ModalFooter>
     </>
   )
@@ -147,7 +143,7 @@ function Outcome({ flow }: { flow: Flow }) {
   const problem = flow.inputError ?? flow.checkError
   if (problem) return <ErrorLine problem={problem} />
   if (!flow.valid) return null
-  return <p className="text-dim type-data m-0 text-[12.5px]">Valid JSON.</p>
+  return <p className="text-dim type-data text-meta m-0">Valid JSON.</p>
 }
 
 /** An error the dialog shows after a press: what happened, with the technical
@@ -165,7 +161,7 @@ function ErrorLine({ className = '', problem }: { className?: string; problem: I
     >
       <p className="m-0">{problem.headline}</p>
       {problem.detail && (
-        <details className="text-dim text-[12.5px]">
+        <details className="text-dim text-meta">
           <summary className="cursor-pointer">Details</summary>
           <p className="type-data text-dimmer m-0 mt-1">{problem.detail}</p>
         </details>
@@ -197,14 +193,9 @@ function PasteBox({
         placeholder={'{ "format": …'}
         onChange={onEdit}
       />
-      <button
-        type="button"
-        onClick={onValidate}
-        disabled={busy || text.trim() === ''}
-        className="btn-secondary"
-      >
+      <Button kind="secondary" onClick={onValidate} disabled={busy || text.trim() === ''}>
         Validate JSON
-      </button>
+      </Button>
     </div>
   )
 }

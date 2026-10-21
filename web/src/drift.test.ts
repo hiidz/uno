@@ -25,10 +25,6 @@ const OPT_OUT = /drift-ok:\s*\S/
 const NOT_YET_MIGRATED = new Set([
   'features/account/KeyProblemBanner.tsx',
   'features/account/TMDBKey.tsx',
-  'features/bundle/ExportDialog.tsx',
-  'features/bundle/ImportDialog.tsx',
-  'features/bundle/ImportReview.tsx',
-  'features/bundle/JsonField.tsx',
   'features/community/CommunityRow.tsx',
   'features/community/CommunitySign.tsx',
   'features/community/CommunityView.tsx',
