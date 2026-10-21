@@ -1576,7 +1576,7 @@ components:
     FolderArt:
       type: object
       description: |
-        Each `_url` field is empty or an absolute http or https URL. A save
+        Each `_url` field is empty or an absolute https URL. A save
         refuses one whose host is localhost or a literal loopback, private,
         link-local or unspecified address.
       properties:
@@ -1694,7 +1694,7 @@ components:
         backdrop_image_url:
           type: string
           maxLength: 2048
-          description: Empty, or an http or https URL under the same host rule as FolderArt's.
+          description: Empty, or an https URL under the same host rule as FolderArt's.
         focus_glow_enabled: { type: boolean }
         folders:
           type: array

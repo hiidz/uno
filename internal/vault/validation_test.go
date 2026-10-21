@@ -130,6 +130,7 @@ func TestCollectionCopyRejectsStaleSourceRows(t *testing.T) {
 		{"empty tile shape", `UPDATE folders SET tile_shape = ? WHERE collection_id = ?`, ""},
 		{"overlong folder title", `UPDATE folders SET title = ? WHERE collection_id = ?`, strings.Repeat("t", maxNameLen+1)},
 		{"javascript backdrop", `UPDATE collections SET backdrop_image_url = ? WHERE id = ?`, "javascript:alert(1)"},
+		{"http backdrop", `UPDATE collections SET backdrop_image_url = ? WHERE id = ?`, "http://img.example/a.jpg"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := db.conn.ExecContext(ctx, tt.query, tt.arg, source.ID.String()); err != nil {
@@ -466,23 +467,35 @@ func TestLengthBoundsCountCharacters(t *testing.T) {
 	}
 }
 
+// A media URL must be https: http and every other scheme are refused.
+func TestMediaURLTakesHTTPSOnly(t *testing.T) {
+	for _, raw := range []string{"http://img.example/a.png", "HTTP://img.example/a.png", "ftp://img.example/a.png", "javascript:alert(1)", "data:image/png;base64,AA"} {
+		if problem := mediaURLProblem("cover image url", raw); problem != "cover image url must be an https URL" {
+			t.Errorf("%s: problem = %q, want it refused as not https", raw, problem)
+		}
+	}
+	if problem := mediaURLProblem("cover image url", "HTTPS://img.example/a.png"); problem != "" {
+		t.Errorf("an upper-case https scheme: problem = %q, want none", problem)
+	}
+}
+
 // A media URL may name any public host, but not this machine or a local
 // network, in any literal spelling the check parses.
 func TestMediaURLRefusesPrivateHosts(t *testing.T) {
 	for _, raw := range []string{
-		"http://localhost/a.png",
+		"https://localhost/a.png",
 		"https://LocalHost./a.png",
 		"https://img.localhost/a.png",
-		"http://127.0.0.1:8123/a.png",
+		"https://127.0.0.1:8123/a.png",
 		"https://10.0.0.5/a.png",
 		"https://192.168.1.2/a.png",
 		"https://172.16.0.1/a.png",
-		"http://169.254.169.254/latest",
-		"http://0.0.0.0/a.png",
-		"http://[::1]/a.png",
-		"http://[::ffff:127.0.0.1]/a.png",
-		"http://[fe80::1%25eth0]/a.png",
-		"http://[fd00::1]/a.png",
+		"https://169.254.169.254/latest",
+		"https://0.0.0.0/a.png",
+		"https://[::1]/a.png",
+		"https://[::ffff:127.0.0.1]/a.png",
+		"https://[fe80::1%25eth0]/a.png",
+		"https://[fd00::1]/a.png",
 	} {
 		if problem := mediaURLProblem("cover image url", raw); !strings.Contains(problem, "private, loopback or link-local") {
 			t.Errorf("%s: problem = %q, want it refused as private", raw, problem)

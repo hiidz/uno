@@ -195,7 +195,9 @@ const maxMediaURLLen = 2048
 // The scheme allowlist is the point: every one of these strings is pushed
 // into Nuvio's collections blob and rendered by its clients, and a
 // collection can reach a profile that never authored it (a subscribe),
-// so a javascript: or data: URL must not survive the trip.
+// so a javascript: or data: URL must not survive the trip. Only https is
+// taken: an http address would reach every subscriber's Nuvio unencrypted,
+// while the builder, whose CSP loads https images only, never shows it.
 func mediaURLProblem(field, raw string) string {
 	if raw == "" {
 		return ""
@@ -207,8 +209,8 @@ func mediaURLProblem(field, raw string) string {
 	if err != nil {
 		return fmt.Sprintf("%s is not a valid URL", field)
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Sprintf("%s must be an http or https URL", field)
+	if u.Scheme != "https" {
+		return fmt.Sprintf("%s must be an https URL", field)
 	}
 	if u.Host == "" {
 		return fmt.Sprintf("%s must be an absolute URL", field)
