@@ -62,8 +62,10 @@ describe('LibrarySection filter', () => {
 })
 
 describe('LibrarySection rows', () => {
-  it('give a truncated name its full text as the row’s tooltip', () => {
+  it('print a name in full, wrapping rather than cut short behind a tooltip', () => {
     mount()
-    expect(screen.getByRole('button', { name: /^Heist again/ })).toHaveAttribute('title', 'Heist again')
+    const row = screen.getByRole('button', { name: /^Heist again/ })
+    expect(row).not.toHaveAttribute('title')
+    expect(row.querySelector('.truncate')?.textContent ?? '').not.toContain('Heist again')
   })
 })

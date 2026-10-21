@@ -59,8 +59,6 @@ const NOT_YET_MIGRATED = new Set([
   'features/home/HomePane.tsx',
   'features/home/HomePreview.tsx',
   'features/home/previewScreen.tsx',
-  'features/library/LibraryItem.tsx',
-  'features/library/LibrarySection.tsx',
   'features/preview/CollectionMeta.tsx',
   'features/preview/tiles.tsx',
   'features/push/PushBlockControls.tsx',
