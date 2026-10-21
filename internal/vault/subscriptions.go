@@ -116,31 +116,28 @@ func (db *DB) copyPublication(ctx context.Context, profileID, publicationID uuid
 }
 
 // writeCopy writes pub's snapshot as a new row of profileID's, keyed by the
-// snapshot's keys when keyed, and returns its id.
+// snapshot's keys when keyed, and returns its id. A catalog snapshot becomes
+// a new listed catalog.
 func writeCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pub storedPublication, keyed bool) (uuid.UUID, error) {
-	if pub.kind == kindCatalog {
-		c, err := insertCatalog(ctx, tx, catalogFromSnapshot(profileID, pub.snapshot))
-		return c.ID, err
+	if pub.kind != kindCatalog {
+		created, _, err := createCollectionTx(ctx, tx, profileID, pub.snapshot.collectionForm(keyed))
+		return created.ID, err
 	}
-	created, _, err := createCollectionTx(ctx, tx, profileID, pub.snapshot.collectionForm(keyed))
-	return created.ID, err
-}
-
-// catalogFromSnapshot is s's catalog as a new listed catalog of profileID's.
-func catalogFromSnapshot(profileID uuid.UUID, s Snapshot) Catalog {
-	form := s.catalogForm()
+	form := pub.snapshot.catalogForm()
 	now := time.Now().UTC()
-	return Catalog{
+	c, err := insertCatalog(ctx, tx, Catalog{
 		ID: uuid.New(), Type: form.Type, Name: form.Name, Provider: form.Provider, Params: form.Params,
 		OwnerID: profileID, CreatedAt: now, UpdatedAt: now,
-	}
+	})
+	return c.ID, err
 }
 
 // insertSubscription subscribes copyID, profileID's copy of pub, to it, in
 // step with pub's current snapshot, checking in the same statement that pub
-// still exists. A second subscription to one publication is ErrConflict,
-// and one to a publication unpublished since it was read is
-// ErrPublicationNotFound (requireInserted).
+// still exists. A second subscription to one publication is ErrConflict.
+// When it writes no row, the publication was unpublished after the subscribe
+// read it: ErrPublicationNotFound, and the transaction rolls the copy back
+// too.
 func insertSubscription(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pub storedPublication, copyID uuid.UUID) error {
 	catalogID, collectionID := sourceColumns(pub.kind, copyID)
 	result, err := tx.ExecContext(ctx, `
@@ -155,13 +152,6 @@ func insertSubscription(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, pu
 	if err != nil {
 		return fmt.Errorf("inserting subscription: %w", err)
 	}
-	return requireInserted(result)
-}
-
-// requireInserted is ErrPublicationNotFound when insertSubscription wrote
-// no row: the publication was unpublished after the subscribe read it, so the
-// transaction rolls the copy back too.
-func requireInserted(result sql.Result) error {
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("checking rows affected: %w", err)
@@ -229,7 +219,21 @@ func (db *DB) UpdateSubscription(ctx context.Context, profileID, publicationID u
 		if sub, err = loadSubscription(ctx, tx, profileID, publicationID); err != nil {
 			return err
 		}
-		return sub.update(ctx, tx, profileID)
+		if sub.subscribedHash == sub.pub.contentHash {
+			return nil
+		}
+		if sub.pub.kind == kindCatalog {
+			err = updateCatalogCopy(ctx, tx, profileID, sub)
+		} else {
+			err = updateCollectionCopy(ctx, tx, profileID, sub)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE subscriptions SET subscribed_hash = ? WHERE id = ?`, sub.pub.contentHash, sub.id.String()); err != nil {
+			return fmt.Errorf("updating subscription: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
 		return CommunityCopy{}, err
@@ -237,67 +241,27 @@ func (db *DB) UpdateSubscription(ctx context.Context, profileID, publicationID u
 	return db.loadCopy(ctx, profileID, sub.pub.kind, sub.copyID)
 }
 
-// update is UpdateSubscription's write, inside tx.
-func (sub subscription) update(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) error {
-	if sub.subscribedHash == sub.pub.contentHash {
-		return nil
-	}
-	if err := sub.rewriteCopy(ctx, tx, profileID); err != nil {
-		return err
-	}
-	return sub.markInStep(ctx, tx)
-}
-
-// rewriteCopy writes sub's snapshot over its copy; see UpdateSubscription.
-func (sub subscription) rewriteCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID) error {
-	if sub.pub.kind == kindCatalog {
-		return updateCatalogCopy(ctx, tx, profileID, sub)
-	}
-	return updateCollectionCopy(ctx, tx, profileID, sub)
-}
-
-// markInStep sets sub's subscribed_hash to its publication's content hash.
-func (sub subscription) markInStep(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, `UPDATE subscriptions SET subscribed_hash = ? WHERE id = ?`, sub.pub.contentHash, sub.id.String()); err != nil {
-		return fmt.Errorf("updating subscription: %w", err)
-	}
-	return nil
-}
-
-// updateCatalogCopy writes sub's snapshot catalog over its catalog copy,
-// unless the copy already holds it; see catalogCopyProblem for what is
-// refused.
+// updateCatalogCopy writes sub's snapshot catalog's name and params over its
+// catalog copy, unless the copy already holds it. A snapshot of another type
+// is refused, since a catalog's type never changes, and so is one a catalog
+// save would refuse.
 func updateCatalogCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, sub subscription) error {
 	c, err := ownCatalog(ctx, tx, profileID, sub.copyID)
 	if err != nil {
 		return err
 	}
-	want := sub.pub.snapshot.catalogForm()
 	if copySnapshot(c, sub.pub.snapshot).contentHash() == sub.pub.contentHash {
 		return nil
 	}
-	if err := catalogCopyProblem(c, want); err != nil {
-		return err
-	}
-	return writeCatalogCopy(ctx, tx, c.ID, want)
-}
-
-// catalogCopyProblem is why want can't be written over catalog copy c: a
-// snapshot of another type, since a catalog's type never changes, or one a
-// catalog save would refuse.
-func catalogCopyProblem(c Catalog, want CatalogForm) error {
+	want := sub.pub.snapshot.catalogForm()
 	if !sameKind(catalogKind{c.Type, c.Provider}, catalogKind{want.Type, want.Provider}) {
 		return fmt.Errorf("%w: its publisher changed its type, so this update can't apply to your copy; duplicate it from Community instead", ErrInvalidInput)
 	}
-	return want.Validate()
-}
-
-// writeCatalogCopy writes want's name and params over catalog id, whose type
-// and provider want already matches (catalogCopyProblem).
-func writeCatalogCopy(ctx context.Context, tx *sql.Tx, id uuid.UUID, want CatalogForm) error {
-	nowStr := utcTimestamp(time.Now())
+	if err := want.Validate(); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE catalogs SET name = ?, params = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
-		want.Name, want.Params, nowStr, id.String()); err != nil {
+		want.Name, want.Params, utcTimestamp(time.Now()), c.ID.String()); err != nil {
 		return fmt.Errorf("updating subscribed catalog: %w", err)
 	}
 	return nil

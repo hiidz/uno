@@ -1,6 +1,6 @@
 // Revisions: what an editor's save and a push are checked against. Each
 // content write raises its row's revision in its own statement (writeCatalog,
-// updateCollectionRow, writeCatalogEdit, writeCatalogCopy), and each push
+// updateCollectionRow, writeCatalogEdit, updateCatalogCopy), and each push
 // raises its profile's home_revision (SavePush). An editor's save carries the
 // revision it was built from, and is refused as ErrStale when the row is at
 // another; push compares the home_revision it was built from itself
