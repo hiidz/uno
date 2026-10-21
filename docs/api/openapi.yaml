@@ -67,11 +67,11 @@ paths:
   /api/config:
     get:
       tags: [server]
-      summary: The server's TMDB key mode
+      summary: The server's TMDB key mode and Community setting
       security: []
       responses:
         "200":
-          description: How this server reaches TMDB.
+          description: How this server reaches TMDB, and what its Community does.
           content:
             application/json:
               schema:
@@ -1458,11 +1458,18 @@ components:
 
     ServerConfig:
       type: object
-      required: [tmdb_key_mode]
+      required: [tmdb_key_mode, community]
       properties:
         tmdb_key_mode:
           type: string
           enum: [shared, per-account]
+        community:
+          type: string
+          enum: ["on", no-images, "off"]
+          description: >-
+            UNO_COMMUNITY. no-images leaves every image and video address out of
+            Community and out of the copies Add, Duplicate and Update write; off
+            answers every publish, unpublish and Community route with a 404.
 
     TMDBKeyStatus:
       type: object

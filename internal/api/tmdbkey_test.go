@@ -66,15 +66,20 @@ func keyedTMDB(t *testing.T) func() []string {
 	}
 }
 
-// The config route says the mode, and needs no sign-in.
+// The config route says the key mode and the Community setting, and needs no
+// sign-in.
 func TestConfigRoute(t *testing.T) {
 	db := newTestVaultDB(t)
 	for _, tc := range []struct {
 		s    *Server
 		want string
-	}{{newProfileTestServer(t, db), "shared"}, {newPerAccountServer(t, db), "per-account"}} {
+	}{
+		{newProfileTestServer(t, db), `{"tmdb_key_mode":"shared","community":"on"}`},
+		{newPerAccountServer(t, db), `{"tmdb_key_mode":"per-account","community":"on"}`},
+		{newCommunityServer(t, db, CommunityOff), `{"tmdb_key_mode":"shared","community":"off"}`},
+	} {
 		w := serve(t, tc.s, http.MethodGet, "/api/config", "", true)
-		if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"tmdb_key_mode":"`+tc.want+`"}` {
+		if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != tc.want {
 			t.Errorf("GET /api/config = %d %s, want %s", w.Code, w.Body.String(), tc.want)
 		}
 	}

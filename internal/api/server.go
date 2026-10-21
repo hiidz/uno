@@ -4,6 +4,7 @@
 package api
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -44,6 +45,7 @@ type Server struct {
 	// nuvioCalls paces each account's requests to the routes that call Nuvio
 	// (limitNuvioCalls).
 	nuvioCalls *accountLimiter
+	community  Community
 }
 
 // ServeHTTP sets securityHeaders on every response — the API, the addon and
@@ -109,6 +111,7 @@ func New(d Deps) (*Server, error) {
 		admission:           d.Access.admission(),
 		keys:                d.Keys,
 		nuvioCalls:          newAccountLimiter(nuvioCallBurst, nuvioCallEvery),
+		community:           cmp.Or(d.Community, CommunityOn),
 	}
 	if err := s.routes(); err != nil {
 		return nil, err
@@ -201,6 +204,7 @@ func (s *Server) routes() error {
 		NuvioBaseURL:        s.nuvioBaseURL,
 		NuvioPublishableKey: s.nuvioPublishableKey,
 		TMDBKeyMode:         s.tmdbKeyMode(),
+		Community:           string(s.community),
 	})
 	if err != nil {
 		return fmt.Errorf("api: building static handler: %w", err)

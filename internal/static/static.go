@@ -38,6 +38,8 @@ type Config struct {
 	NuvioPublishableKey string
 	// TMDBKeyMode is "shared" or "per-account", as GET /api/config says it.
 	TMDBKeyMode string
+	// Community is "on", "no-images" or "off", as GET /api/config says it.
+	Community string
 }
 
 // Handler serves fsys as a single-page app: any request that doesn't
@@ -138,7 +140,8 @@ func configJSON(cfg Config) []byte {
 		NuvioBaseURL        string `json:"nuvioBaseURL"`
 		NuvioPublishableKey string `json:"nuvioPublishableKey"`
 		TMDBKeyMode         string `json:"tmdb_key_mode"`
-	}{cfg.NuvioBaseURL, cfg.NuvioPublishableKey, cfg.TMDBKeyMode})
+		Community           string `json:"community"`
+	}{cfg.NuvioBaseURL, cfg.NuvioPublishableKey, cfg.TMDBKeyMode, cfg.Community})
 	return body
 }
 

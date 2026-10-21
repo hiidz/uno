@@ -62,4 +62,7 @@ type Deps struct {
 	// Keys gives each request its account's own TMDB key on a server in
 	// per-account key mode, and is nil on a server with one shared key.
 	Keys *tmdbkey.Keys
+	// Community is what this server's Community does; the zero value is
+	// CommunityOn.
+	Community Community
 }

@@ -15,6 +15,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"VAULT_DB", "PORT", "TMDB_API_KEY", "NUVIO_BASE_URL",
 		"NUVIO_PUBLISHABLE_KEY", "SITE_BASE_URL", "DEV_AUTH_BYPASS_TOKEN",
 		"UNO_ACCESS", "UNO_ALLOWED_EMAILS", "TMDB_KEY_MODE", "UNO_SECRET",
+		"UNO_COMMUNITY",
 	} {
 		t.Setenv(key, vars[key])
 	}
@@ -27,7 +28,7 @@ var required = map[string]string{
 }
 
 // With only the required variables set, everything else takes its default,
-// the dev auth bypass stays off and access is open.
+// the dev auth bypass stays off, access is open and Community is on.
 func TestLoadDefaults(t *testing.T) {
 	setEnv(t, required)
 
@@ -42,6 +43,7 @@ func TestLoadDefaults(t *testing.T) {
 		NuvioBaseURL:        "https://api.nuvio.tv",
 		NuvioPublishableKey: "publishable-key",
 		SiteBaseURL:         "https://uno.example",
+		Community:           CommunityOn,
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("cfg = %+v\nwant  %+v", cfg, want)
@@ -56,6 +58,7 @@ func TestLoadOverrides(t *testing.T) {
 		"DEV_AUTH_BYPASS_TOKEN": devBypassToken,
 		"UNO_ACCESS":            "allowlist",
 		"UNO_ALLOWED_EMAILS":    " Someone@Example.com, ,other+tag@example.org ",
+		"UNO_COMMUNITY":         "no-images",
 	}
 	maps.Copy(vars, required)
 	setEnv(t, vars)
@@ -73,6 +76,7 @@ func TestLoadOverrides(t *testing.T) {
 		SiteBaseURL:         "https://uno.example",
 		DevAuthBypassToken:  devBypassToken,
 		Access:              Access{Allowlist: true, Emails: []string{"someone@example.com", "other+tag@example.org"}},
+		Community:           CommunityNoImages,
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("cfg = %+v\nwant  %+v", cfg, want)
@@ -213,5 +217,25 @@ func TestLoadRefusesTMDBKeyModesItCantUse(t *testing.T) {
 				t.Fatalf("err = %v, want one containing %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// UNO_COMMUNITY takes on, no-images or off, and anything else stops the start
+// naming the variable.
+func TestLoadCommunity(t *testing.T) {
+	for _, mode := range []string{CommunityOn, CommunityNoImages, CommunityOff} {
+		vars := map[string]string{"UNO_COMMUNITY": mode}
+		maps.Copy(vars, required)
+		setEnv(t, vars)
+		if cfg, err := Load(); err != nil || cfg.Community != mode {
+			t.Errorf("UNO_COMMUNITY=%s: Community = %q, %v", mode, cfg.Community, err)
+		}
+	}
+
+	vars := map[string]string{"UNO_COMMUNITY": "images-off"}
+	maps.Copy(vars, required)
+	setEnv(t, vars)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), `UNO_COMMUNITY is "images-off"`) {
+		t.Fatalf("err = %v, want one naming UNO_COMMUNITY", err)
 	}
 }

@@ -10,6 +10,18 @@ import (
 	"github.com/hiidz/uno/internal/vault"
 )
 
+// Community is what this server's Community does, as UNO_COMMUNITY sets it
+// and GET /api/config and the SPA's page say it.
+type Community string
+
+// The three Community settings: Community as it is, Community leaving out
+// every image and video address, and no Community at all.
+const (
+	CommunityOn       Community = "on"
+	CommunityNoImages Community = "no-images"
+	CommunityOff      Community = "off"
+)
+
 // pathRow is one kind of row a sharing call names by the id in its path: one
 // of the caller's catalogs or collections, or someone's publication, which
 // the vault scopes to the caller. It holds the path segment carrying the id,

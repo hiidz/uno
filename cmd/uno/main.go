@@ -131,6 +131,7 @@ func apiDeps(cfg config.Config, db *vault.DB) (api.Deps, error) {
 		NuvioPublishableKey: cfg.NuvioPublishableKey,
 		Access:              api.Access{Allowlist: cfg.Access.Allowlist, Emails: cfg.Access.Emails},
 		Keys:                keys,
+		Community:           api.Community(cfg.Community),
 	}
 	if cfg.DevAuthBypassToken != "" {
 		api.LogDevBypassEnabled()

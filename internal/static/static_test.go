@@ -18,12 +18,13 @@ var testConfig = Config{
 	NuvioBaseURL:        "https://nuvio.example.com",
 	NuvioPublishableKey: `key-"x</script>`,
 	TMDBKeyMode:         "per-account",
+	Community:           "no-images",
 }
 
 // testSettings is testConfig as JSON, the config block's payload,
 // with < and > escaped the way encoding/json writes them.
 var testSettings = strings.NewReplacer("<", `\`+"u003c", ">", `\`+"u003e").Replace(
-	`{"nuvioBaseURL":"https://nuvio.example.com","nuvioPublishableKey":"key-\"x</script>","tmdb_key_mode":"per-account"}`)
+	`{"nuvioBaseURL":"https://nuvio.example.com","nuvioPublishableKey":"key-\"x</script>","tmdb_key_mode":"per-account","community":"no-images"}`)
 
 func newTestHandler(t *testing.T, fsys fstest.MapFS, cfg Config) http.Handler {
 	t.Helper()
