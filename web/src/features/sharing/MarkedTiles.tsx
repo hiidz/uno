@@ -26,7 +26,7 @@ function genresFor(catalog: Catalog, genres: GenreLookups) {
 
 function FactValue({ value }: { value: string }) {
   const tone = value === NAMES_PENDING ? 'text-dimmer' : ''
-  return <dd className={`m-0 text-[15px] font-bold [overflow-wrap:anywhere] tabular-nums ${tone}`}>{value}</dd>
+  return <dd className={`text-body m-0 font-bold [overflow-wrap:anywhere] tabular-nums ${tone}`}>{value}</dd>
 }
 
 
@@ -35,7 +35,7 @@ function FactValue({ value }: { value: string }) {
 export function SetTile({ fact, className, change }: { fact: RecipeFact; className: string; change: FactChange | undefined }) {
   return (
     <div className={`${className} ${changedEdge(change)}`}>
-      <dt className="text-dim text-[12px] font-semibold">{fact.label}</dt>
+      <dt className="text-dim text-caption font-semibold">{fact.label}</dt>
       <FactValue value={fact.value} />
       <ChangeNote change={change} />
     </div>
@@ -48,8 +48,8 @@ export function OpenTile({ fact, change }: { fact: RecipeFact; change: FactChang
   const edge = change ? changedEdge(change) : 'shadow-[inset_0_0_0_1px_var(--uno-line)]'
   return (
     <div className={`${TILE} ${edge}`}>
-      <dt className="text-dimmer text-[12px] font-semibold">{fact.label}</dt>
-      <dd className="text-dimmer m-0 text-[15px] font-semibold">{fact.value}</dd>
+      <dt className="text-dimmer text-caption font-semibold">{fact.label}</dt>
+      <dd className="text-dimmer text-body m-0 font-semibold">{fact.value}</dd>
       <ChangeNote change={change} />
     </div>
   )
@@ -72,7 +72,7 @@ function changedEdge(change: FactChange | undefined): string {
 /** What a changed filter was, under its value. */
 function ChangeNote({ change }: { change: FactChange | undefined }) {
   if (!change) return null
-  return <dd className="text-dimmer m-0 text-[12.5px] [overflow-wrap:anywhere]">{factChangeNote(change)}</dd>
+  return <dd className="text-dimmer text-meta m-0 [overflow-wrap:anywhere]">{factChangeNote(change)}</dd>
 }
 
 export function markID(mark: BlockMark | undefined): string | undefined {

@@ -68,7 +68,7 @@ export function UpdateCount({
   const changes = useUpdateChanges(profileIndex, publicationID(subscription), waiting)
   const count = changeCount(changes.data)
   if (!waiting || count === 0) return null
-  return <span className="type-data text-dim text-[13.5px]">{pluralCount(count, 'change')}</span>
+  return <span className="type-data text-dim text-meta">{pluralCount(count, 'change')}</span>
 }
 
 /**

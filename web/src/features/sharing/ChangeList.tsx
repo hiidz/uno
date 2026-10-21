@@ -25,7 +25,8 @@ export function ChangeList({ changes, genres }: { changes: readonly SnapshotChan
         <Group key={group.label} group={group} />
       ))}
       {hidden > 0 && (
-        <button type="button" onClick={() => setExpanded(true)} className="tap text-dim hover:text-ink self-start text-left text-[13.5px] underline">
+        // drift-ok: an underlined text link that shows the rest of the list
+        <button type="button" onClick={() => setExpanded(true)} className="tap text-dim hover:text-ink text-meta self-start text-left underline">
           and {hidden} more
         </button>
       )}
@@ -36,13 +37,13 @@ export function ChangeList({ changes, genres }: { changes: readonly SnapshotChan
 function Group({ group }: { group: ChangeGroup }) {
   return (
     <div className="flex flex-col gap-1">
-      <h4 className="text-dim m-0 text-[12px] font-semibold">{group.label}</h4>
-      <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-[14px] leading-snug">
+      <h4 className="text-dim text-caption m-0 font-semibold">{group.label}</h4>
+      <ul className="text-body-sm m-0 flex list-none flex-col gap-1.5 p-0 leading-snug">
         {group.lines.map((line, index) => (
           <li key={index} className="flex flex-col">
             {line.text}
             {line.notes.map((note) => (
-              <span key={note} className="text-dim text-[13px]">
+              <span key={note} className="text-dim text-meta">
                 {note}
               </span>
             ))}
@@ -99,7 +100,7 @@ function sectionClass(shelf: boolean | undefined): string {
 /** A shelf's heading is sign lettering in the region's accent; a plain list's
  *  is a label. */
 function headingClass(shelf: boolean | undefined): string {
-  return shelf ? 'type-sign m-0 text-[12.5px] leading-none text-[var(--accent)]' : 'type-label m-0'
+  return shelf ? 'type-sign text-sign m-0 text-[var(--accent)]' : 'type-label m-0'
 }
 
 /** A list's title, with how many changes it holds at the end of a shelf's. */
@@ -108,7 +109,7 @@ function ChangesHeading({ title, list, shelf }: { title: string; list: readonly 
   return (
     <div className="flex items-baseline justify-between gap-3">
       <h3 className={headingClass(shelf)}>{title}</h3>
-      {count > 0 && <span className="type-data text-dim text-[13px]">{pluralCount(count, 'change')}</span>}
+      {count > 0 && <span className="type-data text-dim text-meta">{pluralCount(count, 'change')}</span>}
     </div>
   )
 }
@@ -117,8 +118,8 @@ function ChangesHeading({ title, list, shelf }: { title: string; list: readonly 
 function ChangesStatus({ changes }: { changes: UseQueryResult<SnapshotChange[]> }) {
   return (
     <>
-      {changes.isError && <p className="text-dim m-0 text-[13.5px]">Couldn’t load what changed.</p>}
-      {changes.isPending && <p className="text-dim m-0 text-[13.5px]">Loading what changed…</p>}
+      {changes.isError && <p className="text-dim text-meta m-0">Couldn’t load what changed.</p>}
+      {changes.isPending && <p className="text-dim text-meta m-0">Loading what changed…</p>}
     </>
   )
 }
