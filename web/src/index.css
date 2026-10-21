@@ -96,6 +96,9 @@
     /* A region's own colour, which its primary button and headings take. Set
        per region by `.tone-*`; outside one, the primary is sticker white. */
     --accent: var(--uno-ink);
+    /* The primary button under a pointer: lighter on a region's colour, and
+       darker on sticker white, which has no lighter to go to. */
+    --accent-hover: color-mix(in srgb, var(--uno-ink) 82%, var(--uno-sign-ink));
 
     --background: var(--uno-ground);
     --foreground: var(--uno-ink);
@@ -161,13 +164,24 @@
         @apply border-border outline-ring/50;
         scrollbar-color: var(--uno-line-hi) transparent;
     }
+    /* The page draws under a phone's notch and home bar (`viewport-fit=cover`
+       in index.html), so the sides keep clear of a notch in landscape; the
+       bars at the bottom pad themselves. `env()` is 0 everywhere else. */
     body {
         @apply bg-background text-foreground;
+        padding-right: env(safe-area-inset-right);
+        padding-left: env(safe-area-inset-left);
         -webkit-font-smoothing: antialiased;
         caret-color: var(--uno-ink);
     }
     html {
         @apply font-sans;
+    }
+    /* Tailwind's preflight gives buttons the default arrow; a pointer marks
+       what a click acts on. A disabled one keeps the arrow. */
+    button:not(:disabled):not([aria-disabled='true']),
+    [role='button']:not([aria-disabled='true']) {
+        cursor: pointer;
     }
     ::selection {
         background: color-mix(in srgb, var(--uno-catalog) 55%, transparent);
@@ -192,15 +206,19 @@
     /* A region's colour: its sign, its headings, and its primary button. */
     .tone-catalog {
         --accent: var(--uno-catalog);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
     .tone-collection {
         --accent: var(--uno-collection);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
     .tone-community {
         --accent: var(--uno-community);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
     .tone-home {
         --accent: var(--uno-nuvio-yellow);
+        --accent-hover: color-mix(in srgb, var(--accent) 86%, white);
     }
 
     /* A heading: Figtree bold, mixed case. Callers set their own size and
@@ -239,8 +257,11 @@
     /* A sign: a flat band in its region's colour across the full width of the
        region it names, lettered in sign ink. The band's height comes from its
        padding, so a sign holding a control grows around it. */
+    /* Wraps only where its words and action don't fit on one line, as at
+       200% zoom on a phone, rather than widening the page. */
     .sign {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 10px;
         min-height: 36px;
@@ -273,8 +294,10 @@
         font-weight: 700;
         transition: background-color 160ms ease;
     }
-    .sign-btn:hover {
-        background: color-mix(in srgb, var(--uno-sign-ink) 82%, black);
+    @media (hover: hover) {
+        .sign-btn:hover {
+            background: color-mix(in srgb, var(--uno-sign-ink) 82%, black);
+        }
     }
     /* A way back out of a region, drawn on its sign: an outlined pill in sign
        ink — the Library button over the Home pane. */
@@ -291,8 +314,10 @@
         box-shadow: inset 0 0 0 1.5px var(--uno-sign-ink);
         transition: background-color 160ms ease;
     }
-    .sign-btn-outline:hover {
-        background: color-mix(in srgb, var(--uno-sign-ink) 15%, transparent);
+    @media (hover: hover) {
+        .sign-btn-outline:hover {
+            background: color-mix(in srgb, var(--uno-sign-ink) 15%, transparent);
+        }
     }
     .sign-btn:focus-visible,
     .sign :focus-visible {
@@ -301,7 +326,7 @@
     }
     @media (pointer: coarse) {
         .sign-btn {
-            height: 36px;
+            height: 44px;
             padding: 0 14px;
         }
     }
@@ -387,11 +412,15 @@
         border: 1.5px dashed var(--uno-dimmer);
         transition: border-color 160ms ease;
     }
-    .home-sticker[aria-pressed='false']:hover {
-        color: var(--uno-nuvio-yellow);
+    @media (hover: hover) {
+        .home-sticker[aria-pressed='false']:hover {
+            color: var(--uno-nuvio-yellow);
+        }
     }
-    .home-sticker[aria-pressed='false']:hover::before {
-        border-color: var(--uno-nuvio-yellow);
+    @media (hover: hover) {
+        .home-sticker[aria-pressed='false']:hover::before {
+            border-color: var(--uno-nuvio-yellow);
+        }
     }
     .home-sticker[aria-pressed='true'] {
         background: var(--uno-nuvio-yellow);
@@ -414,8 +443,10 @@
         font-size: 8.5px;
         letter-spacing: 0.01em;
     }
-    .home-sticker[aria-pressed='true']:hover {
-        background: var(--uno-nuvio-yellow-hover);
+    @media (hover: hover) {
+        .home-sticker[aria-pressed='true']:hover {
+            background: var(--uno-nuvio-yellow-hover);
+        }
     }
     .home-sticker[data-slap] {
         animation: uno-slap 420ms var(--uno-ease);
@@ -532,8 +563,10 @@
         color: var(--uno-sign-ink);
         font-weight: 750;
     }
-    .btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
-        background: color-mix(in srgb, var(--accent) 86%, white);
+    @media (hover: hover) {
+        .btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
+            background: var(--accent-hover);
+        }
     }
     .btn-primary:active:not(:disabled):not([aria-disabled='true']) {
         background: color-mix(in srgb, var(--accent) 88%, black);
@@ -559,8 +592,10 @@
         color: var(--uno-sign-ink);
         font-weight: 750;
     }
-    .btn-push:hover:not(:disabled) {
-        background: var(--uno-nuvio-yellow-hover);
+    @media (hover: hover) {
+        .btn-push:hover:not(:disabled) {
+            background: var(--uno-nuvio-yellow-hover);
+        }
     }
     .btn-push:active:not(:disabled) {
         background: var(--uno-nuvio-yellow-pressed);
@@ -586,8 +621,10 @@
         color: var(--uno-ink);
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
     }
-    .btn-secondary:hover:not(:disabled) {
-        box-shadow: inset 0 0 0 1px var(--uno-dim);
+    @media (hover: hover) {
+        .btn-secondary:hover:not(:disabled) {
+            box-shadow: inset 0 0 0 1px var(--uno-dim);
+        }
     }
     .btn-secondary:active:not(:disabled) {
         background: var(--uno-raised);
@@ -602,9 +639,11 @@
         color: var(--accent);
         box-shadow: inset 0 0 0 1.5px var(--accent);
     }
-    .btn-secondary.btn-accent-outline:hover:not(:disabled) {
-        background: var(--uno-raised-hi);
-        box-shadow: inset 0 0 0 1.5px var(--accent);
+    @media (hover: hover) {
+        .btn-secondary.btn-accent-outline:hover:not(:disabled) {
+            background: var(--uno-raised-hi);
+            box-shadow: inset 0 0 0 1.5px var(--accent);
+        }
     }
 
     /* Quiet (DESIGN.md's "Quiet / Ghost"): dim label, no outline until the
@@ -614,9 +653,11 @@
         color: var(--uno-dim);
         padding: 0 12px;
     }
-    .btn-ghost:hover:not(:disabled) {
-        color: var(--uno-ink);
-        background: var(--uno-raised-hi);
+    @media (hover: hover) {
+        .btn-ghost:hover:not(:disabled) {
+            color: var(--uno-ink);
+            background: var(--uno-raised-hi);
+        }
     }
     .btn-ghost:disabled {
         color: var(--uno-dimmer);
@@ -629,8 +670,10 @@
         color: var(--uno-danger-ink);
         font-weight: 750;
     }
-    .btn-danger:hover:not(:disabled) {
-        background: var(--uno-danger-hover);
+    @media (hover: hover) {
+        .btn-danger:hover:not(:disabled) {
+            background: var(--uno-danger-hover);
+        }
     }
     .btn-danger:active:not(:disabled) {
         background: var(--uno-danger-pressed);
@@ -655,9 +698,11 @@
         text-decoration-color: color-mix(in srgb, var(--uno-danger) 55%, transparent);
         text-underline-offset: 4px;
     }
-    .btn-danger-text:hover:not(:disabled) {
-        color: var(--uno-danger-text-hover);
-        text-decoration-color: var(--uno-danger-text-hover);
+    @media (hover: hover) {
+        .btn-danger-text:hover:not(:disabled) {
+            color: var(--uno-danger-text-hover);
+            text-decoration-color: var(--uno-danger-text-hover);
+        }
     }
 
     .btn-primary:focus-visible,
@@ -710,8 +755,10 @@
     .field::placeholder {
         color: var(--uno-dimmer);
     }
-    .field:hover:not(:disabled):not(:focus) {
-        border-color: var(--uno-dim);
+    @media (hover: hover) {
+        .field:hover:not(:disabled):not(:focus) {
+            border-color: var(--uno-dim);
+        }
     }
     .field:focus {
         border-color: var(--uno-dim);
@@ -791,8 +838,10 @@
             background-color 160ms ease,
             border-color 160ms ease;
     }
-    .checkbox:hover:not(:checked) {
-        border-color: var(--uno-ink);
+    @media (hover: hover) {
+        .checkbox:hover:not(:checked) {
+            border-color: var(--uno-ink);
+        }
     }
     .checkbox:checked {
         background: var(--uno-ink);
@@ -923,10 +972,12 @@
             background-color 160ms ease,
             color 160ms ease;
     }
-    .pv-row-btn:hover,
-    .fp-back:hover {
-        color: var(--uno-ink);
-        background: var(--uno-raised-hi);
+    @media (hover: hover) {
+        .pv-row-btn:hover,
+        .fp-back:hover {
+            color: var(--uno-ink);
+            background: var(--uno-raised-hi);
+        }
     }
     .pv-row-btn:focus-visible,
     .fp-back:focus-visible {
@@ -1077,9 +1128,11 @@
     .pv-tile:focus-visible {
         outline: none;
     }
-    a.pv-tile:hover .art::after,
-    button.pv-tile:hover .art::after {
-        box-shadow: inset 0 0 0 1px var(--uno-ink);
+    @media (hover: hover) {
+        a.pv-tile:hover .art::after,
+        button.pv-tile:hover .art::after {
+            box-shadow: inset 0 0 0 1px var(--uno-ink);
+        }
     }
     .pv-tile:focus-visible .art::after {
         box-shadow: inset 0 0 0 2px var(--uno-ink);
@@ -1327,8 +1380,10 @@
         border-radius: 14px;
         transition: background-color 160ms ease;
     }
-    button.sec-head:hover {
-        background: var(--uno-raised-hi);
+    @media (hover: hover) {
+        button.sec-head:hover {
+            background: var(--uno-raised-hi);
+        }
     }
     .sec-head > .setting-label {
         grid-column: 1;
@@ -1436,10 +1491,12 @@
             box-shadow 160ms ease,
             color 160ms ease;
     }
-    .choice:hover,
-    .gchip:hover {
-        color: var(--uno-ink);
-        box-shadow: inset 0 0 0 1px var(--uno-dim);
+    @media (hover: hover) {
+        .choice:hover,
+        .gchip:hover {
+            color: var(--uno-ink);
+            box-shadow: inset 0 0 0 1px var(--uno-dim);
+        }
     }
     .choice[aria-pressed='true'],
     .choice[data-state='active'],
@@ -1615,8 +1672,10 @@
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
         transition: box-shadow 160ms ease;
     }
-    .fold-tile-btn:hover .fold-tile-face {
-        box-shadow: inset 0 0 0 1px var(--uno-dim);
+    @media (hover: hover) {
+        .fold-tile-btn:hover .fold-tile-face {
+            box-shadow: inset 0 0 0 1px var(--uno-dim);
+        }
     }
     .fold-tile.is-selected .fold-tile-face {
         outline: 2px solid var(--accent);
@@ -1657,9 +1716,13 @@
         opacity: 0;
         transition: opacity 160ms ease;
     }
-    .fold-tile:hover .fold-tile-grip,
     .fold-tile:focus-within .fold-tile-grip {
         opacity: 1;
+    }
+    @media (hover: hover) {
+        .fold-tile:hover .fold-tile-grip {
+            opacity: 1;
+        }
     }
     @media (pointer: coarse) {
         .fold-tile-grip {
@@ -1705,8 +1768,10 @@
     .fold-detail .sec-head {
         background: var(--uno-raised-hi);
     }
-    .fold-detail button.sec-head:hover {
-        background: var(--uno-line);
+    @media (hover: hover) {
+        .fold-detail button.sec-head:hover {
+            background: var(--uno-line);
+        }
     }
     .fold-detail .setting.is-head {
         margin-top: 16px;
@@ -1795,8 +1860,10 @@
     .community-row {
         --row-fill: var(--uno-ground);
     }
-    .community-row:hover {
-        --row-fill: var(--uno-raised);
+    @media (hover: hover) {
+        .community-row:hover {
+            --row-fill: var(--uno-raised);
+        }
     }
     .community-row:active {
         --row-fill: var(--uno-raised-hi);

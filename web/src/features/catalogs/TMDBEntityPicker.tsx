@@ -328,6 +328,7 @@ export function TMDBEntityPicker({
         ref={inputRef}
         id={inputId}
         type="search"
+        enterKeyHint="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onInputKeyDown}

@@ -168,7 +168,7 @@ interface CommunityRowProps {
  */
 export function CommunityRow({ item, summary, meta, showKind, buttonID, onOpen, actions }: CommunityRowProps) {
   return (
-    <div className="community-row hover:bg-raised active:bg-raised-hi relative -mx-3 flex items-start gap-3 rounded-[12px] px-3 py-3 transition-colors sm:items-center sm:gap-4">
+    <div className="community-row hover:bg-raised active:bg-raised-hi relative -mx-3 flex items-start gap-3 rounded-[12px] px-3 py-3 transition-colors max-[18rem]:flex-col sm:items-center sm:gap-4">
       <RowPosters item={item} />
       <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -184,7 +184,9 @@ export function CommunityRow({ item, summary, meta, showKind, buttonID, onOpen, 
             </button>
             <RowStickers item={item} showKind={showKind} />
           </div>
-          <span className="text-dim line-clamp-2 text-[13.5px] sm:line-clamp-1">{summary}</span>
+          <span title={summary} className="text-dim line-clamp-2 text-[13.5px] sm:line-clamp-1">
+            {summary}
+          </span>
           <RowFolders item={item} onOpen={onOpen} />
           <span className="type-data text-dimmer text-[12.5px]">
             <MetaParts parts={meta} />

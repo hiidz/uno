@@ -147,7 +147,7 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
           type="button"
           onClick={() => onChange(option)}
           aria-pressed={view === option}
-          className={`rounded-full px-3.5 py-1 text-[13px] font-bold capitalize transition-colors pointer-coarse:py-2.5 ${
+          className={`rounded-full px-3.5 py-1 text-[13px] font-bold capitalize transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
             view === option
               ? 'bg-sign-ink text-nuvio-yellow'
               : 'text-sign-ink hover:bg-sign-ink/12'
@@ -334,7 +334,7 @@ function HomeRow({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`border-line grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-1 border-b py-3 pr-1 pl-0 transition-colors sm:gap-x-3 ${
+      className={`border-line grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-1 border-b py-3 pr-1 pl-0 transition-colors sm:gap-x-3 pointer-coarse:gap-x-3 pointer-coarse:max-[18rem]:gap-x-1 ${
         isDragging ? 'relative z-10 opacity-40' : ''
       }`}
     >
@@ -352,7 +352,7 @@ function HomeRow({
 
       {/* On touch each button's `.tap` box grows to 44px, so the pair spreads
           apart rather than let one swallow the other's taps. */}
-      <div className="col-start-3 row-start-1 flex gap-0.5 pointer-coarse:gap-3">
+      <div className="col-start-3 row-start-1 flex gap-0.5 pointer-coarse:gap-3 pointer-coarse:max-[18rem]:gap-0.5">
         <MoveUpButton
           label={`Move ${name} up${first ? `, already first of ${groupWord}` : ''}`}
           disabled={first}

@@ -184,8 +184,8 @@ function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) 
           while the page is open, so the band's height moves and is read from
           the DOM. */}
       <div ref={stickyRef} className="sticky top-0 z-30 shrink-0 lg:static">
-        {/* One row that never wraps, at every width: the profile chip
-            truncates instead. */}
+        {/* One row at every phone width: the profile chip truncates instead,
+            down to a few letters (`HEADER_ROW`). */}
         <header className={HEADER_ROW}>
           <Wordmark className={HEADER_WORDMARK} />
 

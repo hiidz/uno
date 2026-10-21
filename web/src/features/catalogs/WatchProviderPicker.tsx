@@ -141,6 +141,7 @@ export function WatchProviderPicker({
         <>
           <input
             type="search"
+            enterKeyHint="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search services…"

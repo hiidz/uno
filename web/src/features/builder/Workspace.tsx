@@ -571,7 +571,7 @@ export function Workspace({
           <button
             type="button"
             onClick={showHome}
-            className="btn-secondary bg-raised-hi sticky bottom-4 z-20 mb-4 self-center lg:hidden"
+            className="btn-secondary bg-raised-hi sticky bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 mb-4 self-center lg:hidden"
           >
             Your home screen
             <Icon icon={ArrowDown} size={16} />

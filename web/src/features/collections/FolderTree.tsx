@@ -203,7 +203,9 @@ function FolderTileItem({
         </span>
         <span className="fold-tile-name">
           {hasError && <Icon icon={TriangleAlert} size={12} className="text-danger shrink-0" />}
-          <span className="truncate">{name}</span>
+          <span title={name} className="truncate">
+            {name}
+          </span>
         </span>
         <span className="type-data text-dimmer text-[12.5px] tabular-nums">
           {pluralCount(folder.refs.length, 'catalog')}

@@ -229,16 +229,17 @@ function Controls({
           { value: 'collection', label: 'Collections' },
         ]}
       />
-      <div className="relative min-w-[200px] flex-1">
+      <div className="relative min-w-[min(200px,100%)] flex-1">
         <Icon icon={Search} size={16} className="text-dimmer pointer-events-none absolute top-1/2 left-4 -translate-y-1/2" />
         <input
           type="search"
+          enterKeyHint="search"
           value={filters.q}
           onChange={(event) => patch({ q: event.target.value })}
           placeholder="Search"
           aria-label="Search Community"
           maxLength={SEARCH_MAX_LENGTH}
-          className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:text-[16px]"
+          className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
         />
       </div>
       <div className="flex items-center gap-2">

@@ -46,6 +46,7 @@ function KeyInput({ id, value, error, autoFocus, onChange }: KeyInputProps) {
       autoCapitalize="off"
       autoCorrect="off"
       spellCheck={false}
+      enterKeyHint="go"
       autoFocus={autoFocus}
       aria-invalid={state.invalid}
       aria-describedby={state.describedBy}
@@ -220,7 +221,7 @@ export function TMDBKeyShelf({ step }: { step: KeyStep }) {
         <Icon icon={KeyRound} className="text-dim" />
         <span className="text-[15px] font-semibold">TMDB key</span>
         <span className="type-data text-dim text-[14px]">ends in {step.last4}</span>
-        <span hidden={replacing} className="ml-auto flex gap-1">
+        <span hidden={replacing} className="ml-auto flex gap-1 pointer-coarse:gap-3">
           <button type="button" className="btn-secondary btn-sm" onClick={() => setReplacing(true)}>
             Replace
           </button>

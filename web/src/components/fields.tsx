@@ -181,6 +181,7 @@ export function TextInput({
       value={value}
       placeholder={placeholder}
       maxLength={maxLength}
+      enterKeyHint="done"
       aria-label={ariaLabel}
       aria-invalid={invalid || undefined}
       onChange={(event) => onChange(event.target.value)}
@@ -335,7 +336,7 @@ export function Segmented<T extends string>({
           onClick={() => !disabled && onChange(option.value)}
           aria-pressed={value === option.value}
           aria-disabled={disabled || undefined}
-          className={`flex-1 rounded-full px-3.5 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors pointer-coarse:py-2.5 ${
+          className={`flex-1 rounded-full px-3.5 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
             disabled
               ? `text-dimmer cursor-not-allowed ${value === option.value ? 'underline decoration-1 underline-offset-[0.3em]' : ''}`
               : value === option.value

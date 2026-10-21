@@ -75,7 +75,7 @@ export function ProfileMenu({
         onClick={onSwitchProfile}
         title="Switch profile"
         aria-label={`Profile ${profileIndex}, ${profileName}. Switch profile`}
-        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] shrink-0 items-center gap-2 rounded-full pr-3.5 pl-1 text-[14px] font-semibold whitespace-nowrap transition-colors ${className}`}
+        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] shrink-0 items-center gap-2 rounded-full pointer-coarse:h-11 pr-3.5 pl-1 text-[14px] font-semibold whitespace-nowrap transition-colors ${className}`}
       >
         <SlotSticker index={profileIndex} />
         {profileName}
@@ -95,13 +95,13 @@ export function ProfileMenu({
         // as a flex container, so without it this keeps its full width and
         // spills out of the wrapper the row has already squeezed — under Push
         // — instead of truncating inside it.
-        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] min-w-0 max-w-full items-center gap-2 rounded-full pr-3 pl-1 text-[14px] font-semibold transition-colors ${className}`}
+        className={`bg-raised-hi hover:bg-line-hi flex h-[34px] min-w-0 max-w-full items-center gap-2 rounded-full pointer-coarse:h-11 pr-3 pl-1 text-[14px] font-semibold transition-colors ${className}`}
       >
         <SlotSticker index={profileIndex} />
         {/* The word "profile" is dropped here and kept in the menu below: it is
             52.9px of a row that has none to spare, and the chip's position and
             the menu it opens both already say what it is. */}
-        <span className="truncate">{profileName}</span>
+        <span className="min-w-[4ch] truncate">{profileName}</span>
         <Icon icon={ChevronDown} size={14} className="text-dim shrink-0" />
       </DropdownMenu.Trigger>
 

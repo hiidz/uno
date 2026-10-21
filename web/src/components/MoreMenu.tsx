@@ -44,7 +44,7 @@ export function MoreMenuItem({
   return (
     <DropdownMenu.Item
       {...props}
-      className={`hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[14px] font-medium transition-colors ${
+      className={`hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[14px] font-medium transition-colors pointer-coarse:min-h-11 ${
         danger ? 'text-danger' : 'text-ink'
       }`}
     >

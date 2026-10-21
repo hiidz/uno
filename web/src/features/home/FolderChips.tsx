@@ -7,7 +7,11 @@ const SHOWN = 6
 /** A Home row's summary line under its name: a catalog's recipe, or a
  *  collection that has no folders to show. */
 export function DetailLine({ text }: { text: string }) {
-  return <span className="text-dim col-[2/-1] truncate text-[13.5px]">{text}</span>
+  return (
+    <span title={text} className="text-dim col-[2/-1] truncate text-[13.5px]">
+      {text}
+    </span>
+  )
 }
 
 /** A collection row's folders as tiles, or its summary while it has none
@@ -25,7 +29,7 @@ export function CollectionDetail({ collection, summary }: { collection: PreviewC
 function FolderChips({ folders }: { folders: PreviewFolder[] }) {
   const hidden = folders.length - SHOWN
   return (
-    <ul aria-label="Folders" className="col-[2/-1] m-0 flex list-none flex-wrap items-center gap-1.5 p-0">
+    <ul aria-label="Folders" className="col-[2/-1] m-0 flex min-w-0 list-none flex-wrap items-center gap-1.5 p-0">
       {folders.slice(0, SHOWN).map((folder) => (
         <FolderChip key={folder.id} folder={folder} />
       ))}
@@ -38,10 +42,13 @@ function FolderChips({ folders }: { folders: PreviewFolder[] }) {
  *  image nor emoji is its title alone. */
 function FolderChip({ folder }: { folder: PreviewFolder }) {
   const hasFace = Boolean(folder.coverImageUrl || folder.coverEmoji)
+  const title = folder.title || 'Untitled folder'
   return (
-    <li className={`bg-raised flex h-7 max-w-[11rem] items-center gap-1.5 rounded-lg py-0.5 pr-2.5 ${hasFace ? 'pl-0.5' : 'pl-2.5'}`}>
+    <li className={`bg-raised flex h-7 max-w-[11rem] min-w-0 items-center gap-1.5 rounded-lg py-0.5 pr-2.5 ${hasFace ? 'pl-0.5' : 'pl-2.5'}`}>
       {hasFace && <FolderFace folder={folder} />}
-      <span className="text-dim truncate text-[12.5px] font-semibold">{folder.title || 'Untitled folder'}</span>
+      <span title={title} className="text-dim truncate text-[12.5px] font-semibold">
+        {title}
+      </span>
     </li>
   )
 }

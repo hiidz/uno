@@ -106,7 +106,7 @@ export function EditorShell({
         </div>
 
         {/* The row's actions, below `lg` only. */}
-        <div className="flex shrink-0 items-center gap-1 lg:hidden">
+        <div className="flex shrink-0 items-center gap-1 pointer-coarse:gap-3 lg:hidden">
           {onDuplicate && (
             <GlyphButton
               label={`Duplicate ${title}`}
@@ -154,7 +154,7 @@ export function EditorShell({
       </div>
 
       {/* The flex column pins it under the scrolling body at every width. */}
-      <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 py-4 lg:px-6">
+      <div className="border-line flex shrink-0 flex-wrap items-center justify-end gap-2 border-t px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:px-6">
         {footer}
       </div>
     </section>
