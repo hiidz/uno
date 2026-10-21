@@ -157,17 +157,70 @@ function folderCatalogIDs(folder: Pick<Folder, 'refs'>): string[] {
   return (folder.refs ?? []).map((ref) => ref.catalog_id)
 }
 
-const STEP_LABEL: Record<OwnSharing, string> = {
-  private: 'Publish…',
-  changed: 'Publish update…',
-  live: 'Unpublish…',
+/** A profile's own library row, as publishing reads it. */
+export type OwnRow = { kind: 'catalog'; row: Catalog } | { kind: 'collection'; row: Collection }
+
+/** An own row's name: a catalog's name, a collection's title. */
+export function ownName(own: OwnRow): string {
+  return own.kind === 'catalog' ? own.row.name : own.row.title
 }
 
-/** An own row's next step with Community, as its editor's sign button names
- *  it, and why it waits: Community holds the saved row, so every step waits
- *  while the form has unsaved changes. */
-export function sharingStep(state: OwnSharing, dirty: boolean): { label: string; waiting: string | null } {
-  return { label: STEP_LABEL[state], waiting: dirty ? 'Save first.' : null }
+/** The order of the profile's own rows under Your publications: the
+ *  published, those with edits waiting first, then the private. */
+const PICK_ORDER: Record<OwnSharing, number> = { changed: 0, live: 1, private: 2 }
+
+/** The rows a profile can publish, for Your publications: its listed
+ *  catalogs and its collections, leaving out what it added from Community,
+ *  in `PICK_ORDER` and otherwise in library order, catalogs before
+ *  collections. */
+export function publishChoices(library: { catalogs: Catalog[]; collections: Collection[] }): OwnRow[] {
+  const rows: OwnRow[] = [
+    ...library.catalogs.map((row) => ({ kind: 'catalog' as const, row })),
+    ...library.collections.map((row) => ({ kind: 'collection' as const, row })),
+  ]
+  return rows
+    .filter((own) => own.row.subscription === null)
+    .sort((a, b) => PICK_ORDER[ownSharing(a.row.publication)] - PICK_ORDER[ownSharing(b.row.publication)])
+}
+
+/** What the Your publications card counts: how many own rows are
+ *  published, how many of those have edits waiting, and how many are
+ *  private. */
+export interface PublicationCounts {
+  published: number
+  toPublish: number
+  private: number
+}
+
+export function publicationCounts(choices: OwnRow[]): PublicationCounts {
+  const states = choices.map((own) => ownSharing(own.row.publication))
+  return {
+    published: states.filter((state) => state !== 'private').length,
+    toPublish: states.filter((state) => state === 'changed').length,
+    private: states.filter((state) => state === 'private').length,
+  }
+}
+
+/** The card's count line: "4 published · 2 not published yet", leaving out
+ *  a zero, or what it says with nothing of the profile's own. */
+export function countsLine(counts: PublicationCounts): string {
+  const parts = [
+    counts.published > 0 ? `${counts.published} published` : '',
+    counts.private > 0 ? `${counts.private} not published yet` : '',
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join(' · ') : 'Nothing of yours yet'
+}
+
+/** The own row whose publication is `publicationID`, or null while the
+ *  library doesn't list one. */
+export function ownRowOf(
+  library: { catalogs: Catalog[]; collections: Collection[] } | undefined,
+  publicationID: string,
+): OwnRow | null {
+  const catalog = library?.catalogs.find((row) => row.publication?.id === publicationID)
+  if (catalog) return { kind: 'catalog', row: catalog }
+  const collection = library?.collections.find((row) => row.publication?.id === publicationID)
+  return collection ? { kind: 'collection', row: collection } : null
 }
 
 /** A failed call's message, for a dialog's error line. */

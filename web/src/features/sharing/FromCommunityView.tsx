@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { Catalog, Collection, SubscriptionState } from '@/api'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { EditorShell } from '@/features/builder/EditorShell'
 import type { GenreLookups } from '@/features/library/useLibrary'
@@ -96,13 +97,13 @@ function ViewFrame({
       onDelete={onDelete}
       footer={
         <>
-          <button type="button" className="btn-secondary" onClick={onClose}>
+          <Button kind="secondary" onClick={onClose}>
             Close
-          </button>
+          </Button>
           {onDuplicate && (
-            <button type="button" className={updating ? 'btn-secondary' : 'btn-primary'} onClick={onDuplicate}>
+            <Button kind={updating ? 'secondary' : 'primary'} onClick={onDuplicate}>
               Duplicate to edit
-            </button>
+            </Button>
           )}
         </>
       }
@@ -124,10 +125,10 @@ function ViewLead({ profileIndex, subscription, onUpdate }: ViewLeadProps) {
   if (!updateWaits({ subscription })) return null
   return (
     <div className="tone-community flex flex-wrap items-center gap-3">
-      <button type="button" className="btn-primary" onClick={onUpdate}>
+      <Button kind="primary" onClick={onUpdate}>
         <Icon icon={RefreshCw} size={16} />
         Update…
-      </button>
+      </Button>
       <UpdateCount profileIndex={profileIndex} subscription={subscription} />
     </div>
   )

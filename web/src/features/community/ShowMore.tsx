@@ -1,3 +1,5 @@
+import { Button } from '@/components/Button'
+
 /** What Show more needs from Community's paged query. */
 export interface MorePages {
   hasNextPage: boolean
@@ -12,15 +14,10 @@ export function ShowMore({ pages }: { pages: MorePages }) {
   if (!pages.hasNextPage) return null
   return (
     <div className="flex flex-col items-start gap-2 pt-2">
-      {pages.isFetchNextPageError && <p className="type-data text-danger m-0 text-[12.5px]">Couldn’t load more.</p>}
-      <button
-        type="button"
-        onClick={() => void pages.fetchNextPage()}
-        disabled={pages.isFetchingNextPage}
-        className="btn-secondary"
-      >
+      {pages.isFetchNextPageError && <p className="type-data text-danger text-meta m-0">Couldn’t load more.</p>}
+      <Button kind="secondary" onClick={() => void pages.fetchNextPage()} disabled={pages.isFetchingNextPage}>
         {moreLabel(pages)}
-      </button>
+      </Button>
     </div>
   )
 }

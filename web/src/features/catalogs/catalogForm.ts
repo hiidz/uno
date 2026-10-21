@@ -36,7 +36,7 @@ export const MAX_ENTITY_IDS = 20
 
 /** The longest a catalog's name may be, in characters: the server's
  *  `maxNameLen`. */
-export const MAX_NAME_LENGTH = 200
+export const MAX_NAME_LENGTH = 60
 
 /** The top of TMDB's rating scale: the server's `tmdbMaxVoteAverage`. */
 const MAX_VOTE_AVERAGE = 10

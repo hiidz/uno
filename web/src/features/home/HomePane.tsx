@@ -5,6 +5,7 @@ import { Tv } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import { Grip, MoveDownButton, MoveUpButton } from '@/components/dnd'
 import { Segmented } from '@/components/fields'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { StateView } from '@/components/StateView'
 import { SkeletonBar, skeletonKeys } from '@/components/Skeleton'
@@ -78,7 +79,7 @@ export function HomePane({
           id={headingID}
           tabIndex={-1}
           data-landing
-          className="type-sign m-0 text-[16px] leading-tight outline-none lg:text-[25px]"
+          className="type-sign text-sign-headline m-0 outline-none"
         >
           Your home screen
         </h2>
@@ -142,12 +143,13 @@ function ViewSwitch({ view, onChange }: { view: HomeView; onChange: (view: HomeV
   return (
     <div className="flex gap-0.5 rounded-full p-[3px] shadow-[inset_0_0_0_1.5px_var(--uno-sign-ink)]">
       {(['list', 'preview'] as const).map((option) => (
+        // drift-ok: the sign's own view switch, a Segmented lettered in sign ink
         <button
           key={option}
           type="button"
           onClick={() => onChange(option)}
           aria-pressed={view === option}
-          className={`rounded-full px-3.5 py-1 text-[13px] font-bold capitalize transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
+          className={`rounded-full px-3.5 py-1 text-meta font-bold capitalize transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
             view === option
               ? 'bg-sign-ink text-nuvio-yellow'
               : 'text-sign-ink hover:bg-sign-ink/12'
@@ -174,7 +176,7 @@ function HomeList() {
 
   if (preview.isEmpty) {
     return (
-      <p className="text-dim m-0 max-w-[48ch] py-2 text-[15px] leading-[1.5]">
+      <p className="text-dim text-body m-0 max-w-[48ch] py-2">
         Nothing on your home screen yet. Add rows from the Library with +.
       </p>
     )
@@ -283,7 +285,7 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-1">
       <div className="border-line-hi border-b pb-2.5">
-        <h3 className="text-ink m-0 text-[16px] font-bold">{label}</h3>
+        <h3 className="text-ink text-title m-0">{label}</h3>
       </div>
       {children}
     </section>
@@ -380,7 +382,7 @@ function RowBody({ name, stickers, detail }: { name: string; stickers: ReactNode
   return (
     <div className="contents sm:flex sm:min-w-0 sm:flex-col sm:gap-1">
       <span className="contents sm:flex sm:min-w-0 sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
-        <span className="min-w-0 truncate text-[16.5px] font-bold sm:max-w-full">{name}</span>
+        <span className="text-title min-w-0 [overflow-wrap:anywhere] sm:max-w-full">{name}</span>
         <span className="col-[2/-1] flex flex-wrap items-center gap-x-2 gap-y-1 sm:contents">{stickers}</span>
       </span>
       {detail}
@@ -530,8 +532,8 @@ function DiscoverTray({ rows }: { rows: PreviewRow[] }) {
   return (
     <section className="flex flex-col gap-2">
       <div className="border-line-hi border-b pb-2.5">
-        <h3 className="text-ink m-0 text-[16px] font-bold">Only in Discover</h3>
-        <p className="text-dim m-0 mt-1 text-[13px] leading-[18px]">{DISCOVER_NOTE}</p>
+        <h3 className="text-ink text-title m-0">Only in Discover</h3>
+        <p className="text-dim text-meta m-0 mt-1 leading-[18px]">{DISCOVER_NOTE}</p>
       </div>
       <ul className="flex flex-col">
         {rows.map((row) => (
@@ -549,23 +551,19 @@ function TrayRow({ row }: { row: PreviewRow }) {
   return (
     <li className="border-line flex items-center justify-between gap-3 border-b py-3">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="max-w-full truncate text-[15px] font-semibold">{row.name}</span>
+        <span className="text-body max-w-full font-semibold [overflow-wrap:anywhere]">{row.name}</span>
         <CatalogKind id={row.id} />
         <HomeFlags id={row.id} />
       </div>
-      <button
-        type="button"
-        onClick={() => home.toggleShowInHome(row.id)}
-        className="btn-secondary btn-sm shrink-0"
-      >
+      <Button kind="secondary" size="sm" onClick={() => home.toggleShowInHome(row.id)} className="shrink-0">
         Move to home
-      </button>
+      </Button>
     </li>
   )
 }
 
 function EmptyBlock({ children }: { children: ReactNode }) {
-  return <p className="text-dim m-0 py-3 text-[14px]">{children}</p>
+  return <p className="text-dim text-body-sm m-0 py-3">{children}</p>
 }
 
 /** A collection row's Pin or Unpin: a pending edit, like Move to Discover for

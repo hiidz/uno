@@ -146,7 +146,7 @@ export function WatchProviderPicker({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search services…"
             aria-label="Search streaming services"
-            className="field type-data w-full max-w-[var(--w-entry)] text-[12.5px] pointer-coarse:text-[16px]"
+            className="field type-data text-meta w-full max-w-[var(--w-entry)] pointer-coarse:text-field"
           />
 
           {/* Scrolls rather than grows: the list runs to a few hundred chips in
@@ -164,12 +164,13 @@ export function WatchProviderPicker({
             {shown.map((service) => {
               const selected = selectedIDs.includes(service.id)
               return (
+                // drift-ok: a service chip that toggles on and off
                 <button
                   key={service.id}
                   type="button"
                   onClick={() => toggle(service.id)}
                   aria-pressed={selected}
-                  className={`rounded-full border px-2 py-1 text-[12.5px] transition-colors pointer-coarse:py-3 ${
+                  className={`text-meta rounded-full border px-2 py-1 transition-colors pointer-coarse:py-3 ${
                     selected
                       ? 'bg-raised-hi border-dim text-ink'
                       : 'border-line text-dim hover:border-dim hover:text-ink'

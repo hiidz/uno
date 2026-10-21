@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from 'react'
 import type { Catalog } from '@/api'
+import { Button } from '@/components/Button'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { pluralCount } from '@/lib/plural'
@@ -80,9 +81,9 @@ interface UnpublishLinkProps {
 function UnpublishLink({ published, onUnpublish }: UnpublishLinkProps) {
   if (!published) return null
   return (
-    <button type="button" onClick={onUnpublish} className="btn-danger-text mr-auto">
+    <Button kind="danger-text" onClick={onUnpublish} className="mr-auto">
       Unpublish
-    </button>
+    </Button>
   )
 }
 
@@ -154,12 +155,12 @@ export function PublishDialog({
   return (
     <Modal open={open} onClose={onClose} labelledBy={titleID} width="540px">
       <ModalHeader>
-        <h2 id={titleID} className="type-display m-0 text-[21px] leading-[28px]">
+        <h2 id={titleID} className="type-display text-display m-0">
           {words.title(subject.name)}
         </h2>
       </ModalHeader>
       <ModalBody>
-        <div className="flex flex-col gap-4 text-[14.5px] leading-relaxed">
+        <div className="text-body-sm flex flex-col gap-4 leading-relaxed">
           <p className="text-dim m-0">{words.line}</p>
           {since}
           <PublishContents subject={subject} genres={genres} />
@@ -168,12 +169,12 @@ export function PublishDialog({
       </ModalBody>
       <ModalFooter tone="community">
         <UnpublishLink published={update} onUnpublish={onUnpublish} />
-        <button type="button" onClick={onClose} className="btn-ghost">
+        <Button kind="ghost" onClick={onClose}>
           Cancel
-        </button>
-        <button type="button" onClick={onConfirm} disabled={pending} className="btn-primary">
+        </Button>
+        <Button kind="primary" onClick={onConfirm} disabled={pending}>
           {pending ? 'Publishing…' : words.confirm}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   )

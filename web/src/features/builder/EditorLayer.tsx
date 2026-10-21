@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
+import { returnFocusTo } from '@/components/returnFocus'
 import { land } from './stacked'
 
 interface EditorLayerProps {
@@ -7,6 +8,12 @@ interface EditorLayerProps {
   stacked: boolean
   /** What is open, as the layer's accessible name. */
   label: string
+  /** Which row is open; a new one is a new opener to return focus to. */
+  openKey: string
+  /** A row just made: focus lands on its title from `lg` too. */
+  landOnOpen?: boolean
+  /** Called once focus has landed for `landOnOpen`. */
+  onLanded?: () => void
   /** Where focus goes on close when whatever opened the layer is gone. */
   fallbackFocus: RefObject<HTMLElement | null>
   children: ReactNode
@@ -27,13 +34,22 @@ interface EditorLayerProps {
  * and the browser's Back closes it, as it steps back off the editor's path. It sits at `z-[35]`, over the
  * app header (`z-30`) and under menus (`z-40`) and dialogs (`z-50`).
  */
-export function EditorLayer({ stacked, label, fallbackFocus, children }: EditorLayerProps) {
+export function EditorLayer({
+  stacked,
+  label,
+  openKey,
+  landOnOpen = false,
+  onLanded,
+  fallbackFocus,
+  children,
+}: EditorLayerProps) {
   const ref = useRef<HTMLDivElement>(null)
   // Before the focus hand-off: its cleanup returns focus into a page that has
   // to have stopped being inert first.
   useInertOthers(stacked, ref)
   useScrollLock(stacked)
-  useFocusHandoff(stacked, ref, fallbackFocus)
+  useFocusHandoff(stacked, openKey, ref, fallbackFocus)
+  useLandOnOpen(landOnOpen, ref, onLanded)
 
   return (
     <div
@@ -100,27 +116,56 @@ function useScrollLock(stacked: boolean) {
 }
 
 /**
- * Focus to the editor's title on open, and back to what opened the layer on
- * close — or to `fallback` when that is gone, as a deleted row is. The opener
- * is read once, on the first render, before anything moves focus. Passive
- * effects, so on close the page behind has already stopped being inert.
+ * Focus to the editor's title on open below `lg`. On close, at every width,
+ * back to what opened the editor, or to `fallback` when that is gone, as a
+ * deleted row is. The opener is read as each row opens, during that render,
+ * before anything moves focus; one opened from inside the editor (Duplicate)
+ * keeps the opener from outside it. Passive effects, so on close the page
+ * behind has already stopped being inert.
  */
 function useFocusHandoff(
   stacked: boolean,
+  openKey: string,
   ref: RefObject<HTMLDivElement | null>,
   fallback: RefObject<HTMLElement | null>,
 ) {
-  const [opener] = useState(() => document.activeElement)
+  const [opener, setOpener] = useState(() => openerElement(null))
+  const [openedKey, setOpenedKey] = useState(openKey)
+  if (openKey !== openedKey) {
+    setOpenedKey(openKey)
+    const next = openerElement(ref.current)
+    if (next) setOpener(next)
+  }
+  const latest = useRef(opener)
+  useEffect(() => {
+    latest.current = opener
+  })
 
   useEffect(() => {
-    if (!stacked) return
+    if (stacked && ref.current) land(ref.current)
+  }, [stacked, ref])
+
+  useEffect(() => {
     const rail = fallback.current
-    if (ref.current) land(ref.current)
-    return () => returnFocus(opener, rail)
-  }, [stacked, ref, opener, fallback])
+    return () => returnFocusTo(latest.current, rail)
+  }, [fallback])
 }
 
-function returnFocus(opener: Element | null, fallback: HTMLElement | null) {
-  const target = opener instanceof HTMLElement && opener.isConnected && opener !== document.body ? opener : fallback
-  target?.focus({ preventScroll: true })
+/** Focus to the title of a row just made, from `lg` too, where a row opened
+ *  from the rail leaves focus on the rail. */
+function useLandOnOpen(landOnOpen: boolean, ref: RefObject<HTMLDivElement | null>, onLanded?: () => void) {
+  useEffect(() => {
+    if (!landOnOpen || !ref.current) return
+    land(ref.current)
+    onLanded?.()
+  }, [landOnOpen, ref, onLanded])
+}
+
+/** What holds focus, unless nothing does or it is inside the layer itself or
+ *  a dialog over the page, which close as the row opens. */
+function openerElement(layer: HTMLElement | null): HTMLElement | null {
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement) || active === document.body || layer?.contains(active)) return null
+  if (active.closest('[role="dialog"]:not([data-editor-layer]), [role="alertdialog"]')) return null
+  return active
 }

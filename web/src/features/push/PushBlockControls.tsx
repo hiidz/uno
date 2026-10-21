@@ -44,8 +44,8 @@ export function PushBlockNote({ block }: PushBlockNoteProps) {
         <Icon icon={TriangleAlert} size={14} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="text-ink m-0 text-[14px] font-bold">{words.headline}</p>
-        <p className="text-dim m-0 text-[13.5px]">{words.detail}</p>
+        <p className="text-ink text-body-sm m-0 font-bold">{words.headline}</p>
+        <p className="text-dim text-meta m-0">{words.detail}</p>
       </div>
     </div>
   )

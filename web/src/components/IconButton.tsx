@@ -31,9 +31,11 @@ export function IconButton({
   destructive?: boolean
   /** `'icon'`: an icon-only circle printed on a sign — the editor header's own
    *  duplicate and delete, below `lg`, where the header is one compact line.
+   *  `'plain'`: an icon-only circle on a pane or a row — a ⋯ menu, a row's
+   *  ↑/↓ — grey until hovered, and dimmest with no hover while disabled.
    *  `'labeled'`: the icon plus the label's first word — the library rail's
    *  own row actions, above `lg`, where a selected row has room to spend. */
-  variant: 'icon' | 'labeled'
+  variant: 'icon' | 'plain' | 'labeled'
   /** The circle's size: 24, 32 or 36px. The labeled shape has one size. */
   size?: keyof typeof CIRCLE
 }) {
@@ -51,20 +53,22 @@ export function IconButton({
         onClick?.(event)
       }}
       aria-label={label}
-      title={label}
+      title={rest.title ?? label}
       className={`${
         variant === 'icon'
           ? `tap grid ${circle.box} shrink-0 place-items-center rounded-full transition-colors ${
               destructive ? 'hover:bg-sign-ink hover:text-danger' : 'hover:bg-sign-ink/15'
             }`
-          : `flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-[color,box-shadow] pointer-coarse:h-11 ${
+          : variant === 'plain'
+          ? `tap grid ${circle.box} shrink-0 place-items-center rounded-full transition-colors text-dim enabled:hover:bg-line enabled:hover:text-ink enabled:active:bg-line-hi disabled:text-dimmer disabled:cursor-not-allowed`
+          : `flex h-8 items-center gap-1.5 rounded-full px-3 text-meta font-semibold transition-[color,box-shadow] pointer-coarse:h-11 ${
               destructive
                 ? 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] hover:text-danger hover:shadow-[inset_0_0_0_1.5px_var(--uno-danger)]'
                 : 'text-dim shadow-[inset_0_0_0_1px_var(--uno-line-hi)] hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--uno-dim)]'
             }`
       } ${className}`}
     >
-      <Icon icon={icon} size={variant === 'icon' ? circle.icon : 15} />
+      <Icon icon={icon} size={variant === 'labeled' ? 15 : circle.icon} />
       {variant === 'labeled' && label.split(' ')[0]}
     </button>
   )

@@ -129,7 +129,7 @@ function ContentTile({
   const name = item.year ? `${item.title} (${item.year})` : item.title
   const face = (
     <>
-      <span className="type-data text-dimmer px-1 text-center text-[11px] leading-tight">
+      <span className="type-data text-dimmer text-caption px-1 text-center leading-tight">
         {item.title}
       </span>
       {item.poster && (

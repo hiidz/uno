@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Plus, Search } from 'lucide-react'
 import { tmdbKind } from '@/api'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { railStickers } from '@/features/sharing/sharingState'
@@ -37,7 +38,6 @@ export function LibrarySection({
   onDeleteCollection,
   onImport,
   onExport,
-  notice,
 }: {
   library: Library
   /** The row whose editor is open in the pane, or `null` for none. */
@@ -52,8 +52,6 @@ export function LibrarySection({
   onDeleteCollection: (collection: LibraryCollection) => void
   onImport: () => void
   onExport: () => void
-  /** A short outcome line under the search row, such as the result of an import. */
-  notice?: ReactNode
 }) {
   const [search, setSearch] = useState('')
   const home = useHomeSelection()
@@ -110,7 +108,7 @@ export function LibrarySection({
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Filter by name or genre"
             aria-label="Filter your library"
-            className="field h-10 w-full pl-10 text-[14px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
+            className="field text-body-sm h-10 w-full pl-10 pointer-coarse:h-11 pointer-coarse:text-field"
           />
         </div>
         <MoreMenu label="your library">
@@ -123,7 +121,6 @@ export function LibrarySection({
       <p role="status" className="sr-only">
         {query && !library.isLoading ? filterResult(catalogs.length, collections.length) : ''}
       </p>
-      {notice}
 
       {/* One error and one Retry for the whole library: both lists come from
           the same request, so a failure leaves both groups undrawn. */}
@@ -135,10 +132,10 @@ export function LibrarySection({
         label="Catalogs"
         tone="catalog"
         action={
-          <button type="button" className="sign-btn" onClick={onNewCatalog} aria-label="New catalog">
+          <Button kind="sign" onClick={onNewCatalog} aria-label="New catalog">
             <Icon icon={Plus} size={14} />
             New
-          </button>
+          </Button>
         }
         count={catalogs.length}
         loadingRows={3}
@@ -175,10 +172,10 @@ export function LibrarySection({
         label="Collections"
         tone="collection"
         action={
-          <button type="button" className="sign-btn" onClick={onNewCollection} aria-label="New collection">
+          <Button kind="sign" onClick={onNewCollection} aria-label="New collection">
             <Icon icon={Plus} size={14} />
             New
-          </button>
+          </Button>
         }
         count={collections.length}
         loadingRows={2}

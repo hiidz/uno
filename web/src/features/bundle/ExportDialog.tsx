@@ -5,6 +5,8 @@ import { Checkbox } from '@/components/fields'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import type { LibraryCatalog, LibraryCollection } from '@/features/library/useLibrary'
 import { bundleText, copyText } from './text'
+import { Button } from '@/components/Button'
+import { StateView } from '@/components/StateView'
 
 /** Focuses a box, selects its text and brings it into view. */
 function reveal(box: HTMLTextAreaElement | null) {
@@ -39,7 +41,7 @@ export function ExportDialog({
   return (
     <Modal open={open} onClose={onClose} labelledBy="export-title" width="480px">
       <ModalHeader>
-        <h2 id="export-title" className="type-display m-0 text-[18px]">
+        <h2 id="export-title" className="type-display text-display m-0">
           Export
         </h2>
       </ModalHeader>
@@ -108,7 +110,7 @@ function ExportForm({
             picked={picked}
             onPick={pick}
           />
-          <p className="type-data text-dimmer m-0 text-[12.5px]">
+          <p className="type-data text-dimmer text-meta m-0">
             Collections include the catalogs they use.
           </p>
           {fallback !== null && <CopyFallback text={fallback} />}
@@ -151,28 +153,26 @@ function PickGroup({
         <span id={labelID} className="type-label flex-1">
           {label}
         </span>
-        <span className="type-data text-dimmer text-[12px]">
+        <span className="type-data text-dimmer text-caption">
           {count} of {rows.length}
         </span>
-        <button type="button" className="btn-ghost" onClick={() => onPick(ids, true)}>
+        <Button kind="ghost" onClick={() => onPick(ids, true)}>
           All
-        </button>
-        <button type="button" className="btn-ghost" onClick={() => onPick(ids, false)}>
+        </Button>
+        <Button kind="ghost" onClick={() => onPick(ids, false)}>
           None
-        </button>
+        </Button>
       </div>
-      {rows.length === 0 ? (
-        <p className="type-data text-dimmer m-0 text-[12.5px]">None in your library.</p>
-      ) : (
-        rows.map((row) => (
+      <StateView isLoading={false} isEmpty={rows.length === 0} emptyLabel="None in your library." size="compact">
+        {rows.map((row) => (
           <Checkbox
             key={row.id}
             checked={picked.has(row.id)}
             onChange={(on) => onPick([row.id], on)}
             label={row.name}
           />
-        ))
-      )}
+        ))}
+      </StateView>
     </div>
   )
 }
@@ -242,17 +242,12 @@ function ExportFooter({
   return (
     <ModalFooter>
       <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-        <button type="button" onClick={onClose} className="btn-ghost">
+        <Button kind="ghost" onClick={onClose}>
           Cancel
-        </button>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onRun}
-          className="btn-primary min-w-[6.5rem]"
-        >
+        </Button>
+        <Button kind="primary" disabled={disabled} onClick={onRun} className="min-w-[6.5rem]">
           {running ? 'Copying…' : copied ? 'Copied' : 'Copy JSON'}
-        </button>
+        </Button>
         <span role="status" className="sr-only">
           {copied ? 'Copied to clipboard' : ''}
         </span>
@@ -279,7 +274,7 @@ function CopyFallback({ text }: { text: string }) {
         rows={8}
         value={text}
         aria-label="Export JSON"
-        className="field block h-auto w-full resize-none py-2.5 font-mono text-[13px] leading-snug pointer-coarse:text-[16px]"
+        className="field block h-auto w-full resize-none py-2.5 font-mono text-meta leading-snug pointer-coarse:text-field"
       />
     </div>
   )

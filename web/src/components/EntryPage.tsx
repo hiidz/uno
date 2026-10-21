@@ -32,13 +32,11 @@ export function EntryPage({
             <Wordmark className="text-ink block h-[26px] w-auto max-sm:h-[20px]" />
           </h1>
           <h2
-            className={`type-sign m-0 leading-[1.05] ${
-              wide ? 'text-[38px] max-sm:text-[27px]' : 'text-[34px] max-sm:text-[25px]'
-            }`}
+            className={`type-sign m-0 ${wide ? 'text-sign-hero-wide' : 'text-sign-hero'}`}
           >
             {title}
           </h2>
-          {intro && <p className="text-dim m-0 max-w-[44ch] text-[16px] leading-[1.5]">{intro}</p>}
+          {intro && <p className="text-dim text-body m-0 max-w-[44ch]">{intro}</p>}
         </header>
         {children}
       </main>

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { AlertDialog } from 'radix-ui'
+import { Button } from './Button'
+import { useReturnFocus } from './returnFocus'
 
 /**
  * A confirmation the user has to answer before something irreversible happens.
@@ -13,7 +15,8 @@ import { AlertDialog } from 'radix-ui'
  *
  * A Radix `AlertDialog`: it opens on the safe button, so a stray Enter keeps
  * what is at stake, and a click on the scrim does nothing. Escape and the
- * cancel button both answer `onCancel`.
+ * cancel button both answer `onCancel`. On close, focus goes back to what
+ * opened it (`useReturnFocus`).
  */
 export function ConfirmDialog({
   open,
@@ -41,6 +44,7 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const onCloseAutoFocus = useReturnFocus(open)
   return (
     <AlertDialog.Root open={open} onOpenChange={(next) => !next && onCancel()}>
       <AlertDialog.Portal>
@@ -51,13 +55,14 @@ export function ConfirmDialog({
               `place-items-center` grid is clipped at both ends with no way to
               reach either. */}
           <AlertDialog.Content
+            onCloseAutoFocus={onCloseAutoFocus}
             className="bg-raised border-line-hi flex max-h-full w-full max-w-[440px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-[20px] border p-6 outline-none"
           >
-            <AlertDialog.Title className="type-display m-0 text-[21px] leading-[28px]">
+            <AlertDialog.Title className="type-display m-0 text-display">
               {title}
             </AlertDialog.Title>
             <AlertDialog.Description asChild>
-              <div className="text-dim text-[14.5px] leading-relaxed">{body}</div>
+              <div className="text-dim text-body-sm leading-relaxed">{body}</div>
             </AlertDialog.Description>
             {error && (
               <p
@@ -69,15 +74,9 @@ export function ConfirmDialog({
             )}
             <div className="flex justify-end gap-2">
               <AlertDialog.Cancel className="btn-ghost">{cancelLabel}</AlertDialog.Cancel>
-              <button
-                type="button"
-                onClick={onConfirm}
-                disabled={pending}
-                aria-live="polite"
-                className={destructive ? 'btn-danger' : 'btn-primary'}
-              >
+              <Button kind={destructive ? 'danger' : 'primary'} onClick={onConfirm} disabled={pending} aria-live="polite">
                 {confirmLabel}
-              </button>
+              </Button>
             </div>
           </AlertDialog.Content>
         </AlertDialog.Overlay>

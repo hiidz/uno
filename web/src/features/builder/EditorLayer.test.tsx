@@ -11,7 +11,7 @@ afterEach(() => {
 
 /** A page shaped like the builder's: a header beside the workspace, the rail
  *  and the layer inside it. */
-function renderLayer(stacked: boolean) {
+function renderLayer(stacked: boolean, openKey = 'catalog/mob-two') {
   const header = document.createElement('header')
   const workspace = document.createElement('div')
   const rail = document.createElement('aside')
@@ -20,15 +20,16 @@ function renderLayer(stacked: boolean) {
   workspace.append(rail, slot)
   document.body.append(header, workspace)
   const fallbackFocus: RefObject<HTMLElement | null> = { current: rail }
-  const view = render(
-    <EditorLayer stacked={stacked} label="Mob two" fallbackFocus={fallbackFocus}>
+  const layer = (key: string) => (
+    <EditorLayer stacked={stacked} label="Mob two" openKey={key} fallbackFocus={fallbackFocus}>
       <h1 tabIndex={-1} data-landing>
         Mob two
       </h1>
-    </EditorLayer>,
-    { container: slot },
+      <button type="button">Duplicate</button>
+    </EditorLayer>
   )
-  return { ...view, header, rail }
+  const view = render(layer(openKey), { container: slot })
+  return { ...view, header, rail, reopen: (key: string) => view.rerender(layer(key)) }
 }
 
 describe('EditorLayer', () => {
@@ -78,5 +79,43 @@ describe('EditorLayer', () => {
 
     unmount()
     expect(rail).toHaveFocus()
+  })
+
+  it('gives focus back to what opened it from lg too', () => {
+    const opener = document.createElement('button')
+    document.body.append(opener)
+    opener.focus()
+    const { unmount } = renderLayer(false)
+    opener.blur()
+
+    unmount()
+    expect(opener).toHaveFocus()
+  })
+
+  it('takes a row opened from outside as the new opener, and keeps the old one for a row opened from inside', () => {
+    const first = document.createElement('button')
+    const second = document.createElement('button')
+    document.body.append(first, second)
+    first.focus()
+    const { reopen, unmount } = renderLayer(false)
+    second.focus()
+    reopen('catalog/second')
+    screen.getByRole('button', { name: 'Duplicate' }).focus()
+    reopen('catalog/copy')
+
+    unmount()
+    expect(second).toHaveFocus()
+  })
+
+  it('leaves focus alone when something else has taken it', () => {
+    const opener = document.createElement('button')
+    const other = document.createElement('button')
+    document.body.append(opener, other)
+    opener.focus()
+    const { unmount } = renderLayer(false)
+    other.focus()
+
+    unmount()
+    expect(other).toHaveFocus()
   })
 })

@@ -241,6 +241,7 @@ function RecentWindow({
     <>
       <div className="choices" role="group" aria-label="How recent">
         {DATE_PRESETS.map((option) => (
+          // drift-ok: a choice chip, drawn by `.choice`
           <button
             key={option.days}
             type="button"
@@ -252,6 +253,7 @@ function RecentWindow({
           </button>
         ))}
         {odd !== undefined && (
+          // drift-ok: a choice chip, drawn by `.choice`
           <button type="button" className="choice" aria-pressed onClick={() => onDays(odd)}>
             {windowLabel(odd)}
           </button>

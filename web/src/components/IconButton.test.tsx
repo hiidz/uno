@@ -40,6 +40,13 @@ describe('IconButton', () => {
     expect(screen.getByRole('button', { name: 'Tiny' })).toHaveClass('h-6', 'w-6')
   })
 
+  it('greys the plain circle and drops its hover while disabled', () => {
+    render(<IconButton label="Move Noir up, already first" icon={Copy} variant="plain" size="sm" disabled />)
+    const button = screen.getByRole('button', { name: 'Move Noir up, already first' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveClass('h-8', 'w-8', 'disabled:text-dimmer', 'enabled:hover:bg-line')
+  })
+
   it('passes its ref and other props through to the button', () => {
     const ref = createRef<HTMLButtonElement>()
     render(<IconButton ref={ref} label="Open" icon={Copy} variant="icon" disabled aria-haspopup="menu" />)

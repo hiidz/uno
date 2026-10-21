@@ -1473,7 +1473,7 @@ components:
       additionalProperties: false
       properties:
         type: { $ref: "#/components/schemas/CatalogType" }
-        name: { type: string, maxLength: 200 }
+        name: { type: string, maxLength: 60 }
         provider: { type: string, const: tmdb }
         params:
           type: string
@@ -1631,7 +1631,7 @@ components:
               type: string
               format: uuid
               description: An existing folder's id. Omit for a new folder.
-            title: { type: string, maxLength: 200 }
+            title: { type: string, maxLength: 60 }
             catalogs:
               type: array
               description: In order.
@@ -1652,7 +1652,7 @@ components:
       type: object
       required: [title, view_mode, folders]
       properties:
-        title: { type: string, maxLength: 200 }
+        title: { type: string, maxLength: 60 }
         view_mode: { $ref: "#/components/schemas/ViewMode" }
         show_all_tab: { type: boolean }
         backdrop_image_url:

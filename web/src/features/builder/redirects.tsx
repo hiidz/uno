@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Navigate, useLocation, useNavigate, type Location } from 'react-router-dom'
-import type { ToastMessage } from '@/components/useToast'
+import type { ToastInput } from '@/components/toastQueue'
 
 /** The navigation state that sends someone to a step that supplies what an
  *  address needs first, sign-in or a profile, and back to `location` once it
@@ -33,14 +33,14 @@ export function ToParent({ to, notice }: { to: string; notice: string }) {
 
 /** Says the notice `ToParent` carried here, once: the entry's state is
  *  cleared as it is shown, so a reload doesn't say it again. */
-export function useRedirectNotice(show: (toast: ToastMessage) => void) {
+export function useRedirectNotice(show: (toast: ToastInput) => void) {
   const location = useLocation()
   const navigate = useNavigate()
   const notice = (location.state as { notice?: unknown } | null)?.notice
   const text = typeof notice === 'string' ? notice : null
   useEffect(() => {
     if (text === null) return
-    show({ text, tone: 'danger' })
+    show({ text, tone: 'notice' })
     void navigate(location.pathname, { replace: true, state: null })
     // Once per notice: `show` and `navigate` are stable, and the path is the
     // one the notice arrived on.

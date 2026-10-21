@@ -1,6 +1,6 @@
 import { TriangleAlert } from 'lucide-react'
 import { Icon } from '@/components/Icon'
-import { SignStepButton, type SignStep } from '@/components/PaneSign'
+import { Button } from '@/components/Button'
 import { pluralCount } from '@/lib/plural'
 
 interface EditorFooterProps {
@@ -17,9 +17,6 @@ interface EditorFooterProps {
   notes?: string[]
   onCancel: () => void
   onSubmit: () => void
-  /** The subject's next step with Community — Publish…, Unpublish… — between
-   *  the status line and Close. Absent where there is none to take. */
-  step?: SignStep
   /** DESIGN.md's Save bar reads "Save", and "Done" in a collection's nested
    *  catalog editor, whose save only stages the edit. */
   saveLabel: string
@@ -54,7 +51,6 @@ export function EditorFooter({
   notes = [],
   onCancel,
   onSubmit,
-  step,
   saveLabel,
   saveError,
 }: EditorFooterProps) {
@@ -63,19 +59,12 @@ export function EditorFooter({
       <SaveError noun={noun} error={saveError} />
       <SaveStatus errorCount={errorCount} errorLabels={errorLabels} dirty={dirty} notes={notes} />
       <ErrorAnnouncement count={errorCount} labels={errorLabels} />
-      <SignStepButton step={step} />
-      <button type="button" onClick={onCancel} className="btn-ghost">
+      <Button kind="ghost" onClick={onCancel}>
         Close
-      </button>
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={saving}
-        aria-disabled={!saving && errorCount > 0}
-        className="btn-primary"
-      >
+      </Button>
+      <Button kind="primary" onClick={onSubmit} disabled={saving} aria-disabled={!saving && errorCount > 0}>
         {saving ? 'Saving…' : saveLabel}
-      </button>
+      </Button>
     </>
   )
 }

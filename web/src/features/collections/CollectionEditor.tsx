@@ -9,7 +9,7 @@ import type {
   Language,
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
-import type { SignStep } from '@/components/PaneSign'
+import { Button } from '@/components/Button'
 import { FieldError, TextInput } from '@/components/fields'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
@@ -29,7 +29,7 @@ import { CollectionAppearance } from './CollectionAppearance'
 import { CollectionPreview } from './CollectionPreview'
 import { FolderCount } from './FolderCap'
 import { FolderDetail } from './FolderDetail'
-import { FolderTiles, FolderTreeDnd } from './FolderTree'
+import { FolderList, FolderTreeDnd } from './FolderTree'
 import {
   DRAFT_ID_PREFIX,
   MAX_FOLDERS,
@@ -113,8 +113,6 @@ interface CollectionEditorProps {
    *  computed in `Workspace`, which is the level that has the whole library.
    *  Meaningful only for a listed catalog. */
   usedInFolders: (catalogID: string) => number
-  /** Its next step with Community, as the sign's button. */
-  sharingStep?: SignStep
   /** Its sharing stickers, on the sign beside the kind. */
   sharingBadges?: ReactNode
   /** A folder row's Copy into library: written at once, not with this
@@ -193,8 +191,7 @@ function draftCatalog(seed: {
  *
  * **Every row this editor opens is the profile's own and editable.** A
  * collection added from Community opens as a view instead
- * (`FromCommunityView`). Its next step with Community is `sharingStep`, which
- * the pane builds and the save bar carries as its one button.
+ * (`FromCommunityView`). Publishing it happens in Community, never here.
  */
 export function CollectionEditor({
   initial,
@@ -216,7 +213,6 @@ export function CollectionEditor({
   countryNames,
   languages,
   usedInFolders,
-  sharingStep,
   sharingBadges,
   onCopyToLibrary,
 }: CollectionEditorProps) {
@@ -502,7 +498,6 @@ export function CollectionEditor({
           notes={statusNotes}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
-          step={sharingStep}
           saveLabel="Save"
           saveError={serverError}
         />
@@ -530,14 +525,9 @@ export function CollectionEditor({
             <div className="setting is-head">
               <h3 className="setting-label type-label">Folders</h3>
               <div className="setting-value flex justify-end">
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={addFolder}
-                  disabled={state.folders.length >= MAX_FOLDERS}
-                >
+                <Button kind="secondary" size="sm" onClick={addFolder} disabled={state.folders.length >= MAX_FOLDERS}>
                   Add folder
-                </button>
+                </Button>
               </div>
             </div>
             <FolderCount count={state.folders.length} error={errors.folderCount} showError={showErrors} />
@@ -565,37 +555,39 @@ export function CollectionEditor({
                 itemName={(id) => dragItemName(state.folders, mergedOptionByID, id)}
                 onReorderFolders={reorderFolders}
               >
-                <FolderTiles
+                <FolderList
                   folders={state.folders}
                   selectedKey={selectedFolder.key}
                   errorKeys={folderErrorKeys}
                   onSelect={setSelectedFolderKey}
                   onMove={moveFolder}
-                />
-                <FolderDetail
-                  // Remounted per folder so the Appearance row and the
-                  // catalog picker start closed on each one.
-                  key={selectedFolder.key}
-                  folder={selectedFolder}
-                  position={selectedIndex}
-                  errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
-                  options={options}
-                  optionByID={mergedOptionByID}
-                  unit={folderUnit(state.viewMode)}
-                  usedInFolders={usedInFolders}
-                  onChange={(update) => patchFolder(selectedFolder.key, update)}
-                  onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
-                  onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
-                  onRemoveCatalog={(catalogID) => removeCatalog(selectedFolder.key, catalogID)}
-                  onCopyToLibrary={onCopyToLibrary}
-                  onUnlinkCatalog={(catalogID) => unlinkCatalog(selectedFolder.key, catalogID)}
-                  onReorderCatalogs={(catalogIDs) => reorderCatalogs(selectedFolder.key, catalogIDs)}
-                  onMoveCatalog={(catalogID, direction) => moveCatalog(selectedFolder.key, catalogID, direction)}
-                  onAddGenre={(catalogID, genre) => addGenre(selectedFolder.key, catalogID, genre)}
-                  onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
-                  onReorderGenres={(catalogID, refKeys) => reorderGenres(selectedFolder.key, catalogID, refKeys)}
-                  onEditRef={editRef}
-                  onAddNewInCollection={(name) => startNewInCollection(selectedFolder.key, name)}
+                  detail={
+                    <FolderDetail
+                      // Remounted per folder so the Appearance row and the
+                      // catalog picker start closed on each one.
+                      key={selectedFolder.key}
+                      folder={selectedFolder}
+                      position={selectedIndex}
+                      errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
+                      options={options}
+                      optionByID={mergedOptionByID}
+                      unit={folderUnit(state.viewMode)}
+                      usedInFolders={usedInFolders}
+                      onChange={(update) => patchFolder(selectedFolder.key, update)}
+                      onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
+                      onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
+                      onRemoveCatalog={(catalogID) => removeCatalog(selectedFolder.key, catalogID)}
+                      onCopyToLibrary={onCopyToLibrary}
+                      onUnlinkCatalog={(catalogID) => unlinkCatalog(selectedFolder.key, catalogID)}
+                      onReorderCatalogs={(catalogIDs) => reorderCatalogs(selectedFolder.key, catalogIDs)}
+                      onMoveCatalog={(catalogID, direction) => moveCatalog(selectedFolder.key, catalogID, direction)}
+                      onAddGenre={(catalogID, genre) => addGenre(selectedFolder.key, catalogID, genre)}
+                      onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
+                      onReorderGenres={(catalogID, refKeys) => reorderGenres(selectedFolder.key, catalogID, refKeys)}
+                      onEditRef={editRef}
+                      onAddNewInCollection={(name) => startNewInCollection(selectedFolder.key, name)}
+                    />
+                  }
                 />
               </FolderTreeDnd>
             )}

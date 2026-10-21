@@ -1,32 +1,32 @@
 import type { Catalog, CatalogPayload } from '@/api'
-import { useToast, type ToastMessage } from '@/components/useToast'
+import { useToasts, type ToastInput } from '@/components/toastQueue'
 import type { RefOption } from './refs'
 
 /** Writes a library catalog, settling once the server has it. */
 export type CopyToLibrary = (payload: CatalogPayload) => Promise<unknown>
 
-const COPIED: ToastMessage = { text: 'Copied into your library', tone: 'success' }
+const COPIED: ToastInput = { text: 'Copied into your library', tone: 'success' }
 
 /**
  * A folder row's Copy into library: a new library catalog with the name, type
  * and recipe of the row's catalog as this editor holds it, staged edits and
  * drafts included, written at once rather than with the collection's Save.
  * Offered only for a catalog that lives in this collection (`available`); the
- * outcome is a message (`toast`) for the row to show beside its menu.
+ * outcome is a toast.
  */
 export function useCopyToLibrary(option: RefOption | undefined, copyToLibrary: CopyToLibrary) {
-  const [toast, setToast] = useToast()
+  const toasts = useToasts()
   const catalog = scopedCatalog(option)
 
   function copy() {
     if (!catalog) return
     copyToLibrary(libraryPayload(catalog)).then(
-      () => setToast(COPIED),
-      (err: unknown) => setToast({ text: `Couldn't copy: ${(err as Error).message}`, tone: 'danger' }),
+      () => toasts.show(COPIED),
+      (err: unknown) => toasts.show({ tone: 'danger', text: "Couldn't copy into your library", detail: (err as Error).message }),
     )
   }
 
-  return { available: catalog !== undefined, copy, toast }
+  return { available: catalog !== undefined, copy }
 }
 
 function scopedCatalog(option: RefOption | undefined): Catalog | undefined {

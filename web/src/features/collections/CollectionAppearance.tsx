@@ -33,6 +33,7 @@ function ViewModeChoices({ value, onChange }: ViewModeChoicesProps) {
   return (
     <div className="choices" role="group" aria-label="How folders open">
       {VIEW_MODES.map((viewMode) => (
+        // drift-ok: a choice chip, drawn by `.choice`
         <button key={viewMode} type="button" className="choice" aria-pressed={value === viewMode} onClick={() => onChange({ viewMode })}>
           {VIEW_MODE_LABELS[viewMode]}
         </button>
@@ -57,6 +58,7 @@ export function CollectionAppearance({ state, backdropError, onChange }: Collect
 
   return (
     <div className="mt-6">
+      {/* drift-ok: a folded section's head, drawn by `.sec-head` */}
       <button type="button" id="col-appearance-head" className="sec-head" aria-expanded={open} aria-controls="col-appearance-body" onClick={toggle}>
         <span className="setting-label type-label">Collection Appearance</span>
         <span className="sec-sum">{appearanceSummary(state)}</span>

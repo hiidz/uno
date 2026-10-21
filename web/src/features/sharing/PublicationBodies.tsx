@@ -75,11 +75,11 @@ function FolderCard({ folder, catalogs, genres, marks, firsts }: FolderCardProps
   return (
     <div id={folderMarkID(folder.id)} tabIndex={-1} className="fold-detail pb-3 outline-none">
       <div className="border-line-hi mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b pb-3">
-        <span className="flex min-w-0 items-center gap-2 text-[16.5px] font-bold">
+        <span className="text-title flex min-w-0 items-center gap-2">
           {folder.cover_emoji && <span aria-hidden="true">{folder.cover_emoji}</span>}
           <span className="min-w-0 [overflow-wrap:anywhere]">{folder.title}</span>
         </span>
-        <span className="type-data text-dim shrink-0 text-[12.5px]">{pluralCount(refs.length, 'catalog')}</span>
+        <span className="type-data text-dim text-meta shrink-0">{pluralCount(refs.length, 'catalog')}</span>
         <MarkLine words={folderWords(marks, folder.id)} className="order-3 basis-full" />
       </div>
       <div className="mt-1">

@@ -66,16 +66,16 @@ describe('validateCollectionForm', () => {
     expect(countErrors(errors)).toBe(2)
   })
 
-  it('holds titles to 200 characters, counted as characters', () => {
-    const wide = '日'.repeat(200)
+  it('holds titles to 60 characters, counted as characters', () => {
+    const wide = '日'.repeat(60)
     const at = validateCollectionForm({ ...emptyCollectionForm(), title: wide, folders: [{ ...newFolder(), title: wide }] }, accessible)
     expect(countErrors(at)).toBe(0)
     const over = validateCollectionForm(
       { ...emptyCollectionForm(), title: `${wide}日`, folders: [{ ...newFolder(), title: `${wide}日` }] },
       accessible,
     )
-    expect(over.title).toBe('Keep the title to 200 characters or fewer.')
-    expect(Object.values(over.folders)[0]?.title).toBe('Keep the title to 200 characters or fewer.')
+    expect(over.title).toBe('Keep the title to 60 characters or fewer.')
+    expect(Object.values(over.folders)[0]?.title).toBe('Keep the title to 60 characters or fewer.')
   })
 
   it('takes media addresses that are http or https, and says which one is not', () => {

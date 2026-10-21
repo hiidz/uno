@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { queryKeys } from '@/api'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { consumeEntry, leftEntry, pushEntry } from '@/lib/historyEntry'
 import { plural } from '@/lib/plural'
@@ -166,12 +167,12 @@ function FolderPageView({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <p className="text-dim m-0 text-[13px] leading-[18px]">
+          <p className="text-dim m-0 text-meta leading-[18px]">
             {collection.title || 'Untitled collection'}
             <span aria-hidden="true" className="text-dimmer px-1.5">/</span>
             <b className="text-ink font-medium">{folder.title || 'Untitled folder'}</b>
           </p>
-          <span className="text-dim text-[12px] leading-[18px]">{FOLDER_LAYOUT_LABEL[collection.viewMode]}</span>
+          <span className="text-dim text-caption leading-[18px]">{FOLDER_LAYOUT_LABEL[collection.viewMode]}</span>
         </div>
         <RefreshPreviewButton />
       </div>
@@ -209,7 +210,7 @@ function HomeScreenView({
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           {pendingCount > 0 && (
-            <p className="text-pending m-0 flex items-center gap-2 text-[13px] leading-[18px]">
+            <p className="text-pending m-0 flex items-center gap-2 text-meta leading-[18px]">
               <span aria-hidden="true" className="bg-pending size-1.5 shrink-0" />
               Includes {pendingCount} unpushed {plural(pendingCount, 'change')}.
             </p>
@@ -219,7 +220,7 @@ function HomeScreenView({
       </div>
 
       {nothingOnHome ? (
-        <p className="text-dim m-0 text-[13px] leading-[18px]">
+        <p className="text-dim m-0 text-meta leading-[18px]">
           Nothing on home — every selected catalog is set to Discover only.
         </p>
       ) : (
@@ -267,15 +268,16 @@ function RefreshPreviewButton() {
   const fetching = useIsFetching({ queryKey: queryKeys.catalogPreviews() }) > 0
 
   return (
-    <button
-      type="button"
+    <Button
+      kind="secondary"
+      size="sm"
       onClick={() => void queryClient.refetchQueries({ queryKey: queryKeys.catalogPreviews(), type: 'active' })}
       disabled={fetching}
-      className="btn-secondary btn-sm shrink-0"
+      className="shrink-0"
     >
       <Icon icon={RefreshCw} size={14} className={fetching ? 'motion-safe:animate-spin' : undefined} />
       {fetching ? 'Refreshing…' : 'Refresh preview'}
-    </button>
+    </Button>
   )
 }
 
@@ -291,13 +293,13 @@ function DiscoverOnly({ rows }: { rows: PreviewRow[] }) {
     <section className="border-line flex flex-col gap-2 border-t pt-4">
       <div className="flex flex-col gap-1">
         <span className="type-label">Only in Discover</span>
-        <p className="text-dim m-0 text-[13px] leading-[18px]">{DISCOVER_NOTE}</p>
+        <p className="text-dim m-0 text-meta leading-[18px]">{DISCOVER_NOTE}</p>
       </div>
       <div className="flex flex-col gap-1">
         {rows.map((row) => (
           <div key={row.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-ink truncate text-[13px]">{row.name}</span>
-            <span className="text-dim text-[12px]">
+            <span className="text-ink text-meta [overflow-wrap:anywhere]">{row.name}</span>
+            <span className="text-dim text-caption">
               · Discover only
             </span>
           </div>
@@ -347,8 +349,8 @@ function EmptyHomeScreen() {
           <span>SIGNAL</span>
         </span>
       </div>
-      <p className="text-ink m-0 text-[15px] font-semibold">Nothing on your home screen yet.</p>
-      <p className="text-dim m-0 text-[13.5px]">Add from the Library, then push.</p>
+      <p className="text-ink text-body m-0 font-semibold">Nothing on your home screen yet.</p>
+      <p className="text-dim text-meta m-0">Add from the Library, then push.</p>
     </section>
   )
 }

@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronDown } from 'lucide-react'
 import type { TileShape } from '@/api'
+import { Button } from '@/components/Button'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { CatalogRefPicker } from './CatalogRefPicker'
@@ -68,13 +69,13 @@ export function FolderDetail({
   return (
     <section className="fold-detail" aria-label={`Folder: ${folder.title.trim() || 'untitled'}`}>
       <header className="fold-detail-head">
-        <h4 className="type-data m-0 min-w-0 flex-1 text-[15px] leading-[24px] font-semibold">
+        <h4 className="type-data text-body m-0 min-w-0 flex-1 leading-[24px] font-semibold [overflow-wrap:anywhere]">
           {folder.title.trim() || 'Untitled folder'}
         </h4>
         <div className="fold-detail-actions">
-          <button type="button" onClick={onRemove} className="btn-danger-text h-8 text-[13px]">
+          <Button kind="danger-text" size="sm" onClick={onRemove}>
             Remove
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -97,6 +98,7 @@ export function FolderDetail({
 
       <FolderCatalogs folder={folder} errors={errors} {...catalogs} />
 
+      {/* drift-ok: a folded section's head, drawn by `.sec-head` */}
       <button
         type="button"
         className="sec-head fold-appearance"
@@ -104,7 +106,7 @@ export function FolderDetail({
         onClick={() => setAppearanceOpen(!appearanceOpen)}
       >
         <span className="setting-label type-label">Folder Appearance</span>
-        <span className="sec-sum text-dim text-[14px]">{appearanceSummary(folder)}</span>
+        <span className="sec-sum text-dim text-body-sm">{appearanceSummary(folder)}</span>
         <Icon icon={ChevronDown} size={16} className="ico" />
       </button>
 
@@ -129,6 +131,7 @@ export function FolderDetail({
             <span className="setting-label type-label">Tile shape</span>
             <div className="setting-value choices" role="group" aria-label={`Tile shape for ${label}`}>
               {TILE_SHAPES.map((shape) => (
+                // drift-ok: a choice chip, drawn by `.choice`
                 <button
                   key={shape}
                   type="button"

@@ -52,7 +52,7 @@ export function Field({
  */
 export function OnlyIn({ where }: { where: string }) {
   return (
-    <span className="type-data text-dimmer border-line rounded-full border px-2 text-[12px] leading-[18px]">
+    <span className="type-data text-dimmer border-line rounded-full border px-2 text-caption leading-[18px]">
       {where}
     </span>
   )
@@ -89,7 +89,7 @@ export function InfoTip({ label, text }: { label: string; text: string }) {
           align="start"
           sideOffset={5}
           collisionPadding={12}
-          className="type-data bg-raised-hi border-line-hi text-ink z-50 max-w-[17rem] rounded-xl border px-3 py-2 text-[13px] leading-[1.45]"
+          className="type-data bg-raised-hi border-line-hi text-ink z-50 max-w-[17rem] rounded-xl border px-3 py-2 text-meta"
         >
           {text}
         </Popover.Content>
@@ -112,7 +112,7 @@ export function FieldNote({
 }) {
   return (
     <p
-      className={`type-data m-0 max-w-[var(--w-entry)] text-[13px] leading-[1.45] ${
+      className={`type-data m-0 max-w-[var(--w-entry)] text-meta ${
         tone === 'danger' ? 'text-danger' : 'text-dimmer'
       }`}
     >
@@ -336,7 +336,7 @@ export function Segmented<T extends string>({
           onClick={() => !disabled && onChange(option.value)}
           aria-pressed={value === option.value}
           aria-disabled={disabled || undefined}
-          className={`flex-1 rounded-full px-3.5 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
+          className={`flex-1 rounded-full px-3.5 py-1.5 text-meta font-semibold whitespace-nowrap transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
             disabled
               ? `text-dimmer cursor-not-allowed ${value === option.value ? 'underline decoration-1 underline-offset-[0.3em]' : ''}`
               : value === option.value
@@ -464,7 +464,7 @@ function ThumbValue({ fraction, label }: { fraction: number; label: string }) {
   return (
     <span
       style={{ left: `calc(${fraction * 100}% + ${0.5 - fraction} * var(--thumb))` }}
-      className="type-data text-dim absolute top-0 -translate-x-1/2 text-[13px] leading-none whitespace-nowrap"
+      className="type-data text-dim absolute top-0 -translate-x-1/2 text-meta leading-none whitespace-nowrap"
     >
       {label}
     </span>
@@ -489,7 +489,7 @@ export function Checkbox({
         onChange={(event) => onChange(event.target.checked)}
         className="checkbox mt-[3px]"
       />
-      <span className="group-hover:text-ink text-[14.5px] transition-colors">{label}</span>
+      <span className="group-hover:text-ink text-body-sm transition-colors">{label}</span>
     </label>
   )
 }

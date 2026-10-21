@@ -8,6 +8,7 @@ import { catalog, collection, folder } from '@/test/fixtures'
 import { CollectionEditor } from './CollectionEditor'
 import { emptyCollectionForm, formFromCollection } from './collectionForm'
 import { accessibleIDs, buildRefOptions, indexRefOptions } from './refs'
+import { ToastProvider } from '@/components/Toasts'
 
 // Every request the nested pickers and previews make stays pending: these
 // tests are about the form, not what TMDB answers.
@@ -35,24 +36,26 @@ function renderEditor(props: Partial<ComponentProps<typeof CollectionEditor>> = 
   const handlers = { onSave: vi.fn(), onRequestClose: vi.fn(), onDirtyChange: vi.fn(), onCopyToLibrary: vi.fn(() => Promise.resolve()) }
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <CollectionEditor
-        initial={emptyCollectionForm()}
-        collectionID={saved.id}
-        options={options}
-        optionByID={indexRefOptions(options)}
-        accessibleIDs={accessibleIDs(options)}
-        saving={false}
-        serverError={null}
-        initialCatalogs={[]}
-        genres={{ movie: [], tv: [] }}
-        genreLookups={genreLookups}
-        certifications={{ movie: {}, tv: {} }}
-        countryNames={new Map()}
-        languages={[]}
-        usedInFolders={() => 0}
-        {...handlers}
-        {...props}
-      />
+      <ToastProvider>
+        <CollectionEditor
+          initial={emptyCollectionForm()}
+          collectionID={saved.id}
+          options={options}
+          optionByID={indexRefOptions(options)}
+          accessibleIDs={accessibleIDs(options)}
+          saving={false}
+          serverError={null}
+          initialCatalogs={[]}
+          genres={{ movie: [], tv: [] }}
+          genreLookups={genreLookups}
+          certifications={{ movie: {}, tv: {} }}
+          countryNames={new Map()}
+          languages={[]}
+          usedInFolders={() => 0}
+          {...handlers}
+          {...props}
+        />
+      </ToastProvider>
     </QueryClientProvider>,
   )
   return handlers
@@ -94,13 +97,10 @@ describe('CollectionEditor', () => {
     )
   })
 
-  it('carries the step the pane hands it, and saves without asking', () => {
-    const { onSave } = renderEditor({
-      initial: formFromCollection(saved),
-      initialCatalogs: library,
-      sharingStep: { label: 'Publish…', waiting: null, onClick: vi.fn() },
-    })
-    expect(screen.getAllByRole('button', { name: 'Publish…' })).toHaveLength(1)
+  it('offers no publishing, and saves without asking', () => {
+    const { onSave } = renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
+    // Publishing happens in Community.
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull()
     fireEvent.change(titleInput(), { target: { value: 'Mine now' } })
     save()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'Mine now' }))
@@ -173,7 +173,7 @@ describe('CollectionEditor', () => {
     const openMenu = (name: string) =>
       fireEvent.pointerDown(screen.getByRole('button', { name: `More for ${name}` }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
 
-    it('writes a library copy of the catalog as staged, at once, and says so beside the row', async () => {
+    it('writes a library copy of the catalog as staged, at once, and says so in a toast', async () => {
       const onCopyToLibrary = vi.fn(() => Promise.resolve())
       const { onSave } = renderEditor({ initial: formFromCollection(withScoped), initialCatalogs: [scoped, ...library], onCopyToLibrary })
       fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
@@ -198,7 +198,8 @@ describe('CollectionEditor', () => {
       renderEditor({ initial: formFromCollection(withScoped), initialCatalogs: [scoped, ...library], onCopyToLibrary })
       openMenu('Scoped')
       fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy into library' }))
-      expect(await screen.findByText("Couldn't copy: name too long")).toBeInTheDocument()
+      expect(await screen.findByText("Couldn't copy into your library")).toBeInTheDocument()
+      expect(screen.getByText('name too long')).toBeInTheDocument()
     })
 
     it('is offered only for a catalog that lives in this collection', async () => {
@@ -383,9 +384,9 @@ describe('CollectionEditor', () => {
       ],
     }
     const { onSave } = renderEditor({ initial: formFromCollection(two), initialCatalogs: library })
-    expect(screen.getByRole('button', { name: /^Move .* left, already first$/ })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: /^Move .* right$/ }))
-    expect(screen.getByRole('button', { name: /^Move .* right, already last$/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Move .* earlier, already first$/ })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /^Move .* later$/ }))
+    expect(screen.getByRole('button', { name: /^Move .* later, already last$/ })).toBeDisabled()
     save()
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -51,9 +51,9 @@ var validProviders = map[string]bool{
 // maxNameLen bounds every name a person types for a row: a catalog's name, a
 // collection's title, a folder's title. All three are stored, served from the
 // public addon route and pushed into Nuvio's collections blob, where they are
-// read off a TV screen; a few hundred characters is far past anything that
-// renders.
-const maxNameLen = 200
+// read off a TV screen, and the builder prints them in full, wrapping; 60
+// characters keeps a name to two lines in the Library rail on a phone.
+const maxNameLen = 60
 
 // maxParamsLen bounds a catalog's params JSON. The widest recipe the builder
 // can produce names every watch provider of a region alongside every genre,

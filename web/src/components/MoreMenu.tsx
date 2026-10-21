@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode } from 'react'
 import { MoreHorizontal } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
-import { Icon } from '@/components/Icon'
+import { IconButton } from '@/components/IconButton'
 
 /**
  * A row's "⋯" menu: the square trigger, named "More for {label}", and the
@@ -11,11 +11,8 @@ import { Icon } from '@/components/Icon'
 export function MoreMenu({ label, children }: { label: string; children: ReactNode }) {
   return (
     <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger
-        aria-label={`More for ${label}`}
-        className="tap text-dimmer hover:bg-line hover:text-ink grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors"
-      >
-        <Icon icon={MoreHorizontal} size={16} />
+      <DropdownMenu.Trigger asChild>
+        <IconButton label={`More for ${label}`} icon={MoreHorizontal} variant="plain" size="sm" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
@@ -44,12 +41,12 @@ export function MoreMenuItem({
   return (
     <DropdownMenu.Item
       {...props}
-      className={`hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[14px] font-medium transition-colors pointer-coarse:min-h-11 ${
+      className={`hover:bg-line focus-visible:bg-line data-[disabled]:text-dimmer data-[disabled]:hover:bg-transparent flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-body-sm font-medium transition-colors pointer-coarse:min-h-11 ${
         danger ? 'text-danger' : 'text-ink'
       }`}
     >
       {children}
-      {reason && <span className="text-dimmer text-[12.5px]">{reason}</span>}
+      {reason && <span className="text-dimmer text-meta">{reason}</span>}
     </DropdownMenu.Item>
   )
 }

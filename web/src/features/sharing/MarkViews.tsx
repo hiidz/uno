@@ -25,7 +25,7 @@ function reducedMotion(): boolean {
  *  link that scrolls to it, the rest plain words. */
 export function UpdateSummary({ items }: { items: readonly SummaryItem[] }) {
   return (
-    <p className="m-0 text-[14px] leading-[1.7] font-semibold">
+    <p className="text-body-sm m-0 leading-[1.7] font-semibold">
       {items.map((item, index) => (
         <Fragment key={item.text}>
           {index > 0 && <span className="text-dim font-normal"> · </span>}
@@ -40,6 +40,7 @@ function SummaryPart({ item }: { item: SummaryItem }) {
   const { target } = item
   if (!target) return <span>{item.text}</span>
   return (
+    // drift-ok: an underlined link that jumps to what it names
     <button
       type="button"
       onClick={() => jumpTo(target)}
@@ -54,16 +55,16 @@ function SummaryPart({ item }: { item: SummaryItem }) {
  *  none. */
 export function MarkLine({ words, className = '' }: { words: string; className?: string }) {
   if (!words) return null
-  return <p className={`m-0 text-[12.5px] font-semibold [overflow-wrap:anywhere] text-[var(--accent)] ${className}`}>{words}</p>
+  return <p className={`text-meta m-0 font-semibold [overflow-wrap:anywhere] text-[var(--accent)] ${className}`}>{words}</p>
 }
 
 /** The catalogs an update removes from a folder the new version keeps, dim at
  *  the foot of its card. */
 export function RemovedCatalogs({ names }: { names: readonly string[] }) {
   return names.map((name) => (
-    <p key={name} className="border-line text-dimmer m-0 flex justify-between gap-3 border-t py-2 pl-[26px] text-[14px]">
+    <p key={name} className="border-line text-dimmer m-0 flex justify-between gap-3 border-t py-2 pl-[26px] text-body-sm">
       <span className="min-w-0 [overflow-wrap:anywhere]">{name}</span>
-      <span className="shrink-0 text-[12.5px] text-[var(--accent)]">removed</span>
+      <span className="text-meta shrink-0 text-[var(--accent)]">removed</span>
     </p>
   ))
 }
@@ -75,9 +76,9 @@ export function RemovedFolders({ names }: { names: readonly string[] }) {
   return (
     <div id={REMOVED_ID} tabIndex={-1} className="flex flex-col gap-1 rounded-[16px] px-5 py-3 shadow-[inset_0_0_0_1px_var(--uno-line-hi)] outline-none">
       {names.map((name) => (
-        <p key={name} className="text-dimmer m-0 flex justify-between gap-3 text-[15px] font-semibold">
+        <p key={name} className="text-dimmer text-body m-0 flex justify-between gap-3 font-semibold">
           <span className="min-w-0 [overflow-wrap:anywhere]">{name}</span>
-          <span className="shrink-0 text-[12.5px] text-[var(--accent)]">folder removed</span>
+          <span className="text-meta shrink-0 text-[var(--accent)]">folder removed</span>
         </p>
       ))}
     </div>
@@ -89,7 +90,7 @@ export function RemovedFolders({ names }: { names: readonly string[] }) {
 export function RenamedFrom({ name }: { name: string }) {
   if (!name) return null
   return (
-    <p id={RENAMED_ID} tabIndex={-1} className="text-dimmer m-0 text-[12.5px] [overflow-wrap:anywhere] outline-none">
+    <p id={RENAMED_ID} tabIndex={-1} className="text-dimmer text-meta m-0 [overflow-wrap:anywhere] outline-none">
       was {name}
     </p>
   )

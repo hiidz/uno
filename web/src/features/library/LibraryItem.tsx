@@ -86,15 +86,15 @@ export function LibraryItem({
           anywhere but the sticker opens it, and its focus ring rings the row;
           the sticker sits above that layer. */}
       <div className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2.5 pr-2 pl-3">
+        {/* drift-ok: the row's own button, stretched over the whole row */}
         <button
           type="button"
           onClick={onSelect}
           aria-current={selected ? 'true' : undefined}
           aria-expanded={selected}
-          title={name}
           className="flex min-w-0 flex-col gap-1 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:outline-2 focus-visible:after:outline-offset-[-2px]"
         >
-          <span className="relative truncate text-[15px] font-semibold">
+          <span className="text-body relative font-semibold [overflow-wrap:anywhere]">
             {name}
             <span className="sr-only">
               {' '}
@@ -103,7 +103,7 @@ export function LibraryItem({
             </span>
           </span>
           {summary && (
-            <span title={summary} className="text-dim truncate text-[13px]">
+            <span title={summary} className="text-dim text-meta truncate">
               {summary}
             </span>
           )}
@@ -113,6 +113,7 @@ export function LibraryItem({
           </span>
         </button>
 
+        {/* drift-ok: the ON NUVIO sticker, a toggle drawn by `.home-sticker` */}
         <button
           type="button"
           onClick={() => {

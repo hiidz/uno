@@ -1,15 +1,14 @@
 import type { ReactNode } from 'react'
 import { ArrowUp } from 'lucide-react'
+import { Button } from './Button'
 import { Icon } from './Icon'
-import { Toast } from './Toast'
-import { useToast } from './useToast'
 
 /** DESIGN.md's Sign Title: a name the user typed, set on a pane's sign in
  *  Archivo at a narrower width and in the user's own case, on two lines at
  *  most and broken anywhere a long word needs. The caller adds its margin
  *  and focus outline. */
 export const SIGN_TITLE =
-  'font-[family-name:var(--font-sign)] text-[18px] leading-tight font-extrabold [font-stretch:112%] lg:text-[25px] line-clamp-2 [overflow-wrap:anywhere]'
+  'font-[family-name:var(--font-sign)] text-sign-title font-extrabold [font-stretch:112%] line-clamp-2 [overflow-wrap:anywhere]'
 
 /**
  * The sign over the builder's pane — the Home pane's, and each editor's.
@@ -47,56 +46,9 @@ export function SignLibraryButton({
   className?: string
 }) {
   return (
-    <button type="button" onClick={onClick} title={title} className={`tap sign-btn-outline ${className}`}>
+    <Button kind="sign-outline" onClick={onClick} title={title} className={`tap ${className}`}>
       <Icon icon={ArrowUp} size={15} />
       Library
-    </button>
-  )
-}
-
-/** The next step a pane's subject waits on, named for what pressing it does. */
-export interface SignStep {
-  label: string
-  /** Why the step can't be taken yet ("Save first."), or null. */
-  waiting: string | null
-  onClick: () => void
-}
-
-/**
- * A subject's next step with Community — Publish…, Unpublish… — as an
- * outlined pill in the editor's save bar. Greyed, not disabled, while the step
- * is `waiting`: pressing it says why in a one-line toast above the button.
- * Draws nothing without a step.
- */
-export function SignStepButton({ step }: { step: SignStep | undefined }) {
-  if (!step) return null
-  return <StepButton step={step} />
-}
-
-function StepButton({ step: { label, waiting, onClick } }: { step: SignStep }) {
-  const [toast, setToast] = useToast()
-
-  function press() {
-    if (waiting === null) {
-      onClick()
-      return
-    }
-    setToast({ text: waiting, tone: 'success' })
-  }
-
-  return (
-    <span className="relative shrink-0">
-      <button
-        type="button"
-        aria-disabled={waiting !== null}
-        onClick={press}
-        className="btn-secondary aria-disabled:cursor-not-allowed aria-disabled:text-dimmer"
-      >
-        {label}
-      </button>
-      <span className="absolute right-0 bottom-full z-30 mb-2 whitespace-nowrap">
-        <Toast toast={toast} />
-      </span>
-    </span>
+    </Button>
   )
 }

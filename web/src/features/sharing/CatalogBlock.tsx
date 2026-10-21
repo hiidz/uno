@@ -199,6 +199,7 @@ interface FoldHeaderProps {
 function FoldHeader({ name, line, narrowedTo, open, panelID, onToggle }: FoldHeaderProps) {
   const turn = open ? 'rotate-90' : ''
   return (
+    // drift-ok: a fold's header row, the whole row its target
     <button
       type="button"
       aria-expanded={open}
@@ -208,7 +209,7 @@ function FoldHeader({ name, line, narrowedTo, open, panelID, onToggle }: FoldHea
     >
       <Icon icon={ChevronRight} size={16} className={`text-dimmer mt-0.5 shrink-0 transition-transform ${turn}`} />
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[14px] font-semibold [overflow-wrap:anywhere]">{name}</span>
+        <span className="text-body-sm font-semibold [overflow-wrap:anywhere]">{name}</span>
         {!open && <FoldedSummary line={line} narrowedTo={narrowedTo} />}
       </span>
     </button>
@@ -221,7 +222,7 @@ function FoldHeader({ name, line, narrowedTo, open, panelID, onToggle }: FoldHea
 function FoldedSummary({ line, narrowedTo }: { line: FoldedLine; narrowedTo: string }) {
   const text = narrowedTo ? `${line.text} • ${narrowedTo}` : line.text
   return (
-    <span className="flex min-w-0 gap-1.5 text-[12.5px]">
+    <span className="text-meta flex min-w-0 gap-1.5">
       <span className="text-dim truncate">{text}</span>
       {line.more > 0 && <span className="type-data text-dimmer shrink-0">+{line.more}</span>}
     </span>

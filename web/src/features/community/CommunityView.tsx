@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
@@ -6,11 +7,12 @@ import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { StateView } from '@/components/StateView'
 import { skeletonKeys } from '@/components/Skeleton'
-import { Toast } from '@/components/Toast'
-import { useToast, type ToastMessage } from '@/components/useToast'
+import { useToasts, type ToastInput } from '@/components/toastQueue'
 import { IN_APP, builderPath, pushedInApp, type EditorRef } from '@/features/builder/paths'
 import { ToParent, ToPicker, useRedirectNotice } from '@/features/builder/redirects'
-import { useGenreLookups, type GenreLookups } from '@/features/library/useLibrary'
+import { libraryQuery, useGenreLookups, type GenreLookups } from '@/features/library/useLibrary'
+import { ownRowOf, publishChoices, railStickers, type OwnRow } from '@/features/sharing/sharingState'
+import { usePublishing } from '@/features/sharing/usePublishing'
 import { useDebounce } from '@/lib/useDebounce'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { snapshotRecipeLine } from '@/features/sharing/snapshot'
@@ -27,6 +29,7 @@ import {
 import { CommunityRow, CommunityRowSkeleton, type RowActions } from './CommunityRow'
 import { CommunitySign } from './CommunitySign'
 import { PublicationPage } from './PublicationPage'
+import { YourPublicationsCard, YourPublicationsDialog } from './YourPublications'
 import { focusRow, rowButtonID, useScrollMemory } from './scroll'
 import { SearchNote } from './SearchNote'
 import { ShowMore } from './ShowMore'
@@ -46,7 +49,10 @@ const SEARCH_MAX_LENGTH = 200
  * Add puts it in the library, read-only, following its publisher's updates;
  * Update… opens the page, which shows the new version and applies it;
  * Duplicate adds a copy that is the profile's own. No publisher is named
- * anywhere here. The open page is the path's `publication`, so the browser's
+ * anywhere here. The profile's own rows are published from here too: the Your
+ * publications card above the controls opens them (`YourPublications`), a
+ * private one publishes through its dialog, and a published one opens its own
+ * page, which the list never shows. The open page is the path's `publication`, so the browser's
  * Back closes it, and its kind picks the list behind it.
  */
 export function CommunityView({
@@ -68,8 +74,11 @@ export function CommunityView({
   const list = useCommunityList(profileIndex, { ...filters, q }, problem === '')
   const openDetail = useOpenPublication(profileIndex, openID)
 
-  const [toast, setToast] = useToast()
-  useRedirectNotice(setToast)
+  const toasts = useToasts()
+  useRedirectNotice(toasts.show)
+  const library = useQuery(libraryQuery(profileIndex))
+  const choices = useMemo(() => (library.data ? publishChoices(library.data) : []), [library.data])
+  const [picking, setPicking] = useState(false)
   // Keyed by publication id. Actions on different rows can overlap.
   const [pending, setPending] = useState<ReadonlyMap<string, CommunityAction>>(new Map())
 
@@ -99,13 +108,36 @@ export function CommunityView({
     void navigate(builderPath.publication(item), { state: IN_APP })
   }
 
+  const publishing = usePublishing({ profileIndex, genres, onToast: toasts.show, onUnpublished: closePage })
+
+  function publishFromPicker(own: OwnRow) {
+    setPicking(false)
+    publishing.publish(own)
+  }
+
+  function openOwnPage(own: OwnRow) {
+    setPicking(false)
+    if (!own.row.publication) return
+    remember()
+    void navigate(builderPath.publication({ kind: own.kind, id: own.row.publication.id }), { state: IN_APP })
+  }
+
+  const ownOpen = open?.own ? ownRowOf(library.data, open.id) : null
+  const ownActions = ownOpen && {
+    changed: ownOpen.row.publication?.changed_since_publish === true,
+    onPublish: () => publishing.publish(ownOpen),
+    onOpen: () => void navigate(builderPath.editor({ kind: ownOpen.kind, id: ownOpen.row.id })),
+    onUnpublish: () => publishing.unpublish(ownOpen),
+  }
+  const ownStickers = ownOpen ? railStickers(ownOpen.row) : []
+
   function run(item: CommunityItem, action: CommunityAction) {
     setPending((current) => new Map(current).set(item.id, action))
     mutations[action]
       .mutateAsync(item.id)
       .then(
-        () => setToast({ text: doneText(action, item), tone: 'success' }),
-        (error: Error) => setToast(failure(action, error)),
+        () => toasts.show({ text: doneText(action, item), tone: 'success' }),
+        (error: Error) => toasts.show(failure(action, error)),
       )
       .finally(() =>
         setPending((current) => {
@@ -139,10 +171,8 @@ export function CommunityView({
 
   return (
     <div ref={scrollRef} className="tone-community flex w-full flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-      <CommunitySign open={open} onBack={closePage} />
+      <CommunitySign open={open} stickers={ownStickers} onBack={closePage} />
       <section className="community-body mx-auto flex w-full flex-col gap-4 p-4 lg:p-6 [&_.ed]:pt-0">
-        <Toast toast={toast} />
-
         {pageFailed ? (
           <StateView
             isLoading={false}
@@ -160,9 +190,12 @@ export function CommunityView({
             meta={itemMeta(open, now)}
             genres={genres}
             actions={actionsFor(open, () => run(open, 'update'), 'Update')}
+            own={ownActions}
+            ownStickers={ownStickers}
           />
         ) : (
           <>
+            <YourPublicationsCard choices={choices} loaded={library.isSuccess} onOpen={() => setPicking(true)} />
             <Controls filters={filters} onChange={setFilters} />
             <SearchNote problem={problem} />
             <StateView
@@ -200,6 +233,14 @@ export function CommunityView({
           </>
         )}
       </section>
+      <YourPublicationsDialog
+        open={picking}
+        choices={choices}
+        onPublish={publishFromPicker}
+        onOpenPage={openOwnPage}
+        onClose={() => setPicking(false)}
+      />
+      {publishing.dialogs}
     </div>
   )
 }
@@ -222,7 +263,7 @@ const KIND_WORD: Record<CommunityItem['kind'], string> = { catalog: 'catalogs', 
  *  has published anything of this kind. */
 function emptyLabel(filters: CommunityFilters): string {
   if (filters.q.trim()) return `No ${KIND_WORD[filters.kind]} match this search.`
-  return `Nobody has published any ${KIND_WORD[filters.kind]} yet. Publish one of your own from its editor.`
+  return `Nobody has published any ${KIND_WORD[filters.kind]} yet.`
 }
 
 /** The kind switch, the search box and the sort. */
@@ -255,7 +296,7 @@ function Controls({
           placeholder="Search"
           aria-label="Search Community"
           maxLength={SEARCH_MAX_LENGTH}
-          className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
+          className="field text-body-sm h-10 w-full rounded-full pl-10 pointer-coarse:h-11 pointer-coarse:text-field"
         />
       </div>
       <div className="flex items-center gap-2">
@@ -288,9 +329,9 @@ function doneText(action: CommunityAction, item: CommunityItem): string {
 /** The toast for a failed action. A stale failure has already refreshed the
  *  lists: a 409 from Add means this profile already added it, and a 404 means
  *  its publisher unpublished it. */
-function failure(action: CommunityAction, error: Error): ToastMessage {
+function failure(action: CommunityAction, error: Error): ToastInput {
   const status = error instanceof ApiError ? error.status : undefined
   if (action === 'subscribe' && status === 409) return { text: 'Already added', tone: 'success' }
   if (status === 404) return { text: 'Its publisher unpublished it.', tone: 'danger' }
-  return { text: `Couldn’t ${VERB[action]} it: ${error.message}`, tone: 'danger' }
+  return { text: `Couldn’t ${VERB[action]} it`, detail: error.message, tone: 'danger' }
 }

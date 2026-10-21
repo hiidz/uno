@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
+import { Button } from '@/components/Button'
 import { EntryPage } from '@/components/EntryPage'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
@@ -127,9 +128,9 @@ function ProfileFailed({ onRetry }: { onRetry: () => void }) {
   return (
     <EntryPage title="Couldn't open this profile" intro="Uno couldn't load it from Nuvio. Try again in a moment.">
       <div className="flex flex-wrap gap-3 max-sm:flex-col">
-        <button type="button" onClick={onRetry} className="btn-primary">
+        <Button kind="primary" onClick={onRetry}>
           Try again
-        </button>
+        </Button>
         <Link to="/profiles" className="btn-secondary">
           Choose a profile
         </Link>
@@ -331,7 +332,7 @@ function PendingIndicator({
     </>
   )
 
-  const className = `type-data flex shrink-0 items-center gap-2 rounded-l-full text-[13.5px] font-semibold whitespace-nowrap transition-colors lg:h-[34px] lg:rounded-full ${
+  const className = `type-data flex shrink-0 items-center gap-2 rounded-l-full text-meta font-semibold whitespace-nowrap transition-colors lg:h-[34px] lg:rounded-full ${
     dirty
       ? 'text-pending pr-2 pl-2.5 shadow-[inset_0_0_0_1.5px_var(--uno-pending)] lg:pr-3.5 lg:pl-1'
       : 'text-dim pr-2.5 pl-3.5 shadow-[inset_0_0_0_1px_var(--uno-line-hi)] lg:px-0 lg:shadow-none'
@@ -346,6 +347,7 @@ function PendingIndicator({
   }
 
   return (
+    // drift-ok: the pending count, a pill that opens the list of changes
     <button
       type="button"
       onClick={onToggle}

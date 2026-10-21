@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { TriangleAlert } from 'lucide-react'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 
 /**
@@ -23,10 +24,10 @@ export function StagedNote({
         <Icon icon={TriangleAlert} size={16} className={tone === 'danger' ? 'text-danger' : 'text-dim'} />
       </span>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[14px] leading-[20px]">{children}</span>
-        <button type="button" onClick={onUndo} className="btn-ghost h-auto px-0 text-[13px]">
+        <span className="text-body-sm leading-[20px]">{children}</span>
+        <Button kind="ghost" onClick={onUndo} className="text-meta h-auto px-0">
           Undo
-        </button>
+        </Button>
       </div>
     </div>
   )

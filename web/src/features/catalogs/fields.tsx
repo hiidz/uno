@@ -82,7 +82,7 @@ function NumberInput({
         const raw = event.target.value
         onChange(raw === '' ? undefined : Number(raw))
       }}
-      className="field type-data h-8 w-full max-w-[var(--w-code)] min-w-0 px-2 text-center text-[12px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
+      className="field type-data h-8 w-full max-w-[var(--w-code)] min-w-0 px-2 text-center text-caption pointer-coarse:h-11 pointer-coarse:text-field"
     />
   )
 }
@@ -140,7 +140,7 @@ export function RangeField({
           step={step}
           min={min}
         />
-        <span aria-hidden="true" className="text-dimmer shrink-0 text-[12.5px]">
+        <span aria-hidden="true" className="text-dimmer text-meta shrink-0">
           —
         </span>
         <NumberInput
@@ -227,6 +227,7 @@ export function GenreCycler({
               : 'off'
           const next = { off: 'include', inc: 'leave out', exc: 'ignore' }[state]
           return (
+            // drift-ok: a genre chip, drawn by `.gchip`, that cycles through three states
             <button
               key={genre.id}
               type="button"

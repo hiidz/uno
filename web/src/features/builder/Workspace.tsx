@@ -5,8 +5,9 @@ import type { CatalogPayload, CatalogType, CollectionPayload, ImportResult } fro
 import { ArrowDown } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Icon } from '@/components/Icon'
-import { Toast } from '@/components/Toast'
-import { useToast } from '@/components/useToast'
+import { Button } from '@/components/Button'
+import { useToastLift } from '@/components/toastLift'
+import { useToasts } from '@/components/toastQueue'
 import { ExportDialog } from '@/features/bundle/ExportDialog'
 import { ImportDialog } from '@/features/bundle/ImportDialog'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
@@ -31,7 +32,8 @@ import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { usePushWaiting } from '@/features/push/usePushWaiting'
 import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
-import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
+import { rowStickers } from '@/features/sharing/sharingState'
 import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
@@ -103,12 +105,14 @@ export function Workspace({
   const catalogMutations = useCatalogMutations(profileIndex)
   const collectionMutations = useCollectionMutations(profileIndex)
 
-  const { setDirty, blocked, proceed, cancel, dirty } = useEditorGuard()
+  const { setDirty, blocked, proceed, cancel } = useEditorGuard()
 
   // Held here, not in `HomePane`, so it survives an editor taking the pane:
   // closing one gives back the view you left rather than resetting to List.
   const [homeView, setHomeView] = useState<HomeView>('list')
   const [namingCatalog, setNamingCatalog] = useState(false)
+  const [made, setMade] = useState<string | null>(null)
+  const clearMade = useCallback(() => setMade(null), [])
   // The naming dialog's second field, held here because it is the answer the
   // dialog is collecting rather than something it displays — `createBareCatalog`
   // is what reads it. Reset when the dialog is opened, not when it closes, so a
@@ -117,18 +121,17 @@ export function Workspace({
   const [namingCollection, setNamingCollection] = useState(false)
   const [confirming, setConfirming] = useState<Confirmation | null>(null)
   const [transfer, setTransfer] = useState<'import' | 'export' | null>(null)
-  const [toast, setToast] = useToast()
-  useRedirectNotice(setToast)
+  const toasts = useToasts()
+  useRedirectNotice(toasts.show)
   const waitingForPush = usePushWaiting(profileIndex)
-  const sharing = useWorkspaceSharing({
-    profileIndex,
-    genres: library.genres,
-    dirty,
-    waitingForPush,
-    onToast: setToast,
-  })
+  /** An open editor's own flags beside its kind: its Community sticker,
+   *  and To push while a push would change it. */
+  const sharingBadges = (row: ({ id: string } & Parameters<typeof rowStickers>[0]) | undefined) =>
+    row && <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} />
 
   const railRef = useRef<HTMLElement>(null)
+  // The jump button pins to a phone's foot while the rail is on screen.
+  const jumpRef = useToastLift(8)
   const paneRef = useRef<HTMLDivElement>(null)
   const stacked = useStackedLayout()
   const { request, requestScroll } = useScrollRequests()
@@ -209,7 +212,7 @@ export function Workspace({
     catalogMutations.create.mutate(toPayload({ ...emptyForm(newCatalogType), name }), {
       onSuccess: (catalog) => {
         setNamingCatalog(false)
-        open(catalogTarget(catalog))
+        openMade(catalogTarget(catalog))
       },
     })
   }
@@ -226,7 +229,7 @@ export function Workspace({
     collectionMutations.create.mutate(toCollectionPayload({ ...emptyCollectionForm(), title }), {
       onSuccess: (collection) => {
         setNamingCollection(false)
-        open(
+        openMade(
           collectionTarget(
             // `folders` is `Folder[] | null` on the wire and `Folder[]` in the
             // library; a collection created empty is exactly the case that
@@ -304,6 +307,14 @@ export function Workspace({
 
   const { activeCatalog, activeCollection, editingCollectionCatalogs } = openRows(target, library)
 
+  /** Opens a row just made, created or duplicated: its editor takes focus on
+   *  its title at every width, where a row opened from the rail leaves focus
+   *  on the rail from `lg`. */
+  function openMade(next: EditorTarget) {
+    setMade(editorKey(next))
+    open(next)
+  }
+
   function selectCatalog(catalog: LibraryCatalog) {
     open(catalogTarget(catalog))
   }
@@ -344,7 +355,7 @@ export function Workspace({
     catalogMutations.duplicate.mutate(catalog.id, {
       onSuccess: (newCatalog) => {
         setConfirming(null)
-        open(catalogTarget(newCatalog))
+        openMade(catalogTarget(newCatalog))
       },
     })
   }
@@ -359,7 +370,7 @@ export function Workspace({
     collectionMutations.duplicate.mutate(collection.id, {
       onSuccess: (newCollection) => {
         setConfirming(null)
-        open({
+        openMade({
           kind: 'collection',
           id: newCollection.id,
           initial: formFromCollection(newCollection),
@@ -538,7 +549,6 @@ export function Workspace({
             onDeleteCollection={deleteCollection}
             onImport={() => setTransfer('import')}
             onExport={() => setTransfer('export')}
-            notice={<Toast toast={toast} />}
           />
 
           {/* Above `lg` home is simply the other half of the screen and needs
@@ -548,14 +558,15 @@ export function Workspace({
               while the rail is on screen, and leaves with the rail's end as
               the pane scrolls in. `z-20` ties the rail's sticky signs and wins on
               document order; the sticky header band (`z-30`) stays over it. */}
-          <button
-            type="button"
+          <Button
+            ref={jumpRef}
+            kind="secondary"
             onClick={showHome}
-            className="btn-secondary bg-raised-hi sticky bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 mb-4 self-center lg:hidden"
+            className="bg-raised-hi sticky bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 mb-4 self-center lg:hidden"
           >
             Your home screen
             <Icon icon={ArrowDown} size={16} />
-          </button>
+          </Button>
         </aside>
 
         <HomeSlot
@@ -567,7 +578,7 @@ export function Workspace({
         />
 
         {target === null ? null : (
-          <EditorLayer stacked={stacked} label={editorSubject(target)} fallbackFocus={railRef}>
+          <EditorLayer stacked={stacked} label={editorSubject(target)} openKey={editorKey(target)} landOnOpen={made === editorKey(target)} onLanded={clearMade} fallbackFocus={railRef}>
             {activeCatalog?.subscription ? (
               <CatalogFromCommunity
                 key={activeCatalog.id}
@@ -617,7 +628,7 @@ export function Workspace({
                 onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
                 onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
                 onDirtyChange={setDirty}
-                {...sharing.catalogSharing(activeCatalog)}
+                sharingBadges={sharingBadges(activeCatalog)}
               />
             ) : (
               <CollectionEditor
@@ -643,7 +654,7 @@ export function Workspace({
                 languages={library.languages}
                 usedInFolders={usedInFolders}
                 onCopyToLibrary={copyToLibrary}
-                {...sharing.collectionSharing(activeCollection)}
+                sharingBadges={sharingBadges(activeCollection)}
               />
             )}
           </EditorLayer>
@@ -707,14 +718,13 @@ export function Workspace({
         onClose={() => setTransfer(null)}
         onImported={(result) => {
           setTransfer(null)
-          setToast({ text: importedText(result), tone: 'success' })
+          toasts.show({ text: importedText(result), tone: 'success' })
         }}
       />
 
       {/* Rendered here rather than beside the guard itself, because this is the
           level that knows what is being edited — the prompt names it. */}
       {prompt && <ConfirmDialog open {...prompt} />}
-      {sharing.dialogs}
     </>
   )
 }
@@ -816,4 +826,9 @@ function HomeSlot({ shown, paneRef, view, onViewChange, onShowLibrary }: HomeSlo
       <HomePane view={view} onViewChange={onViewChange} onShowLibrary={onShowLibrary} />
     </div>
   )
+}
+
+/** Which row an editor holds, as `EditorLayer`'s `openKey`. */
+function editorKey(target: Pick<EditorTarget, 'kind' | 'id'>): string {
+  return `${target.kind}/${target.id}`
 }

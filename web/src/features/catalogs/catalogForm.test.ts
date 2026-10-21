@@ -175,9 +175,9 @@ describe('company and keyword cap', () => {
 describe('validateForm: the other server rules a form can reach', () => {
   const named = (update: Partial<CatalogFormState>): CatalogFormState => ({ ...emptyForm('movie'), name: 'Row', ...update })
 
-  it('holds the name to 200 characters, counted as characters', () => {
-    expect(validateForm(named({ name: '日'.repeat(200) }))).toEqual({})
-    expect(validateForm(named({ name: '日'.repeat(201) })).name).toBe('Keep the name to 200 characters or fewer.')
+  it('holds the name to 60 characters, counted as characters', () => {
+    expect(validateForm(named({ name: '日'.repeat(60) }))).toEqual({})
+    expect(validateForm(named({ name: '日'.repeat(61) })).name).toBe('Keep the name to 60 characters or fewer.')
   })
 
   it('keeps a rating between 0 and 10 and the counts non-negative', () => {
