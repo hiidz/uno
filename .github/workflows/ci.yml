@@ -1,4 +1,4 @@
-# The check set the README lists, run on every push to main and every pull
+# The project's full check set, run on every push to main and every pull
 # request. Go tests run under the race detector here, which needs cgo and so
 # can't run on a Windows machine without a C toolchain.
 name: CI
@@ -11,19 +11,26 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels that pull request's earlier run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   go:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - run: go mod tidy -diff
       - run: go build ./...
       - run: go vet ./...
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: v2.15.0
           # The default max-same-issues of 3 truncates repeated findings.
           args: --max-same-issues=0 --max-issues-per-linter=0
       - run: go test -race ./...
@@ -39,8 +46,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
