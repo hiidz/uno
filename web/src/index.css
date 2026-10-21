@@ -596,6 +596,101 @@
         }
     }
 
+    /* Toasts (DESIGN.md, "Toast"): one stack, newest at the bottom, in the
+       window's bottom-right corner from `lg` and full width at a phone's
+       foot, above any bar there (`--toast-lift`). Raised-hi cards with the
+       line-hi edge, no shadow; a failure's edge is red. */
+    .toast-viewport {
+        position: fixed;
+        z-index: 60;
+        right: 16px;
+        bottom: calc(16px + env(safe-area-inset-bottom) + var(--toast-lift, 0px));
+        left: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        outline: none;
+    }
+    @media (width >= 64rem) {
+        .toast-viewport {
+            right: 24px;
+            bottom: 24px;
+            left: auto;
+            width: 380px;
+        }
+    }
+    .toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 11px 6px 11px 12px;
+        border-radius: 12px;
+        background: var(--uno-raised-hi);
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+        color: var(--uno-ink);
+    }
+    .toast[data-tone='danger'] {
+        box-shadow: inset 0 0 0 1.5px var(--uno-danger);
+    }
+    .toast-mark {
+        display: grid;
+        flex: none;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--uno-ink);
+        color: var(--uno-sign-ink);
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1;
+    }
+    .toast[data-tone='danger'] .toast-mark {
+        background: var(--uno-danger);
+    }
+    .toast[data-tone='notice'] .toast-mark {
+        background: var(--uno-dim);
+    }
+    .toast[data-state='open'] {
+        animation: uno-layer-in 160ms var(--uno-ease);
+    }
+    .toast[data-state='closed'] {
+        animation: uno-toast-out 160ms ease forwards;
+    }
+    .toast[data-swipe='move'] {
+        transform: translateX(var(--radix-toast-swipe-move-x));
+    }
+    .toast[data-swipe='cancel'] {
+        transform: translateX(0);
+        transition: transform 160ms var(--uno-ease);
+    }
+    .toast[data-swipe='end'] {
+        animation: uno-toast-swipe 160ms ease forwards;
+    }
+    @keyframes uno-toast-out {
+        to {
+            opacity: 0;
+        }
+    }
+    @keyframes uno-toast-swipe {
+        from {
+            transform: translateX(var(--radix-toast-swipe-end-x));
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .toast[data-state],
+        .toast[data-swipe='end'] {
+            animation: none;
+        }
+    }
+
     /* Buttons (DESIGN.md, "Buttons"): pills, 38px on desktop; `pointer:
        coarse` grows standalone ones toward the phone's 44px targets. */
     .btn-primary,

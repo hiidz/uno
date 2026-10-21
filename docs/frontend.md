@@ -44,7 +44,7 @@ web/src/
 
 What the app does today, written down so new screens match. Each rule says when to break it.
 
-1. **Feedback.** A toast for a finished action ("Added to your catalogs", "Imported 2 catalogs"). A lasting banner for something that needs a decision or a fix, such as a failed push. A line beside the field for a problem with that field. Break it when the outcome is worth reading in full rather than noticing: a push's outcome stays on screen until dismissed.
+1. **Feedback.** A toast for a finished action ("Added to your catalogs", "Imported 2 catalogs"), through `useToasts`: a success leaves after 5 seconds, a failure stays until closed, and a notice explains a move the app made on its own. A lasting banner for something that needs a decision or a fix, such as a failed push. A line beside the field for a problem with that field. Break it when the outcome is worth reading in full rather than noticing: a push's outcome stays on screen until dismissed.
 2. **Confirm or undo.** A server write that can't be taken back asks first (Delete, Unpublish, Discard). A draft needs neither, since nothing is saved until Save. An editor undoes in place, like a removed folder's Undo. Don't add a confirmation to anything that can be undone.
 3. **Choice controls.** `Segmented` for one of a few, checkboxes for several, tabs only to switch whole panels. A choice from a long list is a select or a picker.
 4. **Headers.** ← for a page reached from a list (a Community publication), × for an editor or a dialog.
