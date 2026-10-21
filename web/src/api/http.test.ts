@@ -131,7 +131,7 @@ describe('failed responses', () => {
     expect(err).toMatchObject({ status: 429, message: 'Too many requests. Try again in 10 seconds.' })
 
     answer(new Response('', { status: 429, headers: { 'Retry-After': '1' } }))
-    await expect(getJSON('/api/companies/search')).rejects.toMatchObject({ message: 'Too many requests. Try again in 1 second.' })
+    await expect(getJSON('/api/tmdb/companies/search')).rejects.toMatchObject({ message: 'Too many requests. Try again in 1 second.' })
   })
 
   it.each([null, '', 'soon', '2.5', '0'])('words a Retry-After of %j as a moment', async (retryAfter) => {

@@ -2,10 +2,10 @@ import type { Country } from '@/api'
 
 /**
  * Names a TMDB certification key the way a person reads it. The
- * certification response (`GET /api/certifications/{type}`) is keyed by
+ * certification response (`GET /api/tmdb/certifications/{type}`) is keyed by
  * code, and a dropdown of "AU / BR / DE / GB" asks the user to know the
  * table — so codes are resolved against TMDB's own country table
- * (`GET /api/countries`, `/configuration/countries`) rather than a shipped
+ * (`GET /api/tmdb/countries`, `/configuration/countries`) rather than a shipped
  * list: TMDB adds rating boards, and a stale table would silently show a raw
  * code for the new one.
  */

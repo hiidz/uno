@@ -73,25 +73,25 @@ export function fetchChangesSincePublish(
  *  (`movie`/`series`), same as every other endpoint — the backend derives
  *  TMDB's `movie`/`tv` vocabulary internally. */
 export function fetchGenres(type: CatalogType): Promise<Genre[]> {
-  return getList<Genre>(`/api/genres/${type}`)
+  return getList<Genre>(`/api/tmdb/genres/${type}`)
 }
 
 /** Live from TMDB via the Go side, same shape as `fetchGenres` — every
  *  country's age-rating scale for this catalog type. */
 export function fetchCertifications(type: CatalogType): Promise<CertificationsByCountry> {
-  return getJSON<CertificationsByCountry>(`/api/certifications/${type}`)
+  return getJSON<CertificationsByCountry>(`/api/tmdb/certifications/${type}`)
 }
 
 /** Live from TMDB via the Go side. Not split by catalog type — TMDB's
  *  language table backs `with_original_language` on both movies and tv. */
 export function fetchLanguages(): Promise<Language[]> {
-  return getList<Language>('/api/languages')
+  return getList<Language>('/api/tmdb/languages')
 }
 
 /** Live from TMDB via the Go side. Names the codes `fetchCertifications`
  *  returns — that response is keyed by code, with no name attached. */
 export function fetchCountries(): Promise<Country[]> {
-  return getList<Country>('/api/countries')
+  return getList<Country>('/api/tmdb/countries')
 }
 
 /** Live from TMDB via the Go side. Scoped to a region because a service
@@ -99,14 +99,14 @@ export function fetchCountries(): Promise<Country[]> {
  *  knows about, which is what the picker shows before a region is chosen. */
 export function fetchWatchProviders(type: CatalogType, region: string): Promise<WatchProvider[]> {
   const query = region ? `?watch_region=${encodeURIComponent(region)}` : ''
-  return getList<WatchProvider>(`/api/watch-providers/${type}${query}`)
+  return getList<WatchProvider>(`/api/tmdb/watch-providers/${type}${query}`)
 }
 
 /** Live from TMDB via the Go side. The countries TMDB has streaming data
  *  for — a strict subset of `fetchCountries`, so `watch_region` reads from
  *  this one. */
 export function fetchWatchRegions(): Promise<WatchRegion[]> {
-  return getList<WatchRegion>('/api/watch-regions')
+  return getList<WatchRegion>('/api/tmdb/watch-regions')
 }
 
 /** Live from TMDB via the Go side: production companies whose name matches
@@ -114,47 +114,47 @@ export function fetchWatchRegions(): Promise<WatchRegion[]> {
  *  blank query, so callers only send a trimmed, non-empty one. */
 export function searchCompanies(query: string, type: CatalogType): Promise<CompanySearchResult[]> {
   return getList<CompanySearchResult>(
-    `/api/companies/search?q=${encodeURIComponent(query)}&type=${type}`,
+    `/api/tmdb/companies/search?q=${encodeURIComponent(query)}&type=${type}`,
   )
 }
 
 /** Names one company id. A `404` means TMDB has no company with that id. */
 export function fetchCompany(id: number): Promise<Company> {
-  return getJSON<Company>(`/api/companies/${id}`)
+  return getJSON<Company>(`/api/tmdb/companies/${id}`)
 }
 
 /** Live from TMDB via the Go side: keywords matching `query`. The server
  *  rejects a blank query, so callers only send a trimmed, non-empty one. */
 export function searchKeywords(query: string): Promise<Keyword[]> {
-  return getList<Keyword>(`/api/keywords/search?q=${encodeURIComponent(query)}`)
+  return getList<Keyword>(`/api/tmdb/keywords/search?q=${encodeURIComponent(query)}`)
 }
 
 /** Names one keyword id. A `404` means TMDB has no keyword with that id. */
 export function fetchKeyword(id: number): Promise<Keyword> {
-  return getJSON<Keyword>(`/api/keywords/${id}`)
+  return getJSON<Keyword>(`/api/tmdb/keywords/${id}`)
 }
 
 /** Live from TMDB via the Go side: movie collections matching `query`. The
  *  server rejects a blank query, so callers only send a trimmed, non-empty one. */
 export function searchCollections(query: string): Promise<TMDBCollection[]> {
-  return getList<TMDBCollection>(`/api/collections/search?q=${encodeURIComponent(query)}`)
+  return getList<TMDBCollection>(`/api/tmdb/collections/search?q=${encodeURIComponent(query)}`)
 }
 
 /** Names one collection id. A `404` means TMDB has no collection with that id. */
 export function fetchCollection(id: number): Promise<TMDBCollection> {
-  return getJSON<TMDBCollection>(`/api/collections/${id}`)
+  return getJSON<TMDBCollection>(`/api/tmdb/collections/${id}`)
 }
 
 /** Live from TMDB via the Go side: TV networks whose name matches `query`,
  *  counted and filtered like `searchCompanies` for series. The server rejects
  *  a blank query, so callers only send a trimmed, non-empty one. */
 export function searchNetworks(query: string): Promise<NetworkSearchResult[]> {
-  return getList<NetworkSearchResult>(`/api/networks/search?q=${encodeURIComponent(query)}`)
+  return getList<NetworkSearchResult>(`/api/tmdb/networks/search?q=${encodeURIComponent(query)}`)
 }
 
 /** Names one network id. A `404` means TMDB has no network with that id. */
 export function fetchNetwork(id: number): Promise<Network> {
-  return getJSON<Network>(`/api/networks/${id}`)
+  return getJSON<Network>(`/api/tmdb/networks/${id}`)
 }
 
 /**

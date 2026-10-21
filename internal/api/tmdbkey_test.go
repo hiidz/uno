@@ -181,7 +181,7 @@ func TestBuilderUsesTheAccountsKey(t *testing.T) {
 	create := `{"type":"movie","name":"New","provider":"tmdb","params":"{\"with_genres\":\"28\"}"}`
 	routes := []struct{ method, path, body string }{
 		{http.MethodPost, "/api/catalogs/preview", preview},
-		{http.MethodGet, "/api/genres/movie", ""},
+		{http.MethodGet, "/api/tmdb/genres/movie", ""},
 		{http.MethodPost, "/api/p/1/catalogs", create},
 	}
 	check := func(s *Server, code int, want string) {
@@ -235,8 +235,8 @@ func TestSharedKeyRejectedIsUpstream(t *testing.T) {
 		http.Error(w, "{}", http.StatusUnauthorized)
 	})
 	s := newProfileTestServer(t, newTestVaultDB(t))
-	if w := serve(t, s, http.MethodGet, "/api/genres/movie", "", false); w.Code != http.StatusBadGateway {
-		t.Errorf("GET /api/genres/movie with a refused shared key = %d, want 502", w.Code)
+	if w := serve(t, s, http.MethodGet, "/api/tmdb/genres/movie", "", false); w.Code != http.StatusBadGateway {
+		t.Errorf("GET /api/tmdb/genres/movie with a refused shared key = %d, want 502", w.Code)
 	}
 	w := serve(t, s, http.MethodPost, "/api/catalogs/preview", `{"type":"movie","params":"{}"}`, false)
 	if w.Code != http.StatusBadGateway || answerText(w) != "failed to reach TMDB" {
@@ -281,9 +281,9 @@ func TestAccountKeyLabel(t *testing.T) {
 			if err := db.SetAccountKey(t.Context(), "test-sub", tmdbkey.Provider, key); err != nil {
 				t.Fatal(err)
 			}
-			w := serve(t, newPerAccountServer(t, db), http.MethodGet, "/api/genres/movie", "", false)
+			w := serve(t, newPerAccountServer(t, db), http.MethodGet, "/api/tmdb/genres/movie", "", false)
 			if w.Code != tc.code {
-				t.Errorf("GET /api/genres/movie = %d %s, want %d", w.Code, w.Body.String(), tc.code)
+				t.Errorf("GET /api/tmdb/genres/movie = %d %s, want %d", w.Code, w.Body.String(), tc.code)
 			}
 			if got := strings.Join(sent(), ","); (tc.code == http.StatusOK) != (got == goodKey) {
 				t.Errorf("keys sent to TMDB = %q", got)

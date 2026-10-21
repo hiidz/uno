@@ -46,11 +46,11 @@ func TestTMDBFailuresReachTheClientAsStatuses(t *testing.T) {
 		tmdb                     http.HandlerFunc
 		wantStatus               int
 	}{
-		{"company found", http.MethodGet, "/api/companies/1", "", company, http.StatusOK},
-		{"company absent on TMDB", http.MethodGet, "/api/companies/1", "", notFound, http.StatusNotFound},
-		{"company with TMDB down", http.MethodGet, "/api/companies/1", "", tmdbDown, http.StatusBadGateway},
-		{"keyword absent on TMDB", http.MethodGet, "/api/keywords/1", "", notFound, http.StatusNotFound},
-		{"collection with TMDB down", http.MethodGet, "/api/collections/1", "", tmdbDown, http.StatusBadGateway},
+		{"company found", http.MethodGet, "/api/tmdb/companies/1", "", company, http.StatusOK},
+		{"company absent on TMDB", http.MethodGet, "/api/tmdb/companies/1", "", notFound, http.StatusNotFound},
+		{"company with TMDB down", http.MethodGet, "/api/tmdb/companies/1", "", tmdbDown, http.StatusBadGateway},
+		{"keyword absent on TMDB", http.MethodGet, "/api/tmdb/keywords/1", "", notFound, http.StatusNotFound},
+		{"collection with TMDB down", http.MethodGet, "/api/tmdb/collections/1", "", tmdbDown, http.StatusBadGateway},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeTMDB(t, tc.tmdb)
