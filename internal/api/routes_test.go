@@ -529,7 +529,7 @@ func TestHealth(t *testing.T) {
 // the builder API, the addon, and the SPA.
 func TestEveryResponseCarriesSecurityHeaders(t *testing.T) {
 	s := newProfileTestServer(t, newTestVaultDB(t))
-	for _, path := range []string{"/api/health", "/u/nope/manifest.json", "/configure"} {
+	for _, path := range []string{"/api/health", "/u/nope/manifest.json", "/p/1/community"} {
 		w := serve(t, s, http.MethodGet, path, "", true)
 		for name, want := range securityHeaders {
 			if got := w.Header().Get(name); got != want {

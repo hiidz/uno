@@ -470,6 +470,24 @@ export function removedFolders(
 }
 
 /**
+ * `folders` with each of `restored` put back at its index in `initial`,
+ * taken in `initial`'s order, so undoing every removal from an otherwise
+ * untouched form gives back `initial`'s order and the form is clean again.
+ */
+export function withFoldersRestored(
+  initial: CollectionFormState,
+  folders: FolderFormState[],
+  restored: FolderFormState[],
+): FolderFormState[] {
+  const restoring = new Set(restored)
+  const next = [...folders]
+  initial.folders.forEach((folder, index) => {
+    if (restoring.has(folder)) next.splice(Math.min(index, next.length), 0, folder)
+  })
+  return next
+}
+
+/**
  * `localCatalogs` resolves a draft id into its inline `new` spec — omitted
  * (defaulting to an empty map) by `isSameCollection`'s dirty-check below,
  * which only needs structural presence to differ, not a draft's exact

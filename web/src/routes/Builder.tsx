@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { EntryPage } from '@/components/EntryPage'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
 import { KeyProblemBanner } from '@/features/account/KeyProblemBanner'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
+import { builderPath, builderView, type BuilderSection, type BuilderView } from '@/features/builder/paths'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
 import { Workspace } from '@/features/builder/Workspace'
@@ -20,93 +21,97 @@ import { AddonURLButton, ChangesStrip, PushBanner } from '@/features/push/PushCo
 import { usePush } from '@/features/push/usePush'
 import { usePushBlock } from '@/features/push/usePushBlock'
 import { useCountDown } from '@/lib/useCountDown'
-import { plural, pluralCount } from '@/lib/plural'
+import { plural } from '@/lib/plural'
+import { LeaveGuard } from './LeaveGuard'
+import { useBuilderProfile, type BuilderProfile } from './useBuilderProfile'
 
-export interface BuilderProfile {
-  profileIndex: number
-  profileName: string
-  /** Uno's addon URL for this profile, from `POST /api/profiles/select`.
-   *  Optional because navigation state is the only source, and a history entry
-   *  may not carry it. */
-  manifestURL?: string
-  /** The profile uses profile 1's addons in Nuvio, so Push is off for it
-   *  (`usePushBlock`). Optional for the same reason as `manifestURL`. */
-  sharesAddons?: boolean
-}
-
-type Tab = 'workspace' | 'community'
+type Tab = BuilderSection
 
 /**
- * The single builder page: a Workspace tab (two regions — a Library rail on
+ * The single builder page: a Workspace section (two regions — a Library rail on
  * the left, every catalog and collection you own, and a pane on the right
  * holding your home screen or the editor for whichever rail row is selected)
- * and a Community tab (everyone else's public catalogs and collections,
- * browsed and added). Below `lg` the Workspace
- * tab's own two regions stack into one scrolling document rather than
+ * and a Community section (everyone else's public catalogs and collections,
+ * browsed and added), each its own path under the profile's `/p/{i}`
+ * (`features/builder/paths.ts`). Below `lg` the Workspace
+ * section's own two regions stack into one scrolling document rather than
  * becoming two screens — see `stacked.ts`; Community is already one column at
  * every width, so it needs no such treatment.
  *
- * Push is a header action, outside both tabs — the commit for Home, so it
- * lives where Home's state is, regardless of which tab is open.
+ * Push is a header action, outside both sections — the commit for Home, so it
+ * lives where Home's state is, regardless of which section is open.
  *
  * **Two kinds of unsaved work, deliberately separate.** An editor's changes are
  * saved to the server; Home's are pushed to Nuvio. They're lost in different
- * ways, warn separately, and the header shows only Home's — an editor states
- * its own in the pane.
+ * ways, warn separately (`LeaveGuard`), and the header shows only Home's — an
+ * editor states its own in the pane.
  */
 export function Builder() {
   const location = useLocation()
-  const profile = location.state as BuilderProfile | null
-  const [tab, setTab] = useState<Tab>('workspace')
-  // The publication Community opens on when a copy's Update… switched to it;
-  // the tab switch in the header opens Community on its list.
-  const [opening, setOpening] = useState<OpenPublication | null>(null)
+  const view = builderView(location.pathname)
+  // A slot outside Nuvio's six is no profile to open.
+  if (!view) return <Navigate to="/profiles" replace />
+  // Keyed on the profile: Home's pending and baseline state and the editor
+  // guard are built once, so another profile's path must start new ones.
+  return <ProfileBuilder key={view.profileIndex} view={view} />
+}
 
-  function changeTab(next: Tab) {
-    setOpening(null)
-    setTab(next)
-  }
-
-  function openPublication(publication: OpenPublication) {
-    setOpening(publication)
-    setTab('community')
-  }
-
-  // Only reachable by selecting a profile on /profiles, which hands the
-  // profile down via navigation state — a direct or refreshed visit to this
-  // URL has no state, and a forged one may name a slot Nuvio doesn't have, so
-  // either goes back to pick a profile.
-  if (!hasProfileSlot(profile)) {
-    return <Navigate to="/profiles" replace />
-  }
+function ProfileBuilder({ view }: { view: BuilderView }) {
+  const state = useBuilderProfile(view.profileIndex)
+  if (state.status === 'missing') return <Navigate to="/profiles" replace />
+  if (state.status === 'failed') return <ProfileFailed onRetry={state.retry} />
+  if (state.status === 'loading') return null
+  const { profile } = state
 
   return (
-    // Keyed on the profile: the provider's pending and baseline state is
-    // built once, so another profile's entry in the history must start a new one.
-    <HomeSelectionProvider key={profile.profileIndex} profileIndex={profile.profileIndex}>
+    <HomeSelectionProvider profileIndex={profile.profileIndex}>
       <EditorGuardProvider>
+        <LeaveGuard />
         <div className="flex min-h-svh flex-col lg:h-svh">
-          <BuilderHeader profile={profile} tab={tab} onTabChange={changeTab} />
-          {tab === 'workspace' ? (
-            <Workspace profileIndex={profile.profileIndex} onOpenPublication={openPublication} />
-          ) : (
-            <CommunityView profileIndex={profile.profileIndex} initialOpen={opening} />
-          )}
+          <BuilderHeader profile={profile} tab={view.section} />
+          <SectionView view={view} />
         </div>
       </EditorGuardProvider>
     </HomeSelectionProvider>
   )
 }
 
-function BuilderHeader({
-  profile,
-  tab,
-  onTabChange,
-}: {
-  profile: BuilderProfile
-  tab: Tab
-  onTabChange: (tab: Tab) => void
-}) {
+function SectionView({ view }: { view: BuilderView }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { profileIndex } = view
+
+  // A copy's Update… opens its publication's page, with Community's list of
+  // its kind behind it. The browser's Back returns to the editor; the page's
+  // own way back goes to that list, so the entry isn't marked `IN_APP`.
+  function openPublication(publication: OpenPublication) {
+    void navigate(builderPath.publication(profileIndex, publication.id), { state: { kind: publication.kind } })
+  }
+
+  if (view.section === 'workspace') {
+    return <Workspace profileIndex={profileIndex} editor={view.editor} onOpenPublication={openPublication} />
+  }
+  const kind = (location.state as { kind?: OpenPublication['kind'] } | null)?.kind
+  return <CommunityView profileIndex={profileIndex} publicationID={view.publicationID} kind={kind} />
+}
+
+/** The profile's details didn't load: Nuvio, or Uno, didn't answer. */
+function ProfileFailed({ onRetry }: { onRetry: () => void }) {
+  return (
+    <EntryPage title="Couldn't open this profile" intro="Uno couldn't load it from Nuvio. Try again in a moment.">
+      <div className="flex flex-wrap gap-3 max-sm:flex-col">
+        <button type="button" onClick={onRetry} className="btn-primary">
+          Try again
+        </button>
+        <Link to="/profiles" className="btn-secondary">
+          Choose a profile
+        </Link>
+      </div>
+    </EntryPage>
+  )
+}
+
+function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) {
   const navigate = useNavigate()
   const home = useHomeSelection()
   const editor = useEditorGuard()
@@ -117,7 +122,6 @@ function BuilderHeader({
     home.pendingCount,
     push.outcome?.kind === 'success' ? push.outcome : null,
   )
-  const [confirmingLeave, setConfirmingLeave] = useState(false)
   const [changesOpen, setChangesOpen] = useState(false)
   const stickyRef = useRef<HTMLDivElement>(null)
 
@@ -128,46 +132,14 @@ function BuilderHeader({
   // ask, so the two are simply OR-ed here.
   useUnloadGuard(home.isDirty || editor.dirty)
 
+  // Each way out only navigates; `LeaveGuard` asks what it would discard.
   function leave() {
-    setConfirmingLeave(false)
     void navigate('/profiles')
   }
 
-  /**
-   * Leaving the page passes both guards, editor first.
-   *
-   * Two prompts rather than one merged dialog: they're about different things
-   * lost in different ways, and a single sentence covering both would have to
-   * be vague about each. The editor's is raised by `guard`; Home's is the
-   * dialog below.
-   */
-  function requestLeave() {
-    editor.guard(() => {
-      if (home.isDirty) {
-        setConfirmingLeave(true)
-        return
-      }
-      leave()
-    })
-  }
-
-  /**
-   * Switching tabs unmounts `Workspace`, and with it any open editor — so this
-   * goes through the same guard as leaving the page, minus the pending-Home
-   * prompt: Home's own state lives in `HomeSelectionProvider`, above both
-   * tabs, and switching tabs doesn't touch it.
-   *
-   * Clears `dirty` itself, unlike `requestLeave` — leaving the page tears down
-   * `EditorGuardProvider` along with everything else, but this provider spans
-   * both tabs, so a stale `true` left over from the editor that just got
-   * discarded would wrongly guard the *next* exit, with nothing left to lose.
-   */
-  function requestTabChange(next: Tab) {
+  function changeTab(next: Tab) {
     if (next === tab) return
-    editor.guard(() => {
-      editor.setDirty(false)
-      onTabChange(next)
-    })
+    void navigate(builderPath[next](profile.profileIndex))
   }
 
   return (
@@ -191,12 +163,9 @@ function BuilderHeader({
         <header className="bg-ground border-line flex min-h-[55px] items-center gap-3 border-b px-4 py-2 lg:h-[60px] lg:gap-4 lg:px-5 lg:py-0">
           <Wordmark className="text-ink h-[14px] w-auto shrink-0 lg:h-[16px]" />
 
-          {/* Switching profiles means going back through the picker —
-              /configure is only reachable via navigation state, so there's
-              nowhere else to re-select from. That makes this the page's only
-              way to leave it entirely, and along with the Community tab below,
-              one of the two controls that have to guard pending editor
-              changes.
+          {/* Switching profiles means going back through the picker, which
+              shows each profile with what it needs to choose between them.
+              That makes this the page's own way to leave it entirely.
 
               One chip, whose shape follows the breakpoint internally — see
               `ProfileMenu`. Below `lg` it is the trigger for the header's
@@ -206,7 +175,7 @@ function BuilderHeader({
             profileIndex={profile.profileIndex}
             profileName={profile.profileName}
             manifestURL={profile.manifestURL}
-            onSwitchProfile={requestLeave}
+            onSwitchProfile={leave}
           />
 
           {/* Above `lg` only — the header row is measured to fit exactly what
@@ -215,7 +184,7 @@ function BuilderHeader({
               their own row underneath, matching DESIGN.md's two-row phone
               top bar. */}
           <div className="hidden lg:block">
-            <BuilderTabs tab={tab} onChange={requestTabChange} />
+            <BuilderTabs tab={tab} onChange={changeTab} />
           </div>
 
           {/* Grouped so the row doesn't reflow while PendingIndicator is still
@@ -234,9 +203,7 @@ function BuilderHeader({
               open={changesOpen}
               onToggle={() => setChangesOpen((o) => !o)}
             />
-            {profile.manifestURL && (
-              <AddonURLButton url={profile.manifestURL} className="hidden lg:inline-flex" />
-            )}
+            <AddonURLButton url={profile.manifestURL} className="hidden lg:inline-flex" />
             <BlockablePushButton push={push} block={block} className={home.ready ? 'max-lg:rounded-l-none' : ''} />
           </div>
         </header>
@@ -251,31 +218,15 @@ function BuilderHeader({
         {/* The account's TMDB key is unusable, on a server where each account
             brings one; it is fixed on the picker, reached as switching profile
             is. */}
-        <KeyProblemBanner onFix={requestLeave} />
+        <KeyProblemBanner onFix={leave} />
       </div>
 
       {/* Below `lg` only, and outside the sticky band: it scrolls with the
           page. */}
       <div className="border-line bg-ground border-b px-4 py-2 lg:hidden">
-        <BuilderTabs tab={tab} onChange={requestTabChange} />
+        <BuilderTabs tab={tab} onChange={changeTab} />
       </div>
 
-      <ConfirmDialog
-        open={confirmingLeave}
-        title="Discard unpushed changes?"
-        body={
-          <>
-            {countLabel(home.unsavedCount)} to your home screen{' '}
-            {home.unsavedCount === 1 ? "hasn't" : "haven't"} been pushed yet. Leaving discards{' '}
-            {home.unsavedCount === 1 ? 'it' : 'them'}.
-          </>
-        }
-        confirmLabel="Discard and switch"
-        cancelLabel="Stay here"
-        destructive
-        onConfirm={leave}
-        onCancel={() => setConfirmingLeave(false)}
-      />
     </>
   )
 }
@@ -374,17 +325,6 @@ function PendingIndicator({
       {content}
     </button>
   )
-}
-
-/** Whether navigation state names one of Nuvio's six profile slots, the range
- *  `requireProfile` accepts. */
-function hasProfileSlot(profile: BuilderProfile | null): profile is BuilderProfile {
-  const index: unknown = profile?.profileIndex
-  return Number.isInteger(index) && (index as number) >= 1 && (index as number) <= 6
-}
-
-function countLabel(count: number): string {
-  return pluralCount(count, 'change')
 }
 
 /** The Workspace / Community switch, factored out only because it's rendered

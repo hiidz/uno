@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
 import { land } from './stacked'
-import { useLayerHistory } from './useLayerHistory'
 
 interface EditorLayerProps {
   /** Below `lg`: the layer covers the page instead of filling the pane. */
   stacked: boolean
   /** What is open, as the layer's accessible name. */
   label: string
-  /** The guarded close — the browser's Back asks through it, as × does. */
-  onRequestClose: () => void
   /** Where focus goes on close when whatever opened the layer is gone. */
   fallbackFocus: RefObject<HTMLElement | null>
   children: ReactNode
@@ -27,12 +24,11 @@ interface EditorLayerProps {
  *
  * Covering the page, it is a modal: everything else on the page, header
  * included, is inert and does not scroll, focus starts on the editor's title and returns to what opened it,
- * and the browser's Back asks to close it. It sits at `z-[35]`, over the
+ * and the browser's Back closes it, as it steps back off the editor's path. It sits at `z-[35]`, over the
  * app header (`z-30`) and under menus (`z-40`) and dialogs (`z-50`).
  */
-export function EditorLayer({ stacked, label, onRequestClose, fallbackFocus, children }: EditorLayerProps) {
+export function EditorLayer({ stacked, label, fallbackFocus, children }: EditorLayerProps) {
   const ref = useRef<HTMLDivElement>(null)
-  useLayerHistory(stacked, onRequestClose)
   // Before the focus hand-off: its cleanup returns focus into a page that has
   // to have stopped being inert first.
   useInertOthers(stacked, ref)

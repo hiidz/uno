@@ -10,7 +10,11 @@ The web app in `web/` is React 19 and TypeScript, built with Vite. It uses React
 |---|---|
 | `/login` | Sign in with your Nuvio email and password. |
 | `/profiles` | Pick a Nuvio profile. |
-| `/configure` | The builder: library, editors, home screen, Community. |
+| `/p/{i}` | The builder on Nuvio profile `i` (1–6): library and home screen. |
+| `/p/{i}/catalog/{id}`, `/p/{i}/collection/{id}` | The builder with that row's editor open. |
+| `/p/{i}/community`, `/p/{i}/community/{id}` | The builder's Community section, and one publication's page. |
+
+Opening an editor or a publication's page adds a browser history step, so Back closes it. Moving from one editor to another doesn't add one. Back, or any move that would discard unsaved editor changes or unpushed home-screen changes, asks first.
 | anything else | A "page doesn't exist" page with a link home. A page that throws shows a "Something went wrong" page with Reload. |
 
 ## Layout

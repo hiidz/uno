@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
 import { Segmented } from '@/components/fields'
@@ -7,8 +7,10 @@ import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
+import { IN_APP, builderPath, pushedInApp } from '@/features/builder/paths'
 import { useGenreLookups, type GenreLookups } from '@/features/library/useLibrary'
 import { useDebounce } from '@/lib/useDebounce'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { snapshotRecipeLine } from '@/features/sharing/snapshot'
 import {
   itemMeta,
@@ -43,21 +45,26 @@ const SEARCH_MAX_LENGTH = 200
  * Add puts it in the library, read-only, following its publisher's updates;
  * Update… opens the page, which shows the new version and applies it;
  * Duplicate adds a copy that is the profile's own. No publisher is named
- * anywhere here. `initialOpen` starts on a publication's page: an added row's
- * own Update… lands there.
+ * anywhere here. The open page is the path's `publicationID`, so the browser's
+ * Back closes it; `kind`, when an added row's own Update… opened it, picks the
+ * list behind it.
  */
 export function CommunityView({
   profileIndex,
-  initialOpen,
+  publicationID,
+  kind,
 }: {
   profileIndex: number
-  initialOpen: OpenPublication | null
+  publicationID: string | null
+  kind?: OpenPublication['kind']
 }) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const { genres } = useGenreLookups()
   const mutations = useCommunityMutations(profileIndex)
-  const [start] = useState(() => startingView(initialOpen))
+  const [start] = useState(() => startingView(publicationID && kind ? { id: publicationID, kind } : null))
   const [filters, setFilters] = useState<CommunityFilters>(start.filters)
-  const [openID, setOpenID] = useState<string | null>(start.openID)
+  const openID = publicationID
   const q = useDebounce(filters.q.trim(), SEARCH_SETTLE_MS)
   const problem = searchProblem(q)
   const list = useCommunityList(profileIndex, { ...filters, q }, problem === '')
@@ -72,22 +79,25 @@ export function CommunityView({
   const now = new Date()
 
   const { scrollRef, remember, restore } = useScrollMemory()
+  useDocumentTitle(open ? open.title : 'Community')
 
-  const back = useCallback(
-    (id: string) => {
-      setOpenID(null)
-      restore(() => focusRow(id))
-    },
-    [restore],
-  )
+  // However the page closed — its back arrow or the browser's Back — the list
+  // comes back where it was, with focus on the row that opened it.
+  const shown = useRef(openID)
+  useEffect(() => {
+    const closed = shown.current
+    shown.current = openID
+    if (closed !== null && openID === null) restore(() => focusRow(closed))
+  }, [openID, restore])
 
   function closePage() {
-    if (open) back(open.id)
+    if (pushedInApp(location.state)) void navigate(-1)
+    else void navigate(builderPath.community(profileIndex), { replace: true })
   }
 
   function openItem(id: string) {
     remember()
-    setOpenID(id)
+    void navigate(builderPath.publication(profileIndex, id), { state: IN_APP })
   }
 
   function run(item: CommunityItem, action: CommunityAction) {
@@ -121,6 +131,10 @@ export function CommunityView({
   // to retry, so send the user back to pick one.
   if (list.error instanceof ProfileNotSelectedError) {
     return <Navigate to="/profiles" replace />
+  }
+  // A page's address for a publication that is gone, or never was.
+  if (openID !== null && open === null && openDetail.isError) {
+    return <Navigate to={builderPath.community(profileIndex)} replace />
   }
 
   return (

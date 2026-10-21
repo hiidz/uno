@@ -21,6 +21,10 @@ export const queryKeys = {
    *  profile, so this sits outside the `['p', i, …]` prefix like the genre
    *  keys below. */
   profiles: () => ['profiles'] as const,
+  /** `POST /api/profiles/select`'s answer for one slot. Outside the
+   *  `['p', i, …]` prefix, so the picker's answer, put here as it navigates,
+   *  outlives `watchActiveProfile`'s drop and the builder needn't ask again. */
+  selectedProfile: (profileIndex: number) => ['selected', profileIndex] as const,
 
   /** `GET /api/account/tmdb-key` — the signed-in account's own TMDB key, so
    *  outside the `['p', i, …]` prefix like `profiles`. */

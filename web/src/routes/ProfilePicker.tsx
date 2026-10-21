@@ -1,6 +1,6 @@
 import { useEffect, useState, type SyntheticEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Lock, TriangleAlert } from 'lucide-react'
 import { ApiError, fetchProfiles, queryKeys, selectProfile } from '@/api'
 import type { NuvioProfile } from '@/api'
@@ -11,6 +11,7 @@ import { EntryPage } from '@/components/EntryPage'
 import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
+import { builderPath } from '@/features/builder/paths'
 import { ProfilesRetry } from './ProfilesRetry'
 
 /** How the picker shows a failed profile call. A 403 there is this server
@@ -134,10 +135,11 @@ function sharesAddonsLabel(profile: NuvioProfile): string {
 
 export function ProfilePicker() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [selecting, setSelecting] = useState<number | null>(null)
 
-  // The builder is a separate chunk that /configure loads lazily. Fetching it
-  // while the picker is on screen means choosing a profile waits only on
+  // The builder is a separate chunk that its `/p/{i}` route loads lazily.
+  // Fetching it while the picker is on screen means choosing a profile waits only on
   // `POST /api/profiles/select`, not on that and then the download.
   useEffect(() => {
     void import('./Builder')
@@ -155,18 +157,12 @@ export function ProfilePicker() {
   function choose(profile: NuvioProfile) {
     setSelecting(profile.profile_index)
     select.mutate(profile.profile_index, {
-      // `manifest_url` rides along so the builder can show the addon URL
-      // straight away instead of waiting for a first push to report it. It's
-      // built server-side from SITE_BASE_URL, which the client is never told.
+      // The builder reads the answer from the cache rather than selecting
+      // again; `manifest_url` is built server-side from SITE_BASE_URL, which
+      // the client is never told.
       onSuccess: (selected) => {
-        navigate('/configure', {
-          state: {
-            profileIndex: profile.profile_index,
-            profileName: profile.name,
-            manifestURL: selected.manifest_url,
-            sharesAddons: profile.uses_primary_addons,
-          },
-        })
+        queryClient.setQueryData(queryKeys.selectedProfile(profile.profile_index), selected)
+        void navigate(builderPath.workspace(profile.profile_index))
       },
       onError: () => setSelecting(null),
     })
