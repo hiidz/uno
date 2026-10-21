@@ -23,6 +23,7 @@ import { usePushBlock } from '@/features/push/usePushBlock'
 import { useCountDown } from '@/lib/useCountDown'
 import { plural } from '@/lib/plural'
 import { LeaveGuard } from './LeaveGuard'
+import { BuilderShellSkeleton, HEADER_ROW, HEADER_WORDMARK, TABS_ROW } from './LoadingShells'
 import { useBuilderProfile, type BuilderProfile } from './useBuilderProfile'
 
 type Tab = BuilderSection
@@ -60,7 +61,7 @@ function ProfileBuilder({ view }: { view: BuilderView }) {
   const state = useBuilderProfile(view.profileIndex)
   if (state.status === 'missing') return <Navigate to="/profiles" replace />
   if (state.status === 'failed') return <ProfileFailed onRetry={state.retry} />
-  if (state.status === 'loading') return null
+  if (state.status === 'loading') return <BuilderShellSkeleton />
   const { profile } = state
 
   return (
@@ -185,8 +186,8 @@ function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) 
       <div ref={stickyRef} className="sticky top-0 z-30 shrink-0 lg:static">
         {/* One row that never wraps, at every width: the profile chip
             truncates instead. */}
-        <header className="bg-ground border-line flex min-h-[55px] items-center gap-3 border-b px-4 py-2 lg:h-[60px] lg:gap-4 lg:px-5 lg:py-0">
-          <Wordmark className="text-ink h-[14px] w-auto shrink-0 lg:h-[16px]" />
+        <header className={HEADER_ROW}>
+          <Wordmark className={HEADER_WORDMARK} />
 
           {/* Switching profiles means going back through the picker, which
               shows each profile with what it needs to choose between them.
@@ -221,13 +222,17 @@ function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) 
               Push — no gap, stretched to Push's height, Push squared off on
               the side they share — which is what fits it into a row with no
               room for its words. Until it renders, Push keeps both ends
-              round. */}
+              round. From `lg` the status holds a right-aligned slot as wide
+              as "88 unpushed changes" from the first frame, so neither its
+              arrival nor a change of words moves anything. */}
           <div className="ml-auto flex shrink-0 items-stretch lg:items-center lg:gap-4">
-            <PendingIndicator
-              count={pendingShown}
-              open={changesOpen}
-              onToggle={() => setChangesOpen((o) => !o)}
-            />
+            <div className="flex lg:min-w-[12rem] lg:justify-end">
+              <PendingIndicator
+                count={pendingShown}
+                open={changesOpen}
+                onToggle={() => setChangesOpen((o) => !o)}
+              />
+            </div>
             <AddonURLButton url={profile.manifestURL} className="hidden lg:inline-flex" />
             <BlockablePushButton push={push} block={block} className={home.ready ? 'max-lg:rounded-l-none' : ''} />
           </div>
@@ -248,7 +253,7 @@ function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) 
 
       {/* Below `lg` only, and outside the sticky band: it scrolls with the
           page. */}
-      <div className="border-line bg-ground border-b px-4 py-2 lg:hidden">
+      <div className={TABS_ROW}>
         <BuilderTabs tab={tab} onChange={changeTab} />
       </div>
 

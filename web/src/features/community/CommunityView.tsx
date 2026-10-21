@@ -5,6 +5,7 @@ import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { ListState } from '@/components/ListState'
+import { skeletonKeys } from '@/components/Skeleton'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
 import { IN_APP, builderPath, pushedInApp } from '@/features/builder/paths'
@@ -23,7 +24,7 @@ import {
   type CommunityFilters,
   type OpenPublication,
 } from './communityQuery'
-import { CommunityRow, type RowActions } from './CommunityRow'
+import { CommunityRow, CommunityRowSkeleton, type RowActions } from './CommunityRow'
 import { CommunitySign } from './CommunitySign'
 import { PublicationPage } from './PublicationPage'
 import { focusRow, rowButtonID, useScrollMemory } from './scroll'
@@ -161,6 +162,13 @@ export function CommunityView({
               error={listError(list)}
               isEmpty={items.length === 0}
               loadingLabel="Loading Community…"
+              skeleton={
+                <div className="flex flex-col gap-1">
+                  {skeletonKeys(6).map((key) => (
+                    <CommunityRowSkeleton key={key} />
+                  ))}
+                </div>
+              }
               errorLabel="Couldn’t load Community."
               onRetry={list.refetch}
               emptyLabel={emptyLabel(filters)}

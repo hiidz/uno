@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 
 import { useQuery } from '@tanstack/react-query'
 import { fetchCatalogPreview, queryKeys, type CommunityFolder, type CommunityItem, type SnapshotCatalog } from '@/api'
 import { TILE_ASPECT } from '@/features/preview/tiles'
+import { thumbnail } from '@/lib/tmdbImage'
 import { PREVIEW_QUERY_OPTIONS } from '@/features/preview/useRecipesTiles'
 import { firstPosters, shownFolders, STACK_SIZE } from './rowPreviewModel'
 
@@ -38,7 +39,7 @@ function PosterStack({ catalog }: { catalog: SnapshotCatalog }) {
     <div ref={ref} aria-hidden="true" className="poster-stack">
       {posters.map((poster, i) => (
         <span key={i} className="row-face" style={{ left: `calc(${i} * var(--step))`, zIndex: STACK_SIZE - i }}>
-          {poster && <img src={poster} alt="" loading="lazy" decoding="async" />}
+          {poster && <img {...thumbnail(poster, '3rem')} alt="" loading="lazy" decoding="async" />}
         </span>
       ))}
     </div>
@@ -96,7 +97,7 @@ function FolderFace({ folder }: { folder: CommunityFolder }) {
   return (
     <span className="row-face" style={{ '--ratio': TILE_ASPECT[folder.tile_shape] } as CSSProperties}>
       <FolderLabel folder={folder} />
-      {folder.cover_image_url.trim() && <img src={folder.cover_image_url} alt="" loading="lazy" decoding="async" />}
+      {folder.cover_image_url.trim() && <img {...thumbnail(folder.cover_image_url, '3rem')} alt="" loading="lazy" decoding="async" />}
     </span>
   )
 }

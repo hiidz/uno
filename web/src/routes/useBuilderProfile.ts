@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, fetchProfiles, queryKeys, selectProfile } from '@/api'
+import { prefetchReferenceData } from '@/features/library/referenceQueries'
 
 /** The profile the builder is open on. */
 export interface BuilderProfile {
@@ -24,9 +26,12 @@ export type BuilderProfileState =
  * from the account's profile list, and its addon URL from selecting it, which
  * also creates Uno's row for a slot visited for the first time — so nothing
  * profile-scoped is asked for until it answers. Coming from the picker, both
- * are cached already.
+ * are cached already. TMDB's reference lists aren't profile-scoped, so they
+ * start alongside.
  */
 export function useBuilderProfile(profileIndex: number): BuilderProfileState {
+  const queryClient = useQueryClient()
+  useEffect(() => prefetchReferenceData(queryClient), [queryClient])
   const profiles = useQuery({ queryKey: queryKeys.profiles(), queryFn: fetchProfiles })
   const selected = useQuery({
     queryKey: queryKeys.selectedProfile(profileIndex),

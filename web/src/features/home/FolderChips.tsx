@@ -1,4 +1,5 @@
 import type { PreviewCollection, PreviewFolder } from '@/features/preview/model'
+import { thumbnail } from '@/lib/tmdbImage'
 
 /** How many folders a Home row draws before the rest become "+N more". */
 const SHOWN = 6
@@ -58,6 +59,6 @@ function FolderFace({ folder }: { folder: PreviewFolder }) {
 }
 
 function FaceArt({ folder }: { folder: PreviewFolder }) {
-  if (folder.coverImageUrl) return <img src={folder.coverImageUrl} alt="" loading="lazy" className="size-full object-cover" />
+  if (folder.coverImageUrl) return <img {...thumbnail(folder.coverImageUrl, '1.5rem')} alt="" loading="lazy" className="size-full object-cover" />
   return folder.coverEmoji
 }

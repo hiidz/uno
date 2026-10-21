@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { router } from './router'
 
+const builder = vi.hoisted(() => ({ loaded: false }))
+
+// Signed out, as `RequireAuth` sees it.
+vi.mock('@/auth/useAuth', () => ({ useAuth: () => ({ status: 'unauthenticated' }) }))
+vi.mock('./Builder', () => {
+  builder.loaded = true
+  return { Builder: () => null }
+})
 vi.mock('./Login', () => ({
   Login: () => {
     throw new Error('render failed')
@@ -11,7 +19,9 @@ vi.mock('./Login', () => ({
 }))
 
 function open(path: string) {
-  render(<RouterProvider router={createMemoryRouter(router.routes, { initialEntries: [path] })} />)
+  const memory = createMemoryRouter(router.routes, { initialEntries: [path] })
+  render(<RouterProvider router={memory} />)
+  return memory
 }
 
 describe('router', () => {
@@ -28,5 +38,12 @@ describe('router', () => {
     expect(await screen.findByRole('heading', { name: 'Something went wrong' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Go to Uno’s home' })).toHaveAttribute('href', '/')
+  })
+
+  it('sends a signed-out visit to a builder address to sign-in without loading the builder', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const memory = open('/p/1')
+    await waitFor(() => expect(memory.state.location.pathname).toBe('/login'))
+    expect(builder.loaded).toBe(false)
   })
 })

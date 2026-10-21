@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
 import { tmdbKind } from '@/api'
 import type { PreviewItem, TMDBKind } from '@/api'
 import { Icon } from '@/components/Icon'
+import { thumbnail } from '@/lib/tmdbImage'
 import {
   ALL_TAB,
   ALL_TAB_TILE_CAP,
@@ -57,7 +58,7 @@ function PreviewPosterTile({ item, kind }: { item: PreviewItem; kind?: TileKind 
   const face = (
     <>
       <span className="art">
-        {item.poster && <img src={item.poster} alt="" loading="lazy" />}
+        {item.poster && <img {...thumbnail(item.poster, '6.5rem')} alt="" loading="lazy" />}
       </span>
       <span className="cap">{item.title}</span>
       {item.year && <span className="cap cap-year">{item.year}</span>}

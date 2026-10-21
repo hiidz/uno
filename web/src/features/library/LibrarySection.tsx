@@ -6,11 +6,12 @@ import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { railStickers } from '@/features/sharing/sharingState'
 import { ListError, ListState } from '@/components/ListState'
+import { skeletonKeys } from '@/components/Skeleton'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
 import { describeCollection } from './collection'
-import { LibraryItem } from './LibraryItem'
+import { LibraryItem, LibraryItemSkeleton } from './LibraryItem'
 import { catalogListing } from './recipe'
 import type { Library, LibraryCatalog, LibraryCollection } from './useLibrary'
 
@@ -139,6 +140,7 @@ export function LibrarySection({
           </button>
         }
         count={catalogs.length}
+        loadingRows={3}
         isLoading={library.isLoading}
         failed={library.error !== null}
         emptyLabel={
@@ -178,6 +180,7 @@ export function LibrarySection({
           </button>
         }
         count={collections.length}
+        loadingRows={2}
         isLoading={library.isLoading}
         failed={library.error !== null}
         emptyLabel={
@@ -215,6 +218,7 @@ function LibraryGroup({
   tone,
   action,
   count,
+  loadingRows,
   isLoading,
   failed,
   emptyLabel,
@@ -225,6 +229,8 @@ function LibraryGroup({
   tone: 'catalog' | 'collection'
   action: ReactNode
   count: number
+  /** How many skeleton rows hold the group's place while it loads. */
+  loadingRows: number
   isLoading: boolean
   /** This list has no rows because its request failed. The group is left out
    *  entirely — the rail's own error above carries the message and the Retry. */
@@ -251,6 +257,13 @@ function LibraryGroup({
         isLoading={isLoading}
         isEmpty={count === 0}
         loadingLabel={`Loading ${label.toLowerCase()}…`}
+        skeleton={
+          <div className="-mx-2 flex flex-col gap-0.5">
+            {skeletonKeys(loadingRows).map((key) => (
+              <LibraryItemSkeleton key={key} />
+            ))}
+          </div>
+        }
         emptyLabel={emptyLabel}
       >
         <div className="-mx-2 flex flex-col gap-0.5">{children}</div>

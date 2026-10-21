@@ -7,6 +7,7 @@ import type { NuvioProfile } from '@/api'
 import { logout } from '@/auth'
 import { TMDBKeyGate, TMDBKeyShelf } from '@/features/account/TMDBKey'
 import { KEY_GATE_HEADING, holdsProfiles, useKeyStep } from '@/features/account/useTMDBKey'
+import { prefetchReferenceData } from '@/features/library/referenceQueries'
 import { EntryPage } from '@/components/EntryPage'
 import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
@@ -156,6 +157,7 @@ export function ProfilePicker() {
 
   function choose(profile: NuvioProfile) {
     setSelecting(profile.profile_index)
+    prefetchReferenceData(queryClient)
     select.mutate(profile.profile_index, {
       // The builder reads the answer from the cache rather than selecting
       // again; `manifest_url` is built server-side from SITE_BASE_URL, which

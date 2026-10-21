@@ -13,6 +13,10 @@ const api = vi.hoisted(() => ({
   fetchTMDBKey: vi.fn<() => Promise<TMDBKeyStatus>>(),
   saveTMDBKey: vi.fn<(key: string) => Promise<TMDBKeyStatus>>(),
   removeTMDBKey: vi.fn<() => Promise<null>>(),
+  fetchGenres: vi.fn(),
+  fetchCertifications: vi.fn(),
+  fetchLanguages: vi.fn(),
+  fetchCountries: vi.fn(),
 }))
 
 // Only the profile and key calls are faked; the error class and query keys
@@ -65,6 +69,18 @@ beforeEach(() => {
 })
 
 describe('ProfilePicker', () => {
+  it('starts TMDB’s reference lists alongside selecting the chosen profile', async () => {
+    api.fetchProfiles.mockResolvedValue([main])
+    api.selectProfile.mockReturnValue(new Promise(() => {}))
+    renderPicker()
+    fireEvent.click(await screen.findByRole('button', { name: /Profile 1, Main/ }))
+    await vi.waitFor(() => expect(api.selectProfile).toHaveBeenCalledWith(1))
+    await vi.waitFor(() => expect(api.fetchCountries).toHaveBeenCalled())
+    expect(api.fetchGenres.mock.calls).toEqual([['movie'], ['series']])
+    expect(api.fetchCertifications.mock.calls).toEqual([['movie'], ['series']])
+    expect(api.fetchLanguages).toHaveBeenCalled()
+  })
+
   it('lists the account’s profiles', async () => {
     api.fetchProfiles.mockResolvedValue([main])
     renderPicker()
