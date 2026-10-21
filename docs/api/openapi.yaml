@@ -18,7 +18,9 @@ info:
     Request bodies are decoded strictly: an unknown field is a `400` that names
     it, and a body over 1 MiB (4 MiB for import) is a `413`.
 
-    `/config.js` is served by the web app handler, outside this route table.
+    The web app handler, outside this route table, serves the page itself,
+    which carries the browser's runtime settings in a
+    `<script type="application/json" id="uno-config">` block.
   license:
     name: MIT
 servers:
@@ -791,7 +793,7 @@ paths:
                 type: { $ref: "#/components/schemas/CatalogType" }
                 params:
                   type: string
-                  description: The recipe params, as a JSON-encoded string.
+                  description: The recipe params, as a JSON-encoded string. A key the type's recipe doesn't declare is a `400` that names it.
                 genre:
                   type: string
                   description: A genre name from the recipe's genre options.
@@ -849,6 +851,8 @@ paths:
       responses:
         "200":
           description: The genres.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -869,6 +873,8 @@ paths:
       responses:
         "200":
           description: Each country's rating scale, keyed by ISO 3166-1 code.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -889,6 +895,8 @@ paths:
       responses:
         "200":
           description: The languages.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -906,6 +914,8 @@ paths:
       responses:
         "200":
           description: The countries.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -930,6 +940,8 @@ paths:
       responses:
         "200":
           description: The services.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -948,6 +960,8 @@ paths:
       responses:
         "200":
           description: The regions.
+          headers:
+            Cache-Control: { $ref: "#/components/headers/ReferenceCache" }
           content:
             application/json:
               schema:
@@ -1334,6 +1348,9 @@ components:
   headers:
     CORS:
       schema: { type: string, const: "*" }
+    ReferenceCache:
+      description: A TMDB reference list changes rarely, so the browser keeps it a day. Only a 200 carries it.
+      schema: { type: string, const: "private, max-age=86400" }
 
   responses:
     BadRequest:
@@ -1461,7 +1478,7 @@ components:
         params:
           type: string
           maxLength: 8192
-          description: The recipe params as a JSON-encoded string. See docs/data-model.md, Recipes.
+          description: The recipe params as a JSON-encoded string. See docs/data-model.md, Recipes. A key the catalog type's recipe doesn't declare is a `400` that names it.
           examples: ['{"sort_by":"popularity.desc","with_genres":"878"}']
 
     CatalogSave:
@@ -1523,6 +1540,10 @@ components:
 
     FolderArt:
       type: object
+      description: |
+        Each `_url` field is empty or an absolute http or https URL. A save
+        refuses one whose host is localhost or a literal loopback, private,
+        link-local or unspecified address.
       properties:
         tile_shape: { $ref: "#/components/schemas/TileShape" }
         hide_title: { type: boolean }
@@ -1634,7 +1655,10 @@ components:
         title: { type: string, maxLength: 200 }
         view_mode: { $ref: "#/components/schemas/ViewMode" }
         show_all_tab: { type: boolean }
-        backdrop_image_url: { type: string, maxLength: 2048 }
+        backdrop_image_url:
+          type: string
+          maxLength: 2048
+          description: Empty, or an http or https URL under the same host rule as FolderArt's.
         focus_glow_enabled: { type: boolean }
         folders:
           type: array

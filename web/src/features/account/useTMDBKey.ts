@@ -1,40 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchServerConfig, fetchTMDBKey, queryKeys, removeTMDBKey, saveTMDBKey } from '@/api'
+import { fetchTMDBKey, queryKeys, removeTMDBKey, saveTMDBKey } from '@/api'
 import type { TMDBKeyStatus } from '@/api'
+import { pageConfig } from '@/lib/pageConfig'
 import { clearKeyProblem } from './keyProblem'
 
 /**
  * What the profile picker shows of the account's TMDB key: `checking` while
- * it is still finding out whether to ask, nothing on a server where every
- * account shares one (or when the account is refused, or when either answer
- * failed), `needed` while the account has saved none, and the key's last four
+ * the key's status hasn't come back, nothing on a server where every account
+ * shares one (or when the account is refused, or when the answer failed),
+ * `needed` while the account has saved none, and the key's last four
  * characters once it has.
  */
 export type KeyStep = { kind: 'checking' } | { kind: 'none' } | { kind: 'needed' } | { kind: 'set'; last4: string }
 
 /** The picker's key step. `refused` is the access refusal, which leaves
- *  nothing to ask for. */
+ *  nothing to ask for. The server's key mode comes with the page, so the
+ *  status is asked for at once. A disabled query is never loading. */
 export function useKeyStep(refused: boolean): KeyStep {
-  const config = useQuery({
-    queryKey: queryKeys.serverConfig(),
-    queryFn: fetchServerConfig,
-    staleTime: Infinity,
-  })
-  const asked = config.data?.tmdb_key_mode === 'per-account' && !refused
+  const asked = pageConfig().tmdb_key_mode === 'per-account' && !refused
   const key = useQuery({
     queryKey: queryKeys.tmdbKey(),
     queryFn: fetchTMDBKey,
     enabled: asked,
   })
-  return keyStep(checking(refused, config.isPending, key.isLoading), asked ? key.data : undefined)
-}
-
-/** Whether the picker is still finding out whether to ask for a key: the
- *  mode, or the key's status in per-account mode, hasn't come back. A refused
- *  account is asked nothing. A disabled query is never loading. */
-function checking(refused: boolean, configPending: boolean, keyLoading: boolean): boolean {
-  if (refused) return false
-  return configPending || keyLoading
+  return keyStep(key.isLoading, asked ? key.data : undefined)
 }
 
 /** The step a key status puts the picker in; `undefined` is no status, or

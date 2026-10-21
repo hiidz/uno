@@ -3,6 +3,7 @@ package vault
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -212,7 +213,30 @@ func mediaURLProblem(field, raw string) string {
 	if u.Host == "" {
 		return fmt.Sprintf("%s must be an absolute URL", field)
 	}
+	if isPrivateHost(u.Hostname()) {
+		return fmt.Sprintf("%s must not point at a private, loopback or link-local address", field)
+	}
 	return ""
+}
+
+// isPrivateHost reports whether host names this machine or its local network:
+// localhost or a name under it, or a literal loopback, private, link-local or
+// unspecified address, an IPv4-mapped IPv6 one included. Every Nuvio client
+// that renders a media URL fetches it from its own network, so such a URL
+// points the viewer's device at its own LAN. Only literals are checked: a
+// public name that resolves to a private address passes.
+func isPrivateHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() ||
+		addr.IsLinkLocalMulticast() || addr.IsUnspecified()
 }
 
 // collectionProblems collects every problem on a collection's own fields —

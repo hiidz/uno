@@ -12,11 +12,13 @@ import (
 // validateInlineCatalogs checks every recipe a collection save carries — the
 // folders' New specs and the catalog edits alike — and replaces each one's
 // params with the canonical form its row will store. One bad recipe of
-// either kind is a 400.
+// either kind is a 400, and so is one carrying a key its type doesn't
+// declare.
 func TestValidateInlineCatalogs(t *testing.T) {
 	s := newProfileTestServer(t, newTestVaultDB(t))
-	const clean = `{"vote_count_gte":0,"sort_by":"popularity.desc","legacy":true}`
+	const clean = `{"vote_count_gte":0,"sort_by":"popularity.desc"}`
 	const broken = `{"sort_by":"bogus.desc"}`
+	const undeclared = `{"primary_release_year":2020}`
 
 	form := func(newParams, editParams string) vault.CollectionForm {
 		return vault.CollectionForm{
@@ -48,6 +50,8 @@ func TestValidateInlineCatalogs(t *testing.T) {
 	}{
 		{"broken new spec", form(broken, clean)},
 		{"broken catalog edit", form(clean, broken)},
+		{"undeclared key in a new spec", form(undeclared, clean)},
+		{"series key in a movie catalog edit", form(clean, `{"with_networks":"213"}`)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := s.validateInlineCatalogs(t.Context(), &tc.form); !errors.Is(err, vault.ErrInvalidInput) {

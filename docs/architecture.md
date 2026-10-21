@@ -47,12 +47,14 @@ flowchart LR
 | `internal/provider` | TMDB: recipe checks, lookups, previews, catalog pages, caching and rate limits. |
 | `internal/nuvio` | Nuvio: token verification and the profile, addon, collection and home-order calls. |
 | `internal/tmdbkey` | Encrypts per-account TMDB keys. |
-| `internal/static` | Serves the web app and `/config.js`. |
+| `internal/static` | Serves the web app, its page carrying the runtime settings. |
 | `web` | The React app. `web/embed.go` embeds the build. |
 
 ## Sign-in
 
 Uno has no accounts. The web app signs in with Nuvio directly and sends Nuvio's access token on every `/api` call. The server verifies the token against Nuvio's public keys, checks `UNO_ACCESS`, and for `/api/p/{profileIndex}/...` routes looks up the Uno profile for that Nuvio profile slot (1 to 6).
+
+The check is local: the token's signature, issuer, audience and expiry, with no call to Nuvio. So a token stays valid until the expiry Nuvio gave it (about a week), even after the user signs out or changes their password. Uno doesn't set that lifetime.
 
 ## Push
 

@@ -466,6 +466,40 @@ func TestLengthBoundsCountCharacters(t *testing.T) {
 	}
 }
 
+// A media URL may name any public host, but not this machine or a local
+// network, in any literal spelling the check parses.
+func TestMediaURLRefusesPrivateHosts(t *testing.T) {
+	for _, raw := range []string{
+		"http://localhost/a.png",
+		"https://LocalHost./a.png",
+		"https://img.localhost/a.png",
+		"http://127.0.0.1:8123/a.png",
+		"https://10.0.0.5/a.png",
+		"https://192.168.1.2/a.png",
+		"https://172.16.0.1/a.png",
+		"http://169.254.169.254/latest",
+		"http://0.0.0.0/a.png",
+		"http://[::1]/a.png",
+		"http://[::ffff:127.0.0.1]/a.png",
+		"http://[fe80::1%25eth0]/a.png",
+		"http://[fd00::1]/a.png",
+	} {
+		if problem := mediaURLProblem("cover image url", raw); !strings.Contains(problem, "private, loopback or link-local") {
+			t.Errorf("%s: problem = %q, want it refused as private", raw, problem)
+		}
+	}
+	for _, raw := range []string{
+		"https://image.tmdb.org/t/p/w500/a.jpg",
+		"https://8.8.8.8/a.png",
+		"https://[2606:4700::1111]/a.png",
+		"https://notlocalhost.example/a.png",
+	} {
+		if problem := mediaURLProblem("cover image url", raw); problem != "" {
+			t.Errorf("%s: problem = %q, want none", raw, problem)
+		}
+	}
+}
+
 // A save naming one existing folder twice is refused rather than writing
 // both entries to one row; new folders, which carry no id, never collide.
 func TestCollectionFormRefusesARepeatedFolderID(t *testing.T) {

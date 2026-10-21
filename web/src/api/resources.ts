@@ -19,7 +19,6 @@ import type {
   PreviewRequest,
   PublicationDetail,
   SelectedProfile,
-  ServerConfig,
   SnapshotChange,
   TMDBCollection,
   TMDBKeyStatus,
@@ -202,11 +201,6 @@ export function fetchProfiles(): Promise<NuvioProfile[]> {
  */
 export function selectProfile(profileIndex: number): Promise<SelectedProfile> {
   return sendJSON<SelectedProfile>('POST', '/api/profiles/select', { profile_index: profileIndex })
-}
-
-/** How this server reaches TMDB. Needs no sign-in. */
-export function fetchServerConfig(): Promise<ServerConfig> {
-  return getJSON<ServerConfig>('/api/config')
 }
 
 /** Whether the signed-in account has saved a TMDB key, on a server where each

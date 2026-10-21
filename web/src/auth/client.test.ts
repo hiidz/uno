@@ -1,17 +1,28 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { signInWithPassword, signOut } from './client'
 
 describe('Nuvio auth client', () => {
+  // The block the server puts in the page. It is read at call time, so a test
+  // (or a page) sets it after the module has loaded.
+  beforeEach(() => {
+    const block = document.createElement('script')
+    block.type = 'application/json'
+    block.id = 'uno-config'
+    block.textContent = JSON.stringify({
+      nuvioBaseURL: 'https://nuvio.example.com',
+      nuvioPublishableKey: 'pk',
+      tmdb_key_mode: 'shared',
+    })
+    document.head.append(block)
+  })
+
   afterEach(() => {
+    document.getElementById('uno-config')?.remove()
     vi.unstubAllGlobals()
   })
 
-  // The config is read at call time, so a test (or a page) sets it after
-  // the module has loaded.
-  it('calls the Nuvio base URL with the publishable key from window.__UNO_CONFIG__', async () => {
-    vi.stubGlobal('window', {
-      __UNO_CONFIG__: { nuvioBaseURL: 'https://nuvio.example.com', nuvioPublishableKey: 'pk' },
-    })
+  it('calls the Nuvio base URL with the publishable key from the page’s config block', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -50,9 +61,6 @@ describe('Nuvio auth client', () => {
     ],
     ['a null body as the fallback', Response.json(null, { status: 500 }), "Nuvio couldn't sign you in. Try again in a moment."],
   ])('words %s', async (_, res, message) => {
-    vi.stubGlobal('window', {
-      __UNO_CONFIG__: { nuvioBaseURL: 'https://nuvio.example.com', nuvioPublishableKey: 'pk' },
-    })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res))
 
     await expect(signInWithPassword('a@example.com', 'wrong')).rejects.toMatchObject({
@@ -60,5 +68,16 @@ describe('Nuvio auth client', () => {
       status: res.status,
       message,
     })
+  })
+
+  it('says to start Uno’s server when the page has no config block, and sends nothing', async () => {
+    document.getElementById('uno-config')?.remove()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(signInWithPassword('a@example.com', 'secret')).rejects.toThrow(
+      "The page has no Uno settings block. It comes from Uno's server, so start it and reload.",
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -17,4 +17,4 @@ Uno reads environment variables, and a `.env` file in its working directory if t
 | `DEV_AUTH_BYPASS_TOKEN` | No | — | Local development only. At least 32 characters. Sending it as the bearer token signs in as a fake account, with an in-memory stand-in for Nuvio. Never set it on a server others can reach. |
 | `UNO_TAG` | No | `latest` | Read by `compose.yaml` only: the image tag to run. |
 
-The browser gets `NUVIO_BASE_URL` and `NUVIO_PUBLISHABLE_KEY` from `/config.js`, which the server generates at runtime.
+The browser gets `NUVIO_BASE_URL`, `NUVIO_PUBLISHABLE_KEY` and the TMDB key mode at runtime: the server puts them in the page it serves, as a `<script type="application/json" id="uno-config">` block.

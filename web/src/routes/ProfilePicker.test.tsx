@@ -4,13 +4,12 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api/http'
-import type { NuvioProfile, ServerConfig, TMDBKeyStatus } from '@/api'
+import type { NuvioProfile, TMDBKeyStatus } from '@/api'
 import { ProfilePicker } from './ProfilePicker'
 
 const api = vi.hoisted(() => ({
   fetchProfiles: vi.fn<() => Promise<NuvioProfile[]>>(),
   selectProfile: vi.fn(),
-  fetchServerConfig: vi.fn<() => Promise<ServerConfig>>(),
   fetchTMDBKey: vi.fn<() => Promise<TMDBKeyStatus>>(),
   saveTMDBKey: vi.fn<(key: string) => Promise<TMDBKeyStatus>>(),
   removeTMDBKey: vi.fn<() => Promise<null>>(),
@@ -27,6 +26,16 @@ vi.mock('@/api', async () => ({
 vi.mock('@/api/client', () => ({ apiFetch: vi.fn() }))
 vi.mock('@/auth', () => ({ logout: vi.fn() }))
 vi.mock('./Builder', () => ({}))
+
+/** Puts the server's settings block in the page, as `internal/static` does. */
+function setKeyMode(mode: 'shared' | 'per-account') {
+  document.getElementById('uno-config')?.remove()
+  const block = document.createElement('script')
+  block.type = 'application/json'
+  block.id = 'uno-config'
+  block.textContent = JSON.stringify({ nuvioBaseURL: '', nuvioPublishableKey: '', tmdb_key_mode: mode })
+  document.head.append(block)
+}
 
 function renderPicker() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -52,7 +61,7 @@ const main: NuvioProfile = {
 
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset()
-  api.fetchServerConfig.mockResolvedValue({ tmdb_key_mode: 'shared' })
+  setKeyMode('shared')
 })
 
 describe('ProfilePicker', () => {
@@ -94,14 +103,14 @@ describe('ProfilePicker', () => {
   })
 
   it('says plainly when this server doesn’t admit the account, with the way to another one', async () => {
-    api.fetchServerConfig.mockResolvedValue({ tmdb_key_mode: 'per-account' })
+    setKeyMode('per-account')
+    api.fetchTMDBKey.mockResolvedValue({ set: false })
     api.fetchProfiles.mockRejectedValue(new ApiError(403, "this Nuvio account can't use this Uno server"))
     renderPicker()
     expect(await screen.findByText('This Nuvio account can’t use this Uno.')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in with a different account' })).toBeEnabled()
     expect(screen.queryByText(/TMDB/)).not.toBeInTheDocument()
-    expect(api.fetchTMDBKey).not.toHaveBeenCalled()
   })
 
   it('shows any other failure as an alert with the server’s words', async () => {
@@ -119,8 +128,17 @@ describe('ProfilePicker', () => {
     expect(api.fetchTMDBKey).not.toHaveBeenCalled()
   })
 
+  it('asks for the key’s status at once, alongside the profiles', async () => {
+    setKeyMode('per-account')
+    api.fetchTMDBKey.mockReturnValue(new Promise(() => {}))
+    api.fetchProfiles.mockReturnValue(new Promise(() => {}))
+    renderPicker()
+    await vi.waitFor(() => expect(api.fetchTMDBKey).toHaveBeenCalled())
+    expect(api.fetchProfiles).toHaveBeenCalled()
+  })
+
   it('holds the profiles while it is still finding out whether to ask for a key', async () => {
-    api.fetchServerConfig.mockResolvedValue({ tmdb_key_mode: 'per-account' })
+    setKeyMode('per-account')
     api.fetchTMDBKey.mockReturnValue(new Promise(() => {}))
     api.fetchProfiles.mockResolvedValue([main])
     renderPicker()
@@ -132,7 +150,7 @@ describe('ProfilePicker', () => {
   })
 
   it('holds the profiles until the account saves a TMDB key, then shows its last four', async () => {
-    api.fetchServerConfig.mockResolvedValue({ tmdb_key_mode: 'per-account' })
+    setKeyMode('per-account')
     api.fetchTMDBKey.mockResolvedValue({ set: false })
     api.fetchProfiles.mockResolvedValue([main])
     api.saveTMDBKey.mockResolvedValue({ set: true, last4: 'cdef' })

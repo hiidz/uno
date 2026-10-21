@@ -11,7 +11,6 @@ import type { KeyStep } from './useTMDBKey'
 import { noteKeyProblem, useKeyProblem } from './keyProblem'
 
 const api = vi.hoisted(() => ({
-  fetchServerConfig: vi.fn(),
   fetchTMDBKey: vi.fn(),
   saveTMDBKey: vi.fn<(key: string) => Promise<TMDBKeyStatus>>(),
   removeTMDBKey: vi.fn<() => Promise<null>>(),

@@ -380,6 +380,26 @@ func TestRecipeRoutesReachTMDB(t *testing.T) {
 	}
 }
 
+// A reference list is cached by the browser for a day once it is fetched,
+// but a failure to fetch it is not cached at all.
+func TestReferenceListsAreCachedOnlyOnSuccess(t *testing.T) {
+	f := newRouteFixture(t)
+	for _, tc := range []struct {
+		tmdb http.HandlerFunc
+		want string
+	}{
+		{tmdbUp, "private, max-age=86400"},
+		{tmdbDown, ""},
+	} {
+		fakeTMDB(t, tc.tmdb)
+		f.s.provider = provider.NewTMDBClient("key")
+		w := serve(t, f.s, http.MethodGet, "/api/genres/movie", "", false)
+		if got := w.Header().Get("Cache-Control"); got != tc.want {
+			t.Errorf("GET /api/genres/movie = %d with Cache-Control %q, want %q", w.Code, got, tc.want)
+		}
+	}
+}
+
 // TestRecipeRoutesRefuseWithoutTMDB covers preview's and genre options'
 // refusals, which never reach TMDB.
 func TestRecipeRoutesRefuseWithoutTMDB(t *testing.T) {
@@ -393,6 +413,7 @@ func TestRecipeRoutesRefuseWithoutTMDB(t *testing.T) {
 			routeStep{name: path + " malformed body", method: http.MethodPost, path: path, body: `{`, wantStatus: http.StatusBadRequest, wantBody: "invalid request body"},
 			routeStep{name: path + " unknown type", method: http.MethodPost, path: path, body: `{"type":"anime","params":"{}"}`, wantStatus: http.StatusBadRequest, wantBody: "unknown catalog type"},
 			routeStep{name: path + " broken recipe", method: http.MethodPost, path: path, body: `{"type":"movie","params":"{\"sort_by\":\"bogus.desc\"}"}`, wantStatus: http.StatusBadRequest, wantBody: `invalid sort_by "bogus.desc"`},
+			routeStep{name: path + " undeclared key", method: http.MethodPost, path: path, body: `{"type":"movie","params":"{\"primary_release_year\":99999}"}`, wantStatus: http.StatusBadRequest, wantBody: `movie catalogs take no param "primary_release_year"`},
 		)
 	}
 	runSteps(t, f.s, steps)
@@ -501,6 +522,20 @@ func TestHealth(t *testing.T) {
 	w := serve(t, s, http.MethodGet, "/api/health", "", true)
 	if w.Code != http.StatusOK || w.Body.String() != "ok" {
 		t.Fatalf("GET /api/health = %d %q, want 200 \"ok\"", w.Code, w.Body.String())
+	}
+}
+
+// Every response carries the security headers, whichever surface answers it:
+// the builder API, the addon, and the SPA.
+func TestEveryResponseCarriesSecurityHeaders(t *testing.T) {
+	s := newProfileTestServer(t, newTestVaultDB(t))
+	for _, path := range []string{"/api/health", "/u/nope/manifest.json", "/configure"} {
+		w := serve(t, s, http.MethodGet, path, "", true)
+		for name, want := range securityHeaders {
+			if got := w.Header().Get(name); got != want {
+				t.Errorf("GET %s: %s = %q, want %q", path, name, got, want)
+			}
+		}
 	}
 }
 

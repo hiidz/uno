@@ -32,6 +32,22 @@ func lookupList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, e
 	httpx.WriteJSON(w, http.StatusOK, result)
 }
 
+// referenceList is lookupList for TMDB's reference lists — genres,
+// certifications, languages, countries, watch providers and regions — which
+// change rarely and are the same for every caller, so a success is cached by
+// the browser for a day, as long as the server's own cache keeps the watch
+// provider list. private: the routes need a sign-in. A failure is left
+// uncached.
+func referenceList[T any](w http.ResponseWriter, failMsg string, fetch func() (T, error)) {
+	lookupList(w, failMsg, func() (T, error) {
+		result, err := fetch()
+		if err == nil {
+			w.Header().Set("Cache-Control", "private, max-age=86400")
+		}
+		return result, err
+	})
+}
+
 // lookupErrors are the failures of a TMDB lookup the caller can act on: a key
 // problem (keyFailures), an unusable catalog type or query param (400, and
 // TMDB was never contacted), and a resource TMDB doesn't have (404).
@@ -50,19 +66,19 @@ var previewErrors = slices.Concat(keyFailures, []clientFailure{
 })
 
 func (s *Server) listGenres(w http.ResponseWriter, r *http.Request) {
-	lookupList(w, "failed to fetch genres", func() ([]provider.Genre, error) {
+	referenceList(w, "failed to fetch genres", func() ([]provider.Genre, error) {
 		return s.provider.Genres(r.Context(), r.PathValue("type"))
 	})
 }
 
 func (s *Server) listLanguages(w http.ResponseWriter, r *http.Request) {
-	lookupList(w, "failed to fetch languages", func() ([]provider.Language, error) {
+	referenceList(w, "failed to fetch languages", func() ([]provider.Language, error) {
 		return s.provider.Languages(r.Context())
 	})
 }
 
 func (s *Server) listCountries(w http.ResponseWriter, r *http.Request) {
-	lookupList(w, "failed to fetch countries", func() ([]provider.Country, error) {
+	referenceList(w, "failed to fetch countries", func() ([]provider.Country, error) {
 		return s.provider.Countries(r.Context())
 	})
 }
@@ -72,19 +88,19 @@ func (s *Server) listCountries(w http.ResponseWriter, r *http.Request) {
 // here: TMDB returns every service it knows about when watch_region is
 // omitted, which is what the picker shows before a region is chosen.
 func (s *Server) listWatchProviders(w http.ResponseWriter, r *http.Request) {
-	lookupList(w, "failed to fetch watch providers", func() ([]provider.WatchProvider, error) {
+	referenceList(w, "failed to fetch watch providers", func() ([]provider.WatchProvider, error) {
 		return s.provider.WatchProviders(r.Context(), r.PathValue("type"), r.URL.Query().Get("watch_region"))
 	})
 }
 
 func (s *Server) listWatchRegions(w http.ResponseWriter, r *http.Request) {
-	lookupList(w, "failed to fetch watch regions", func() ([]provider.WatchRegion, error) {
+	referenceList(w, "failed to fetch watch regions", func() ([]provider.WatchRegion, error) {
 		return s.provider.WatchRegions(r.Context())
 	})
 }
 
 func (s *Server) listCertifications(w http.ResponseWriter, r *http.Request) {
-	lookupList(w, "failed to fetch certifications", func() (map[string][]provider.Certification, error) {
+	referenceList(w, "failed to fetch certifications", func() (map[string][]provider.Certification, error) {
 		return s.provider.Certifications(r.Context(), r.PathValue("type"))
 	})
 }
@@ -186,7 +202,7 @@ var errUpstreamValidation = errors.New("cannot validate params against TMDB")
 // Every error returned is wrapped in vault.ErrInvalidInput so callers can
 // route it through the same errors.Is switch as a vault-layer failure.
 func (s *Server) validateCatalogParams(ctx context.Context, catalogType, params string) error {
-	p, err := provider.DecodeParams(catalogType, params)
+	p, err := provider.DecodeSentParams(catalogType, params)
 	if err != nil {
 		if errors.Is(err, provider.ErrInvalidCatalogType) {
 			// CatalogForm.Validate() should already reject anything else,

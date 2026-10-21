@@ -43,9 +43,27 @@ type Server struct {
 	pushLocks sync.Map
 }
 
-// ServeHTTP dispatches r through the route table routes() builds.
+// ServeHTTP sets securityHeaders on every response — the API, the addon and
+// the SPA alike — then dispatches r through the route table routes() builds.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h := w.Header()
+	for name, value := range securityHeaders {
+		h.Set(name, value)
+	}
 	s.router.ServeHTTP(w, r)
+}
+
+// securityHeaders go on every response. Permissions-Policy has no wildcard,
+// so it denies each powerful feature by name; the clipboard is left out
+// because the SPA copies the addon URL and reads pasted bundles. HSTS is the
+// TLS edge's to set: Uno itself speaks plain HTTP.
+var securityHeaders = map[string]string{
+	"X-Content-Type-Options": "nosniff",
+	"X-Frame-Options":        "DENY",
+	"Referrer-Policy":        "no-referrer",
+	"Permissions-Policy": "accelerometer=(), bluetooth=(), browsing-topics=(), camera=(), " +
+		"display-capture=(), geolocation=(), gyroscope=(), hid=(), magnetometer=(), " +
+		"microphone=(), midi=(), payment=(), serial=(), usb=()",
 }
 
 // New builds a Server from d. Deps has no required-field enforcement at the
@@ -174,7 +192,11 @@ func (s *Server) routes() error {
 	if err != nil {
 		return fmt.Errorf("api: opening embedded web/dist: %w", err)
 	}
-	spa, err := static.Handler(distFS, s.nuvioBaseURL, s.nuvioPublishableKey)
+	spa, err := static.Handler(distFS, static.Config{
+		NuvioBaseURL:        s.nuvioBaseURL,
+		NuvioPublishableKey: s.nuvioPublishableKey,
+		TMDBKeyMode:         s.tmdbKeyMode(),
+	})
 	if err != nil {
 		return fmt.Errorf("api: building static handler: %w", err)
 	}

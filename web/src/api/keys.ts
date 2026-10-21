@@ -22,8 +22,6 @@ export const queryKeys = {
    *  keys below. */
   profiles: () => ['profiles'] as const,
 
-  /** `GET /api/config` — the server's setup, the same for every account. */
-  serverConfig: () => ['config'] as const,
   /** `GET /api/account/tmdb-key` — the signed-in account's own TMDB key, so
    *  outside the `['p', i, …]` prefix like `profiles`. */
   tmdbKey: () => ['account', 'tmdb-key'] as const,

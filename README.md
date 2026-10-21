@@ -127,7 +127,7 @@ curl -fsSL -o .env https://raw.githubusercontent.com/hiidz/uno/main/.env.example
 docker compose up -d
 ```
 
-The data lives in one SQLite file on the `uno-data` volume. The server speaks plain HTTP, and `compose.yaml` publishes it on `127.0.0.1:8123` only: put an HTTPS reverse proxy in front.
+The data lives in one SQLite file on the `uno-data` volume. The server speaks plain HTTP, and `compose.yaml` publishes it on `127.0.0.1:8123` only: put an HTTPS reverse proxy in front, with a rate limit, since Uno itself limits no requests.
 
 To update, see [upgrading](docs/upgrade.md).
 
