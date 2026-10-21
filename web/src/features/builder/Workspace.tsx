@@ -299,30 +299,7 @@ export function Workspace({
   const away = redirect(profileIndex, library.error, route.missing)
   if (away) return <Navigate to={away} replace />
 
-  // The library row the open editor was opened from. Below `lg` the editor's
-  // own header carries that row's duplicate and delete — the row itself is
-  // under the editor's layer — so it has to know which row it stands for. Its
-  // sharing state fills the editor's sharing setting, and decides whether the
-  // pane is an editor or the view of a row from Community (`subscription`); it
-  // is current after a save, a sharing call or an Update because each
-  // refetches the library. Undefined until the library's refetch lists a row
-  // that was just created or duplicated.
-  const activeCatalog =
-    target?.kind === 'catalog' ? library.catalogs.find((catalog) => catalog.id === target.id) : undefined
-  const activeCollection =
-    target?.kind === 'collection'
-      ? library.collections.find((collection) => collection.id === target.id)
-      : undefined
-
-  // Every catalog the open collection's folders already reference, listed or
-  // scoped — `CollectionEditor`'s seed for its own catalog registry.
-  // `target.initialCatalogs` wins when the target set it directly (a
-  // collection just duplicated, whose row may not have reached
-  // `library.collections` yet — see `confirmDuplicateCollection`); otherwise
-  // it falls back to a lookup by id, the ordinary case for a row selected
-  // straight from the rail.
-  const editingCollectionCatalogs =
-    target?.kind === 'collection' ? (target.initialCatalogs ?? activeCollection?.catalogs ?? []) : []
+  const { activeCatalog, activeCollection, editingCollectionCatalogs } = openRows(target, library)
 
   function selectCatalog(catalog: LibraryCatalog) {
     open(catalogTarget(catalog))
@@ -436,7 +413,7 @@ export function Workspace({
           cancelLabel: 'Keep it',
           destructive: true,
           pending: catalogMutations.remove.isPending,
-          error: catalogMutations.remove.error?.message ?? null,
+          error: errorMessage(catalogMutations.remove),
           onConfirm: () => confirmDeleteCatalog(catalog),
           onCancel: () => {
             catalogMutations.remove.reset()
@@ -457,7 +434,7 @@ export function Workspace({
           confirmLabel: catalogMutations.duplicate.isPending ? 'Duplicating…' : 'Duplicate catalog',
           cancelLabel: 'Cancel',
           pending: catalogMutations.duplicate.isPending,
-          error: catalogMutations.duplicate.error?.message ?? null,
+          error: errorMessage(catalogMutations.duplicate),
           onConfirm: () => confirmDuplicateCatalog(catalog),
           onCancel: () => {
             catalogMutations.duplicate.reset()
@@ -480,7 +457,7 @@ export function Workspace({
           cancelLabel: 'Keep it',
           destructive: true,
           pending: collectionMutations.remove.isPending,
-          error: collectionMutations.remove.error?.message ?? null,
+          error: errorMessage(collectionMutations.remove),
           onConfirm: () => confirmDeleteCollection(collection),
           onCancel: () => {
             collectionMutations.remove.reset()
@@ -503,7 +480,7 @@ export function Workspace({
           confirmLabel: collectionMutations.duplicate.isPending ? 'Duplicating…' : 'Duplicate collection',
           cancelLabel: 'Cancel',
           pending: collectionMutations.duplicate.isPending,
-          error: collectionMutations.duplicate.error?.message ?? null,
+          error: errorMessage(collectionMutations.duplicate),
           onConfirm: () => confirmDuplicateCollection(collection),
           onCancel: () => {
             collectionMutations.duplicate.reset()
@@ -631,7 +608,7 @@ export function Workspace({
                 // Only `update`: `create` belongs to the naming dialog and to
                 // Duplicate, which can run while this editor is open.
                 saving={catalogMutations.update.isPending}
-                serverError={catalogMutations.update.error?.message ?? null}
+                serverError={errorMessage(catalogMutations.update)}
                 onSave={(state) => saveCatalog(target.id, target.initial.revision, state)}
                 onRequestClose={close}
                 onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
@@ -648,7 +625,7 @@ export function Workspace({
                 accessibleIDs={refAccessible}
                 // Only `update`, for the same reason as the catalog editor's.
                 saving={collectionMutations.update.isPending}
-                serverError={collectionMutations.update.error?.message ?? null}
+                serverError={errorMessage(collectionMutations.update)}
                 onSave={(payload) => saveCollection(target.id, target.initial.revision, payload)}
                 onRequestClose={close}
                 onDuplicate={activeCollection ? () => duplicateCollection(activeCollection) : undefined}
@@ -681,7 +658,7 @@ export function Workspace({
         placeholder="Trending Sci-Fi"
         initialValue=""
         saving={catalogMutations.create.isPending}
-        serverError={catalogMutations.create.error?.message ?? null}
+        serverError={errorMessage(catalogMutations.create)}
         extra={<CatalogTypeField value={newCatalogType} onChange={setNewCatalogType} />}
         onCreate={createBareCatalog}
         onClose={() => {
@@ -701,7 +678,7 @@ export function Workspace({
         placeholder="Saturday night"
         initialValue=""
         saving={collectionMutations.create.isPending}
-        serverError={collectionMutations.create.error?.message ?? null}
+        serverError={errorMessage(collectionMutations.create)}
         onCreate={createBareCollection}
         onClose={() => {
           setNamingCollection(false)
@@ -743,6 +720,46 @@ export function Workspace({
  *  profile-scoped route means this slot was never selected — there's nothing
  *  to retry, so the user goes back to pick one. An editor's address for a row
  *  that is gone, or never was, goes to Home. */
+/** A mutation's error, as the message a dialog or editor shows. */
+function errorMessage(mutation: { error: Error | null }): string | null {
+  return mutation.error?.message ?? null
+}
+
+/**
+ * The library rows the open editor stands for.
+ *
+ * `activeCatalog` and `activeCollection` are the library row the open editor
+ * was opened from. Below `lg` the editor's own header carries that row's
+ * duplicate and delete — the row itself is under the editor's layer — so it
+ * has to know which row it stands for. Its sharing state fills the editor's
+ * sharing setting, and decides whether the pane is an editor or the view of a
+ * row from Community (`subscription`); it is current after a save, a sharing
+ * call or an Update because each refetches the library. Undefined until the
+ * library's refetch lists a row that was just created or duplicated.
+ *
+ * `editingCollectionCatalogs` is every catalog the open collection's folders
+ * already reference, listed or scoped — `CollectionEditor`'s seed for its own
+ * catalog registry. `target.initialCatalogs` wins when the target set it
+ * directly (a collection just duplicated, whose row may not have reached
+ * `library.collections` yet — see `confirmDuplicateCollection`); otherwise it
+ * falls back to a lookup by id, the ordinary case for a row selected straight
+ * from the rail.
+ */
+function openRows(
+  target: EditorTarget | null,
+  library: { catalogs: LibraryCatalog[]; collections: LibraryCollection[] },
+) {
+  const activeCatalog =
+    target?.kind === 'catalog' ? library.catalogs.find((catalog) => catalog.id === target.id) : undefined
+  const activeCollection =
+    target?.kind === 'collection'
+      ? library.collections.find((collection) => collection.id === target.id)
+      : undefined
+  const editingCollectionCatalogs =
+    target?.kind === 'collection' ? (target.initialCatalogs ?? activeCollection?.catalogs ?? []) : []
+  return { activeCatalog, activeCollection, editingCollectionCatalogs }
+}
+
 function redirect(profileIndex: number, error: Error | null, missing: boolean): string | null {
   if (error instanceof ProfileNotSelectedError) return '/profiles'
   if (missing) return builderPath.workspace(profileIndex)
