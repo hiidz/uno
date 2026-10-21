@@ -6,7 +6,7 @@ import { tmdbKind } from '@/api'
 import { Grip, MoveDownButton, MoveUpButton } from '@/components/dnd'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
-import { ListState } from '@/components/ListState'
+import { StateView } from '@/components/StateView'
 import { SkeletonBar, skeletonKeys } from '@/components/Skeleton'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { PaneSign, SignLibraryButton } from '@/components/PaneSign'
@@ -107,7 +107,7 @@ export function HomePane({
             they can render anything. Empty is *not* shared: List's empty state
             is an instruction to go add something, Preview's is the screen Nuvio
             shows when there's nothing to show. So each branch owns it. */}
-        <ListState
+        <StateView
           isLoading={home.isLoading || !home.ready}
           error={home.error}
           onRetry={home.retry}
@@ -116,7 +116,7 @@ export function HomePane({
           errorLabel="Couldn't load your home screen."
         >
           {view === 'list' ? <HomeList /> : <HomePreview />}
-        </ListState>
+        </StateView>
       </div>
     </section>
   )

@@ -39,3 +39,16 @@ web/src/
 - The Nuvio access token stays in memory, and the refresh token in `localStorage`. On a `401`, `apiFetch` refreshes once and retries.
 - Home edits stay in the browser until you push.
 - Tests sit next to the code as `*.test.ts(x)` and run with `npm test`. A test that renders a component starts with `// @vitest-environment jsdom`.
+
+## UI rules
+
+What the app does today, written down so new screens match. Each rule says when to break it.
+
+1. **Feedback.** A toast for a finished action ("Added to your catalogs", "Imported 2 catalogs"), through `useToasts`: a success leaves after 5 seconds, a failure stays until closed, and a notice explains a move the app made on its own. A lasting banner for something that needs a decision or a fix, such as a failed push. A line beside the field for a problem with that field. Break it when the outcome is worth reading in full rather than noticing: a push's outcome stays on screen until dismissed.
+2. **Confirm or undo.** A server write that can't be taken back asks first (Delete, Unpublish, Discard). A draft needs neither, since nothing is saved until Save. An editor undoes in place, like a removed folder's Undo. Don't add a confirmation to anything that can be undone.
+3. **Choice controls.** `Segmented` for one of a few, checkboxes for several, tabs only to switch whole panels. A choice from a long list is a select or a picker.
+4. **Headers.** ← for a page reached from a list (a Community publication), × for an editor or a dialog.
+5. **Form errors.** `FieldError` directly beneath the field, from the first Save on. `EditorFooter` reads the errors out when Save shows them. A server refusal that belongs to no field sits above the save bar's buttons.
+6. **Loading, empty, error.** Through `StateView`, `size="compact"` in a picker or popover. An error says what happened and offers the next step, with no apology. An empty view invites the next action rather than saying "No items". A list with a skeleton draws it while loading.
+7. **Components.** Buttons are `Button` or `IconButton`, text sizes are the text roles (`text-meta`, `text-title`, …), and colours are the colour tokens. The drift check in `npm test` fails a screen file that writes these raw. A deliberate one-off carries `drift-ok: <reason>` on its line or the line above.
+8. **Overlays.** Menus, pickers and tips stay anchored to what opened them, on every screen. A form opens full screen on a phone, as a dialog or pane above. A confirmation is a centred alert. Only a view that works like a page (an editor, a publication, a folder page) adds a history step, so Back closes it.

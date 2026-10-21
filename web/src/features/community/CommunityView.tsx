@@ -4,7 +4,7 @@ import { Search } from 'lucide-react'
 import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
-import { ListState } from '@/components/ListState'
+import { StateView } from '@/components/StateView'
 import { skeletonKeys } from '@/components/Skeleton'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
@@ -144,14 +144,14 @@ export function CommunityView({
         <Toast toast={toast} />
 
         {pageFailed ? (
-          <ListState
+          <StateView
             isLoading={false}
             error={openDetail.error}
             errorLabel="Couldn’t load this publication."
             onRetry={openDetail.refetch}
           >
             {null}
-          </ListState>
+          </StateView>
         ) : open ? (
           <PublicationPage
             key={open.id}
@@ -165,7 +165,7 @@ export function CommunityView({
           <>
             <Controls filters={filters} onChange={setFilters} />
             <SearchNote problem={problem} />
-            <ListState
+            <StateView
               isLoading={list.isPending}
               error={listError(list)}
               isEmpty={items.length === 0}
@@ -196,7 +196,7 @@ export function CommunityView({
                 ))}
               </div>
               <ShowMore pages={list} />
-            </ListState>
+            </StateView>
           </>
         )}
       </section>

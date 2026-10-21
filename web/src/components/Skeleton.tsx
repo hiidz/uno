@@ -1,5 +1,5 @@
 /** A blank bar standing in for a line, a sticker or a picture while a list
- *  loads. Decorative: `ListState` says "Loading…" to screen readers. */
+ *  loads. Decorative: `StateView` says "Loading…" to screen readers. */
 export function SkeletonBar({ className }: { className: string }) {
   return <span className={`bg-raised-hi block shrink-0 animate-pulse rounded-md motion-reduce:animate-none ${className}`} />
 }

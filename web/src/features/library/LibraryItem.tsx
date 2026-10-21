@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Copy, Plus, Trash2 } from 'lucide-react'
-import { GlyphButton } from '@/components/GlyphButton'
+import { IconButton } from '@/components/IconButton'
 import { Icon } from '@/components/Icon'
 import { SkeletonBar } from '@/components/Skeleton'
 import { kindSticker, stickerWords, type SharingSticker } from '@/features/sharing/sharingState'
@@ -142,8 +142,8 @@ export function LibraryItem({
 
       {selected && (
         <div className="hidden flex-wrap items-center gap-1.5 px-3 pb-3 lg:flex">
-          <GlyphButton label={`Duplicate ${name}`} icon={Copy} onClick={onDuplicate} variant="labeled" />
-          <GlyphButton label={`Delete ${name}`} icon={Trash2} onClick={onDelete} destructive variant="labeled" />
+          <IconButton label={`Duplicate ${name}`} icon={Copy} onClick={onDuplicate} variant="labeled" />
+          <IconButton label={`Delete ${name}`} icon={Trash2} onClick={onDelete} destructive variant="labeled" />
         </div>
       )}
     </div>
