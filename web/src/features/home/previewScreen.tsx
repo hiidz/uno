@@ -163,6 +163,7 @@ function RowButton({
   label: string
 }) {
   return (
+    // drift-ok: Nuvio's own row chevron, drawn as Nuvio draws it
     <button type="button" onClick={onClick} aria-label={label} className="pv-row-btn">
       <Icon icon={direction === 1 ? ChevronRight : ChevronLeft} />
     </button>
@@ -264,6 +265,7 @@ function PreviewFolderTile({ folder, onOpen }: { folder: PreviewFolder; onOpen: 
   )
 
   return (
+    // drift-ok: a folder tile in Nuvio's home screen, drawn as Nuvio draws it
     <button
       type="button"
       onClick={onOpen}
@@ -349,6 +351,7 @@ export function PreviewFolderPage({
   return (
     <>
       <p className="fp-title">
+        {/* drift-ok: the folder page's back arrow, drawn as Nuvio draws it */}
         <button
           type="button"
           className="fp-back"

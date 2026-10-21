@@ -8,7 +8,7 @@ const SHOWN = 6
  *  collection that has no folders to show. */
 export function DetailLine({ text }: { text: string }) {
   return (
-    <span title={text} className="text-dim col-[2/-1] truncate text-[13.5px]">
+    <span title={text} className="text-dim text-meta col-[2/-1] truncate">
       {text}
     </span>
   )
@@ -33,7 +33,7 @@ function FolderChips({ folders }: { folders: PreviewFolder[] }) {
       {folders.slice(0, SHOWN).map((folder) => (
         <FolderChip key={folder.id} folder={folder} />
       ))}
-      {hidden > 0 && <li className="text-dimmer px-1 text-[12.5px]">+{hidden} more</li>}
+      {hidden > 0 && <li className="text-dimmer text-meta px-1">+{hidden} more</li>}
     </ul>
   )
 }
@@ -46,7 +46,7 @@ function FolderChip({ folder }: { folder: PreviewFolder }) {
   return (
     <li className={`bg-raised flex h-7 max-w-[11rem] min-w-0 items-center gap-1.5 rounded-lg py-0.5 pr-2.5 ${hasFace ? 'pl-0.5' : 'pl-2.5'}`}>
       {hasFace && <FolderFace folder={folder} />}
-      <span title={title} className="text-dim truncate text-[12.5px] font-semibold">
+      <span title={title} className="text-dim text-meta truncate font-semibold">
         {title}
       </span>
     </li>
@@ -58,6 +58,7 @@ function FolderFace({ folder }: { folder: PreviewFolder }) {
   return (
     <span
       aria-hidden="true"
+      // drift-ok: the cover emoji is sized to its 24px tile
       className="bg-raised-hi grid size-6 shrink-0 place-items-center overflow-hidden rounded-md text-[13px] shadow-[inset_0_0_0_1px_var(--uno-line-hi)]"
     >
       <FaceArt folder={folder} />
