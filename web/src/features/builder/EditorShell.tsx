@@ -1,7 +1,7 @@
 import { useEffect, useId } from 'react'
 import type { ReactNode } from 'react'
 import { Copy, Trash2, X } from 'lucide-react'
-import { GlyphButton } from '@/components/GlyphButton'
+import { IconButton } from '@/components/IconButton'
 import { Icon } from '@/components/Icon'
 import { PaneSign, SIGN_TITLE } from '@/components/PaneSign'
 
@@ -108,7 +108,7 @@ export function EditorShell({
         {/* The row's actions, below `lg` only. */}
         <div className="flex shrink-0 items-center gap-1 pointer-coarse:gap-3 lg:hidden">
           {onDuplicate && (
-            <GlyphButton
+            <IconButton
               label={`Duplicate ${title}`}
               icon={Copy}
               onClick={onDuplicate}
@@ -116,7 +116,7 @@ export function EditorShell({
             />
           )}
           {onDelete && (
-            <GlyphButton
+            <IconButton
               label={`Delete ${title}`}
               icon={Trash2}
               onClick={onDelete}
