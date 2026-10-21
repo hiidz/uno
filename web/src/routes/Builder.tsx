@@ -11,7 +11,7 @@ import { KeyProblemBanner } from '@/features/account/KeyProblemBanner'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
 import { builderPath, builderView, type BuilderSection, type BuilderView, type EditorRef } from '@/features/builder/paths'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
-import { ToPicker } from '@/features/builder/redirects'
+import { ToParent, ToPicker } from '@/features/builder/redirects'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
 import { Configure } from '@/features/builder/Configure'
 import { CommunityView } from '@/features/community/CommunityView'
@@ -22,6 +22,7 @@ import { BlockablePushButton, PushBlockNote } from '@/features/push/PushBlockCon
 import { AddonURLButton, ChangesStrip, PushBanner } from '@/features/push/PushControls'
 import { usePush } from '@/features/push/usePush'
 import { usePushBlock } from '@/features/push/usePushBlock'
+import { communitySetting } from '@/lib/pageConfig'
 import { useCountDown } from '@/lib/useCountDown'
 import { plural } from '@/lib/plural'
 import { useActiveProfile } from './activeProfile'
@@ -120,6 +121,7 @@ function SectionView({ profileIndex, view }: { profileIndex: number; view: Build
   if (view.section === 'configure') {
     return <Configure profileIndex={profileIndex} editor={view.editor} onOpenPublication={openPublication} />
   }
+  if (communitySetting() === 'off') return <ToParent to={builderPath.configure()} notice={COMMUNITY_OFF} />
   return <CommunityView profileIndex={profileIndex} publication={view.publication} />
 }
 
@@ -361,9 +363,14 @@ function PendingIndicator({
   )
 }
 
+/** Why Community can't be opened on a server whose `UNO_COMMUNITY` is off. */
+const COMMUNITY_OFF = 'Community is off on this server.'
+
 /** The Configure / Community switch, factored out only because it's rendered
- *  twice — inline in the header above `lg`, on its own row below it. */
+ *  twice — inline in the header above `lg`, on its own row below it. On a
+ *  server whose Community is off, Community stays in it, greyed. */
 function BuilderTabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
+  const off = communitySetting() === 'off'
   return (
     <Segmented
       ariaLabel="Builder section"
@@ -373,10 +380,11 @@ function BuilderTabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void
         { value: 'configure', label: 'Configure' },
         {
           value: 'community',
+          disabledReason: off ? COMMUNITY_OFF : undefined,
           label: (
             <span className="inline-flex items-center gap-2">
               {/* Community's own pink, the colour of its sign. */}
-              <span aria-hidden="true" className="bg-community size-2 rounded-full" />
+              <span aria-hidden="true" className={`bg-community size-2 rounded-full ${off ? 'opacity-40' : ''}`} />
               Community
             </span>
           ),

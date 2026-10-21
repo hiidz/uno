@@ -10,6 +10,7 @@ import { StateError, StateView } from '@/components/StateView'
 import { skeletonKeys } from '@/components/Skeleton'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { andList } from '@/lib/list'
+import { communitySetting } from '@/lib/pageConfig'
 import { pluralCount } from '@/lib/plural'
 import { describeCollection } from './collection'
 import { LibraryItem, LibraryItemSkeleton } from './LibraryItem'
@@ -55,6 +56,7 @@ export function LibrarySection({
 }) {
   const [search, setSearch] = useState('')
   const home = useHomeSelection()
+  const communityOff = communitySetting() === 'off'
 
   const query = search.trim().toLowerCase()
 
@@ -151,7 +153,7 @@ export function LibrarySection({
           <LibraryItem
             key={catalog.id}
             kind={catalog.type}
-            stickers={railStickers(catalog)}
+            stickers={railStickers(catalog, communityOff)}
             name={catalog.name}
             summary={summary}
             selected={selectedID === catalog.id}
@@ -191,7 +193,7 @@ export function LibrarySection({
           <LibraryItem
             key={collection.id}
             kind="collection"
-            stickers={railStickers(collection)}
+            stickers={railStickers(collection, communityOff)}
             name={collection.title}
             summary={summary}
             selected={selectedID === collection.id}

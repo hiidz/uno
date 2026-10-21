@@ -45,6 +45,15 @@ describe('railStickers', () => {
     expect(rail({ ...plain, subscription })).toEqual(['From Community:community'])
     expect(rail(updating)).toEqual(['Update available:community, filled'])
   })
+
+  it('keeps only From Community on a server whose Community is off', () => {
+    const off = (row: StickerRow) => words(railStickers(row, true))
+    expect(off({ ...plain, publication: live })).toEqual([])
+    expect(off(changed)).toEqual([])
+    expect(off({ ...plain, subscription })).toEqual(['From Community:community'])
+    expect(off(updating)).toEqual(['From Community:community'])
+    expect(words(rowStickers(changed, true, true))).toEqual(['To push:nuvio, filled'])
+  })
 })
 
 describe('rowStickers', () => {

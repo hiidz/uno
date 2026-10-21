@@ -5,6 +5,7 @@ import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { EditorShell } from '@/features/builder/EditorShell'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { communitySetting } from '@/lib/pageConfig'
 import { UpdateCount } from './Changes'
 import { CatalogBody, CollectionBody } from './PublicationBodies'
 import { updateWaits, viewStickers } from './sharingState'
@@ -63,7 +64,9 @@ export function CollectionFromCommunity({
  * (`viewStickers`) with From Community where Update available would be, since
  * the Update… button, first action in the body while an update waits, says it.
  * Nothing here can be unsaved, so closing never asks. While Update… shows, Duplicate
- * to edit is outlined, so one filled button is on screen.
+ * to edit is outlined, so one filled button is on screen. On a server whose
+ * Community is off there is no Update…, and Duplicate to edit is the way to
+ * change the row.
  */
 function ViewFrame({
   tone,
@@ -84,13 +87,16 @@ function ViewFrame({
   row: Pick<Catalog, 'publication' | 'subscription'>
   children: (lead: ReactNode) => ReactNode
 } & FromCommunityActions) {
-  const updating = updateWaits(row)
-  const lead = <ViewLead profileIndex={profileIndex} subscription={row.subscription} onUpdate={onUpdate} />
+  const communityOff = communitySetting() === 'off'
+  const updating = !communityOff && updateWaits(row)
+  const lead = communityOff ? null : (
+    <ViewLead profileIndex={profileIndex} subscription={row.subscription} onUpdate={onUpdate} />
+  )
   return (
     <EditorShell
       purpose={purpose}
       tone={tone}
-      badges={<SharingStickers stickers={viewStickers(row, waitingForPush)} />}
+      badges={<SharingStickers stickers={viewStickers(row, waitingForPush, communityOff)} />}
       title={title}
       onRequestClose={onClose}
       onDuplicate={onDuplicate}

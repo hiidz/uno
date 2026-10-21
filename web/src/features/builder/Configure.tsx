@@ -35,6 +35,7 @@ import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharin
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { rowStickers } from '@/features/sharing/sharingState'
 import { andList } from '@/lib/list'
+import { communitySetting } from '@/lib/pageConfig'
 import { pluralCount } from '@/lib/plural'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useEditorGuard } from './EditorGuard'
@@ -127,7 +128,7 @@ export function Configure({
   /** An open editor's own flags beside its kind: its Community sticker,
    *  and To push while a push would change it. */
   const sharingBadges = (row: ({ id: string } & Parameters<typeof rowStickers>[0]) | undefined) =>
-    row && <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} />
+    row && <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id), communitySetting() === 'off')} />
 
   const railRef = useRef<HTMLElement>(null)
   // The jump button pins to a phone's foot while the rail is on screen.

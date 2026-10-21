@@ -10,6 +10,13 @@ export interface PageConfig {
   community: 'on' | 'no-images' | 'off'
 }
 
+/** This server's `UNO_COMMUNITY`, from the page's config block, or `on` for a
+ *  page that has none: a component rendered on its own. */
+export function communitySetting(): PageConfig['community'] {
+  if (typeof document === 'undefined' || !document.getElementById('uno-config')) return 'on'
+  return pageConfig().community
+}
+
 /** The page's `uno-config` block. Read at call time, so a test (or a page)
  *  can set it after this module has loaded. */
 export function pageConfig(): PageConfig {

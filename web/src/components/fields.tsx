@@ -302,6 +302,9 @@ export function Select({
  * width, `max-w-full` with `flex-wrap` takes a second line instead of
  * overflowing the container — the labels stay whole, which is the property
  * this control exists to keep.
+ *
+ * An option with a `disabledReason` is greyed on its own, says why in its
+ * tooltip, and can't be picked.
  */
 export function Segmented<T extends string>({
   value,
@@ -312,7 +315,7 @@ export function Segmented<T extends string>({
 }: {
   value: T
   onChange: (value: T) => void
-  options: { value: T; label: ReactNode }[]
+  options: { value: T; label: ReactNode; disabledReason?: string }[]
   ariaLabel: string
   /** Greyed as a whole while the control can't do anything — the "All" tab
    *  segmented control outside Tabbed Grids. Keeps its value: the selected
@@ -329,24 +332,30 @@ export function Segmented<T extends string>({
       aria-disabled={disabled || undefined}
       className="bg-raised flex w-fit max-w-full shrink-0 flex-wrap gap-0.5 rounded-[19px] p-[3px] shadow-[inset_0_0_0_1px_var(--uno-line-hi)]"
     >
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => !disabled && onChange(option.value)}
-          aria-pressed={value === option.value}
-          aria-disabled={disabled || undefined}
-          className={`flex-1 rounded-full px-3.5 py-1.5 text-meta font-semibold whitespace-nowrap transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
-            disabled
-              ? `text-dimmer cursor-not-allowed ${value === option.value ? 'underline decoration-1 underline-offset-[0.3em]' : ''}`
-              : value === option.value
-                ? 'bg-ink text-sign-ink'
-                : 'text-dim hover:text-ink'
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
+      {options.map((option) => {
+        const optionOff = Boolean(option.disabledReason)
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => !disabled && !optionOff && onChange(option.value)}
+            aria-pressed={value === option.value}
+            aria-disabled={disabled || optionOff || undefined}
+            title={option.disabledReason}
+            className={`flex-1 rounded-full px-3.5 py-1.5 text-meta font-semibold whitespace-nowrap transition-colors pointer-coarse:py-2.5 pointer-coarse:leading-6 ${
+              disabled
+                ? `text-dimmer cursor-not-allowed ${value === option.value ? 'underline decoration-1 underline-offset-[0.3em]' : ''}`
+                : optionOff
+                  ? 'text-dimmer cursor-not-allowed'
+                  : value === option.value
+                    ? 'bg-ink text-sign-ink'
+                    : 'text-dim hover:text-ink'
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
