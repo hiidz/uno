@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, Plus } from 'lucide-react'
 import { Popover } from 'radix-ui'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { typeLabel } from '@/features/library/recipe'
 import { hasFinePointer } from '@/lib/pointer'
@@ -61,10 +62,10 @@ export function CatalogRefPicker({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button type="button" className="btn-ghost btn-sm">
+        <Button kind="ghost" size="sm">
           Add catalogs
           <Icon icon={ChevronDown} size={14} />
-        </button>
+        </Button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
@@ -138,11 +139,12 @@ function newName(query: string, matchCount: number): string {
 /** New catalog, as the list's first row, off while the folder is full. */
 function NewRow({ name, disabled, onNew }: { name: string; disabled: boolean; onNew(name: string): void }) {
   return (
+    // drift-ok: the picker's first row, drawn like the tick rows under it
     <button
       type="button"
       onClick={() => onNew(name)}
       disabled={disabled}
-      className="hover:bg-line flex items-center gap-2.5 rounded-lg px-2 py-2 text-left text-[14px] font-semibold pointer-coarse:min-h-11"
+      className="hover:bg-line flex items-center gap-2.5 rounded-lg px-2 py-2 text-left text-body-sm font-semibold pointer-coarse:min-h-11"
     >
       <Icon icon={Plus} size={16} className="text-collection shrink-0" />
       {newLabel(name)}
@@ -174,7 +176,7 @@ function PickerList({ matches, hasOptions, inFolder, full, onToggle }: PickerLis
         <li key={option.id}>
           <label
             title={`${option.name} — ${option.recipe}`}
-            className="hover:bg-line flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-[14px] pointer-coarse:min-h-11"
+            className="hover:bg-line flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-body-sm pointer-coarse:min-h-11"
           >
             <input
               type="checkbox"
@@ -183,8 +185,8 @@ function PickerList({ matches, hasOptions, inFolder, full, onToggle }: PickerLis
               disabled={lockedOut(full, inFolder, option.id)}
               className="checkbox shrink-0"
             />
-            <span className="min-w-0 flex-1 truncate">{option.name}</span>
-            <span className="text-dimmer shrink-0 text-[12.5px]">{typeLabel(option.catalog.type)}</span>
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{option.name}</span>
+            <span className="text-dimmer text-meta shrink-0">{typeLabel(option.catalog.type)}</span>
           </label>
         </li>
       ))}

@@ -30,5 +30,5 @@ export function CollectionMeta({ collection }: { collection: PreviewCollection }
   }
 
   if (notes.length === 0) return null
-  return <p className="type-data text-dim m-0 text-[12px] leading-[17px]">{notes.join(' · ')}</p>
+  return <p className="type-data text-dim text-caption m-0 leading-[17px]">{notes.join(' · ')}</p>
 }

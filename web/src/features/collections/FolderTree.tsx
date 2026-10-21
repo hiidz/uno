@@ -1,9 +1,9 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { DndContext, type Announcements, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronLeft, ChevronRight, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, TriangleAlert } from 'lucide-react'
 import { Grip, useDragSensors } from '@/components/dnd'
 import { IconButton } from '@/components/IconButton'
 import { Icon } from '@/components/Icon'
@@ -128,8 +128,9 @@ export function FolderTiles({
   onSelect: (key: string) => void
   onMove: (key: string, direction: -1 | 1) => void
 }) {
+  const [stacked, stripRef] = useOneColumn()
   return (
-    <ul className="fold-tiles">
+    <ul ref={stripRef} className="fold-tiles">
       {folders.map((folder, index) => (
         <FolderTileItem
           key={folder.key}
@@ -138,12 +139,34 @@ export function FolderTiles({
           total={folders.length}
           selected={folder.key === selectedKey}
           hasError={errorKeys.has(folder.key)}
+          stacked={stacked}
           onSelect={() => onSelect(folder.key)}
           onMove={(direction) => onMove(folder.key, direction)}
         />
       ))}
     </ul>
   )
+}
+
+/**
+ * Whether the strip's tiles stand in one column, as wide tiles do on a phone:
+ * every tile starts at the same left edge. The strip's ref is the second
+ * value; it re-measures as the strip resizes.
+ */
+function useOneColumn(): [boolean, (strip: HTMLUListElement | null) => (() => void) | undefined] {
+  const [stacked, setStacked] = useState(false)
+  const ref = useCallback((strip: HTMLUListElement | null) => {
+    if (!strip) return
+    const measure = () => {
+      const lefts = new Set([...strip.children].map((tile) => (tile as HTMLElement).offsetLeft))
+      setStacked(strip.children.length > 1 && lefts.size === 1)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(strip)
+    measure()
+    return () => observer.disconnect()
+  }, [])
+  return [stacked, ref]
 }
 
 const TILE_H = 104
@@ -154,6 +177,7 @@ function FolderTileItem({
   total,
   selected,
   hasError,
+  stacked,
   onSelect,
   onMove,
 }: {
@@ -162,6 +186,7 @@ function FolderTileItem({
   total: number
   selected: boolean
   hasError: boolean
+  stacked: boolean
   onSelect: () => void
   onMove: (direction: -1 | 1) => void
 }) {
@@ -179,6 +204,7 @@ function FolderTileItem({
       style={{ transform: CSS.Transform.toString(transform), transition, width }}
       className={`fold-tile ${selected ? 'is-selected' : ''} ${isDragging ? 'relative z-10 opacity-40' : ''}`}
     >
+      {/* drift-ok: a folder tile, drawn at Nuvio's tile shape */}
       <button
         type="button"
         onClick={onSelect}
@@ -188,11 +214,12 @@ function FolderTileItem({
       >
         <span className="fold-tile-face" style={{ height: TILE_H }}>
           {folder.coverEmoji ? (
+            // drift-ok: the cover emoji is sized to its tile
             <span aria-hidden="true" className="text-[26px] leading-none">
               {folder.coverEmoji}
             </span>
           ) : (
-            <span aria-hidden="true" className="text-dimmer line-clamp-2 px-2 text-center text-[12.5px] leading-tight">
+            <span aria-hidden="true" className="text-dimmer text-meta line-clamp-2 px-2 text-center leading-tight">
               {name}
             </span>
           )}
@@ -208,7 +235,7 @@ function FolderTileItem({
             {name}
           </span>
         </span>
-        <span className="type-data text-dimmer text-[12.5px] tabular-nums">
+        <span className="type-data text-dimmer text-meta tabular-nums">
           {pluralCount(folder.refs.length, 'catalog')}
         </span>
       </button>
@@ -216,23 +243,32 @@ function FolderTileItem({
         <Grip label={`Reorder ${folderLabel(folder, position)}`} sortable={{ attributes, listeners }} />
       </span>
       {selected && (
-        <FolderMoveArrows label={folderLabel(folder, position)} position={position} total={total} onMove={onMove} />
+        <FolderMoveArrows
+          label={folderLabel(folder, position)}
+          position={position}
+          total={total}
+          stacked={stacked}
+          onMove={onMove}
+        />
       )}
     </li>
   )
 }
 
-/** ← and → under the selected tile: the same reorder as dragging it, for
- *  anyone who can't. */
+/** Earlier and later under the selected tile, pointing the way the strip
+ *  runs: ↑ ↓ while it is one column, ‹ › while tiles sit side by side. The
+ *  same reorder as dragging it, for anyone who can't. */
 function FolderMoveArrows({
   label,
   position,
   total,
+  stacked,
   onMove,
 }: {
   label: string
   position: number
   total: number
+  stacked: boolean
   onMove: (direction: -1 | 1) => void
 }) {
   return (
@@ -240,16 +276,16 @@ function FolderMoveArrows({
       <IconButton
         variant="plain"
         size="sm"
-        icon={ChevronLeft}
-        label={`Move ${label} left${position === 0 ? ', already first' : ''}`}
+        icon={stacked ? ChevronUp : ChevronLeft}
+        label={`Move ${label} earlier${position === 0 ? ', already first' : ''}`}
         disabled={position === 0}
         onClick={() => onMove(-1)}
       />
       <IconButton
         variant="plain"
         size="sm"
-        icon={ChevronRight}
-        label={`Move ${label} right${position === total - 1 ? ', already last' : ''}`}
+        icon={stacked ? ChevronDown : ChevronRight}
+        label={`Move ${label} later${position === total - 1 ? ', already last' : ''}`}
         disabled={position === total - 1}
         onClick={() => onMove(1)}
       />

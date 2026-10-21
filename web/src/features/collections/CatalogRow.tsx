@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Grip } from '@/components/dnd'
 import { MoreMenu, MoreMenuItem, MoreMenuSeparator } from '@/components/MoreMenu'
-import { Toast } from '@/components/Toast'
+import { Button } from '@/components/Button'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
 import { kindStickers } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
@@ -75,7 +75,7 @@ export function CatalogRow(props: CatalogRowProps) {
     >
       <div className="run-ctl self-start pt-0.5">
         <Grip label={`Reorder ${name}`} sortable={{ attributes, listeners }} />
-        <span className="type-data text-dimmer w-8 shrink-0 text-right text-[12.5px] tabular-nums">
+        <span className="type-data text-dimmer text-meta w-8 shrink-0 text-right tabular-nums">
           {position + 1}
         </span>
       </div>
@@ -98,7 +98,6 @@ export function CatalogRow(props: CatalogRowProps) {
 
         <div className="flex shrink-0 items-center gap-1">
           <InlineAction option={option} onEdit={props.onEdit} onRemove={props.onRemove} />
-          <Toast toast={copyToLibrary.toast} />
           <CatalogMenu
             label={option?.name ?? 'this catalog'}
             first={position === 0}
@@ -133,11 +132,11 @@ function CatalogBody({ folderKey, group, option, unit, usedInFolders, onAddGenre
   return (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
       <span className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className="truncate text-[13px] font-medium">{option.name}</span>
+        <span className="text-meta min-w-0 font-medium [overflow-wrap:anywhere]">{option.name}</span>
         <SharingStickers stickers={kindStickers(option.catalog)} />
         <UnitCount count={group.refs.length} unit={unit} />
       </span>
-      <span className="type-data text-dimmer text-[12.5px] leading-[1.45]">
+      <span className="type-data text-dimmer text-meta">
         {option.recipe}
         <UsedIn option={option} usedInFolders={usedInFolders} />
       </span>
@@ -160,7 +159,7 @@ function CatalogBody({ folderKey, group, option, unit, usedInFolders, onAddGenre
 function UnitCount({ count, unit }: { count: number; unit: FolderUnit }) {
   if (count < 2) return null
   return (
-    <span className="border-catalog/55 text-catalog shrink-0 rounded-full border px-[7px] py-[4px] text-[10.5px] leading-none font-bold tracking-[0.06em] uppercase">
+    <span className="border-catalog/55 text-catalog shrink-0 rounded-full border px-[7px] py-[4px] text-sticker uppercase">
       {pluralCount(count, unit)}
     </span>
   )
@@ -182,8 +181,8 @@ function UnavailableBody() {
     <>
       <span aria-hidden="true" className="text-danger bg-current w-[3px] shrink-0 self-stretch rounded-[1px]" />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-danger truncate text-[13px]">Unavailable catalog</span>
-        <span className="type-data text-dimmer truncate text-[12.5px]">Deleted</span>
+        <span className="text-danger text-meta truncate">Unavailable catalog</span>
+        <span className="type-data text-dimmer text-meta truncate">Deleted</span>
       </span>
     </>
   )
@@ -195,16 +194,16 @@ function UnavailableBody() {
 function InlineAction({ option, onEdit, onRemove }: { option: RefOption | undefined; onEdit(): void; onRemove(): void }) {
   if (!option) {
     return (
-      <button type="button" onClick={onRemove} className="btn-ghost px-2 text-[12px]">
+      <Button kind="ghost" size="sm" onClick={onRemove} className="text-caption px-2">
         Remove
-      </button>
+      </Button>
     )
   }
   if (option.catalog.collection_id === null) return null
   return (
-    <button type="button" onClick={onEdit} className="btn-ghost px-2 text-[12px]">
+    <Button kind="ghost" size="sm" onClick={onEdit} className="text-caption px-2">
       Edit
-    </button>
+    </Button>
   )
 }
 

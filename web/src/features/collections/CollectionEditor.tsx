@@ -9,6 +9,7 @@ import type {
   Language,
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
+import { Button } from '@/components/Button'
 import type { SignStep } from '@/components/PaneSign'
 import { FieldError, TextInput } from '@/components/fields'
 import { EditorFooter } from '@/features/builder/EditorFooter'
@@ -530,14 +531,9 @@ export function CollectionEditor({
             <div className="setting is-head">
               <h3 className="setting-label type-label">Folders</h3>
               <div className="setting-value flex justify-end">
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={addFolder}
-                  disabled={state.folders.length >= MAX_FOLDERS}
-                >
+                <Button kind="secondary" size="sm" onClick={addFolder} disabled={state.folders.length >= MAX_FOLDERS}>
                   Add folder
-                </button>
+                </Button>
               </div>
             </div>
             <FolderCount count={state.folders.length} error={errors.folderCount} showError={showErrors} />

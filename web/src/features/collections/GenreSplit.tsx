@@ -44,7 +44,7 @@ export function GenreSplit(props: GenreSplitProps) {
   return (
     <span className="mt-1.5 flex flex-col gap-1.5">
       {split && (
-        <span className="text-dimmer text-[12.5px]">
+        <span className="text-dimmer text-meta">
           <span className="text-dim font-semibold">Split by genre</span> · one {props.unit} per genre
         </span>
       )}
@@ -52,16 +52,18 @@ export function GenreSplit(props: GenreSplitProps) {
         {split && <GenreChips props={props} stale={stale} />}
         <GenreDropdown dropdown={dropdown}>
           {split ? (
+            // drift-ok: the chip row's own add chip, dashed like an empty chip
             <button
               type="button"
               aria-label={`Genres of ${props.name}`}
-              className="text-catalog border-catalog/60 hover:bg-catalog/10 inline-flex h-7 items-center gap-1 rounded-full border border-dashed px-3 text-[13px] font-semibold"
+              className="text-catalog border-catalog/60 hover:bg-catalog/10 inline-flex h-7 items-center gap-1 rounded-full border border-dashed px-3 text-meta font-semibold"
             >
               <Icon icon={Plus} size={13} />
               Genre
             </button>
           ) : (
-            <button type="button" className="text-catalog inline-flex w-max items-center gap-1 text-[12.5px] font-semibold hover:underline">
+            // drift-ok: a text link that opens the genre list
+            <button type="button" className="text-catalog text-meta inline-flex w-max items-center gap-1 font-semibold hover:underline">
               <Icon icon={Plus} size={13} />
               Split by genre
             </button>
@@ -69,7 +71,7 @@ export function GenreSplit(props: GenreSplitProps) {
         </GenreDropdown>
       </span>
       {stale.map((genre) => (
-        <span key={genre} className="type-data text-danger text-[12.5px] leading-[1.45]">
+        <span key={genre} className="type-data text-danger text-meta">
           This catalog's filters no longer allow {genre}, so Nuvio shows that {props.unit} unfiltered.
         </span>
       ))}
@@ -168,8 +170,9 @@ function GenreChip({ genreRef, data, movable, stale, unit, onRemove }: GenreChip
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`bg-raised-hi inline-flex h-7 items-center rounded-full border text-[13px] font-semibold ${chipTone(stale)} ${isDragging ? 'relative z-10 opacity-40' : ''}`}
+      className={`bg-raised-hi inline-flex h-7 items-center rounded-full border text-meta font-semibold ${chipTone(stale)} ${isDragging ? 'relative z-10 opacity-40' : ''}`}
     >
+      {/* drift-ok: a genre chip's grip and name; chips keep their own shape */}
       <button
         type="button"
         aria-label={`Reorder ${label}`}
@@ -182,6 +185,7 @@ function GenreChip({ genreRef, data, movable, stale, unit, onRemove }: GenreChip
         {label}
       </button>
       {movable && (
+        // drift-ok: a genre chip's ×, sized to the chip
         <button
           type="button"
           aria-label={`Remove the ${label} ${unit}`}
@@ -241,10 +245,10 @@ function GenreTick({ choice, locked, dropdown }: { choice: GenreChoice; locked: 
   }
   return (
     <li className={choice.genre === '' ? 'border-line-hi mb-1 border-b pb-1' : undefined}>
-      <label className="hover:bg-line flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-[14px] has-[:disabled]:cursor-default pointer-coarse:min-h-11">
+      <label className="hover:bg-line flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-body-sm has-[:disabled]:cursor-default pointer-coarse:min-h-11">
         <input type="checkbox" checked={ticked} disabled={ticked && locked} onChange={toggle} className="checkbox shrink-0" />
         <span className={choice.stale ? 'text-danger' : undefined}>{genreLabel(choice.genre)}</span>
-        {choice.stale && <span className="text-dimmer ml-auto text-[12.5px]">no longer applies</span>}
+        {choice.stale && <span className="text-dimmer text-meta ml-auto">no longer applies</span>}
       </label>
     </li>
   )
