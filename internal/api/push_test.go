@@ -62,8 +62,9 @@ func newTestVaultDB(t *testing.T) *vault.DB {
 // to fail on a specific invocation — the initial push versus a compensating
 // revert are both routed through the same method).
 type fakeNuvio struct {
-	profiles        []nuvio.NuvioProfile
-	listProfilesErr error
+	profiles          []nuvio.NuvioProfile
+	listProfilesErr   error
+	listProfilesCalls int
 
 	avatarImages    map[string]string
 	avatarImagesErr error
@@ -103,6 +104,7 @@ type fakeNuvio struct {
 var _ NuvioClient = (*fakeNuvio)(nil)
 
 func (f *fakeNuvio) ListProfiles(ctx context.Context, accessToken string) ([]nuvio.NuvioProfile, error) {
+	f.listProfilesCalls++
 	if f.listProfilesErr != nil {
 		return nil, f.listProfilesErr
 	}
