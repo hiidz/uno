@@ -3,6 +3,7 @@ import type { Catalog } from '@/api'
 import { Button } from '@/components/Button'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/Modal'
 import type { GenreLookups } from '@/features/library/useLibrary'
+import { communitySetting } from '@/lib/pageConfig'
 import { pluralCount } from '@/lib/plural'
 import { CatalogList, type CatalogListItem } from './CatalogList'
 import { catalogItem } from './listing'
@@ -162,6 +163,9 @@ export function PublishDialog({
       <ModalBody>
         <div className="text-body-sm flex flex-col gap-4 leading-relaxed">
           <p className="text-dim m-0">{words.line}</p>
+          {subject.kind === 'collection' && communitySetting() === 'no-images' && (
+            <p className="text-dim m-0">Picture sharing is off on this server.</p>
+          )}
           {since}
           <PublishContents subject={subject} genres={genres} />
           <DialogError error={error} />
