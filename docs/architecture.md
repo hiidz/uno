@@ -66,7 +66,7 @@ A push sends the whole home screen to `POST /api/p/{profileIndex}/push`. Uno the
 
 Nuvio replaces each list whole, so Uno pulls each one first and keeps every entry that isn't its own. If a step fails, Uno puts back what it changed. Only after all three succeed does Uno save the new home screen, and a record of what it pushed.
 
-Nuvio counts every client of every app against one shared rate limit, so the three routes that call Nuvio (push, the profile list and profile select) allow each account 10 requests at once, then one more every 3 seconds, and answer a `429` with `Retry-After` beyond that. A `429` from Nuvio itself is passed on the same way.
+Nuvio's rate limit is shared across its clients, so the three routes that call Nuvio (push, the profile list and profile select) allow each account 10 requests at once, then one more every 3 seconds, and answer a `429` with `Retry-After` beyond that. A `429` from Nuvio itself is passed on the same way.
 
 ## Addon
 
