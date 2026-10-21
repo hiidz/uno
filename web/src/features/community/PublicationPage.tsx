@@ -6,10 +6,11 @@ import { UpdateChanges, useUpdateMarks } from '@/features/sharing/Changes'
 import { RenamedFrom } from '@/features/sharing/MarkViews'
 import { CatalogBody, CollectionBody } from '@/features/sharing/PublicationBodies'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
+import type { SharingSticker } from '@/features/sharing/sharingState'
 import { snapshotAsCollection, snapshotCatalog } from '@/features/sharing/snapshot'
 import { renamedFrom, type UpdateMarks } from '@/features/sharing/updateMarks'
 import { itemKind } from './communityQuery'
-import { PageActions, type RowActions } from './CommunityRow'
+import { PageActions, type OwnPageActions, type RowActions } from './CommunityRow'
 import { MetaParts } from './MetaParts'
 import { usePublication } from './useCommunity'
 
@@ -33,25 +34,32 @@ export function PublicationPage({
   meta,
   genres,
   actions,
+  own,
+  ownStickers = [],
 }: {
   profileIndex: number
   item: CommunityItem
   meta: string[]
   genres: GenreLookups
   actions: RowActions
+  /** The profile's own publication's actions; null while the library
+   *  hasn't listed its row. */
+  own?: OwnPageActions | null
+  /** The own row's Community sticker, after the kind. */
+  ownStickers?: SharingSticker[]
 }) {
   const detail = usePublication(profileIndex, item.id)
   const marks = useUpdateMarks(profileIndex, item)
   const lead = (
     <>
       <div className="flex flex-wrap items-center gap-1.5 sm:hidden">
-        <PageStickers item={item} />
+        <PageStickers item={item} extra={ownStickers} />
       </div>
       <p className="type-data text-dim m-0 text-[13px]">
         <MetaParts parts={meta} />
       </p>
       <RenamedFrom name={renamedName(marks, item.kind)} />
-      <PageActions item={item} actions={actions} />
+      <PageActions item={item} actions={actions} own={own} />
       <UpdateChanges profileIndex={profileIndex} item={item} genres={genres} />
       <StateView
         isLoading={detail.isPending}
@@ -101,9 +109,10 @@ function catalogOf(detail: PublicationDetail | undefined): Catalog | undefined {
   return detail && snapshotCatalog(detail)
 }
 
-/** The page's sticker: its kind. The Update button and the In this update
- *  shelf say an update waits, so no sticker does. The sign prints it from
- *  `sm` up and the body below. */
-export function PageStickers({ item }: { item: CommunityItem }) {
-  return <SharingStickers stickers={[itemKind(item)]} />
+/** The page's stickers: its kind, then `extra` (the own publication's
+ *  Published or To publish). The Update button and the In this update shelf
+ *  say an update waits, so no sticker does. The sign prints them from `sm`
+ *  up and the body below. */
+export function PageStickers({ item, extra = [] }: { item: CommunityItem; extra?: SharingSticker[] }) {
+  return <SharingStickers stickers={[itemKind(item), ...extra]} />
 }

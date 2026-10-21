@@ -32,7 +32,8 @@ import { LibrarySection } from '@/features/library/LibrarySection'
 import { useLibrary, type LibraryCatalog, type LibraryCollection } from '@/features/library/useLibrary'
 import { usePushWaiting } from '@/features/push/usePushWaiting'
 import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
-import { useWorkspaceSharing } from '@/features/sharing/useWorkspaceSharing'
+import { SharingStickers } from '@/features/sharing/SharingStickers'
+import { rowStickers } from '@/features/sharing/sharingState'
 import { andList } from '@/lib/list'
 import { pluralCount } from '@/lib/plural'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
@@ -104,7 +105,7 @@ export function Workspace({
   const catalogMutations = useCatalogMutations(profileIndex)
   const collectionMutations = useCollectionMutations(profileIndex)
 
-  const { setDirty, blocked, proceed, cancel, dirty } = useEditorGuard()
+  const { setDirty, blocked, proceed, cancel } = useEditorGuard()
 
   // Held here, not in `HomePane`, so it survives an editor taking the pane:
   // closing one gives back the view you left rather than resetting to List.
@@ -121,13 +122,10 @@ export function Workspace({
   const toasts = useToasts()
   useRedirectNotice(toasts.show)
   const waitingForPush = usePushWaiting(profileIndex)
-  const sharing = useWorkspaceSharing({
-    profileIndex,
-    genres: library.genres,
-    dirty,
-    waitingForPush,
-    onToast: toasts.show,
-  })
+  /** An open editor's own flags beside its kind: its Community sticker,
+   *  and To push while a push would change it. */
+  const sharingBadges = (row: ({ id: string } & Parameters<typeof rowStickers>[0]) | undefined) =>
+    row && <SharingStickers stickers={rowStickers(row, waitingForPush.has(row.id))} />
 
   const railRef = useRef<HTMLElement>(null)
   // The jump button pins to a phone's foot while the rail is on screen.
@@ -620,7 +618,7 @@ export function Workspace({
                 onDuplicate={activeCatalog ? () => duplicateCatalog(activeCatalog) : undefined}
                 onDelete={activeCatalog ? () => deleteCatalog(activeCatalog) : undefined}
                 onDirtyChange={setDirty}
-                {...sharing.catalogSharing(activeCatalog)}
+                sharingBadges={sharingBadges(activeCatalog)}
               />
             ) : (
               <CollectionEditor
@@ -646,7 +644,7 @@ export function Workspace({
                 languages={library.languages}
                 usedInFolders={usedInFolders}
                 onCopyToLibrary={copyToLibrary}
-                {...sharing.collectionSharing(activeCollection)}
+                sharingBadges={sharingBadges(activeCollection)}
               />
             )}
           </EditorLayer>
@@ -717,7 +715,6 @@ export function Workspace({
       {/* Rendered here rather than beside the guard itself, because this is the
           level that knows what is being edited — the prompt names it. */}
       {prompt && <ConfirmDialog open {...prompt} />}
-      {sharing.dialogs}
     </>
   )
 }

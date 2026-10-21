@@ -10,7 +10,6 @@ import type {
 } from '@/api'
 import { CATALOG_PROVIDER } from '@/api'
 import { Button } from '@/components/Button'
-import type { SignStep } from '@/components/PaneSign'
 import { FieldError, TextInput } from '@/components/fields'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
@@ -114,8 +113,6 @@ interface CollectionEditorProps {
    *  computed in `Workspace`, which is the level that has the whole library.
    *  Meaningful only for a listed catalog. */
   usedInFolders: (catalogID: string) => number
-  /** Its next step with Community, as the sign's button. */
-  sharingStep?: SignStep
   /** Its sharing stickers, on the sign beside the kind. */
   sharingBadges?: ReactNode
   /** A folder row's Copy into library: written at once, not with this
@@ -194,8 +191,7 @@ function draftCatalog(seed: {
  *
  * **Every row this editor opens is the profile's own and editable.** A
  * collection added from Community opens as a view instead
- * (`FromCommunityView`). Its next step with Community is `sharingStep`, which
- * the pane builds and the save bar carries as its one button.
+ * (`FromCommunityView`). Publishing it happens in Community, never here.
  */
 export function CollectionEditor({
   initial,
@@ -217,7 +213,6 @@ export function CollectionEditor({
   countryNames,
   languages,
   usedInFolders,
-  sharingStep,
   sharingBadges,
   onCopyToLibrary,
 }: CollectionEditorProps) {
@@ -503,7 +498,6 @@ export function CollectionEditor({
           notes={statusNotes}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
-          step={sharingStep}
           saveLabel="Save"
           saveError={serverError}
         />

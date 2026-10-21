@@ -4,7 +4,6 @@ import { ChevronDown } from 'lucide-react'
 import { fetchCollection, queryKeys } from '@/api'
 import type { CertificationsByCountry, Genre, Language, TMDBParams } from '@/api'
 import { Icon } from '@/components/Icon'
-import type { SignStep } from '@/components/PaneSign'
 import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { useEditorForm } from '@/features/builder/useEditorForm'
@@ -574,10 +573,6 @@ interface CatalogEditorProps {
   /** "Done" in a collection's nested editor, whose save only stages the edit
    *  for the collection's own Save. */
   saveLabel?: string
-  /** A listed catalog's next step with Community, as the sign's button.
-   *  Absent in a collection's nested editor: a scoped catalog is published
-   *  with its collection. */
-  sharingStep?: SignStep
   /** Its sharing stickers, beside the kind on the sign. */
   sharingBadges?: ReactNode
 }
@@ -596,9 +591,8 @@ interface CatalogEditorProps {
  * has to say whether there is anything to lose.
  *
  * **Every row this editor opens is the profile's own and editable.** A catalog
- * added from Community opens as a view instead (`FromCommunityView`). Its next
- * step with Community is `sharingStep`, which the pane builds and the save bar
- * carries as its one button.
+ * added from Community opens as a view instead (`FromCommunityView`).
+ * Publishing it happens in Community, never here.
  *
  * **`type` is always locked.** It is chosen when the catalog is named, and
  * nothing — here or anywhere else — changes an existing row's type.
@@ -617,7 +611,6 @@ export function CatalogEditor({
   onDelete,
   onDirtyChange,
   saveLabel = 'Save',
-  sharingStep,
   sharingBadges,
 }: CatalogEditorProps) {
   const baseline = initial
@@ -778,7 +771,6 @@ export function CatalogEditor({
           dirty={dirty}
           onCancel={onRequestClose}
           onSubmit={trySubmit}
-          step={sharingStep}
           saveLabel={saveLabel}
           saveError={serverError}
         />

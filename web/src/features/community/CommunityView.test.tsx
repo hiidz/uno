@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CommunityItem, PublicationDetail } from '@/api'
 import { failWith, fakeApi, profileNotFound, type FakeRoute } from '@/test/fakeApi'
-import { communityFolder, communityItem } from '@/test/fixtures'
+import { catalog, communityFolder, communityItem } from '@/test/fixtures'
 import { builderView } from '@/features/builder/paths'
 import type { OpenPublication } from './communityQuery'
 import { CommunityView } from './CommunityView'
@@ -73,6 +73,8 @@ function listing(rows: CommunityItem[] | (() => CommunityItem[])) {
   }
 }
 
+const emptyLibrary = { catalogs: [], collections: [], pending: [], home_revision: 0 }
+
 const listCalls = (calls: string[]) => calls.filter((call) => call.startsWith('GET /api/p/1/community?'))
 
 /** Community on its path, as `Builder` puts it there. */
@@ -81,11 +83,11 @@ function OnPath() {
   return <CommunityView profileIndex={1} publication={view?.publication ?? null} />
 }
 
-/** The library's two lists answer empty: every action settles only once
- *  they have refetched. `initialOpen` starts on its page, opened from the
+/** The library answers empty: every action settles only once it has
+ *  refetched. `initialOpen` starts on its page, opened from the
  *  Workspace as a copy's Update… opens it. */
 function renderView(routes: Record<string, FakeRoute>, initialOpen: OpenPublication | null = null) {
-  const fake = fakeApi({ 'GET /api/p/1/catalogs': [], 'GET /api/p/1/collections': [], ...routes })
+  const fake = fakeApi({ 'GET /api/p/1/library': emptyLibrary, ...routes })
   api.current = fake.apiFetch
   const entries = initialOpen ? ['/configure', `/community/${initialOpen.kind}/${initialOpen.id}`] : ['/community']
   render(
@@ -405,6 +407,53 @@ describe('CommunityView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
     expect(await screen.findByText('Duplicated to your catalogs')).toBeInTheDocument()
     expect(calls).toContain('POST /api/p/1/community/a24/duplicate')
+  })
+
+  it('lists the profile’s own rows under Publish…, and publishes a private one through its dialog', async () => {
+    const library = {
+      ...emptyLibrary,
+      catalogs: [
+        catalog({ id: 'live', name: 'Live one', publication: { id: 'pl', changed_since_publish: false } }),
+        catalog({ id: 'mine', name: 'Mine' }),
+        catalog({ id: 'added', name: 'Added one', subscription: { publication_id: 'x', update_available: false } }),
+      ],
+    }
+    const calls = renderView({
+      'GET /api/p/1/community': listing([a24]),
+      'GET /api/p/1/library': library,
+      'POST /api/p/1/catalogs/mine/publish': catalog({ id: 'mine' }),
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish…' }))
+    const picker = await screen.findByRole('dialog', { name: 'Publish to Community' })
+    const rows = within(picker).getAllByRole('listitem').map((li) => li.textContent)
+    expect(rows).toEqual([expect.stringMatching(/^Mine/), expect.stringMatching(/^Live one/)])
+    fireEvent.click(within(picker).getByRole('button', { name: /^Mine/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Publish “Mine”?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Publish' }))
+    expect(await screen.findByText('Published “Mine”')).toBeInTheDocument()
+    expect(calls).toContain('POST /api/p/1/catalogs/mine/publish')
+  })
+
+  it('gives the own publication’s page Publish changes…, Open in Workspace and Unpublish…', async () => {
+    const own = { ...a24, own: true }
+    const library = {
+      ...emptyLibrary,
+      catalogs: [catalog({ id: 'c1', name: 'A24 Horror', publication: { id: 'a24', changed_since_publish: true } })],
+    }
+    renderView(
+      {
+        'GET /api/p/1/community': listing([]),
+        'GET /api/p/1/community/a24': { ...own, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] } },
+        'GET /api/p/1/library': library,
+        'GET /api/p/1/catalogs/c1/changes-since-publish': [],
+      },
+      { id: 'a24', kind: 'catalog' },
+    )
+    expect(await screen.findByRole('button', { name: 'Publish changes…' })).toHaveClass('btn-primary')
+    expect(screen.getByRole('button', { name: 'Open in Workspace' })).toBeInTheDocument()
+    expect(screen.getAllByText('To publish').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Unpublish…' }))
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent(/Community stops listing it/)
   })
 
   it('rests a page on a disabled ✓ Added once its copy is in step', async () => {

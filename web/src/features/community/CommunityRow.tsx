@@ -1,5 +1,6 @@
 import { Check, ChevronRight } from 'lucide-react'
 import type { CommunityItem } from '@/api'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { SkeletonBar } from '@/components/Skeleton'
@@ -71,21 +72,59 @@ function duplicateReason(item: CommunityItem): string {
   return item.update_available ? 'the latest version' : 'yours to edit'
 }
 
+/** What the profile's own publication page does: publish the edits made
+ *  since (only while `changed`), open the row in the Workspace, unpublish. */
+export interface OwnPageActions {
+  changed: boolean
+  onPublish: () => void
+  onOpen: () => void
+  onUnpublish: () => void
+}
+
 /**
  * A publication page's actions: the one primary, in the Community accent —
  * Add, Update while one waits, or a disabled ✓ Added — and beside it
  * Duplicate. The page says in its own words what each makes, so there is no
- * menu and no tip. On the profile's own publication, which it can neither add
- * nor duplicate, a line saying so stands in for both.
+ * menu and no tip. The profile's own publication, which it can neither add
+ * nor duplicate, takes `own`'s instead; a line saying it published this
+ * stands in while the library hasn't listed the row.
  */
-export function PageActions({ item, actions }: { item: CommunityItem; actions: RowActions }) {
-  if (item.own) return <p className="text-dim m-0 text-[14px]">You published this.</p>
+export function PageActions({
+  item,
+  actions,
+  own,
+}: {
+  item: CommunityItem
+  actions: RowActions
+  own?: OwnPageActions | null
+}) {
+  if (item.own) return own ? <OwnActions own={own} /> : <p className="text-dim text-body-sm m-0">You published this.</p>
   return (
     <div className="flex flex-wrap items-center gap-2">
       <PagePrimary item={item} actions={actions} />
       <button type="button" onClick={actions.onDuplicate} disabled={actions.pending !== undefined} className="btn-secondary">
         {actions.pending === 'duplicate' ? PENDING_LABEL.duplicate : 'Duplicate'}
       </button>
+    </div>
+  )
+}
+
+/** Publish changes… as the one primary while edits wait, Open in Workspace
+ *  beside it, and Unpublish… in red text at the end. */
+function OwnActions({ own }: { own: OwnPageActions }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+      {own.changed && (
+        <Button kind="primary" onClick={own.onPublish}>
+          Publish changes…
+        </Button>
+      )}
+      <Button kind="secondary" onClick={own.onOpen}>
+        Open in Workspace
+      </Button>
+      <Button kind="danger-text" onClick={own.onUnpublish} className="ml-2">
+        Unpublish…
+      </Button>
     </div>
   )
 }

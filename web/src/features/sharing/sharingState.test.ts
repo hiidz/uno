@@ -3,11 +3,12 @@ import type { PendingChange } from '@/api'
 import { catalog, collection, folder } from '@/test/fixtures'
 import {
   kindStickers,
+  ownRowOf,
   ownSharing,
+  publishChoices,
   publishGroups,
   railStickers,
   rowStickers,
-  sharingStep,
   stickerWords,
   viewStickers,
   waitingIDs,
@@ -116,17 +117,33 @@ describe('publishGroups', () => {
   })
 })
 
-describe('sharingStep', () => {
-  it('names the next step for each state', () => {
-    expect(sharingStep('private', false).label).toBe('Publish…')
-    expect(sharingStep('changed', false).label).toBe('Publish update…')
-    expect(sharingStep('live', false).label).toBe('Unpublish…')
+describe('publishChoices', () => {
+  it('lists edits to publish first, then the private, then the published, leaving out what was added', () => {
+    const changed = { id: 'p2', changed_since_publish: true }
+    const choices = publishChoices({
+      catalogs: [
+        catalog({ id: 'live', publication: live }),
+        catalog({ id: 'private' }),
+        catalog({ id: 'added', subscription }),
+        catalog({ id: 'changed', publication: changed }),
+      ],
+      collections: [collection({ id: 'col-private' }), collection({ id: 'col-live', publication: live })],
+    })
+    expect(choices.map((own) => own.row.id)).toEqual(['changed', 'private', 'col-private', 'live', 'col-live'])
+    expect(choices.find((own) => own.row.id === 'col-private')?.kind).toBe('collection')
   })
+})
 
-  it('waits for a save while the form has unsaved changes', () => {
-    expect(sharingStep('private', true).waiting).toBe('Save first.')
-    expect(sharingStep('live', true).waiting).toBe('Save first.')
-    expect(sharingStep('changed', false).waiting).toBeNull()
+describe('ownRowOf', () => {
+  it('finds the own row by its publication, of either kind', () => {
+    const library = {
+      catalogs: [catalog({ id: 'c1', publication: { id: 'pc', changed_since_publish: false } })],
+      collections: [collection({ id: 'col1', publication: { id: 'pl', changed_since_publish: true } })],
+    }
+    expect(ownRowOf(library, 'pc')).toEqual({ kind: 'catalog', row: library.catalogs[0] })
+    expect(ownRowOf(library, 'pl')).toEqual({ kind: 'collection', row: library.collections[0] })
+    expect(ownRowOf(library, 'nope')).toBeNull()
+    expect(ownRowOf(undefined, 'pc')).toBeNull()
   })
 })
 

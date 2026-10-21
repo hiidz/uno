@@ -70,16 +70,13 @@ describe('CatalogEditor', () => {
     expect(screen.getByRole('alert')).toHaveTextContent("Couldn't save this catalog: name already taken")
   })
 
-  it('carries the step and stickers the pane hands it, and saves without asking', () => {
-    const onClick = vi.fn()
+  it('carries the stickers the pane hands it, offers no publishing, and saves without asking', () => {
     const { onSave } = renderEditor({
       initial: formFromCatalog(catalog({ name: 'Row' })),
-      sharingStep: { label: 'Publish…', waiting: null, onClick },
       sharingBadges: <span>Published sticker</span>,
     })
-    // One button, in the save bar.
-    fireEvent.click(screen.getByRole('button', { name: 'Publish…' }))
-    expect(onClick).toHaveBeenCalled()
+    // Publishing happens in Community.
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull()
     // The sign shows it from `sm`; below, the body's first line does.
     expect(screen.getAllByText('Published sticker')).toHaveLength(2)
     for (const kind of screen.getAllByText('Movies', { selector: '.stk' })) expect(kind).toHaveClass('stk-catalog')

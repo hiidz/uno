@@ -97,13 +97,10 @@ describe('CollectionEditor', () => {
     )
   })
 
-  it('carries the step the pane hands it, and saves without asking', () => {
-    const { onSave } = renderEditor({
-      initial: formFromCollection(saved),
-      initialCatalogs: library,
-      sharingStep: { label: 'Publish…', waiting: null, onClick: vi.fn() },
-    })
-    expect(screen.getAllByRole('button', { name: 'Publish…' })).toHaveLength(1)
+  it('offers no publishing, and saves without asking', () => {
+    const { onSave } = renderEditor({ initial: formFromCollection(saved), initialCatalogs: library })
+    // Publishing happens in Community.
+    expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull()
     fireEvent.change(titleInput(), { target: { value: 'Mine now' } })
     save()
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'Mine now' }))
