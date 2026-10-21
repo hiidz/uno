@@ -17,7 +17,8 @@ import (
 
 // UpdateChanges is what UpdateSubscription would change in profileID's copy
 // of publicationID: the copy, as a snapshot under its own keys, against the
-// publication's current one. Empty for a copy in step. ErrPublicationNotFound
+// publication's current one as Community shares it (shared). Empty for a copy
+// in step. ErrPublicationNotFound
 // unless profileID subscribes to the publication and it is live.
 func (db *DB) UpdateChanges(ctx context.Context, profileID, publicationID uuid.UUID) ([]SnapshotChange, error) {
 	sub, err := loadSubscription(ctx, db.conn, profileID, publicationID)
@@ -28,7 +29,7 @@ func (db *DB) UpdateChanges(ctx context.Context, profileID, publicationID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	return diffSnapshots(have, sub.pub.snapshot), nil
+	return diffSnapshots(have, db.shared(sub.pub.snapshot)), nil
 }
 
 // copyAsSnapshot is sub's copy as a snapshot that compares with its
