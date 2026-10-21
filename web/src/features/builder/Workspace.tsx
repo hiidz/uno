@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ComponentProps, RefObject } from 'react'
-import { Navigate } from 'react-router-dom'
 import { ProfileNotSelectedError } from '@/api'
 import type { CatalogPayload, CatalogType, CollectionPayload, ImportResult } from '@/api'
 import { ArrowDown } from 'lucide-react'
@@ -41,6 +40,7 @@ import { DeleteMessage } from './DeleteMessage'
 import { catalogDeleteConsequences, collectionDeleteConsequences } from './deleteConsequences'
 import { NewItemDialog } from './NewItemDialog'
 import { builderPath, type EditorRef } from './paths'
+import { ToParent, ToPicker, useRedirectNotice } from './redirects'
 import { EditorLayer } from './EditorLayer'
 import { useScrollRequests, useStackedLayout, useStackedScroll } from './stacked'
 import { homeMounted, selectionAction } from './selection'
@@ -118,6 +118,7 @@ export function Workspace({
   const [confirming, setConfirming] = useState<Confirmation | null>(null)
   const [transfer, setTransfer] = useState<'import' | 'export' | null>(null)
   const [toast, setToast] = useToast()
+  useRedirectNotice(setToast)
   const waitingForPush = usePushWaiting(profileIndex)
   const sharing = useWorkspaceSharing({
     profileIndex,
@@ -154,7 +155,7 @@ export function Workspace({
    * its message behind, and the next editor would open showing a rejection of
    * something else.
    */
-  const route = useEditorRoute(profileIndex, editor, library, () => {
+  const route = useEditorRoute(editor, library, () => {
     setDirty(false)
     resetCatalogUpdate()
     resetCollectionUpdate()
@@ -296,8 +297,10 @@ export function Workspace({
     [library.collections],
   )
 
-  const away = redirect(profileIndex, library.error, route.missing)
-  if (away) return <Navigate to={away} replace />
+  if (library.error instanceof ProfileNotSelectedError) return <ToPicker />
+  if (route.missing && editor) {
+    return <ToParent to={builderPath.workspace()} notice={`That ${editor.kind} isn’t in this profile.`} />
+  }
 
   const { activeCatalog, activeCollection, editingCollectionCatalogs } = openRows(target, library)
 
@@ -758,12 +761,6 @@ function openRows(
   const editingCollectionCatalogs =
     target?.kind === 'collection' ? (target.initialCatalogs ?? activeCollection?.catalogs ?? []) : []
   return { activeCatalog, activeCollection, editingCollectionCatalogs }
-}
-
-function redirect(profileIndex: number, error: Error | null, missing: boolean): string | null {
-  if (error instanceof ProfileNotSelectedError) return '/profiles'
-  if (missing) return builderPath.workspace(profileIndex)
-  return null
 }
 
 /** The browser tab's name: the open editor's subject, or the Workspace. */

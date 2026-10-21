@@ -21,7 +21,7 @@ vi.mock('@/api', async () => ({
 vi.mock('@/api/client', () => ({ apiFetch: vi.fn() }))
 
 const navigate = vi.fn()
-vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
+vi.mock('react-router-dom', () => ({ useNavigate: () => navigate, useLocation: () => ({ pathname: '/configure' }) }))
 
 const home = vi.hoisted(() => ({
   ready: true,
@@ -174,7 +174,7 @@ describe('usePush', () => {
     api.pushSelection.mockRejectedValue(new ProfileNotSelectedError('profile not selected'))
     const { result } = renderPush()
     await act(async () => result.current.push())
-    expect(navigate).toHaveBeenCalledWith('/profiles', { replace: true })
+    expect(navigate).toHaveBeenCalledWith('/profiles', { replace: true, state: { from: { pathname: '/configure' } } })
     expect(result.current.outcome).toBeNull()
   })
 })

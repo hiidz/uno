@@ -1,17 +1,18 @@
 import { useRef, useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import { EntryPage } from '@/components/EntryPage'
 import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
+import { useAuth } from '@/auth'
 import { KeyProblemBanner } from '@/features/account/KeyProblemBanner'
 import { EditorGuardProvider, useEditorGuard } from '@/features/builder/EditorGuard'
-import { builderPath, builderView, type BuilderSection, type BuilderView } from '@/features/builder/paths'
+import { builderPath, builderView, type BuilderSection, type BuilderView, type EditorRef } from '@/features/builder/paths'
 import { ProfileMenu } from '@/features/builder/ProfileMenu'
+import { ToPicker } from '@/features/builder/redirects'
 import { usePublishedHeaderHeight } from '@/features/builder/stacked'
 import { Workspace } from '@/features/builder/Workspace'
-import type { OpenPublication } from '@/features/community/communityQuery'
 import { CommunityView } from '@/features/community/CommunityView'
 import { HomeSelectionProvider } from '@/features/home/HomeSelectionContext'
 import { useHomeSelection } from '@/features/home/useHomeSelection'
@@ -22,6 +23,8 @@ import { usePush } from '@/features/push/usePush'
 import { usePushBlock } from '@/features/push/usePushBlock'
 import { useCountDown } from '@/lib/useCountDown'
 import { plural } from '@/lib/plural'
+import { useActiveProfile } from './activeProfile'
+import { ErrorPage } from './ErrorPage'
 import { LeaveGuard } from './LeaveGuard'
 import { BuilderShellSkeleton, HEADER_ROW, HEADER_WORDMARK, TABS_ROW } from './LoadingShells'
 import { useBuilderProfile, type BuilderProfile } from './useBuilderProfile'
@@ -33,8 +36,8 @@ type Tab = BuilderSection
  * the left, every catalog and collection you own, and a pane on the right
  * holding your home screen or the editor for whichever rail row is selected)
  * and a Community section (everyone else's public catalogs and collections,
- * browsed and added), each its own path under the profile's `/p/{i}`
- * (`features/builder/paths.ts`). Below `lg` the Workspace
+ * browsed and added), each its own path (`features/builder/paths.ts`), on the
+ * profile picked last (`activeProfile.ts`). Below `lg` the Workspace
  * section's own two regions stack into one scrolling document rather than
  * becoming two screens — see `stacked.ts`; Community is already one column at
  * every width, so it needs no such treatment.
@@ -49,17 +52,18 @@ type Tab = BuilderSection
  */
 export function Builder() {
   const location = useLocation()
+  const profileIndex = useActiveProfile(useAuth().user?.id ?? '')
   const view = builderView(location.pathname)
-  // A slot outside Nuvio's six is no profile to open.
-  if (!view) return <Navigate to="/profiles" replace />
+  if (!view) return <ErrorPage kind="missing" />
+  if (profileIndex === null) return <ToPicker />
   // Keyed on the profile: Home's pending and baseline state and the editor
-  // guard are built once, so another profile's path must start new ones.
-  return <ProfileBuilder key={view.profileIndex} view={view} />
+  // guard are built once, so another profile must start new ones.
+  return <ProfileBuilder key={profileIndex} profileIndex={profileIndex} view={view} />
 }
 
-function ProfileBuilder({ view }: { view: BuilderView }) {
-  const state = useBuilderProfile(view.profileIndex)
-  if (state.status === 'missing') return <Navigate to="/profiles" replace />
+function ProfileBuilder({ profileIndex, view }: { profileIndex: number; view: BuilderView }) {
+  const state = useBuilderProfile(profileIndex)
+  if (state.status === 'missing') return <ToPicker />
   if (state.status === 'failed') return <ProfileFailed onRetry={state.retry} />
   if (state.status === 'loading') return <BuilderShellSkeleton />
   const { profile } = state
@@ -74,7 +78,7 @@ function ProfileBuilder({ view }: { view: BuilderView }) {
           {/* The builder's one `main`, whatever section and panes it shows:
               the skip link's target. */}
           <main id={MAIN_ID} tabIndex={-1} className="flex flex-1 flex-col outline-none lg:min-h-0">
-            <SectionView view={view} />
+            <SectionView profileIndex={profile.profileIndex} view={view} />
           </main>
         </div>
       </EditorGuardProvider>
@@ -102,23 +106,20 @@ function SkipLink() {
   )
 }
 
-function SectionView({ view }: { view: BuilderView }) {
+function SectionView({ profileIndex, view }: { profileIndex: number; view: BuilderView }) {
   const navigate = useNavigate()
-  const location = useLocation()
-  const { profileIndex } = view
 
   // A copy's Update… opens its publication's page, with Community's list of
   // its kind behind it. The browser's Back returns to the editor; the page's
   // own way back goes to that list, so the entry isn't marked `IN_APP`.
-  function openPublication(publication: OpenPublication) {
-    void navigate(builderPath.publication(profileIndex, publication.id), { state: { kind: publication.kind } })
+  function openPublication(publication: EditorRef) {
+    void navigate(builderPath.publication(publication))
   }
 
   if (view.section === 'workspace') {
     return <Workspace profileIndex={profileIndex} editor={view.editor} onOpenPublication={openPublication} />
   }
-  const kind = (location.state as { kind?: OpenPublication['kind'] } | null)?.kind
-  return <CommunityView profileIndex={profileIndex} publicationID={view.publicationID} kind={kind} />
+  return <CommunityView profileIndex={profileIndex} publication={view.publication} />
 }
 
 /** The profile's details didn't load: Nuvio, or Uno, didn't answer. */
@@ -165,7 +166,7 @@ function BuilderHeader({ profile, tab }: { profile: BuilderProfile; tab: Tab }) 
 
   function changeTab(next: Tab) {
     if (next === tab) return
-    void navigate(builderPath[next](profile.profileIndex))
+    void navigate(builderPath[next]())
   }
 
   return (

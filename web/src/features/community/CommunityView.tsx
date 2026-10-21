@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { ApiError, ProfileNotSelectedError, type CommunityItem } from '@/api'
 import { Segmented } from '@/components/fields'
@@ -8,7 +8,8 @@ import { ListState } from '@/components/ListState'
 import { skeletonKeys } from '@/components/Skeleton'
 import { Toast } from '@/components/Toast'
 import { useToast, type ToastMessage } from '@/components/useToast'
-import { IN_APP, builderPath, pushedInApp } from '@/features/builder/paths'
+import { IN_APP, builderPath, pushedInApp, type EditorRef } from '@/features/builder/paths'
+import { ToParent, ToPicker, useRedirectNotice } from '@/features/builder/redirects'
 import { useGenreLookups, type GenreLookups } from '@/features/library/useLibrary'
 import { useDebounce } from '@/lib/useDebounce'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
@@ -22,7 +23,6 @@ import {
   searchProblem,
   startingView,
   type CommunityFilters,
-  type OpenPublication,
 } from './communityQuery'
 import { CommunityRow, CommunityRowSkeleton, type RowActions } from './CommunityRow'
 import { CommunitySign } from './CommunitySign'
@@ -46,32 +46,30 @@ const SEARCH_MAX_LENGTH = 200
  * Add puts it in the library, read-only, following its publisher's updates;
  * Update… opens the page, which shows the new version and applies it;
  * Duplicate adds a copy that is the profile's own. No publisher is named
- * anywhere here. The open page is the path's `publicationID`, so the browser's
- * Back closes it; `kind`, when an added row's own Update… opened it, picks the
- * list behind it.
+ * anywhere here. The open page is the path's `publication`, so the browser's
+ * Back closes it, and its kind picks the list behind it.
  */
 export function CommunityView({
   profileIndex,
-  publicationID,
-  kind,
+  publication,
 }: {
   profileIndex: number
-  publicationID: string | null
-  kind?: OpenPublication['kind']
+  publication: EditorRef | null
 }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { genres } = useGenreLookups()
   const mutations = useCommunityMutations(profileIndex)
-  const [start] = useState(() => startingView(publicationID && kind ? { id: publicationID, kind } : null))
+  const [start] = useState(() => startingView(publication))
   const [filters, setFilters] = useState<CommunityFilters>(start.filters)
-  const openID = publicationID
+  const openID = publication?.id ?? null
   const q = useDebounce(filters.q.trim(), SEARCH_SETTLE_MS)
   const problem = searchProblem(q)
   const list = useCommunityList(profileIndex, { ...filters, q }, problem === '')
   const openDetail = useOpenPublication(profileIndex, openID)
 
   const [toast, setToast] = useToast()
+  useRedirectNotice(setToast)
   // Keyed by publication id. Actions on different rows can overlap.
   const [pending, setPending] = useState<ReadonlyMap<string, CommunityAction>>(new Map())
 
@@ -93,12 +91,12 @@ export function CommunityView({
 
   function closePage() {
     if (pushedInApp(location.state)) void navigate(-1)
-    else void navigate(builderPath.community(profileIndex), { replace: true })
+    else void navigate(builderPath.community(), { replace: true })
   }
 
-  function openItem(id: string) {
+  function openItem(item: CommunityItem) {
     remember()
-    void navigate(builderPath.publication(profileIndex, id), { state: IN_APP })
+    void navigate(builderPath.publication(item), { state: IN_APP })
   }
 
   function run(item: CommunityItem, action: CommunityAction) {
@@ -128,15 +126,16 @@ export function CommunityView({
     }
   }
 
-  // A 404 on the list means this slot was never selected; there is nothing
-  // to retry, so send the user back to pick one.
-  if (list.error instanceof ProfileNotSelectedError) {
-    return <Navigate to="/profiles" replace />
+  // This slot was never selected; there is nothing to retry, so send the
+  // user back to pick one.
+  if (list.error instanceof ProfileNotSelectedError || openDetail.error instanceof ProfileNotSelectedError) {
+    return <ToPicker />
   }
-  // A page's address for a publication that is gone, or never was.
-  if (openID !== null && open === null && openDetail.isError) {
-    return <Navigate to={builderPath.community(profileIndex)} replace />
+  if (publicationGone(publication, open, openDetail.error)) {
+    return <ToParent to={builderPath.community()} notice="That publication isn’t available." />
   }
+  // The page's publication didn't load and isn't listed: it stays, to retry.
+  const pageFailed = openID !== null && open === null && openDetail.isError
 
   return (
     <div ref={scrollRef} className="tone-community flex w-full flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
@@ -144,7 +143,16 @@ export function CommunityView({
       <section className="community-body mx-auto flex w-full flex-col gap-4 p-4 lg:p-6 [&_.ed]:pt-0">
         <Toast toast={toast} />
 
-        {open ? (
+        {pageFailed ? (
+          <ListState
+            isLoading={false}
+            error={openDetail.error}
+            errorLabel="Couldn’t load this publication."
+            onRetry={openDetail.refetch}
+          >
+            {null}
+          </ListState>
+        ) : open ? (
           <PublicationPage
             key={open.id}
             profileIndex={profileIndex}
@@ -182,8 +190,8 @@ export function CommunityView({
                     meta={itemMeta(item, now)}
                     showKind={filters.kind !== 'collection'}
                     buttonID={rowButtonID(item.id)}
-                    onOpen={() => openItem(item.id)}
-                    actions={actionsFor(item, () => openItem(item.id), 'Update…')}
+                    onOpen={() => openItem(item)}
+                    actions={actionsFor(item, () => openItem(item), 'Update…')}
                   />
                 ))}
               </div>
@@ -194,6 +202,14 @@ export function CommunityView({
       </section>
     </div>
   )
+}
+
+/** Whether the page's address names a publication that isn't there: gone, never
+ *  was, or of another kind than its path says. */
+function publicationGone(publication: EditorRef | null, open: CommunityItem | null, error: Error | null): boolean {
+  if (publication === null) return false
+  if (open !== null) return open.kind !== publication.kind
+  return error instanceof ApiError && error.status === 404
 }
 
 function describeItem(item: CommunityItem, genres: GenreLookups): string {

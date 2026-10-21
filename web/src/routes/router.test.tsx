@@ -32,6 +32,11 @@ describe('router', () => {
     expect(screen.queryByRole('button', { name: 'Reload' })).not.toBeInTheDocument()
   })
 
+  it('shows an old /p/ address as the missing page', async () => {
+    open('/p/1/community')
+    expect(await screen.findByRole('heading', { name: "This page doesn't exist" })).toBeInTheDocument()
+  })
+
   it('shows a page that throws as the error page, with Reload and home', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     open('/login')
@@ -42,7 +47,7 @@ describe('router', () => {
 
   it('sends a signed-out visit to a builder address to sign-in without loading the builder', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const memory = open('/p/1')
+    const memory = open('/configure')
     await waitFor(() => expect(memory.state.location.pathname).toBe('/login'))
     expect(builder.loaded).toBe(false)
   })

@@ -6,7 +6,7 @@ import { watchActiveProfile } from '@/routes/activeProfile'
 import { StartupShell } from '@/routes/LoadingShells'
 import { router } from '@/routes/router'
 
-watchActiveProfile(router, queryClient)
+watchActiveProfile(queryClient)
 
 export default function App() {
   return (

@@ -7,7 +7,7 @@ afterEach(() => window.history.replaceState(null, '', '/'))
 
 describe('StartupShell', () => {
   it('draws the builder’s header and an empty main on a builder address', () => {
-    window.history.replaceState(null, '', '/p/2/community')
+    window.history.replaceState(null, '', '/community')
     render(<StartupShell />)
     expect(screen.getByRole('banner')).toBeInTheDocument()
     expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true')

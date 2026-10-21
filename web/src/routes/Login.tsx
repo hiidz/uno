@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { Location } from 'react-router-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { EntryPage } from '@/components/EntryPage'
 import { FieldError } from '@/components/fields'
 import { NuvioAuthError, loginWithBypassToken, useAuth } from '@/auth'
+import { returnPath } from '@/features/builder/redirects'
 
 // Gated on import.meta.env.DEV so the whole bypass branch is statically dead
 // in a production build. The Vite dev server sets it from
@@ -34,8 +34,7 @@ export function Login() {
 
   // Where RequireAuth bounced from, if it did — shared by both sign-in paths.
   function destination(): string {
-    const from = (location.state as { from?: Location } | null)?.from
-    return from ? `${from.pathname}${from.search}${from.hash}` : '/'
+    return returnPath(location.state, '/')
   }
 
   async function handleSubmit(event: FormEvent) {

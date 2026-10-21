@@ -1,10 +1,10 @@
 import { useEffect, useState, type SyntheticEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Lock, TriangleAlert } from 'lucide-react'
 import { ApiError, fetchProfiles, queryKeys, selectProfile } from '@/api'
 import type { NuvioProfile } from '@/api'
-import { logout } from '@/auth'
+import { logout, useAuth } from '@/auth'
 import { TMDBKeyGate, TMDBKeyShelf } from '@/features/account/TMDBKey'
 import { KEY_GATE_HEADING, holdsProfiles, useKeyStep } from '@/features/account/useTMDBKey'
 import { prefetchReferenceData } from '@/features/library/referenceQueries'
@@ -13,6 +13,8 @@ import { Fascia } from '@/components/Fascia'
 import { Icon } from '@/components/Icon'
 import { Wordmark } from '@/components/Wordmark'
 import { builderPath } from '@/features/builder/paths'
+import { returnPath } from '@/features/builder/redirects'
+import { pickProfile } from './activeProfile'
 import { ProfilesRetry } from './ProfilesRetry'
 
 /** How the picker shows a failed profile call. A 403 there is this server
@@ -164,10 +166,12 @@ function sharesAddonsLabel(profile: NuvioProfile): string {
 
 export function ProfilePicker() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const account = useAuth().user?.id ?? ''
   const queryClient = useQueryClient()
   const [selecting, setSelecting] = useState<number | null>(null)
 
-  // The builder is a separate chunk that its `/p/{i}` route loads lazily.
+  // The builder is a separate chunk that its routes load lazily.
   // Fetching it while the picker is on screen means choosing a profile waits only on
   // `POST /api/profiles/select`, not on that and then the download.
   useEffect(() => {
@@ -191,8 +195,9 @@ export function ProfilePicker() {
       // again; `manifest_url` is built server-side from SITE_BASE_URL, which
       // the client is never told.
       onSuccess: (selected) => {
+        pickProfile(account, profile.profile_index)
         queryClient.setQueryData(queryKeys.selectedProfile(profile.profile_index), selected)
-        void navigate(builderPath.workspace(profile.profile_index))
+        void navigate(returnPath(location.state, builderPath.workspace()))
       },
       onError: () => setSelecting(null),
     })

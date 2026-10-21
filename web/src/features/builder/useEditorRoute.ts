@@ -30,7 +30,6 @@ interface EditorRoute {
  * new one has rendered.
  */
 export function useEditorRoute(
-  profileIndex: number,
   editor: EditorRef | null,
   library: Pick<Library, 'catalogs' | 'collections' | 'loaded'>,
   onSwitch: () => void,
@@ -64,17 +63,17 @@ export function useEditorRoute(
   const open = useCallback(
     (next: EditorTarget) => {
       setHandedOver(next)
-      const path = builderPath.editor(profileIndex, next)
+      const path = builderPath.editor(next)
       if (editor) void navigate(path, { replace: true, state: pushedState.current })
       else void navigate(path, { state: IN_APP })
     },
-    [navigate, profileIndex, editor],
+    [navigate, editor],
   )
 
   const close = useCallback(() => {
     if (pushedInApp(pushedState.current)) void navigate(-1)
-    else void navigate(builderPath.workspace(profileIndex), { replace: true })
-  }, [navigate, profileIndex])
+    else void navigate(builderPath.workspace(), { replace: true })
+  }, [navigate])
 
   const missing = editor !== null && current === null && found === null && library.loaded
   return { target: current, missing, open, close }
