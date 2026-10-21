@@ -45,8 +45,10 @@ export function recipeChanges(was: readonly RecipeFact[], now: readonly RecipeFa
   const after = factsByKey(now)
   const out: FactChange[] = []
   for (const key of keysOf(after, before)) {
-    const change = factChange(before.get(key), after.get(key))
-    if (change) out.push(change)
+    const was = before.get(key) ?? NO_FACT
+    const fact = after.get(key) ?? NO_FACT
+    if (fact.value === was.value) continue
+    out.push({ label: fact.label || was.label, value: fact.value, was: was.value, list: listChange(was.list, fact.list) })
   }
   return out
 }
@@ -64,13 +66,6 @@ function keysOf(first: ReadonlyMap<string, RecipeFact>, second: ReadonlyMap<stri
   return keys
 }
 
-function factChange(prev: RecipeFact | undefined, next: RecipeFact | undefined): FactChange | null {
-  const before = prev ?? NO_FACT
-  const after = next ?? NO_FACT
-  if (after.value === before.value) return null
-  return { label: after.label || before.label, value: after.value, was: before.value, list: listChange(before.list, after.list) }
-}
-
 /** How a list's items changed, when both sides name them. */
 function listChange(before: FactList | undefined, after: FactList | undefined): ListChange | null {
   if (!before || !after) return null
@@ -78,7 +73,8 @@ function listChange(before: FactList | undefined, after: FactList | undefined): 
     added: itemsBeyond(after.items, before.items),
     removed: itemsBeyond(before.items, after.items),
     join: after.join,
-    joinWas: joinChanged(before, after) ? before.join : null,
+    // A join change a reader can see: both sides hold more than one item.
+    joinWas: before.join !== after.join && before.items.length > 1 && after.items.length > 1 ? before.join : null,
     regionWas: before.region === after.region ? null : before.region,
   }
 }
@@ -90,12 +86,6 @@ function itemsBeyond(have: readonly string[], other: readonly string[]): string[
   return beyond
 }
 
-/** Whether a list's join changed in a way a reader can see: both sides hold
- *  more than one item. */
-function joinChanged(before: FactList, after: FactList): boolean {
-  return before.join !== after.join && before.items.length > 1 && after.items.length > 1
-}
-
 const JOIN_WORDS = { and: 'all of them', or: 'any of them' } as const
 
 /**
@@ -105,23 +95,14 @@ const JOIN_WORDS = { and: 'all of them', or: 'any of them' } as const
  * ("was 6.5–9.5", "was Any" for a filter that was not set).
  */
 export function factChangeNote(change: FactChange): string {
-  const parts = change.list ? listParts(change.list) : []
-  if (parts.length > 0) return parts.join(' · ')
-  return `was ${change.was || 'Any'}`
-}
-
-function listParts(list: ListChange): string[] {
+  const list = change.list
+  if (!list) return `was ${change.was || 'Any'}`
   const parts: string[] = []
   if (list.added.length) parts.push(`added ${list.added.join(', ')}`)
   if (list.removed.length) parts.push(`removed ${list.removed.join(', ')}`)
   if (list.joinWas) parts.push(`now matches ${JOIN_WORDS[list.join]}, was ${JOIN_WORDS[list.joinWas]}`)
-  return [...parts, ...regionPart(list.regionWas)]
-}
-
-/** Where a list was read before, when that changed. */
-function regionPart(regionWas: string | null): string[] {
-  if (regionWas === null) return []
-  return [regionWas ? `was in ${regionWas}` : 'was anywhere']
+  if (list.regionWas !== null) parts.push(list.regionWas ? `was in ${list.regionWas}` : 'was anywhere')
+  return parts.length > 0 ? parts.join(' · ') : `was ${change.was || 'Any'}`
 }
 
 // ---------- marks on the new version ----------
@@ -239,15 +220,11 @@ function markCollection(marks: UpdateMarks, change: SnapshotChange): void {
 export function folderMarkWords(mark: FolderMark | undefined): string {
   const folder = mark ?? NO_FOLDER_MARK
   if (folder.added) return 'new'
-  return folderChanges(folder).join(' · ')
-}
-
-function folderChanges(mark: FolderMark): string[] {
   const parts: string[] = []
-  if (mark.was) parts.push(`renamed · was ${mark.was}`)
-  if (mark.art) parts.push('new art')
-  if (mark.catalogOrder) parts.push('catalog order changed')
-  return parts
+  if (folder.was) parts.push(`renamed · was ${folder.was}`)
+  if (folder.art) parts.push('new art')
+  if (folder.catalogOrder) parts.push('catalog order changed')
+  return parts.join(' · ')
 }
 
 /** What a catalog's mark in a folder says. Its full marks (the tiles) show
@@ -255,15 +232,10 @@ function folderChanges(mark: FolderMark): string[] {
 export function catalogMarkWords(mark: CatalogMark | undefined, added: boolean, first: boolean): string {
   const catalog = mark ?? NO_CATALOG_MARK
   const parts = added ? ['added'] : []
-  if (catalog.was) parts.push(renamedWords(catalog.was, first))
+  // The old name where its full marks show; "renamed" alone anywhere else.
+  if (catalog.was) parts.push(first ? `renamed · was ${catalog.was}` : 'renamed')
   if (catalog.recipe) parts.push(first ? 'filters changed' : 'filters changed, see above')
   return parts.join(' · ')
-}
-
-/** A renamed catalog's old name where its full marks show; "renamed" alone
- *  anywhere else it sits. */
-function renamedWords(was: string, first: boolean): string {
-  return first ? `renamed · was ${was}` : 'renamed'
 }
 
 const NO_CATALOG_MARK: CatalogMark = { was: '', recipe: null }
@@ -345,25 +317,21 @@ function catalogSummary(marks: UpdateMarks): SummaryItem[] {
   return [{ text: 'filters changed', target: catalogMarkID(entry[0]) }]
 }
 
-/** Folder keys whose mark passes `test`. */
-function foldersWhere(marks: UpdateMarks, test: (mark: FolderMark) => boolean): string[] {
+/** The folders whose mark passes `test`, counted as one summary part that
+ *  jumps to the first. */
+function folderPart(marks: UpdateMarks, test: (mark: FolderMark) => boolean, word: (count: number) => string): SummaryItem[] {
   const keys: string[] = []
   for (const [key, mark] of marks.folders) if (test(mark)) keys.push(key)
-  return keys
-}
-
-/** A count of folders as one summary part, jumping to the first. */
-function folderPart(keys: readonly string[], word: (count: number) => string): SummaryItem[] {
   if (keys.length === 0) return []
   return [{ text: word(keys.length), target: folderMarkID(keys[0]!) }]
 }
 
 function folderSummary(marks: UpdateMarks): SummaryItem[] {
   return [
-    ...folderPart(foldersWhere(marks, (mark) => mark.added), (n) => pluralCount(n, 'new folder')),
-    ...folderPart(foldersWhere(marks, (mark) => !mark.added && Boolean(mark.was)), (n) => `${pluralCount(n, 'folder')} renamed`),
-    ...folderPart(foldersWhere(marks, (mark) => !mark.added && mark.art), (n) => `new art on ${pluralCount(n, 'folder')}`),
-    ...folderPart(foldersWhere(marks, (mark) => !mark.added && mark.catalogOrder), (n) => `catalog order changed in ${pluralCount(n, 'folder')}`),
+    ...folderPart(marks, (mark) => mark.added, (n) => pluralCount(n, 'new folder')),
+    ...folderPart(marks, (mark) => !mark.added && Boolean(mark.was), (n) => `${pluralCount(n, 'folder')} renamed`),
+    ...folderPart(marks, (mark) => !mark.added && mark.art, (n) => `new art on ${pluralCount(n, 'folder')}`),
+    ...folderPart(marks, (mark) => !mark.added && mark.catalogOrder, (n) => `catalog order changed in ${pluralCount(n, 'folder')}`),
     ...(marks.removedFolders.length ? [{ text: `${pluralCount(marks.removedFolders.length, 'folder')} removed`, target: REMOVED_ID }] : []),
   ]
 }
@@ -426,10 +394,7 @@ export function folderEntryMark(
   if (!marks) return undefined
   const change = marks.catalogs.get(catalogKey)
   const words = catalogMarkWords(change, marks.added.has(`${folderKey}/${catalogKey}`), first)
-  return first && change ? firstUseMark(words, change, catalogKey) : { words, recipe: null, id: undefined, startOpen: false }
-}
-
-function firstUseMark(words: string, change: CatalogMark, catalogKey: string): BlockMark {
+  if (!first || !change) return { words, recipe: null, id: undefined, startOpen: false }
   return { words, recipe: change.recipe, id: catalogMarkID(catalogKey), startOpen: Boolean(change.recipe) }
 }
 
