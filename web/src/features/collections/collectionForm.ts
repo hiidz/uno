@@ -392,20 +392,20 @@ function titleProblem(title: string, empty: string): string | undefined {
 const MAX_MEDIA_URL_LENGTH = 2048
 
 /** Why `raw`, a media address, can't save, or undefined when it is empty or
- *  one the server takes: an absolute http or https address. Every one of
- *  these is pushed into Nuvio and read by its clients. */
+ *  one the server takes: an absolute https address. Every one of these is
+ *  pushed into Nuvio and read by its clients. */
 function mediaProblem(label: string, raw: string): string | undefined {
   const address = raw.trim()
   if (!address) return undefined
   if (characterCount(address) > MAX_MEDIA_URL_LENGTH) return `${label} address is too long.`
-  if (!isWebAddress(address)) return `${label} must be a web address starting with http:// or https://.`
+  if (!isWebAddress(address)) return `${label} must be a web address starting with https://.`
   return undefined
 }
 
 function isWebAddress(address: string): boolean {
   try {
     const url = new URL(address)
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.host !== ''
+    return url.protocol === 'https:' && url.host !== ''
   } catch {
     return false
   }
