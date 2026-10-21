@@ -25,7 +25,7 @@ import { useStackedLayout } from './stacked'
  * it below `lg` until a push's success banner offers it too.
  *
  * Which shape renders is read from `useStackedLayout`, the same query
- * `Workspace` and `EditorShell` use for the same breakpoint — not `lg:hidden`
+ * `Configure` and `EditorShell` use for the same breakpoint — not `lg:hidden`
  * / `hidden lg:block` on two separate elements, which would mean two
  * components doing the one job. Only one shape is ever in the DOM: stronger
  * than `display: none` for keeping the other out of the accessibility tree,

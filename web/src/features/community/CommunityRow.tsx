@@ -52,7 +52,7 @@ function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActio
 }
 
 /** What the profile's own publication page does: publish the edits made
- *  since (only while `changed`), open the row in the Workspace, unpublish. */
+ *  since (only while `changed`), open the row in Configure, unpublish. */
 export interface OwnPageActions {
   changed: boolean
   onPublish: () => void
@@ -88,7 +88,7 @@ export function PageActions({
   )
 }
 
-/** Publish changes… as the one primary while edits wait, Open in Workspace
+/** Publish changes… as the one primary while edits wait, Open in Configure
  *  beside it, and Unpublish… in red text at the end. */
 function OwnActions({ own }: { own: OwnPageActions }) {
   return (
@@ -99,7 +99,7 @@ function OwnActions({ own }: { own: OwnPageActions }) {
         </Button>
       )}
       <Button kind="secondary" onClick={own.onOpen}>
-        Open in Workspace
+        Open in Configure
       </Button>
       <Button kind="danger-text" onClick={own.onUnpublish} className="ml-2">
         Unpublish…

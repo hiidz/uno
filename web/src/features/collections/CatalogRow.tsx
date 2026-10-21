@@ -167,7 +167,7 @@ function UnitCount({ count, unit }: { count: number; unit: FolderUnit }) {
 
 /** " · used in 2 places" for a library catalog, counting the home screen
  *  here rather than in `usedInFolders`, so a change to the selection
- *  re-renders the rows that state it and not the workspace. Nothing for one
+ *  re-renders the rows that state it and not all of Configure. Nothing for one
  *  that lives in this collection. */
 function UsedIn({ option, usedInFolders }: { option: RefOption; usedInFolders(catalogID: string): number }) {
   const home = useHomeSelection()

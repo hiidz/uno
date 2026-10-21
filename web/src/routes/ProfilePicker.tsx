@@ -199,7 +199,7 @@ export function ProfilePicker() {
       onSuccess: (selected) => {
         pickProfile(account, profile.profile_index)
         queryClient.setQueryData(queryKeys.selectedProfile(profile.profile_index), selected)
-        void navigate(returnPath(location.state, builderPath.workspace()))
+        void navigate(returnPath(location.state, builderPath.configure()))
       },
       onError: () => setSelecting(null),
     })

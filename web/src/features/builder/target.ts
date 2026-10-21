@@ -30,7 +30,7 @@ export type EditorTarget =
        *  that row might not be in the library yet (a collection just
        *  duplicated, whose scoped copies a stale `library.collections` read
        *  wouldn't have). Falls back to a library lookup by `id` when absent;
-       *  see `Workspace.tsx`'s `editingCollectionCatalogs`. */
+       *  see `Configure.tsx`'s `editingCollectionCatalogs`. */
       initialCatalogs?: Catalog[]
     }
 

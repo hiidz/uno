@@ -85,7 +85,7 @@ function OnPath() {
 
 /** The library answers empty: every action settles only once it has
  *  refetched. `initialOpen` starts on its page, opened from the
- *  Workspace as a copy's Update… opens it. */
+ *  Configure as a copy's Update… opens it. */
 function renderView(routes: Record<string, FakeRoute>, initialOpen: OpenPublication | null = null) {
   const fake = fakeApi({ 'GET /api/p/1/library': emptyLibrary, ...routes })
   api.current = fake.apiFetch
@@ -417,7 +417,7 @@ describe('CommunityView', () => {
     expect(calls).toContain('POST /api/p/1/catalogs/mine/publish')
   })
 
-  it('gives the own publication’s page Publish changes…, Open in Workspace and Unpublish…', async () => {
+  it('gives the own publication’s page Publish changes…, Open in Configure and Unpublish…', async () => {
     const own = { ...a24, own: true }
     const library = {
       ...emptyLibrary,
@@ -433,7 +433,7 @@ describe('CommunityView', () => {
       { id: 'a24', kind: 'catalog' },
     )
     expect(await screen.findByRole('button', { name: 'Publish changes…' })).toHaveClass('btn-primary')
-    expect(screen.getByRole('button', { name: 'Open in Workspace' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open in Configure' })).toBeInTheDocument()
     expect(screen.getAllByText('To publish').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'Unpublish…' }))
     expect(await screen.findByRole('alertdialog')).toHaveTextContent(/Community stops listing it/)

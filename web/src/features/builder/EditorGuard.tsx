@@ -6,7 +6,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
  * Unsaved work in the pane's editor, and the single gate everything that would
  * discard it has to pass through.
  *
- * Lives above both the header and the workspace because the exits are spread
+ * Lives above both the header and Configure because the exits are spread
  * across both: the editor's own × and Escape, selecting a different row in the
  * Library rail, and every navigation, which `LeaveGuard` asks through it — a
  * profile switch from the header among them. One gate rather than a
@@ -106,7 +106,7 @@ export function useEditorGuard(): EditorGuardValue {
  * The question a held exit asks: "Discard unsaved changes?", naming what is
  * being edited, with Keep editing and Discard. Draws nothing while no exit is
  * held. A collection's nested catalog editor asks it through a provider of its
- * own; the pane asks the same words through `Workspace`'s prompt.
+ * own; the pane asks the same words through `Configure`'s prompt.
  */
 export function DiscardPrompt({ subject }: { subject: string }) {
   const { blocked, proceed, cancel } = useEditorGuard()

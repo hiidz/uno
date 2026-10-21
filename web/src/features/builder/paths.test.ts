@@ -3,9 +3,9 @@ import { IN_APP, builderPath, builderView, leaveStep, pushedInApp } from './path
 
 describe('builderView', () => {
   it('reads the section and what is open from the path', () => {
-    expect(builderView(builderPath.workspace())).toEqual({ section: 'workspace', editor: null, publication: null })
+    expect(builderView(builderPath.configure())).toEqual({ section: 'configure', editor: null, publication: null })
     expect(builderView(builderPath.editor({ kind: 'catalog', id: 'c1' }))).toEqual({
-      section: 'workspace',
+      section: 'configure',
       editor: { kind: 'catalog', id: 'c1' },
       publication: null,
     })
@@ -19,7 +19,7 @@ describe('builderView', () => {
       editor: null,
       publication: { kind: 'collection', id: 'pub1' },
     })
-    expect(builderView('/configure/')).toMatchObject({ section: 'workspace', editor: null })
+    expect(builderView('/configure/')).toMatchObject({ section: 'configure', editor: null })
   })
 
   it('is null outside the builder and for a path it has no screen at', () => {

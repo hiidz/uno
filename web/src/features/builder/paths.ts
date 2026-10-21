@@ -1,5 +1,5 @@
-/** The builder's two sections: the profile's own Workspace, and Community. */
-export type BuilderSection = 'workspace' | 'community'
+/** The builder's two sections: the profile's own Configure section, and Community. */
+export type BuilderSection = 'configure' | 'community'
 
 /** A catalog or collection named by a path: the library row whose editor is
  *  open, or the publication whose page is. */
@@ -12,16 +12,16 @@ export interface EditorRef {
  *  picked last (`routes/activeProfile.ts`). */
 export interface BuilderView {
   section: BuilderSection
-  /** The Workspace's open editor; null on Home and in Community. */
+  /** Configure's open editor; null on Home and in Community. */
   editor: EditorRef | null
   /** Community's open publication page; null on its list and in the
-   *  Workspace. */
+   *  Configure. */
   publication: EditorRef | null
 }
 
 /** The builder's paths. */
 export const builderPath = {
-  workspace: () => '/configure',
+  configure: () => '/configure',
   editor: (editor: EditorRef) => `/configure/${editor.kind}/${encodeURIComponent(editor.id)}`,
   community: () => '/community',
   publication: (publication: EditorRef) => `/community/${publication.kind}/${encodeURIComponent(publication.id)}`,
@@ -45,13 +45,13 @@ export function pushedInApp(state: unknown): boolean {
 export function builderView(pathname: string): BuilderView | null {
   const [, first, kind, id, ...more] = pathname.split('/')
   if (first !== 'configure' && first !== 'community') return null
-  const section: BuilderSection = first === 'configure' ? 'workspace' : 'community'
+  const section: BuilderSection = first === 'configure' ? 'configure' : 'community'
   if (!kind && id === undefined) return { section, editor: null, publication: null }
   if ((kind !== 'catalog' && kind !== 'collection') || !id || more.length > 0) return null
   const refID = decoded(id)
   if (refID === null) return null
   const ref: EditorRef = { kind, id: refID }
-  if (section === 'workspace') return { section, editor: ref, publication: null }
+  if (section === 'configure') return { section, editor: ref, publication: null }
   return { section, editor: null, publication: ref }
 }
 

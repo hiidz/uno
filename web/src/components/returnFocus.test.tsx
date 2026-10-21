@@ -30,7 +30,7 @@ function ModalFromButton() {
 }
 
 /** A confirmation raised from a "⋯" entry, mounted only while it is asked,
- *  as the Workspace's prompt is. */
+ *  as Configure's prompt is. */
 function ConfirmFromMenu({ opensField = false }: { opensField?: boolean }) {
   const [asking, setAsking] = useState(false)
   const [done, setDone] = useState(false)

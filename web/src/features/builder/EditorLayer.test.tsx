@@ -9,7 +9,7 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
-/** A page shaped like the builder's: a header beside the workspace, the rail
+/** A page shaped like the builder's: a header beside Configure, the rail
  *  and the layer inside it. */
 function renderLayer(stacked: boolean, openKey = 'catalog/mob-two') {
   const header = document.createElement('header')

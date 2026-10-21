@@ -83,7 +83,7 @@ interface CollectionEditorProps {
   serverError: string | null
   /** Receives the finished payload, not the raw form state — resolving a
    *  draft catalog into its inline `new` spec needs this editor's own
-   *  `localCatalogs`, which the caller (`Workspace.tsx`) doesn't have. */
+   *  `localCatalogs`, which the caller (`Configure.tsx`) doesn't have. */
   onSave: (payload: CollectionPayload) => void
   /** The × on the sign, Escape and the footer's Close — see `EditorShell`. */
   onRequestClose: () => void
@@ -97,20 +97,20 @@ interface CollectionEditorProps {
   collectionID: string
   /** Every catalog this collection's folders already reference, listed or
    *  scoped. A duplicated collection arrives here with its own fresh scoped
-   *  copies already populated (`Workspace.tsx`'s `EditorTarget.initialCatalogs`
+   *  copies already populated (`Configure.tsx`'s `EditorTarget.initialCatalogs`
    *  override). Seeds `localCatalogs`. */
   initialCatalogs: Catalog[]
   genres: { movie: Genre[]; tv: Genre[] }
   /** Same genres, shaped for `buildRefOptions` rather than the nested
    *  `CatalogEditor`'s own picker — building `RefOption`s for a freshly
-   *  scoped catalog needs the lookup form, `Workspace`'s own already computed
+   *  scoped catalog needs the lookup form, `Configure`'s own already computed
    *  from this. */
   genreLookups: GenreLookups
   certifications: { movie: CertificationsByCountry; tv: CertificationsByCountry }
   countryNames: CountryLookup
   languages: Language[]
   /** How many folders across every owned collection reference a catalog —
-   *  computed in `Workspace`, which is the level that has the whole library.
+   *  computed in `Configure`, which is the level that has the whole library.
    *  Meaningful only for a listed catalog. */
   usedInFolders: (catalogID: string) => number
   /** Its sharing stickers, on the sign beside the kind. */
@@ -230,7 +230,7 @@ export function CollectionEditor({
   // This editor's own catalog registry: the library (`optionByID`) plus every
   // scoped catalog it already knows about, grown by every copy/new/edit this
   // session makes. Never reseeded from `initialCatalogs` after mount — this
-  // editor remounts on a different target (`key` in Workspace), so a fresh
+  // editor remounts on a different target (`key` in Configure), so a fresh
   // instance always starts from the current seed.
   const [localCatalogs, setLocalCatalogs] = useState<Map<string, Catalog>>(
     () => new Map(initialCatalogs.map((c) => [c.id, c])),
@@ -294,7 +294,7 @@ export function CollectionEditor({
   const nestedCatalog = nestedCatalogID === null ? undefined : localCatalogs.get(nestedCatalogID)
   const nestedInitial = nestedCatalogForm(nestedCatalog)
   // "New inside this collection" is named first, same two-step as the main
-  // library's own "New catalog" — see Workspace's `createBareCatalog`.
+  // library's own "New catalog" — see Configure's `createBareCatalog`.
   const [namingNewFolderKey, setNamingNewFolderKey] = useState<string | null>(null)
   const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
   const [newCatalogName, setNewCatalogName] = useState('')
@@ -457,7 +457,7 @@ export function CollectionEditor({
 
   // Resolves every draft catalog into its inline `new` spec here, right
   // before it reaches the wire — `localCatalogs` is this editor's own
-  // state, which `Workspace.tsx`'s `onSave` has no way to see.
+  // state, which `Configure.tsx`'s `onSave` has no way to see.
   function save(finalState: CollectionFormState) {
     onSave(toCollectionPayload(finalState, localCatalogs))
   }

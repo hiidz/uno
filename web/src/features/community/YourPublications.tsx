@@ -120,7 +120,7 @@ function DialogBody({
   if (choices.length === 0) {
     return (
       <ModalBody>
-        <p className="text-dimmer text-meta m-0">Nothing of yours to publish yet. Build a catalog in the Workspace first.</p>
+        <p className="text-dimmer text-meta m-0">Nothing of yours to publish yet. Build a catalog in Configure first.</p>
       </ModalBody>
     )
   }
