@@ -172,67 +172,59 @@ function emptyMarks(): UpdateMarks {
 export function updateMarks(changes: readonly SnapshotChange[]): UpdateMarks {
   const marks = emptyMarks()
   const goneFolders = new Set<string>()
-  for (const change of changes) MARKERS[`${change.kind}/${change.op}`]?.(marks, change, goneFolders)
+  for (const change of changes) {
+    const key = change.key ?? ''
+    switch (`${change.kind}/${change.op}`) {
+      case 'folder/added':
+        marks.folders.set(key, { ...folderMark(marks, key), added: true })
+        break
+      case 'folder/removed':
+        marks.removedFolders.push(change.name ?? '')
+        goneFolders.add(key)
+        break
+      case 'folder/changed': {
+        const changed = changedFolder(folderMark(marks, key), change)
+        if (changed) marks.folders.set(key, changed)
+        break
+      }
+      case 'catalog/added':
+        if (change.folder_key) marks.added.add(`${change.folder_key}/${change.key}`)
+        break
+      case 'catalog/removed': {
+        const folder = change.folder_key ?? ''
+        if (folder && !goneFolders.has(folder)) {
+          marks.removed.set(folder, [...(marks.removed.get(folder) ?? []), catalogLabel(change)])
+        }
+        break
+      }
+      case 'catalog/changed':
+        marks.catalogs.set(key, { was: change.was ?? '', recipe: change.aspect === 'recipe' ? change : null })
+        break
+      case 'collection/changed':
+        markCollection(marks, change)
+        break
+    }
+  }
   return marks
-}
-
-type Marker = (marks: UpdateMarks, change: SnapshotChange, goneFolders: Set<string>) => void
-
-const MARKERS: Record<string, Marker> = {
-  'folder/added': markAddedFolder,
-  'folder/removed': markRemovedFolder,
-  'folder/changed': markChangedFolder,
-  'catalog/added': markAddedCatalog,
-  'catalog/removed': markRemovedCatalog,
-  'catalog/changed': markChangedCatalog,
-  'collection/changed': markCollection,
 }
 
 function folderMark(marks: UpdateMarks, key: string): FolderMark {
   return marks.folders.get(key) ?? NO_FOLDER_MARK
 }
 
-function markAddedFolder(marks: UpdateMarks, change: SnapshotChange): void {
-  const key = change.key ?? ''
-  marks.folders.set(key, { ...folderMark(marks, key), added: true })
-}
-
-function markRemovedFolder(marks: UpdateMarks, change: SnapshotChange, goneFolders: Set<string>): void {
-  marks.removedFolders.push(change.name ?? '')
-  goneFolders.add(change.key ?? '')
-}
-
-const FOLDER_ASPECTS: Record<string, (mark: FolderMark, change: SnapshotChange) => FolderMark> = {
-  name: (mark, change) => ({ ...mark, was: change.was ?? '' }),
-  art: (mark) => ({ ...mark, art: true }),
-  catalog_order: (mark) => ({ ...mark, catalogOrder: true }),
-}
-
-function markChangedFolder(marks: UpdateMarks, change: SnapshotChange): void {
-  const key = change.key ?? ''
-  const apply = FOLDER_ASPECTS[change.aspect ?? '']
-  if (apply) marks.folders.set(key, apply(folderMark(marks, key), change))
-}
-
-function markAddedCatalog(marks: UpdateMarks, change: SnapshotChange): void {
-  if (change.folder_key) marks.added.add(`${change.folder_key}/${change.key}`)
-}
-
-function markRemovedCatalog(marks: UpdateMarks, change: SnapshotChange, goneFolders: Set<string>): void {
-  const folder = change.folder_key ?? ''
-  if (!folder || goneFolders.has(folder)) return
-  marks.removed.set(folder, [...(marks.removed.get(folder) ?? []), catalogLabel(change)])
+/** `mark` with the aspect a changed folder names; null for an aspect a
+ *  folder card doesn't show. */
+function changedFolder(mark: FolderMark, change: SnapshotChange): FolderMark | null {
+  if (change.aspect === 'name') return { ...mark, was: change.was ?? '' }
+  if (change.aspect === 'art') return { ...mark, art: true }
+  if (change.aspect === 'catalog_order') return { ...mark, catalogOrder: true }
+  return null
 }
 
 /** A catalog's name, with the genre a folder narrows it to. */
 function catalogLabel(change: SnapshotChange): string {
   const name = change.name ?? ''
   return change.genre ? `${name} (${change.genre})` : name
-}
-
-function markChangedCatalog(marks: UpdateMarks, change: SnapshotChange): void {
-  const recipe = change.aspect === 'recipe' ? change : null
-  marks.catalogs.set(change.key ?? '', { was: change.was ?? '', recipe })
 }
 
 function markCollection(marks: UpdateMarks, change: SnapshotChange): void {
