@@ -1,13 +1,13 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { DndContext, type Announcements, type DragEndEvent } from '@dnd-kit/core'
-import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronUp, TriangleAlert } from 'lucide-react'
 import { Grip, useDragSensors } from '@/components/dnd'
 import { IconButton } from '@/components/IconButton'
 import { Icon } from '@/components/Icon'
-import { TILE_ASPECT } from '@/features/preview/tiles'
+import { thumbnail } from '@/lib/tmdbImage'
 import { reorder } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
 import { folderLabel, type FolderFormState } from './collectionForm'
@@ -101,7 +101,7 @@ export function FolderTreeDnd({
       onDragEnd={handleDragEnd}
       accessibility={{ announcements }}
     >
-      <SortableContext items={folderKeys} strategy={rectSortingStrategy}>
+      <SortableContext items={folderKeys} strategy={verticalListSortingStrategy}>
         {children}
       </SortableContext>
     </DndContext>
@@ -109,37 +109,39 @@ export function FolderTreeDnd({
 }
 
 /**
- * The folder strip: each folder drawn at its own `tile_shape`, the way Nuvio
- * draws the collection's row. One is always selected, and its contents open
- * beneath the strip in `FolderDetail`.
+ * The folder list: one row per folder in its running order, its cover as a
+ * small thumbnail (the Preview beside the editor draws the tiles). One is
+ * always selected, and its folder (`detail`) opens directly under its row.
  */
-export function FolderTiles({
+export function FolderList({
   folders,
   selectedKey,
   errorKeys,
+  detail,
   onSelect,
   onMove,
 }: {
   folders: FolderFormState[]
   selectedKey: string | null
-  /** Folders with a validation error, marked on their tile so a problem in a
+  /** Folders with a validation error, marked on their row so a problem in a
    *  folder that isn't open is still visible. */
   errorKeys: ReadonlySet<string>
+  /** The selected folder's settings and catalogs. */
+  detail: ReactNode
   onSelect: (key: string) => void
   onMove: (key: string, direction: -1 | 1) => void
 }) {
-  const [stacked, stripRef] = useOneColumn()
   return (
-    <ul ref={stripRef} className="fold-tiles">
+    <ul className="fold-list">
       {folders.map((folder, index) => (
-        <FolderTileItem
+        <FolderItem
           key={folder.key}
           folder={folder}
           position={index}
           total={folders.length}
           selected={folder.key === selectedKey}
           hasError={errorKeys.has(folder.key)}
-          stacked={stacked}
+          detail={detail}
           onSelect={() => onSelect(folder.key)}
           onMove={(direction) => onMove(folder.key, direction)}
         />
@@ -148,36 +150,13 @@ export function FolderTiles({
   )
 }
 
-/**
- * Whether the strip's tiles stand in one column, as wide tiles do on a phone:
- * every tile starts at the same left edge. The strip's ref is the second
- * value; it re-measures as the strip resizes.
- */
-function useOneColumn(): [boolean, (strip: HTMLUListElement | null) => (() => void) | undefined] {
-  const [stacked, setStacked] = useState(false)
-  const ref = useCallback((strip: HTMLUListElement | null) => {
-    if (!strip) return
-    const measure = () => {
-      const lefts = new Set([...strip.children].map((tile) => (tile as HTMLElement).offsetLeft))
-      setStacked(strip.children.length > 1 && lefts.size === 1)
-    }
-    const observer = new ResizeObserver(measure)
-    observer.observe(strip)
-    measure()
-    return () => observer.disconnect()
-  }, [])
-  return [stacked, ref]
-}
-
-const TILE_H = 104
-
-function FolderTileItem({
+function FolderItem({
   folder,
   position,
   total,
   selected,
   hasError,
-  stacked,
+  detail,
   onSelect,
   onMove,
 }: {
@@ -186,7 +165,7 @@ function FolderTileItem({
   total: number
   selected: boolean
   hasError: boolean
-  stacked: boolean
+  detail: ReactNode
   onSelect: () => void
   onMove: (direction: -1 | 1) => void
 }) {
@@ -195,88 +174,76 @@ function FolderTileItem({
     data: { container: FOLDERS } satisfies SortableData,
   })
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable
-  const width = TILE_H * TILE_ASPECT[folder.tileShape]
   const name = folder.title.trim() || 'Untitled folder'
+  const label = folderLabel(folder, position)
 
   return (
     <li
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, width }}
-      className={`fold-tile ${selected ? 'is-selected' : ''} ${isDragging ? 'relative z-10 opacity-40' : ''}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={isDragging ? 'relative z-10 opacity-40' : undefined}
     >
-      {/* drift-ok: a folder tile, drawn at Nuvio's tile shape */}
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-pressed={selected}
-        aria-label={`${name}, ${pluralCount(folder.refs.length, 'catalog')}${hasError ? ', needs fixing' : ''}`}
-        className="fold-tile-btn"
-      >
-        <span className="fold-tile-face" style={{ height: TILE_H }}>
-          {folder.coverEmoji ? (
-            // drift-ok: the cover emoji is sized to its tile
-            <span aria-hidden="true" className="text-[26px] leading-none">
-              {folder.coverEmoji}
-            </span>
-          ) : (
-            <span aria-hidden="true" className="text-dimmer text-meta line-clamp-2 px-2 text-center leading-tight">
+      <div className={`fold-row ${selected ? 'is-selected' : ''}`}>
+        <Grip label={`Reorder ${label}`} sortable={{ attributes, listeners }} />
+        <span className="type-data text-dimmer text-meta w-[18px] shrink-0 text-right tabular-nums">{position + 1}</span>
+        {/* drift-ok: the row's own button, holding its thumbnail, name and count */}
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-pressed={selected}
+          aria-label={`${name}, ${pluralCount(folder.refs.length, 'catalog')}${hasError ? ', needs fixing' : ''}`}
+          className="fold-row-btn"
+        >
+          <FolderThumb folder={folder} />
+          <span className="flex min-w-0 flex-col">
+            <span className="fold-row-name text-body flex items-center gap-1 font-semibold [overflow-wrap:anywhere]">
+              {hasError && <Icon icon={TriangleAlert} size={14} className="text-danger shrink-0" />}
               {name}
             </span>
-          )}
-          {/* Layered over the emoji/title rather than replacing them, so a
-              cover URL that 404s or is slow leaves a legible tile. */}
-          {folder.coverImageURL.trim() && (
-            <img src={folder.coverImageURL} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
-          )}
-        </span>
-        <span className="fold-tile-name">
-          {hasError && <Icon icon={TriangleAlert} size={12} className="text-danger shrink-0" />}
-          <span title={name} className="truncate">
-            {name}
+            <span className="type-data text-dimmer text-meta">{pluralCount(folder.refs.length, 'catalog')}</span>
           </span>
-        </span>
-        <span className="type-data text-dimmer text-meta tabular-nums">
-          {pluralCount(folder.refs.length, 'catalog')}
-        </span>
-      </button>
-      <span className="fold-tile-grip">
-        <Grip label={`Reorder ${folderLabel(folder, position)}`} sortable={{ attributes, listeners }} />
-      </span>
-      {selected && (
-        <FolderMoveArrows
-          label={folderLabel(folder, position)}
-          position={position}
-          total={total}
-          stacked={stacked}
-          onMove={onMove}
-        />
-      )}
+        </button>
+        {selected && <FolderMoveArrows label={label} position={position} total={total} onMove={onMove} />}
+      </div>
+      {selected && detail}
     </li>
   )
 }
 
-/** Earlier and later under the selected tile, pointing the way the strip
- *  runs: ↑ ↓ while it is one column, ‹ › while tiles sit side by side. The
- *  same reorder as dragging it, for anyone who can't. */
+/** A folder's cover, small: its image, else its emoji, else an empty box. */
+function FolderThumb({ folder }: { folder: FolderFormState }) {
+  const image = folder.coverImageURL.trim()
+  return (
+    // drift-ok: the cover emoji is sized to its thumbnail
+    <span aria-hidden="true" className="fold-thumb text-[18px] leading-none">
+      {image ? (
+        <img {...thumbnail(image, '2.75rem')} alt="" loading="lazy" className="h-full w-full object-cover" />
+      ) : (
+        folder.coverEmoji
+      )}
+    </span>
+  )
+}
+
+/** ↑ and ↓ on the selected row: the same reorder as dragging it, for
+ *  anyone who can't. */
 function FolderMoveArrows({
   label,
   position,
   total,
-  stacked,
   onMove,
 }: {
   label: string
   position: number
   total: number
-  stacked: boolean
   onMove: (direction: -1 | 1) => void
 }) {
   return (
-    <div className="fold-tile-move">
+    <span className="flex shrink-0 gap-0.5 pointer-coarse:gap-3">
       <IconButton
         variant="plain"
         size="sm"
-        icon={stacked ? ChevronUp : ChevronLeft}
+        icon={ChevronUp}
         label={`Move ${label} earlier${position === 0 ? ', already first' : ''}`}
         disabled={position === 0}
         onClick={() => onMove(-1)}
@@ -284,11 +251,11 @@ function FolderMoveArrows({
       <IconButton
         variant="plain"
         size="sm"
-        icon={stacked ? ChevronDown : ChevronRight}
+        icon={ChevronDown}
         label={`Move ${label} later${position === total - 1 ? ', already last' : ''}`}
         disabled={position === total - 1}
         onClick={() => onMove(1)}
       />
-    </div>
+    </span>
   )
 }

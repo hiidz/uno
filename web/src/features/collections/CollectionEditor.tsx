@@ -30,7 +30,7 @@ import { CollectionAppearance } from './CollectionAppearance'
 import { CollectionPreview } from './CollectionPreview'
 import { FolderCount } from './FolderCap'
 import { FolderDetail } from './FolderDetail'
-import { FolderTiles, FolderTreeDnd } from './FolderTree'
+import { FolderList, FolderTreeDnd } from './FolderTree'
 import {
   DRAFT_ID_PREFIX,
   MAX_FOLDERS,
@@ -561,37 +561,39 @@ export function CollectionEditor({
                 itemName={(id) => dragItemName(state.folders, mergedOptionByID, id)}
                 onReorderFolders={reorderFolders}
               >
-                <FolderTiles
+                <FolderList
                   folders={state.folders}
                   selectedKey={selectedFolder.key}
                   errorKeys={folderErrorKeys}
                   onSelect={setSelectedFolderKey}
                   onMove={moveFolder}
-                />
-                <FolderDetail
-                  // Remounted per folder so the Appearance row and the
-                  // catalog picker start closed on each one.
-                  key={selectedFolder.key}
-                  folder={selectedFolder}
-                  position={selectedIndex}
-                  errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
-                  options={options}
-                  optionByID={mergedOptionByID}
-                  unit={folderUnit(state.viewMode)}
-                  usedInFolders={usedInFolders}
-                  onChange={(update) => patchFolder(selectedFolder.key, update)}
-                  onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
-                  onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
-                  onRemoveCatalog={(catalogID) => removeCatalog(selectedFolder.key, catalogID)}
-                  onCopyToLibrary={onCopyToLibrary}
-                  onUnlinkCatalog={(catalogID) => unlinkCatalog(selectedFolder.key, catalogID)}
-                  onReorderCatalogs={(catalogIDs) => reorderCatalogs(selectedFolder.key, catalogIDs)}
-                  onMoveCatalog={(catalogID, direction) => moveCatalog(selectedFolder.key, catalogID, direction)}
-                  onAddGenre={(catalogID, genre) => addGenre(selectedFolder.key, catalogID, genre)}
-                  onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
-                  onReorderGenres={(catalogID, refKeys) => reorderGenres(selectedFolder.key, catalogID, refKeys)}
-                  onEditRef={editRef}
-                  onAddNewInCollection={(name) => startNewInCollection(selectedFolder.key, name)}
+                  detail={
+                    <FolderDetail
+                      // Remounted per folder so the Appearance row and the
+                      // catalog picker start closed on each one.
+                      key={selectedFolder.key}
+                      folder={selectedFolder}
+                      position={selectedIndex}
+                      errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
+                      options={options}
+                      optionByID={mergedOptionByID}
+                      unit={folderUnit(state.viewMode)}
+                      usedInFolders={usedInFolders}
+                      onChange={(update) => patchFolder(selectedFolder.key, update)}
+                      onRemove={() => patchFolders((folders) => folders.filter((f) => f.key !== selectedFolder.key))}
+                      onAddRef={(catalogID) => addRef(selectedFolder.key, catalogID)}
+                      onRemoveCatalog={(catalogID) => removeCatalog(selectedFolder.key, catalogID)}
+                      onCopyToLibrary={onCopyToLibrary}
+                      onUnlinkCatalog={(catalogID) => unlinkCatalog(selectedFolder.key, catalogID)}
+                      onReorderCatalogs={(catalogIDs) => reorderCatalogs(selectedFolder.key, catalogIDs)}
+                      onMoveCatalog={(catalogID, direction) => moveCatalog(selectedFolder.key, catalogID, direction)}
+                      onAddGenre={(catalogID, genre) => addGenre(selectedFolder.key, catalogID, genre)}
+                      onRemoveRef={(refKey) => removeRef(selectedFolder.key, refKey)}
+                      onReorderGenres={(catalogID, refKeys) => reorderGenres(selectedFolder.key, catalogID, refKeys)}
+                      onEditRef={editRef}
+                      onAddNewInCollection={(name) => startNewInCollection(selectedFolder.key, name)}
+                    />
+                  }
                 />
               </FolderTreeDnd>
             )}
