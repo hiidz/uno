@@ -34,7 +34,7 @@ tags:
   - name: library
     description: A profile's catalogs and collections.
   - name: sharing
-    description: Publishing, Community, and added copies.
+    description: Publishing, Community, and added copies. Every route here is a 404 on a server whose UNO_COMMUNITY is off.
   - name: bundles
     description: Export and import.
   - name: push

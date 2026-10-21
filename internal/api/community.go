@@ -22,6 +22,20 @@ const (
 	CommunityOff      Community = "off"
 )
 
+// sharingOn answers 404 in place of next on a server whose Community is
+// off: every publish, unpublish and Community route goes through it. The
+// publications and subscriptions already made stay as they are, for when
+// Community is on again.
+func (s *Server) sharingOn(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.community == CommunityOff {
+			httpx.WriteError(w, http.StatusNotFound, "not found")
+			return
+		}
+		next(w, r)
+	}
+}
+
 // pathRow is one kind of row a sharing call names by the id in its path: one
 // of the caller's catalogs or collections, or someone's publication, which
 // the vault scopes to the caller. It holds the path segment carrying the id,

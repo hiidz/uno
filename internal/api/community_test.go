@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -134,6 +135,48 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "update the released catalog", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
 		{name: "save the released catalog", method: http.MethodPut, path: catalogPath, body: `{"type":"movie","name":"Mine now","provider":"tmdb","params":"{}","revision":1}`, wantStatus: http.StatusOK, wantBody: `"name":"Mine now"`},
 	})
+}
+
+// On a server whose Community is off, every publish, unpublish and Community
+// route is a 404, the rest of the builder answers as ever, and what was
+// shared before stays: once Community is on again the publication is listed
+// and the caller's copy still follows it.
+func TestSharingRoutesAreAbsentWhenCommunityIsOff(t *testing.T) {
+	x := newSharingFixture(t)
+	if _, err := x.f.db.Subscribe(t.Context(), x.f.caller.ID, x.theirCollection); err != nil {
+		t.Fatal(err)
+	}
+	off := newCommunityServer(t, x.f.db, CommunityOff)
+	ownCatalog := "/api/p/1/catalogs/" + x.ownCatalog.String()
+	ownCollection := "/api/p/1/collections/" + x.ownCollection.String()
+	theirs := "/api/p/1/community/" + x.theirCollection.String()
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPost, ownCatalog + "/publish"},
+		{http.MethodPost, ownCatalog + "/unpublish"},
+		{http.MethodGet, ownCatalog + "/changes-since-publish"},
+		{http.MethodPost, ownCollection + "/publish"},
+		{http.MethodPost, ownCollection + "/unpublish"},
+		{http.MethodGet, ownCollection + "/changes-since-publish"},
+		{http.MethodGet, "/api/p/1/community?kind=collection&sort=name"},
+		{http.MethodGet, theirs},
+		{http.MethodPost, theirs + "/subscribe"},
+		{http.MethodGet, theirs + "/changes"},
+		{http.MethodPost, theirs + "/update"},
+		{http.MethodPost, theirs + "/duplicate"},
+	} {
+		if w := serve(t, off, route.method, route.path, "", false); w.Code != http.StatusNotFound {
+			t.Errorf("%s %s = %d %s, want 404", route.method, route.path, w.Code, w.Body.String())
+		}
+	}
+	if w := serve(t, off, http.MethodGet, "/api/p/1/library", "", false); w.Code != http.StatusOK {
+		t.Errorf("GET library with Community off = %d %s, want 200", w.Code, w.Body.String())
+	}
+
+	w := serve(t, x.f.s, http.MethodGet, "/api/p/1/community?kind=collection&sort=name", "", false)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), x.theirCollection.String()) {
+		t.Errorf("Community on again = %d %s, want the publication listed", w.Code, w.Body.String())
+	}
+	subscribedCopy(t, x.f, x.theirCollection)
 }
 
 // subscribedCopy is the id of the caller's collection subscribed to
