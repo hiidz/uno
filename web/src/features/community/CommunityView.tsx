@@ -7,9 +7,7 @@ import { Segmented } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { StateView } from '@/components/StateView'
 import { skeletonKeys } from '@/components/Skeleton'
-import { Toast } from '@/components/Toast'
-import { useToasts } from '@/components/toastQueue'
-import { useToast, type ToastMessage } from '@/components/useToast'
+import { useToasts, type ToastInput } from '@/components/toastQueue'
 import { IN_APP, builderPath, pushedInApp, type EditorRef } from '@/features/builder/paths'
 import { ToParent, ToPicker, useRedirectNotice } from '@/features/builder/redirects'
 import { libraryQuery, useGenreLookups, type GenreLookups } from '@/features/library/useLibrary'
@@ -76,7 +74,6 @@ export function CommunityView({
   const list = useCommunityList(profileIndex, { ...filters, q }, problem === '')
   const openDetail = useOpenPublication(profileIndex, openID)
 
-  const [toast, setToast] = useToast()
   const toasts = useToasts()
   useRedirectNotice(toasts.show)
   const library = useQuery(libraryQuery(profileIndex))
@@ -139,8 +136,8 @@ export function CommunityView({
     mutations[action]
       .mutateAsync(item.id)
       .then(
-        () => setToast({ text: doneText(action, item), tone: 'success' }),
-        (error: Error) => setToast(failure(action, error)),
+        () => toasts.show({ text: doneText(action, item), tone: 'success' }),
+        (error: Error) => toasts.show(failure(action, error)),
       )
       .finally(() =>
         setPending((current) => {
@@ -176,8 +173,6 @@ export function CommunityView({
     <div ref={scrollRef} className="tone-community flex w-full flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
       <CommunitySign open={open} stickers={ownStickers} onBack={closePage} />
       <section className="community-body mx-auto flex w-full flex-col gap-4 p-4 lg:p-6 [&_.ed]:pt-0">
-        <Toast toast={toast} />
-
         {pageFailed ? (
           <StateView
             isLoading={false}
@@ -301,7 +296,7 @@ function Controls({
           placeholder="Search"
           aria-label="Search Community"
           maxLength={SEARCH_MAX_LENGTH}
-          className="field h-10 w-full rounded-full pl-10 text-[14px] pointer-coarse:h-11 pointer-coarse:text-[16px]"
+          className="field text-body-sm h-10 w-full rounded-full pl-10 pointer-coarse:h-11 pointer-coarse:text-field"
         />
       </div>
       <div className="flex items-center gap-2">
@@ -334,9 +329,9 @@ function doneText(action: CommunityAction, item: CommunityItem): string {
 /** The toast for a failed action. A stale failure has already refreshed the
  *  lists: a 409 from Add means this profile already added it, and a 404 means
  *  its publisher unpublished it. */
-function failure(action: CommunityAction, error: Error): ToastMessage {
+function failure(action: CommunityAction, error: Error): ToastInput {
   const status = error instanceof ApiError ? error.status : undefined
   if (action === 'subscribe' && status === 409) return { text: 'Already added', tone: 'success' }
   if (status === 404) return { text: 'Its publisher unpublished it.', tone: 'danger' }
-  return { text: `Couldn’t ${VERB[action]} it: ${error.message}`, tone: 'danger' }
+  return { text: `Couldn’t ${VERB[action]} it`, detail: error.message, tone: 'danger' }
 }

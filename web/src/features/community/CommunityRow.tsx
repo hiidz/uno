@@ -2,7 +2,6 @@ import { Check, ChevronRight } from 'lucide-react'
 import type { CommunityItem } from '@/api'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
-import { MoreMenu, MoreMenuItem } from '@/components/MoreMenu'
 import { SkeletonBar } from '@/components/Skeleton'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { itemKind } from './communityQuery'
@@ -28,48 +27,28 @@ export interface RowActions {
 }
 
 /**
- * A row's actions, from the server's own flags: one main button — Add; a
- * disabled "✓ Added" while this profile holds a copy that follows the
- * publication; while an update waits for that copy, the actions' `updateLabel`
- * — and Duplicate, a copy that is the profile's own and follows nothing, behind
- * "⋯", with what it makes said beside it (`duplicateReason`).
+ * A row's one action, from the server's own flags: Add; a disabled "✓ Added"
+ * while this profile holds a copy that follows the publication; while an
+ * update waits for that copy, the actions' `updateLabel`, outlined in the
+ * Community accent, which is how the row says one waits. Duplicate is the
+ * publication page's.
  */
 function ItemActions({ item, actions }: { item: CommunityItem; actions: RowActions }) {
   const { pending } = actions
   const added = item.subscribed && !item.update_available
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <button
-        type="button"
-        onClick={item.update_available ? actions.onUpdate : actions.onSubscribe}
-        disabled={pending !== undefined || added}
-        // Every row's button reads Add, so its name also says which row.
-        aria-label={`${mainWords(item, pending, actions.updateLabel)} ${item.title}`}
-        className={mainButtonClass(item)}
-      >
-        <MainLabel item={item} pending={pending} update={actions.updateLabel} />
-      </button>
-      <MoreMenu label={item.title}>
-        <MoreMenuItem disabled={pending !== undefined} onSelect={actions.onDuplicate} reason={duplicateReason(item)}>
-          Duplicate
-        </MoreMenuItem>
-      </MoreMenu>
-    </div>
+    <Button
+      kind={item.update_available ? 'accent-outline' : 'secondary'}
+      size="sm"
+      onClick={mainClick(item, actions)}
+      disabled={pending !== undefined || added}
+      // Every row's button reads Add, so its name also says which row.
+      aria-label={`${mainWords(item, pending, actions.updateLabel)} ${item.title}`}
+      className="shrink-0"
+    >
+      <MainLabel item={item} pending={pending} update={actions.updateLabel} />
+    </Button>
   )
-}
-
-/** The row's main button: outlined, and outlined in the Community accent while
- *  an update waits, which is how the row says one does. */
-function mainButtonClass(item: CommunityItem): string {
-  if (item.update_available) return 'btn-secondary btn-sm btn-accent-outline'
-  return 'btn-secondary btn-sm'
-}
-
-/** What Duplicate makes, beside it in the row's "⋯": the latest version while
- *  an update waits for this profile's older added row, otherwise a copy that
- *  is yours to edit. */
-function duplicateReason(item: CommunityItem): string {
-  return item.update_available ? 'the latest version' : 'yours to edit'
 }
 
 /** What the profile's own publication page does: publish the edits made
@@ -102,9 +81,9 @@ export function PageActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <PagePrimary item={item} actions={actions} />
-      <button type="button" onClick={actions.onDuplicate} disabled={actions.pending !== undefined} className="btn-secondary">
+      <Button kind="secondary" onClick={actions.onDuplicate} disabled={actions.pending !== undefined}>
         {actions.pending === 'duplicate' ? PENDING_LABEL.duplicate : 'Duplicate'}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -133,14 +112,13 @@ function OwnActions({ own }: { own: OwnPageActions }) {
 function PagePrimary({ item, actions }: { item: CommunityItem; actions: RowActions }) {
   const added = item.subscribed && !item.update_available
   return (
-    <button
-      type="button"
+    <Button
+      kind={added ? 'secondary' : 'primary'}
       onClick={mainClick(item, actions)}
       disabled={actions.pending !== undefined || added}
-      className={added ? 'btn-secondary' : 'btn-primary'}
     >
       <MainLabel item={item} pending={settingAside(actions.pending, 'duplicate')} update={actions.updateLabel} />
-    </button>
+    </Button>
   )
 }
 
@@ -214,22 +192,23 @@ export function CommunityRow({ item, summary, meta, showKind, buttonID, onOpen, 
       <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+            {/* drift-ok: the row's name, its button stretched over the whole row */}
             <button
               id={buttonID}
               type="button"
               onClick={onOpen}
               className="flex min-w-0 cursor-pointer items-start gap-2 text-left outline-none after:absolute after:inset-0 after:rounded-[12px] focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ink"
             >
-              <span className="line-clamp-2 min-w-0 flex-1 text-[16px] font-bold [overflow-wrap:anywhere] sm:truncate">{item.title}</span>
+              <span className="text-title min-w-0 flex-1 [overflow-wrap:anywhere]">{item.title}</span>
               <Icon icon={ChevronRight} size={16} className="text-dimmer mt-[3px] hidden shrink-0 pointer-coarse:block" />
             </button>
             <RowStickers item={item} showKind={showKind} />
           </div>
-          <span title={summary} className="text-dim line-clamp-2 text-[13.5px] sm:line-clamp-1">
+          <span title={summary} className="text-dim text-meta line-clamp-2 sm:line-clamp-1">
             {summary}
           </span>
           <RowFolders item={item} onOpen={onOpen} />
-          <span className="type-data text-dimmer text-[12.5px]">
+          <span className="type-data text-dimmer text-meta">
             <MetaParts parts={meta} />
           </span>
         </div>

@@ -88,7 +88,7 @@ function FolderStrip({ folders, onOpen }: { folders: CommunityFolder[]; onOpen()
       {shown.map((folder, i) => (
         <FolderFace key={i} folder={folder} />
       ))}
-      {more > 0 && <span className="type-data text-dimmer shrink-0 self-center pl-1 text-[12.5px]">+{more} more</span>}
+      {more > 0 && <span className="type-data text-dimmer text-meta shrink-0 self-center pl-1">+{more} more</span>}
     </div>
   )
 }
@@ -105,6 +105,7 @@ function FolderFace({ folder }: { folder: CommunityFolder }) {
 /** What a folder tile shows under its cover image, and alone without one:
  *  the emoji, else the title. */
 function FolderLabel({ folder }: { folder: CommunityFolder }) {
+  // drift-ok: an emoji sized to its tile
   if (folder.cover_emoji.trim()) return <span className="text-[24px] leading-none">{folder.cover_emoji}</span>
   return (
     <span className="row-face-name text-dimmer line-clamp-2 px-0.5 text-center leading-tight font-semibold [overflow-wrap:anywhere]">

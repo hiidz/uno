@@ -106,7 +106,7 @@ function renderView(routes: Record<string, FakeRoute>, initialOpen: OpenPublicat
 }
 
 const rowButton = (id: string) => document.getElementById(`community-row-${id}`)
-const titles = () => [...document.querySelectorAll('[id^="community-row-"] .font-bold')].map((el) => el.textContent)
+const titles = () => [...document.querySelectorAll('[id^="community-row-"] .text-title')].map((el) => el.textContent)
 
 beforeEach(() => {
   api.current = null
@@ -238,19 +238,15 @@ describe('CommunityView', () => {
 
     answer = failWith(500, 'database locked')
     fireEvent.click(await screen.findByRole('button', { name: /^Add / }))
-    expect(await screen.findByText('Couldn’t add it: database locked')).toBeInTheDocument()
+    expect(await screen.findByText('Couldn’t add it')).toBeInTheDocument()
+    expect(screen.getByText('database locked')).toBeInTheDocument()
   })
 
-  it('duplicates from the ⋯ menu', async () => {
-    const calls = renderView({
-      'GET /api/p/1/community': listing([a24]),
-      'POST /api/p/1/community/a24/duplicate': { kind: 'catalog' },
-    })
-    const more = await screen.findByRole('button', { name: 'More for A24 Horror' })
-    fireEvent.pointerDown(more, { button: 0, ctrlKey: false, pointerType: 'mouse' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: /^Duplicate/ }))
-    expect(await screen.findByText('Duplicated to your catalogs')).toBeInTheDocument()
-    expect(calls).toContain('POST /api/p/1/community/a24/duplicate')
+  it('gives a row its main button alone, leaving Duplicate to the page', async () => {
+    renderView({ 'GET /api/p/1/community': listing([a24]) })
+    await screen.findByRole('button', { name: `Add ${a24.title}` })
+    expect(screen.queryByRole('button', { name: 'More for A24 Horror' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Duplicate' })).toBeNull()
   })
 
   it('opens a publication’s page, and comes back to its row', async () => {
@@ -339,21 +335,6 @@ describe('CommunityView', () => {
     fireEvent.click(catalog)
     expect(catalog).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('Narrowed to', { selector: 'dt' })).toBeInTheDocument()
-  })
-
-  it('says what Duplicate makes inside its ⋯ menu item, with no tip on the row', async () => {
-    renderView({ 'GET /api/p/1/community': listing([a24]) })
-    await screen.findByText('A24 Horror')
-    expect(screen.queryByRole('button', { name: 'About add' })).toBeNull()
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'More for A24 Horror' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
-    expect(await screen.findByRole('menuitem', { name: /^Duplicate/ })).toHaveTextContent('yours to edit')
-  })
-
-  it('says Duplicate makes the latest version while an update waits for the added row', async () => {
-    renderView({ 'GET /api/p/1/community': listing([night]) })
-    fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
-    fireEvent.pointerDown(await screen.findByRole('button', { name: 'More for Horror Nights' }), { button: 0, ctrlKey: false, pointerType: 'mouse' })
-    expect(await screen.findByRole('menuitem', { name: /^Duplicate/ })).toHaveTextContent('the latest version')
   })
 
   it('draws a row as one target: a pointer name button covering it, its actions above', async () => {

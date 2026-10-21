@@ -55,7 +55,7 @@ export function PublicationPage({
       <div className="flex flex-wrap items-center gap-1.5 sm:hidden">
         <PageStickers item={item} extra={ownStickers} />
       </div>
-      <p className="type-data text-dim m-0 text-[13px]">
+      <p className="type-data text-dim text-meta m-0">
         <MetaParts parts={meta} />
       </p>
       <RenamedFrom name={renamedName(marks, item.kind)} />

@@ -22,17 +22,7 @@ const RULES = [
 const OPT_OUT = /drift-ok:\s*\S/
 
 /** Screens not yet moved onto the components and roles. Adopt takes each off as it moves it. */
-const NOT_YET_MIGRATED = new Set([
-  'features/community/CommunityRow.tsx',
-  'features/community/CommunitySign.tsx',
-  'features/community/CommunityView.tsx',
-  'features/community/PublicationPage.tsx',
-  'features/community/RowPreview.tsx',
-  'features/community/SearchNote.tsx',
-  'features/community/ShowMore.tsx',
-  'features/sharing/FromCommunityView.tsx',
-  'features/sharing/PublicationBodies.tsx',
-])
+const NOT_YET_MIGRATED = new Set<string>([])
 
 const SRC = join(import.meta.dirname)
 

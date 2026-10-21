@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import type { CommunityItem } from '@/api'
+import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { SIGN_TITLE } from '@/components/PaneSign'
 import type { SharingSticker } from '@/features/sharing/sharingState'
@@ -28,7 +29,7 @@ export function CommunitySign({
       {open ? (
         <PageSign key={open.id} item={open} stickers={stickers} onBack={onBack} />
       ) : (
-        <h1 className="type-sign m-0 text-[18px] leading-tight lg:text-[25px]">Community</h1>
+        <h1 className="type-sign text-sign-title m-0 leading-tight">Community</h1>
       )}
     </div>
   )
@@ -52,14 +53,14 @@ function PageSign({ item, stickers, onBack }: { item: CommunityItem; stickers: S
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        kind="sign-outline"
         onClick={onBack}
         aria-label="Back to Community"
-        className="sign-btn-outline tap w-9 shrink-0 justify-center px-0"
+        className="tap w-9 shrink-0 justify-center px-0"
       >
         <Icon icon={ArrowLeft} size={18} />
-      </button>
+      </Button>
       <h1
         ref={headingRef}
         tabIndex={-1}

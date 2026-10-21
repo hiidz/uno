@@ -2,7 +2,7 @@
 export function SearchNote({ problem }: { problem: string }) {
   if (!problem) return null
   return (
-    <p role="status" className="type-data text-danger m-0 text-[12.5px]">
+    <p role="status" className="type-data text-danger text-meta m-0">
       {problem}
     </p>
   )
