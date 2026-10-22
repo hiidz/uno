@@ -30,6 +30,9 @@ var (
 	// ErrStale is an editor's save built from a row a later write has
 	// changed since: the revision it carries isn't the row's now.
 	ErrStale = errors.New("stale revision")
+	// ErrBlocked is a publish from an account the server's operator has
+	// blocked (TakeDown).
+	ErrBlocked = errors.New("account blocked from publishing")
 )
 
 var validCatalogTypes = map[string]bool{
