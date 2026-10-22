@@ -28,6 +28,7 @@ erDiagram
   SUBSCRIPTIONS |o--|| COLLECTIONS : "copy"
   ACCOUNT_KEYS ||..o{ PROFILES : "keys every profile of"
   PROFILES ||--o| PUSH_RECORDS : "last pushed"
+  BLOCKED_PUBLISHERS ||..o{ PROFILES : "stops publishing every profile of"
 
   PUBLICATIONS {
     uuid id PK "kept when an update is published"
@@ -96,6 +97,11 @@ erDiagram
     string key_last4
     string updated_at
   }
+  BLOCKED_PUBLISHERS {
+    string nuvio_user_id PK "as profiles.nuvio_user_id"
+    string blocked_at
+    string title "the post whose takedown made the block"
+  }
   PUSH_RECORDS {
     uuid profile_id PK, FK
     string nuvio_profile_uuid "the Nuvio profile it was pushed to"
@@ -137,6 +143,7 @@ erDiagram
 | `subscriptions` | Which copy came from which publication. |
 | `account_keys` | Per-account TMDB keys, encrypted. |
 | `push_records` | Each profile's last push, as JSON. |
+| `blocked_publishers` | Accounts the server's operator has stopped from publishing. |
 
 Catalogs, collections and Home carry a `revision`. A save built from an outdated revision is refused, so two tabs can't overwrite each other.
 
