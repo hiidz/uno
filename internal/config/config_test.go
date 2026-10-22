@@ -239,3 +239,16 @@ func TestLoadCommunity(t *testing.T) {
 		t.Fatalf("err = %v, want one naming UNO_COMMUNITY", err)
 	}
 }
+
+// DBPath reads VAULT_DB alone, with Load's default, and needs none of the
+// variables Load requires.
+func TestDBPath(t *testing.T) {
+	setEnv(t, nil)
+	if got := DBPath(); got != "vault.db" {
+		t.Errorf("DBPath() = %q, want the default vault.db", got)
+	}
+	t.Setenv("VAULT_DB", "/data/vault.db")
+	if got := DBPath(); got != "/data/vault.db" {
+		t.Errorf("DBPath() = %q, want /data/vault.db", got)
+	}
+}

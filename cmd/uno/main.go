@@ -1,5 +1,6 @@
 // Command uno wires up config, vault, TMDB, and Nuvio into an api.Server
-// and starts listening.
+// and starts listening. With arguments it runs one of the operator's
+// commands instead (commands.go).
 package main
 
 import (
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -30,6 +32,13 @@ import (
 const shutdownGracePeriod = 60 * time.Second
 
 func main() {
+	if len(os.Args) > 1 {
+		if err := runCommand(context.Background(), os.Args[1:], os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
