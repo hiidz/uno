@@ -257,7 +257,7 @@ paths:
     post:
       tags: [sharing]
       summary: Publish a catalog
-      description: Publishes the catalog's current content, or replaces the snapshot of its existing publication. Refused with 409 when the server's operator has blocked the account from publishing.
+      description: Publishes the catalog's current content, or replaces the snapshot of its existing publication.
       responses:
         "200":
           description: The catalog, with its publication.
@@ -415,7 +415,6 @@ paths:
     post:
       tags: [sharing]
       summary: Publish a collection
-      description: Refused with 409 when the server's operator has blocked the account from publishing.
       responses:
         "200":
           description: The collection, with its publication.

@@ -230,9 +230,9 @@ func TestPublishMakesNoTMDBCall(t *testing.T) {
 	}
 }
 
-// A publish from an account the operator has blocked is a 409 in the
-// refusal's own words, for a catalog and a collection: not a 403, which the
-// SPA reads as access refused.
+// A publish from an account the operator has blocked fails as any failed
+// publish does, a 500 in the route's own words, for a catalog and a
+// collection: nothing says the account is blocked.
 func TestPublishFromABlockedAccount(t *testing.T) {
 	f := newRouteFixture(t)
 	published, err := f.db.PublishCatalog(t.Context(), f.caller.ID, f.mine.ID)
@@ -242,13 +242,13 @@ func TestPublishFromABlockedAccount(t *testing.T) {
 	if _, err := f.db.TakeDown(t.Context(), published.Publication.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{
-		"/api/p/1/catalogs/" + f.mine.ID.String() + "/publish",
-		"/api/p/1/collections/" + f.mineColl.ID.String() + "/publish",
+	for path, words := range map[string]string{
+		"/api/p/1/catalogs/" + f.mine.ID.String() + "/publish":        "failed to publish catalog",
+		"/api/p/1/collections/" + f.mineColl.ID.String() + "/publish": "failed to publish collection",
 	} {
 		w := serve(t, f.s, http.MethodPost, path, "", false)
-		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "operator has stopped this account from publishing") {
-			t.Errorf("%s = %d %q, want 409 with the block's words", path, w.Code, w.Body.String())
+		if body := w.Body.String(); w.Code != http.StatusInternalServerError || !strings.Contains(body, words) || strings.Contains(body, "block") {
+			t.Errorf("%s = %d %q, want 500 %q and no word of the block", path, w.Code, body, words)
 		}
 	}
 }

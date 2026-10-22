@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
@@ -135,7 +136,7 @@ func takedown(ctx context.Context, db *vault.DB, publication uuid.UUID, block bo
 	p.printf("Took down:\n")
 	printPosts(p, removed)
 	if block {
-		p.printf("Blocked account %s. To lift it: uno unblock %s\n", preview.Account, preview.Account)
+		p.printf("Blocked account %s. To lift it: %s unblock %s\n", preview.Account, os.Args[0], preview.Account)
 	}
 	return p.err
 }
