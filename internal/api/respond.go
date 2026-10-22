@@ -132,11 +132,15 @@ var keyFailures = []clientFailure{
 // vault.ErrInvalidInput and 409 for vault.ErrConflict, each in the error's own
 // words — safe, since every such message is built from validation or state
 // text, never a lower-level detail — and 409 for vault.ErrStale, an editor's
-// save built from a row another write has changed since, in fixed words.
+// save built from a row another write has changed since, and for
+// vault.ErrBlocked, a publish from an account the operator has blocked, each
+// in fixed words. A block is not a 403, which the SPA reads as access
+// refused.
 var clientErrors = slices.Concat(keyFailures, []clientFailure{
 	{vault.ErrInvalidInput, http.StatusBadRequest, ""},
 	{vault.ErrConflict, http.StatusConflict, ""},
 	{vault.ErrStale, http.StatusConflict, "Error saving."},
+	{vault.ErrBlocked, http.StatusConflict, "This server's operator has stopped this account from publishing."},
 })
 
 // The codes of the errors the SPA acts on by kind rather than by status
