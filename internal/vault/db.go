@@ -29,6 +29,9 @@ var migrations = map[int]string{}
 // DB is a handle to Uno's SQLite database.
 type DB struct {
 	conn *sql.DB
+	// withholdMedia is set on a server whose Community shares no media
+	// (WithholdCommunityMedia).
+	withholdMedia bool
 }
 
 // Close closes the underlying database connection.

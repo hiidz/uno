@@ -176,6 +176,25 @@ func (s Snapshot) collectionForm(keyed bool) CollectionForm {
 	return form
 }
 
+// withoutMedia is s with every media address left out: its collection's
+// backdrop, and each folder's cover, focus GIF, hero backdrop, hero video and
+// title logo. Whether a folder plays a focus GIF stays, since it names no
+// address. s is left as it was.
+func (s Snapshot) withoutMedia() Snapshot {
+	if s.Collection == nil {
+		return s
+	}
+	c := *s.Collection
+	c.BackdropImageURL = ""
+	c.Folders = slices.Clone(c.Folders)
+	for i := range c.Folders {
+		art := &c.Folders[i].FolderArt
+		art.CoverImageURL, art.FocusGIFURL, art.HeroBackdropURL, art.HeroVideoURL, art.TitleLogoURL = "", "", "", "", ""
+	}
+	s.Collection = &c
+	return s
+}
+
 // forCopy is s as a copy of it is written: a subscribe's is s as it is, and a
 // duplicate's has its catalog's name or its collection's title given a
 // " (copy)" suffix (copyName). s is left as it was.

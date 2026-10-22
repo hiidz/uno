@@ -78,14 +78,15 @@ describe('validateCollectionForm', () => {
     expect(Object.values(over.folders)[0]?.title).toBe('Keep the title to 60 characters or fewer.')
   })
 
-  it('takes media addresses that are http or https, and says which one is not', () => {
+  it('takes media addresses that are https, and says which one is not', () => {
     const media = (update: Partial<ReturnType<typeof newFolder>>) => {
       const form = { ...emptyCollectionForm(), title: 'C', folders: [{ ...newFolder(), title: 'F', ...update }] }
       return Object.values(validateCollectionForm(form, accessible).folders)[0]?.media
     }
-    expect(media({ coverImageURL: 'https://x.test/a.png', heroVideoURL: ' http://x.test/v.mp4 ' })).toBeUndefined()
+    expect(media({ coverImageURL: 'https://x.test/a.png', heroVideoURL: ' https://x.test/v.mp4 ' })).toBeUndefined()
+    expect(media({ heroVideoURL: 'http://x.test/v.mp4' })).toBe('Hero video must be a web address starting with https://.')
     expect(media({ coverImageURL: 'javascript:alert(1)' })).toBe(
-      'Cover image must be a web address starting with http:// or https://.',
+      'Cover image must be a web address starting with https://.',
     )
     expect(media({ titleLogoURL: 'not a url' })).toMatch(/^Title logo must be a web address/)
     expect(media({ focusGIFURL: `https://x.test/${'a'.repeat(2048)}` })).toBe('Focus GIF address is too long.')

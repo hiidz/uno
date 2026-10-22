@@ -14,6 +14,25 @@ func newProfileTestServer(t *testing.T, db *vault.DB) *Server {
 	return newTestServer(t, db, &fakeNuvio{})
 }
 
+// newCommunityServer is newProfileTestServer on a server whose Community
+// setting is community.
+func newCommunityServer(t *testing.T, db *vault.DB, community Community) *Server {
+	t.Helper()
+	s, err := New(Deps{
+		Vault:        db,
+		Provider:     provider.NewTMDBClient("key"),
+		Verifier:     acceptAnyToken{},
+		Nuvio:        &fakeNuvio{},
+		SiteBaseURL:  "http://example.com",
+		NuvioBaseURL: "https://nuvio.example.com",
+		Community:    community,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return s
+}
+
 // newTestServer builds a Server over db and nuvioClient that authenticates every
 // bearer token as acceptAnyToken's account.
 func newTestServer(t *testing.T, db *vault.DB, nuvioClient NuvioClient) *Server {

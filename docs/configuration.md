@@ -11,10 +11,11 @@ Uno reads environment variables, and a `.env` file in its working directory if t
 | `UNO_SECRET` | In `per-account` mode | — | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the saved TMDB keys. |
 | `UNO_ACCESS` | No | `open` | `open` lets any Nuvio account sign in. `allowlist` lets in only `UNO_ALLOWED_EMAILS`. |
 | `UNO_ALLOWED_EMAILS` | With `allowlist` | — | Comma-separated email addresses. Must be unset while access is `open`. |
+| `UNO_COMMUNITY` | No | `on` | `on`, `no-images` or `off`. `no-images` leaves every image and video address out of Community and out of every copy added, duplicated or updated from then on; a copy added before keeps its pictures until an update from its publisher replaces them. `off` turns Community and publishing off; what was already shared is kept for when it is on again. |
 | `PORT` | No | `8123` | Listen port. Plain HTTP. |
 | `VAULT_DB` | No | `vault.db` | Path to the SQLite file. |
 | `NUVIO_BASE_URL` | No | `https://api.nuvio.tv` | Nuvio's API. |
 | `DEV_AUTH_BYPASS_TOKEN` | No | — | Local development only. At least 32 characters. Sending it as the bearer token signs in as a fake account, with an in-memory stand-in for Nuvio. Never set it on a server others can reach. |
 | `UNO_TAG` | No | `latest` | Read by `compose.yaml` only: the image tag to run. |
 
-The browser gets `NUVIO_BASE_URL`, `NUVIO_PUBLISHABLE_KEY` and the TMDB key mode at runtime: the server puts them in the page it serves, as a `<script type="application/json" id="uno-config">` block.
+The browser gets `NUVIO_BASE_URL`, `NUVIO_PUBLISHABLE_KEY`, the TMDB key mode and the Community setting at runtime: the server puts them in the page it serves, as a `<script type="application/json" id="uno-config">` block.

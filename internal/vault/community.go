@@ -119,6 +119,24 @@ type communityPlan struct {
 	after *communityCursor
 }
 
+// WithholdCommunityMedia makes Community leave every media address out of
+// what it shows and copies: the list, a publication's page, what an Update
+// would change, and the copies Add, Duplicate and Update write. Publishers'
+// own rows and the snapshots as stored keep theirs, so a server that shares
+// them again shows them again. It is set once, before the DB serves anything.
+func (db *DB) WithholdCommunityMedia() {
+	db.withholdMedia = true
+}
+
+// shared is s as Community shows and copies it: s, or s without its media
+// addresses on a server that withholds them.
+func (db *DB) shared(s Snapshot) Snapshot {
+	if db.withholdMedia {
+		return s.withoutMedia()
+	}
+	return s
+}
+
 // ListCommunity is one page of the publications that aren't profileID's, as q
 // asks, or ErrInvalidInput for a q with an unknown kind or sort, a search
 // over its bounds, or a cursor that isn't one of q's sort's. Two publications
@@ -138,7 +156,7 @@ func (db *DB) communityPage(ctx context.Context, profileID uuid.UUID, plan commu
 		return CommunityPage{}, fmt.Errorf("querying community: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	items, keys, err := scanCommunityItems(rows)
+	items, keys, err := db.scanCommunityItems(rows)
 	if err != nil {
 		return CommunityPage{}, err
 	}
@@ -298,11 +316,11 @@ func (r keyedRow) Scan(dest ...any) error {
 
 // scanCommunityItems reads every row as a CommunityItem, with its order's key
 // as stored.
-func scanCommunityItems(rows *sql.Rows) ([]CommunityItem, []string, error) {
+func (db *DB) scanCommunityItems(rows *sql.Rows) ([]CommunityItem, []string, error) {
 	items, keys := []CommunityItem{}, []string{}
 	for rows.Next() {
 		var key string
-		item, _, err := scanCommunityItem(keyedRow{rows, &key})
+		item, _, err := db.scanCommunityItem(keyedRow{rows, &key})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -315,8 +333,8 @@ func scanCommunityItems(rows *sql.Rows) ([]CommunityItem, []string, error) {
 }
 
 // scanCommunityItem reads communityItemColumns and returns the item with the
-// snapshot it was read from.
-func scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error) {
+// snapshot it was read from, as Community shows it (shared).
+func (db *DB) scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error) {
 	var item CommunityItem
 	var id, publishedAt, updatedAt, raw string
 	if err := row.Scan(&id, &item.Kind, &item.Title, &item.SubscriberCount,
@@ -330,19 +348,20 @@ func scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error) {
 	if p.err != nil {
 		return CommunityItem{}, Snapshot{}, p.err
 	}
-	return item.withSnapshot(raw)
-}
-
-// withSnapshot is item with what its row shows of raw, its publication's
-// snapshot, and that snapshot decoded.
-func (item CommunityItem) withSnapshot(raw string) (CommunityItem, Snapshot, error) {
 	s, err := decodeSnapshot(raw)
 	if err != nil {
 		return CommunityItem{}, Snapshot{}, err
 	}
+	s = db.shared(s)
+	return item.withSnapshot(s), s, nil
+}
+
+// withSnapshot is item with what its row shows of s, its publication's
+// snapshot.
+func (item CommunityItem) withSnapshot(s Snapshot) CommunityItem {
 	item.CatalogNames, item.Catalog = s.listed(item.Kind)
 	item.Folders = s.listedFolders()
-	return item, s, nil
+	return item
 }
 
 // listedFolders is s's collection's folders in order as their tiles show
@@ -385,7 +404,7 @@ func (db *DB) GetPublication(ctx context.Context, profileID, publicationID uuid.
 		LEFT JOIN subscriptions s ON s.publication_id = p.id AND s.subscriber_id = :me
 		WHERE p.id = :id
 	`, sql.Named("me", profileID.String()), sql.Named("id", publicationID.String()))
-	item, snapshot, err := scanCommunityItem(row)
+	item, snapshot, err := db.scanCommunityItem(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PublicationDetail{}, ErrPublicationNotFound
 	}

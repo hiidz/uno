@@ -1,11 +1,20 @@
 /** The runtime settings the server puts in the page it serves
  *  (`internal/static`), as a `<script type="application/json" id="uno-config">`
  *  block. `per-account` means each Nuvio account brings its own TMDB key,
- *  which the picker asks for. */
+ *  which the picker asks for. `community` is the server's `UNO_COMMUNITY`:
+ *  Community as it is, without any image or video address, or off. */
 export interface PageConfig {
   nuvioBaseURL: string
   nuvioPublishableKey: string
   tmdb_key_mode: 'shared' | 'per-account'
+  community: 'on' | 'no-images' | 'off'
+}
+
+/** This server's `UNO_COMMUNITY`, from the page's config block, or `on` for a
+ *  page that has none: a component rendered on its own. */
+export function communitySetting(): PageConfig['community'] {
+  if (typeof document === 'undefined' || !document.getElementById('uno-config')) return 'on'
+  return pageConfig().community
 }
 
 /** The page's `uno-config` block. Read at call time, so a test (or a page)

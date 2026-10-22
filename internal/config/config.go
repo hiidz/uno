@@ -28,6 +28,9 @@ type Config struct {
 	SiteBaseURL         string
 	DevAuthBypassToken  string
 	Access              Access
+	// Community is UNO_COMMUNITY: CommunityOn, CommunityNoImages or
+	// CommunityOff.
+	Community string
 }
 
 // Access says which Nuvio accounts may sign in: every account, or, with
@@ -41,6 +44,14 @@ type Access struct {
 const (
 	accessOpen      = "open"
 	accessAllowlist = "allowlist"
+)
+
+// The values UNO_COMMUNITY takes: Community as it is, Community leaving out
+// every image and video address, or no Community at all.
+const (
+	CommunityOn       = "on"
+	CommunityNoImages = "no-images"
+	CommunityOff      = "off"
 )
 
 // Load reads .env (if present) and returns the resolved config, applying
@@ -60,11 +71,13 @@ func Load() (Config, error) {
 
 	tmdb, tmdbErr := loadTMDB()
 	access, accessErr := loadAccess()
-	if err := errors.Join(requireSet(cfg), devBypassProblem(cfg.DevAuthBypassToken), tmdbErr, accessErr); err != nil {
+	community, communityErr := loadCommunity()
+	if err := errors.Join(requireSet(cfg), devBypassProblem(cfg.DevAuthBypassToken), tmdbErr, accessErr, communityErr); err != nil {
 		return Config{}, err
 	}
 	cfg.TMDBAPIKey, cfg.PerAccountKeys, cfg.Secret = tmdb.apiKey, tmdb.perAccount, tmdb.secret
 	cfg.Access = access
+	cfg.Community = community
 	return cfg, nil
 }
 
@@ -127,6 +140,16 @@ func accessFor(mode string, emails []string) (Access, error) {
 		return Access{Allowlist: true, Emails: emails}, nil
 	}
 	return Access{}, fmt.Errorf("UNO_ACCESS is %q; want %q or %q", mode, accessOpen, accessAllowlist)
+}
+
+// loadCommunity reads UNO_COMMUNITY, refusing a value it doesn't take.
+func loadCommunity() (string, error) {
+	mode := getEnv("UNO_COMMUNITY", CommunityOn)
+	switch mode {
+	case CommunityOn, CommunityNoImages, CommunityOff:
+		return mode, nil
+	}
+	return "", fmt.Errorf("UNO_COMMUNITY is %q; want %q, %q or %q", mode, CommunityOn, CommunityNoImages, CommunityOff)
 }
 
 // allowedEmails is the comma-separated email addresses in s, trimmed and

@@ -4,6 +4,7 @@
 package api
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -44,6 +45,7 @@ type Server struct {
 	// nuvioCalls paces each account's requests to the routes that call Nuvio
 	// (limitNuvioCalls).
 	nuvioCalls *accountLimiter
+	community  Community
 }
 
 // ServeHTTP sets securityHeaders on every response — the API, the addon and
@@ -109,6 +111,7 @@ func New(d Deps) (*Server, error) {
 		admission:           d.Access.admission(),
 		keys:                d.Keys,
 		nuvioCalls:          newAccountLimiter(nuvioCallBurst, nuvioCallEvery),
+		community:           cmp.Or(d.Community, CommunityOn),
 	}
 	if err := s.routes(); err != nil {
 		return nil, err
@@ -119,7 +122,9 @@ func New(d Deps) (*Server, error) {
 func (s *Server) routes() error {
 	// Not profile-scoped: previewing a recipe reads nothing from the vault, so
 	// there is no profile to resolve. Every other catalog route, including
-	// publishing and Community, lives under /api/p/{profileIndex}/.
+	// publishing and Community, lives under /api/p/{profileIndex}/. Publishing
+	// and Community go through sharingOn: a 404 on a server whose Community
+	// is off.
 	s.router.HandleFunc("POST /api/catalogs/preview", s.requireNuvioAuth(s.previewCatalog))
 	s.router.HandleFunc("POST /api/catalogs/genre-options", s.requireNuvioAuth(s.catalogGenreOptions))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/library", s.requireProfileAuth(s.getLibrary))
@@ -127,25 +132,25 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.updateUserCatalog))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/catalogs/{catalogID}", s.requireProfileAuth(s.deleteUserCatalog))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/duplicate", s.requireProfileAuth(s.duplicateUserCatalog))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/publish", s.requireProfileAuth(s.publishCatalog))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/unpublish", s.requireProfileAuth(s.unpublishCatalog))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/{catalogID}/changes-since-publish", s.requireProfileAuth(s.catalogChanges))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/publish", s.requireProfileAuth(s.sharingOn(s.publishCatalog)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/catalogs/{catalogID}/unpublish", s.requireProfileAuth(s.sharingOn(s.unpublishCatalog)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/catalogs/{catalogID}/changes-since-publish", s.requireProfileAuth(s.sharingOn(s.catalogChanges)))
 
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections", s.requireProfileAuth(s.createUserCollection))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/duplicate", s.requireProfileAuth(s.duplicateUserCollection))
 	s.router.HandleFunc("PUT /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.updateUserCollection))
 	s.router.HandleFunc("DELETE /api/p/{profileIndex}/collections/{collectionID}", s.requireProfileAuth(s.deleteUserCollection))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/publish", s.requireProfileAuth(s.publishCollection))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/unpublish", s.requireProfileAuth(s.unpublishCollection))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/{collectionID}/changes-since-publish", s.requireProfileAuth(s.collectionChanges))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/publish", s.requireProfileAuth(s.sharingOn(s.publishCollection)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/unpublish", s.requireProfileAuth(s.sharingOn(s.unpublishCollection)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/{collectionID}/changes-since-publish", s.requireProfileAuth(s.sharingOn(s.collectionChanges)))
 
 	// Community: other profiles' live publications, by publication id.
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.listCommunityPage))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}", s.requireProfileAuth(s.getPublication))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/subscribe", s.requireProfileAuth(s.subscribe))
-	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}/changes", s.requireProfileAuth(s.updateChanges))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/update", s.requireProfileAuth(s.updateSubscription))
-	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/duplicate", s.requireProfileAuth(s.duplicatePublication))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.sharingOn(s.listCommunityPage)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}", s.requireProfileAuth(s.sharingOn(s.getPublication)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/subscribe", s.requireProfileAuth(s.sharingOn(s.subscribe)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/community/{publicationID}/changes", s.requireProfileAuth(s.sharingOn(s.updateChanges)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/update", s.requireProfileAuth(s.sharingOn(s.updateSubscription)))
+	s.router.HandleFunc("POST /api/p/{profileIndex}/community/{publicationID}/duplicate", s.requireProfileAuth(s.sharingOn(s.duplicatePublication)))
 
 	s.router.HandleFunc("POST /api/p/{profileIndex}/export", s.requireProfileAuth(s.exportBundle))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/import/check", s.requireProfileAuth(s.checkImport))
@@ -201,6 +206,7 @@ func (s *Server) routes() error {
 		NuvioBaseURL:        s.nuvioBaseURL,
 		NuvioPublishableKey: s.nuvioPublishableKey,
 		TMDBKeyMode:         s.tmdbKeyMode(),
+		Community:           string(s.community),
 	})
 	if err != nil {
 		return fmt.Errorf("api: building static handler: %w", err)

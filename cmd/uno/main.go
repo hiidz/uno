@@ -54,6 +54,12 @@ func run() error {
 			log.Printf("Failed to close database: %v", err)
 		}
 	}()
+	if cfg.Community != config.CommunityOn {
+		log.Printf("Community: %s", cfg.Community)
+	}
+	if cfg.Community == config.CommunityNoImages {
+		db.WithholdCommunityMedia()
+	}
 
 	deps, err := apiDeps(cfg, db)
 	if err != nil {
@@ -131,6 +137,7 @@ func apiDeps(cfg config.Config, db *vault.DB) (api.Deps, error) {
 		NuvioPublishableKey: cfg.NuvioPublishableKey,
 		Access:              api.Access{Allowlist: cfg.Access.Allowlist, Emails: cfg.Access.Emails},
 		Keys:                keys,
+		Community:           api.Community(cfg.Community),
 	}
 	if cfg.DevAuthBypassToken != "" {
 		api.LogDevBypassEnabled()

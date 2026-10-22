@@ -70,8 +70,8 @@ func (db *DB) copyablePublication(ctx context.Context, profileID, publicationID 
 	`, publicationID.String(), profileID.String()))
 }
 
-// Subscribe writes publicationID's snapshot as profileID's own rows and
-// subscribes them to it: a catalog publication becomes a listed catalog, a
+// Subscribe writes publicationID's snapshot, as Community shares it (shared),
+// as profileID's own rows and subscribes them to it: a catalog publication becomes a listed catalog, a
 // collection publication a collection with every catalog scoped to it. The
 // copy is unpublished, off Home and never pushed. Only the form validators
 // run: the snapshot's recipes were checked against TMDB when it was
@@ -97,7 +97,7 @@ func (db *DB) copyPublication(ctx context.Context, profileID, publicationID uuid
 	if err != nil {
 		return CommunityCopy{}, err
 	}
-	pub.snapshot = pub.snapshot.forCopy(subscribe)
+	pub.snapshot = db.shared(pub.snapshot.forCopy(subscribe))
 	if err := pub.snapshot.validate(); err != nil {
 		return CommunityCopy{}, err
 	}
@@ -201,7 +201,7 @@ func loadSubscription(ctx context.Context, q dbtx, profileID, publicationID uuid
 }
 
 // UpdateSubscription brings profileID's subscribed copy of publicationID
-// up to its current snapshot. A catalog copy takes the snapshot's name and
+// up to its current snapshot, as Community shares it (shared). A catalog copy takes the snapshot's name and
 // recipe. A collection copy is overwritten by key through the same update
 // core a collection save uses: each of its folders and scoped catalogs
 // whose key the snapshot still has keeps its id and takes the snapshot's
@@ -222,6 +222,7 @@ func (db *DB) UpdateSubscription(ctx context.Context, profileID, publicationID u
 		if sub.subscribedHash == sub.pub.contentHash {
 			return nil
 		}
+		sub.pub.snapshot = db.shared(sub.pub.snapshot)
 		if sub.pub.kind == kindCatalog {
 			err = updateCatalogCopy(ctx, tx, profileID, sub)
 		} else {

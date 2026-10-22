@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Navigate, useLocation, useNavigate, type Location } from 'react-router-dom'
 import type { ToastInput } from '@/components/toastQueue'
 
@@ -32,14 +32,18 @@ export function ToParent({ to, notice }: { to: string; notice: string }) {
 }
 
 /** Says the notice `ToParent` carried here, once: the entry's state is
- *  cleared as it is shown, so a reload doesn't say it again. */
+ *  cleared as it is shown, so a reload doesn't say it again, and an entry
+ *  whose notice was shown is not shown again when a screen mounting fresh
+ *  runs its effects twice (React's StrictMode). */
 export function useRedirectNotice(show: (toast: ToastInput) => void) {
   const location = useLocation()
   const navigate = useNavigate()
+  const shownFor = useRef<string | null>(null)
   const notice = (location.state as { notice?: unknown } | null)?.notice
   const text = typeof notice === 'string' ? notice : null
   useEffect(() => {
-    if (text === null) return
+    if (text === null || shownFor.current === location.key) return
+    shownFor.current = location.key
     show({ text, tone: 'notice' })
     void navigate(location.pathname, { replace: true, state: null })
     // Once per notice: `show` and `navigate` are stable, and the path is the

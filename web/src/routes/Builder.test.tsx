@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Catalog } from '@/api'
+import { ToastProvider } from '@/components/Toasts'
 import { useHomeEdits, useHomeSelection } from '@/features/home/useHomeSelection'
 import { catalog } from '@/test/fixtures'
 import { pickProfile, watchActiveProfile } from './activeProfile'
@@ -83,7 +84,9 @@ function open(profile: number | null, path = '/configure') {
   if (profile !== null) pickProfile(auth.account, profile)
   render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ToastProvider>
+        <RouterProvider router={router} />
+      </ToastProvider>
     </QueryClientProvider>,
   )
   return router

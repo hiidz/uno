@@ -75,25 +75,28 @@ type StickerRow = Pick<Catalog, 'publication' | 'subscription'>
 /** The one Community sticker a row carries, changing with its state: an own
  *  row reads Published, then To publish once edited since; a row added
  *  from Community reads From Community, then Update available. A row its
- *  publisher unpublished is an own row like any other. */
-function communitySticker(row: StickerRow): SharingSticker | null {
-  if (row.subscription) return row.subscription.update_available ? UPDATE_AVAILABLE : FROM_COMMUNITY
+ *  publisher unpublished is an own row like any other. On a server whose
+ *  Community is off (`communityOff`), only From Community is left: it says
+ *  why the row opens as a view. */
+function communitySticker(row: StickerRow, communityOff: boolean): SharingSticker | null {
+  if (row.subscription) return row.subscription.update_available && !communityOff ? UPDATE_AVAILABLE : FROM_COMMUNITY
+  if (communityOff) return null
   const state = ownSharing(row.publication)
   if (state === 'live') return PUBLISHED
   return state === 'changed' ? TO_PUBLISH : null
 }
 
 /** What the library rail shows besides the kind: the row's Community sticker. */
-export function railStickers(row: StickerRow): SharingSticker[] {
-  const sticker = communitySticker(row)
+export function railStickers(row: StickerRow, communityOff = false): SharingSticker[] {
+  const sticker = communitySticker(row, communityOff)
   return sticker ? [sticker] : []
 }
 
 /** Every flag a row carries, for an editor's sign: its Community sticker,
  *  and To push while `waitingForPush` says Nuvio holds it differently from
  *  how a push would send it now. */
-export function rowStickers(row: StickerRow, waitingForPush: boolean): SharingSticker[] {
-  const stickers = railStickers(row)
+export function rowStickers(row: StickerRow, waitingForPush: boolean, communityOff = false): SharingSticker[] {
+  const stickers = railStickers(row, communityOff)
   if (waitingForPush) stickers.push(TO_PUSH)
   return stickers
 }
@@ -108,8 +111,8 @@ export function homeStickers(waitingForPush: boolean): SharingSticker[] {
 /** `rowStickers` for the view a row added from Community opens as, whose
  *  sign says From Community even while an update waits: its Update… button
  *  says the update. */
-export function viewStickers(row: StickerRow, waitingForPush: boolean): SharingSticker[] {
-  const stickers = rowStickers(row, waitingForPush)
+export function viewStickers(row: StickerRow, waitingForPush: boolean, communityOff = false): SharingSticker[] {
+  const stickers = rowStickers(row, waitingForPush, communityOff)
   const update = stickers.indexOf(UPDATE_AVAILABLE)
   if (update >= 0) stickers[update] = FROM_COMMUNITY
   return stickers

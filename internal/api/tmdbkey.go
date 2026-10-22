@@ -14,15 +14,16 @@ import (
 
 // serverConfig is what the SPA is told of how this server is set up: whether
 // every account shares one TMDB key ("shared") or brings its own
-// ("per-account").
+// ("per-account"), and what its Community does.
 type serverConfig struct {
-	TMDBKeyMode string `json:"tmdb_key_mode"`
+	TMDBKeyMode string    `json:"tmdb_key_mode"`
+	Community   Community `json:"community"`
 }
 
 // config answers GET /api/config. It needs no sign-in: it says nothing about
 // any account.
 func (s *Server) config(w http.ResponseWriter, _ *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, serverConfig{TMDBKeyMode: s.tmdbKeyMode()})
+	httpx.WriteJSON(w, http.StatusOK, serverConfig{TMDBKeyMode: s.tmdbKeyMode(), Community: s.community})
 }
 
 // tmdbKeyMode is "per-account" on a server where each account brings its own

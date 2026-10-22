@@ -34,7 +34,7 @@ tags:
   - name: library
     description: A profile's catalogs and collections.
   - name: sharing
-    description: Publishing, Community, and added copies.
+    description: Publishing, Community, and added copies. Every route here is a 404 on a server whose UNO_COMMUNITY is off.
   - name: bundles
     description: Export and import.
   - name: push
@@ -67,11 +67,11 @@ paths:
   /api/config:
     get:
       tags: [server]
-      summary: The server's TMDB key mode
+      summary: The server's TMDB key mode and Community setting
       security: []
       responses:
         "200":
-          description: How this server reaches TMDB.
+          description: How this server reaches TMDB, and what its Community does.
           content:
             application/json:
               schema:
@@ -1458,11 +1458,18 @@ components:
 
     ServerConfig:
       type: object
-      required: [tmdb_key_mode]
+      required: [tmdb_key_mode, community]
       properties:
         tmdb_key_mode:
           type: string
           enum: [shared, per-account]
+        community:
+          type: string
+          enum: ["on", no-images, "off"]
+          description: >-
+            UNO_COMMUNITY. no-images leaves every image and video address out of
+            Community and out of the copies Add, Duplicate and Update write; off
+            answers every publish, unpublish and Community route with a 404.
 
     TMDBKeyStatus:
       type: object
@@ -1569,7 +1576,7 @@ components:
     FolderArt:
       type: object
       description: |
-        Each `_url` field is empty or an absolute http or https URL. A save
+        Each `_url` field is empty or an absolute https URL. A save
         refuses one whose host is localhost or a literal loopback, private,
         link-local or unspecified address.
       properties:
@@ -1687,7 +1694,7 @@ components:
         backdrop_image_url:
           type: string
           maxLength: 2048
-          description: Empty, or an http or https URL under the same host rule as FolderArt's.
+          description: Empty, or an https URL under the same host rule as FolderArt's.
         focus_glow_enabled: { type: boolean }
         folders:
           type: array

@@ -76,6 +76,8 @@ Nuvio's apps load `{SITE_BASE_URL}/u/{token}/manifest.json`. Each profile has it
 
 Profiles on the same server can **publish** catalogs and collections to Community. Others can **add** one (a linked copy that can take updates) or **duplicate** it (an independent copy).
 
+Publishers type in image and video addresses, and every viewer's browser and Nuvio fetches them from the host they name. Uno takes only `https` ones, and `UNO_COMMUNITY` (`docs/configuration.md`) can leave them out of Community (`no-images`) or turn Community off.
+
 ## API
 
 [`api/openapi.yaml`](api/openapi.yaml) lists every route. A Go test (`TestOpenAPISpecMatchesRoutes`) fails if the spec and the routes in `server.go` disagree.
