@@ -167,3 +167,11 @@ CREATE TABLE push_records (
     record             TEXT NOT NULL, -- JSON, vault.PushRecord
     pushed_at          TEXT NOT NULL  -- RFC3339 UTC
 );
+
+-- An account the server's operator has stopped from publishing (vault.TakeDown
+-- with block). It still builds and pushes to its own Nuvio.
+CREATE TABLE blocked_publishers (
+    nuvio_user_id TEXT PRIMARY KEY, -- Nuvio auth.users.id, as profiles.nuvio_user_id
+    blocked_at    TEXT NOT NULL,    -- RFC3339 UTC
+    title         TEXT NOT NULL     -- the title of the post whose takedown made the block
+);

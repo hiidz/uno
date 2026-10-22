@@ -54,6 +54,19 @@ const (
 	CommunityOff      = "off"
 )
 
+// DBPath reads .env (if present) and returns VAULT_DB alone, for a command
+// that needs the vault and none of the server's other settings.
+func DBPath() string {
+	_ = godotenv.Load()
+	return getEnv(envDBPath, defaultDBPath)
+}
+
+// VAULT_DB and the path it defaults to.
+const (
+	envDBPath     = "VAULT_DB"
+	defaultDBPath = "vault.db"
+)
+
 // Load reads .env (if present) and returns the resolved config, applying
 // defaults for any variable that isn't set. It returns one error naming
 // every required variable that is missing and every value it can't use.
@@ -61,7 +74,7 @@ func Load() (Config, error) {
 	_ = godotenv.Load()
 
 	cfg := Config{
-		DBPath:              getEnv("VAULT_DB", "vault.db"),
+		DBPath:              getEnv(envDBPath, defaultDBPath),
 		Port:                getEnv("PORT", "8123"),
 		NuvioBaseURL:        getEnv("NUVIO_BASE_URL", "https://api.nuvio.tv"),
 		NuvioPublishableKey: getEnv("NUVIO_PUBLISHABLE_KEY", ""),

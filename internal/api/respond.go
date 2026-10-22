@@ -133,6 +133,9 @@ var keyFailures = []clientFailure{
 // words — safe, since every such message is built from validation or state
 // text, never a lower-level detail — and 409 for vault.ErrStale, an editor's
 // save built from a row another write has changed since, in fixed words.
+// vault.ErrBlocked is not among them: a publish from an account the operator
+// has blocked answers as any failed publish does, a logged 500, so nothing
+// tells the publisher why.
 var clientErrors = slices.Concat(keyFailures, []clientFailure{
 	{vault.ErrInvalidInput, http.StatusBadRequest, ""},
 	{vault.ErrConflict, http.StatusConflict, ""},

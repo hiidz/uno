@@ -19,12 +19,19 @@ var schema string
 
 // schemaVersion is the PRAGMA user_version a database holding schema.sql's
 // schema carries.
-const schemaVersion = 12
+const schemaVersion = 13
 
 // migrations[v] is the SQL that takes a database from schema version v to
 // v+1. A database below schemaVersion runs every step from its version up, so
 // each step stays here for good: a server can skip any number of releases.
-var migrations = map[int]string{}
+var migrations = map[int]string{
+	12: `
+CREATE TABLE blocked_publishers (
+    nuvio_user_id TEXT PRIMARY KEY,
+    blocked_at    TEXT NOT NULL,
+    title         TEXT NOT NULL
+);`,
+}
 
 // DB is a handle to Uno's SQLite database.
 type DB struct {

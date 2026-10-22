@@ -71,7 +71,7 @@ func (db *DB) PublishCatalog(ctx context.Context, profileID, catalogID uuid.UUID
 		id, existing := publicationID(c.Publication)
 		return newPublication(kindCatalog, id, existing, profileID, c.ID, c.Name, catalogSnapshot(id, c))
 	}
-	if err := db.publish(ctx, load); err != nil {
+	if err := db.publish(ctx, profileID, load); err != nil {
 		return Catalog{}, err
 	}
 	return ownCatalog(ctx, db.conn, profileID, catalogID)
@@ -109,7 +109,7 @@ func (db *DB) PublishCollection(ctx context.Context, profileID, collectionID uui
 		id, existing := publicationID(tree.Publication)
 		return newPublication(kindCollection, id, existing, profileID, tree.ID, tree.Title, collectionSnapshot(id, tree))
 	}
-	if err := db.publish(ctx, load); err != nil {
+	if err := db.publish(ctx, profileID, load); err != nil {
 		return CollectionWithFolders{}, err
 	}
 	return ownCollection(ctx, db.conn, profileID, collectionID)
@@ -128,12 +128,16 @@ func publishableCollection(ctx context.Context, q dbtx, profileID, collectionID 
 	return tree, nil
 }
 
-// publish runs one publish in one transaction: load the source as its
-// publication, refuse a snapshot the form validators its copies are written
-// through would refuse, and write it. Every recipe in it was checked against
-// TMDB when its row was written, so a publish makes no TMDB call.
-func (db *DB) publish(ctx context.Context, load func(*sql.Tx) (publication, error)) error {
+// publish runs one publish by profileID in one transaction: refuse a profile
+// whose account is blocked (ErrBlocked), load the source as its publication,
+// refuse a snapshot the form validators its copies are written through would
+// refuse, and write it. Every recipe in it was checked against TMDB when its
+// row was written, so a publish makes no TMDB call.
+func (db *DB) publish(ctx context.Context, profileID uuid.UUID, load func(*sql.Tx) (publication, error)) error {
 	return db.inTx(ctx, func(tx *sql.Tx) error {
+		if err := refuseBlocked(ctx, tx, profileID); err != nil {
+			return err
+		}
 		p, err := load(tx)
 		if err != nil {
 			return err
