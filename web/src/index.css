@@ -1382,8 +1382,8 @@
             linear-gradient(to right, var(--uno-ground) 0%, color-mix(in srgb, var(--uno-ground) 55%, transparent) 40%, transparent 70%),
             linear-gradient(to top, var(--uno-ground) 0%, transparent 45%);
     }
-    /* Nuvio's logo box is 220 × 100 on a TV-wide hero; here it keeps that
-       share of the frame. */
+    /* The logo box, at the lower left. Nuvio's is 220 × 100 dp, a smaller
+       share of a TV-wide hero; here it is drawn larger to read at this size. */
     .art-hero-title {
         position: absolute;
         left: 6%;
