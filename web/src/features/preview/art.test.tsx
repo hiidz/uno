@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FocusGIFTile, HeroPreview, PictureTile } from './art'
+import { FocusGIFTile, HeroPreview, LeftOutPicture, PictureTile } from './art'
 
 function prefersLessMotion(reduce: boolean) {
   window.matchMedia = ((query: string) => ({
@@ -58,5 +58,32 @@ describe('HeroPreview', () => {
   it('shows nothing in the logo place when there is no logo and the title is hidden', () => {
     const { container } = render(<HeroPreview art={{ backdrop: 'https://a/bg.jpg', logo: '', text: '' }} />)
     expect(container.querySelector('.art-hero-title')?.textContent).toBe('')
+  })
+})
+
+describe('LeftOutPicture', () => {
+  const url = 'https://i.postimg.cc/Xq4mP2Lw/marvel-studios-focus.gif'
+
+  it('cuts the address to the box, opens it whole on a tap and cuts it again on another, loading nothing', () => {
+    const { container } = render(<LeftOutPicture url={url} shape="LANDSCAPE" />)
+    const address = screen.getByTitle(url)
+    expect(address).toHaveTextContent('i.postimg.cc/…-focus.gif')
+    expect(address).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(address)
+    expect(address).toHaveTextContent(url)
+    expect(address).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(address)
+    expect(address).toHaveTextContent('i.postimg.cc/…-focus.gif')
+    expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('names the site alone in a narrow box until opened', () => {
+    render(<LeftOutPicture url={url} shape="POSTER" />)
+    const address = screen.getByTitle(url)
+    expect(address).toHaveTextContent(/^i\.postimg\.cc$/)
+    fireEvent.click(address)
+    expect(address).toHaveTextContent(url)
   })
 })

@@ -86,21 +86,25 @@ export type LeftOutShape = TileShape | 'BACKDROP' | 'LOGO'
  * A picture the server left out of Community, in its place: a dashed box at
  * the picture's shape saying so, with its address cut to fit and an icon that
  * copies the whole of it. The address is never loaded. A narrow box (poster,
- * square, a phone's background image) names the site alone.
+ * square, a phone's background image) names the site alone. A tap on the
+ * address opens it whole, wrapped, the box growing to hold it; another cuts it
+ * again.
  */
 export function LeftOutPicture({ url, shape }: { url: string; shape: LeftOutShape }) {
   const { copied, copy } = useCopy(url)
+  const [open, setOpen] = useState(false)
   const site = siteOf(url) || url
   const narrow = shape === 'POSTER' || shape === 'SQUARE'
   return (
-    <span className={`art-pic art-out ${leftOutClass(shape)}`}>
+    <span className={`art-pic art-out ${leftOutClass(shape)}${open ? ' is-open' : ''}`}>
       <span className="art-out-note text-caption">
         <Icon icon={ImageOff} size={16} />
         <span>Left out</span>
         <span className="art-out-addr">
-          <span className="art-out-url" title={url}>
-            {narrow ? site : <AddressCut url={url} site={site} backdrop={shape === 'BACKDROP'} />}
-          </span>
+          {/* drift-ok: the address inside a left-out box, a toggle drawn by `.art-out-url` */}
+          <button type="button" className="art-out-url" title={url} aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? url : narrow ? site : <AddressCut url={url} site={site} backdrop={shape === 'BACKDROP'} />}
+          </button>
           {/* drift-ok: the copy icon inside a left-out box, drawn by `.art-out-copy` */}
           <button type="button" className="art-out-copy" aria-label="Copy address" title="Copy address" onClick={copy}>
             <Icon icon={copied ? Check : Copy} size={13} />
