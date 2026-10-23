@@ -1,11 +1,25 @@
 import type { Catalog, CatalogType, Collection, Folder, PendingChange, PublicationState } from '@/api'
 import { typeLabel } from '@/features/library/recipe'
+import { siteOf } from '@/features/preview/heroArt'
 import type { PageConfig } from '@/lib/pageConfig'
 
 /** Whether the Publish dialog asks which pictures Community leaves out: for a
  *  collection, on a server that shares pictures from trusted sites only. */
 export function asksWithheldMedia(kind: 'catalog' | 'collection', community: PageConfig['community']): boolean {
   return kind === 'collection' && community === 'trusted-images'
+}
+
+/** The line under a picture field when the server says Community leaves its
+ *  address out (`withheld`, the addresses its withheld-media read names for
+ *  the saved collection), or undefined. Only a saved address can be named,
+ *  so an edited one has no line until the collection is saved again. */
+export function withheldNote(address: string, withheld: ReadonlySet<string> | undefined): string | undefined {
+  const trimmed = address.trim()
+  if (!withheld || !trimmed || !withheld.has(trimmed)) return undefined
+  const site = siteOf(trimmed)
+  return site
+    ? `Community won’t show this: ${site} isn’t one of this server’s picture sites.`
+    : 'Community won’t show this picture.'
 }
 
 /** Where an owner's own row stands with Community: not published (never, or

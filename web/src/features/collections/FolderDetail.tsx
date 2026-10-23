@@ -5,6 +5,8 @@ import type { TileShape } from '@/api'
 import { Button } from '@/components/Button'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
+import { withheldNote } from '@/features/sharing/sharingState'
+import { communitySetting } from '@/lib/pageConfig'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import { CatalogRow } from './CatalogRow'
 import {
@@ -18,6 +20,7 @@ import {
 } from './collectionForm'
 import { dragID } from './folderDnd'
 import {
+  CommunityNote,
   CoverPicture,
   FocusGIFPicture,
   FolderHero,
@@ -58,12 +61,15 @@ export function FolderDetail({
   onChange,
   onRemove,
   backdropImageURL = '',
+  withheldAddresses,
   ...catalogs
 }: {
   folder: FolderFormState
   position: number
   /** The collection's background image, the hero's last fallback. */
   backdropImageURL?: string
+  /** The addresses Community would leave out of the collection as saved. */
+  withheldAddresses?: ReadonlySet<string>
   /** Undefined until the user has tried to save — same rule as the catalog
    *  builder, which withholds errors until submit. */
   errors: FolderErrors | undefined
@@ -77,6 +83,7 @@ export function FolderDetail({
   const label = folderLabel(folder, position)
   const shown = useShownPictures(folder)
   const shownBackdrop = useShownAddress(backdropImageURL)
+  const note = (address: string) => withheldNote(address, withheldAddresses)
 
   return (
     <section className="fold-detail" aria-label={`Folder: ${folder.title.trim() || 'untitled'}`}>
@@ -124,6 +131,11 @@ export function FolderDetail({
 
       {appearanceOpen && (
         <>
+          {communitySetting() === 'no-images' && (
+            <div className="py-2">
+              <CommunityNote text="Community shares no pictures on this server: a published copy shows none of these." />
+            </div>
+          )}
           <div className="setting">
             <span className="setting-label type-label">Hide the title</span>
             <div className="setting-value ed-line">
@@ -183,6 +195,7 @@ export function FolderDetail({
                 </div>
               </div>
               <CoverPicture src={shown.cover} folder={folder} />
+              <CommunityNote text={note(folder.coverImageURL)} />
             </div>
           </div>
 
@@ -214,6 +227,7 @@ export function FolderDetail({
                 ariaLabel={`Focus GIF URL for ${label}`}
               />
               <FocusGIFPicture src={shown.focusGIF} folder={folder} />
+              <CommunityNote text={note(folder.focusGIFURL)} />
             </div>
           </div>
 
@@ -225,7 +239,9 @@ export function FolderDetail({
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home hero backdrop URL for ${label}`}
             note="Hero backdrop and title logo are used only by Nuvio TV's Modern Home layout."
-          />
+          >
+            <CommunityNote text={note(folder.heroBackdropURL)} />
+          </HeroURLRow>
           <HeroURLRow
             id={`${idBase}-title-logo`}
             role="Title logo"
@@ -235,6 +251,7 @@ export function FolderDetail({
             ariaLabel={`Modern Home title logo URL for ${label}`}
           >
             <LogoPicture src={shown.titleLogo} />
+            <CommunityNote text={note(folder.titleLogoURL)} />
           </HeroURLRow>
           <FolderHero folder={folder} shown={shown} backdropImageURL={shownBackdrop} />
           {errors?.media && <FieldError>{errors.media}</FieldError>}

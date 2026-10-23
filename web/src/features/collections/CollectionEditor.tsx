@@ -20,7 +20,7 @@ import type { CatalogFormState } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
 import { CatalogTypeField } from '@/features/catalogs/fields'
 import type { GenreLookups } from '@/features/library/useLibrary'
-import { COLLECTION_KIND } from '@/features/sharing/sharingState'
+import { COLLECTION_KIND, withheldNote } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { andList } from '@/lib/list'
 import { moveByOne, orderByKeys } from '@/lib/order'
@@ -95,6 +95,9 @@ interface CollectionEditorProps {
   /** This collection's own server id: what a copied or new catalog is scoped
    *  to. */
   collectionID: string
+  /** The addresses Community would leave out of this collection as saved,
+   *  on a server that shares pictures from trusted sites only. */
+  withheldAddresses?: ReadonlySet<string>
   /** Every catalog this collection's folders already reference, listed or
    *  scoped. A duplicated collection arrives here with its own fresh scoped
    *  copies already populated (`Configure.tsx`'s `EditorTarget.initialCatalogs`
@@ -206,6 +209,7 @@ export function CollectionEditor({
   onDelete,
   onDirtyChange,
   collectionID,
+  withheldAddresses,
   initialCatalogs,
   genres,
   genreLookups,
@@ -569,6 +573,7 @@ export function CollectionEditor({
                       folder={selectedFolder}
                       position={selectedIndex}
                       backdropImageURL={state.backdropImageURL}
+                      withheldAddresses={withheldAddresses}
                       errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
                       options={options}
                       optionByID={mergedOptionByID}
@@ -593,7 +598,12 @@ export function CollectionEditor({
               </FolderTreeDnd>
             )}
 
-            <CollectionAppearance state={state} backdropError={showErrors ? errors.backdrop : undefined} onChange={patch} />
+            <CollectionAppearance
+              state={state}
+              backdropError={showErrors ? errors.backdrop : undefined}
+              backdropNote={withheldNote(state.backdropImageURL, withheldAddresses)}
+              onChange={patch}
+            />
           </div>
 
           <CollectionPreview collection={preview} />

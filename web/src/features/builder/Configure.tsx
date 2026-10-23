@@ -34,6 +34,7 @@ import { usePushWaiting } from '@/features/push/usePushWaiting'
 import { CatalogFromCommunity, CollectionFromCommunity } from '@/features/sharing/FromCommunityView'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
 import { rowStickers } from '@/features/sharing/sharingState'
+import { useWithheldAddresses } from '@/features/sharing/useWithheldMedia'
 import { andList } from '@/lib/list'
 import { communitySetting } from '@/lib/pageConfig'
 import { pluralCount } from '@/lib/plural'
@@ -166,6 +167,7 @@ export function Configure({
   })
   const target = route.target
   useDocumentTitle(paneTitle(target))
+  const withheldAddresses = useWithheldAddresses(profileIndex, target)
 
   /** Selecting a library row (`selectionAction`): another row opens; the open
    *  one closes as × does. */
@@ -647,6 +649,7 @@ export function Configure({
                 onDelete={activeCollection ? () => deleteCollection(activeCollection) : undefined}
                 onDirtyChange={setDirty}
                 collectionID={target.id}
+                withheldAddresses={withheldAddresses}
                 initialCatalogs={editingCollectionCatalogs}
                 genres={library.genreLists}
                 genreLookups={library.genres}

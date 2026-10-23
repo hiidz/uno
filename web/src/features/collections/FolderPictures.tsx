@@ -10,6 +10,14 @@ function FieldPicture({ children }: { children: ReactNode }) {
   return <div className="pt-1">{children}</div>
 }
 
+/** A picture field's line saying Community leaves it out (`withheldNote`),
+ *  or the shelf's saying Community shares no pictures here; nothing without
+ *  `text`. */
+export function CommunityNote({ text }: { text: string | undefined }) {
+  if (!text) return null
+  return <p className="ed-note m-0">{text}</p>
+}
+
 export function CoverPicture({ src, folder }: { src: string; folder: FolderFormState }) {
   if (!src) return null
   return (
