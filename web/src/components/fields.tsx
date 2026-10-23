@@ -306,6 +306,9 @@ export function Select({
  * An option with a `disabledReason` is greyed on its own and can't be picked.
  * It says why in its tooltip, and through `onDisabledPick` when tapped or
  * clicked, since a tooltip never opens on a touch screen.
+ *
+ * With `fillOnPhone`, below `sm` it takes its row's whole width instead, its
+ * options sharing it evenly.
  */
 export function Segmented<T extends string>({
   value,
@@ -314,6 +317,7 @@ export function Segmented<T extends string>({
   ariaLabel,
   disabled = false,
   onDisabledPick,
+  fillOnPhone = false,
 }: {
   value: T
   onChange: (value: T) => void
@@ -328,13 +332,14 @@ export function Segmented<T extends string>({
    *  but inert" rather than "cleared". The reason lives in a grey note beside
    *  it, which the caller supplies — this control only draws the grey state. */
   disabled?: boolean
+  fillOnPhone?: boolean
 }) {
   return (
     <div
       role="group"
       aria-label={ariaLabel}
       aria-disabled={disabled || undefined}
-      className="bg-raised flex w-fit max-w-full shrink-0 flex-wrap gap-0.5 rounded-[19px] p-[3px] shadow-[inset_0_0_0_1px_var(--uno-line-hi)]"
+      className={`bg-raised flex ${fillOnPhone ? 'w-full sm:w-fit' : 'w-fit'} max-w-full shrink-0 flex-wrap gap-0.5 rounded-[19px] p-[3px] shadow-[inset_0_0_0_1px_var(--uno-line-hi)]`}
     >
       {options.map((option) => {
         const optionOff = Boolean(option.disabledReason)

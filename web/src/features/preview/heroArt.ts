@@ -49,3 +49,13 @@ export function siteOf(address: string): string {
 export function shapeClass(shape: TileShape): 'poster' | 'landscape' | 'square' {
   return shape === 'LANDSCAPE' ? 'landscape' : shape === 'SQUARE' ? 'square' : 'poster'
 }
+
+/** `address` without its scheme, cut in the middle to at most about `max`
+ *  characters: its site, `/…`, then as much of the end as fits, and never
+ *  less than 8 characters of it. One that fits is left whole. */
+export function cutAddress(address: string, max: number): string {
+  const bare = address.replace(/^https?:\/\//, '')
+  if (bare.length <= max) return bare
+  const site = bare.split('/')[0]
+  return `${site}/…${bare.slice(-Math.max(8, max - site.length - 2))}`
+}

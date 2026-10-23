@@ -244,9 +244,21 @@ export interface CommunityFolder {
   cover_image_url: string
 }
 
-/** `GET /api/p/{i}/community/{id}`: one publication with its snapshot. */
+/** `GET /api/p/{i}/community/{id}`: one publication with its snapshot, as
+ *  Community shows it, and each media address the server left out of it
+ *  (`withheld`): empty on a server that shares every site, and for a catalog. */
 export interface PublicationDetail extends CommunityItem {
   snapshot: Snapshot
+  withheld: WithheldAddress[]
+}
+
+/** One media address the server left out of a publication's snapshot: the
+ *  key of the folder it is in, `""` for the collection's background image,
+ *  the field it is in, and the address. */
+export interface WithheldAddress {
+  key: string
+  field: WithheldPicture['field']
+  url: string
 }
 
 /**

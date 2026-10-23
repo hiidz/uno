@@ -1347,6 +1347,10 @@
     .art-pic.free.is-failed {
         width: 220px;
     }
+    .art-pic-emoji {
+        font-size: 32px;
+        line-height: 1;
+    }
     .art-pic-note {
         display: grid;
         gap: 2px;
@@ -1409,6 +1413,104 @@
         left: 8px;
         right: 8px;
         color: var(--uno-dim);
+    }
+
+    /* A collection's background image at 16:9, narrower on a phone; a title
+       logo's box at Nuvio's 220 × 100. */
+    .art-pic.backdrop,
+    .look-backdrop .art-pic {
+        width: 230px;
+        aspect-ratio: 16 / 9;
+    }
+    .art-pic.logo {
+        width: 220px;
+        height: 100px;
+    }
+    @media (width < 40rem) {
+        .art-pic.backdrop,
+        .look-backdrop .art-pic {
+            width: 160px;
+        }
+    }
+
+    /* A picture left out of Community (`LeftOutPicture`): the box at its
+       shape, empty and dashed, holding Left out, the address and a copy
+       icon. Never loaded. */
+    .art-pic.art-out {
+        background: transparent;
+        outline: 1px dashed var(--uno-line-hi);
+        outline-offset: -1px;
+    }
+    .art-out-note {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        width: 100%;
+        padding: 0 6px;
+        color: var(--uno-dim);
+        font-weight: 500;
+    }
+    .art-pic.poster .art-out-note {
+        padding: 0 2px;
+    }
+    .art-out-addr {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 2px;
+        max-width: 100%;
+    }
+    .art-out-url {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .art-pic.poster .art-out-url {
+        font-size: 11.5px;
+    }
+    .art-out-narrow {
+        display: none;
+    }
+    @media (width < 40rem) {
+        .art-pic.backdrop .art-out-wide {
+            display: none;
+        }
+        .art-pic.backdrop .art-out-narrow {
+            display: inline;
+        }
+    }
+    /* The copy icon: no outline, a faint circle on hover, a 44px reach on a
+       touch screen without growing the box. */
+    .art-out-copy {
+        position: relative;
+        flex: none;
+        display: inline-grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        color: var(--uno-dim);
+        transition:
+            background-color 160ms ease,
+            color 160ms ease;
+    }
+    .art-pic.poster .art-out-copy {
+        width: 20px;
+    }
+    @media (hover: hover) {
+        .art-out-copy:hover {
+            background: var(--uno-line);
+            color: var(--uno-ink);
+        }
+    }
+    @media (pointer: coarse) {
+        .art-out-copy::before {
+            content: '';
+            position: absolute;
+            inset: -10px;
+        }
     }
 
     /* A folder's page: its heading and back button, tabs where its view mode

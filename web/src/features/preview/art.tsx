@@ -1,7 +1,10 @@
 import { useState } from 'react'
+import { Check, Copy, ImageOff } from 'lucide-react'
 import type { TileShape } from '@/api'
+import { Icon } from '@/components/Icon'
+import { useCopy } from '@/features/push/useCopy'
 import { prefersReducedMotion } from '@/lib/motion'
-import { shapeClass, siteOf, type HeroArt } from './heroArt'
+import { cutAddress, shapeClass, siteOf, type HeroArt } from './heroArt'
 
 /** Whether the picture at `src` failed to load, reset for each new `src`: a
  *  fixed address doesn't keep the last one's failure. */
@@ -73,4 +76,56 @@ export function HeroPreview({ art }: { art: HeroArt }) {
       {backdropFailed && <span className="art-hero-note text-caption">Couldn’t load the backdrop</span>}
     </div>
   )
+}
+
+/** What a left-out box is drawn at: a tile shape, a background image (16:9,
+ *  narrower on a phone) or a title logo (Nuvio's 220 × 100 logo box). */
+export type LeftOutShape = TileShape | 'BACKDROP' | 'LOGO'
+
+/**
+ * A picture the server left out of Community, in its place: a dashed box at
+ * the picture's shape saying so, with its address cut to fit and an icon that
+ * copies the whole of it. The address is never loaded. A narrow box (poster,
+ * square, a phone's background image) names the site alone.
+ */
+export function LeftOutPicture({ url, shape }: { url: string; shape: LeftOutShape }) {
+  const { copied, copy } = useCopy(url)
+  const site = siteOf(url) || url
+  const narrow = shape === 'POSTER' || shape === 'SQUARE'
+  return (
+    <span className={`art-pic art-out ${leftOutClass(shape)}`}>
+      <span className="art-out-note text-caption">
+        <Icon icon={ImageOff} size={16} />
+        <span>Left out</span>
+        <span className="art-out-addr">
+          <span className="art-out-url" title={url}>
+            {narrow ? site : <AddressCut url={url} site={site} backdrop={shape === 'BACKDROP'} />}
+          </span>
+          {/* drift-ok: the copy icon inside a left-out box, drawn by `.art-out-copy` */}
+          <button type="button" className="art-out-copy" aria-label="Copy address" title="Copy address" onClick={copy}>
+            <Icon icon={copied ? Check : Copy} size={13} />
+          </button>
+        </span>
+      </span>
+    </span>
+  )
+}
+
+/** The address cut to its box; a background image's, narrower on a phone,
+ *  names the site alone there. */
+function AddressCut({ url, site, backdrop }: { url: string; site: string; backdrop: boolean }) {
+  const cut = cutAddress(url, 24)
+  if (!backdrop) return cut
+  return (
+    <>
+      <span className="art-out-wide">{cut}</span>
+      <span className="art-out-narrow">{site}</span>
+    </>
+  )
+}
+
+function leftOutClass(shape: LeftOutShape): string {
+  if (shape === 'BACKDROP') return 'backdrop'
+  if (shape === 'LOGO') return 'logo'
+  return shapeClass(shape)
 }
