@@ -568,6 +568,7 @@ export function CollectionEditor({
                       key={selectedFolder.key}
                       folder={selectedFolder}
                       position={selectedIndex}
+                      backdropImageURL={state.backdropImageURL}
                       errors={showErrors ? errors.folders[selectedFolder.key] : undefined}
                       options={options}
                       optionByID={mergedOptionByID}

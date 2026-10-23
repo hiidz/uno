@@ -399,7 +399,8 @@ function mediaProblem(label: string, raw: string): string | undefined {
   return undefined
 }
 
-function isWebAddress(address: string): boolean {
+/** Whether `address` is one the server takes: an absolute https address. */
+export function isWebAddress(address: string): boolean {
   try {
     const url = new URL(address)
     return url.protocol === 'https:' && url.host !== ''

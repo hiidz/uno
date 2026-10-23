@@ -1331,6 +1331,8 @@
     }
     /* A logo keeps its own proportions, up to Nuvio's 220 × 100 box. */
     .art-pic.free {
+        align-self: flex-start;
+        width: fit-content;
         max-width: 220px;
         min-height: 48px;
     }
