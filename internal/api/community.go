@@ -14,12 +14,14 @@ import (
 // and GET /api/config and the SPA's page say it.
 type Community string
 
-// The three Community settings: Community as it is, Community leaving out
-// every image and video address, and no Community at all.
+// The four Community settings: Community as it is, Community leaving out the
+// image and video addresses of sites it doesn't trust, Community leaving out
+// every one, and no Community at all.
 const (
-	CommunityOn       Community = "on"
-	CommunityNoImages Community = "no-images"
-	CommunityOff      Community = "off"
+	CommunityOn            Community = "on"
+	CommunityTrustedImages Community = "trusted-images"
+	CommunityNoImages      Community = "no-images"
+	CommunityOff           Community = "off"
 )
 
 // sharingOn answers 404 in place of next on a server whose Community is
@@ -144,6 +146,14 @@ func (s *Server) catalogChanges(w http.ResponseWriter, r *http.Request) {
 func (s *Server) collectionChanges(w http.ResponseWriter, r *http.Request) {
 	serveSharingCall(w, r, sharingCall{collectionRow, "collectionChanges", "failed to compare with the publication", http.StatusOK},
 		s.vault.CollectionChangesSincePublish)
+}
+
+// collectionWithheldMedia answers the pictures Community would leave out of
+// the caller's collection as saved, and the sites it shares pictures from,
+// for the Publish dialog.
+func (s *Server) collectionWithheldMedia(w http.ResponseWriter, r *http.Request) {
+	serveSharingCall(w, r, sharingCall{collectionRow, "collectionWithheldMedia", "failed to check the collection's pictures", http.StatusOK},
+		s.vault.CollectionWithheldMedia)
 }
 
 func (s *Server) subscribe(w http.ResponseWriter, r *http.Request) {

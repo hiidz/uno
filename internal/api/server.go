@@ -143,6 +143,7 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/publish", s.requireProfileAuth(s.sharingOn(s.publishCollection)))
 	s.router.HandleFunc("POST /api/p/{profileIndex}/collections/{collectionID}/unpublish", s.requireProfileAuth(s.sharingOn(s.unpublishCollection)))
 	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/{collectionID}/changes-since-publish", s.requireProfileAuth(s.sharingOn(s.collectionChanges)))
+	s.router.HandleFunc("GET /api/p/{profileIndex}/collections/{collectionID}/withheld-media", s.requireProfileAuth(s.sharingOn(s.collectionWithheldMedia)))
 
 	// Community: other profiles' live publications, by publication id.
 	s.router.HandleFunc("GET /api/p/{profileIndex}/community", s.requireProfileAuth(s.sharingOn(s.listCommunityPage)))

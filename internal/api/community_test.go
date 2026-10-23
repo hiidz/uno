@@ -157,6 +157,7 @@ func TestSharingRoutesAreAbsentWhenCommunityIsOff(t *testing.T) {
 		{http.MethodPost, ownCollection + "/publish"},
 		{http.MethodPost, ownCollection + "/unpublish"},
 		{http.MethodGet, ownCollection + "/changes-since-publish"},
+		{http.MethodGet, ownCollection + "/withheld-media"},
 		{http.MethodGet, "/api/p/1/community?kind=collection&sort=name"},
 		{http.MethodGet, theirs},
 		{http.MethodPost, theirs + "/subscribe"},
@@ -250,5 +251,60 @@ func TestPublishFromABlockedAccount(t *testing.T) {
 		if body := w.Body.String(); w.Code != http.StatusInternalServerError || !strings.Contains(body, words) || strings.Contains(body, "block") {
 			t.Errorf("%s = %d %q, want 500 %q and no word of the block", path, w.Code, body, words)
 		}
+	}
+}
+
+// The withheld-media route answers, for the caller's collection as saved,
+// the pictures Community would leave out and the sites it shares pictures
+// from: none and none on a server that shares every site, the collection's
+// backdrop then each folder's untrusted addresses on one that trusts some.
+// Another profile's collection is a 404 and a subscribed copy a 400.
+func TestCollectionWithheldMediaRoute(t *testing.T) {
+	x := newSharingFixture(t)
+	ctx := t.Context()
+	catalog, err := x.f.db.CreateUserCatalog(ctx, x.f.caller.ID, vault.CatalogForm{Type: "movie", Name: "Art", Provider: "tmdb", Params: popular})
+	if err != nil {
+		t.Fatal(err)
+	}
+	art := vault.FolderArt{
+		TileShape: "POSTER", CoverImageURL: "https://image.tmdb.org/t/p/w500/cover.jpg",
+		HeroVideoURL: "https://Cdn.Example.com:8443/hero.mp4",
+	}
+	collection, err := x.f.db.CreateUserCollection(ctx, x.f.caller.ID, vault.CollectionForm{
+		Title: "Art", ViewMode: "ROWS", BackdropImageURL: "https://i.postimg.cc/backdrop.jpg",
+		Folders: []vault.FolderData{
+			{FolderArt: art, Title: "One", Catalogs: vault.CatalogRefs(catalog.ID)},
+			{FolderArt: art, Title: "Two", Catalogs: vault.CatalogRefs(catalog.ID)},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/p/1/collections/" + collection.ID.String() + "/withheld-media"
+
+	if w := serve(t, x.f.s, http.MethodGet, path, "", false); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"pictures":[],"sites":[]}` {
+		t.Errorf("on a server sharing every site: %d %s, want nothing withheld", w.Code, w.Body.String())
+	}
+
+	x.f.db.ShareCommunityMediaFrom([]string{"image.tmdb.org", "*.example.org"})
+	trusted := newCommunityServer(t, x.f.db, CommunityTrustedImages)
+	hero := `"field":"hero_video_url","url":"https://Cdn.Example.com:8443/hero.mp4","site":"cdn.example.com"}`
+	want := `{"pictures":[` +
+		`{"title":"Art","field":"backdrop_image_url","url":"https://i.postimg.cc/backdrop.jpg","site":"i.postimg.cc"},` +
+		`{"title":"One",` + hero + `,{"title":"Two",` + hero +
+		`],"sites":["image.tmdb.org","*.example.org"]}`
+	if w := serve(t, trusted, http.MethodGet, path, "", false); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != want {
+		t.Errorf("on a server trusting some sites: %d %s\nwant %s", w.Code, w.Body.String(), want)
+	}
+
+	if w := serve(t, trusted, http.MethodGet, "/api/p/1/collections/"+x.theirCollectionSrc.String()+"/withheld-media", "", false); w.Code != http.StatusNotFound {
+		t.Errorf("another profile's collection: %d %s, want 404", w.Code, w.Body.String())
+	}
+	if _, err := x.f.db.Subscribe(ctx, x.f.caller.ID, x.theirCollection); err != nil {
+		t.Fatal(err)
+	}
+	copied := subscribedCopy(t, x.f, x.theirCollection)
+	if w := serve(t, trusted, http.MethodGet, "/api/p/1/collections/"+copied.String()+"/withheld-media", "", false); w.Code != http.StatusBadRequest {
+		t.Errorf("a subscribed copy: %d %s, want 400", w.Code, w.Body.String())
 	}
 }

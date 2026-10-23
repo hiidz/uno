@@ -39,6 +39,8 @@ type DB struct {
 	// sharesMedia reports whether Community shares a media address
 	// (WithholdCommunityMedia, ShareCommunityMediaFrom); nil shares every one.
 	sharesMedia func(raw string) bool
+	// mediaSites is the sites ShareCommunityMediaFrom shares media from.
+	mediaSites []string
 }
 
 // Close closes the underlying database connection.
