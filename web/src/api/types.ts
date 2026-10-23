@@ -276,6 +276,30 @@ export interface SnapshotChange {
   was_catalog?: SnapshotCatalog
 }
 
+/** One picture `GET .../withheld-media` says Community leaves out: the title
+ *  of its folder, or of the collection for its background image, the field it
+ *  is in, its address, and its site (`""` for an address that names none). */
+export interface WithheldPicture {
+  title: string
+  field:
+    | 'backdrop_image_url'
+    | 'cover_image_url'
+    | 'focus_gif_url'
+    | 'hero_backdrop_url'
+    | 'hero_video_url'
+    | 'title_logo_url'
+  url: string
+  site: string
+}
+
+/** `GET /api/p/{i}/collections/{id}/withheld-media`: each picture of the saved
+ *  collection Community would leave out, the background image first and then
+ *  each folder's, and the sites the server shares pictures from. */
+export interface WithheldMedia {
+  pictures: WithheldPicture[]
+  sites: string[]
+}
+
 /** What a subscribe, a duplicate or an Update answers: the caller's copy, a listed
  *  catalog or a collection by the publication's kind. */
 export interface CommunityCopy {

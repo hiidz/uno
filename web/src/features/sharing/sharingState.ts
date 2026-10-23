@@ -1,5 +1,12 @@
 import type { Catalog, CatalogType, Collection, Folder, PendingChange, PublicationState } from '@/api'
 import { typeLabel } from '@/features/library/recipe'
+import type { PageConfig } from '@/lib/pageConfig'
+
+/** Whether the Publish dialog asks which pictures Community leaves out: for a
+ *  collection, on a server that shares pictures from trusted sites only. */
+export function asksWithheldMedia(kind: 'catalog' | 'collection', community: PageConfig['community']): boolean {
+  return kind === 'collection' && community === 'trusted-images'
+}
 
 /** Where an owner's own row stands with Community: not published (never, or
  *  unpublished since), published as it is, or published with edits made

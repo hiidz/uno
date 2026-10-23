@@ -115,6 +115,9 @@ interface PublishDialogProps {
   /** What those changes are (`SinceLastPublished`), which shows only when
    *  `update` says there are some. */
   since: ReactNode
+  /** Which of a collection's pictures Community leaves out
+   *  (`WithheldPictures`), under the opening line. */
+  pictures: ReactNode
   genres: GenreLookups
   pending: boolean
   error: string | null
@@ -135,13 +138,15 @@ interface PublishDialogProps {
  * Community sticker, so it is clear it is someone else's catalog being
  * published as it stands. Publishing makes no copy for anyone; people add it
  * from Community. When it publishes changes, `since` lists what they are,
- * above what the publication will hold.
+ * above what the publication will hold. `pictures` comes first of all: what
+ * everyone else won't see of it.
  */
 export function PublishDialog({
   open,
   subject,
   update,
   since,
+  pictures,
   genres,
   pending,
   error,
@@ -166,6 +171,7 @@ export function PublishDialog({
           {subject.kind === 'collection' && communitySetting() === 'no-images' && (
             <p className="text-dim m-0">Picture sharing is off on this server.</p>
           )}
+          {pictures}
           {since}
           <PublishContents subject={subject} genres={genres} />
           <DialogError error={error} />

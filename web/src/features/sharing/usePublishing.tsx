@@ -4,6 +4,7 @@ import type { ToastInput } from '@/components/toastQueue'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { SinceLastPublished } from './Changes'
 import { PublishDialog, type PublishSubject } from './PublishDialog'
+import { WithheldPictures } from './WithheldPictures'
 import { errorText, ownName, ownSharing, publishGroups, type OwnRow } from './sharingState'
 import { useSharingMutations, type SharingTarget } from './useSharingMutations'
 
@@ -109,6 +110,7 @@ export function usePublishing({ profileIndex, genres, onToast, onUnpublished }: 
               genres={genres}
             />
           }
+          pictures={<WithheldPictures profileIndex={profileIndex} kind={publishing.kind} id={publishing.id} />}
           genres={genres}
           pending={mutations.publish.isPending}
           error={errorText(mutations.publish.error)}
