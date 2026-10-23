@@ -39,7 +39,7 @@ export function folderPicture(folder: Folder, field: Exclude<PictureField, 'back
  * background image beside them only when it is set or left out; then a
  * Folders heading over a card per folder. Each card shows the folder's tile
  * as Nuvio draws it (cover, else emoji, else name) beside its tile shape and
- * name setting, then each picture set, at its shape. A picture the server
+ * title setting, then each picture set, at its shape. A picture the server
  * left out shows as its box with the address to copy (`LeftOutPicture`), so
  * nothing on this side loads it. A folder whose art changed in a waiting
  * update carries the mark Filters gives it, under the same id, so the In this
@@ -109,7 +109,7 @@ const PICTURES = [
 ] as const
 
 /** One folder's card: its heading as on Filters, its tile beside its tile
- *  shape and name setting and any picture that is off or unset, then each
+ *  shape and title setting and any picture that is off or unset, then each
  *  picture set or left out, two to a row from `sm` up. */
 function FolderLook({ folder, leftOut, words }: { folder: Folder; leftOut: ReturnType<typeof withheldLookup>; words: string }) {
   const pictures = PICTURES.map(({ field, label }) => ({ label, field, picture: folderPicture(folder, field, leftOut(folder.id, field)) }))
@@ -129,7 +129,7 @@ function FolderLook({ folder, leftOut, words }: { folder: Folder; leftOut: Retur
         <FolderTile folder={folder} leftOut={leftOut(folder.id, 'cover_image_url')} />
         <dl className="m-0 grid grid-cols-[repeat(auto-fill,minmax(124px,1fr))] gap-2">
           <SetTile fact={{ label: 'Tile shape', value: shapeName(folder) }} className={`${TILE} bg-ground`} change={undefined} />
-          <SetTile fact={{ label: 'Name on tile', value: folder.hide_title ? 'Hidden' : 'Shown' }} className={`${TILE} bg-ground`} change={undefined} />
+          <SetTile fact={{ label: 'Title', value: folder.hide_title ? 'Hidden' : 'Shown' }} className={`${TILE} bg-ground`} change={undefined} />
           {unset.map(({ label, picture }) => (
             <OpenTile key={label} fact={{ label, value: picture.state === 'off' ? 'Off' : 'None' }} change={undefined} />
           ))}

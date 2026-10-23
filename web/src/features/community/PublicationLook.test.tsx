@@ -62,6 +62,7 @@ describe('PublicationLook', () => {
     const marvelCard = document.getElementById('update-folder-f1')!
     expect(within(marvelCard).getAllByText('Left out')).toHaveLength(2)
     expect(within(marvelCard).getByText('Cover')).toBeInTheDocument()
+    expect(within(marvelCard).getByText('Title', { selector: 'dt' }).nextSibling).toHaveTextContent('Shown')
     expect(within(marvelCard).getByText('Hero backdrop')).toBeInTheDocument()
     expect(within(marvelCard).getByText('Title logo', { selector: 'dt' }).nextSibling).toHaveTextContent('None')
     expect(within(marvelCard).getByTitle(GIF)).toHaveTextContent('i.postimg.cc/…-focus.gif')
