@@ -182,7 +182,7 @@ func searchWords(search string) ([]string, error) {
 	}
 	words := []string{}
 	seen := map[string]bool{}
-	for _, word := range strings.Fields(search) {
+	for word := range strings.FieldsSeq(search) {
 		if key := strings.ToLower(word); !seen[key] {
 			seen[key] = true
 			words = append(words, word)
