@@ -3,6 +3,7 @@ package config
 import (
 	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -15,7 +16,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"VAULT_DB", "PORT", "TMDB_API_KEY", "NUVIO_BASE_URL",
 		"NUVIO_PUBLISHABLE_KEY", "SITE_BASE_URL", "DEV_AUTH_BYPASS_TOKEN",
 		"UNO_ACCESS", "UNO_ALLOWED_EMAILS", "TMDB_KEY_MODE", "UNO_SECRET",
-		"UNO_COMMUNITY",
+		"UNO_COMMUNITY", "UNO_TRUSTED_HOSTS",
 	} {
 		t.Setenv(key, vars[key])
 	}
@@ -220,10 +221,10 @@ func TestLoadRefusesTMDBKeyModesItCantUse(t *testing.T) {
 	}
 }
 
-// UNO_COMMUNITY takes on, no-images or off, and anything else stops the start
-// naming the variable.
+// UNO_COMMUNITY takes on, trusted-images, no-images or off, and anything else
+// stops the start naming the variable.
 func TestLoadCommunity(t *testing.T) {
-	for _, mode := range []string{CommunityOn, CommunityNoImages, CommunityOff} {
+	for _, mode := range []string{CommunityOn, CommunityTrustedImages, CommunityNoImages, CommunityOff} {
 		vars := map[string]string{"UNO_COMMUNITY": mode}
 		maps.Copy(vars, required)
 		setEnv(t, vars)
@@ -237,6 +238,76 @@ func TestLoadCommunity(t *testing.T) {
 	setEnv(t, vars)
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), `UNO_COMMUNITY is "images-off"`) {
 		t.Fatalf("err = %v, want one naming UNO_COMMUNITY", err)
+	}
+}
+
+// loadTrusted runs Load with UNO_COMMUNITY=trusted-images and
+// UNO_TRUSTED_HOSTS=hosts.
+func loadTrusted(t *testing.T, hosts string) (Config, error) {
+	t.Helper()
+	vars := map[string]string{"UNO_COMMUNITY": CommunityTrustedImages, "UNO_TRUSTED_HOSTS": hosts}
+	maps.Copy(vars, required)
+	setEnv(t, vars)
+	return Load()
+}
+
+// On trusted-images, an unset UNO_TRUSTED_HOSTS is the built-in list and
+// "default" in it stands for that list. Entries are trimmed, lower-cased,
+// without a trailing dot and each once. On every other setting the list is
+// nil.
+func TestLoadTrustedSites(t *testing.T) {
+	builtIn := slices.Sorted(slices.Values(builtInTrustedSites))
+	for _, tc := range []struct {
+		hosts string
+		want  []string
+	}{
+		{"", builtIn},
+		{"default", builtIn},
+		{" default , CDN.Example.com. ,,image.tmdb.org", slices.Sorted(slices.Values(append(slices.Clone(builtInTrustedSites), "cdn.example.com")))},
+		{"*.Example.com,example.com,example.com", []string{"*.example.com", "example.com"}},
+	} {
+		cfg, err := loadTrusted(t, tc.hosts)
+		if err != nil || !slices.Equal(cfg.TrustedSites, tc.want) {
+			t.Errorf("UNO_TRUSTED_HOSTS=%q: TrustedSites = %v, %v; want %v", tc.hosts, cfg.TrustedSites, err, tc.want)
+		}
+	}
+
+	for _, mode := range []string{CommunityOn, CommunityNoImages, CommunityOff} {
+		vars := map[string]string{"UNO_COMMUNITY": mode}
+		maps.Copy(vars, required)
+		setEnv(t, vars)
+		if cfg, err := Load(); err != nil || cfg.TrustedSites != nil {
+			t.Errorf("UNO_COMMUNITY=%s: TrustedSites = %v, %v; want nil", mode, cfg.TrustedSites, err)
+		}
+	}
+}
+
+// An entry that isn't a site name or *. and a name stops the start naming it,
+// as does a list with no entry.
+func TestLoadRefusesABadTrustedSite(t *testing.T) {
+	for _, entry := range []string{
+		"https://image.tmdb.org", "image.tmdb.org/t/p", "image.tmdb.org:443", "*", "*.", "a.*.com",
+		"*example.com", "a..b", "you@example.com", "ex ample.com",
+	} {
+		_, err := loadTrusted(t, "default,"+entry)
+		if err == nil || !strings.Contains(err.Error(), "UNO_TRUSTED_HOSTS lists") || !strings.Contains(err.Error(), entry) {
+			t.Errorf("entry %q: err = %v, want one naming it", entry, err)
+		}
+	}
+	if _, err := loadTrusted(t, " , "); err == nil || !strings.Contains(err.Error(), "names no site") {
+		t.Errorf("an empty list: err = %v, want one saying it names no site", err)
+	}
+}
+
+// UNO_TRUSTED_HOSTS set while Community isn't trusted-images stops the start.
+func TestLoadRefusesTrustedSitesOffTrustedImages(t *testing.T) {
+	for _, mode := range []string{"", CommunityOn, CommunityNoImages, CommunityOff} {
+		vars := map[string]string{"UNO_COMMUNITY": mode, "UNO_TRUSTED_HOSTS": "default"}
+		maps.Copy(vars, required)
+		setEnv(t, vars)
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), "UNO_TRUSTED_HOSTS is set but UNO_COMMUNITY is") {
+			t.Errorf("UNO_COMMUNITY=%q: err = %v, want one naming UNO_TRUSTED_HOSTS", mode, err)
+		}
 	}
 }
 
