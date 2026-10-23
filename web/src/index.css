@@ -1546,11 +1546,17 @@
             color: var(--uno-ink);
         }
     }
+    /* On a touch screen both reach 44px tall without growing the box, the
+       copy icon's never over the address beside it. */
     @media (pointer: coarse) {
         .art-out-copy::before {
             content: '';
             position: absolute;
-            inset: -10px;
+            inset: -10px -10px -10px 0;
+        }
+        .art-out-url {
+            padding-block: 14px;
+            margin-block: -14px;
         }
     }
 
