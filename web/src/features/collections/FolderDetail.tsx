@@ -33,7 +33,7 @@ function appearanceSummary(folder: FolderFormState): string {
   if (folder.coverImageURL.trim()) parts.push('cover image')
   else if (folder.coverEmoji.trim()) parts.push(`${folder.coverEmoji.trim()} cover`)
   if (folder.focusGIFEnabled && folder.focusGIFURL.trim()) parts.push('focus GIF')
-  if (folder.heroBackdropURL.trim() || folder.heroVideoURL.trim() || folder.titleLogoURL.trim()) {
+  if (folder.heroBackdropURL.trim() || folder.titleLogoURL.trim()) {
     parts.push('Modern Home hero')
   }
   return parts.join(' · ')
@@ -208,15 +208,7 @@ export function FolderDetail({
             onChange={(heroBackdropURL) => onChange({ heroBackdropURL })}
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home hero backdrop URL for ${label}`}
-            note="Hero backdrop, hero video and title logo are used only by Nuvio TV's Modern Home layout."
-          />
-          <HeroURLRow
-            id={`${idBase}-hero-video`}
-            role="Hero video"
-            value={folder.heroVideoURL}
-            onChange={(heroVideoURL) => onChange({ heroVideoURL })}
-            placeholder="Video URL, https://…"
-            ariaLabel={`Modern Home hero video URL for ${label}`}
+            note="Hero backdrop and title logo are used only by Nuvio TV's Modern Home layout."
           />
           <HeroURLRow
             id={`${idBase}-title-logo`}

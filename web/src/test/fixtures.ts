@@ -34,7 +34,6 @@ export function folder(overrides: Partial<Folder> = {}): Folder {
     focus_gif_url: '',
     focus_gif_enabled: true,
     hero_backdrop_url: '',
-    hero_video_url: '',
     title_logo_url: '',
     refs: [],
     ...overrides,

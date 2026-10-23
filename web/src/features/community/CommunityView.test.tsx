@@ -51,7 +51,6 @@ const nightDetail: PublicationDetail = {
           focus_gif_url: '',
           focus_gif_enabled: false,
           hero_backdrop_url: '',
-          hero_video_url: '',
           title_logo_url: '',
           refs: [{ catalog: 'k1', genre: 'Slasher' }],
         },

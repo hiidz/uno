@@ -6,7 +6,7 @@ import (
 )
 
 // The Nuvio appearance fields (focus glow on the collection; focus GIF and
-// Modern Home hero fields on a folder) survive create, an in-place update of
+// Modern Home hero backdrop and title logo on a folder) survive create, an in-place update of
 // an existing folder, and DuplicateCollection's tree copy.
 func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 	ctx := context.Background()
@@ -24,7 +24,6 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 			FocusGIFURL:     "https://example.com/focus.gif",
 			FocusGIFEnabled: true,
 			HeroBackdropURL: "https://example.com/backdrop.jpg",
-			HeroVideoURL:    "https://example.com/hero.mp4",
 			TitleLogoURL:    "https://example.com/logo.png",
 		},
 		Catalogs: CatalogRefs(listed.ID),
@@ -44,7 +43,6 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 
 	folder.ID = &created.Folders[0].ID
 	folder.FocusGIFEnabled = false
-	folder.HeroVideoURL = ""
 	folder.TitleLogoURL = "https://example.com/logo2.png"
 	updated, err := db.UpdateUserCollection(ctx, owner, created.ID, collectionRevision(t, db, created.ID), CollectionForm{
 		Title: "C", ViewMode: "TABBED_GRID",
@@ -80,10 +78,46 @@ func TestCollectionAppearanceFieldsRoundTrip(t *testing.T) {
 func assertFolderAppearance(t *testing.T, label string, got Folder, want FolderData) {
 	t.Helper()
 	if got.FocusGIFURL != want.FocusGIFURL || got.FocusGIFEnabled != want.FocusGIFEnabled ||
-		got.HeroBackdropURL != want.HeroBackdropURL || got.HeroVideoURL != want.HeroVideoURL ||
-		got.TitleLogoURL != want.TitleLogoURL {
-		t.Errorf("%s folder appearance = {gif %q %v, backdrop %q, video %q, logo %q}, want {gif %q %v, backdrop %q, video %q, logo %q}",
-			label, got.FocusGIFURL, got.FocusGIFEnabled, got.HeroBackdropURL, got.HeroVideoURL, got.TitleLogoURL,
-			want.FocusGIFURL, want.FocusGIFEnabled, want.HeroBackdropURL, want.HeroVideoURL, want.TitleLogoURL)
+		got.HeroBackdropURL != want.HeroBackdropURL || got.TitleLogoURL != want.TitleLogoURL {
+		t.Errorf("%s folder appearance = {gif %q %v, backdrop %q, logo %q}, want {gif %q %v, backdrop %q, logo %q}",
+			label, got.FocusGIFURL, got.FocusGIFEnabled, got.HeroBackdropURL, got.TitleLogoURL,
+			want.FocusGIFURL, want.FocusGIFEnabled, want.HeroBackdropURL, want.TitleLogoURL)
+	}
+}
+
+// A hero video that arrives with a folder is never stored, on create or on an
+// in-place update.
+func TestHeroVideoIsNeverStored(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner := newTestProfile(t, db, "owner")
+	listed, err := db.CreateUserCatalog(ctx, owner, listedCatalogForm("Listed"))
+	if err != nil {
+		t.Fatalf("create listed catalog: %v", err)
+	}
+	folder := FolderData{
+		Title:     "Folder",
+		FolderArt: FolderArt{TileShape: "POSTER", HeroVideoURL: "https://example.com/hero.mp4"},
+		Catalogs:  CatalogRefs(listed.ID),
+	}
+	form := CollectionForm{Title: "C", ViewMode: "TABBED_GRID", Folders: []FolderData{folder}}
+	created, err := db.CreateUserCollection(ctx, owner, form)
+	if err != nil {
+		t.Fatalf("CreateUserCollection: %v", err)
+	}
+	if got := created.Folders[0].HeroVideoURL; got != "" {
+		t.Errorf("created hero video = %q, want none", got)
+	}
+
+	form.Folders[0].ID = &created.Folders[0].ID
+	if _, err := db.UpdateUserCollection(ctx, owner, created.ID, collectionRevision(t, db, created.ID), form); err != nil {
+		t.Fatalf("UpdateUserCollection: %v", err)
+	}
+	reloaded, err := db.GetUserCollections(ctx, owner)
+	if err != nil {
+		t.Fatalf("GetUserCollections: %v", err)
+	}
+	if got := reloaded[0].Folders[0].HeroVideoURL; got != "" {
+		t.Errorf("updated hero video = %q, want none", got)
 	}
 }

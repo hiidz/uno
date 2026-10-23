@@ -14,9 +14,11 @@ import (
 )
 
 // folderFrom builds the folder row fd describes: id and sortOrder from the
-// caller, every other column straight off fd. The one place that field list
-// lives, shared by insertFolder and updateFolder.
+// caller, every other column straight off fd but the hero video, which is
+// always empty. The one place that field list lives, shared by insertFolder
+// and updateFolder.
 func folderFrom(id, collectionID uuid.UUID, sortOrder int, fd FolderData) Folder {
+	fd.HeroVideoURL = ""
 	return Folder{
 		ID:           id,
 		CollectionID: collectionID,

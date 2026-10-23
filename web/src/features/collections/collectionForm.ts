@@ -95,7 +95,6 @@ export interface FolderFormState {
   focusGIFURL: string
   focusGIFEnabled: boolean
   heroBackdropURL: string
-  heroVideoURL: string
   titleLogoURL: string
   /** Ordered — index becomes `folder_catalogs.sort_order`. */
   refs: FolderRefState[]
@@ -184,7 +183,6 @@ export function newFolder(): FolderFormState {
     focusGIFURL: '',
     focusGIFEnabled: true,
     heroBackdropURL: '',
-    heroVideoURL: '',
     titleLogoURL: '',
     refs: [],
   }
@@ -215,7 +213,6 @@ function folderFromWire(folder: Folder): FolderFormState {
     focusGIFURL: folder.focus_gif_url,
     focusGIFEnabled: folder.focus_gif_enabled,
     heroBackdropURL: folder.hero_backdrop_url,
-    heroVideoURL: folder.hero_video_url,
     titleLogoURL: folder.title_logo_url,
     // `?? []` is a guard, not a live case: the Go side runs `refs` through
     // `orEmpty`. It stays because `getList` coerces only the top-level
@@ -424,7 +421,6 @@ const FOLDER_ADDRESSES = [
   ['Cover image', 'coverImageURL'],
   ['Focus GIF', 'focusGIFURL'],
   ['Hero backdrop', 'heroBackdropURL'],
-  ['Hero video', 'heroVideoURL'],
   ['Title logo', 'titleLogoURL'],
 ] as const satisfies readonly (readonly [string, keyof FolderFormState])[]
 
@@ -516,7 +512,6 @@ export function toCollectionPayload(
       focus_gif_url: folder.focusGIFURL.trim(),
       focus_gif_enabled: folder.focusGIFEnabled,
       hero_backdrop_url: folder.heroBackdropURL.trim(),
-      hero_video_url: folder.heroVideoURL.trim(),
       title_logo_url: folder.titleLogoURL.trim(),
       catalogs: folder.refs.map(({ catalogID, genre }): FolderCatalogRef => {
         const draft = isDraftCatalogID(catalogID) ? localCatalogs.get(catalogID) : undefined

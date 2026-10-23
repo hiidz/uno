@@ -17,8 +17,8 @@ func mediaCollection(title string) CollectionForm {
 			FolderArt: FolderArt{
 				TileShape: "POSTER", CoverEmoji: "🎬", CoverImageURL: "https://img.example/cover.jpg",
 				FocusGIFURL: "https://img.example/focus.gif", FocusGIFEnabled: true,
-				HeroBackdropURL: "https://img.example/hero.jpg", HeroVideoURL: "https://img.example/hero.mp4",
-				TitleLogoURL: "https://img.example/logo.png",
+				HeroBackdropURL: "https://img.example/hero.jpg",
+				TitleLogoURL:    "https://img.example/logo.png",
 			},
 			Title: "F", Catalogs: []FolderCatalogRef{newScoped("k", "S", "{}")},
 		}},
@@ -27,7 +27,7 @@ func mediaCollection(title string) CollectionForm {
 
 // artMedia is a's media addresses, empty ones included.
 func artMedia(a FolderArt) []string {
-	return []string{a.CoverImageURL, a.FocusGIFURL, a.HeroBackdropURL, a.HeroVideoURL, a.TitleLogoURL}
+	return []string{a.CoverImageURL, a.FocusGIFURL, a.HeroBackdropURL, a.TitleLogoURL}
 }
 
 // treeMedia is every media address tree holds.
@@ -95,15 +95,15 @@ func TestWithheldMediaLeavesCommunityAndCopies(t *testing.T) {
 		}
 	}
 
-	if got := treeMedia(mustOwnCollection(t, db, owner, source.ID)); len(got) != 6 {
-		t.Errorf("publisher's own row holds %v, want all 6 addresses", got)
+	if got := treeMedia(mustOwnCollection(t, db, owner, source.ID)); len(got) != 5 {
+		t.Errorf("publisher's own row holds %v, want all 5 addresses", got)
 	}
 	stored, err := sharingAll(db).GetPublication(ctx, owner, source.Publication.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snapshotMedia(stored.Snapshot); len(got) != 6 {
-		t.Errorf("stored snapshot holds %v, want all 6 addresses", got)
+	if got := snapshotMedia(stored.Snapshot); len(got) != 5 {
+		t.Errorf("stored snapshot holds %v, want all 5 addresses", got)
 	}
 }
 
@@ -117,8 +117,8 @@ func TestWithheldMediaUpdate(t *testing.T) {
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	source := publishCollection(t, db, owner, mediaCollection("Art"))
 	added := *subscribe(t, db, subscriber, source.Publication.ID).Collection
-	if got := treeMedia(added); len(got) != 6 {
-		t.Fatalf("copy added while media is shared holds %v, want all 6 addresses", got)
+	if got := treeMedia(added); len(got) != 5 {
+		t.Fatalf("copy added while media is shared holds %v, want all 5 addresses", got)
 	}
 	db.WithholdCommunityMedia()
 	pubID := source.Publication.ID
@@ -285,15 +285,15 @@ func TestTrustedMediaLeavesCommunityAndCopies(t *testing.T) {
 		}
 	}
 
-	if got := treeMedia(mustOwnCollection(t, db, owner, source.ID)); len(got) != 6 {
-		t.Errorf("publisher's own row holds %v, want all 6 addresses", got)
+	if got := treeMedia(mustOwnCollection(t, db, owner, source.ID)); len(got) != 5 {
+		t.Errorf("publisher's own row holds %v, want all 5 addresses", got)
 	}
 	stored, err := sharingAll(db).GetPublication(ctx, owner, source.Publication.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snapshotMedia(stored.Snapshot); len(got) != 6 {
-		t.Errorf("stored snapshot holds %v, want all 6 addresses", got)
+	if got := snapshotMedia(stored.Snapshot); len(got) != 5 {
+		t.Errorf("stored snapshot holds %v, want all 5 addresses", got)
 	}
 }
 
@@ -305,8 +305,8 @@ func TestTrustedMediaUpdate(t *testing.T) {
 	db := newTestDB(t)
 	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
 	source := publishCollection(t, db, owner, mixedMediaCollection("Art"))
-	if got := treeMedia(*subscribe(t, db, subscriber, source.Publication.ID).Collection); len(got) != 6 {
-		t.Fatalf("copy added while media is shared holds %v, want all 6 addresses", got)
+	if got := treeMedia(*subscribe(t, db, subscriber, source.Publication.ID).Collection); len(got) != 5 {
+		t.Fatalf("copy added while media is shared holds %v, want all 5 addresses", got)
 	}
 	db.ShareCommunityMediaFrom([]string{trustedSite})
 	pubID := source.Publication.ID

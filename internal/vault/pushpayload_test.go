@@ -88,7 +88,7 @@ func TestPushPayloadAppearanceFields(t *testing.T) {
 	if v, ok := off["focusGifEnabled"]; !ok || v != false {
 		t.Errorf("off folder focusGifEnabled = %v (present %v), want explicit false: %s", v, ok, raw)
 	}
-	for _, key := range []string{"focusGifUrl", "heroBackdropUrl", "heroVideoUrl", "titleLogoUrl"} {
+	for _, key := range []string{"focusGifUrl", "heroBackdropUrl", "titleLogoUrl"} {
 		if _, ok := off[key]; ok {
 			t.Errorf("off folder carries empty %s: %s", key, raw)
 		}
@@ -97,13 +97,15 @@ func TestPushPayloadAppearanceFields(t *testing.T) {
 		"focusGifEnabled": true,
 		"focusGifUrl":     "https://example.com/f.gif",
 		"heroBackdropUrl": "https://example.com/b.jpg",
-		"heroVideoUrl":    "https://example.com/v.mp4",
 		"titleLogoUrl":    "https://example.com/l.png",
 	}
 	for key, v := range want {
 		if on[key] != v {
 			t.Errorf("on folder %s = %v, want %v: %s", key, on[key], v, raw)
 		}
+	}
+	if _, ok := on["heroVideoUrl"]; ok {
+		t.Errorf("on folder carries heroVideoUrl, which Uno never sends: %s", raw)
 	}
 }
 

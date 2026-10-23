@@ -49,7 +49,6 @@ type PushFolder struct {
 	FocusGIFURL     string          `json:"focusGifUrl,omitempty"`
 	FocusGIFEnabled bool            `json:"focusGifEnabled"`
 	HeroBackdropURL string          `json:"heroBackdropUrl,omitempty"`
-	HeroVideoURL    string          `json:"heroVideoUrl,omitempty"`
 	TitleLogoURL    string          `json:"titleLogoUrl,omitempty"`
 	TileShape       string          `json:"tileShape"`
 	HideTitle       bool            `json:"hideTitle"`
@@ -107,7 +106,6 @@ func pushFolder(f FolderWithCatalogs, catalogs map[uuid.UUID]Catalog) PushFolder
 		FocusGIFURL:     f.FocusGIFURL,
 		FocusGIFEnabled: f.FocusGIFEnabled,
 		HeroBackdropURL: f.HeroBackdropURL,
-		HeroVideoURL:    f.HeroVideoURL,
 		TitleLogoURL:    f.TitleLogoURL,
 		TileShape:       f.TileShape,
 		HideTitle:       f.HideTitle,

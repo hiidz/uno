@@ -153,7 +153,7 @@ func (in CollectionForm) normalized() CollectionForm {
 func (fd FolderData) normalized() FolderData {
 	for _, s := range []*string{
 		&fd.Title, &fd.CoverEmoji, &fd.CoverImageURL, &fd.FocusGIFURL,
-		&fd.HeroBackdropURL, &fd.HeroVideoURL, &fd.TitleLogoURL,
+		&fd.HeroBackdropURL, &fd.TitleLogoURL,
 	} {
 		*s = strings.TrimSpace(*s)
 	}
@@ -289,7 +289,6 @@ func folderProblems(index int, fd FolderData) []string {
 		{"cover image url", fd.CoverImageURL},
 		{"focus gif url", fd.FocusGIFURL},
 		{"hero backdrop url", fd.HeroBackdropURL},
-		{"hero video url", fd.HeroVideoURL},
 		{"title logo url", fd.TitleLogoURL},
 	} {
 		problems = appendProblem(problems, mediaURLProblem(fmt.Sprintf("folder %d: %s", index, f.name), f.value))

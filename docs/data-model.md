@@ -120,7 +120,7 @@ erDiagram
     string focus_gif_url
     bool focus_gif_enabled "defaults to 1, matching Nuvio"
     string hero_backdrop_url
-    string hero_video_url
+    string hero_video_url "always empty, kept so stored snapshots keep their bytes"
     string title_logo_url
     string sub_key "nullable — in a subscribed collection, its snapshot key"
   }

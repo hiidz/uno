@@ -89,7 +89,6 @@ export interface FolderLook {
   focus_gif_enabled: boolean
   /** Hero media for Nuvio's Modern Home layout. */
   hero_backdrop_url: string
-  hero_video_url: string
   title_logo_url: string
 }
 
@@ -286,7 +285,6 @@ export interface WithheldPicture {
     | 'cover_image_url'
     | 'focus_gif_url'
     | 'hero_backdrop_url'
-    | 'hero_video_url'
     | 'title_logo_url'
   url: string
   site: string
