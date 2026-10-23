@@ -83,8 +83,8 @@ describe('validateCollectionForm', () => {
       const form = { ...emptyCollectionForm(), title: 'C', folders: [{ ...newFolder(), title: 'F', ...update }] }
       return Object.values(validateCollectionForm(form, accessible).folders)[0]?.media
     }
-    expect(media({ coverImageURL: 'https://x.test/a.png', heroVideoURL: ' https://x.test/v.mp4 ' })).toBeUndefined()
-    expect(media({ heroVideoURL: 'http://x.test/v.mp4' })).toBe('Hero video must be a web address starting with https://.')
+    expect(media({ coverImageURL: 'https://x.test/a.png', titleLogoURL: ' https://x.test/l.png ' })).toBeUndefined()
+    expect(media({ titleLogoURL: 'http://x.test/l.png' })).toBe('Title logo must be a web address starting with https://.')
     expect(media({ coverImageURL: 'javascript:alert(1)' })).toBe(
       'Cover image must be a web address starting with https://.',
     )

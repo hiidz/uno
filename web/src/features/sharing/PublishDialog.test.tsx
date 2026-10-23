@@ -116,7 +116,7 @@ describe('PublishDialog', () => {
   const media = {
     pictures: [
       { title: 'Studios', field: 'backdrop_image_url', url: 'https://i.postimg.cc/b.jpg', site: 'i.postimg.cc' },
-      { title: 'Marvel', field: 'hero_video_url', url: 'https://i.imgur.com/v.mp4', site: 'i.imgur.com' },
+      { title: 'Marvel', field: 'focus_gif_url', url: 'https://i.imgur.com/f.gif', site: 'i.imgur.com' },
     ],
     sites: ['flagcdn.com', 'image.tmdb.org'],
   } as const satisfies Parameters<typeof WithheldCard>[0]['media']
@@ -128,10 +128,10 @@ describe('PublishDialog', () => {
     const rows = within(card).getAllByRole('listitem')
     expect(rows.map((row) => row.textContent)).toEqual([
       'StudiosBackground image · i.postimg.cc',
-      'MarvelHero video · i.imgur.com',
+      'MarvelFocus GIF · i.imgur.com',
     ])
     expect(rows[0].querySelector('img')).toHaveAttribute('src', 'https://i.postimg.cc/b.jpg')
-    expect(rows[1].querySelector('img')).toBeNull()
+    expect(rows[1].querySelector('img')).toHaveAttribute('src', 'https://i.imgur.com/f.gif')
     const opening = screen.getByText(/Anyone on Uno can find it/)
     expect(opening.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })

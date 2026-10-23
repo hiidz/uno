@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Film, ImageOff } from 'lucide-react'
+import { ImageOff } from 'lucide-react'
 import { fetchWithheldMedia, queryKeys, type WithheldMedia, type WithheldPicture } from '@/api'
 import { Icon } from '@/components/Icon'
 import { communitySetting } from '@/lib/pageConfig'
@@ -13,7 +13,6 @@ const FIELD_WORDS: Record<WithheldPicture['field'], string> = {
   cover_image_url: 'Cover image',
   focus_gif_url: 'Focus GIF',
   hero_backdrop_url: 'Hero backdrop',
-  hero_video_url: 'Hero video',
   title_logo_url: 'Title logo',
 }
 
@@ -48,16 +47,11 @@ export function WithheldPictures({
   return <WithheldCard media={media.data} />
 }
 
-/** A picture's thumbnail: the picture itself, or a film icon for a hero
- *  video. */
+/** A picture's thumbnail: the picture itself. */
 function Thumbnail({ picture }: { picture: WithheldPicture }) {
   return (
     <span className="bg-raised flex h-9 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md">
-      {picture.field === 'hero_video_url' ? (
-        <Icon icon={Film} className="text-dim" />
-      ) : (
-        <img src={picture.url} alt="" loading="lazy" className="h-full w-full object-cover" />
-      )}
+      <img src={picture.url} alt="" loading="lazy" className="h-full w-full object-cover" />
     </span>
   )
 }
