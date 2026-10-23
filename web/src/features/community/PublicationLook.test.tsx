@@ -75,6 +75,11 @@ describe('PublicationLook', () => {
     expect(screen.getAllByTitle(BACKDROP)).toHaveLength(1)
   })
 
+  it('says Tabbed Grids with All tab where the All tab is on', () => {
+    render(<PublicationLook collection={collection({ view_mode: 'TABBED_GRID', show_all_tab: true })} withheld={[]} marks={null} />)
+    expect(screen.getByText('Folder pages', { selector: 'dt' }).nextSibling).toHaveTextContent('Tabbed Grids with All tab')
+  })
+
   it('draws no background image where none is set', () => {
     render(<PublicationLook collection={collection({ folders: [ghibli] })} withheld={[]} marks={null} />)
     expect(screen.queryByText('Background image')).toBeNull()

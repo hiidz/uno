@@ -99,7 +99,7 @@ function CollectionSettings({ collection, leftOut }: { collection: Collection; l
  *  Grids gives it one. */
 function folderPages(collection: Collection): string {
   const label = VIEW_MODE_LABELS[collection.view_mode]
-  return collection.view_mode === 'TABBED_GRID' && collection.show_all_tab ? `${label} · All tab` : label
+  return collection.view_mode === 'TABBED_GRID' && collection.show_all_tab ? `${label} with All tab` : label
 }
 
 const PICTURES = [
