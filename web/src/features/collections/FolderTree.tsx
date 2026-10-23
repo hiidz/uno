@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, TriangleAlert } from 'lucide-react'
 import { Grip, useDragSensors } from '@/components/dnd'
 import { IconButton } from '@/components/IconButton'
 import { Icon } from '@/components/Icon'
+import { shapeClass } from '@/features/preview/heroArt'
 import { thumbnail } from '@/lib/tmdbImage'
 import { reorder } from '@/lib/order'
 import { pluralCount } from '@/lib/plural'
@@ -210,17 +211,20 @@ function FolderItem({
   )
 }
 
-/** A folder's cover, small: its image, else its emoji, else an empty box. */
+/** A folder's cover, small and at its tile shape, centred in the same slot
+ *  whatever the shape: its image, else its emoji, else an empty box. */
 function FolderThumb({ folder }: { folder: FolderFormState }) {
   const image = folder.coverImageURL.trim()
   return (
-    // drift-ok: the cover emoji is sized to its thumbnail
-    <span aria-hidden="true" className="fold-thumb text-[18px] leading-none">
-      {image ? (
-        <img {...thumbnail(image, '2.75rem')} alt="" loading="lazy" className="h-full w-full object-cover" />
-      ) : (
-        folder.coverEmoji
-      )}
+    <span aria-hidden="true" className="fold-thumb-slot">
+      {/* drift-ok: the cover emoji is sized to its thumbnail */}
+      <span className={`fold-thumb ${shapeClass(folder.tileShape)} text-[18px] leading-none`}>
+        {image ? (
+          <img {...thumbnail(image, '2.75rem')} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : (
+          folder.coverEmoji
+        )}
+      </span>
     </span>
   )
 }

@@ -2090,16 +2090,31 @@
         min-width: 0;
         text-align: left;
     }
-    .fold-thumb {
+    /* A folder row's cover at its tile shape, centred in a 44px slot so the
+       names stay in line. */
+    .fold-thumb-slot {
         display: grid;
         flex: none;
         place-items: center;
         width: 44px;
-        height: 28px;
+    }
+    .fold-thumb {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 25px;
         overflow: hidden;
         border-radius: 6px;
         background: var(--uno-raised-hi);
         box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+    }
+    .fold-thumb.square {
+        width: 32px;
+        height: 32px;
+    }
+    .fold-thumb.poster {
+        width: 24px;
+        height: 36px;
     }
     .fold-row-name {
         color: var(--uno-dim);
