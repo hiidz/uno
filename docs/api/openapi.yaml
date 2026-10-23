@@ -1520,7 +1520,7 @@ components:
           description: The folder's title, or the collection's for its backdrop.
         field:
           type: string
-          enum: [backdrop_image_url, cover_image_url, focus_gif_url, hero_backdrop_url, hero_video_url, title_logo_url]
+          enum: [backdrop_image_url, cover_image_url, focus_gif_url, hero_backdrop_url, title_logo_url]
         url: { type: string }
         site:
           type: string
@@ -1642,7 +1642,9 @@ components:
         focus_gif_url: { type: string, maxLength: 2048 }
         focus_gif_enabled: { type: boolean }
         hero_backdrop_url: { type: string, maxLength: 2048 }
-        hero_video_url: { type: string, maxLength: 2048 }
+        hero_video_url:
+          type: string
+          description: Always empty. A value sent is ignored and never stored or pushed.
         title_logo_url: { type: string, maxLength: 2048 }
 
     FolderRef:

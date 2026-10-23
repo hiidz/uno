@@ -110,7 +110,6 @@ func (db *DB) CollectionWithheldMedia(ctx context.Context, profileID, collection
 		add(f.Title, "cover_image_url", f.CoverImageURL)
 		add(f.Title, "focus_gif_url", f.FocusGIFURL)
 		add(f.Title, "hero_backdrop_url", f.HeroBackdropURL)
-		add(f.Title, "hero_video_url", f.HeroVideoURL)
 		add(f.Title, "title_logo_url", f.TitleLogoURL)
 	}
 	return out, nil

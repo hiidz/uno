@@ -137,11 +137,13 @@ type FolderArt struct {
 	// it's focused, when FocusGIFEnabled is set.
 	FocusGIFURL     string `json:"focus_gif_url"`
 	FocusGIFEnabled bool   `json:"focus_gif_enabled"`
-	// HeroBackdropURL, HeroVideoURL and TitleLogoURL are the folder's hero
-	// media for Nuvio's Modern Home layout.
+	// HeroBackdropURL and TitleLogoURL are the folder's hero media for
+	// Nuvio's Modern Home layout.
 	HeroBackdropURL string `json:"hero_backdrop_url"`
-	HeroVideoURL    string `json:"hero_video_url"`
-	TitleLogoURL    string `json:"title_logo_url"`
+	// HeroVideoURL is always empty: Uno doesn't set a hero video. It stays so
+	// every stored snapshot keeps its bytes, and so its content hash.
+	HeroVideoURL string `json:"hero_video_url"`
+	TitleLogoURL string `json:"title_logo_url"`
 }
 
 // FolderCatalog joins a Folder to one of its member Catalogs, in order.

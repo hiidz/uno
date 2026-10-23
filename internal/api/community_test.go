@@ -268,7 +268,7 @@ func TestCollectionWithheldMediaRoute(t *testing.T) {
 	}
 	art := vault.FolderArt{
 		TileShape: "POSTER", CoverImageURL: "https://image.tmdb.org/t/p/w500/cover.jpg",
-		HeroVideoURL: "https://Cdn.Example.com:8443/hero.mp4",
+		TitleLogoURL: "https://Cdn.Example.com:8443/logo.png",
 	}
 	collection, err := x.f.db.CreateUserCollection(ctx, x.f.caller.ID, vault.CollectionForm{
 		Title: "Art", ViewMode: "ROWS", BackdropImageURL: "https://i.postimg.cc/backdrop.jpg",
@@ -288,10 +288,10 @@ func TestCollectionWithheldMediaRoute(t *testing.T) {
 
 	x.f.db.ShareCommunityMediaFrom([]string{"image.tmdb.org", "*.example.org"})
 	trusted := newCommunityServer(t, x.f.db, CommunityTrustedImages)
-	hero := `"field":"hero_video_url","url":"https://Cdn.Example.com:8443/hero.mp4","site":"cdn.example.com"}`
+	logo := `"field":"title_logo_url","url":"https://Cdn.Example.com:8443/logo.png","site":"cdn.example.com"}`
 	want := `{"pictures":[` +
 		`{"title":"Art","field":"backdrop_image_url","url":"https://i.postimg.cc/backdrop.jpg","site":"i.postimg.cc"},` +
-		`{"title":"One",` + hero + `,{"title":"Two",` + hero +
+		`{"title":"One",` + logo + `,{"title":"Two",` + logo +
 		`],"sites":["image.tmdb.org","*.example.org"]}`
 	if w := serve(t, trusted, http.MethodGet, path, "", false); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != want {
 		t.Errorf("on a server trusting some sites: %d %s\nwant %s", w.Code, w.Body.String(), want)
