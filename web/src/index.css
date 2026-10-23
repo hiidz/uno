@@ -1297,6 +1297,118 @@
         box-shadow: inset 0 0 0 2px var(--uno-ink);
     }
 
+    /* A folder picture on its own (`features/preview/art.tsx`): the folder
+       tile's face at its shape, or a title logo at its own proportions. The
+       card alone is the placeholder while it loads; a failed or unloaded
+       picture says so on the card. */
+    .art-pic {
+        position: relative;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        border-radius: 10px;
+        background: var(--uno-raised-hi);
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+    }
+    .art-pic img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .art-pic.poster {
+        width: 104px;
+        aspect-ratio: 2 / 3;
+    }
+    .art-pic.landscape {
+        width: 230px;
+        aspect-ratio: 16 / 9;
+    }
+    .art-pic.square {
+        width: 150px;
+        aspect-ratio: 1;
+    }
+    /* A logo keeps its own proportions, up to Nuvio's 220 × 100 box. */
+    .art-pic.free {
+        max-width: 220px;
+        min-height: 48px;
+    }
+    .art-pic.free img {
+        position: static;
+        width: auto;
+        max-width: 100%;
+        height: auto;
+        max-height: 100px;
+        object-fit: contain;
+    }
+    .art-pic.free.is-failed {
+        width: 220px;
+    }
+    .art-pic-note {
+        display: grid;
+        gap: 2px;
+        padding: 8px;
+        text-align: center;
+        color: var(--uno-dim);
+    }
+
+    /* A folder's hero as Nuvio TV's Modern Home draws it: the backdrop,
+       shaded from the left and from the bottom, the logo or title at the
+       lower left. */
+    .art-hero {
+        position: relative;
+        width: 100%;
+        max-width: 360px;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        border-radius: 10px;
+        background: var(--uno-raised-hi);
+        box-shadow: inset 0 0 0 1px var(--uno-line-hi);
+    }
+    .art-hero-backdrop {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .art-hero-shade {
+        position: absolute;
+        inset: 0;
+        background:
+            linear-gradient(to right, var(--uno-ground) 0%, color-mix(in srgb, var(--uno-ground) 55%, transparent) 40%, transparent 70%),
+            linear-gradient(to top, var(--uno-ground) 0%, transparent 45%);
+    }
+    /* Nuvio's logo box is 220 × 100 on a TV-wide hero; here it keeps that
+       share of the frame. */
+    .art-hero-title {
+        position: absolute;
+        left: 6%;
+        bottom: 12%;
+        width: 40%;
+        height: 26%;
+        display: flex;
+        align-items: flex-end;
+    }
+    .art-hero-title img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        object-position: left bottom;
+    }
+    .art-hero-text {
+        color: var(--uno-ink);
+        overflow-wrap: anywhere;
+    }
+    .art-hero-note {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        right: 8px;
+        color: var(--uno-dim);
+    }
+
     /* A folder's page: its heading and back button, tabs where its view mode
        has them, then a grid or rows. The back button beside the title, Escape
        and (on Home) the browser's Back all leave the folder the same way. */
