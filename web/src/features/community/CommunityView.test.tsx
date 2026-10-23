@@ -57,6 +57,7 @@ const nightDetail: PublicationDetail = {
       ],
     },
   },
+  withheld: [],
 }
 
 /** Community as the server answers it, on one page: the rows of the kind asked
@@ -334,6 +335,50 @@ describe('CommunityView', () => {
     fireEvent.click(catalog)
     expect(catalog).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('Narrowed to', { selector: 'dt' })).toBeInTheDocument()
+  })
+
+  it('switches a collection’s page between Filters and Appearance, opening on Filters', async () => {
+    renderView({
+      'GET /api/p/1/community': listing([night]),
+      'GET /api/p/1/community/night': nightDetail,
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Collections' }))
+    fireEvent.click(await screen.findByText('Horror Nights'))
+    const filters = await screen.findByRole('button', { name: 'Filters' })
+    expect(filters).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('button', { name: /Slasher classics/ })).toBeInTheDocument()
+    expect(screen.queryByText('Folder pages')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
+    expect(screen.getByText('Folder pages', { selector: 'dt' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Folders' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Slasher classics/ })).toBeNull()
+  })
+
+  it('gives a catalog’s page no Filters / Appearance switch', async () => {
+    renderView({
+      'GET /api/p/1/community': listing([a24]),
+      'GET /api/p/1/community/a24': { ...a24, snapshot: { format: 'uno-publication', version: 1, catalogs: [a24.catalog!] }, withheld: [] },
+    })
+    fireEvent.click(await screen.findByText('A24 Horror'))
+    expect(await screen.findByText('One page of results')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Appearance' })).toBeNull()
+  })
+
+  it('marks a folder whose art the waiting update changes on Appearance, as on Filters', async () => {
+    renderView(
+      {
+        'GET /api/p/1/community': listing([night]),
+        'GET /api/p/1/community/night': nightDetail,
+        'GET /api/p/1/community/night/changes': [{ op: 'changed', kind: 'folder', aspect: 'art', key: 'f1', name: 'Slashers' }],
+      },
+      { id: 'night', kind: 'collection' },
+    )
+    await waitFor(() => expect(within(document.getElementById('update-folder-f1')!).getByText('new art')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
+    const card = document.getElementById('update-folder-f1')!
+    expect(within(card).getByText('Tile shape', { selector: 'dt' })).toBeInTheDocument()
+    expect(within(card).getByText('new art')).toBeInTheDocument()
   })
 
   it('draws a row as one target: a pointer name button covering it, its actions above', async () => {

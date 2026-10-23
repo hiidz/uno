@@ -76,6 +76,7 @@ func TestSharingRoutes(t *testing.T) {
 		{name: "list searched for too many words", method: http.MethodGet, path: "/api/p/1/community?kind=catalog&sort=name&q=a+b+c+d+e+f+g+h+i", wantStatus: http.StatusBadRequest, wantBody: "search has over 8 words"},
 		{name: "list holds the collection", method: http.MethodGet, path: "/api/p/1/community?kind=collection&sort=name&q=weekend", wantStatus: http.StatusOK, wantBody: `"title":"Their Weekend"`},
 		{name: "detail", method: http.MethodGet, path: theirCollection, wantStatus: http.StatusOK, wantBody: `"snapshot":{"format":"uno-publication"`},
+		{name: "detail on a server sharing every site", method: http.MethodGet, path: theirCollection, wantStatus: http.StatusOK, wantBody: `"withheld":[]`},
 		{name: "detail of an unknown publication", method: http.MethodGet, path: community + uuid.NewString(), wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
 		{name: "detail with a path id that isn't a uuid", method: http.MethodGet, path: community + "nope", wantStatus: http.StatusBadRequest, wantBody: "invalid publication id"},
 		{name: "update before subscribing", method: http.MethodPost, path: theirCatalog + "/update", wantStatus: http.StatusNotFound, wantBody: "not in Community any more"},
@@ -306,5 +307,33 @@ func TestCollectionWithheldMediaRoute(t *testing.T) {
 	copied := subscribedCopy(t, x.f, x.theirCollection)
 	if w := serve(t, trusted, http.MethodGet, "/api/p/1/collections/"+copied.String()+"/withheld-media", "", false); w.Code != http.StatusBadRequest {
 		t.Errorf("a subscribed copy: %d %s, want 400", w.Code, w.Body.String())
+	}
+}
+
+// A publication's page carries what Community leaves out of it: on a server
+// trusting some sites, the backdrop off them, under the empty key.
+func TestPublicationDetailWithheld(t *testing.T) {
+	x := newSharingFixture(t)
+	ctx := t.Context()
+	collection, err := x.f.db.CreateUserCollection(ctx, x.publisher, vault.CollectionForm{
+		Title: "Art", ViewMode: "ROWS", BackdropImageURL: "https://i.postimg.cc/backdrop.jpg",
+		Folders: []vault.FolderData{{
+			FolderArt: vault.FolderArt{TileShape: "POSTER", CoverImageURL: "https://image.tmdb.org/t/p/w500/cover.jpg"},
+			Title:     "One", Catalogs: vault.CatalogRefs(x.theirCatalogSource),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if collection, err = x.f.db.PublishCollection(ctx, x.publisher, collection.ID); err != nil {
+		t.Fatal(err)
+	}
+	x.f.db.ShareCommunityMediaFrom([]string{"image.tmdb.org"})
+	trusted := newCommunityServer(t, x.f.db, CommunityTrustedImages)
+
+	want := `"withheld":[{"key":"","field":"backdrop_image_url","url":"https://i.postimg.cc/backdrop.jpg"}]`
+	w := serve(t, trusted, http.MethodGet, "/api/p/1/community/"+collection.Publication.ID.String(), "", false)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), want) {
+		t.Errorf("detail: %d %s\nwant it to hold %s", w.Code, w.Body.String(), want)
 	}
 }

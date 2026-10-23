@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { heroArt, shapeClass, siteOf } from './heroArt'
+import { cutAddress, heroArt, shapeClass, siteOf } from './heroArt'
 
 const folder = {
   title: 'Marvel',
@@ -44,5 +44,19 @@ describe('siteOf', () => {
 describe('shapeClass', () => {
   it('maps each tile shape', () => {
     expect([shapeClass('POSTER'), shapeClass('LANDSCAPE'), shapeClass('SQUARE')]).toEqual(['poster', 'landscape', 'square'])
+  })
+})
+
+describe('cutAddress', () => {
+  it('leaves an address that fits whole, without its scheme', () => {
+    expect(cutAddress('https://i.postimg.cc/a.gif', 26)).toBe('i.postimg.cc/a.gif')
+  })
+
+  it('keeps the site and the end of a long one', () => {
+    expect(cutAddress('https://i.postimg.cc/Xq4mP2Lw/marvel-studios-focus.gif', 26)).toBe('i.postimg.cc/…os-focus.gif')
+  })
+
+  it('keeps at least 8 characters of the end after a long site', () => {
+    expect(cutAddress('https://images.weserv.nl/?url=image.tmdb.org/t/p/w500/a.png&w=640', 20)).toBe('images.weserv.nl/…ng&w=640')
   })
 })

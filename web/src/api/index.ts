@@ -84,6 +84,7 @@ export type {
   PublicationDetail,
   PublicationState,
   SnapshotChange,
+  WithheldAddress,
   WithheldMedia,
   WithheldPicture,
   SnapshotCatalog,

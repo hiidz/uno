@@ -185,16 +185,62 @@ func (s Snapshot) withMedia(keep func(raw string) bool) Snapshot {
 		return s
 	}
 	c := *s.Collection
-	keepOrClear(&c.BackdropImageURL, keep)
 	c.Folders = slices.Clone(c.Folders)
-	for i := range c.Folders {
-		art := &c.Folders[i].FolderArt
-		for _, addr := range []*string{&art.CoverImageURL, &art.FocusGIFURL, &art.HeroBackdropURL, &art.HeroVideoURL, &art.TitleLogoURL} {
-			keepOrClear(addr, keep)
-		}
+	for _, m := range c.media() {
+		keepOrClear(m.addr, keep)
 	}
 	s.Collection = &c
 	return s
+}
+
+// WithheldAddress is one media address Community leaves out of a
+// publication: the key of the folder it is in, "" for the collection's
+// backdrop, the field it is in by its wire name, and the address.
+type WithheldAddress struct {
+	Key   string `json:"key"`
+	Field string `json:"field"`
+	URL   string `json:"url"`
+}
+
+// withheld is each media address withMedia leaves out of s for keep, in
+// media's order, but a hero video, which nothing shows: empty for a
+// catalog's snapshot, never nil.
+func (s Snapshot) withheld(keep func(raw string) bool) []WithheldAddress {
+	out := []WithheldAddress{}
+	if s.Collection == nil {
+		return out
+	}
+	for _, m := range s.Collection.media() {
+		if m.field != "hero_video_url" && *m.addr != "" && !keep(*m.addr) {
+			out = append(out, WithheldAddress{Key: m.key, Field: m.field, URL: *m.addr})
+		}
+	}
+	return out
+}
+
+// mediaField is one media address field of a snapshot's collection: the key
+// of the folder it is in, "" for the collection's backdrop, its wire name,
+// and the field.
+type mediaField struct {
+	key, field string
+	addr       *string
+}
+
+// media is every media address field of c: its backdrop, then each folder's
+// cover, focus GIF, hero backdrop, hero video and title logo, in order.
+func (c *SnapshotCollection) media() []mediaField {
+	out := []mediaField{{"", "backdrop_image_url", &c.BackdropImageURL}}
+	for i := range c.Folders {
+		f := &c.Folders[i]
+		out = append(out,
+			mediaField{f.Key, "cover_image_url", &f.CoverImageURL},
+			mediaField{f.Key, "focus_gif_url", &f.FocusGIFURL},
+			mediaField{f.Key, "hero_backdrop_url", &f.HeroBackdropURL},
+			mediaField{f.Key, "hero_video_url", &f.HeroVideoURL},
+			mediaField{f.Key, "title_logo_url", &f.TitleLogoURL},
+		)
+	}
+	return out
 }
 
 // keepOrClear empties *addr unless it is empty already or keep takes it.

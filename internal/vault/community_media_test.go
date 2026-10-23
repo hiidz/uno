@@ -323,3 +323,58 @@ func TestTrustedMediaUpdate(t *testing.T) {
 		t.Errorf("updated copy holds %v, want %v", got, keptMedia)
 	}
 }
+
+// A publication's page lists each media address Community leaves out of its
+// snapshot, under the folder's key ("" for the backdrop) and the field's wire
+// name: nothing on a server that shares every site, every address under
+// no-images, the ones off the trusted sites under trusted-images, to its
+// publisher too. A catalog's page lists none. The snapshot it comes with is
+// the stripped one.
+func TestPublicationWithheld(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
+	source := publishCollection(t, db, owner, mixedMediaCollection("Art"))
+	catalog := publishCatalog(t, db, owner, "Plain", "{}")
+	pubID := source.Publication.ID
+
+	detail := func(db *DB, viewer, id uuid.UUID) PublicationDetail {
+		t.Helper()
+		d, err := db.GetPublication(ctx, viewer, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	key := detail(db, subscriber, pubID).Snapshot.Collection.Folders[0].Key
+	backdrop := WithheldAddress{"", "backdrop_image_url", "https://img.example/backdrop.jpg"}
+	gif := WithheldAddress{key, "focus_gif_url", "https://img.example/focus.gif"}
+	hero := WithheldAddress{key, "hero_backdrop_url", "https://img.example/hero.jpg"}
+
+	if got := detail(db, subscriber, pubID).Withheld; got == nil || len(got) != 0 {
+		t.Errorf("sharing every site: withheld = %#v, want empty, not nil", got)
+	}
+
+	trusted := &DB{conn: db.conn}
+	trusted.ShareCommunityMediaFrom([]string{trustedSite})
+	for _, viewer := range []uuid.UUID{subscriber, owner} {
+		d := detail(trusted, viewer, pubID)
+		if want := []WithheldAddress{backdrop, gif, hero}; !slices.Equal(d.Withheld, want) {
+			t.Errorf("trusted-images: withheld = %v, want %v", d.Withheld, want)
+		}
+		if got := snapshotMedia(d.Snapshot); !slices.Equal(got, keptMedia) {
+			t.Errorf("trusted-images: snapshot holds %v, want %v", got, keptMedia)
+		}
+	}
+
+	db.WithholdCommunityMedia()
+	want := []WithheldAddress{
+		backdrop, {key, "cover_image_url", keptMedia[0]}, gif, hero, {key, "title_logo_url", keptMedia[1]},
+	}
+	if got := detail(db, subscriber, pubID).Withheld; !slices.Equal(got, want) {
+		t.Errorf("no-images: withheld = %v, want %v", got, want)
+	}
+	if got := detail(db, subscriber, catalog.Publication.ID).Withheld; got == nil || len(got) != 0 {
+		t.Errorf("a catalog: withheld = %#v, want empty, not nil", got)
+	}
+}

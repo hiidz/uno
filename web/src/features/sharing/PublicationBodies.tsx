@@ -38,8 +38,10 @@ export function CatalogBody({ catalog, genres, lead, marks = null }: CatalogBody
  *  that open in place, beside the Preview panel. `lead` sits above the cards.
  *  A page still loading its publication draws the lead alone, with no
  *  `collection` yet. While an update waits, `marks` says on each card and
- *  block what it changes, and the folders it removes follow the cards. */
-export function CollectionBody({ collection, genres, lead, marks = null }: CollectionBodyProps) {
+ *  block what it changes, and the folders it removes follow the cards.
+ *  `folders`, when given, takes the cards' place (a publication page's
+ *  Appearance side). */
+export function CollectionBody({ collection, genres, lead, marks = null, folders }: CollectionBodyProps) {
   const byID = catalogsByID(collection)
   const firsts = firstUses(foldersOf(collection))
   return (
@@ -47,10 +49,14 @@ export function CollectionBody({ collection, genres, lead, marks = null }: Colle
       <div className="ed ed-preview">
         <div className="ed-form flex flex-col gap-3">
           {lead}
-          {foldersOf(collection).map((folder) => (
-            <FolderCard key={folder.id} folder={folder} catalogs={byID} genres={genres} marks={marks} firsts={firsts} />
-          ))}
-          <RemovedFolders names={removedFolders(marks)} />
+          {folders ?? (
+            <>
+              {foldersOf(collection).map((folder) => (
+                <FolderCard key={folder.id} folder={folder} catalogs={byID} genres={genres} marks={marks} firsts={firsts} />
+              ))}
+              <RemovedFolders names={removedFolders(marks)} />
+            </>
+          )}
         </div>
         {collection && <SavedCollectionPreview collection={collection} />}
       </div>
@@ -106,6 +112,7 @@ interface CollectionBodyProps {
   genres: GenreLookups
   lead?: ReactNode
   marks?: UpdateMarks | null
+  folders?: ReactNode
 }
 
 interface FolderCardProps {
