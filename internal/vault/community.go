@@ -49,10 +49,12 @@ type CommunityFolder struct {
 	CoverImageURL string `json:"cover_image_url"`
 }
 
-// PublicationDetail is one publication with its snapshot.
+// PublicationDetail is one publication with its snapshot, as Community shows
+// it (shared), and the media addresses that leaves out.
 type PublicationDetail struct {
 	CommunityItem
-	Snapshot Snapshot `json:"snapshot"`
+	Snapshot Snapshot          `json:"snapshot"`
+	Withheld []WithheldAddress `json:"withheld"`
 }
 
 // communityItemColumns are the columns scanCommunityItem reads, from
@@ -314,8 +316,8 @@ func (db *DB) scanCommunityItems(rows *sql.Rows) ([]CommunityItem, []string, err
 	return items, keys, nil
 }
 
-// scanCommunityItem reads communityItemColumns and returns the item with the
-// snapshot it was read from, as Community shows it (shared).
+// scanCommunityItem reads communityItemColumns and returns the item, as
+// Community shows it (shared), with the snapshot it was read from as stored.
 func (db *DB) scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error) {
 	var item CommunityItem
 	var id, publishedAt, updatedAt, raw string
@@ -334,8 +336,7 @@ func (db *DB) scanCommunityItem(row rowScanner) (CommunityItem, Snapshot, error)
 	if err != nil {
 		return CommunityItem{}, Snapshot{}, err
 	}
-	s = db.shared(s)
-	return item.withSnapshot(s), s, nil
+	return item.withSnapshot(db.shared(s)), s, nil
 }
 
 // withSnapshot is item with what its row shows of s, its publication's
@@ -393,5 +394,5 @@ func (db *DB) GetPublication(ctx context.Context, profileID, publicationID uuid.
 	if err != nil {
 		return PublicationDetail{}, fmt.Errorf("loading publication: %w", err)
 	}
-	return PublicationDetail{CommunityItem: item, Snapshot: snapshot}, nil
+	return PublicationDetail{CommunityItem: item, Snapshot: db.shared(snapshot), Withheld: db.withheld(snapshot)}, nil
 }

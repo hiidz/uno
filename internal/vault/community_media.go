@@ -37,6 +37,14 @@ func (db *DB) shared(s Snapshot) Snapshot {
 	return s.withMedia(db.sharesMedia)
 }
 
+// withheld is what shared leaves out of s: empty when it leaves nothing out.
+func (db *DB) withheld(s Snapshot) []WithheldAddress {
+	if db.sharesMedia == nil {
+		return []WithheldAddress{}
+	}
+	return s.withheld(db.sharesMedia)
+}
+
 // onSite reports whether raw is an https address on one of sites: a site
 // name its host is, or "*." and a name its host is under (siteOf). Anything
 // that doesn't parse as an https address with a host is on none.

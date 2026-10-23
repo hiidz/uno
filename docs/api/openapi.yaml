@@ -1511,6 +1511,18 @@ components:
           description: The sites Community shares pictures from, a name or "*." and a name.
           items: { type: string }
 
+    WithheldAddress:
+      type: object
+      required: [key, field, url]
+      properties:
+        key:
+          type: string
+          description: The key of the folder it is in, empty for the collection's backdrop.
+        field:
+          type: string
+          enum: [backdrop_image_url, cover_image_url, focus_gif_url, hero_backdrop_url, title_logo_url]
+        url: { type: string }
+
     WithheldPicture:
       type: object
       required: [title, field, url, site]
@@ -1921,9 +1933,18 @@ components:
       allOf:
         - $ref: "#/components/schemas/CommunityItem"
         - type: object
-          required: [snapshot]
+          required: [snapshot, withheld]
           properties:
-            snapshot: { $ref: "#/components/schemas/Snapshot" }
+            snapshot:
+              $ref: "#/components/schemas/Snapshot"
+              description: As Community shows it, without the addresses in withheld.
+            withheld:
+              type: array
+              description: >-
+                Each media address the server leaves out of the snapshot: the
+                collection's backdrop first, then each folder's in order. Empty
+                on a server that shares every site, and for a catalog.
+              items: { $ref: "#/components/schemas/WithheldAddress" }
 
     CommunityCopy:
       type: object
