@@ -14,8 +14,25 @@ import {
   stickerWords,
   viewStickers,
   waitingIDs,
+  withheldNote,
   type SharingSticker,
 } from './sharingState'
+
+describe('withheldNote', () => {
+  const withheld = new Set(['https://i.postimg.cc/a.png'])
+
+  it('names the site of an address the server says Community leaves out', () => {
+    expect(withheldNote(' https://i.postimg.cc/a.png ', withheld)).toBe(
+      'Community won’t show this: i.postimg.cc isn’t one of this server’s picture sites.',
+    )
+  })
+
+  it('says nothing of an address the server did not name, an empty one, or before it answers', () => {
+    expect(withheldNote('https://i.postimg.cc/b.png', withheld)).toBeUndefined()
+    expect(withheldNote('', withheld)).toBeUndefined()
+    expect(withheldNote('https://i.postimg.cc/a.png', undefined)).toBeUndefined()
+  })
+})
 
 const live = { id: 'p', changed_since_publish: false }
 const subscription = { publication_id: 'p', update_available: false }

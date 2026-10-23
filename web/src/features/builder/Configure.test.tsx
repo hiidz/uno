@@ -25,6 +25,8 @@ beforeAll(() => {
 
 vi.mock('@/api/client', () => ({ apiFetch: vi.fn(() => new Promise(() => {})) }))
 
+vi.mock('@/features/sharing/useWithheldMedia', () => ({ useWithheldAddresses: () => undefined }))
+
 const rows = vi.hoisted(() => ({ catalogs: [] as Catalog[], collections: [] as Collection[] }))
 
 vi.mock('@/features/library/useLibrary', () => ({

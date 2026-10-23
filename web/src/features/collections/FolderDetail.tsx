@@ -1,10 +1,12 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronDown } from 'lucide-react'
 import type { TileShape } from '@/api'
 import { Button } from '@/components/Button'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
+import { withheldNote } from '@/features/sharing/sharingState'
+import { communitySetting } from '@/lib/pageConfig'
 import { CatalogRefPicker } from './CatalogRefPicker'
 import { CatalogRow } from './CatalogRow'
 import {
@@ -17,6 +19,14 @@ import {
   type FolderUnit,
 } from './collectionForm'
 import { dragID } from './folderDnd'
+import {
+  CommunityNote,
+  CoverPicture,
+  FocusGIFPicture,
+  FolderHero,
+  LogoPicture,
+} from './FolderPictures'
+import { useShownAddress, useShownPictures } from './useShownPictures'
 import { catalogOrder } from './folderEdits'
 import type { RefOption } from './refs'
 import type { CopyToLibrary } from './useCopyToLibrary'
@@ -50,10 +60,16 @@ export function FolderDetail({
   errors,
   onChange,
   onRemove,
+  backdropImageURL = '',
+  withheldAddresses,
   ...catalogs
 }: {
   folder: FolderFormState
   position: number
+  /** The collection's background image, the hero's last fallback. */
+  backdropImageURL?: string
+  /** The addresses Community would leave out of the collection as saved. */
+  withheldAddresses?: ReadonlySet<string>
   /** Undefined until the user has tried to save — same rule as the catalog
    *  builder, which withholds errors until submit. */
   errors: FolderErrors | undefined
@@ -65,6 +81,9 @@ export function FolderDetail({
   // An address error stays in view: the settings are folded otherwise.
   const appearanceOpen = appearanceToggled || Boolean(errors?.media)
   const label = folderLabel(folder, position)
+  const shown = useShownPictures(folder)
+  const shownBackdrop = useShownAddress(backdropImageURL)
+  const note = (address: string) => withheldNote(address, withheldAddresses)
 
   return (
     <section className="fold-detail" aria-label={`Folder: ${folder.title.trim() || 'untitled'}`}>
@@ -112,6 +131,11 @@ export function FolderDetail({
 
       {appearanceOpen && (
         <>
+          {communitySetting() === 'no-images' && (
+            <div className="py-2">
+              <CommunityNote text="Community shares no pictures on this server: a published copy shows none of these." />
+            </div>
+          )}
           <div className="setting">
             <span className="setting-label type-label">Hide the title</span>
             <div className="setting-value ed-line">
@@ -149,25 +173,29 @@ export function FolderDetail({
             <label htmlFor={`${idBase}-emoji`} className="setting-label type-label">
               Cover
             </label>
-            <div className="setting-value flex max-w-[360px] gap-2">
-              <div className="w-[var(--w-code)] shrink-0">
-                <TextInput
-                  id={`${idBase}-emoji`}
-                  value={folder.coverEmoji}
-                  onChange={(coverEmoji) => onChange({ coverEmoji })}
-                  placeholder="🎬"
-                  maxLength={8}
-                  ariaLabel={`Cover emoji for ${label}`}
-                />
+            <div className="setting-value flex max-w-[360px] flex-col gap-2">
+              <div className="flex gap-2">
+                <div className="w-[var(--w-code)] shrink-0">
+                  <TextInput
+                    id={`${idBase}-emoji`}
+                    value={folder.coverEmoji}
+                    onChange={(coverEmoji) => onChange({ coverEmoji })}
+                    placeholder="🎬"
+                    maxLength={8}
+                    ariaLabel={`Cover emoji for ${label}`}
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <TextInput
+                    value={folder.coverImageURL}
+                    onChange={(coverImageURL) => onChange({ coverImageURL })}
+                    placeholder="Image URL, https://…"
+                    ariaLabel={`Cover image URL for ${label}`}
+                  />
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <TextInput
-                  value={folder.coverImageURL}
-                  onChange={(coverImageURL) => onChange({ coverImageURL })}
-                  placeholder="Image URL, https://…"
-                  ariaLabel={`Cover image URL for ${label}`}
-                />
-              </div>
+              <CoverPicture src={shown.cover} folder={folder} />
+              <CommunityNote text={note(folder.coverImageURL)} />
             </div>
           </div>
 
@@ -198,6 +226,8 @@ export function FolderDetail({
                 placeholder="GIF URL, https://…"
                 ariaLabel={`Focus GIF URL for ${label}`}
               />
+              <FocusGIFPicture src={shown.focusGIF} folder={folder} />
+              <CommunityNote text={note(folder.focusGIFURL)} />
             </div>
           </div>
 
@@ -209,7 +239,9 @@ export function FolderDetail({
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home hero backdrop URL for ${label}`}
             note="Hero backdrop and title logo are used only by Nuvio TV's Modern Home layout."
-          />
+          >
+            <CommunityNote text={note(folder.heroBackdropURL)} />
+          </HeroURLRow>
           <HeroURLRow
             id={`${idBase}-title-logo`}
             role="Title logo"
@@ -217,7 +249,11 @@ export function FolderDetail({
             onChange={(titleLogoURL) => onChange({ titleLogoURL })}
             placeholder="Image URL, https://…"
             ariaLabel={`Modern Home title logo URL for ${label}`}
-          />
+          >
+            <LogoPicture src={shown.titleLogo} />
+            <CommunityNote text={note(folder.titleLogoURL)} />
+          </HeroURLRow>
+          <FolderHero folder={folder} shown={shown} backdropImageURL={shownBackdrop} />
           {errors?.media && <FieldError>{errors.media}</FieldError>}
         </>
       )}
@@ -235,6 +271,7 @@ function HeroURLRow({
   placeholder,
   ariaLabel,
   note,
+  children,
 }: {
   id: string
   role: string
@@ -243,6 +280,8 @@ function HeroURLRow({
   placeholder: string
   ariaLabel: string
   note?: string
+  /** The address's picture, under its field. */
+  children?: ReactNode
 }) {
   return (
     <div className="setting">
@@ -255,6 +294,7 @@ function HeroURLRow({
       </div>
       <div className="setting-value flex max-w-[360px] flex-col gap-2">
         <TextInput id={id} value={value} onChange={onChange} placeholder={placeholder} ariaLabel={ariaLabel} />
+        {children}
       </div>
     </div>
   )

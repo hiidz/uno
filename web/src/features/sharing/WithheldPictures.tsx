@@ -1,11 +1,11 @@
 import { useId, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { ImageOff } from 'lucide-react'
-import { fetchWithheldMedia, queryKeys, type WithheldMedia, type WithheldPicture } from '@/api'
+import type { WithheldMedia, WithheldPicture } from '@/api'
 import { Icon } from '@/components/Icon'
 import { communitySetting } from '@/lib/pageConfig'
 import { plural } from '@/lib/plural'
 import { asksWithheldMedia } from './sharingState'
+import { useWithheldMedia } from './useWithheldMedia'
 
 /** Each field's name in the collection editor. */
 const FIELD_WORDS: Record<WithheldPicture['field'], string> = {
@@ -14,19 +14,6 @@ const FIELD_WORDS: Record<WithheldPicture['field'], string> = {
   focus_gif_url: 'Focus GIF',
   hero_backdrop_url: 'Hero backdrop',
   title_logo_url: 'Title logo',
-}
-
-/** The pictures Community would leave out of an own collection as saved,
- *  fetched while `enabled`. Never kept, like `useChangesSincePublish`: a save
- *  of the collection changes it. */
-function useWithheldMedia(profileIndex: number, collectionID: string, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.withheldMedia(profileIndex, collectionID),
-    queryFn: () => fetchWithheldMedia(profileIndex, collectionID),
-    enabled,
-    staleTime: 0,
-    gcTime: 0,
-  })
 }
 
 /** The Publish dialog's pictures card for the row `kind` and `id` name, asked

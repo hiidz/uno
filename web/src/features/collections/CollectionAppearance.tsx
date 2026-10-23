@@ -3,6 +3,8 @@ import { ChevronDown } from 'lucide-react'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { VIEW_MODES, VIEW_MODE_LABELS, appearanceSummary, type CollectionFormState } from './collectionForm'
+import { BackgroundPicture, CommunityNote } from './FolderPictures'
+import { useShownAddress } from './useShownPictures'
 
 /** A change to the collection's form. */
 type CollectionPatch = Partial<CollectionFormState>
@@ -16,6 +18,8 @@ interface CollectionAppearanceProps {
   state: CollectionFormState
   /** The background image's address error, once errors are on show. */
   backdropError?: string
+  /** The line saying Community leaves the background image out. */
+  backdropNote?: string
   onChange: (update: CollectionPatch) => void
 }
 
@@ -47,13 +51,14 @@ function ViewModeChoices({ value, onChange }: ViewModeChoicesProps) {
  * the way a folder's own Appearance is: how folders open, the "All" tab, the
  * background image and the focus glow, summarised on the closed head.
  */
-export function CollectionAppearance({ state, backdropError, onChange }: CollectionAppearanceProps) {
+export function CollectionAppearance({ state, backdropError, backdropNote, onChange }: CollectionAppearanceProps) {
   const [toggled, setOpen] = useState(false)
   // An address error stays in view: the shelf is folded otherwise.
   const open = toggled || Boolean(backdropError)
   const toggle = () => setOpen(!open)
   const setAllTab = (value: 'off' | 'on') => onChange({ showAllTab: value === 'on' })
   const setBackdrop = (backdropImageURL: string) => onChange({ backdropImageURL })
+  const shownBackdrop = useShownAddress(state.backdropImageURL)
   const setGlow = (value: 'off' | 'on') => onChange({ focusGlowEnabled: value === 'on' })
 
   return (
@@ -103,6 +108,8 @@ export function CollectionAppearance({ state, backdropError, onChange }: Collect
               invalid={Boolean(backdropError)}
             />
             {backdropError && <FieldError>{backdropError}</FieldError>}
+            <BackgroundPicture src={shownBackdrop} />
+            <CommunityNote text={backdropNote} />
           </div>
         </div>
 
