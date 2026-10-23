@@ -2,12 +2,13 @@
  *  (`internal/static`), as a `<script type="application/json" id="uno-config">`
  *  block. `per-account` means each Nuvio account brings its own TMDB key,
  *  which the picker asks for. `community` is the server's `UNO_COMMUNITY`:
- *  Community as it is, without any image or video address, or off. */
+ *  Community as it is, without the image and video addresses of sites the
+ *  server doesn't trust, without any, or off. */
 export interface PageConfig {
   nuvioBaseURL: string
   nuvioPublishableKey: string
   tmdb_key_mode: 'shared' | 'per-account'
-  community: 'on' | 'no-images' | 'off'
+  community: 'on' | 'trusted-images' | 'no-images' | 'off'
 }
 
 /** This server's `UNO_COMMUNITY`, from the page's config block, or `on` for a

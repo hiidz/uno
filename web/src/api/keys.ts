@@ -54,6 +54,10 @@ export const queryKeys = {
     ['p', profileIndex, 'changes', 'update', publicationID] as const,
   changesSincePublish: (profileIndex: number, kind: 'catalog' | 'collection', id: string) =>
     ['p', profileIndex, 'changes', kind, id] as const,
+  /** The pictures Community would leave out of an own collection, read and
+   *  kept the same way. */
+  withheldMedia: (profileIndex: number, collectionID: string) =>
+    ['p', profileIndex, 'changes', 'withheld-media', collectionID] as const,
 
   genres: (type: CatalogType) => ['genres', type] as const,
   certifications: (type: CatalogType) => ['certifications', type] as const,

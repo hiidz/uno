@@ -36,9 +36,11 @@ CREATE TABLE blocked_publishers (
 // DB is a handle to Uno's SQLite database.
 type DB struct {
 	conn *sql.DB
-	// withholdMedia is set on a server whose Community shares no media
-	// (WithholdCommunityMedia).
-	withholdMedia bool
+	// sharesMedia reports whether Community shares a media address
+	// (WithholdCommunityMedia, ShareCommunityMediaFrom); nil shares every one.
+	sharesMedia func(raw string) bool
+	// mediaSites is the sites ShareCommunityMediaFrom shares media from.
+	mediaSites []string
 }
 
 // Close closes the underlying database connection.

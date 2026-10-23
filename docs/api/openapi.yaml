@@ -469,6 +469,30 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/ServerError" }
 
+  /api/p/{profileIndex}/collections/{collectionID}/withheld-media:
+    parameters:
+      - $ref: "#/components/parameters/profileIndex"
+      - $ref: "#/components/parameters/collectionID"
+    get:
+      tags: [sharing]
+      summary: The pictures Community would leave out of the collection
+      description: >-
+        For the collection as saved, by the rule Community shows and copies a
+        publication by: each image and video address it would leave out, and
+        the sites it shares pictures from. Both are empty on a server whose
+        Community is on; on no-images every address is listed and no site.
+      responses:
+        "200":
+          description: The pictures left out and the sites trusted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WithheldMedia" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
   /api/p/{profileIndex}/community:
     parameters:
       - $ref: "#/components/parameters/profileIndex"
@@ -1465,11 +1489,42 @@ components:
           enum: [shared, per-account]
         community:
           type: string
-          enum: ["on", no-images, "off"]
+          enum: ["on", trusted-images, no-images, "off"]
           description: >-
             UNO_COMMUNITY. no-images leaves every image and video address out of
-            Community and out of the copies Add, Duplicate and Update write; off
-            answers every publish, unpublish and Community route with a 404.
+            Community and out of the copies Add, Duplicate and Update write;
+            trusted-images leaves out those from sites the server doesn't trust;
+            off answers every publish, unpublish and Community route with a 404.
+
+    WithheldMedia:
+      type: object
+      required: [pictures, sites]
+      properties:
+        pictures:
+          type: array
+          description: >-
+            The collection's backdrop first, then each folder's in order; a
+            picture used in several folders is listed once per folder.
+          items: { $ref: "#/components/schemas/WithheldPicture" }
+        sites:
+          type: array
+          description: The sites Community shares pictures from, a name or "*." and a name.
+          items: { type: string }
+
+    WithheldPicture:
+      type: object
+      required: [title, field, url, site]
+      properties:
+        title:
+          type: string
+          description: The folder's title, or the collection's for its backdrop.
+        field:
+          type: string
+          enum: [backdrop_image_url, cover_image_url, focus_gif_url, hero_backdrop_url, hero_video_url, title_logo_url]
+        url: { type: string }
+        site:
+          type: string
+          description: The address's host, lower-cased.
 
     TMDBKeyStatus:
       type: object

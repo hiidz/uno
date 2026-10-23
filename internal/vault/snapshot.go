@@ -176,23 +176,32 @@ func (s Snapshot) collectionForm(keyed bool) CollectionForm {
 	return form
 }
 
-// withoutMedia is s with every media address left out: its collection's
-// backdrop, and each folder's cover, focus GIF, hero backdrop, hero video and
-// title logo. Whether a folder plays a focus GIF stays, since it names no
-// address. s is left as it was.
-func (s Snapshot) withoutMedia() Snapshot {
+// withMedia is s with each media address keep refuses left out: its
+// collection's backdrop, and each folder's cover, focus GIF, hero backdrop,
+// hero video and title logo. Whether a folder plays a focus GIF stays, since
+// it names no address. s is left as it was.
+func (s Snapshot) withMedia(keep func(raw string) bool) Snapshot {
 	if s.Collection == nil {
 		return s
 	}
 	c := *s.Collection
-	c.BackdropImageURL = ""
+	keepOrClear(&c.BackdropImageURL, keep)
 	c.Folders = slices.Clone(c.Folders)
 	for i := range c.Folders {
 		art := &c.Folders[i].FolderArt
-		art.CoverImageURL, art.FocusGIFURL, art.HeroBackdropURL, art.HeroVideoURL, art.TitleLogoURL = "", "", "", "", ""
+		for _, addr := range []*string{&art.CoverImageURL, &art.FocusGIFURL, &art.HeroBackdropURL, &art.HeroVideoURL, &art.TitleLogoURL} {
+			keepOrClear(addr, keep)
+		}
 	}
 	s.Collection = &c
 	return s
+}
+
+// keepOrClear empties *addr unless it is empty already or keep takes it.
+func keepOrClear(addr *string, keep func(raw string) bool) {
+	if *addr != "" && !keep(*addr) {
+		*addr = ""
+	}
 }
 
 // forCopy is s as a copy of it is written: a subscribe's is s as it is, and a

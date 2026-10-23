@@ -63,10 +63,15 @@ func run() error {
 			log.Printf("Failed to close database: %v", err)
 		}
 	}()
-	if cfg.Community != config.CommunityOn {
+	if cfg.Community == config.CommunityTrustedImages {
+		log.Printf("Community: %s, pictures from %d sites", cfg.Community, len(cfg.TrustedSites))
+	} else if cfg.Community != config.CommunityOn {
 		log.Printf("Community: %s", cfg.Community)
 	}
-	if cfg.Community == config.CommunityNoImages {
+	switch cfg.Community {
+	case config.CommunityTrustedImages:
+		db.ShareCommunityMediaFrom(cfg.TrustedSites)
+	case config.CommunityNoImages:
 		db.WithholdCommunityMedia()
 	}
 

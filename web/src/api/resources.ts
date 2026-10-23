@@ -24,6 +24,7 @@ import type {
   TMDBKeyStatus,
   WatchProvider,
   WatchRegion,
+  WithheldMedia,
 } from './types'
 
 /** One function per endpoint. The Community routes are profile-scoped: the
@@ -67,6 +68,12 @@ export function fetchChangesSincePublish(
   id: string,
 ): Promise<SnapshotChange[]> {
   return getList<SnapshotChange>(`/api/p/${profileIndex}/${kind}s/${id}/changes-since-publish`)
+}
+
+/** The pictures Community would leave out of an own collection as saved, and
+ *  the sites the server shares pictures from. */
+export function fetchWithheldMedia(profileIndex: number, collectionID: string): Promise<WithheldMedia> {
+  return getJSON<WithheldMedia>(`/api/p/${profileIndex}/collections/${collectionID}/withheld-media`)
 }
 
 /** Live from TMDB via the Go side. Takes the catalog's own `type`
