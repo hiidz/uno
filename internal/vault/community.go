@@ -119,24 +119,6 @@ type communityPlan struct {
 	after *communityCursor
 }
 
-// WithholdCommunityMedia makes Community leave every media address out of
-// what it shows and copies: the list, a publication's page, what an Update
-// would change, and the copies Add, Duplicate and Update write. Publishers'
-// own rows and the snapshots as stored keep theirs, so a server that shares
-// them again shows them again. It is set once, before the DB serves anything.
-func (db *DB) WithholdCommunityMedia() {
-	db.withholdMedia = true
-}
-
-// shared is s as Community shows and copies it: s, or s without its media
-// addresses on a server that withholds them.
-func (db *DB) shared(s Snapshot) Snapshot {
-	if db.withholdMedia {
-		return s.withoutMedia()
-	}
-	return s
-}
-
 // ListCommunity is one page of the publications that aren't profileID's, as q
 // asks, or ErrInvalidInput for a q with an unknown kind or sort, a search
 // over its bounds, or a cursor that isn't one of q's sort's. Two publications

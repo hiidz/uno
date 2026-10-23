@@ -202,3 +202,124 @@ func changeAspects(changes []SnapshotChange) []string {
 	slices.Sort(got)
 	return got
 }
+
+// An address is on a site when its host is the site's name, ignoring case, a
+// trailing dot and the port, or is under a "*." site's name. A host that only
+// ends the same way, the site's own name for a "*." site, a listed name
+// before an @, and anything but an https address with a host are on none.
+func TestOnSite(t *testing.T) {
+	sites := []string{"image.tmdb.org", "*.example.com"}
+	for raw, want := range map[string]bool{
+		"https://image.tmdb.org/t/p/w500/a.jpg":     true,
+		"https://IMAGE.TMDB.org/a.jpg":              true,
+		"https://image.tmdb.org./a.jpg":             true,
+		"https://image.tmdb.org:8443/a.jpg":         true,
+		"https://cdn.example.com/a.png":             true,
+		"https://a.b.example.com/a.png":             true,
+		"https://example.com/a.png":                 false,
+		"https://notexample.com/a.png":              false,
+		"https://eviltmdb.org/a.jpg":                false,
+		"https://image.tmdb.org.evil.com/a.jpg":     false,
+		"https://image.tmdb.org@stranger.com/x.png": false,
+		"http://image.tmdb.org/a.jpg":               false,
+		"https:///a.jpg":                            false,
+		`https://image.tmdb.org\@stranger.com/x`:    false,
+		"":                                          false,
+	} {
+		if got := onSite(raw, sites); got != want {
+			t.Errorf("onSite(%q) = %t, want %t", raw, got, want)
+		}
+	}
+}
+
+// trustedSite is the one site the trusted-site tests share pictures from.
+const trustedSite = "image.tmdb.org"
+
+// mixedMediaCollection is mediaCollection with its folder's cover and title
+// logo on trustedSite, and keptMedia those two addresses.
+func mixedMediaCollection(title string) CollectionForm {
+	form := mediaCollection(title)
+	form.Folders[0].CoverImageURL, form.Folders[0].TitleLogoURL = keptMedia[0], keptMedia[1]
+	return form
+}
+
+var keptMedia = []string{"https://image.tmdb.org/t/p/w500/cover.jpg", "https://image.tmdb.org/t/p/w500/logo.png"}
+
+// On a server that shares media from trusted sites only, Community shows
+// and copies only the addresses on them: the list, a publication's page, Add
+// and Duplicate. The publisher's own row and the stored snapshot keep every
+// address.
+func TestTrustedMediaLeavesCommunityAndCopies(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
+	source := publishCollection(t, db, owner, mixedMediaCollection("Art"))
+	db.ShareCommunityMediaFrom([]string{trustedSite})
+
+	page, err := db.ListCommunity(ctx, subscriber, CommunityQuery{Kind: kindCollection, Sort: "name"})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("ListCommunity = %+v, %v; want the one publication", page, err)
+	}
+	if f := page.Items[0].Folders[0]; f.CoverImageURL != keptMedia[0] {
+		t.Errorf("listed folder's cover = %q, want %q", f.CoverImageURL, keptMedia[0])
+	}
+
+	for _, viewer := range []uuid.UUID{subscriber, owner} {
+		detail, err := db.GetPublication(ctx, viewer, source.Publication.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := snapshotMedia(detail.Snapshot); !slices.Equal(got, keptMedia) {
+			t.Errorf("publication page holds %v, want %v", got, keptMedia)
+		}
+	}
+
+	added := *subscribe(t, db, subscriber, source.Publication.ID).Collection
+	duplicated, err := db.DuplicatePublication(ctx, subscriber, source.Publication.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tree := range map[string]CollectionWithFolders{"added": added, "duplicated": *duplicated.Collection} {
+		if got := treeMedia(tree); !slices.Equal(got, keptMedia) {
+			t.Errorf("%s copy holds %v, want %v", name, got, keptMedia)
+		}
+	}
+
+	if got := treeMedia(mustOwnCollection(t, db, owner, source.ID)); len(got) != 6 {
+		t.Errorf("publisher's own row holds %v, want all 6 addresses", got)
+	}
+	stored, err := sharingAll(db).GetPublication(ctx, owner, source.Publication.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshotMedia(stored.Snapshot); len(got) != 6 {
+		t.Errorf("stored snapshot holds %v, want all 6 addresses", got)
+	}
+}
+
+// A copy added while every site was shared loses the untrusted addresses at
+// its next Update on a server that shares trusted sites only, and the
+// Update's changes say so.
+func TestTrustedMediaUpdate(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	owner, subscriber := newTestProfile(t, db, "owner"), newTestProfile(t, db, "subscriber")
+	source := publishCollection(t, db, owner, mixedMediaCollection("Art"))
+	if got := treeMedia(*subscribe(t, db, subscriber, source.Publication.ID).Collection); len(got) != 6 {
+		t.Fatalf("copy added while media is shared holds %v, want all 6 addresses", got)
+	}
+	db.ShareCommunityMediaFrom([]string{trustedSite})
+	pubID := source.Publication.ID
+
+	republish(t, db, owner, source.ID, func(form *CollectionForm) { form.Title = "Art 2" })
+	changes, err := db.UpdateChanges(ctx, subscriber, pubID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := changeAspects(changes), []string{"collection name", "collection settings", "folder art"}; !slices.Equal(got, want) {
+		t.Errorf("changes = %v, want %v", got, want)
+	}
+	if got := treeMedia(*mustUpdate(t, db, subscriber, pubID).Collection); !slices.Equal(got, keptMedia) {
+		t.Errorf("updated copy holds %v, want %v", got, keptMedia)
+	}
+}
