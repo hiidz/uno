@@ -3,7 +3,8 @@ import { ChevronDown } from 'lucide-react'
 import { FieldError, InfoTip, OnlyIn, Segmented, TextInput } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import { VIEW_MODES, VIEW_MODE_LABELS, appearanceSummary, type CollectionFormState } from './collectionForm'
-import { CommunityNote } from './FolderPictures'
+import { BackgroundPicture, CommunityNote } from './FolderPictures'
+import { useShownAddress } from './useShownPictures'
 
 /** A change to the collection's form. */
 type CollectionPatch = Partial<CollectionFormState>
@@ -57,6 +58,7 @@ export function CollectionAppearance({ state, backdropError, backdropNote, onCha
   const toggle = () => setOpen(!open)
   const setAllTab = (value: 'off' | 'on') => onChange({ showAllTab: value === 'on' })
   const setBackdrop = (backdropImageURL: string) => onChange({ backdropImageURL })
+  const shownBackdrop = useShownAddress(state.backdropImageURL)
   const setGlow = (value: 'off' | 'on') => onChange({ focusGlowEnabled: value === 'on' })
 
   return (
@@ -106,6 +108,7 @@ export function CollectionAppearance({ state, backdropError, backdropNote, onCha
               invalid={Boolean(backdropError)}
             />
             {backdropError && <FieldError>{backdropError}</FieldError>}
+            <BackgroundPicture src={shownBackdrop} />
             <CommunityNote text={backdropNote} />
           </div>
         </div>

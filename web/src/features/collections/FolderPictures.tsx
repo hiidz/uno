@@ -37,6 +37,17 @@ export function FocusGIFPicture({ src, folder }: { src: string; folder: FolderFo
   )
 }
 
+/** The collection's background image, as a landscape tile: it fills each
+ *  coverless folder's tile and sits behind a hero with no backdrop. */
+export function BackgroundPicture({ src }: { src: string }) {
+  if (!src) return null
+  return (
+    <FieldPicture>
+      <PictureTile src={src} shape="LANDSCAPE" />
+    </FieldPicture>
+  )
+}
+
 export function LogoPicture({ src }: { src: string }) {
   if (!src) return null
   return (
