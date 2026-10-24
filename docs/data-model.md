@@ -162,13 +162,15 @@ A save, import, Add or Duplicate that would go past one of the first four is ref
 
 ## Recipes
 
-A catalog's `params` is a JSON object of TMDB discover filters, stored as a string, for example:
+A catalog's `params` is a JSON object of TMDB discover filters, or one of TMDB's own lists (`tmdb_list`), stored as a string, for example:
 
 ```json
 {"sort_by":"popularity.desc","vote_count_gte":200,"with_genres":"878"}
 ```
 
 Uno checks the params on every save and stores them in a canonical form. The fields are the structs in `internal/provider/models.go`.
+
+A catalog's type and its source (discover filters, one TMDB collection's films, or one TMDB list) are chosen when it is made and never change: a save that would change either is refused. The source is read from the params, not stored. An Update from Community is the one exception: a copy follows its publisher.
 
 ## Bundles
 

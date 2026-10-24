@@ -29,15 +29,6 @@ export interface RecipePreview {
   totalResults: number | null
   /** Nothing has been requested yet — draw the button and nothing else. */
   idle: boolean
-  /**
-   * The filters have moved on since the tiles on screen were fetched.
-   *
-   * The one way this feature can mislead: tiles from an older recipe sitting
-   * under filters that no longer produced them. The caller must say so rather
-   * than let them pass as current. Not cleared automatically — going blank on
-   * every keystroke destroys the comparison the preview exists for.
-   */
-  isStale: boolean
   /** Fetch the recipe as it stands now. */
   run: () => void
 }
@@ -49,8 +40,8 @@ interface Requested {
 }
 
 /** The catalog editor's on-demand preview of one recipe. Nothing is fetched
- *  until `run`; after that, `isStale` says when the form has moved on from the
- *  recipe the tiles on screen came from. */
+ *  until `run`; the tiles on screen stay until the next run, even once the
+ *  form has moved on. */
 export function useRecipeTiles(type: CatalogType, params: string): RecipePreview {
   const [requested, setRequested] = useState<Requested | null>(null)
 
@@ -82,7 +73,6 @@ export function useRecipeTiles(type: CatalogType, params: string): RecipePreview
     tiles: requested === null ? noTiles() : tilesFrom(query),
     totalResults: query.data?.total_results ?? null,
     idle: requested === null,
-    isStale: requested !== null && !isSameRecipe,
     run,
   }
 }

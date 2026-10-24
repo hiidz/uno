@@ -1,6 +1,7 @@
 import { CATALOG_PROVIDER } from '@/api'
 import type { Catalog, CatalogPayload, CatalogType, TMDBParams } from '@/api'
-import { parseIdList, parseParams } from './params'
+import { parseCodeList, parseIdList, parseParams } from './params'
+import { TMDB_LISTS } from './lists'
 
 /**
  * The catalog builder's form model, and the catalog rules a form can reach,
@@ -23,14 +24,16 @@ import { parseIdList, parseParams } from './params'
  *  as a mode so the form can't express both at once. */
 export type DateMode = 'any' | 'fixed' | 'rolling'
 
-/** What a movie catalog lists: the result of its discover filters, or one TMDB
- *  collection's films. Form state only — the stored shape is the params, and a
- *  saved `with_collection` reads back as `'collection'`. Series are always
- *  `'filters'`: TMDB has no collections for series. */
-export type SourceMode = 'filters' | 'collection'
+/** What a catalog lists: the result of its discover filters, one TMDB
+ *  collection's films, or one of TMDB's own lists. Form state only — the
+ *  stored shape is the params: a saved `with_collection` reads back as
+ *  `'collection'` and a saved `tmdb_list` as `'list'`. Series are never
+ *  `'collection'`: TMDB has no collections for series. */
+export type SourceMode = 'filters' | 'collection' | 'list'
 
 /** The most ids each of `with_companies`, `with_keywords`,
- *  `without_companies`, `without_keywords` and `with_networks` may hold.
+ *  `without_companies`, `without_keywords` and `with_networks` may hold, and
+ *  the most codes `with_origin_country` may.
  *  Mirrors the server's cap in `provider.Validate()`. */
 export const MAX_ENTITY_IDS = 20
 
@@ -121,6 +124,64 @@ export function emptyForm(type: CatalogType = 'movie', collectionID: string | nu
   return { name: '', type, dateMode: 'any', sourceMode: 'filters', params: {}, collectionID, revision: 0 }
 }
 
+/** What the New catalog dialog settles before the catalog exists: its type
+ *  and source, which never change after, and for a TMDB collection or list
+ *  the collection or list, without which that source has nothing to show. */
+export interface NewCatalogKind {
+  type: CatalogType
+  source: SourceMode
+  /** The picked TMDB collection's id, as `with_collection` stores it. */
+  collection?: string
+  /** The picked TMDB list, as `tmdb_list` stores it. */
+  list?: string
+}
+
+export const NEW_CATALOG_KIND: NewCatalogKind = { type: 'movie', source: 'filters' }
+
+/** The sources a type can be made from, in the dialog's order. TMDB has no
+ *  collections for series. */
+export function sourcesFor(type: CatalogType): { value: SourceMode; label: string }[] {
+  const filters = { value: 'filters' as const, label: 'Filters' }
+  const list = { value: 'list' as const, label: 'TMDB list' }
+  if (type === 'series') return [filters, list]
+  return [filters, { value: 'collection', label: 'TMDB collection' }, list]
+}
+
+/** What a source is called on its own, as the editor's tag beside the type
+ *  reads; none for Filters, the source every catalog had before there was a
+ *  choice. */
+export function sourceLabel(source: SourceMode): string | null {
+  if (source === 'collection') return 'TMDB collection'
+  if (source === 'list') return 'TMDB list'
+  return null
+}
+
+/** The kind once its type changes: a source the new type can't be made from
+ *  falls back to Filters, and a list the new type doesn't have is unpicked. */
+export function withType(kind: NewCatalogKind, type: CatalogType): NewCatalogKind {
+  const source = sourcesFor(type).some((option) => option.value === kind.source) ? kind.source : 'filters'
+  const list = TMDB_LISTS[type].some((option) => option.value === kind.list) ? kind.list : undefined
+  return { ...kind, type, source, list }
+}
+
+/** Why the dialog can't create `kind` yet, or undefined once it can. */
+export function newCatalogKindError(kind: NewCatalogKind): string | undefined {
+  if (kind.source === 'collection' && !kind.collection) return 'Pick a TMDB collection.'
+  if (kind.source === 'list' && !kind.list) return 'Pick a list.'
+  return undefined
+}
+
+/** The form a new catalog is created from: no filters yet, or its TMDB
+ *  collection or list, so such a catalog is complete from the start. */
+export function newCatalogForm(kind: NewCatalogKind, collectionID: string | null = null): CatalogFormState {
+  const form = emptyForm(kind.type, collectionID)
+  if (kind.source === 'collection') {
+    return { ...form, sourceMode: 'collection', params: { with_collection: kind.collection } }
+  }
+  if (kind.source === 'list') return { ...form, sourceMode: 'list', params: { tmdb_list: kind.list } }
+  return form
+}
+
 function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
   if (type === 'movie') {
     if (params.released_within_days) return 'rolling'
@@ -132,13 +193,19 @@ function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
   return 'any'
 }
 
+function sourceModeOf(params: TMDBParams, type: CatalogType): SourceMode {
+  if (params.tmdb_list) return 'list'
+  if (type === 'movie' && params.with_collection) return 'collection'
+  return 'filters'
+}
+
 export function formFromCatalog(catalog: Catalog): CatalogFormState {
   const params = parseParams(catalog.params)
   return {
     name: catalog.name,
     type: catalog.type,
     dateMode: dateModeOf(params, catalog.type),
-    sourceMode: catalog.type === 'movie' && params.with_collection ? 'collection' : 'filters',
+    sourceMode: sourceModeOf(params, catalog.type),
     params,
     collectionID: catalog.collection_id,
     revision: catalog.revision,
@@ -196,24 +263,33 @@ function applyDateMode(state: CatalogFormState): TMDBParams {
  *  field not listed here — including any added later — is dropped. */
 const COLLECTION_KEYS = ['with_collection', 'randomized'] as const satisfies readonly (keyof TMDBParams)[]
 
+/** The only fields a TMDB list row sends, for the same reason. */
+const LIST_KEYS = ['tmdb_list', 'randomized'] as const satisfies readonly (keyof TMDBParams)[]
+
 /** A movie catalog in collection mode lists one TMDB collection's films
  *  rather than running a discover query. */
 export function isCollectionRow(state: Pick<CatalogFormState, 'type' | 'sourceMode'>): boolean {
   return state.type === 'movie' && state.sourceMode === 'collection'
 }
 
+/** A catalog made from one of TMDB's own lists, which shows that list. */
+export function isListRow(state: Pick<CatalogFormState, 'sourceMode'>): boolean {
+  return state.sourceMode === 'list'
+}
+
 /** The params a save or preview sends: the date mode applied, then only the
- *  current source mode's fields — `COLLECTION_KEYS` on a collection row, and
- *  everything but `with_collection` otherwise. Form state keeps both sides'
- *  values, so switching mode back brings them back. */
+ *  source's fields — `COLLECTION_KEYS` on a collection row, `LIST_KEYS` on a
+ *  list row, and everything but those two sources' own fields otherwise. */
 function recipeParams(state: CatalogFormState): TMDBParams {
   const p = applyDateMode(state)
-  if (!isCollectionRow(state)) {
+  const keys = isCollectionRow(state) ? COLLECTION_KEYS : isListRow(state) ? LIST_KEYS : null
+  if (!keys) {
     delete p.with_collection
+    delete p.tmdb_list
     return p
   }
   const kept: TMDBParams = {}
-  for (const key of COLLECTION_KEYS) {
+  for (const key of keys) {
     if (p[key] !== undefined) Object.assign(kept, { [key]: p[key] })
   }
   return kept
@@ -242,7 +318,7 @@ export function validateForm(state: CatalogFormState): FieldErrors {
   }
 }
 
-/** The name, and a TMDB collection row's pick. */
+/** The name, and a TMDB collection or list row's pick. */
 function nameErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
   const errors: FieldErrors = {}
   if (!state.name.trim()) errors.name = 'Give this catalog a name.'
@@ -252,6 +328,7 @@ function nameErrors(state: CatalogFormState, p: TMDBParams): FieldErrors {
   if (isCollectionRow(state) && parseIdList(p.with_collection).ids.length === 0) {
     errors.with_collection = 'Pick a TMDB collection.'
   }
+  if (isListRow(state) && !p.tmdb_list) errors.tmdb_list = 'Pick a list.'
   return errors
 }
 
@@ -381,13 +458,18 @@ const CAPS: [keyof TMDBParams, string][] = [
   ['without_companies', `Leave out at most ${MAX_ENTITY_IDS} production companies.`],
   ['without_keywords', `Leave out at most ${MAX_ENTITY_IDS} keywords.`],
   ['with_networks', `Pick at most ${MAX_ENTITY_IDS} networks.`],
+  ['with_cast', `Pick at most ${MAX_ENTITY_IDS} cast members.`],
+  ['with_crew', `Pick at most ${MAX_ENTITY_IDS} crew members.`],
 ]
 
-/** An id list over the server's cap. */
+/** An id or country list over the server's cap. */
 function capErrors(p: TMDBParams): FieldErrors {
   const errors: FieldErrors = {}
   for (const [key, message] of CAPS) {
     if (parseIdList(p[key] as string | undefined).ids.length > MAX_ENTITY_IDS) errors[key] = message
+  }
+  if (parseCodeList(p.with_origin_country).codes.length > MAX_ENTITY_IDS) {
+    errors.with_origin_country = `Pick at most ${MAX_ENTITY_IDS} countries.`
   }
   return errors
 }

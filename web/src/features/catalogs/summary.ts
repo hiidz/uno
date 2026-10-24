@@ -2,7 +2,7 @@ import type { CatalogType, Certification, Genre, Language } from '@/api'
 import type { CountryLookup } from './countries'
 import { countryName } from './countries'
 import { SORT_FIELDS } from './catalogForm'
-import { DATE_PRESETS, DAYS_PER_YEAR, UPCOMING_DAYS, parseIdList, type IdJoin } from './params'
+import { DATE_PRESETS, DAYS_PER_YEAR, UPCOMING_DAYS, parseCodeList, parseIdList, type IdJoin } from './params'
 import { capitalize } from '@/lib/capitalize'
 import { andList, orList } from '@/lib/list'
 import { plural, pluralCount } from '@/lib/plural'
@@ -24,7 +24,7 @@ import { plural, pluralCount } from '@/lib/plural'
 
 // What each section's head says while nothing in it is set.
 const ANY_GENRE = 'Any genre'
-const ANY_LANGUAGE = 'Any language'
+const ANY_LANGUAGE = 'Any language or country'
 const ANY_TIME = 'Any time'
 const ANY_AGE = 'Any age rating'
 const ANY_SERVICE = 'Any service'
@@ -32,6 +32,7 @@ const NO_COLLECTION = 'No TMDB collection picked'
 export const ANY_COMPANY = 'Any production company'
 export const ANY_KEYWORDS = 'Any keywords'
 export const ANY_NETWORK = 'Any network'
+export const ANY_PEOPLE = 'Anyone'
 
 const TITLE_LIKE = new Set(['title', 'name', 'original_title', 'original_name'])
 const DATE_LIKE = new Set(['primary_release_date', 'first_air_date'])
@@ -108,10 +109,22 @@ export function sumRatings(
   )
 }
 
-export function sumLanguage(code: string | undefined, languages: Language[]): string {
-  if (!code) return ANY_LANGUAGE
-  const name = languages.find((lang) => lang.iso_639_1 === code)?.english_name ?? code
-  return `In ${name}`
+/** The Language and country section's line: "In Hindi · made in India or
+ *  Pakistan", either half alone, or neither. */
+export function sumLanguage(
+  code: string | undefined,
+  languages: Language[],
+  countries: string | undefined,
+  countryNames: CountryLookup,
+): string {
+  const parts: string[] = []
+  if (code) parts.push(`in ${languages.find((lang) => lang.iso_639_1 === code)?.english_name ?? code}`)
+  const { codes, join } = parseCodeList(countries)
+  if (codes.length) {
+    const names = codes.map((country) => countryName(country, countryNames))
+    parts.push(`made in ${join === 'and' ? andList(names) : orList(names)}`)
+  }
+  return parts.length ? capitalize(parts.join(' · ')) : ANY_LANGUAGE
 }
 
 /** The date the server's rolling window would produce for `days` as of today.
@@ -220,6 +233,16 @@ export function sumEntities(
   }
   if (withoutCount) parts.push(`not ${pluralCount(withoutCount, noun)}`)
   return parts.join(' · ')
+}
+
+/** The Cast and crew section's line: "2 cast members, all of them · 1 crew
+ *  member", either half alone, or `ANY_PEOPLE`. */
+export function sumPeople(cast: string | undefined, crew: string | undefined): string {
+  const parts = [
+    sumEntities(cast, undefined, 'cast member', ''),
+    sumEntities(crew, undefined, 'crew member', ''),
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : ANY_PEOPLE
 }
 
 /** Named, unlike `sumEntities`: there is only ever one, and the editor reads

@@ -8,6 +8,35 @@ function catalog(type: Catalog['type'], params: object): Catalog {
 }
 
 describe('describeRecipe', () => {
+  it('reads a TMDB list row as the list alone', () => {
+    expect(describeRecipe(catalog('movie', { tmdb_list: 'trending/week' }), new Map())).toEqual([
+      'TMDB list',
+      'Trending this week',
+    ])
+    expect(describeRecipe(catalog('series', { tmdb_list: 'airing_today', randomized: true }), new Map())).toEqual([
+      'TMDB list',
+      'Airing today',
+      'shuffled',
+    ])
+  })
+
+  it('counts the cast members of a movie, and ignores the field on a series', () => {
+    expect(describeRecipe(catalog('movie', { with_cast: '8691|73457' }), new Map())).toEqual(['with 2 cast members'])
+    expect(describeRecipe(catalog('movie', { with_cast: '8691' }), new Map())).toEqual(['with 1 cast member'])
+    expect(describeRecipe(catalog('series', { with_cast: '8691' }), new Map())).toEqual([])
+    expect(describeRecipe(catalog('movie', { with_cast: '8691', with_crew: '525' }), new Map())).toEqual([
+      'with 1 cast member',
+      'with 1 crew member',
+    ])
+  })
+
+  it('names the countries a title was made in, joined the way the list is', () => {
+    expect(describeRecipe(catalog('movie', { with_original_language: 'hi', with_origin_country: 'IN|PK' }), new Map())).toEqual([
+      'in Hindi',
+      'made in India or Pakistan',
+    ])
+  })
+
   it('mentions a collection on movie catalogs only', () => {
     const lookup = new Map<number, string>()
     expect(describeRecipe(catalog('movie', { with_collection: '10' }), lookup)).toEqual([
@@ -53,6 +82,41 @@ describe('recipeFacts', () => {
     [80, 'Crime'],
     [53, 'Thriller'],
   ])
+
+  it('names the countries a recipe sets, as a list a change can be read from', () => {
+    expect(recipeFacts(catalog('series', { with_origin_country: 'IN|PK' }), new Map())).toEqual([
+      { label: 'Type', value: 'Series' },
+      { label: 'Countries', value: 'India or Pakistan', list: { items: ['India', 'Pakistan'], join: 'or', region: '' } },
+    ])
+  })
+
+  it('names the cast of a movie once their names are known, and counts them until then', () => {
+    const person = new Map([
+      [8691, 'Zoe Saldaña'],
+      [73457, 'Chris Pratt'],
+    ])
+    expect(recipeFacts(catalog('movie', { with_cast: '8691,73457' }), new Map(), { person })).toEqual([
+      { label: 'Type', value: 'Movies' },
+      {
+        label: 'Cast',
+        value: 'Zoe Saldaña and Chris Pratt',
+        list: { items: ['Zoe Saldaña', 'Chris Pratt'], join: 'and', region: '' },
+      },
+    ])
+    expect(recipeFacts(catalog('movie', { with_cast: '8691|73457', with_crew: '525' }), new Map())).toEqual([
+      { label: 'Type', value: 'Movies' },
+      { label: 'Cast', value: '2' },
+      { label: 'Crew', value: '1' },
+    ])
+  })
+
+  it('reads a TMDB list row as where it is from and which list', () => {
+    expect(recipeFacts(catalog('series', { tmdb_list: 'on_the_air' }), new Map())).toEqual([
+      { label: 'Type', value: 'Series' },
+      { label: 'From', value: 'TMDB list' },
+      { label: 'List', value: 'On the air' },
+    ])
+  })
 
   it('has the type alone for a recipe that sets nothing else', () => {
     expect(recipeFacts(catalog('movie', {}), lookup)).toEqual([{ label: 'Type', value: 'Movies' }])
@@ -204,12 +268,20 @@ describe('openFacts', () => {
       { label: 'Votes', value: 'Any' },
       { label: 'Runtime', value: 'Any length' },
       { label: 'Language', value: 'Any' },
+      { label: 'Country', value: 'Any' },
       { label: 'Age rating', value: 'Any' },
       { label: 'Streaming service', value: 'Any' },
       { label: 'Production company', value: 'Any' },
       { label: 'Keywords', value: 'Any' },
+      { label: 'Cast', value: 'Any' },
+      { label: 'Crew', value: 'Any' },
       { label: 'Order', value: 'Most popular' },
     ])
+  })
+
+  it('leaves out Country once the recipe names one country or several', () => {
+    expect(open('movie', { with_origin_country: 'IN' }).map((f) => f.label)).not.toContain('Country')
+    expect(open('series', { with_origin_country: 'IN|PK' }).map((f) => f.label)).not.toContain('Country')
   })
 
   it('leaves out what the recipe sets, in either the singular or the plural', () => {
@@ -224,11 +296,14 @@ describe('openFacts', () => {
     const labels = open('series', {}).map((f) => f.label)
     expect(labels).toContain('Aired')
     expect(labels).toContain('Network')
+    expect(labels).not.toContain('Cast')
+    expect(labels).not.toContain('Crew')
     expect(labels).not.toContain('Released')
   })
 
-  it('has none for a TMDB collection row', () => {
+  it('has none for a TMDB collection or list row', () => {
     expect(open('movie', { with_collection: '10' })).toEqual([])
+    expect(open('series', { tmdb_list: 'popular' })).toEqual([])
   })
 })
 

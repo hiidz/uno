@@ -41,6 +41,17 @@ export function serializeIdList(ids: number[], join: IdJoin): string {
   return ids.join(join === 'or' ? '|' : ',')
 }
 
+/** The country codes in a stored `with_origin_country`, in order, and how
+ *  they're joined. Anything that isn't two upper-case letters is dropped. */
+export function parseCodeList(raw: string | undefined): { codes: string[]; join: IdJoin } {
+  if (!raw) return { codes: [], join: 'and' }
+  const codes = raw
+    .split(/[,|]/)
+    .map((part) => part.trim())
+    .filter((code) => /^[A-Z]{2}$/.test(code))
+  return { codes, join: raw.includes('|') ? 'or' : 'and' }
+}
+
 /** The rolling windows people actually ask for, as presets rather than a bare
  *  number of days. Each is still just `_within_days` on the wire. */
 export const DATE_PRESETS: { days: number; label: string }[] = [

@@ -18,10 +18,11 @@ import (
 var ErrInvalidParams = errors.New("invalid params")
 
 // ValidateParams checks the recipe fields that carry TMDB's own vocabulary
-// — genre ids, a language code, a watch region and its provider ids, a
-// certification country and its scale — against the lists TMDB publishes
+// — genre ids, a language code, origin country codes, a watch region and
+// its provider ids, a certification country and its scale — against the lists TMDB publishes
 // for them, and company, keyword, collection and network ids against TMDB
-// one id at a time, since its API serves no whole list of any of them. It complements
+// and cast and crew ids against TMDB one id at a time, since its API serves
+// no whole list of any of them. It complements
 // [CatalogParams.Validate], which covers the rules that need no network
 // (enums, bounds, required-together pairs) and runs first.
 //
@@ -45,11 +46,13 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 	for _, check := range []func(context.Context, string, vocabParams) error{
 		c.validateGenres,
 		c.validateLanguage,
+		c.validateOriginCountry,
 		c.validateWatchRegion,
 		c.validateWatchProviders,
 		c.validateCompaniesAndKeywords,
 		c.validateCollection,
 		c.validateNetworks,
+		c.validatePeople,
 		c.validateCertifications,
 	} {
 		if err := check(ctx, catalogType, p); err != nil {
@@ -61,14 +64,16 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 
 // vocabParams is the slice of a recipe ValidateParams checks. Both recipe
 // types embed TMDBCommonParams, and every field checked here but
-// with_collection and with_networks lives on it, so decoding into it covers
-// movie and tv alike. Those two are decoded alongside for either type, so a
-// recipe of the other type carrying one is rejected rather than silently
-// ignored.
+// with_collection, with_networks, with_cast and with_crew lives on it, so
+// decoding into it covers movie and tv alike. Those are decoded alongside for
+// either type, so a recipe of the other type carrying one is rejected rather
+// than silently ignored.
 type vocabParams struct {
 	TMDBCommonParams
 	WithCollection string `json:"with_collection"`
 	WithNetworks   string `json:"with_networks"`
+	WithCast       string `json:"with_cast"`
+	WithCrew       string `json:"with_crew"`
 }
 
 // validateGenres checks with_genres and without_genres against TMDB's genre
@@ -100,6 +105,26 @@ func (c *TMDBClient) validateLanguage(ctx context.Context, _ string, p vocabPara
 	}
 	if !slices.ContainsFunc(languages, func(l Language) bool { return l.ISO6391 == p.WithOriginalLanguage }) {
 		return fmt.Errorf("%w: with_original_language %q is not a TMDB language code", ErrInvalidParams, p.WithOriginalLanguage)
+	}
+	return nil
+}
+
+// validateOriginCountry checks each with_origin_country code against TMDB's
+// country table, not its watch regions: a title can be made in a country no
+// streaming service serves.
+func (c *TMDBClient) validateOriginCountry(ctx context.Context, _ string, p vocabParams) error {
+	codes, err := parseCodeList("with_origin_country", p.WithOriginCountry)
+	if err != nil || len(codes) == 0 {
+		return err
+	}
+	countries, err := c.Countries(ctx)
+	if err != nil {
+		return err
+	}
+	for _, code := range codes {
+		if !slices.ContainsFunc(countries, func(country Country) bool { return country.ISO31661 == code }) {
+			return fmt.Errorf("%w: with_origin_country entry %q is not a TMDB country code", ErrInvalidParams, code)
+		}
 	}
 	return nil
 }
@@ -172,6 +197,21 @@ func (c *TMDBClient) validateNetworks(ctx context.Context, catalogType string, p
 		return fmt.Errorf("%w: with_networks applies to series catalogs only", ErrInvalidParams)
 	}
 	return checkEntityIDs(ctx, "with_networks", p.WithNetworks, "network", c.Network)
+}
+
+// validatePeople rejects with_cast and with_crew on anything but a movie
+// catalog, then looks each id up on TMDB.
+func (c *TMDBClient) validatePeople(ctx context.Context, catalogType string, p vocabParams) error {
+	if p.WithCast == "" && p.WithCrew == "" {
+		return nil
+	}
+	if catalogType != "movie" {
+		return fmt.Errorf("%w: with_cast and with_crew apply to movie catalogs only", ErrInvalidParams)
+	}
+	if err := checkEntityIDs(ctx, "with_cast", p.WithCast, "person", c.Person); err != nil {
+		return err
+	}
+	return checkEntityIDs(ctx, "with_crew", p.WithCrew, "person", c.Person)
 }
 
 // certField is one certification value of a recipe, named for error text.
@@ -279,3 +319,23 @@ func parseIDList(field, list string) ([]int, error) {
 	}
 	return ids, nil
 }
+
+// parseCodeList splits a comma (AND) or pipe (OR) separated list of ISO
+// 3166-1 country codes into its codes, rejecting the first entry that isn't
+// two upper-case letters.
+func parseCodeList(field, list string) ([]string, error) {
+	var codes []string
+	for _, part := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == '|' }) {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if len(part) != 2 || !isUpperASCII(part[0]) || !isUpperASCII(part[1]) {
+			return nil, fmt.Errorf("%w: %s entry %q is not a two-letter upper-case country code", ErrInvalidParams, field, part)
+		}
+		codes = append(codes, part)
+	}
+	return codes, nil
+}
+
+func isUpperASCII(b byte) bool { return b >= 'A' && b <= 'Z' }

@@ -112,22 +112,37 @@ describe('CatalogEditor', () => {
     expect(screen.getByText('New set each time')).toBeInTheDocument()
   })
 
-  it('saves what the Order, Genres and Original language controls set', () => {
+  it('saves what the Order, Genres, Original language and Country controls set', () => {
     const { onSave } = renderEditor({
       initial: formFromCatalog(catalog({ name: 'Row' })),
       genres: { movie: [{ id: 27, name: 'Horror' }], tv: [] },
       languages: [{ iso_639_1: 'it', english_name: 'Italian', name: 'Italiano' }],
+      countryNames: new Map([
+        ['IN', 'India'],
+        ['PK', 'Pakistan'],
+        ['BD', 'Bangladesh'],
+      ]),
     })
     fireEvent.click(screen.getByRole('button', { name: /^Order/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Low to high' }))
     fireEvent.click(screen.getByRole('button', { name: /^Genres/ }))
     fireEvent.click(screen.getByRole('button', { name: /Horror/ }))
-    fireEvent.click(screen.getByRole('button', { name: /^Original language/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Language and country/ }))
     fireEvent.change(screen.getByRole('combobox', { name: 'Original language' }), { target: { value: 'it' } })
+    const search = screen.getByRole('searchbox', { name: 'Search countries' })
+    fireEvent.change(search, { target: { value: 'ind' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add India' }))
+    fireEvent.change(search, { target: { value: 'pak' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Pakistan' }))
     save()
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: expect.objectContaining({ sort_by: 'popularity.asc', with_genres: '27', with_original_language: 'it' }),
+        params: expect.objectContaining({
+          sort_by: 'popularity.asc',
+          with_genres: '27',
+          with_original_language: 'it',
+          with_origin_country: 'IN|PK',
+        }),
       }),
     )
   })

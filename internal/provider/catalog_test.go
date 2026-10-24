@@ -112,13 +112,15 @@ func TestFetchCatalogPageServesWithoutGenresWhenGenreListFails(t *testing.T) {
 }
 
 // TestFetchCatalogPageSendsEntityFilters proves the company and keyword
-// include and exclude lists reach the discover request TMDB sees, on both
+// include and exclude lists and the origin countries reach the discover
+// request TMDB sees, on both
 // discover endpoints, with their AND/OR separators intact — and that
-// with_networks reaches /discover/tv alone.
+// with_networks reaches /discover/tv alone, with_cast and with_crew
+// /discover/movie alone.
 func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
-	for _, tc := range []struct{ catalogType, path, networks string }{
-		{"movie", "/discover/movie", ""},
-		{"series", "/discover/tv", "213|49"},
+	for _, tc := range []struct{ catalogType, path, networks, cast, crew string }{
+		{"movie", "/discover/movie", "", "8691|73457", "525"},
+		{"series", "/discover/tv", "213|49", "", ""},
 	} {
 		t.Run(tc.catalogType, func(t *testing.T) {
 			var mu sync.Mutex
@@ -137,7 +139,7 @@ func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
 			c := NewTMDBClient("key")
 			c.baseURL = srv.URL
 
-			params := `{"with_companies":"420|2","with_keywords":"9715,180547","without_companies":"9993","without_keywords":"849,12","with_networks":"213|49"}`
+			params := `{"with_companies":"420|2","with_keywords":"9715,180547","without_companies":"9993","without_keywords":"849,12","with_origin_country":"IN|PK","with_networks":"213|49","with_cast":"8691|73457","with_crew":"525"}`
 			if _, err := metasOf(c.FetchCatalogPage(t.Context(), tc.catalogType, params, "", 1)); err != nil {
 				t.Fatal(err)
 			}
@@ -145,11 +147,14 @@ func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			for key, want := range map[string]string{
-				"with_companies":    "420|2",
-				"with_keywords":     "9715,180547",
-				"without_companies": "9993",
-				"without_keywords":  "849,12",
-				"with_networks":     tc.networks,
+				"with_companies":      "420|2",
+				"with_keywords":       "9715,180547",
+				"without_companies":   "9993",
+				"without_keywords":    "849,12",
+				"with_origin_country": "IN|PK",
+				"with_networks":       tc.networks,
+				"with_cast":           tc.cast,
+				"with_crew":           tc.crew,
 			} {
 				if got := seen.Get(key); got != want {
 					t.Fatalf("%s = %q, want %q", key, got, want)

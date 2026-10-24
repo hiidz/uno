@@ -1,9 +1,18 @@
 import { Check, X } from 'lucide-react'
-import type { CatalogType, Certification, CertificationsByCountry, Genre } from '@/api'
+import type { Certification, CertificationsByCountry, Genre } from '@/api'
 import { DualRangeSlider, Field, FieldNote, InfoTip, Segmented, Select } from '@/components/fields'
 import { Icon } from '@/components/Icon'
 import type { IdJoin } from './params'
 import { countryName, type CountryLookup } from './countries'
+import {
+  newCatalogKindError,
+  sourcesFor,
+  withType,
+  type NewCatalogKind,
+  type SourceMode,
+} from './catalogForm'
+import { TMDBEntityPicker } from './TMDBEntityPicker'
+import { ListTiles } from './ListTiles'
 
 /**
  * Form primitives for the catalog builder.
@@ -22,27 +31,64 @@ import { countryName, type CountryLookup } from './countries'
 
 export { FieldNote, Segmented, Select } from '@/components/fields'
 
-/** The type a catalog is named with — the one choice that can't be changed
- *  afterwards, asked by both "New catalog" dialogs. */
-export function CatalogTypeField({
+/** The type and source a catalog is made with — the choices that can't be
+ *  changed afterwards, asked by both "New catalog" dialogs — and the TMDB
+ *  collection or list a collection or list source needs before Create. Its error shows once
+ *  `showErrors` says Create was pressed. */
+export function CatalogKindFields({
   value,
   onChange,
+  showErrors,
 }: {
-  value: CatalogType
-  onChange: (type: CatalogType) => void
+  value: NewCatalogKind
+  onChange: (kind: NewCatalogKind) => void
+  showErrors: boolean
 }) {
+  const error = showErrors ? newCatalogKindError(value) : undefined
   return (
-    <Field label="Type" hint="Can't be changed later.">
-      <Segmented
-        ariaLabel="Catalog type"
-        value={value}
-        onChange={onChange}
-        options={[
-          { value: 'movie', label: 'Movie' },
-          { value: 'series', label: 'Series' },
-        ]}
-      />
-    </Field>
+    <>
+      <Field label="Type">
+        <Segmented
+          ariaLabel="Catalog type"
+          value={value.type}
+          onChange={(type) => onChange(withType(value, type))}
+          options={[
+            { value: 'movie', label: 'Movie' },
+            { value: 'series', label: 'Series' },
+          ]}
+        />
+      </Field>
+      <Field label="Source" hint="Type and source can't be changed later.">
+        <Segmented<SourceMode>
+          ariaLabel="Source"
+          value={value.source}
+          onChange={(source) => onChange({ ...value, source })}
+          options={sourcesFor(value.type)}
+        />
+      </Field>
+      {value.source === 'list' && (
+        <Field label="List" error={error}>
+          <ListTiles
+            type={value.type}
+            value={value.list}
+            invalid={Boolean(error)}
+            onChange={(list) => onChange({ ...value, list })}
+          />
+        </Field>
+      )}
+      {value.source === 'collection' && (
+        <Field label="TMDB collection" htmlFor="new-catalog-collection" error={error}>
+          <TMDBEntityPicker
+            kind="collection"
+            type={value.type}
+            inputId="new-catalog-collection"
+            value={value.collection}
+            invalid={Boolean(error)}
+            onChange={(collection) => onChange({ ...value, collection })}
+          />
+        </Field>
+      )}
+    </>
   )
 }
 

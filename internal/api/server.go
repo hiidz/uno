@@ -172,6 +172,8 @@ func (s *Server) routes() error {
 	s.router.HandleFunc("GET /api/tmdb/companies/{id}", s.requireNuvioAuth(s.getCompany))
 	s.router.HandleFunc("GET /api/tmdb/keywords/search", s.requireNuvioAuth(s.searchKeywords))
 	s.router.HandleFunc("GET /api/tmdb/keywords/{id}", s.requireNuvioAuth(s.getKeyword))
+	s.router.HandleFunc("GET /api/tmdb/people/search", s.requireNuvioAuth(s.searchPeople))
+	s.router.HandleFunc("GET /api/tmdb/people/{id}", s.requireNuvioAuth(s.getPerson))
 	s.router.HandleFunc("GET /api/tmdb/collections/search", s.requireNuvioAuth(s.searchCollections))
 	s.router.HandleFunc("GET /api/tmdb/collections/{id}", s.requireNuvioAuth(s.getCollection))
 	s.router.HandleFunc("GET /api/tmdb/networks/search", s.requireNuvioAuth(s.searchNetworks))

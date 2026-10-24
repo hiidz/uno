@@ -3,9 +3,11 @@ import {
   DATE_PRESETS,
   DAYS_PER_YEAR,
   UPCOMING_DAYS,
+  parseCodeList,
   parseIdList,
   parseParams,
 } from '@/features/catalogs/params'
+import { tmdbListLabel } from '@/features/catalogs/lists'
 import { capitalize } from '@/lib/capitalize'
 import { andList, orList } from '@/lib/list'
 import { plural, pluralCount } from '@/lib/plural'
@@ -98,6 +100,14 @@ function countryLabel(code: string): string {
   return subdivision ? `${name} (${subdivision})` : name
 }
 
+/** A stored `with_origin_country`'s country names, joined the way the list
+ *  is — "India or Pakistan" for a pipe-joined one — or null for none. */
+function countryNames(raw: string | undefined): string | null {
+  const { codes, join } = parseCodeList(raw)
+  if (codes.length === 0) return null
+  return (join === 'or' ? orList : andList)(codes.map(countryLabel))
+}
+
 /** A stored genre list's names, joined the way the list is — "Action and
  *  Comedy", or "Action or Comedy" for a pipe-joined one. An id the lookup
  *  can't name stands in for its name. */
@@ -187,6 +197,14 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
     return out
   }
 
+  // A TMDB list row shows that list and takes no other filter, so the list is
+  // the whole recipe.
+  if (p.tmdb_list) {
+    out.push('TMDB list', tmdbListLabel(type, p.tmdb_list))
+    if (p.randomized) out.push('shuffled')
+    return out
+  }
+
   if (p.sort_by) out.push(SORT_PHRASE[p.sort_by] ?? p.sort_by)
 
   const genres = genreNames(p.with_genres, lookup)
@@ -207,6 +225,9 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   if (p.with_original_language) {
     out.push(`in ${displayName('language', p.with_original_language)}`)
   }
+
+  const countries = countryNames(p.with_origin_country)
+  if (countries) out.push(`made in ${countries}`)
 
   const window =
     type === 'movie'
@@ -240,8 +261,8 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
     out.push(p.watch_region ? `on ${services} in ${countryLabel(p.watch_region)}` : `on ${services}`)
   }
 
-  // Counted for the same reason: naming a company, keyword or network needs a
-  // TMDB lookup per id.
+  // Counted for the same reason: naming a company, keyword, network or person
+  // needs a TMDB lookup per id.
   const companies = countIDs(p.with_companies)
   if (companies) out.push(`from ${pluralCount(companies, 'production company')}`)
   const notCompanies = countIDs(p.without_companies)
@@ -250,6 +271,11 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   if (keywords) out.push(`tagged with ${pluralCount(keywords, 'keyword')}`)
   const notKeywords = countIDs(p.without_keywords)
   if (notKeywords) out.push(`not tagged with ${pluralCount(notKeywords, 'keyword')}`)
+  // Movie params only: /discover/tv has no people filter.
+  const cast = type === 'movie' ? countIDs(p.with_cast) : 0
+  if (cast) out.push(`with ${pluralCount(cast, 'cast member')}`)
+  const crew = type === 'movie' ? countIDs(p.with_crew) : 0
+  if (crew) out.push(`with ${pluralCount(crew, 'crew member')}`)
   // Series params only, like the collection above is movie params only.
   const networks = type === 'series' ? countIDs(p.with_networks) : 0
   if (networks) out.push(`on ${pluralCount(networks, 'network')}`)
@@ -325,6 +351,7 @@ export interface RecipeNames {
   keyword?: NameMap
   network?: NameMap
   provider?: NameMap
+  person?: NameMap
 }
 
 const NO_NAMES: RecipeNames = {}
@@ -338,6 +365,9 @@ const KEYWORD: Noun = ['Keyword', 'Keywords']
 const LEFT_OUT_KEYWORD: Noun = ['Left-out keyword', 'Left-out keywords']
 const NETWORK: Noun = ['Network', 'Networks']
 const STREAMING_SERVICE: Noun = ['Streaming service', 'Streaming services']
+const COUNTRY: Noun = ['Country', 'Countries']
+const CAST: Noun = ['Cast', 'Cast']
+const CREW: Noun = ['Crew', 'Crew']
 
 /** An id list as its names, joined the way the list is — "A and B", or "A or
  *  B" for a pipe-joined one — once every id has one; as the number of ids until
@@ -382,6 +412,14 @@ function languageFact({ p }: FactSource): RecipeFact[] {
   return fact('Language', p.with_original_language && displayName('language', p.with_original_language))
 }
 
+function countryFact({ p }: FactSource): RecipeFact[] {
+  const value = countryNames(p.with_origin_country)
+  if (!value) return []
+  const { codes, join } = parseCodeList(p.with_origin_country)
+  const label = codes.length === 1 ? COUNTRY[0] : COUNTRY[1]
+  return [{ label, value, list: { items: codes.map(countryLabel), join, region: '' } }]
+}
+
 function sortFact({ p }: FactSource): RecipeFact[] {
   return fact('Order', p.sort_by && (SORT_PHRASE[p.sort_by] ?? p.sort_by))
 }
@@ -400,6 +438,7 @@ const FACTS: FactBuilder[] = [
   ({ p }) => fact('Votes', range(p.vote_count_gte, p.vote_count_lte, (n) => n.toLocaleString())),
   runtimeFact,
   languageFact,
+  countryFact,
   certificationFact,
   streamingFact,
   // Named, once the lookups have answered; `describeParams` counts them.
@@ -408,6 +447,8 @@ const FACTS: FactBuilder[] = [
   ({ p, names }) => namedIdsFact(KEYWORD, p.with_keywords, names.keyword, ''),
   ({ p, names }) => namedIdsFact(LEFT_OUT_KEYWORD, p.without_keywords, names.keyword, ''),
   ({ type, p, names }) => namedIdsFact(NETWORK, type === 'series' ? p.with_networks : undefined, names.network, ''),
+  ({ type, p, names }) => namedIdsFact(CAST, type === 'movie' ? p.with_cast : undefined, names.person, ''),
+  ({ type, p, names }) => namedIdsFact(CREW, type === 'movie' ? p.with_crew : undefined, names.person, ''),
   sortFact,
   shuffledFact,
 ]
@@ -417,6 +458,15 @@ const FACTS: FactBuilder[] = [
 const COLLECTION_FACTS: FactBuilder[] = [
   ({ type }) => fact('Type', typeLabel(type)),
   () => fact('From', 'A TMDB collection'),
+  shuffledFact,
+]
+
+/** A TMDB list row shows one of TMDB's own lists and takes no other filter,
+ *  so the list is the whole recipe. */
+const LIST_FACTS: FactBuilder[] = [
+  ({ type }) => fact('Type', typeLabel(type)),
+  () => fact('From', 'TMDB list'),
+  ({ type, p }) => fact('List', p.tmdb_list && tmdbListLabel(type, p.tmdb_list)),
   shuffledFact,
 ]
 
@@ -435,7 +485,8 @@ export function recipeFacts(
 ): RecipeFact[] {
   const source = { type: catalog.type, p: parseParams(catalog.params), lookup, names }
   const collection = source.type === 'movie' && countIDs(source.p.with_collection) > 0
-  return (collection ? COLLECTION_FACTS : FACTS).flatMap((build) => build(source))
+  const builders = collection ? COLLECTION_FACTS : source.p.tmdb_list ? LIST_FACTS : FACTS
+  return builders.flatMap((build) => build(source))
 }
 
 /** A filter a recipe can leave open: the labels its fact takes when set, and
@@ -456,25 +507,30 @@ function openFilters(type: Catalog['type']): OpenFilter[] {
     { set: ['Votes'], open: { label: 'Votes', value: ANY } },
     { set: ['Runtime'], open: { label: 'Runtime', value: 'Any length' } },
     { set: ['Language'], open: { label: 'Language', value: ANY } },
+    { set: COUNTRY, open: { label: COUNTRY[0], value: ANY } },
     { set: ['Age rating'], open: { label: 'Age rating', value: ANY } },
     { set: STREAMING_SERVICE, open: { label: STREAMING_SERVICE[0], value: ANY } },
     { set: COMPANY, open: { label: COMPANY[0], value: ANY } },
     { set: KEYWORD, open: { label: KEYWORD[1], value: ANY } },
     { set: NETWORK, open: { label: NETWORK[0], value: ANY } },
+    { set: CAST, open: { label: CAST[0], value: ANY } },
+    { set: CREW, open: { label: CREW[0], value: ANY } },
     { set: ['Order'], open: { label: 'Order', value: SORT_PHRASE['popularity.desc'] } },
   ]
-  return type === 'series' ? filters : filters.filter((filter) => filter.set !== NETWORK)
+  const otherType: readonly Noun[] = type === 'series' ? [CAST, CREW] : [NETWORK]
+  return filters.filter((filter) => !otherType.includes(filter.set as Noun))
 }
 
 /**
  * The filters `facts` (the recipe's own, from `recipeFacts`) leave open, as
  * tiles: "Genres: Any", "Released: Any time", and Order as TMDB's own most
  * popular first, so a reader sees every filter a catalog could set beside the
- * ones it does. A TMDB collection row has none: the collection is its whole
+ * ones it does. A TMDB collection or list row has none: the collection or list is its whole
  * recipe.
  */
 export function openFacts(catalog: Pick<Catalog, 'type' | 'params'>, facts: readonly RecipeFact[]): RecipeFact[] {
-  if (catalog.type === 'movie' && countIDs(parseParams(catalog.params).with_collection) > 0) return []
+  const p = parseParams(catalog.params)
+  if ((catalog.type === 'movie' && countIDs(p.with_collection) > 0) || p.tmdb_list) return []
   const labels = new Set(facts.map((fact) => fact.label))
   return openFilters(catalog.type)
     .filter((filter) => !filter.set.some((label) => labels.has(label)))

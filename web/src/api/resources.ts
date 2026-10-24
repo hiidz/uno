@@ -15,6 +15,8 @@ import type {
   LibraryData,
   Network,
   NetworkSearchResult,
+  Person,
+  PersonSearchResult,
   NuvioProfile,
   PreviewRequest,
   PublicationDetail,
@@ -139,6 +141,18 @@ export function searchKeywords(query: string): Promise<Keyword[]> {
 /** Names one keyword id. A `404` means TMDB has no keyword with that id. */
 export function fetchKeyword(id: number): Promise<Keyword> {
   return getJSON<Keyword>(`/api/tmdb/keywords/${id}`)
+}
+
+/** Live from TMDB via the Go side: people matching `query`, in TMDB's order.
+ *  The server rejects a blank query, so callers only send a trimmed,
+ *  non-empty one. */
+export function searchPeople(query: string): Promise<PersonSearchResult[]> {
+  return getList<PersonSearchResult>(`/api/tmdb/people/search?q=${encodeURIComponent(query)}`)
+}
+
+/** Names one person id. A `404` means TMDB has no person with that id. */
+export function fetchPerson(id: number): Promise<Person> {
+  return getJSON<Person>(`/api/tmdb/people/${id}`)
 }
 
 /** Live from TMDB via the Go side: movie collections matching `query`. The

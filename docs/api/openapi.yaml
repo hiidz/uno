@@ -1100,6 +1100,49 @@ paths:
         "422": { $ref: "#/components/responses/KeyProblem" }
         "502": { $ref: "#/components/responses/Upstream" }
 
+  /api/tmdb/people/search:
+    get:
+      tags: [tmdb]
+      summary: Search people
+      description: In TMDB's order. Each match names the first work TMDB lists the person as known for.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The matches.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PersonMatch" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/KeyProblem" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
+  /api/tmdb/people/{id}:
+    parameters:
+      - $ref: "#/components/parameters/tmdbID"
+    get:
+      tags: [tmdb]
+      summary: Name one person id
+      responses:
+        "200":
+          description: The person.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Person" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotOnTMDB" }
+        "422": { $ref: "#/components/responses/KeyProblem" }
+        "502": { $ref: "#/components/responses/Upstream" }
+
   /api/tmdb/collections/search:
     get:
       tags: [tmdb]
@@ -2155,6 +2198,22 @@ components:
       properties:
         id: { type: integer }
         name: { type: string }
+
+    Person:
+      type: object
+      description: A TMDB person, for with_cast and with_crew.
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        profile_path: { type: string, description: "TMDB's raw image path; empty when it has no headshot." }
+        known_for_department: { type: string, description: "As TMDB names it: Acting, Directing, Writing…" }
+
+    PersonMatch:
+      allOf:
+        - $ref: "#/components/schemas/Person"
+        - type: object
+          properties:
+            known_for: { type: string, description: "The first known-for work's title, or empty." }
 
     CompanyMatch:
       type: object

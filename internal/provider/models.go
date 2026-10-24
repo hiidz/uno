@@ -27,6 +27,9 @@ type CatalogParams interface {
 	// IsRandomized reports whether the recipe shuffles rather than serving
 	// page 1 — see FetchCatalogPage.
 	IsRandomized() bool
+	// ListName is the recipe's tmdb_list, "" for a recipe that isn't one of
+	// TMDB's own lists — see recipeEndpoint.
+	ListName() string
 }
 
 // paramsFor returns an empty params struct for catalogType. The pointer
@@ -114,8 +117,9 @@ type Language struct {
 }
 
 // Country is one entry in TMDB's ISO 3166-1 country table — the source for
-// display names of the country codes the certification list returns (that
-// endpoint returns codes only, not names).
+// with_origin_country's options and for display names of the country codes
+// the certification list returns (that endpoint returns codes only, not
+// names).
 type Country struct {
 	ISO31661    string `json:"iso_3166_1"`
 	EnglishName string `json:"english_name"`
@@ -135,12 +139,19 @@ type BaseParams struct {
 type TMDBCommonParams struct {
 	BaseParams
 
+	// One of TMDB's own lists, by its path word (listEndpoints). Set, it
+	// makes the recipe a list recipe: its titles are that list's, page by
+	// page, rather than a discover result, and every other field but
+	// Randomized must be unset — enforced in each type's Validate.
+	TMDBList string `json:"tmdb_list,omitempty"`
+
 	SortBy string `json:"sort_by,omitempty"`
 
 	WithGenres    string `json:"with_genres,omitempty"` // comma (AND) or pipe (OR) separated TMDB genre ids
 	WithoutGenres string `json:"without_genres,omitempty"`
 
 	WithOriginalLanguage string `json:"with_original_language,omitempty"`
+	WithOriginCountry    string `json:"with_origin_country,omitempty"` // comma (AND) or pipe (OR) separated ISO 3166-1 codes
 
 	VoteAverageGte float64 `json:"vote_average_gte,omitempty"`
 	VoteAverageLte float64 `json:"vote_average_lte,omitempty"`
@@ -186,6 +197,13 @@ type TMDBMovieParams struct {
 	// a discover result (see collectionItems), and every other field but
 	// Randomized must be unset — enforced in Validate.
 	WithCollection string `json:"with_collection,omitempty"`
+
+	// Comma (AND) or pipe (OR) separated TMDB person ids. Movie only:
+	// /discover/tv has no people filter. with_crew matches any crew job, not
+	// directing alone. TMDB has no people exclude, so there is no list to
+	// leave people out.
+	WithCast string `json:"with_cast,omitempty"`
+	WithCrew string `json:"with_crew,omitempty"`
 }
 
 // TMDBTVParams is the recipe for a /discover/tv-backed catalog.
@@ -224,9 +242,11 @@ const maxWithinDays = 50 * 365
 const dateLayout = "2006-01-02"
 
 // maxEntityIDs caps how many ids with_companies, with_keywords,
-// without_companies, without_keywords and with_networks each hold.
-// ValidateParams looks every id up on TMDB one at a time, so the cap bounds
-// the round trips one save can cost on a cold cache.
+// without_companies, without_keywords, with_networks, with_cast and
+// with_crew each hold, and how
+// many codes with_origin_country holds. ValidateParams looks every id up on
+// TMDB one at a time, so the cap bounds the round trips one save can cost on
+// a cold cache.
 const maxEntityIDs = 20
 
 // validMovieSortValues is TMDB's complete sort_by enum for /discover/movie.
@@ -251,6 +271,25 @@ var validTVSortValues = map[string]bool{
 	"original_name.asc": true, "original_name.desc": true,
 }
 
+// ListName satisfies CatalogParams for both recipe types.
+func (p TMDBCommonParams) ListName() string { return p.TMDBList }
+
+// listRecipeError refuses a tmdb_list that isn't one of catalogType's lists, and any
+// field set beside one: a list takes no filters. rest is the whole recipe,
+// whose own tmdb_list and randomized are ignored.
+func listRecipeError(catalogType, list string, rest reflect.Value) error {
+	if list == "" {
+		return nil
+	}
+	if _, ok := listEndpoints[catalogType][list]; !ok {
+		return fmt.Errorf("invalid tmdb_list %q for %s catalog", list, catalogType)
+	}
+	if field := firstSetField(rest); field != "" {
+		return fmt.Errorf("%s cannot be combined with tmdb_list", field)
+	}
+	return nil
+}
+
 // validate checks the cross-field rules shared by movie and tv params —
 // the "required together" pairs that don't differ per catalog type.
 func (p TMDBCommonParams) validate() error {
@@ -262,20 +301,8 @@ func (p TMDBCommonParams) validate() error {
 	if p.WithWatchProviders != "" && p.WatchRegion == "" {
 		return errors.New("watch_region is required when with_watch_providers is set")
 	}
-
-	for _, f := range []struct{ name, list string }{
-		{"with_companies", p.WithCompanies},
-		{"with_keywords", p.WithKeywords},
-		{"without_companies", p.WithoutCompanies},
-		{"without_keywords", p.WithoutKeywords},
-	} {
-		ids, err := parseIDList(f.name, f.list)
-		if err != nil {
-			return err
-		}
-		if len(ids) > maxEntityIDs {
-			return fmt.Errorf("%s cannot hold more than %d ids", f.name, maxEntityIDs)
-		}
+	if err := p.listError(); err != nil {
+		return err
 	}
 
 	// Zero means "unset" for every numeric field below (see setIntIf and
@@ -308,6 +335,33 @@ func (p TMDBCommonParams) validate() error {
 	}
 
 	return p.rangeError()
+}
+
+// listError is the first of the shared id and country lists that doesn't
+// parse or holds more than maxEntityIDs entries, or nil.
+func (p TMDBCommonParams) listError() error {
+	for _, f := range []struct{ name, list string }{
+		{"with_companies", p.WithCompanies},
+		{"with_keywords", p.WithKeywords},
+		{"without_companies", p.WithoutCompanies},
+		{"without_keywords", p.WithoutKeywords},
+	} {
+		ids, err := parseIDList(f.name, f.list)
+		if err != nil {
+			return err
+		}
+		if len(ids) > maxEntityIDs {
+			return fmt.Errorf("%s cannot hold more than %d ids", f.name, maxEntityIDs)
+		}
+	}
+	countries, err := parseCodeList("with_origin_country", p.WithOriginCountry)
+	if err != nil {
+		return err
+	}
+	if len(countries) > maxEntityIDs {
+		return fmt.Errorf("with_origin_country cannot hold more than %d codes", maxEntityIDs)
+	}
+	return nil
 }
 
 // rangeError is the first of the shared ranges whose low end is above its high
@@ -367,6 +421,11 @@ func parseDate(name, value string) (time.Time, error) {
 // addon server, preview) trust that anything in recipes.params already
 // passed this check.
 func (p TMDBMovieParams) Validate() error {
+	rest := p
+	rest.TMDBList, rest.Randomized = "", false
+	if err := listRecipeError("movie", p.TMDBList, reflect.ValueOf(rest)); err != nil {
+		return err
+	}
 	if p.SortBy != "" && !validMovieSortValues[p.SortBy] {
 		return fmt.Errorf("invalid sort_by %q for movie catalog", p.SortBy)
 	}
@@ -385,6 +444,18 @@ func (p TMDBMovieParams) Validate() error {
 	}
 	if strings.ContainsAny(p.WithCollection, ",|") {
 		return errors.New("with_collection takes a single collection id")
+	}
+	for _, f := range []struct{ name, list string }{
+		{"with_cast", p.WithCast},
+		{"with_crew", p.WithCrew},
+	} {
+		ids, err := parseIDList(f.name, f.list)
+		if err != nil {
+			return err
+		}
+		if len(ids) > maxEntityIDs {
+			return fmt.Errorf("%s cannot hold more than %d ids", f.name, maxEntityIDs)
+		}
 	}
 	if p.WithCollection != "" {
 		rest := p
@@ -425,6 +496,11 @@ func firstSetField(v reflect.Value) string {
 // Validate checks cross-field rules that a single JSON field can't express
 // on its own. See TMDBMovieParams.Validate for where this runs.
 func (p TMDBTVParams) Validate() error {
+	rest := p
+	rest.TMDBList, rest.Randomized = "", false
+	if err := listRecipeError("series", p.TMDBList, reflect.ValueOf(rest)); err != nil {
+		return err
+	}
 	if p.SortBy != "" && !validTVSortValues[p.SortBy] {
 		return fmt.Errorf("invalid sort_by %q for tv catalog", p.SortBy)
 	}

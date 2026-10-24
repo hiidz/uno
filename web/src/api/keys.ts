@@ -77,6 +77,8 @@ export const queryKeys = {
   company: (id: number) => ['companies', 'id', id] as const,
   keywordSearch: (query: string) => ['keywords', 'search', query] as const,
   keyword: (id: number) => ['keywords', 'id', id] as const,
+  personSearch: (query: string) => ['people', 'search', query] as const,
+  person: (id: number) => ['people', 'id', id] as const,
   /** TMDB movie collections, prefixed apart from Uno's own collections. */
   collectionSearch: (query: string) => ['tmdb-collections', 'search', query] as const,
   collection: (id: number) => ['tmdb-collections', 'id', id] as const,

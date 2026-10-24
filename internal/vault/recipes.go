@@ -7,6 +7,7 @@ package vault
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 )
 
 // recipeHashFormat opens every recipe hash's input. Changing it or the
@@ -22,4 +23,31 @@ const recipeHashFormat = "uno-recipe/1"
 func RecipeHash(catalogType, catalogProvider, params string) string {
 	sum := sha256.Sum256([]byte(recipeHashFormat + "\n" + catalogType + "\n" + catalogProvider + "\n" + params))
 	return hex.EncodeToString(sum[:])
+}
+
+// The sources a catalog's titles come from, as recipeSource names them.
+const (
+	sourceFilters    = "filters"
+	sourceCollection = "collection"
+	sourceList       = "list"
+)
+
+// recipeSource is where a recipe's titles come from: one TMDB collection
+// (with_collection), one of TMDB's own lists (tmdb_list), or discover
+// filters, which empty params are. A catalog's source is chosen when it is
+// made and never changes after, like its type; it is read from the params
+// rather than stored.
+func recipeSource(params string) string {
+	var p struct {
+		WithCollection string `json:"with_collection"`
+		TMDBList       string `json:"tmdb_list"`
+	}
+	_ = json.Unmarshal([]byte(params), &p) // stored params are valid; anything else reads as filters
+	switch {
+	case p.TMDBList != "":
+		return sourceList
+	case p.WithCollection != "":
+		return sourceCollection
+	}
+	return sourceFilters
 }

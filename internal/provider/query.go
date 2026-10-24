@@ -23,6 +23,7 @@ func commonQuery(p TMDBCommonParams) url.Values {
 	setIf(q, "with_genres", p.WithGenres)
 	setIf(q, "without_genres", p.WithoutGenres)
 	setIf(q, "with_original_language", p.WithOriginalLanguage)
+	setIf(q, "with_origin_country", p.WithOriginCountry)
 	setIf(q, "with_watch_providers", p.WithWatchProviders)
 	setIf(q, "watch_region", p.WatchRegion)
 	setIf(q, "with_companies", p.WithCompanies)
@@ -52,6 +53,8 @@ func (p TMDBMovieParams) DiscoverQuery() url.Values {
 	if p.ReleasedWithinDays > 0 {
 		q.Set("primary_release_date.gte", daysAgo(p.ReleasedWithinDays))
 	}
+	setIf(q, "with_cast", p.WithCast)
+	setIf(q, "with_crew", p.WithCrew)
 	return q
 }
 
@@ -75,11 +78,15 @@ const GenreExtraAll = "All"
 // catalog: TMDB's genre list for its type, minus those a pick can't narrow
 // by (see genreChoices). The manifest advertises their names, and
 // FetchCatalogPage resolves a picked name back to its id through the same
-// list.
+// list. A list recipe has none, without asking TMDB: TMDB's lists take no
+// genre filter.
 func (c *TMDBClient) GenreExtraOptions(ctx context.Context, catalogType, paramsJSON string) ([]Genre, error) {
-	withGenres, withoutGenres, err := genreFilters(paramsJSON)
+	withGenres, withoutGenres, list, err := genreFilters(paramsJSON)
 	if err != nil {
 		return nil, err
+	}
+	if list != "" {
+		return []Genre{}, nil
 	}
 	genres, err := c.Genres(ctx, catalogType)
 	if err != nil {
@@ -88,17 +95,18 @@ func (c *TMDBClient) GenreExtraOptions(ctx context.Context, catalogType, paramsJ
 	return genreChoices(genres, withGenres, withoutGenres), nil
 }
 
-// genreFilters decodes a recipe's with_genres and without_genres, the two
-// fields its genre options depend on.
-func genreFilters(paramsJSON string) (withGenres, withoutGenres string, err error) {
+// genreFilters decodes a recipe's with_genres, without_genres and tmdb_list,
+// the fields its genre options depend on.
+func genreFilters(paramsJSON string) (withGenres, withoutGenres, list string, err error) {
 	var p struct {
 		WithGenres    string `json:"with_genres"`
 		WithoutGenres string `json:"without_genres"`
+		TMDBList      string `json:"tmdb_list"`
 	}
 	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
-		return "", "", fmt.Errorf("provider: decode genre filters: %w", err)
+		return "", "", "", fmt.Errorf("provider: decode genre filters: %w", err)
 	}
-	return p.WithGenres, p.WithoutGenres, nil
+	return p.WithGenres, p.WithoutGenres, p.TMDBList, nil
 }
 
 // genreChoices filters genres down to the ones a pick narrows the recipe by.

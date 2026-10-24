@@ -2,12 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 import { catalog } from '@/test/fixtures'
 import {
   MAX_ENTITY_IDS,
+  NEW_CATALOG_KIND,
   emptyForm,
   formFromCatalog,
   isSameCatalog,
+  newCatalogForm,
+  newCatalogKindError,
   paramsString,
+  sourcesFor,
   toPayload,
   validateForm,
+  withType,
   type CatalogFormState,
 } from './catalogForm'
 
@@ -202,5 +207,56 @@ describe('validateForm: the other server rules a form can reach', () => {
     )
     // The other type's dates are not sent, so they raise nothing.
     expect(fixed({ first_air_date_gte: '2021-01-01', first_air_date_lte: '2020-01-01' })).toBeUndefined()
+  })
+})
+
+describe('the New catalog dialog\'s kind', () => {
+  it('offers a TMDB collection for movies only, and a TMDB list for both', () => {
+    expect(sourcesFor('movie').map((s) => s.label)).toEqual(['Filters', 'TMDB collection', 'TMDB list'])
+    expect(sourcesFor('series').map((s) => s.label)).toEqual(['Filters', 'TMDB list'])
+  })
+
+  it('keeps a list source across types, unpicking a list the new type lacks', () => {
+    expect(withType({ type: 'movie', source: 'list', list: 'now_playing' }, 'series')).toEqual({
+      type: 'series',
+      source: 'list',
+      list: undefined,
+    })
+    expect(withType({ type: 'movie', source: 'list', list: 'popular' }, 'series').list).toBe('popular')
+  })
+
+  it('creates nothing from a list source until a list is picked, and sends that list alone', () => {
+    expect(newCatalogKindError({ type: 'series', source: 'list' })).toBe('Pick a list.')
+    const form = { ...newCatalogForm({ type: 'series', source: 'list', list: 'airing_today' }), name: 'New' }
+    expect(toPayload(form).params).toBe('{"tmdb_list":"airing_today"}')
+    expect(toPayload({ ...form, params: { ...form.params, with_genres: '18', randomized: true } }).params).toBe(
+      '{"tmdb_list":"airing_today","randomized":true}',
+    )
+  })
+
+  it('reads a saved list back as a list row', () => {
+    expect(formFromCatalog(catalog({ type: 'series', params: '{"tmdb_list":"popular"}' })).sourceMode).toBe('list')
+    expect(validateForm({ ...newCatalogForm({ type: 'movie', source: 'list' }), name: 'Row' }).tmdb_list).toBe(
+      'Pick a list.',
+    )
+  })
+
+  it('falls back to Filters when the type can\'t be made from the source', () => {
+    const picked = { type: 'movie' as const, source: 'collection' as const, collection: '263' }
+    expect(withType(picked, 'series')).toEqual({ type: 'series', source: 'filters', collection: '263', list: undefined })
+    expect(withType({ ...NEW_CATALOG_KIND, source: 'filters' }, 'series').source).toBe('filters')
+  })
+
+  it('creates nothing from a TMDB collection source until one is picked', () => {
+    expect(newCatalogKindError(NEW_CATALOG_KIND)).toBeUndefined()
+    expect(newCatalogKindError({ type: 'movie', source: 'collection' })).toBe('Pick a TMDB collection.')
+    expect(newCatalogKindError({ type: 'movie', source: 'collection', collection: '263' })).toBeUndefined()
+  })
+
+  it('makes a catalog complete from the start', () => {
+    expect(toPayload({ ...newCatalogForm(NEW_CATALOG_KIND), name: 'Row' }).params).toBe('{}')
+    const collection = toPayload({ ...newCatalogForm({ type: 'movie', source: 'collection', collection: '263' }), name: 'Batman' })
+    expect(collection.params).toBe('{"with_collection":"263"}')
+    expect(newCatalogForm(NEW_CATALOG_KIND, 'coll-1').collectionID).toBe('coll-1')
   })
 })

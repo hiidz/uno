@@ -6,14 +6,17 @@ import {
   fetchCompany,
   fetchKeyword,
   fetchNetwork,
+  fetchPerson,
   queryKeys,
   searchCollections,
   searchCompanies,
   searchKeywords,
   searchNetworks,
+  searchPeople,
 } from '@/api'
 import type { CatalogType } from '@/api'
 import { FieldNote, Segmented } from '@/components/fields'
+import { headshot } from '@/lib/tmdbImage'
 import { useDebounce } from '@/lib/useDebounce'
 import { MAX_ENTITY_IDS } from './catalogForm'
 import { parseIdList, serializeIdList, type IdJoin } from './params'
@@ -22,16 +25,17 @@ import { IconButton } from '@/components/IconButton'
 
 /**
  * TMDB entities picked by name from a server search, kept as chips — the
- * production companies, keywords, movie collection and series networks of a
- * recipe.
+ * production companies, keywords, movie collection, series networks and movie
+ * cast and crew of a recipe.
  *
  * TMDB's API has no "list them all" endpoint for any of them, so unlike every
  * other picker in the editor this one searches the server as you type: the
  * query settles for `SEARCH_DELAY_MS`, then
- * `GET /api/{companies,keywords,collections,networks}/search` runs once it is
- * at least `MIN_QUERY` characters. Company search is scoped to the catalog's
- * type, network search to series, and each of their results names its country
- * and title count.
+ * `GET /api/{companies,keywords,collections,networks,people}/search` runs once
+ * it is at least `MIN_QUERY` characters. Company search is scoped to the
+ * catalog's type, network search to series, and each of their results names
+ * its country and title count. A person's row is their headshot, then their
+ * name over their main job and what they are known for.
  *
  * The stored value is one id-list string, comma-joined for "all of them" and
  * pipe-joined for "any of them". An `exclude` list is always comma-joined:
@@ -42,7 +46,7 @@ import { IconButton } from '@/components/IconButton'
  * marked, so it can be removed.
  */
 
-export type EntityKind = 'company' | 'keyword' | 'collection' | 'network'
+export type EntityKind = 'company' | 'keyword' | 'collection' | 'network' | 'cast' | 'crew'
 
 interface Entity {
   id: number
@@ -53,6 +57,9 @@ interface Entity {
 interface SearchResult extends Entity {
   origin_country?: string
   title_count?: number
+  profile_path?: string
+  known_for_department?: string
+  known_for?: string
 }
 
 interface EntitySource {
@@ -68,6 +75,8 @@ interface EntitySource {
   searchKey: (query: string, type: CatalogType) => readonly unknown[]
   /** Shown after a search row's name, when the kind reports more than one. */
   rowDetail?: (result: SearchResult, type: CatalogType) => string
+  /** Its rows are people: a headshot, then the name over `rowDetail`. */
+  people?: true
   fetchOne: (id: number) => Promise<Entity>
   oneKey: (id: number) => readonly unknown[]
 }
@@ -124,6 +133,35 @@ const SOURCES: Record<EntityKind, EntitySource> = {
     fetchOne: fetchNetwork,
     oneKey: queryKeys.network,
   },
+  cast: {
+    plural: 'cast members',
+    singular: 'Person',
+    defaultJoin: 'and',
+    search: searchPeople,
+    searchKey: (query) => queryKeys.personSearch(query),
+    rowDetail: personDetail,
+    people: true,
+    fetchOne: fetchPerson,
+    oneKey: queryKeys.person,
+  },
+  crew: {
+    plural: 'crew members',
+    singular: 'Person',
+    // Two directors or writers rarely share a film, so "all of them" is
+    // almost always an empty row.
+    defaultJoin: 'or',
+    search: searchPeople,
+    searchKey: (query) => queryKeys.personSearch(query),
+    rowDetail: personDetail,
+    people: true,
+    fetchOne: fetchPerson,
+    oneKey: queryKeys.person,
+  },
+}
+
+/** A person's line under their name: "Acting · Guardians of the Galaxy". */
+function personDetail(result: SearchResult): string {
+  return [result.known_for_department, result.known_for].filter(Boolean).join(' · ')
 }
 
 const SEARCH_DELAY_MS = 300
@@ -167,6 +205,7 @@ export function TMDBEntityPicker({
   exclude = false,
   hiddenIds,
   invalid,
+  note,
 }: {
   kind: EntityKind
   /** The catalog's type, which company search counts titles for. Network
@@ -184,6 +223,8 @@ export function TMDBEntityPicker({
   /** Its error is on show: the search box carries `aria-invalid`, which
    *  `.field` draws as a red border. */
   invalid?: boolean
+  /** A line over the search box, for what the field matches. */
+  note?: string
 }) {
   const source = SOURCES[kind]
   const plural = exclude ? `${source.plural} to leave out` : source.plural
@@ -334,6 +375,8 @@ export function TMDBEntityPicker({
         />
       )}
 
+      {note && <FieldNote>{note}</FieldNote>}
+
       <input
         ref={inputRef}
         id={inputId}
@@ -365,11 +408,19 @@ export function TMDBEntityPicker({
                 type="button"
                 onClick={() => add(entity)}
                 aria-label={`Add ${entity.name}`}
-                className="text-dim hover:bg-raised-hi hover:text-ink focus-visible:bg-raised-hi focus-visible:text-ink text-meta w-full rounded-lg px-2 py-1.5 text-left transition-colors pointer-coarse:py-3"
+                className={`text-dim hover:bg-raised-hi hover:text-ink focus-visible:bg-raised-hi focus-visible:text-ink text-meta w-full rounded-lg px-2 text-left transition-colors ${
+                  source.people ? 'flex items-center gap-3 py-1.5' : 'py-1.5 pointer-coarse:py-3'
+                }`}
               >
-                {entity.name}
-                {source.rowDetail && (
-                  <span className="text-dimmer"> · {source.rowDetail(entity, type)}</span>
+                {source.people ? (
+                  <PersonRow entity={entity} detail={source.rowDetail?.(entity, type) ?? ''} />
+                ) : (
+                  <>
+                    {entity.name}
+                    {source.rowDetail && (
+                      <span className="text-dimmer"> · {source.rowDetail(entity, type)}</span>
+                    )}
+                  </>
                 )}
               </button>
             </li>
@@ -377,5 +428,24 @@ export function TMDBEntityPicker({
         </ul>
       )}
     </div>
+  )
+}
+
+/** A person search row: the round headshot, or an empty circle where TMDB
+ *  has none, then the name over their job and best-known work. */
+function PersonRow({ entity, detail }: { entity: SearchResult; detail: string }) {
+  const src = headshot(entity.profile_path ?? '')
+  return (
+    <>
+      {src ? (
+        <img src={src} alt="" loading="lazy" className="bg-raised-hi size-10 shrink-0 rounded-full object-cover" />
+      ) : (
+        <span aria-hidden className="bg-raised-hi size-10 shrink-0 rounded-full" />
+      )}
+      <span className="flex w-0 min-w-0 flex-1 flex-col">
+        <span className="truncate">{entity.name}</span>
+        {detail && <span className="text-dimmer truncate">{detail}</span>}
+      </span>
+    </>
   )
 }

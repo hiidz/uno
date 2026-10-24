@@ -435,6 +435,22 @@ export interface Keyword {
   name: string
 }
 
+/** `GET /api/tmdb/people/{id}` — a TMDB person `with_cast` and `with_crew`
+ *  accept. `profile_path` is TMDB's raw image path, `''` when it has no
+ *  headshot; `known_for_department` is TMDB's word for their main job. */
+export interface Person {
+  id: number
+  name: string
+  profile_path: string
+  known_for_department: string
+}
+
+/** One result from `GET /api/tmdb/people/search`: a person and the title of
+ *  the first work TMDB lists them as known for, `''` for none. */
+export interface PersonSearchResult extends Person {
+  known_for: string
+}
+
 /** `GET /api/tmdb/networks/{id}` — a TV network `with_networks` accepts.
  *  `origin_country` is an ISO 3166-1 code, or `""` when TMDB has none. */
 export interface Network {
@@ -546,11 +562,17 @@ export interface SelectedProfile {
  */
 export interface TMDBParams {
   randomized?: boolean
+  /** One of TMDB's own lists, by its path word (`features/catalogs/lists.ts`).
+   *  Set, the catalog shows that list and takes no other filter. */
+  tmdb_list?: string
 
   sort_by?: string
   with_genres?: string
   without_genres?: string
   with_original_language?: string
+  /** ISO 3166-1 codes of the countries a title was made in: comma-joined
+   *  means all of them, pipe-joined any of them. */
+  with_origin_country?: string
 
   vote_average_gte?: number
   vote_average_lte?: number
@@ -578,6 +600,10 @@ export interface TMDBParams {
   primary_release_date_gte?: string
   primary_release_date_lte?: string
   released_within_days?: number
+  /** TMDB person ids: comma-joined means all of them, pipe-joined any of
+   *  them. `with_crew` matches any crew job, not directing alone. */
+  with_cast?: string
+  with_crew?: string
   /** One TMDB collection id; TMDB takes no list here. */
   with_collection?: string
 

@@ -14,27 +14,29 @@ import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
   isCollectionRow,
+  isListRow,
   isSameCatalog,
   paramsString,
+  sourceLabel,
   parseSortBy,
   serializeSortBy,
   validateForm,
   type FieldErrors,
   type CatalogFormState,
-  type SourceMode,
 } from './catalogForm'
 import {
   parseIdList,
   serializeIdList,
   type IdJoin,
 } from './params'
-import { EntityLists, NameSetting, ShuffleControl, SourceModeSetting } from './CatalogSettings'
+import { EntityLists, NameSetting, ShuffleControl } from './CatalogSettings'
 import { DateWindow } from './DateWindow'
 import { RecipePreview } from './RecipePreview'
 import {
   ANY_COMPANY,
   ANY_KEYWORDS,
   ANY_NETWORK,
+  sumPeople,
   sumAge,
   sumCollection,
   sumDate,
@@ -49,6 +51,10 @@ import {
 } from './summary'
 import { TMDBEntityPicker } from './TMDBEntityPicker'
 import { WatchProviderPicker } from './WatchProviderPicker'
+import { CountryPicker } from './CountryPicker'
+import { ListTiles } from './ListTiles'
+import { tmdbListLabel } from './lists'
+import { Field } from '@/components/fields'
 import {
   CertificationPicker,
   FieldNote,
@@ -57,6 +63,42 @@ import {
   Segmented,
   Select,
 } from './fields'
+
+/** A labelled search picker in a section holding more than one field: as wide
+ *  as the section, like `EntityLists`' Include and Leave out, so the search
+ *  box and its results don't shrink to their content. */
+function PickerField({
+  label,
+  htmlFor,
+  error,
+  children,
+}: {
+  label: string
+  htmlFor: string
+  error: string | undefined
+  children: ReactNode
+}) {
+  return (
+    <div className="flex w-full flex-col gap-2">
+      <label className="setting-label type-label" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {children}
+      {error && <FieldNote tone="danger">{error}</FieldNote>}
+    </div>
+  )
+}
+
+/** A list row's head before a list is picked. */
+const NO_LIST = 'No list picked'
+
+/** The editor's tags: the catalog's type, then its source unless that is
+ *  Filters. Neither changes once the catalog exists. */
+function editorStickers(state: CatalogFormState) {
+  const source = sourceLabel(state.sourceMode)
+  const type = kindSticker(state.type)
+  return source ? [type, { ...type, label: source }] : [type]
+}
 
 /** What the sections are handed to read errors and change the form. */
 type ErrorFor = (key: string) => string | undefined
@@ -159,8 +201,10 @@ type SectionKey =
   | 'watch'
   | 'companies'
   | 'keywords'
+  | 'people'
   | 'networks'
   | 'collection'
+  | 'list'
 
 /** Which section a server-mirrored validation error belongs to, so an
  *  invalid Save can open it. `name` isn't here — it's the one error outside
@@ -180,12 +224,17 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   without_keywords: 'keywords',
   with_networks: 'networks',
   with_collection: 'collection',
+  tmdb_list: 'list',
+  with_origin_country: 'lang',
+  with_cast: 'people',
+  with_crew: 'people',
 }
 
 /** The order Save focuses errors in when more than one applies at once. */
 const ERROR_PRIORITY = [
   'name',
   'with_collection',
+  'tmdb_list',
   'sort_by',
   'watch_region',
   'certification_country',
@@ -194,10 +243,13 @@ const ERROR_PRIORITY = [
   'vote_average',
   'with_runtime',
   'vote_count',
+  'with_origin_country',
   'with_companies',
   'without_companies',
   'with_keywords',
   'without_keywords',
+  'with_cast',
+  'with_crew',
   'with_networks',
 ]
 
@@ -222,14 +274,16 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   order: () => 'Order',
   genres: () => 'Genres',
   ratings: () => 'Ratings and runtime',
-  lang: () => 'Original language',
+  lang: () => 'Language and country',
   date: (isMovie) => (isMovie ? 'Release date' : 'First aired'),
   age: () => 'Age rating',
   watch: () => 'Where to watch',
   companies: () => 'Production companies',
   keywords: () => 'Keywords',
+  people: () => 'Cast and crew',
   networks: () => 'Networks',
   collection: () => 'TMDB collection',
+  list: () => 'TMDB list',
 }
 
 /** Builds the collapsible sections: each carries the plain-English
@@ -391,17 +445,33 @@ function buildSections(args: SectionArgs) {
     },
     {
       key: 'lang' as const,
-      summary: sumLanguage(state.params.with_original_language, languages),
+      summary: sumLanguage(
+        state.params.with_original_language,
+        languages,
+        state.params.with_origin_country,
+        countryNames,
+      ),
       body: (
         <>
-          <Select
-            ariaLabel="Original language"
-            value={state.params.with_original_language ?? ''}
-            onChange={setLanguage}
-            placeholder="Any language"
-            options={languageOptions}
-          />
-          {languageOptions.length === 0 && <FieldNote>Couldn’t load languages.</FieldNote>}
+          <Field label="Original language">
+            <Select
+              ariaLabel="Original language"
+              value={state.params.with_original_language ?? ''}
+              onChange={setLanguage}
+              placeholder="Any language"
+              options={languageOptions}
+            />
+            {languageOptions.length === 0 && <FieldNote>Couldn’t load languages.</FieldNote>}
+          </Field>
+          <PickerField label="Country" htmlFor="cat-country" error={errorFor('with_origin_country')}>
+            <CountryPicker
+              inputId="cat-country"
+              value={state.params.with_origin_country}
+              countryNames={countryNames}
+              invalid={!!errorFor('with_origin_country')}
+              onChange={(with_origin_country) => patchParams({ with_origin_country })}
+            />
+          </PickerField>
         </>
       ),
     },
@@ -496,6 +566,40 @@ function buildSections(args: SectionArgs) {
         />
       ),
     },
+    // Movie only: /discover/tv has no people filter.
+    ...(isMovie
+      ? [
+          {
+            key: 'people' as const,
+            summary: sumPeople(state.params.with_cast, state.params.with_crew),
+            body: (
+              <>
+                <PickerField label="Cast" htmlFor="cat-cast" error={errorFor('with_cast')}>
+                  <TMDBEntityPicker
+                    kind="cast"
+                    type={state.type}
+                    inputId="cat-cast"
+                    value={state.params.with_cast}
+                    invalid={Boolean(errorFor('with_cast'))}
+                    onChange={(with_cast) => patchParams({ with_cast })}
+                  />
+                </PickerField>
+                <PickerField label="Crew" htmlFor="cat-crew" error={errorFor('with_crew')}>
+                  <TMDBEntityPicker
+                    kind="crew"
+                    type={state.type}
+                    inputId="cat-crew"
+                    value={state.params.with_crew}
+                    invalid={Boolean(errorFor('with_crew'))}
+                    onChange={(with_crew) => patchParams({ with_crew })}
+                    note="Any crew job: director, writer, producer…"
+                  />
+                </PickerField>
+              </>
+            ),
+          },
+        ]
+      : []),
     // Series only: /discover/movie has no network filter.
     ...(isMovie
       ? []
@@ -540,12 +644,35 @@ function buildSections(args: SectionArgs) {
           },
         ]
       : []),
+    {
+      key: 'list' as const,
+      summary: withShuffle(
+        state.params.tmdb_list ? tmdbListLabel(state.type, state.params.tmdb_list) : NO_LIST,
+        state.params.randomized,
+      ),
+      body: (
+        <>
+          <ListTiles
+            type={state.type}
+            value={state.params.tmdb_list}
+            invalid={Boolean(errorFor('tmdb_list'))}
+            onChange={(tmdb_list) => patchParams({ tmdb_list })}
+            wide
+          />
+          {errorFor('tmdb_list') && <FieldNote tone="danger">{errorFor('tmdb_list')}</FieldNote>}
+          <ShuffleControl randomized={state.params.randomized} filmSeries={false} onParams={patchParams} />
+        </>
+      ),
+    },
   ]
 
-  // TMDB collection mode shows the TMDB collection section alone and filters
-  // mode everything else, matching what `recipeParams` in catalogForm.ts sends.
-  const collectionRow = isCollectionRow(state)
-  return sections.filter((section) => (section.key === 'collection') === collectionRow)
+  // A TMDB collection or list row shows its source's section alone and a
+  // filters row everything else, matching what `recipeParams` in
+  // catalogForm.ts sends.
+  const own: SectionKey | null = isCollectionRow(state) ? 'collection' : isListRow(state) ? 'list' : null
+  return sections.filter((section) =>
+    own ? section.key === own : section.key !== 'collection' && section.key !== 'list',
+  )
 }
 
 
@@ -628,7 +755,7 @@ export function CatalogEditor({
   // reopen.
   // A collection row has one section, so it starts open.
   const [openSection, setOpenSection] = useState<SectionKey | null>(() =>
-    isCollectionRow(baseline) ? 'collection' : null,
+    isCollectionRow(baseline) ? 'collection' : isListRow(baseline) ? 'list' : null,
   )
 
   // Sorted by the name shown, not TMDB's response order, so the dropdown
@@ -678,11 +805,6 @@ export function CatalogEditor({
 
   function patchParams(update: Partial<TMDBParams>) {
     setState((previous) => ({ ...previous, params: { ...previous.params, ...update } }))
-  }
-
-  function switchSourceMode(sourceMode: SourceMode) {
-    patch({ sourceMode })
-    setOpenSection(sourceMode === 'collection' ? 'collection' : null)
   }
 
   /** Same shape as `submit`: reveal what's wrong, or go. Errors stay hidden
@@ -754,7 +876,7 @@ export function CatalogEditor({
       tone="catalog"
       badges={
         <>
-          <SharingStickers stickers={[kindSticker(state.type)]} />
+          <SharingStickers stickers={editorStickers(state)} />
           {sharingBadges}
         </>
       }
@@ -784,8 +906,6 @@ export function CatalogEditor({
             <div className="setting is-head">
               <h3 className="setting-label m-0">What the row shows</h3>
             </div>
-
-            <SourceModeSetting isMovie={isMovie} value={state.sourceMode} onChange={switchSourceMode} />
 
             {sections.map((section) => (
               <div key={section.key}>

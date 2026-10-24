@@ -47,6 +47,8 @@ export {
   fetchCompany,
   searchKeywords,
   fetchKeyword,
+  searchPeople,
+  fetchPerson,
   searchCollections,
   fetchCollection,
   searchNetworks,

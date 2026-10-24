@@ -31,7 +31,9 @@ func fakeEntityTMDB(t *testing.T) (*TMDBClient, func(path string) int) {
 			fmt.Fprint(w, `{"id":1,"name":"Star Wars Collection","parts":[]}`)
 		case "/network/1":
 			fmt.Fprint(w, `{"id":1,"name":"Fuji TV","origin_country":"JP"}`)
-		case "/company/500", "/keyword/500", "/collection/500", "/network/500":
+		case "/person/1":
+			fmt.Fprint(w, `{"id":1,"name":"Zoe Saldaña","profile_path":"/z.jpg","known_for_department":"Acting"}`)
+		case "/company/500", "/keyword/500", "/collection/500", "/network/500", "/person/500":
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
@@ -88,8 +90,8 @@ func TestCheckEntityIDs(t *testing.T) {
 // TestValidateParamsLooksUpEachEntityField covers the wiring in
 // ValidateParams, the lookup itself being TestCheckEntityIDs': every entity
 // list reaches its own lookup and names its field when an id is unknown, and a
-// field the catalog type's discover endpoint lacks (with_collection on series,
-// with_networks on movie) is refused without one, since the value would
+// field the catalog type's discover endpoint lacks (with_collection, with_cast
+// and with_crew on series, with_networks on movie) is refused without one, since the value would
 // otherwise be saved but never applied.
 func TestValidateParamsLooksUpEachEntityField(t *testing.T) {
 	tests := []struct {
@@ -108,6 +110,11 @@ func TestValidateParamsLooksUpEachEntityField(t *testing.T) {
 		{"unknown network", "series", `{"with_networks":"1|999"}`, "with_networks", true},
 		{"collection on series", "series", `{"with_collection":"1"}`, "with_collection", false},
 		{"networks on movie", "movie", `{"with_networks":"1"}`, "with_networks", false},
+		{"known cast and crew", "movie", `{"with_cast":"1","with_crew":"1|1"}`, "", true},
+		{"unknown cast member", "movie", `{"with_cast":"1,999"}`, "with_cast", true},
+		{"unknown crew member", "movie", `{"with_crew":"999"}`, "with_crew", true},
+		{"cast on series", "series", `{"with_cast":"1"}`, "with_cast", false},
+		{"crew on series", "series", `{"with_crew":"1"}`, "with_crew", false},
 	}
 
 	for _, tc := range tests {
@@ -122,7 +129,7 @@ func TestValidateParamsLooksUpEachEntityField(t *testing.T) {
 				t.Fatalf("err = %v, want ErrInvalidParams naming %s", err, tc.wantField)
 			}
 			looked := 0
-			for _, kind := range []string{"company", "keyword", "collection", "network"} {
+			for _, kind := range []string{"company", "keyword", "collection", "network", "person"} {
 				looked += hits("/"+kind+"/1") + hits("/"+kind+"/999")
 			}
 			if (looked > 0) != tc.wantLookup {
@@ -153,8 +160,9 @@ func TestMovieValidateRejectsCollectionList(t *testing.T) {
 }
 
 // TestValidateCapsEntityIDLists covers the no-network cap on the company and
-// keyword include and exclude lists, for either catalog type, and on
-// with_networks, which only the series recipe has: twenty ids pass, a
+// keyword include and exclude lists, for either catalog type, on
+// with_networks, which only the series recipe has, and on with_cast and
+// with_crew, which only the movie recipe has: twenty ids pass, a
 // twenty-first is rejected naming the field and the cap, for either separator.
 func TestValidateCapsEntityIDLists(t *testing.T) {
 	ids := func(n int, sep string) string {
@@ -179,6 +187,8 @@ func TestValidateCapsEntityIDLists(t *testing.T) {
 				{"without_companies", bothTypes(TMDBCommonParams{WithoutCompanies: ids(n, sep)})},
 				{"without_keywords", bothTypes(TMDBCommonParams{WithoutKeywords: ids(n, sep)})},
 				{"with_networks", []CatalogParams{TMDBTVParams{WithNetworks: ids(n, sep)}}},
+				{"with_cast", []CatalogParams{TMDBMovieParams{WithCast: ids(n, sep)}}},
+				{"with_crew", []CatalogParams{TMDBMovieParams{WithCrew: ids(n, sep)}}},
 			} {
 				for _, p := range tc.params {
 					err := p.Validate()
@@ -198,7 +208,8 @@ func TestValidateCapsEntityIDLists(t *testing.T) {
 }
 
 // fakeVocabTMDB serves the lists ValidateParams checks recipe vocabulary
-// against: genre 28 for either type, language "en", watch region "US",
+// against: genre 28 for either type, language "en", countries "IN" and
+// "PK", watch region "US",
 // watch provider 8 in the US only, and the US certification scale PG-13 and
 // R. failPath answers with a server error instead. It counts every request.
 func fakeVocabTMDB(t *testing.T, failPath string) (*TMDBClient, func() int) {
@@ -219,6 +230,8 @@ func fakeVocabTMDB(t *testing.T, failPath string) (*TMDBClient, func() int) {
 			fmt.Fprint(w, `{"genres":[{"id":28,"name":"Action"}]}`)
 		case "/configuration/languages":
 			fmt.Fprint(w, `[{"iso_639_1":"en","english_name":"English","name":"English"}]`)
+		case "/configuration/countries":
+			fmt.Fprint(w, `[{"iso_3166_1":"IN","english_name":"India","native_name":"India"},{"iso_3166_1":"PK","english_name":"Pakistan","native_name":"Pakistan"}]`)
 		case "/watch/providers/regions":
 			fmt.Fprint(w, `{"results":[{"iso_3166_1":"US","english_name":"United States","native_name":"United States"}]}`)
 		case "/watch/providers/movie", "/watch/providers/tv":
@@ -246,7 +259,7 @@ func fakeVocabTMDB(t *testing.T, failPath string) (*TMDBClient, func() int) {
 
 // TestValidateParamsChecksVocabularyLists covers the fields ValidateParams
 // checks against TMDB's published lists — genres, language, watch region,
-// watch providers and certifications: a known value passes, an unknown one
+// origin countries, watch providers and certifications: a known value passes, an unknown one
 // is rejected naming its field, and a list TMDB fails to serve is returned
 // as a plain error rather than a rejection.
 func TestValidateParamsChecksVocabularyLists(t *testing.T) {
@@ -265,6 +278,11 @@ func TestValidateParamsChecksVocabularyLists(t *testing.T) {
 		{"known language", "movie", `{"with_original_language":"en"}`, "", false, false, ""},
 		{"unknown language", "series", `{"with_original_language":"xx"}`, "", true, true, "with_original_language"},
 		{"language list failing", "movie", `{"with_original_language":"en"}`, "/configuration/languages", false, true, ""},
+
+		{"known countries, any of", "movie", `{"with_origin_country":"IN|PK"}`, "", false, false, ""},
+		{"known countries, all of", "series", `{"with_origin_country":"IN,PK"}`, "", false, false, ""},
+		{"unknown country code", "movie", `{"with_origin_country":"IN|ZZ"}`, "", true, true, "with_origin_country"},
+		{"country list failing", "series", `{"with_origin_country":"IN"}`, "/configuration/countries", false, true, ""},
 
 		{"known region", "movie", `{"watch_region":"US"}`, "", false, false, ""},
 		{"unknown region", "series", `{"watch_region":"ZZ"}`, "", true, true, "watch_region"},
@@ -395,5 +413,45 @@ func TestValidateChecksFixedDates(t *testing.T) {
 				t.Errorf("%s %s: Validate = %v, want it to say %q", kind, tc.name, err, tc.wantErr)
 			}
 		}
+	}
+}
+
+// TestValidateChecksOriginCountryCodes covers the no-network rules on
+// with_origin_country, for either catalog type: two upper-case letters
+// joined by either separator pass, a lower-case or malformed code is
+// rejected, and so is a twenty-first code.
+func TestValidateChecksOriginCountryCodes(t *testing.T) {
+	codes := func(n int) string {
+		parts := make([]string, n)
+		for i := range parts {
+			parts[i] = string(rune('A'+i/26)) + string(rune('A'+i%26))
+		}
+		return strings.Join(parts, "|")
+	}
+	for _, tc := range []struct {
+		name, value string
+		wantErr     bool
+	}{
+		{"any of", "IN|PK", false},
+		{"all of", "IN,PK", false},
+		{"spaces trimmed", "IN | PK", false},
+		{"twenty codes", codes(maxEntityIDs), false},
+		{"twenty-one codes", codes(maxEntityIDs + 1), true},
+		{"lower case", "in", true},
+		{"three letters", "IND", true},
+		{"digits", "12", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			common := TMDBCommonParams{WithOriginCountry: tc.value}
+			for _, p := range []CatalogParams{TMDBMovieParams{TMDBCommonParams: common}, TMDBTVParams{TMDBCommonParams: common}} {
+				err := p.Validate()
+				if (err != nil) != tc.wantErr {
+					t.Fatalf("%T Validate(%q) = %v, want error: %v", p, tc.value, err, tc.wantErr)
+				}
+				if err != nil && !strings.Contains(err.Error(), "with_origin_country") {
+					t.Fatalf("%T Validate(%q) = %v, want it to name with_origin_country", p, tc.value, err)
+				}
+			}
+		})
 	}
 }

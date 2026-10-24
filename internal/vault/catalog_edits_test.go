@@ -99,6 +99,8 @@ func TestUpdateUserCollectionRefusedCatalogEditWritesNothing(t *testing.T) {
 	}
 	retyped := editOf(catalog)
 	retyped.Type = "series"
+	resourced := editOf(catalog)
+	resourced.Params = `{"with_collection":"10"}`
 
 	for _, tt := range []struct {
 		name string
@@ -109,6 +111,7 @@ func TestUpdateUserCollectionRefusedCatalogEditWritesNothing(t *testing.T) {
 		{"another owner's", editOf(theirs)},
 		{"unknown", ScopedCatalogEdit{ID: uuid.New(), Type: "movie", Provider: "tmdb", Name: "Ghost", Params: "{}"}},
 		{"type change", retyped},
+		{"source change", resourced},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			valid := editOf(catalog)

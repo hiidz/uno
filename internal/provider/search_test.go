@@ -122,3 +122,44 @@ func TestSearchRejectsBlankQuery(t *testing.T) {
 		t.Fatalf("TMDB saw %v, want no requests for a blank query", got)
 	}
 }
+
+// TestSearchPeopleNamesWhatEachIsKnownFor covers the person match: TMDB's
+// order kept, the first known-for entry named by its title for a movie or its
+// name for a series, and none for a person TMDB lists no work for.
+func TestSearchPeopleNamesWhatEachIsKnownFor(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search/person" || r.URL.Query().Get("query") != "zoe" {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `{"page":1,"results":[
+			{"id":8691,"name":"Zoe Saldaña","profile_path":"/z.jpg","known_for_department":"Acting","known_for":[{"title":"Guardians of the Galaxy"},{"title":"Avatar"}]},
+			{"id":2,"name":"Zoe Kazan","profile_path":"","known_for_department":"Writing","known_for":[{"name":"The Plot Against America"}]},
+			{"id":3,"name":"Zoe Nobody","profile_path":null,"known_for_department":"Crew","known_for":[]}
+		],"total_pages":1,"total_results":3}`)
+	}))
+	t.Cleanup(srv.Close)
+	c := NewTMDBClient("key")
+	c.baseURL = srv.URL
+
+	people, err := c.SearchPeople(t.Context(), "zoe")
+	if err != nil {
+		t.Fatalf("SearchPeople: %v", err)
+	}
+	want := []PersonMatch{
+		{Person: Person{ID: 8691, Name: "Zoe Saldaña", ProfilePath: "/z.jpg", KnownForDepartment: "Acting"}, KnownFor: "Guardians of the Galaxy"},
+		{Person: Person{ID: 2, Name: "Zoe Kazan", KnownForDepartment: "Writing"}, KnownFor: "The Plot Against America"},
+		{Person: Person{ID: 3, Name: "Zoe Nobody", KnownForDepartment: "Crew"}},
+	}
+	if !reflect.DeepEqual(people, want) {
+		t.Fatalf("SearchPeople = %+v, want %+v", people, want)
+	}
+
+	body, err := json.Marshal(people[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(body); got != `{"id":8691,"name":"Zoe Saldaña","profile_path":"/z.jpg","known_for_department":"Acting","known_for":"Guardians of the Galaxy"}` {
+		t.Fatalf("a match marshals as %s", got)
+	}
+}

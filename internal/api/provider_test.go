@@ -47,6 +47,8 @@ func TestEntityLookupRoutes(t *testing.T) {
 		{name: "unauthenticated id", path: "/api/tmdb/keywords/1", noAuth: true, wantStatus: http.StatusUnauthorized},
 		{name: "company search with TMDB's type word", path: "/api/tmdb/companies/search?q=a24&type=tv", wantStatus: http.StatusBadRequest, wantBody: "invalid catalog type"},
 		{name: "keyword search with blank q", path: "/api/tmdb/keywords/search?q=%20%20", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
+		{name: "person search with blank q", path: "/api/tmdb/people/search?q=", wantStatus: http.StatusBadRequest, wantBody: "search query is blank"},
+		{name: "unauthenticated person", path: "/api/tmdb/people/1", noAuth: true, wantStatus: http.StatusUnauthorized},
 		{name: "non-numeric company id", path: "/api/tmdb/companies/marvel", wantStatus: http.StatusBadRequest, wantBody: "invalid id"},
 		{name: "non-positive network id", path: "/api/tmdb/networks/0", wantStatus: http.StatusBadRequest, wantBody: "is not a TMDB id"},
 	}

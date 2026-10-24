@@ -213,7 +213,7 @@ func TestClientListsAreMemoized(t *testing.T) {
 }
 
 // TestEntityLookupsAreMemoizedPerID covers the per-id memos behind Company,
-// Keyword and Collection: a known id reaches TMDB once across repeated calls,
+// Keyword, Collection and Person: a known id reaches TMDB once across repeated calls,
 // and a 404 comes back as ErrNotFound without being kept, so a later call asks
 // TMDB again.
 func TestEntityLookupsAreMemoizedPerID(t *testing.T) {
@@ -226,6 +226,7 @@ func TestEntityLookupsAreMemoizedPerID(t *testing.T) {
 		{"company", "Lucasfilm Ltd.", func(id int) (string, error) { v, err := c.Company(ctx, id); return v.Name, err }},
 		{"keyword", "superhero", func(id int) (string, error) { v, err := c.Keyword(ctx, id); return v.Name, err }},
 		{"collection", "Star Wars Collection", func(id int) (string, error) { v, err := c.Collection(ctx, id); return v.Name, err }},
+		{"person", "Zoe Saldaña", func(id int) (string, error) { v, err := c.Person(ctx, id); return v.Name, err }},
 	} {
 		for range 2 {
 			if name, err := tc.lookup(1); err != nil || name != tc.name {
