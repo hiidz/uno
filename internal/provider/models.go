@@ -27,6 +27,9 @@ type CatalogParams interface {
 	// IsRandomized reports whether the recipe shuffles rather than serving
 	// page 1 — see FetchCatalogPage.
 	IsRandomized() bool
+	// ListName is the recipe's tmdb_list, "" for a recipe that isn't one of
+	// TMDB's own lists — see recipeEndpoint.
+	ListName() string
 }
 
 // paramsFor returns an empty params struct for catalogType. The pointer
@@ -135,6 +138,12 @@ type BaseParams struct {
 // row itself (kind/type column), not from these structs.
 type TMDBCommonParams struct {
 	BaseParams
+
+	// One of TMDB's own lists, by its path word (listEndpoints). Set, it
+	// makes the recipe a list recipe: its titles are that list's, page by
+	// page, rather than a discover result, and every other field but
+	// Randomized must be unset — enforced in each type's Validate.
+	TMDBList string `json:"tmdb_list,omitempty"`
 
 	SortBy string `json:"sort_by,omitempty"`
 
@@ -260,6 +269,25 @@ var validTVSortValues = map[string]bool{
 	"first_air_date.asc": true, "first_air_date.desc": true,
 	"name.asc": true, "name.desc": true,
 	"original_name.asc": true, "original_name.desc": true,
+}
+
+// ListName satisfies CatalogParams for both recipe types.
+func (p TMDBCommonParams) ListName() string { return p.TMDBList }
+
+// listRecipeError refuses a tmdb_list that isn't one of catalogType's lists, and any
+// field set beside one: a list takes no filters. rest is the whole recipe,
+// whose own tmdb_list and randomized are ignored.
+func listRecipeError(catalogType, list string, rest reflect.Value) error {
+	if list == "" {
+		return nil
+	}
+	if _, ok := listEndpoints[catalogType][list]; !ok {
+		return fmt.Errorf("invalid tmdb_list %q for %s catalog", list, catalogType)
+	}
+	if field := firstSetField(rest); field != "" {
+		return fmt.Errorf("%s cannot be combined with tmdb_list", field)
+	}
+	return nil
 }
 
 // validate checks the cross-field rules shared by movie and tv params —
@@ -393,6 +421,11 @@ func parseDate(name, value string) (time.Time, error) {
 // addon server, preview) trust that anything in recipes.params already
 // passed this check.
 func (p TMDBMovieParams) Validate() error {
+	rest := p
+	rest.TMDBList, rest.Randomized = "", false
+	if err := listRecipeError("movie", p.TMDBList, reflect.ValueOf(rest)); err != nil {
+		return err
+	}
 	if p.SortBy != "" && !validMovieSortValues[p.SortBy] {
 		return fmt.Errorf("invalid sort_by %q for movie catalog", p.SortBy)
 	}
@@ -463,6 +496,11 @@ func firstSetField(v reflect.Value) string {
 // Validate checks cross-field rules that a single JSON field can't express
 // on its own. See TMDBMovieParams.Validate for where this runs.
 func (p TMDBTVParams) Validate() error {
+	rest := p
+	rest.TMDBList, rest.Randomized = "", false
+	if err := listRecipeError("series", p.TMDBList, reflect.ValueOf(rest)); err != nil {
+		return err
+	}
 	if p.SortBy != "" && !validTVSortValues[p.SortBy] {
 		return fmt.Errorf("invalid sort_by %q for tv catalog", p.SortBy)
 	}

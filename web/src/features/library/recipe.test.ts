@@ -8,6 +8,18 @@ function catalog(type: Catalog['type'], params: object): Catalog {
 }
 
 describe('describeRecipe', () => {
+  it('reads a TMDB list row as the list alone', () => {
+    expect(describeRecipe(catalog('movie', { tmdb_list: 'trending/week' }), new Map())).toEqual([
+      'TMDB list',
+      'Trending this week',
+    ])
+    expect(describeRecipe(catalog('series', { tmdb_list: 'airing_today', randomized: true }), new Map())).toEqual([
+      'TMDB list',
+      'Airing today',
+      'shuffled',
+    ])
+  })
+
   it('counts the cast members of a movie, and ignores the field on a series', () => {
     expect(describeRecipe(catalog('movie', { with_cast: '8691|73457' }), new Map())).toEqual(['with 2 cast members'])
     expect(describeRecipe(catalog('movie', { with_cast: '8691' }), new Map())).toEqual(['with 1 cast member'])
@@ -95,6 +107,14 @@ describe('recipeFacts', () => {
       { label: 'Type', value: 'Movies' },
       { label: 'Cast', value: '2' },
       { label: 'Crew', value: '1' },
+    ])
+  })
+
+  it('reads a TMDB list row as where it is from and which list', () => {
+    expect(recipeFacts(catalog('series', { tmdb_list: 'on_the_air' }), new Map())).toEqual([
+      { label: 'Type', value: 'Series' },
+      { label: 'From', value: 'TMDB list' },
+      { label: 'List', value: 'On the air' },
     ])
   })
 
@@ -281,8 +301,9 @@ describe('openFacts', () => {
     expect(labels).not.toContain('Released')
   })
 
-  it('has none for a TMDB collection row', () => {
+  it('has none for a TMDB collection or list row', () => {
     expect(open('movie', { with_collection: '10' })).toEqual([])
+    expect(open('series', { tmdb_list: 'popular' })).toEqual([])
   })
 })
 

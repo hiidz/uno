@@ -12,6 +12,7 @@ import {
   type SourceMode,
 } from './catalogForm'
 import { TMDBEntityPicker } from './TMDBEntityPicker'
+import { ListTiles } from './ListTiles'
 
 /**
  * Form primitives for the catalog builder.
@@ -32,7 +33,7 @@ export { FieldNote, Segmented, Select } from '@/components/fields'
 
 /** The type and source a catalog is made with — the choices that can't be
  *  changed afterwards, asked by both "New catalog" dialogs — and the TMDB
- *  collection a collection source needs before Create. Its error shows once
+ *  collection or list a collection or list source needs before Create. Its error shows once
  *  `showErrors` says Create was pressed. */
 export function CatalogKindFields({
   value,
@@ -65,6 +66,16 @@ export function CatalogKindFields({
           options={sourcesFor(value.type)}
         />
       </Field>
+      {value.source === 'list' && (
+        <Field label="List" error={error}>
+          <ListTiles
+            type={value.type}
+            value={value.list}
+            invalid={Boolean(error)}
+            onChange={(list) => onChange({ ...value, list })}
+          />
+        </Field>
+      )}
       {value.source === 'collection' && (
         <Field label="TMDB collection" htmlFor="new-catalog-collection" error={error}>
           <TMDBEntityPicker

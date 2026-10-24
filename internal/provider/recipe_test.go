@@ -23,6 +23,7 @@ func TestCanonicalParams(t *testing.T) {
 		{"people dropped on series", "series", `{"with_cast":"8691"}`, `{}`},
 		{"numbers as Go writes them", "movie", `{"vote_average_gte":7.50,"vote_average_lte":1e1}`, `{"vote_average_gte":7.5,"vote_average_lte":10}`},
 		{"origin country kept", "series", `{"with_origin_country":"IN|PK","sort_by":"popularity.desc"}`, `{"sort_by":"popularity.desc","with_origin_country":"IN|PK"}`},
+		{"list kept", "series", `{"randomized":true,"tmdb_list":"trending/week"}`, `{"randomized":true,"tmdb_list":"trending/week"}`},
 		{"empty", "series", `{}`, `{}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

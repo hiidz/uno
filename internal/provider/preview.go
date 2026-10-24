@@ -43,14 +43,18 @@ type PreviewItem struct {
 // it.
 //
 // A collection recipe skips discover (see collectionItems): the tiles are the
-// whole collection and totalResults is their count.
+// whole collection and totalResults is their count. A list recipe previews
+// from its list's path (recipeEndpoint).
 func (c *TMDBClient) PreviewCatalog(ctx context.Context, catalogType, paramsJSON, genre string) (items []PreviewItem, totalResults int, randomized bool, err error) {
-	endpoint, err := catalogEndpoint(catalogType)
-	if err != nil {
+	if _, err := catalogEndpoint(catalogType); err != nil {
 		return nil, 0, false, err
 	}
 
 	p, err := DecodeParams(catalogType, paramsJSON)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	endpoint, err := recipeEndpoint(catalogType, p)
 	if err != nil {
 		return nil, 0, false, err
 	}

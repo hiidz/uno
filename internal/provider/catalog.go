@@ -110,6 +110,43 @@ func catalogEndpoint(catalogType string) (string, error) {
 	return endpoint, nil
 }
 
+// listEndpoints maps each of TMDB's own lists a recipe can name in tmdb_list,
+// per catalog type, to the path it is served from. A stored tmdb_list is
+// only ever a key here, never put into a path: the same request-forgery
+// guard catalogEndpoints describes.
+var listEndpoints = map[string]map[string]string{
+	"movie": {
+		"trending/day":  "/trending/movie/day",
+		"trending/week": "/trending/movie/week",
+		"now_playing":   "/movie/now_playing",
+		"upcoming":      "/movie/upcoming",
+		"popular":       "/movie/popular",
+		"top_rated":     "/movie/top_rated",
+	},
+	"series": {
+		"trending/day":  "/trending/tv/day",
+		"trending/week": "/trending/tv/week",
+		"airing_today":  "/tv/airing_today",
+		"on_the_air":    "/tv/on_the_air",
+		"popular":       "/tv/popular",
+		"top_rated":     "/tv/top_rated",
+	},
+}
+
+// recipeEndpoint is the path a decoded recipe's pages come from: its TMDB
+// list's, or the type's discover path. A list's query is the page alone,
+// since a list recipe sets no other field.
+func recipeEndpoint(catalogType string, p CatalogParams) (string, error) {
+	if list := p.ListName(); list != "" {
+		endpoint, ok := listEndpoints[catalogType][list]
+		if !ok {
+			return "", fmt.Errorf("provider: no %s list %q", catalogType, list)
+		}
+		return endpoint, nil
+	}
+	return catalogEndpoint(catalogType)
+}
+
 // CatalogPage is one page of a catalog's Stremio-shaped metas, and whether
 // TMDB has pages past it. A page can hold no metas and still have more: every
 // title on it may have lacked an IMDB id (resolveMetas).
@@ -133,18 +170,23 @@ type CatalogPage struct {
 // for TMDB's total_pages up front.
 //
 // A collection recipe skips discover (see collectionItems): page 1 is the
-// whole collection and every later page is empty, so no page has more.
+// whole collection and every later page is empty, so no page has more. A list
+// recipe is served from its list's path (recipeEndpoint) the way a discover
+// recipe is, shuffle included.
 //
 // A discover page is served from the client's page cache (pageCache), keyed
 // by its discover request once the genre pick and the page, random or not,
 // are in it, so profiles showing the same recipe share one fetch.
 func (c *TMDBClient) FetchCatalogPage(ctx context.Context, catalogType, paramsJSON, genre string, page int) (CatalogPage, error) {
-	endpoint, err := catalogEndpoint(catalogType)
-	if err != nil {
+	if _, err := catalogEndpoint(catalogType); err != nil {
 		return CatalogPage{}, err
 	}
 
 	p, err := DecodeParams(catalogType, paramsJSON)
+	if err != nil {
+		return CatalogPage{}, err
+	}
+	endpoint, err := recipeEndpoint(catalogType, p)
 	if err != nil {
 		return CatalogPage{}, err
 	}

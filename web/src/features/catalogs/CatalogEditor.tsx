@@ -14,6 +14,7 @@ import type { CountryLookup } from './countries'
 import {
   SORT_FIELDS,
   isCollectionRow,
+  isListRow,
   isSameCatalog,
   paramsString,
   sourceLabel,
@@ -51,6 +52,8 @@ import {
 import { TMDBEntityPicker } from './TMDBEntityPicker'
 import { WatchProviderPicker } from './WatchProviderPicker'
 import { CountryPicker } from './CountryPicker'
+import { ListTiles } from './ListTiles'
+import { tmdbListLabel } from './lists'
 import { Field } from '@/components/fields'
 import {
   CertificationPicker,
@@ -86,10 +89,13 @@ function PickerField({
   )
 }
 
+/** A list row's head before a list is picked. */
+const NO_LIST = 'No list picked'
+
 /** The editor's tags: the catalog's type, then its source unless that is
  *  Filters. Neither changes once the catalog exists. */
 function editorStickers(state: CatalogFormState) {
-  const source = sourceLabel(isCollectionRow(state) ? 'collection' : 'filters')
+  const source = sourceLabel(state.sourceMode)
   const type = kindSticker(state.type)
   return source ? [type, { ...type, label: source }] : [type]
 }
@@ -198,6 +204,7 @@ type SectionKey =
   | 'people'
   | 'networks'
   | 'collection'
+  | 'list'
 
 /** Which section a server-mirrored validation error belongs to, so an
  *  invalid Save can open it. `name` isn't here — it's the one error outside
@@ -217,6 +224,7 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   without_keywords: 'keywords',
   with_networks: 'networks',
   with_collection: 'collection',
+  tmdb_list: 'list',
   with_origin_country: 'lang',
   with_cast: 'people',
   with_crew: 'people',
@@ -226,6 +234,7 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
 const ERROR_PRIORITY = [
   'name',
   'with_collection',
+  'tmdb_list',
   'sort_by',
   'watch_region',
   'certification_country',
@@ -274,6 +283,7 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   people: () => 'Cast and crew',
   networks: () => 'Networks',
   collection: () => 'TMDB collection',
+  list: () => 'TMDB list',
 }
 
 /** Builds the collapsible sections: each carries the plain-English
@@ -634,12 +644,35 @@ function buildSections(args: SectionArgs) {
           },
         ]
       : []),
+    {
+      key: 'list' as const,
+      summary: withShuffle(
+        state.params.tmdb_list ? tmdbListLabel(state.type, state.params.tmdb_list) : NO_LIST,
+        state.params.randomized,
+      ),
+      body: (
+        <>
+          <ListTiles
+            type={state.type}
+            value={state.params.tmdb_list}
+            invalid={Boolean(errorFor('tmdb_list'))}
+            onChange={(tmdb_list) => patchParams({ tmdb_list })}
+            wide
+          />
+          {errorFor('tmdb_list') && <FieldNote tone="danger">{errorFor('tmdb_list')}</FieldNote>}
+          <ShuffleControl randomized={state.params.randomized} filmSeries={false} onParams={patchParams} />
+        </>
+      ),
+    },
   ]
 
-  // TMDB collection mode shows the TMDB collection section alone and filters
-  // mode everything else, matching what `recipeParams` in catalogForm.ts sends.
-  const collectionRow = isCollectionRow(state)
-  return sections.filter((section) => (section.key === 'collection') === collectionRow)
+  // A TMDB collection or list row shows its source's section alone and a
+  // filters row everything else, matching what `recipeParams` in
+  // catalogForm.ts sends.
+  const own: SectionKey | null = isCollectionRow(state) ? 'collection' : isListRow(state) ? 'list' : null
+  return sections.filter((section) =>
+    own ? section.key === own : section.key !== 'collection' && section.key !== 'list',
+  )
 }
 
 
@@ -722,7 +755,7 @@ export function CatalogEditor({
   // reopen.
   // A collection row has one section, so it starts open.
   const [openSection, setOpenSection] = useState<SectionKey | null>(() =>
-    isCollectionRow(baseline) ? 'collection' : null,
+    isCollectionRow(baseline) ? 'collection' : isListRow(baseline) ? 'list' : null,
   )
 
   // Sorted by the name shown, not TMDB's response order, so the dropdown

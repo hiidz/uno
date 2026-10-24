@@ -562,6 +562,9 @@ export interface SelectedProfile {
  */
 export interface TMDBParams {
   randomized?: boolean
+  /** One of TMDB's own lists, by its path word (`features/catalogs/lists.ts`).
+   *  Set, the catalog shows that list and takes no other filter. */
+  tmdb_list?: string
 
   sort_by?: string
   with_genres?: string

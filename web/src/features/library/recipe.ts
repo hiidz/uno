@@ -7,6 +7,7 @@ import {
   parseIdList,
   parseParams,
 } from '@/features/catalogs/params'
+import { tmdbListLabel } from '@/features/catalogs/lists'
 import { capitalize } from '@/lib/capitalize'
 import { andList, orList } from '@/lib/list'
 import { plural, pluralCount } from '@/lib/plural'
@@ -192,6 +193,14 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   // one of Uno's own collections; movie params only.
   if (type === 'movie' && countIDs(p.with_collection)) {
     out.push('from a TMDB collection')
+    if (p.randomized) out.push('shuffled')
+    return out
+  }
+
+  // A TMDB list row shows that list and takes no other filter, so the list is
+  // the whole recipe.
+  if (p.tmdb_list) {
+    out.push('TMDB list', tmdbListLabel(type, p.tmdb_list))
     if (p.randomized) out.push('shuffled')
     return out
   }
@@ -452,6 +461,15 @@ const COLLECTION_FACTS: FactBuilder[] = [
   shuffledFact,
 ]
 
+/** A TMDB list row shows one of TMDB's own lists and takes no other filter,
+ *  so the list is the whole recipe. */
+const LIST_FACTS: FactBuilder[] = [
+  ({ type }) => fact('Type', typeLabel(type)),
+  () => fact('From', 'TMDB list'),
+  ({ type, p }) => fact('List', p.tmdb_list && tmdbListLabel(type, p.tmdb_list)),
+  shuffledFact,
+]
+
 /**
  * The recipe as spec tiles: one label and value for each thing it sets, in
  * the vocabulary of `describeRecipe` (`lookup` is the genre map for this
@@ -467,7 +485,8 @@ export function recipeFacts(
 ): RecipeFact[] {
   const source = { type: catalog.type, p: parseParams(catalog.params), lookup, names }
   const collection = source.type === 'movie' && countIDs(source.p.with_collection) > 0
-  return (collection ? COLLECTION_FACTS : FACTS).flatMap((build) => build(source))
+  const builders = collection ? COLLECTION_FACTS : source.p.tmdb_list ? LIST_FACTS : FACTS
+  return builders.flatMap((build) => build(source))
 }
 
 /** A filter a recipe can leave open: the labels its fact takes when set, and
@@ -506,11 +525,12 @@ function openFilters(type: Catalog['type']): OpenFilter[] {
  * The filters `facts` (the recipe's own, from `recipeFacts`) leave open, as
  * tiles: "Genres: Any", "Released: Any time", and Order as TMDB's own most
  * popular first, so a reader sees every filter a catalog could set beside the
- * ones it does. A TMDB collection row has none: the collection is its whole
+ * ones it does. A TMDB collection or list row has none: the collection or list is its whole
  * recipe.
  */
 export function openFacts(catalog: Pick<Catalog, 'type' | 'params'>, facts: readonly RecipeFact[]): RecipeFact[] {
-  if (catalog.type === 'movie' && countIDs(parseParams(catalog.params).with_collection) > 0) return []
+  const p = parseParams(catalog.params)
+  if ((catalog.type === 'movie' && countIDs(p.with_collection) > 0) || p.tmdb_list) return []
   const labels = new Set(facts.map((fact) => fact.label))
   return openFilters(catalog.type)
     .filter((filter) => !filter.set.some((label) => labels.has(label)))
