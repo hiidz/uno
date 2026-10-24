@@ -123,7 +123,7 @@ function Results({ preview, type }: { preview: Preview; type: CatalogType }) {
       {preview.totalResults !== null && (
         <p>
           <span className="type-data">{preview.totalResults.toLocaleString()}</span>{' '}
-          {plural(preview.totalResults, 'result')} for these filters.
+          {plural(preview.totalResults, 'result')}
         </p>
       )}
       <TileGrid shape={CONTENT_TILE_SHAPE} tiles={preview.tiles} kind={tmdbKind(type)} />
