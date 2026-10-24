@@ -265,6 +265,8 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   // Movie params only: /discover/tv has no people filter.
   const cast = type === 'movie' ? countIDs(p.with_cast) : 0
   if (cast) out.push(`with ${pluralCount(cast, 'cast member')}`)
+  const crew = type === 'movie' ? countIDs(p.with_crew) : 0
+  if (crew) out.push(`with ${pluralCount(crew, 'crew member')}`)
   // Series params only, like the collection above is movie params only.
   const networks = type === 'series' ? countIDs(p.with_networks) : 0
   if (networks) out.push(`on ${pluralCount(networks, 'network')}`)
@@ -356,6 +358,7 @@ const NETWORK: Noun = ['Network', 'Networks']
 const STREAMING_SERVICE: Noun = ['Streaming service', 'Streaming services']
 const COUNTRY: Noun = ['Country', 'Countries']
 const CAST: Noun = ['Cast', 'Cast']
+const CREW: Noun = ['Crew', 'Crew']
 
 /** An id list as its names, joined the way the list is — "A and B", or "A or
  *  B" for a pipe-joined one — once every id has one; as the number of ids until
@@ -436,6 +439,7 @@ const FACTS: FactBuilder[] = [
   ({ p, names }) => namedIdsFact(LEFT_OUT_KEYWORD, p.without_keywords, names.keyword, ''),
   ({ type, p, names }) => namedIdsFact(NETWORK, type === 'series' ? p.with_networks : undefined, names.network, ''),
   ({ type, p, names }) => namedIdsFact(CAST, type === 'movie' ? p.with_cast : undefined, names.person, ''),
+  ({ type, p, names }) => namedIdsFact(CREW, type === 'movie' ? p.with_crew : undefined, names.person, ''),
   sortFact,
   shuffledFact,
 ]
@@ -491,10 +495,11 @@ function openFilters(type: Catalog['type']): OpenFilter[] {
     { set: KEYWORD, open: { label: KEYWORD[1], value: ANY } },
     { set: NETWORK, open: { label: NETWORK[0], value: ANY } },
     { set: CAST, open: { label: CAST[0], value: ANY } },
+    { set: CREW, open: { label: CREW[0], value: ANY } },
     { set: ['Order'], open: { label: 'Order', value: SORT_PHRASE['popularity.desc'] } },
   ]
-  const otherType = type === 'series' ? CAST : NETWORK
-  return filters.filter((filter) => filter.set !== otherType)
+  const otherType: readonly Noun[] = type === 'series' ? [CAST, CREW] : [NETWORK]
+  return filters.filter((filter) => !otherType.includes(filter.set as Noun))
 }
 
 /**

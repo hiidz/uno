@@ -35,7 +35,7 @@ import {
   ANY_COMPANY,
   ANY_KEYWORDS,
   ANY_NETWORK,
-  ANY_PEOPLE,
+  sumPeople,
   sumAge,
   sumCollection,
   sumDate,
@@ -211,6 +211,7 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   with_collection: 'collection',
   with_origin_country: 'lang',
   with_cast: 'people',
+  with_crew: 'people',
 }
 
 /** The order Save focuses errors in when more than one applies at once. */
@@ -231,6 +232,7 @@ const ERROR_PRIORITY = [
   'with_keywords',
   'without_keywords',
   'with_cast',
+  'with_crew',
   'with_networks',
 ]
 
@@ -551,18 +553,31 @@ function buildSections(args: SectionArgs) {
       ? [
           {
             key: 'people' as const,
-            summary: sumEntities(state.params.with_cast, undefined, 'cast member', ANY_PEOPLE),
+            summary: sumPeople(state.params.with_cast, state.params.with_crew),
             body: (
-              <PickerField label="Cast" htmlFor="cat-cast" error={errorFor('with_cast')}>
-                <TMDBEntityPicker
-                  kind="cast"
-                  type={state.type}
-                  inputId="cat-cast"
-                  value={state.params.with_cast}
-                  invalid={Boolean(errorFor('with_cast'))}
-                  onChange={(with_cast) => patchParams({ with_cast })}
-                />
-              </PickerField>
+              <>
+                <PickerField label="Cast" htmlFor="cat-cast" error={errorFor('with_cast')}>
+                  <TMDBEntityPicker
+                    kind="cast"
+                    type={state.type}
+                    inputId="cat-cast"
+                    value={state.params.with_cast}
+                    invalid={Boolean(errorFor('with_cast'))}
+                    onChange={(with_cast) => patchParams({ with_cast })}
+                  />
+                </PickerField>
+                <PickerField label="Crew" htmlFor="cat-crew" error={errorFor('with_crew')}>
+                  <TMDBEntityPicker
+                    kind="crew"
+                    type={state.type}
+                    inputId="cat-crew"
+                    value={state.params.with_crew}
+                    invalid={Boolean(errorFor('with_crew'))}
+                    onChange={(with_crew) => patchParams({ with_crew })}
+                    note="Any crew job: director, writer, producer…"
+                  />
+                </PickerField>
+              </>
             ),
           },
         ]

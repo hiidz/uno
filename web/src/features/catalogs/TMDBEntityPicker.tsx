@@ -26,7 +26,7 @@ import { IconButton } from '@/components/IconButton'
 /**
  * TMDB entities picked by name from a server search, kept as chips — the
  * production companies, keywords, movie collection, series networks and movie
- * cast of a recipe.
+ * cast and crew of a recipe.
  *
  * TMDB's API has no "list them all" endpoint for any of them, so unlike every
  * other picker in the editor this one searches the server as you type: the
@@ -46,7 +46,7 @@ import { IconButton } from '@/components/IconButton'
  * marked, so it can be removed.
  */
 
-export type EntityKind = 'company' | 'keyword' | 'collection' | 'network' | 'cast'
+export type EntityKind = 'company' | 'keyword' | 'collection' | 'network' | 'cast' | 'crew'
 
 interface Entity {
   id: number
@@ -144,6 +144,19 @@ const SOURCES: Record<EntityKind, EntitySource> = {
     fetchOne: fetchPerson,
     oneKey: queryKeys.person,
   },
+  crew: {
+    plural: 'crew members',
+    singular: 'Person',
+    // Two directors or writers rarely share a film, so "all of them" is
+    // almost always an empty row.
+    defaultJoin: 'or',
+    search: searchPeople,
+    searchKey: (query) => queryKeys.personSearch(query),
+    rowDetail: personDetail,
+    people: true,
+    fetchOne: fetchPerson,
+    oneKey: queryKeys.person,
+  },
 }
 
 /** A person's line under their name: "Acting · Guardians of the Galaxy". */
@@ -192,6 +205,7 @@ export function TMDBEntityPicker({
   exclude = false,
   hiddenIds,
   invalid,
+  note,
 }: {
   kind: EntityKind
   /** The catalog's type, which company search counts titles for. Network
@@ -209,6 +223,8 @@ export function TMDBEntityPicker({
   /** Its error is on show: the search box carries `aria-invalid`, which
    *  `.field` draws as a red border. */
   invalid?: boolean
+  /** A line over the search box, for what the field matches. */
+  note?: string
 }) {
   const source = SOURCES[kind]
   const plural = exclude ? `${source.plural} to leave out` : source.plural
@@ -358,6 +374,8 @@ export function TMDBEntityPicker({
           ]}
         />
       )}
+
+      {note && <FieldNote>{note}</FieldNote>}
 
       <input
         ref={inputRef}

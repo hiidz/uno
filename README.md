@@ -51,7 +51,7 @@ Uno is just as much for people who want full control. Build catalogs from the fu
 
 ## Features
 
-- **Catalogs from TMDB discover recipes**, for movies or series. Filter by genre, rating, vote count, runtime, language, country of origin, age rating, streaming service by region, studio, keyword, cast (movies), TV network, or a fixed or rolling release window. Sort them, or shuffle them. A catalog can also be one TMDB collection (a film series).
+- **Catalogs from TMDB discover recipes**, for movies or series. Filter by genre, rating, vote count, runtime, language, country of origin, age rating, streaming service by region, studio, keyword, cast and crew (movies), TV network, or a fixed or rolling release window. Sort them, or shuffle them. A catalog can also be one TMDB collection (a film series).
 - **Live preview** of a catalog's titles while you build it.
 - **Nuvio collections** composed from your catalogs: folders with a cover image or emoji, tile shape (poster, landscape or square), a backdrop, hero art for Nuvio's Modern Home layout, and an animated GIF on focus. A folder can narrow a catalog to one genre.
 - **Your home screen, your order.** Catalogs and collections in one list. Pin a collection to the top, show it as rows or a tabbed grid, or keep a catalog in Discover only.

@@ -9,6 +9,7 @@ import {
   sumEntities,
   sumGenres,
   sumLanguage,
+  sumPeople,
   sumOrder,
   sumRatings,
   sumWatch,
@@ -260,5 +261,13 @@ describe('summaryClass', () => {
     expect(summaryClass(sumRatings(7, undefined, undefined, undefined, undefined, undefined), 'movie')).toBe(
       'sec-sum is-set',
     )
+  })
+})
+
+describe('sumPeople', () => {
+  it('counts cast and crew apart, each with its join', () => {
+    expect(sumPeople(undefined, undefined)).toBe('Anyone')
+    expect(sumPeople('1,2', '3')).toBe('2 cast members, all of them · 1 crew member')
+    expect(sumPeople(undefined, '3|4')).toBe('2 crew members, any of them')
   })
 })

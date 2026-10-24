@@ -235,6 +235,16 @@ export function sumEntities(
   return parts.join(' · ')
 }
 
+/** The Cast and crew section's line: "2 cast members, all of them · 1 crew
+ *  member", either half alone, or `ANY_PEOPLE`. */
+export function sumPeople(cast: string | undefined, crew: string | undefined): string {
+  const parts = [
+    sumEntities(cast, undefined, 'cast member', ''),
+    sumEntities(crew, undefined, 'crew member', ''),
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : ANY_PEOPLE
+}
+
 /** Named, unlike `sumEntities`: there is only ever one, and the editor reads
  *  its name from the same by-id lookup the picker's chip uses. Until that
  *  lookup answers, the id stands in. */

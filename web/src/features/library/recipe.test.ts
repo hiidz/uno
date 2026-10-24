@@ -12,6 +12,10 @@ describe('describeRecipe', () => {
     expect(describeRecipe(catalog('movie', { with_cast: '8691|73457' }), new Map())).toEqual(['with 2 cast members'])
     expect(describeRecipe(catalog('movie', { with_cast: '8691' }), new Map())).toEqual(['with 1 cast member'])
     expect(describeRecipe(catalog('series', { with_cast: '8691' }), new Map())).toEqual([])
+    expect(describeRecipe(catalog('movie', { with_cast: '8691', with_crew: '525' }), new Map())).toEqual([
+      'with 1 cast member',
+      'with 1 crew member',
+    ])
   })
 
   it('names the countries a title was made in, joined the way the list is', () => {
@@ -87,9 +91,10 @@ describe('recipeFacts', () => {
         list: { items: ['Zoe Saldaña', 'Chris Pratt'], join: 'and', region: '' },
       },
     ])
-    expect(recipeFacts(catalog('movie', { with_cast: '8691|73457' }), new Map())).toEqual([
+    expect(recipeFacts(catalog('movie', { with_cast: '8691|73457', with_crew: '525' }), new Map())).toEqual([
       { label: 'Type', value: 'Movies' },
       { label: 'Cast', value: '2' },
+      { label: 'Crew', value: '1' },
     ])
   })
 
@@ -249,6 +254,7 @@ describe('openFacts', () => {
       { label: 'Production company', value: 'Any' },
       { label: 'Keywords', value: 'Any' },
       { label: 'Cast', value: 'Any' },
+      { label: 'Crew', value: 'Any' },
       { label: 'Order', value: 'Most popular' },
     ])
   })
@@ -271,6 +277,7 @@ describe('openFacts', () => {
     expect(labels).toContain('Aired')
     expect(labels).toContain('Network')
     expect(labels).not.toContain('Cast')
+    expect(labels).not.toContain('Crew')
     expect(labels).not.toContain('Released')
   })
 

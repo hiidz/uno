@@ -72,7 +72,8 @@ export function useRecipeNames(
   const keyword = useNames(idsOf(p.with_keywords, p.without_keywords), queryKeys.keyword, fetchKeyword, wanted)
   const network = useNames(idsOf(catalog.type === 'series' ? p.with_networks : undefined), queryKeys.network, fetchNetwork, wanted)
   const provider = useProviderNames(catalog, p.watch_region ?? '', providers, wanted)
-  const person = useNames(idsOf(catalog.type === 'movie' ? p.with_cast : undefined), queryKeys.person, fetchPerson, wanted)
+  const movie = catalog.type === 'movie'
+  const person = useNames(idsOf(movie ? p.with_cast : undefined, movie ? p.with_crew : undefined), queryKeys.person, fetchPerson, wanted)
   return {
     company: company.names,
     keyword: keyword.names,
