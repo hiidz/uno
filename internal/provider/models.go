@@ -114,8 +114,9 @@ type Language struct {
 }
 
 // Country is one entry in TMDB's ISO 3166-1 country table — the source for
-// display names of the country codes the certification list returns (that
-// endpoint returns codes only, not names).
+// with_origin_country's options and for display names of the country codes
+// the certification list returns (that endpoint returns codes only, not
+// names).
 type Country struct {
 	ISO31661    string `json:"iso_3166_1"`
 	EnglishName string `json:"english_name"`
@@ -141,6 +142,7 @@ type TMDBCommonParams struct {
 	WithoutGenres string `json:"without_genres,omitempty"`
 
 	WithOriginalLanguage string `json:"with_original_language,omitempty"`
+	WithOriginCountry    string `json:"with_origin_country,omitempty"` // comma (AND) or pipe (OR) separated ISO 3166-1 codes
 
 	VoteAverageGte float64 `json:"vote_average_gte,omitempty"`
 	VoteAverageLte float64 `json:"vote_average_lte,omitempty"`
@@ -224,9 +226,10 @@ const maxWithinDays = 50 * 365
 const dateLayout = "2006-01-02"
 
 // maxEntityIDs caps how many ids with_companies, with_keywords,
-// without_companies, without_keywords and with_networks each hold.
-// ValidateParams looks every id up on TMDB one at a time, so the cap bounds
-// the round trips one save can cost on a cold cache.
+// without_companies, without_keywords and with_networks each hold, and how
+// many codes with_origin_country holds. ValidateParams looks every id up on
+// TMDB one at a time, so the cap bounds the round trips one save can cost on
+// a cold cache.
 const maxEntityIDs = 20
 
 // validMovieSortValues is TMDB's complete sort_by enum for /discover/movie.
@@ -262,20 +265,8 @@ func (p TMDBCommonParams) validate() error {
 	if p.WithWatchProviders != "" && p.WatchRegion == "" {
 		return errors.New("watch_region is required when with_watch_providers is set")
 	}
-
-	for _, f := range []struct{ name, list string }{
-		{"with_companies", p.WithCompanies},
-		{"with_keywords", p.WithKeywords},
-		{"without_companies", p.WithoutCompanies},
-		{"without_keywords", p.WithoutKeywords},
-	} {
-		ids, err := parseIDList(f.name, f.list)
-		if err != nil {
-			return err
-		}
-		if len(ids) > maxEntityIDs {
-			return fmt.Errorf("%s cannot hold more than %d ids", f.name, maxEntityIDs)
-		}
+	if err := p.listError(); err != nil {
+		return err
 	}
 
 	// Zero means "unset" for every numeric field below (see setIntIf and
@@ -308,6 +299,33 @@ func (p TMDBCommonParams) validate() error {
 	}
 
 	return p.rangeError()
+}
+
+// listError is the first of the shared id and country lists that doesn't
+// parse or holds more than maxEntityIDs entries, or nil.
+func (p TMDBCommonParams) listError() error {
+	for _, f := range []struct{ name, list string }{
+		{"with_companies", p.WithCompanies},
+		{"with_keywords", p.WithKeywords},
+		{"without_companies", p.WithoutCompanies},
+		{"without_keywords", p.WithoutKeywords},
+	} {
+		ids, err := parseIDList(f.name, f.list)
+		if err != nil {
+			return err
+		}
+		if len(ids) > maxEntityIDs {
+			return fmt.Errorf("%s cannot hold more than %d ids", f.name, maxEntityIDs)
+		}
+	}
+	countries, err := parseCodeList("with_origin_country", p.WithOriginCountry)
+	if err != nil {
+		return err
+	}
+	if len(countries) > maxEntityIDs {
+		return fmt.Errorf("with_origin_country cannot hold more than %d codes", maxEntityIDs)
+	}
+	return nil
 }
 
 // rangeError is the first of the shared ranges whose low end is above its high

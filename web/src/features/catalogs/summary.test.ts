@@ -81,11 +81,22 @@ describe('sumRatings', () => {
 })
 
 describe('sumLanguage', () => {
+  const languages = [{ iso_639_1: 'ko', english_name: 'Korean', name: '한국어/조선말' }]
+  const countries = new Map([
+    ['IN', 'India'],
+    ['PK', 'Pakistan'],
+  ])
+
   it('names the language, falling back to its code', () => {
-    const languages = [{ iso_639_1: 'ko', english_name: 'Korean', name: '한국어/조선말' }]
-    expect(sumLanguage(undefined, languages)).toBe('Any language')
-    expect(sumLanguage('ko', languages)).toBe('In Korean')
-    expect(sumLanguage('xx', languages)).toBe('In xx')
+    expect(sumLanguage(undefined, languages, undefined, countries)).toBe('Any language or country')
+    expect(sumLanguage('ko', languages, undefined, countries)).toBe('In Korean')
+    expect(sumLanguage('xx', languages, undefined, countries)).toBe('In xx')
+  })
+
+  it('names the countries after the language, joined the way the list is', () => {
+    expect(sumLanguage('ko', languages, 'IN|PK', countries)).toBe('In Korean · made in India or Pakistan')
+    expect(sumLanguage(undefined, languages, 'IN,PK', countries)).toBe('Made in India and Pakistan')
+    expect(sumLanguage(undefined, languages, 'ZZ', countries)).toBe('Made in ZZ')
   })
 })
 
@@ -230,7 +241,7 @@ describe('summaryClass', () => {
     for (const summary of [
       sumGenres([], [], 'or', []),
       sumRatings(undefined, undefined, undefined, undefined, undefined, undefined),
-      sumLanguage(undefined, []),
+      sumLanguage(undefined, [], undefined, countries),
       sumDate('movie', 'any', undefined, undefined, undefined),
       sumAge(undefined, countries, undefined, undefined, []),
       sumWatch(undefined, countries, 0),

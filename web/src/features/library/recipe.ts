@@ -3,6 +3,7 @@ import {
   DATE_PRESETS,
   DAYS_PER_YEAR,
   UPCOMING_DAYS,
+  parseCodeList,
   parseIdList,
   parseParams,
 } from '@/features/catalogs/params'
@@ -96,6 +97,14 @@ function countryLabel(code: string): string {
   const [country, subdivision] = code.split('-')
   const name = displayName('region', country)
   return subdivision ? `${name} (${subdivision})` : name
+}
+
+/** A stored `with_origin_country`'s country names, joined the way the list
+ *  is — "India or Pakistan" for a pipe-joined one — or null for none. */
+function countryNames(raw: string | undefined): string | null {
+  const { codes, join } = parseCodeList(raw)
+  if (codes.length === 0) return null
+  return (join === 'or' ? orList : andList)(codes.map(countryLabel))
 }
 
 /** A stored genre list's names, joined the way the list is — "Action and
@@ -207,6 +216,9 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   if (p.with_original_language) {
     out.push(`in ${displayName('language', p.with_original_language)}`)
   }
+
+  const countries = countryNames(p.with_origin_country)
+  if (countries) out.push(`made in ${countries}`)
 
   const window =
     type === 'movie'
@@ -338,6 +350,7 @@ const KEYWORD: Noun = ['Keyword', 'Keywords']
 const LEFT_OUT_KEYWORD: Noun = ['Left-out keyword', 'Left-out keywords']
 const NETWORK: Noun = ['Network', 'Networks']
 const STREAMING_SERVICE: Noun = ['Streaming service', 'Streaming services']
+const COUNTRY: Noun = ['Country', 'Countries']
 
 /** An id list as its names, joined the way the list is — "A and B", or "A or
  *  B" for a pipe-joined one — once every id has one; as the number of ids until
@@ -382,6 +395,14 @@ function languageFact({ p }: FactSource): RecipeFact[] {
   return fact('Language', p.with_original_language && displayName('language', p.with_original_language))
 }
 
+function countryFact({ p }: FactSource): RecipeFact[] {
+  const value = countryNames(p.with_origin_country)
+  if (!value) return []
+  const { codes, join } = parseCodeList(p.with_origin_country)
+  const label = codes.length === 1 ? COUNTRY[0] : COUNTRY[1]
+  return [{ label, value, list: { items: codes.map(countryLabel), join, region: '' } }]
+}
+
 function sortFact({ p }: FactSource): RecipeFact[] {
   return fact('Order', p.sort_by && (SORT_PHRASE[p.sort_by] ?? p.sort_by))
 }
@@ -400,6 +421,7 @@ const FACTS: FactBuilder[] = [
   ({ p }) => fact('Votes', range(p.vote_count_gte, p.vote_count_lte, (n) => n.toLocaleString())),
   runtimeFact,
   languageFact,
+  countryFact,
   certificationFact,
   streamingFact,
   // Named, once the lookups have answered; `describeParams` counts them.
@@ -456,6 +478,7 @@ function openFilters(type: Catalog['type']): OpenFilter[] {
     { set: ['Votes'], open: { label: 'Votes', value: ANY } },
     { set: ['Runtime'], open: { label: 'Runtime', value: 'Any length' } },
     { set: ['Language'], open: { label: 'Language', value: ANY } },
+    { set: COUNTRY, open: { label: COUNTRY[0], value: ANY } },
     { set: ['Age rating'], open: { label: 'Age rating', value: ANY } },
     { set: STREAMING_SERVICE, open: { label: STREAMING_SERVICE[0], value: ANY } },
     { set: COMPANY, open: { label: COMPANY[0], value: ANY } },

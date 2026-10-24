@@ -551,6 +551,9 @@ export interface TMDBParams {
   with_genres?: string
   without_genres?: string
   with_original_language?: string
+  /** ISO 3166-1 codes of the countries a title was made in: comma-joined
+   *  means all of them, pipe-joined any of them. */
+  with_origin_country?: string
 
   vote_average_gte?: number
   vote_average_lte?: number

@@ -112,7 +112,8 @@ func TestFetchCatalogPageServesWithoutGenresWhenGenreListFails(t *testing.T) {
 }
 
 // TestFetchCatalogPageSendsEntityFilters proves the company and keyword
-// include and exclude lists reach the discover request TMDB sees, on both
+// include and exclude lists and the origin countries reach the discover
+// request TMDB sees, on both
 // discover endpoints, with their AND/OR separators intact — and that
 // with_networks reaches /discover/tv alone.
 func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
@@ -137,7 +138,7 @@ func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
 			c := NewTMDBClient("key")
 			c.baseURL = srv.URL
 
-			params := `{"with_companies":"420|2","with_keywords":"9715,180547","without_companies":"9993","without_keywords":"849,12","with_networks":"213|49"}`
+			params := `{"with_companies":"420|2","with_keywords":"9715,180547","without_companies":"9993","without_keywords":"849,12","with_origin_country":"IN|PK","with_networks":"213|49"}`
 			if _, err := metasOf(c.FetchCatalogPage(t.Context(), tc.catalogType, params, "", 1)); err != nil {
 				t.Fatal(err)
 			}
@@ -145,11 +146,12 @@ func TestFetchCatalogPageSendsEntityFilters(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			for key, want := range map[string]string{
-				"with_companies":    "420|2",
-				"with_keywords":     "9715,180547",
-				"without_companies": "9993",
-				"without_keywords":  "849,12",
-				"with_networks":     tc.networks,
+				"with_companies":      "420|2",
+				"with_keywords":       "9715,180547",
+				"without_companies":   "9993",
+				"without_keywords":    "849,12",
+				"with_origin_country": "IN|PK",
+				"with_networks":       tc.networks,
 			} {
 				if got := seen.Get(key); got != want {
 					t.Fatalf("%s = %q, want %q", key, got, want)

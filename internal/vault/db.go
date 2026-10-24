@@ -19,7 +19,7 @@ var schema string
 
 // schemaVersion is the PRAGMA user_version a database holding schema.sql's
 // schema carries.
-const schemaVersion = 13
+const schemaVersion = 14
 
 // migrations[v] is the SQL that takes a database from schema version v to
 // v+1. A database below schemaVersion runs every step from its version up, so
@@ -31,6 +31,10 @@ CREATE TABLE blocked_publishers (
     blocked_at    TEXT NOT NULL,
     title         TEXT NOT NULL
 );`,
+	// 14 changes no table. It holds recipes keyed by with_origin_country,
+	// with_cast, with_crew or tmdb_list, which a version-13 Uno would read
+	// without them and serve broader titles under the row's name.
+	13: `SELECT 1;`,
 }
 
 // DB is a handle to Uno's SQLite database.

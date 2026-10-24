@@ -20,6 +20,7 @@ func TestCanonicalParams(t *testing.T) {
 		{"unknown keys dropped", "movie", `{"sort_by":"revenue.desc","endpoint":"/discover/movie"}`, `{"sort_by":"revenue.desc"}`},
 		{"another type's key dropped", "movie", `{"with_networks":"213","with_keywords":"9748"}`, `{"with_keywords":"9748"}`},
 		{"numbers as Go writes them", "movie", `{"vote_average_gte":7.50,"vote_average_lte":1e1}`, `{"vote_average_gte":7.5,"vote_average_lte":10}`},
+		{"origin country kept", "series", `{"with_origin_country":"IN|PK","sort_by":"popularity.desc"}`, `{"sort_by":"popularity.desc","with_origin_country":"IN|PK"}`},
 		{"empty", "series", `{}`, `{}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -49,6 +49,8 @@ import {
 } from './summary'
 import { TMDBEntityPicker } from './TMDBEntityPicker'
 import { WatchProviderPicker } from './WatchProviderPicker'
+import { CountryPicker } from './CountryPicker'
+import { Field } from '@/components/fields'
 import {
   CertificationPicker,
   FieldNote,
@@ -180,6 +182,7 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   without_keywords: 'keywords',
   with_networks: 'networks',
   with_collection: 'collection',
+  with_origin_country: 'lang',
 }
 
 /** The order Save focuses errors in when more than one applies at once. */
@@ -194,6 +197,7 @@ const ERROR_PRIORITY = [
   'vote_average',
   'with_runtime',
   'vote_count',
+  'with_origin_country',
   'with_companies',
   'without_companies',
   'with_keywords',
@@ -222,7 +226,7 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   order: () => 'Order',
   genres: () => 'Genres',
   ratings: () => 'Ratings and runtime',
-  lang: () => 'Original language',
+  lang: () => 'Language and country',
   date: (isMovie) => (isMovie ? 'Release date' : 'First aired'),
   age: () => 'Age rating',
   watch: () => 'Where to watch',
@@ -391,17 +395,33 @@ function buildSections(args: SectionArgs) {
     },
     {
       key: 'lang' as const,
-      summary: sumLanguage(state.params.with_original_language, languages),
+      summary: sumLanguage(
+        state.params.with_original_language,
+        languages,
+        state.params.with_origin_country,
+        countryNames,
+      ),
       body: (
         <>
-          <Select
-            ariaLabel="Original language"
-            value={state.params.with_original_language ?? ''}
-            onChange={setLanguage}
-            placeholder="Any language"
-            options={languageOptions}
-          />
-          {languageOptions.length === 0 && <FieldNote>Couldn’t load languages.</FieldNote>}
+          <Field label="Original language">
+            <Select
+              ariaLabel="Original language"
+              value={state.params.with_original_language ?? ''}
+              onChange={setLanguage}
+              placeholder="Any language"
+              options={languageOptions}
+            />
+            {languageOptions.length === 0 && <FieldNote>Couldn’t load languages.</FieldNote>}
+          </Field>
+          <Field label="Country" htmlFor="cat-country" error={errorFor('with_origin_country')}>
+            <CountryPicker
+              inputId="cat-country"
+              value={state.params.with_origin_country}
+              countryNames={countryNames}
+              invalid={!!errorFor('with_origin_country')}
+              onChange={(with_origin_country) => patchParams({ with_origin_country })}
+            />
+          </Field>
         </>
       ),
     },

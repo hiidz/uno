@@ -18,8 +18,8 @@ import (
 var ErrInvalidParams = errors.New("invalid params")
 
 // ValidateParams checks the recipe fields that carry TMDB's own vocabulary
-// — genre ids, a language code, a watch region and its provider ids, a
-// certification country and its scale — against the lists TMDB publishes
+// — genre ids, a language code, origin country codes, a watch region and
+// its provider ids, a certification country and its scale — against the lists TMDB publishes
 // for them, and company, keyword, collection and network ids against TMDB
 // one id at a time, since its API serves no whole list of any of them. It complements
 // [CatalogParams.Validate], which covers the rules that need no network
@@ -45,6 +45,7 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 	for _, check := range []func(context.Context, string, vocabParams) error{
 		c.validateGenres,
 		c.validateLanguage,
+		c.validateOriginCountry,
 		c.validateWatchRegion,
 		c.validateWatchProviders,
 		c.validateCompaniesAndKeywords,
@@ -100,6 +101,26 @@ func (c *TMDBClient) validateLanguage(ctx context.Context, _ string, p vocabPara
 	}
 	if !slices.ContainsFunc(languages, func(l Language) bool { return l.ISO6391 == p.WithOriginalLanguage }) {
 		return fmt.Errorf("%w: with_original_language %q is not a TMDB language code", ErrInvalidParams, p.WithOriginalLanguage)
+	}
+	return nil
+}
+
+// validateOriginCountry checks each with_origin_country code against TMDB's
+// country table, not its watch regions: a title can be made in a country no
+// streaming service serves.
+func (c *TMDBClient) validateOriginCountry(ctx context.Context, _ string, p vocabParams) error {
+	codes, err := parseCodeList("with_origin_country", p.WithOriginCountry)
+	if err != nil || len(codes) == 0 {
+		return err
+	}
+	countries, err := c.Countries(ctx)
+	if err != nil {
+		return err
+	}
+	for _, code := range codes {
+		if !slices.ContainsFunc(countries, func(country Country) bool { return country.ISO31661 == code }) {
+			return fmt.Errorf("%w: with_origin_country entry %q is not a TMDB country code", ErrInvalidParams, code)
+		}
 	}
 	return nil
 }
@@ -279,3 +300,23 @@ func parseIDList(field, list string) ([]int, error) {
 	}
 	return ids, nil
 }
+
+// parseCodeList splits a comma (AND) or pipe (OR) separated list of ISO
+// 3166-1 country codes into its codes, rejecting the first entry that isn't
+// two upper-case letters.
+func parseCodeList(field, list string) ([]string, error) {
+	var codes []string
+	for _, part := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == '|' }) {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if len(part) != 2 || !isUpperASCII(part[0]) || !isUpperASCII(part[1]) {
+			return nil, fmt.Errorf("%w: %s entry %q is not a two-letter upper-case country code", ErrInvalidParams, field, part)
+		}
+		codes = append(codes, part)
+	}
+	return codes, nil
+}
+
+func isUpperASCII(b byte) bool { return b >= 'A' && b <= 'Z' }

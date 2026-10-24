@@ -1,6 +1,6 @@
 import { CATALOG_PROVIDER } from '@/api'
 import type { Catalog, CatalogPayload, CatalogType, TMDBParams } from '@/api'
-import { parseIdList, parseParams } from './params'
+import { parseCodeList, parseIdList, parseParams } from './params'
 
 /**
  * The catalog builder's form model, and the catalog rules a form can reach,
@@ -30,7 +30,8 @@ export type DateMode = 'any' | 'fixed' | 'rolling'
 export type SourceMode = 'filters' | 'collection'
 
 /** The most ids each of `with_companies`, `with_keywords`,
- *  `without_companies`, `without_keywords` and `with_networks` may hold.
+ *  `without_companies`, `without_keywords` and `with_networks` may hold, and
+ *  the most codes `with_origin_country` may.
  *  Mirrors the server's cap in `provider.Validate()`. */
 export const MAX_ENTITY_IDS = 20
 
@@ -383,11 +384,14 @@ const CAPS: [keyof TMDBParams, string][] = [
   ['with_networks', `Pick at most ${MAX_ENTITY_IDS} networks.`],
 ]
 
-/** An id list over the server's cap. */
+/** An id or country list over the server's cap. */
 function capErrors(p: TMDBParams): FieldErrors {
   const errors: FieldErrors = {}
   for (const [key, message] of CAPS) {
     if (parseIdList(p[key] as string | undefined).ids.length > MAX_ENTITY_IDS) errors[key] = message
+  }
+  if (parseCodeList(p.with_origin_country).codes.length > MAX_ENTITY_IDS) {
+    errors.with_origin_country = `Pick at most ${MAX_ENTITY_IDS} countries.`
   }
   return errors
 }

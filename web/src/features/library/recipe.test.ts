@@ -8,6 +8,13 @@ function catalog(type: Catalog['type'], params: object): Catalog {
 }
 
 describe('describeRecipe', () => {
+  it('names the countries a title was made in, joined the way the list is', () => {
+    expect(describeRecipe(catalog('movie', { with_original_language: 'hi', with_origin_country: 'IN|PK' }), new Map())).toEqual([
+      'in Hindi',
+      'made in India or Pakistan',
+    ])
+  })
+
   it('mentions a collection on movie catalogs only', () => {
     const lookup = new Map<number, string>()
     expect(describeRecipe(catalog('movie', { with_collection: '10' }), lookup)).toEqual([
@@ -53,6 +60,13 @@ describe('recipeFacts', () => {
     [80, 'Crime'],
     [53, 'Thriller'],
   ])
+
+  it('names the countries a recipe sets, as a list a change can be read from', () => {
+    expect(recipeFacts(catalog('series', { with_origin_country: 'IN|PK' }), new Map())).toEqual([
+      { label: 'Type', value: 'Series' },
+      { label: 'Countries', value: 'India or Pakistan', list: { items: ['India', 'Pakistan'], join: 'or', region: '' } },
+    ])
+  })
 
   it('has the type alone for a recipe that sets nothing else', () => {
     expect(recipeFacts(catalog('movie', {}), lookup)).toEqual([{ label: 'Type', value: 'Movies' }])
@@ -204,12 +218,18 @@ describe('openFacts', () => {
       { label: 'Votes', value: 'Any' },
       { label: 'Runtime', value: 'Any length' },
       { label: 'Language', value: 'Any' },
+      { label: 'Country', value: 'Any' },
       { label: 'Age rating', value: 'Any' },
       { label: 'Streaming service', value: 'Any' },
       { label: 'Production company', value: 'Any' },
       { label: 'Keywords', value: 'Any' },
       { label: 'Order', value: 'Most popular' },
     ])
+  })
+
+  it('leaves out Country once the recipe names one country or several', () => {
+    expect(open('movie', { with_origin_country: 'IN' }).map((f) => f.label)).not.toContain('Country')
+    expect(open('series', { with_origin_country: 'IN|PK' }).map((f) => f.label)).not.toContain('Country')
   })
 
   it('leaves out what the recipe sets, in either the singular or the plural', () => {
