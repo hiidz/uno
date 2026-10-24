@@ -114,12 +114,6 @@ function LoadFailed() {
 function Results({ preview, type }: { preview: Preview; type: CatalogType }) {
   return (
     <>
-      {/* The filters have moved on since these tiles were fetched — in ink,
-       *  never Nuvio yellow (DESIGN.md's Words Beside Colour Rule): nothing here
-       *  is waiting for Nuvio the way an unpushed change is. */}
-      {preview.isStale && (
-        <p className="pv-stale">Your filters changed since this ran. Run it again to see the new results.</p>
-      )}
       {preview.totalResults !== null && (
         <p>
           <span className="type-data">{preview.totalResults.toLocaleString()}</span>{' '}

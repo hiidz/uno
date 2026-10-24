@@ -1994,9 +1994,6 @@
         line-height: 18px;
         color: var(--uno-dim);
     }
-    .ed-pv .pv-stale {
-        color: var(--uno-ink);
-    }
 
     /* The catalog/collection editors' shared save bar, sticky at the pane's
        foot — `EditorShell`'s own footer band already supplies the sticky
