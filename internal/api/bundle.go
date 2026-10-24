@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -29,9 +30,13 @@ const maxBundleBodyBytes = 4 << 20 // 4 MiB
 // recipe it carries with checkRecipe — the check a catalog save runs, since a
 // bundle is client input like any other — and replaces each catalog's params
 // with the canonical form its row will store. A recipe error names the
-// catalog's key.
+// catalog's key. A bundle holding a provider this server doesn't run is
+// refused first, every such catalog named (refuseUnrunProviders).
 func (s *Server) prepareBundle(ctx context.Context, b *vault.Bundle) error {
 	if err := b.Validate(); err != nil {
+		return err
+	}
+	if err := refuseUnrunProviders(b); err != nil {
 		return err
 	}
 	if err := s.checkBundleCatalogs(ctx, b.Catalogs); err != nil {
@@ -43,6 +48,33 @@ func (s *Server) prepareBundle(ctx context.Context, b *vault.Bundle) error {
 		}
 	}
 	return nil
+}
+
+// refuseUnrunProviders refuses b when a catalog it carries is of a provider
+// this server doesn't run, as an export from a newer Uno can be, naming every
+// such catalog in the one error, grouped by provider. A catalog with no
+// provider is left to checkRecipe.
+func refuseUnrunProviders(b *vault.Bundle) error {
+	unrun := map[string][]string{}
+	note := func(where string, catalogs []vault.BundleCatalog) {
+		for _, c := range catalogs {
+			if c.Provider != "" && !vault.RunsProvider(c.Provider) {
+				unrun[c.Provider] = append(unrun[c.Provider], fmt.Sprintf("%scatalog %q", where, c.Key))
+			}
+		}
+	}
+	note("", b.Catalogs)
+	for i := range b.Collections {
+		note(fmt.Sprintf("collection %d ", i), b.Collections[i].Catalogs)
+	}
+	if len(unrun) == 0 {
+		return nil
+	}
+	problems := make([]string, 0, len(unrun))
+	for _, p := range slices.Sorted(maps.Keys(unrun)) {
+		problems = append(problems, fmt.Sprintf("this server doesn't run %q catalogs: %s", p, strings.Join(unrun[p], ", ")))
+	}
+	return fmt.Errorf("%w: bundle: %s", vault.ErrInvalidInput, strings.Join(problems, "; "))
 }
 
 // checkBundleCatalogs is prepareBundle for one catalog list.
