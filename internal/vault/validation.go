@@ -51,6 +51,13 @@ var validProviders = map[string]bool{
 	"tmdb": true,
 }
 
+// RunsProvider reports whether this server runs catalogs of name: the check
+// the builder API makes on every recipe a client sends before judging it as
+// that provider's.
+func RunsProvider(name string) bool {
+	return validProviders[name]
+}
+
 // maxNameLen bounds every name a person types for a row: a catalog's name, a
 // collection's title, a folder's title. All three are stored, served from the
 // public addon route and pushed into Nuvio's collections blob, where they are

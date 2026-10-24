@@ -258,6 +258,34 @@ func TestBundleRoutesRefuse(t *testing.T) {
 	}
 }
 
+// A bundle holding providers this server doesn't run, as an export from a
+// newer Uno can, is refused on check and import by provider, naming every
+// such catalog, top-level and in a collection, before its params are judged
+// as TMDB's; a catalog save of one is refused the same way.
+func TestUnrunProvidersAreRefusedByName(t *testing.T) {
+	f := newBundleRouteFixture(t)
+	bundle := `{"bundle":{"format":"uno","version":1,"catalogs":[` +
+		`{"key":"c1","name":"N","type":"movie","provider":"mdblist","params":{"list_id":1}},` +
+		`{"key":"c2","name":"T","type":"movie","provider":"trakt","params":{"list_id":2}},` +
+		`{"key":"c3","name":"P","type":"movie","provider":"tmdb","params":{}}],` +
+		`"collections":[{"title":"X","catalogs":[{"key":"s1","name":"S","type":"series","provider":"mdblist","params":{"list_id":3}}],"folders":[]}]}}`
+	for _, path := range []string{"import/check", "import"} {
+		w := f.post(t, path, bundle)
+		requireAnswer(t, w, http.StatusBadRequest, `this server doesn't run "mdblist" catalogs: catalog "c1", collection 0 catalog "s1"; this server doesn't run "trakt" catalogs: catalog "c2"`)
+		if strings.Contains(answerText(w), "list_id") {
+			t.Errorf("POST %s: %q judges the params as TMDB's", path, answerText(w))
+		}
+	}
+
+	requireAnswer(t, f.post(t, "catalogs", `{"type":"movie","name":"N","provider":"mdblist","params":"{\"list_id\":1}"}`),
+		http.StatusBadRequest, `this server doesn't run "mdblist" catalogs`)
+
+	listed, err := f.db.GetUserCatalogs(t.Context(), f.a.OwnerID)
+	if err != nil || len(listed) != 4 {
+		t.Fatalf("the caller owns %d listed catalogs (%v), want the fixture's 4", len(listed), err)
+	}
+}
+
 // The import routes take a body up to 4 MiB and refuse a larger one with
 // 413; every other route keeps the 1 MiB limit. Each padded body is valid
 // JSON well past its limit, so the decoder reads up to the limit rather

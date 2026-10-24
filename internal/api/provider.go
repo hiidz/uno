@@ -186,6 +186,19 @@ func pathTMDBID(w http.ResponseWriter, r *http.Request) (int, bool) {
 	return id, true
 }
 
+// checkProvider refuses a recipe of a provider this server doesn't run, by
+// that name, ahead of any check that would judge its params as TMDB's: a
+// recipe from a newer Uno, with a source this one lacks, is told as that.
+func checkProvider(catalogProvider string) error {
+	switch {
+	case catalogProvider == "":
+		return fmt.Errorf("%w: provider is required", vault.ErrInvalidInput)
+	case !vault.RunsProvider(catalogProvider):
+		return fmt.Errorf("%w: this server doesn't run %q catalogs", vault.ErrInvalidInput, catalogProvider)
+	}
+	return nil
+}
+
 // errUpstreamValidation marks a validateCatalogParams failure that is
 // TMDB's fault rather than the recipe's: the lists the recipe is checked
 // against couldn't be fetched, so the recipe is unjudged, not rejected.
@@ -196,8 +209,8 @@ var errUpstreamValidation = errors.New("cannot validate params against TMDB")
 
 // validateCatalogParams checks the TMDB-specific recipe rules for a
 // catalog's params. It judges them as TMDB's, so a caller holding a recipe of
-// another provider doesn't reach it: checkRecipe's canonical form, and the
-// vault's form validation, refuse that provider. The catalog type's own params
+// another provider doesn't reach it: checkRecipe's checkProvider refuses that
+// provider first. The catalog type's own params
 // shape comes from provider.DecodeParams, the one place that mapping lives.
 // Every error returned is wrapped in vault.ErrInvalidInput so callers can
 // route it through the same errors.Is switch as a vault-layer failure.
@@ -231,7 +244,7 @@ func (s *Server) validateCatalogParams(ctx context.Context, catalogType, params 
 }
 
 // checkRecipe is what every client-supplied recipe goes through before the
-// vault writes it: validateCatalogParams over params as sent, then
+// vault writes it: checkProvider, validateCatalogParams over params as sent, then
 // provider.CanonicalParams, whose result is the params the vault stores. The
 // check comes first because the canonical form drops keys the type doesn't
 // know, and a key the check rejects, such as with_networks on a movie
@@ -239,6 +252,9 @@ func (s *Server) validateCatalogParams(ctx context.Context, catalogType, params 
 // vault.ErrInvalidInput or errUpstreamValidation, the same as
 // validateCatalogParams, so writeVaultError classifies them.
 func (s *Server) checkRecipe(ctx context.Context, catalogType, catalogProvider, params string) (string, error) {
+	if err := checkProvider(catalogProvider); err != nil {
+		return "", err
+	}
 	if err := s.validateCatalogParams(ctx, catalogType, params); err != nil {
 		return "", err
 	}
