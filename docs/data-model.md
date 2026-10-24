@@ -170,6 +170,8 @@ A catalog's `params` is a JSON object of TMDB discover filters, stored as a stri
 
 Uno checks the params on every save and stores them in a canonical form. The fields are the structs in `internal/provider/models.go`.
 
+A catalog's type and its source (discover filters, or one TMDB collection's films) are chosen when it is made and never change: a save that would change either is refused. The source is read from the params, not stored. An Update from Community is the one exception: a copy follows its publisher.
+
 ## Bundles
 
 Export and import use a JSON file (`"format": "uno"`, `"version": 1`) with catalogs and collections. In the file, row ids are replaced by keys. The types are in `internal/vault/bundle.go`.

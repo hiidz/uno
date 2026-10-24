@@ -283,9 +283,10 @@ func sameKind(stored, input catalogKind) bool {
 }
 
 // storedCatalog is what UpdateUserCatalog reads of the row it rewrites: its
-// kind and its scope.
+// kind, its source and its scope.
 type storedCatalog struct {
 	kind         catalogKind
+	source       string
 	collectionID sql.NullString
 }
 
@@ -293,15 +294,17 @@ type storedCatalog struct {
 // exists and is owned by profileID (ErrCatalogNotFound otherwise).
 func loadCatalogForUpdate(ctx context.Context, tx *sql.Tx, profileID, catalogID uuid.UUID) (storedCatalog, error) {
 	var s storedCatalog
+	var params string
 	err := tx.QueryRowContext(ctx, `
-		SELECT type, provider, collection_id FROM catalogs WHERE id = ? AND owner_id = ?
-	`, catalogID.String(), profileID.String()).Scan(&s.kind.catalogType, &s.kind.provider, &s.collectionID)
+		SELECT type, provider, params, collection_id FROM catalogs WHERE id = ? AND owner_id = ?
+	`, catalogID.String(), profileID.String()).Scan(&s.kind.catalogType, &s.kind.provider, &params, &s.collectionID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return storedCatalog{}, ErrCatalogNotFound
 	case err != nil:
 		return storedCatalog{}, fmt.Errorf("loading catalog: %w", err)
 	}
+	s.source = recipeSource(params)
 	return s, nil
 }
 
@@ -315,15 +318,21 @@ func loadCatalogForUpdate(ctx context.Context, tx *sql.Tx, profileID, catalogID 
 //     source names its catalog's type and provider), so changing it here would
 //     alter what Nuvio should have with no save of any collection. The UI
 //     locks the type once a catalog exists; this is the server enforcing it.
+//   - Its source (recipeSource) is chosen when it is made and locked after,
+//     like its type.
 func checkCatalogRewrite(stored storedCatalog, input CatalogForm) error {
 	switch {
 	case stored.collectionID.Valid:
 		return fmt.Errorf("%w: a catalog inside a collection is edited through the collection's save", ErrInvalidInput)
-	case !sameKind(stored.kind, catalogKind{input.Type, input.Provider}):
-		return fmt.Errorf("%w: a catalog's type and provider can't be changed", ErrInvalidInput)
+	case !sameKind(stored.kind, catalogKind{input.Type, input.Provider}) || stored.source != recipeSource(input.Params):
+		return fmt.Errorf("%w: %s", ErrInvalidInput, errKindLocked)
 	}
 	return nil
 }
+
+// errKindLocked is the words a refused change of a catalog's type, provider or
+// source carries.
+const errKindLocked = "a catalog's type, provider and source can't be changed"
 
 // DeleteUserCatalog deletes the listed catalog identified by catalogID,
 // provided it's owned by profileID. Returns ErrCatalogNotFound if no such row

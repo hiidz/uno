@@ -15,10 +15,15 @@ import { EditorFooter } from '@/features/builder/EditorFooter'
 import { EditorShell } from '@/features/builder/EditorShell'
 import { NewItemDialog } from '@/features/builder/NewItemDialog'
 import { useEditorForm } from '@/features/builder/useEditorForm'
-import { emptyForm, toPayload as toCatalogPayload } from '@/features/catalogs/catalogForm'
-import type { CatalogFormState } from '@/features/catalogs/catalogForm'
+import {
+  NEW_CATALOG_KIND,
+  newCatalogForm,
+  newCatalogKindError,
+  toPayload as toCatalogPayload,
+} from '@/features/catalogs/catalogForm'
+import type { CatalogFormState, NewCatalogKind } from '@/features/catalogs/catalogForm'
 import type { CountryLookup } from '@/features/catalogs/countries'
-import { CatalogTypeField } from '@/features/catalogs/fields'
+import { CatalogKindFields } from '@/features/catalogs/fields'
 import type { GenreLookups } from '@/features/library/useLibrary'
 import { COLLECTION_KIND, withheldNote } from '@/features/sharing/sharingState'
 import { SharingStickers } from '@/features/sharing/SharingStickers'
@@ -300,7 +305,7 @@ export function CollectionEditor({
   // "New inside this collection" is named first, same two-step as the main
   // library's own "New catalog" — see Configure's `createBareCatalog`.
   const [namingNewFolderKey, setNamingNewFolderKey] = useState<string | null>(null)
-  const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
+  const [newCatalogKind, setNewCatalogKind] = useState<NewCatalogKind>(NEW_CATALOG_KIND)
   const [newCatalogName, setNewCatalogName] = useState('')
 
   function editRef(catalogID: string) {
@@ -339,7 +344,7 @@ export function CollectionEditor({
   }
 
   function startNewInCollection(folderKey: string, name = '') {
-    setNewCatalogType('movie')
+    setNewCatalogKind(NEW_CATALOG_KIND)
     setNewCatalogName(name)
     setNamingNewFolderKey(folderKey)
   }
@@ -351,7 +356,7 @@ export function CollectionEditor({
   function createNewInCollection(name: string) {
     if (namingNewFolderKey === null) return
     const folderKey = namingNewFolderKey
-    const payload = toCatalogPayload({ ...emptyForm(newCatalogType, collectionID), name })
+    const payload = toCatalogPayload({ ...newCatalogForm(newCatalogKind, collectionID), name })
     const draft = draftCatalog({ type: payload.type, name: payload.name, params: payload.params, collectionID })
     rememberCatalog(draft)
     addRef(folderKey, draft.id)
@@ -637,7 +642,10 @@ export function CollectionEditor({
         // Save (see `createNewInCollection`) — there is nothing async here.
         saving={false}
         serverError={null}
-        extra={<CatalogTypeField value={newCatalogType} onChange={setNewCatalogType} />}
+        extra={(showErrors) => (
+          <CatalogKindFields value={newCatalogKind} onChange={setNewCatalogKind} showErrors={showErrors} />
+        )}
+        extraInvalid={newCatalogKindError(newCatalogKind) !== undefined}
         onCreate={createNewInCollection}
         onClose={() => setNamingNewFolderKey(null)}
       />

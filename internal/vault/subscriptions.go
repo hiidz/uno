@@ -284,7 +284,7 @@ func updateCollectionCopy(ctx context.Context, tx *sql.Tx, profileID uuid.UUID, 
 	if err := form.Validate(); err != nil {
 		return err
 	}
-	return updateCollectionTx(ctx, tx, profileID, tree.ID, form, utcTimestamp(time.Now()))
+	return updateCollectionTx(ctx, tx, profileID, tree.ID, form, utcTimestamp(time.Now()), false)
 }
 
 // copyTreeSnapshot is a subscribed collection copy as a snapshot under its

@@ -16,19 +16,19 @@ import {
   isCollectionRow,
   isSameCatalog,
   paramsString,
+  sourceLabel,
   parseSortBy,
   serializeSortBy,
   validateForm,
   type FieldErrors,
   type CatalogFormState,
-  type SourceMode,
 } from './catalogForm'
 import {
   parseIdList,
   serializeIdList,
   type IdJoin,
 } from './params'
-import { EntityLists, NameSetting, ShuffleControl, SourceModeSetting } from './CatalogSettings'
+import { EntityLists, NameSetting, ShuffleControl } from './CatalogSettings'
 import { DateWindow } from './DateWindow'
 import { RecipePreview } from './RecipePreview'
 import {
@@ -84,6 +84,14 @@ function PickerField({
       {error && <FieldNote tone="danger">{error}</FieldNote>}
     </div>
   )
+}
+
+/** The editor's tags: the catalog's type, then its source unless that is
+ *  Filters. Neither changes once the catalog exists. */
+function editorStickers(state: CatalogFormState) {
+  const source = sourceLabel(isCollectionRow(state) ? 'collection' : 'filters')
+  const type = kindSticker(state.type)
+  return source ? [type, { ...type, label: source }] : [type]
 }
 
 /** What the sections are handed to read errors and change the form. */
@@ -766,11 +774,6 @@ export function CatalogEditor({
     setState((previous) => ({ ...previous, params: { ...previous.params, ...update } }))
   }
 
-  function switchSourceMode(sourceMode: SourceMode) {
-    patch({ sourceMode })
-    setOpenSection(sourceMode === 'collection' ? 'collection' : null)
-  }
-
   /** Same shape as `submit`: reveal what's wrong, or go. Errors stay hidden
    *  until something is submitted, so pressing Preview has to be one of the
    *  things that reveals them — otherwise the note explaining why it won't run
@@ -840,7 +843,7 @@ export function CatalogEditor({
       tone="catalog"
       badges={
         <>
-          <SharingStickers stickers={[kindSticker(state.type)]} />
+          <SharingStickers stickers={editorStickers(state)} />
           {sharingBadges}
         </>
       }
@@ -870,8 +873,6 @@ export function CatalogEditor({
             <div className="setting is-head">
               <h3 className="setting-label m-0">What the row shows</h3>
             </div>
-
-            <SourceModeSetting isMovie={isMovie} value={state.sourceMode} onChange={switchSourceMode} />
 
             {sections.map((section) => (
               <div key={section.key}>

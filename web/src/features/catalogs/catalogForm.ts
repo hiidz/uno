@@ -122,6 +122,54 @@ export function emptyForm(type: CatalogType = 'movie', collectionID: string | nu
   return { name: '', type, dateMode: 'any', sourceMode: 'filters', params: {}, collectionID, revision: 0 }
 }
 
+/** What the New catalog dialog settles before the catalog exists: its type
+ *  and source, which never change after, and for a TMDB collection the
+ *  collection, without which that source has nothing to show. */
+export interface NewCatalogKind {
+  type: CatalogType
+  source: SourceMode
+  /** The picked TMDB collection's id, as `with_collection` stores it. */
+  collection?: string
+}
+
+export const NEW_CATALOG_KIND: NewCatalogKind = { type: 'movie', source: 'filters' }
+
+/** The sources a type can be made from, in the dialog's order. TMDB has no
+ *  collections for series. */
+export function sourcesFor(type: CatalogType): { value: SourceMode; label: string }[] {
+  const filters = { value: 'filters' as const, label: 'Filters' }
+  if (type === 'series') return [filters]
+  return [filters, { value: 'collection', label: 'TMDB collection' }]
+}
+
+/** What a source is called on its own, as the editor's tag beside the type
+ *  reads; none for Filters, the source every catalog had before there was a
+ *  choice. */
+export function sourceLabel(source: SourceMode): string | null {
+  return source === 'collection' ? 'TMDB collection' : null
+}
+
+/** The kind once its type changes: a source the new type can't be made from
+ *  falls back to Filters. */
+export function withType(kind: NewCatalogKind, type: CatalogType): NewCatalogKind {
+  const source = sourcesFor(type).some((option) => option.value === kind.source) ? kind.source : 'filters'
+  return { ...kind, type, source }
+}
+
+/** Why the dialog can't create `kind` yet, or undefined once it can. */
+export function newCatalogKindError(kind: NewCatalogKind): string | undefined {
+  if (kind.source === 'collection' && !kind.collection) return 'Pick a TMDB collection.'
+  return undefined
+}
+
+/** The form a new catalog is created from: no filters yet, or its TMDB
+ *  collection, so a collection catalog is complete from the start. */
+export function newCatalogForm(kind: NewCatalogKind, collectionID: string | null = null): CatalogFormState {
+  const form = emptyForm(kind.type, collectionID)
+  if (kind.source !== 'collection') return form
+  return { ...form, sourceMode: 'collection', params: { with_collection: kind.collection } }
+}
+
 function dateModeOf(params: TMDBParams, type: CatalogType): DateMode {
   if (type === 'movie') {
     if (params.released_within_days) return 'rolling'

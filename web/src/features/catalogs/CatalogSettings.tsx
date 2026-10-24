@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { TMDBParams } from '@/api'
 import { FieldError, FieldNote, Segmented, TextInput } from '@/components/fields'
-import type { CatalogFormState, SourceMode } from './catalogForm'
+import type { CatalogFormState } from './catalogForm'
 import { parseIdList } from './params'
 import { sumShuffle } from './summary'
 import { TMDBEntityPicker } from './TMDBEntityPicker'
@@ -11,7 +11,6 @@ type FormPatch = Partial<CatalogFormState>
 type PatchForm = (update: FormPatch) => void
 type ParamsPatch = Partial<TMDBParams>
 type PatchParams = (update: ParamsPatch) => void
-type SetSourceMode = (mode: SourceMode) => void
 
 interface EntityListsProps {
   kind: 'company' | 'keyword'
@@ -75,32 +74,6 @@ export function EntityLists({
         {withoutError && <FieldNote tone="danger">{withoutError}</FieldNote>}
       </div>
     </>
-  )
-}
-
-const SOURCE_MODES: { value: SourceMode; label: string }[] = [
-  { value: 'filters', label: 'Filters' },
-  { value: 'collection', label: 'TMDB collection' },
-]
-
-interface SourceModeSettingProps {
-  isMovie: boolean
-  value: SourceMode
-  onChange: SetSourceMode
-}
-
-/** A movie catalog's first choice under "What the row shows": filters, or one
- *  TMDB collection. TMDB has no collections for series, so no choice there. */
-export function SourceModeSetting({
-  isMovie,
-  value,
-  onChange,
-}: SourceModeSettingProps) {
-  if (!isMovie) return null
-  return (
-    <div className="setting">
-      <Segmented<SourceMode> ariaLabel="What the row shows" value={value} onChange={onChange} options={SOURCE_MODES} />
-    </div>
   )
 }
 

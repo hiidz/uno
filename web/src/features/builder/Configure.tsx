@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ComponentProps, RefObject } from 'react'
 import { ProfileNotSelectedError } from '@/api'
-import type { CatalogPayload, CatalogType, CollectionPayload, ImportResult } from '@/api'
+import type { CatalogPayload, CollectionPayload, ImportResult } from '@/api'
 import { ArrowDown } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Icon } from '@/components/Icon'
@@ -12,11 +12,14 @@ import { ExportDialog } from '@/features/bundle/ExportDialog'
 import { ImportDialog } from '@/features/bundle/ImportDialog'
 import { CatalogEditor } from '@/features/catalogs/CatalogEditor'
 import {
-  emptyForm,
+  NEW_CATALOG_KIND,
+  newCatalogForm,
+  newCatalogKindError,
   toPayload,
   type CatalogFormState,
+  type NewCatalogKind,
 } from '@/features/catalogs/catalogForm'
-import { CatalogTypeField } from '@/features/catalogs/fields'
+import { CatalogKindFields } from '@/features/catalogs/fields'
 import { useCatalogMutations } from '@/features/catalogs/useCatalogMutations'
 import { CollectionEditor } from '@/features/collections/CollectionEditor'
 import {
@@ -119,7 +122,7 @@ export function Configure({
   // dialog is collecting rather than something it displays — `createBareCatalog`
   // is what reads it. Reset when the dialog is opened, not when it closes, so a
   // create the server rejected keeps the choice for the retry.
-  const [newCatalogType, setNewCatalogType] = useState<CatalogType>('movie')
+  const [newCatalogKind, setNewCatalogKind] = useState<NewCatalogKind>(NEW_CATALOG_KIND)
   const [namingCollection, setNamingCollection] = useState(false)
   const [confirming, setConfirming] = useState<Confirmation | null>(null)
   const [transfer, setTransfer] = useState<'import' | 'export' | null>(null)
@@ -212,7 +215,7 @@ export function Configure({
    * either way, ready to be selected later.
    */
   function createBareCatalog(name: string) {
-    catalogMutations.create.mutate(toPayload({ ...emptyForm(newCatalogType), name }), {
+    catalogMutations.create.mutate(toPayload({ ...newCatalogForm(newCatalogKind), name }), {
       onSuccess: (catalog) => {
         setNamingCatalog(false)
         openMade(catalogTarget(catalog))
@@ -537,7 +540,7 @@ export function Configure({
             onNewCatalog={() => {
               // A rejection from a previous attempt must not greet the next one.
               resetCatalogCreate()
-              setNewCatalogType('movie')
+              setNewCatalogKind(NEW_CATALOG_KIND)
               setNamingCatalog(true)
             }}
             onNewCollection={() => {
@@ -665,10 +668,11 @@ export function Configure({
         )}
       </div>
 
-      {/* Two fields, because two of them are hard to change later: a name is
-          how the row is found in the rail, and `type` is immutable once the
-          catalog exists — every filter in the builder branches on it, and
-          nothing changes it afterwards. */}
+      {/* What is hard to change later: a name is how the row is found in the
+          rail, and `type` and source are immutable once the catalog exists —
+          every filter in the builder branches on them, and nothing changes
+          them afterwards. A TMDB collection source asks for its collection
+          here too, so the catalog is complete from the start. */}
       <NewItemDialog
         open={namingCatalog}
         noun="catalog"
@@ -677,7 +681,10 @@ export function Configure({
         initialValue=""
         saving={catalogMutations.create.isPending}
         serverError={errorMessage(catalogMutations.create)}
-        extra={<CatalogTypeField value={newCatalogType} onChange={setNewCatalogType} />}
+        extra={(showErrors) => (
+          <CatalogKindFields value={newCatalogKind} onChange={setNewCatalogKind} showErrors={showErrors} />
+        )}
+        extraInvalid={newCatalogKindError(newCatalogKind) !== undefined}
         onCreate={createBareCatalog}
         onClose={() => {
           setNamingCatalog(false)

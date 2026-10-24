@@ -205,11 +205,16 @@ func updateCollectionRow(ctx context.Context, tx *sql.Tx, profileID, collectionI
 
 // applyCatalogEdit writes one ScopedCatalogEdit, its new name and recipe,
 // raising its catalog's revision. An edit that changes nothing is skipped, so
-// the row's updated_at stays put.
-func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, e ScopedCatalogEdit, nowStr string) error {
+// the row's updated_at stays put. With lockSource, an edit that changes the
+// catalog's source (recipeSource) is ErrInvalidInput, as a listed catalog's
+// save is; an Update leaves it off, so a copy follows its publisher.
+func applyCatalogEdit(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, e ScopedCatalogEdit, nowStr string, lockSource bool) error {
 	stored, err := loadEditedCatalog(ctx, tx, profileID, collectionID, e)
 	if err != nil {
 		return err
+	}
+	if lockSource && recipeSource(stored.params) != recipeSource(e.Params) {
+		return fmt.Errorf("%w: catalog %s: %s", ErrInvalidInput, e.ID, errKindLocked)
 	}
 	if e.Name == stored.name && e.Params == stored.params {
 		return nil
@@ -241,7 +246,7 @@ func loadEditedCatalog(ctx context.Context, tx *sql.Tx, profileID, collectionID 
 		return storedRecipe{}, fmt.Errorf("loading edited catalog: %w", err)
 	}
 	if !sameKind(kind, catalogKind{e.Type, e.Provider}) {
-		return storedRecipe{}, fmt.Errorf("%w: catalog %s: a catalog's type and provider can't be changed", ErrInvalidInput, e.ID)
+		return storedRecipe{}, fmt.Errorf("%w: catalog %s: %s", ErrInvalidInput, e.ID, errKindLocked)
 	}
 	return s, nil
 }
@@ -270,13 +275,14 @@ func deleteOrphanedScopedCatalogs(ctx context.Context, tx *sql.Tx, collectionID 
 // still find its catalog inside this collection. The caller validates form
 // first and commits; the row's own update answers ErrCollectionNotFound,
 // before anything else is written, when collectionID isn't profileID's. An
-// editor save and a subscription's Update both write through it.
-func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, form CollectionForm, nowStr string) error {
+// editor save and a subscription's Update both write through it; only the
+// save locks each edited catalog's source (lockSources).
+func updateCollectionTx(ctx context.Context, tx *sql.Tx, profileID, collectionID uuid.UUID, form CollectionForm, nowStr string, lockSources bool) error {
 	if err := updateCollectionRow(ctx, tx, profileID, collectionID, form, nowStr); err != nil {
 		return err
 	}
 	for _, e := range form.CatalogEdits {
-		if err := applyCatalogEdit(ctx, tx, profileID, collectionID, e, nowStr); err != nil {
+		if err := applyCatalogEdit(ctx, tx, profileID, collectionID, e, nowStr, lockSources); err != nil {
 			return err
 		}
 	}
@@ -307,7 +313,7 @@ func (db *DB) UpdateUserCollection(ctx context.Context, profileID uuid.UUID, col
 		if err := refuseStale(ctx, tx, "collections", profileID, collectionID, revision); err != nil {
 			return err
 		}
-		return updateCollectionTx(ctx, tx, profileID, collectionID, input, utcTimestamp(time.Now()))
+		return updateCollectionTx(ctx, tx, profileID, collectionID, input, utcTimestamp(time.Now()), true)
 	})
 	if err != nil {
 		return CollectionWithFolders{}, err

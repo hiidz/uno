@@ -27,6 +27,7 @@ export function NewItemDialog({
   saving,
   serverError,
   extra,
+  extraInvalid,
   onCreate,
   onClose,
 }: {
@@ -44,8 +45,13 @@ export function NewItemDialog({
   /** Plain-text body of a server 400. Only the named field can be wrong here
    *  and this form checks it, so it renders as an unexpected-case banner. */
   serverError: string | null
-  /** A second field, for a kind that has another thing it can't ask later. */
-  extra?: ReactNode
+  /** More fields, for a kind that has other things it can't ask later. Given
+   *  as a function, it is told when Create has been pressed, so its own errors
+   *  show when the name's does. */
+  extra?: ReactNode | ((showErrors: boolean) => ReactNode)
+  /** The extra fields aren't complete yet: Create shows their errors and
+   *  creates nothing. */
+  extraInvalid?: boolean
   onCreate: (value: string) => void
   onClose: () => void
 }) {
@@ -66,6 +72,7 @@ export function NewItemDialog({
           saving={saving}
           serverError={serverError}
           extra={extra}
+          extraInvalid={extraInvalid}
           onCreate={onCreate}
           onClose={onClose}
         />
@@ -87,6 +94,7 @@ function NewItemForm({
   saving,
   serverError,
   extra,
+  extraInvalid,
   onCreate,
   onClose,
 }: Omit<Parameters<typeof NewItemDialog>[0], 'open'>) {
@@ -98,7 +106,7 @@ function NewItemForm({
 
   function submit() {
     setShowError(true)
-    if (invalid) return
+    if (invalid || extraInvalid) return
     onCreate(value.trim())
   }
 
@@ -128,7 +136,7 @@ function NewItemForm({
             />
           </Field>
 
-          {extra}
+          {typeof extra === 'function' ? extra(showError) : extra}
 
           {serverError && (
             <p className="callout-danger type-data">
