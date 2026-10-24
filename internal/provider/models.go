@@ -188,6 +188,13 @@ type TMDBMovieParams struct {
 	// a discover result (see collectionItems), and every other field but
 	// Randomized must be unset — enforced in Validate.
 	WithCollection string `json:"with_collection,omitempty"`
+
+	// Comma (AND) or pipe (OR) separated TMDB person ids. Movie only:
+	// /discover/tv has no people filter. with_crew matches any crew job, not
+	// directing alone. TMDB has no people exclude, so there is no list to
+	// leave people out.
+	WithCast string `json:"with_cast,omitempty"`
+	WithCrew string `json:"with_crew,omitempty"`
 }
 
 // TMDBTVParams is the recipe for a /discover/tv-backed catalog.
@@ -226,7 +233,8 @@ const maxWithinDays = 50 * 365
 const dateLayout = "2006-01-02"
 
 // maxEntityIDs caps how many ids with_companies, with_keywords,
-// without_companies, without_keywords and with_networks each hold, and how
+// without_companies, without_keywords, with_networks, with_cast and
+// with_crew each hold, and how
 // many codes with_origin_country holds. ValidateParams looks every id up on
 // TMDB one at a time, so the cap bounds the round trips one save can cost on
 // a cold cache.
@@ -403,6 +411,18 @@ func (p TMDBMovieParams) Validate() error {
 	}
 	if strings.ContainsAny(p.WithCollection, ",|") {
 		return errors.New("with_collection takes a single collection id")
+	}
+	for _, f := range []struct{ name, list string }{
+		{"with_cast", p.WithCast},
+		{"with_crew", p.WithCrew},
+	} {
+		ids, err := parseIDList(f.name, f.list)
+		if err != nil {
+			return err
+		}
+		if len(ids) > maxEntityIDs {
+			return fmt.Errorf("%s cannot hold more than %d ids", f.name, maxEntityIDs)
+		}
 	}
 	if p.WithCollection != "" {
 		rest := p

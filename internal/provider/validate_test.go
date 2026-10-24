@@ -31,7 +31,9 @@ func fakeEntityTMDB(t *testing.T) (*TMDBClient, func(path string) int) {
 			fmt.Fprint(w, `{"id":1,"name":"Star Wars Collection","parts":[]}`)
 		case "/network/1":
 			fmt.Fprint(w, `{"id":1,"name":"Fuji TV","origin_country":"JP"}`)
-		case "/company/500", "/keyword/500", "/collection/500", "/network/500":
+		case "/person/1":
+			fmt.Fprint(w, `{"id":1,"name":"Zoe Saldaña","profile_path":"/z.jpg","known_for_department":"Acting"}`)
+		case "/company/500", "/keyword/500", "/collection/500", "/network/500", "/person/500":
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
@@ -88,8 +90,8 @@ func TestCheckEntityIDs(t *testing.T) {
 // TestValidateParamsLooksUpEachEntityField covers the wiring in
 // ValidateParams, the lookup itself being TestCheckEntityIDs': every entity
 // list reaches its own lookup and names its field when an id is unknown, and a
-// field the catalog type's discover endpoint lacks (with_collection on series,
-// with_networks on movie) is refused without one, since the value would
+// field the catalog type's discover endpoint lacks (with_collection, with_cast
+// and with_crew on series, with_networks on movie) is refused without one, since the value would
 // otherwise be saved but never applied.
 func TestValidateParamsLooksUpEachEntityField(t *testing.T) {
 	tests := []struct {
@@ -108,6 +110,11 @@ func TestValidateParamsLooksUpEachEntityField(t *testing.T) {
 		{"unknown network", "series", `{"with_networks":"1|999"}`, "with_networks", true},
 		{"collection on series", "series", `{"with_collection":"1"}`, "with_collection", false},
 		{"networks on movie", "movie", `{"with_networks":"1"}`, "with_networks", false},
+		{"known cast and crew", "movie", `{"with_cast":"1","with_crew":"1|1"}`, "", true},
+		{"unknown cast member", "movie", `{"with_cast":"1,999"}`, "with_cast", true},
+		{"unknown crew member", "movie", `{"with_crew":"999"}`, "with_crew", true},
+		{"cast on series", "series", `{"with_cast":"1"}`, "with_cast", false},
+		{"crew on series", "series", `{"with_crew":"1"}`, "with_crew", false},
 	}
 
 	for _, tc := range tests {
@@ -122,7 +129,7 @@ func TestValidateParamsLooksUpEachEntityField(t *testing.T) {
 				t.Fatalf("err = %v, want ErrInvalidParams naming %s", err, tc.wantField)
 			}
 			looked := 0
-			for _, kind := range []string{"company", "keyword", "collection", "network"} {
+			for _, kind := range []string{"company", "keyword", "collection", "network", "person"} {
 				looked += hits("/"+kind+"/1") + hits("/"+kind+"/999")
 			}
 			if (looked > 0) != tc.wantLookup {
@@ -153,8 +160,9 @@ func TestMovieValidateRejectsCollectionList(t *testing.T) {
 }
 
 // TestValidateCapsEntityIDLists covers the no-network cap on the company and
-// keyword include and exclude lists, for either catalog type, and on
-// with_networks, which only the series recipe has: twenty ids pass, a
+// keyword include and exclude lists, for either catalog type, on
+// with_networks, which only the series recipe has, and on with_cast and
+// with_crew, which only the movie recipe has: twenty ids pass, a
 // twenty-first is rejected naming the field and the cap, for either separator.
 func TestValidateCapsEntityIDLists(t *testing.T) {
 	ids := func(n int, sep string) string {
@@ -179,6 +187,8 @@ func TestValidateCapsEntityIDLists(t *testing.T) {
 				{"without_companies", bothTypes(TMDBCommonParams{WithoutCompanies: ids(n, sep)})},
 				{"without_keywords", bothTypes(TMDBCommonParams{WithoutKeywords: ids(n, sep)})},
 				{"with_networks", []CatalogParams{TMDBTVParams{WithNetworks: ids(n, sep)}}},
+				{"with_cast", []CatalogParams{TMDBMovieParams{WithCast: ids(n, sep)}}},
+				{"with_crew", []CatalogParams{TMDBMovieParams{WithCrew: ids(n, sep)}}},
 			} {
 				for _, p := range tc.params {
 					err := p.Validate()

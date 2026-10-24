@@ -40,6 +40,10 @@ func TestTMDBFailuresReachTheClientAsStatuses(t *testing.T) {
 	f := newRouteFixture(t)
 	notFound := func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }
 	company := func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, `{"id":1,"name":"Marvel Studios"}`) }
+	person := func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, `{"id":1,"name":"Zoe Saldaña"}`) }
+	people := func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"results":[{"id":1,"name":"Zoe Saldaña"}]}`)
+	}
 
 	for _, tc := range []struct {
 		name, method, path, body string
@@ -50,6 +54,10 @@ func TestTMDBFailuresReachTheClientAsStatuses(t *testing.T) {
 		{"company absent on TMDB", http.MethodGet, "/api/tmdb/companies/1", "", notFound, http.StatusNotFound},
 		{"company with TMDB down", http.MethodGet, "/api/tmdb/companies/1", "", tmdbDown, http.StatusBadGateway},
 		{"keyword absent on TMDB", http.MethodGet, "/api/tmdb/keywords/1", "", notFound, http.StatusNotFound},
+		{"person found", http.MethodGet, "/api/tmdb/people/1", "", person, http.StatusOK},
+		{"person absent on TMDB", http.MethodGet, "/api/tmdb/people/1", "", notFound, http.StatusNotFound},
+		{"person search", http.MethodGet, "/api/tmdb/people/search?q=zoe", "", people, http.StatusOK},
+		{"person search with TMDB down", http.MethodGet, "/api/tmdb/people/search?q=zoe", "", tmdbDown, http.StatusBadGateway},
 		{"collection with TMDB down", http.MethodGet, "/api/tmdb/collections/1", "", tmdbDown, http.StatusBadGateway},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

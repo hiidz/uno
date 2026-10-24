@@ -119,6 +119,12 @@ func (s *Server) searchKeywords(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) searchPeople(w http.ResponseWriter, r *http.Request) {
+	lookupList(w, "failed to search people", func() ([]provider.PersonMatch, error) {
+		return s.provider.SearchPeople(r.Context(), r.URL.Query().Get("q"))
+	})
+}
+
 func (s *Server) searchCollections(w http.ResponseWriter, r *http.Request) {
 	lookupList(w, "failed to search collections", func() ([]provider.Collection, error) {
 		return s.provider.SearchCollections(r.Context(), r.URL.Query().Get("q"))
@@ -132,7 +138,7 @@ func (s *Server) searchNetworks(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getCompany, getKeyword, getCollection and getNetwork resolve one saved id
+// getCompany, getKeyword, getPerson, getCollection and getNetwork resolve one saved id
 // back to its name for the picker. A TMDB 404 answers 404, so the picker can tell a stale id from an
 // outage.
 func (s *Server) getCompany(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +158,16 @@ func (s *Server) getKeyword(w http.ResponseWriter, r *http.Request) {
 	}
 	lookupList(w, "failed to fetch keyword", func() (provider.Keyword, error) {
 		return s.provider.Keyword(r.Context(), id)
+	})
+}
+
+func (s *Server) getPerson(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathTMDBID(w, r)
+	if !ok {
+		return
+	}
+	lookupList(w, "failed to fetch person", func() (provider.Person, error) {
+		return s.provider.Person(r.Context(), id)
 	})
 }
 

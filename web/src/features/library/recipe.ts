@@ -252,8 +252,8 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
     out.push(p.watch_region ? `on ${services} in ${countryLabel(p.watch_region)}` : `on ${services}`)
   }
 
-  // Counted for the same reason: naming a company, keyword or network needs a
-  // TMDB lookup per id.
+  // Counted for the same reason: naming a company, keyword, network or person
+  // needs a TMDB lookup per id.
   const companies = countIDs(p.with_companies)
   if (companies) out.push(`from ${pluralCount(companies, 'production company')}`)
   const notCompanies = countIDs(p.without_companies)
@@ -262,6 +262,9 @@ function describeParams(type: Catalog['type'], p: TMDBParams, lookup: GenreLooku
   if (keywords) out.push(`tagged with ${pluralCount(keywords, 'keyword')}`)
   const notKeywords = countIDs(p.without_keywords)
   if (notKeywords) out.push(`not tagged with ${pluralCount(notKeywords, 'keyword')}`)
+  // Movie params only: /discover/tv has no people filter.
+  const cast = type === 'movie' ? countIDs(p.with_cast) : 0
+  if (cast) out.push(`with ${pluralCount(cast, 'cast member')}`)
   // Series params only, like the collection above is movie params only.
   const networks = type === 'series' ? countIDs(p.with_networks) : 0
   if (networks) out.push(`on ${pluralCount(networks, 'network')}`)
@@ -337,6 +340,7 @@ export interface RecipeNames {
   keyword?: NameMap
   network?: NameMap
   provider?: NameMap
+  person?: NameMap
 }
 
 const NO_NAMES: RecipeNames = {}
@@ -351,6 +355,7 @@ const LEFT_OUT_KEYWORD: Noun = ['Left-out keyword', 'Left-out keywords']
 const NETWORK: Noun = ['Network', 'Networks']
 const STREAMING_SERVICE: Noun = ['Streaming service', 'Streaming services']
 const COUNTRY: Noun = ['Country', 'Countries']
+const CAST: Noun = ['Cast', 'Cast']
 
 /** An id list as its names, joined the way the list is — "A and B", or "A or
  *  B" for a pipe-joined one — once every id has one; as the number of ids until
@@ -430,6 +435,7 @@ const FACTS: FactBuilder[] = [
   ({ p, names }) => namedIdsFact(KEYWORD, p.with_keywords, names.keyword, ''),
   ({ p, names }) => namedIdsFact(LEFT_OUT_KEYWORD, p.without_keywords, names.keyword, ''),
   ({ type, p, names }) => namedIdsFact(NETWORK, type === 'series' ? p.with_networks : undefined, names.network, ''),
+  ({ type, p, names }) => namedIdsFact(CAST, type === 'movie' ? p.with_cast : undefined, names.person, ''),
   sortFact,
   shuffledFact,
 ]
@@ -484,9 +490,11 @@ function openFilters(type: Catalog['type']): OpenFilter[] {
     { set: COMPANY, open: { label: COMPANY[0], value: ANY } },
     { set: KEYWORD, open: { label: KEYWORD[1], value: ANY } },
     { set: NETWORK, open: { label: NETWORK[0], value: ANY } },
+    { set: CAST, open: { label: CAST[0], value: ANY } },
     { set: ['Order'], open: { label: 'Order', value: SORT_PHRASE['popularity.desc'] } },
   ]
-  return type === 'series' ? filters : filters.filter((filter) => filter.set !== NETWORK)
+  const otherType = type === 'series' ? CAST : NETWORK
+  return filters.filter((filter) => filter.set !== otherType)
 }
 
 /**

@@ -21,7 +21,8 @@ var ErrInvalidParams = errors.New("invalid params")
 // — genre ids, a language code, origin country codes, a watch region and
 // its provider ids, a certification country and its scale — against the lists TMDB publishes
 // for them, and company, keyword, collection and network ids against TMDB
-// one id at a time, since its API serves no whole list of any of them. It complements
+// and cast and crew ids against TMDB one id at a time, since its API serves
+// no whole list of any of them. It complements
 // [CatalogParams.Validate], which covers the rules that need no network
 // (enums, bounds, required-together pairs) and runs first.
 //
@@ -51,6 +52,7 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 		c.validateCompaniesAndKeywords,
 		c.validateCollection,
 		c.validateNetworks,
+		c.validatePeople,
 		c.validateCertifications,
 	} {
 		if err := check(ctx, catalogType, p); err != nil {
@@ -62,14 +64,16 @@ func (c *TMDBClient) ValidateParams(ctx context.Context, catalogType, paramsJSON
 
 // vocabParams is the slice of a recipe ValidateParams checks. Both recipe
 // types embed TMDBCommonParams, and every field checked here but
-// with_collection and with_networks lives on it, so decoding into it covers
-// movie and tv alike. Those two are decoded alongside for either type, so a
-// recipe of the other type carrying one is rejected rather than silently
-// ignored.
+// with_collection, with_networks, with_cast and with_crew lives on it, so
+// decoding into it covers movie and tv alike. Those are decoded alongside for
+// either type, so a recipe of the other type carrying one is rejected rather
+// than silently ignored.
 type vocabParams struct {
 	TMDBCommonParams
 	WithCollection string `json:"with_collection"`
 	WithNetworks   string `json:"with_networks"`
+	WithCast       string `json:"with_cast"`
+	WithCrew       string `json:"with_crew"`
 }
 
 // validateGenres checks with_genres and without_genres against TMDB's genre
@@ -193,6 +197,21 @@ func (c *TMDBClient) validateNetworks(ctx context.Context, catalogType string, p
 		return fmt.Errorf("%w: with_networks applies to series catalogs only", ErrInvalidParams)
 	}
 	return checkEntityIDs(ctx, "with_networks", p.WithNetworks, "network", c.Network)
+}
+
+// validatePeople rejects with_cast and with_crew on anything but a movie
+// catalog, then looks each id up on TMDB.
+func (c *TMDBClient) validatePeople(ctx context.Context, catalogType string, p vocabParams) error {
+	if p.WithCast == "" && p.WithCrew == "" {
+		return nil
+	}
+	if catalogType != "movie" {
+		return fmt.Errorf("%w: with_cast and with_crew apply to movie catalogs only", ErrInvalidParams)
+	}
+	if err := checkEntityIDs(ctx, "with_cast", p.WithCast, "person", c.Person); err != nil {
+		return err
+	}
+	return checkEntityIDs(ctx, "with_crew", p.WithCrew, "person", c.Person)
 }
 
 // certField is one certification value of a recipe, named for error text.

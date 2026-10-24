@@ -35,6 +35,7 @@ import {
   ANY_COMPANY,
   ANY_KEYWORDS,
   ANY_NETWORK,
+  ANY_PEOPLE,
   sumAge,
   sumCollection,
   sumDate,
@@ -59,6 +60,31 @@ import {
   Segmented,
   Select,
 } from './fields'
+
+/** A labelled search picker in a section holding more than one field: as wide
+ *  as the section, like `EntityLists`' Include and Leave out, so the search
+ *  box and its results don't shrink to their content. */
+function PickerField({
+  label,
+  htmlFor,
+  error,
+  children,
+}: {
+  label: string
+  htmlFor: string
+  error: string | undefined
+  children: ReactNode
+}) {
+  return (
+    <div className="flex w-full flex-col gap-2">
+      <label className="setting-label type-label" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {children}
+      {error && <FieldNote tone="danger">{error}</FieldNote>}
+    </div>
+  )
+}
 
 /** What the sections are handed to read errors and change the form. */
 type ErrorFor = (key: string) => string | undefined
@@ -161,6 +187,7 @@ type SectionKey =
   | 'watch'
   | 'companies'
   | 'keywords'
+  | 'people'
   | 'networks'
   | 'collection'
 
@@ -183,6 +210,7 @@ const ERROR_SECTION: Partial<Record<string, SectionKey>> = {
   with_networks: 'networks',
   with_collection: 'collection',
   with_origin_country: 'lang',
+  with_cast: 'people',
 }
 
 /** The order Save focuses errors in when more than one applies at once. */
@@ -202,6 +230,7 @@ const ERROR_PRIORITY = [
   'without_companies',
   'with_keywords',
   'without_keywords',
+  'with_cast',
   'with_networks',
 ]
 
@@ -232,6 +261,7 @@ const SECTION_ROLE: Record<SectionKey, (isMovie: boolean) => string> = {
   watch: () => 'Where to watch',
   companies: () => 'Production companies',
   keywords: () => 'Keywords',
+  people: () => 'Cast and crew',
   networks: () => 'Networks',
   collection: () => 'TMDB collection',
 }
@@ -413,7 +443,7 @@ function buildSections(args: SectionArgs) {
             />
             {languageOptions.length === 0 && <FieldNote>Couldn’t load languages.</FieldNote>}
           </Field>
-          <Field label="Country" htmlFor="cat-country" error={errorFor('with_origin_country')}>
+          <PickerField label="Country" htmlFor="cat-country" error={errorFor('with_origin_country')}>
             <CountryPicker
               inputId="cat-country"
               value={state.params.with_origin_country}
@@ -421,7 +451,7 @@ function buildSections(args: SectionArgs) {
               invalid={!!errorFor('with_origin_country')}
               onChange={(with_origin_country) => patchParams({ with_origin_country })}
             />
-          </Field>
+          </PickerField>
         </>
       ),
     },
@@ -516,6 +546,27 @@ function buildSections(args: SectionArgs) {
         />
       ),
     },
+    // Movie only: /discover/tv has no people filter.
+    ...(isMovie
+      ? [
+          {
+            key: 'people' as const,
+            summary: sumEntities(state.params.with_cast, undefined, 'cast member', ANY_PEOPLE),
+            body: (
+              <PickerField label="Cast" htmlFor="cat-cast" error={errorFor('with_cast')}>
+                <TMDBEntityPicker
+                  kind="cast"
+                  type={state.type}
+                  inputId="cat-cast"
+                  value={state.params.with_cast}
+                  invalid={Boolean(errorFor('with_cast'))}
+                  onChange={(with_cast) => patchParams({ with_cast })}
+                />
+              </PickerField>
+            ),
+          },
+        ]
+      : []),
     // Series only: /discover/movie has no network filter.
     ...(isMovie
       ? []

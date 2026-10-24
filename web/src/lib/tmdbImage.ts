@@ -2,6 +2,12 @@
  *  for Nuvio's own tiles. */
 const W500 = 'https://image.tmdb.org/t/p/w500/'
 
+/** A TMDB person's headshot from their raw `profile_path`, at a width that
+ *  stays sharp as a small round avatar; `''` when they have none. */
+export function headshot(profilePath: string): string {
+  return profilePath ? `https://image.tmdb.org/t/p/w185${profilePath}` : ''
+}
+
 /** The TMDB poster widths a thumbnail picks from. */
 const WIDTHS = [92, 154, 185, 342]
 

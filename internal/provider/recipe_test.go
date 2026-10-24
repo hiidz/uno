@@ -19,6 +19,8 @@ func TestCanonicalParams(t *testing.T) {
 		{"zero values dropped", "series", `{"sort_by":"","vote_count_gte":0,"randomized":false,"aired_within_days":7}`, `{"aired_within_days":7}`},
 		{"unknown keys dropped", "movie", `{"sort_by":"revenue.desc","endpoint":"/discover/movie"}`, `{"sort_by":"revenue.desc"}`},
 		{"another type's key dropped", "movie", `{"with_networks":"213","with_keywords":"9748"}`, `{"with_keywords":"9748"}`},
+		{"people kept on movies", "movie", `{"with_crew":"525","with_cast":"8691|73457"}`, `{"with_cast":"8691|73457","with_crew":"525"}`},
+		{"people dropped on series", "series", `{"with_cast":"8691"}`, `{}`},
 		{"numbers as Go writes them", "movie", `{"vote_average_gte":7.50,"vote_average_lte":1e1}`, `{"vote_average_gte":7.5,"vote_average_lte":10}`},
 		{"origin country kept", "series", `{"with_origin_country":"IN|PK","sort_by":"popularity.desc"}`, `{"sort_by":"popularity.desc","with_origin_country":"IN|PK"}`},
 		{"empty", "series", `{}`, `{}`},

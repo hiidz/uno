@@ -53,6 +53,8 @@ func (p TMDBMovieParams) DiscoverQuery() url.Values {
 	if p.ReleasedWithinDays > 0 {
 		q.Set("primary_release_date.gte", daysAgo(p.ReleasedWithinDays))
 	}
+	setIf(q, "with_cast", p.WithCast)
+	setIf(q, "with_crew", p.WithCrew)
 	return q
 }
 

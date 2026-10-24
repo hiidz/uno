@@ -382,6 +382,7 @@ const CAPS: [keyof TMDBParams, string][] = [
   ['without_companies', `Leave out at most ${MAX_ENTITY_IDS} production companies.`],
   ['without_keywords', `Leave out at most ${MAX_ENTITY_IDS} keywords.`],
   ['with_networks', `Pick at most ${MAX_ENTITY_IDS} networks.`],
+  ['with_cast', `Pick at most ${MAX_ENTITY_IDS} cast members.`],
 ]
 
 /** An id or country list over the server's cap. */

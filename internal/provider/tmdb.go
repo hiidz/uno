@@ -62,11 +62,12 @@ type TMDBClient struct {
 	certifications *memo[map[string][]Certification]
 
 	// Single entities looked up by id, keyed by the id: see Company,
-	// Keyword, Collection and Network.
+	// Keyword, Collection, Network and Person.
 	companies   *memo[Company]
 	keywords    *memo[Keyword]
 	collections *memo[Collection]
 	networks    *memo[Network]
+	people      *memo[Person]
 
 	// networkIDs holds the daily network export under one key: see
 	// networkList.
@@ -98,7 +99,7 @@ type TMDBClient struct {
 }
 
 // maxEntityCacheEntries bounds each memo keyed by an id a caller supplies:
-// the per-id companies, keywords, collections and networks, and the title
+// the per-id companies, keywords, collections, networks and people, and the title
 // counts. Each entry is an id and a short name or a count, so the bound
 // holds each one to about a megabyte while sitting far above what this
 // deployment's users look up between restarts.
@@ -157,6 +158,7 @@ func NewTMDBClient(apiKey string) *TMDBClient {
 		keywords:       newBoundedMemo(0, maxEntityCacheEntries, func(v Keyword) Keyword { return v }),
 		collections:    newBoundedMemo(0, maxEntityCacheEntries, func(v Collection) Collection { return v }),
 		networks:       newBoundedMemo(0, maxEntityCacheEntries, func(v Network) Network { return v }),
+		people:         newBoundedMemo(0, maxEntityCacheEntries, func(v Person) Person { return v }),
 		networkIDs:     newMemo(networkExportTTL, slices.Clone[[]networkEntry]),
 
 		collectionFilms: newBoundedMemo(collectionPartsTTL, maxCollectionPartsEntries, slices.Clone[[]tmdbDiscoverItem]),

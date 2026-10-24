@@ -32,6 +32,7 @@ const NO_COLLECTION = 'No TMDB collection picked'
 export const ANY_COMPANY = 'Any production company'
 export const ANY_KEYWORDS = 'Any keywords'
 export const ANY_NETWORK = 'Any network'
+export const ANY_PEOPLE = 'Anyone'
 
 const TITLE_LIKE = new Set(['title', 'name', 'original_title', 'original_name'])
 const DATE_LIKE = new Set(['primary_release_date', 'first_air_date'])

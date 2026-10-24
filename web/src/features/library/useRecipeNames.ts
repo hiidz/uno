@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { fetchCompany, fetchKeyword, fetchNetwork, fetchWatchProviders, queryKeys } from '@/api'
+import { fetchCompany, fetchKeyword, fetchNetwork, fetchPerson, fetchWatchProviders, queryKeys } from '@/api'
 import type { Catalog } from '@/api'
 import { parseIdList, parseParams } from '@/features/catalogs/params'
 import type { RecipeNames } from './recipe'
@@ -54,8 +54,8 @@ function useProviderNames(catalog: Pick<Catalog, 'type'>, region: string, ids: n
 }
 
 /**
- * The names of a recipe's production companies, keywords, networks and
- * streaming services, for `recipeFacts`. They load from the lookups the
+ * The names of a recipe's production companies, keywords, networks,
+ * streaming services and people, for `recipeFacts`. They load from the lookups the
  * catalog editor's pickers use, once `wanted` says they are shown: a folded
  * catalog in a collection's folder asks for none until it opens. Until a list
  * has all its names, `recipeFacts` counts it; `loading` says a lookup is still
@@ -72,11 +72,13 @@ export function useRecipeNames(
   const keyword = useNames(idsOf(p.with_keywords, p.without_keywords), queryKeys.keyword, fetchKeyword, wanted)
   const network = useNames(idsOf(catalog.type === 'series' ? p.with_networks : undefined), queryKeys.network, fetchNetwork, wanted)
   const provider = useProviderNames(catalog, p.watch_region ?? '', providers, wanted)
+  const person = useNames(idsOf(catalog.type === 'movie' ? p.with_cast : undefined), queryKeys.person, fetchPerson, wanted)
   return {
     company: company.names,
     keyword: keyword.names,
     network: network.names,
     provider: provider.names,
-    loading: [company, keyword, network, provider].some((answered) => answered.loading),
+    person: person.names,
+    loading: [company, keyword, network, provider, person].some((answered) => answered.loading),
   }
 }

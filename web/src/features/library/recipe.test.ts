@@ -8,6 +8,12 @@ function catalog(type: Catalog['type'], params: object): Catalog {
 }
 
 describe('describeRecipe', () => {
+  it('counts the cast members of a movie, and ignores the field on a series', () => {
+    expect(describeRecipe(catalog('movie', { with_cast: '8691|73457' }), new Map())).toEqual(['with 2 cast members'])
+    expect(describeRecipe(catalog('movie', { with_cast: '8691' }), new Map())).toEqual(['with 1 cast member'])
+    expect(describeRecipe(catalog('series', { with_cast: '8691' }), new Map())).toEqual([])
+  })
+
   it('names the countries a title was made in, joined the way the list is', () => {
     expect(describeRecipe(catalog('movie', { with_original_language: 'hi', with_origin_country: 'IN|PK' }), new Map())).toEqual([
       'in Hindi',
@@ -65,6 +71,25 @@ describe('recipeFacts', () => {
     expect(recipeFacts(catalog('series', { with_origin_country: 'IN|PK' }), new Map())).toEqual([
       { label: 'Type', value: 'Series' },
       { label: 'Countries', value: 'India or Pakistan', list: { items: ['India', 'Pakistan'], join: 'or', region: '' } },
+    ])
+  })
+
+  it('names the cast of a movie once their names are known, and counts them until then', () => {
+    const person = new Map([
+      [8691, 'Zoe Saldaña'],
+      [73457, 'Chris Pratt'],
+    ])
+    expect(recipeFacts(catalog('movie', { with_cast: '8691,73457' }), new Map(), { person })).toEqual([
+      { label: 'Type', value: 'Movies' },
+      {
+        label: 'Cast',
+        value: 'Zoe Saldaña and Chris Pratt',
+        list: { items: ['Zoe Saldaña', 'Chris Pratt'], join: 'and', region: '' },
+      },
+    ])
+    expect(recipeFacts(catalog('movie', { with_cast: '8691|73457' }), new Map())).toEqual([
+      { label: 'Type', value: 'Movies' },
+      { label: 'Cast', value: '2' },
     ])
   })
 
@@ -223,6 +248,7 @@ describe('openFacts', () => {
       { label: 'Streaming service', value: 'Any' },
       { label: 'Production company', value: 'Any' },
       { label: 'Keywords', value: 'Any' },
+      { label: 'Cast', value: 'Any' },
       { label: 'Order', value: 'Most popular' },
     ])
   })
@@ -244,6 +270,7 @@ describe('openFacts', () => {
     const labels = open('series', {}).map((f) => f.label)
     expect(labels).toContain('Aired')
     expect(labels).toContain('Network')
+    expect(labels).not.toContain('Cast')
     expect(labels).not.toContain('Released')
   })
 
